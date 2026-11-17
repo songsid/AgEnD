@@ -1,0 +1,27 @@
+{
+  "source": "6acab70da27ce6ebf575810f00923c00de7b5b8e",
+  "baseline": false,
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "status": "PASS",
+      "checks": [
+        "owner explicitly saves",
+        "public catalog matches",
+        "direct chat shows introduction"
+      ]
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": "PASS",
+      "checks": [
+        "owner explicitly saves",
+        "public catalog matches",
+        "direct chat shows introduction"
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "status": "PASS"
+}

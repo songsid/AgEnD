@@ -120,7 +120,7 @@ export function legacyRoom(item) {
   if (!item || typeof item !== "object" || typeof item.id !== "string") return null;
   return { id: item.id, kind: "direct", name: String(item.exposureName || ""), people: 1, agents: 1, online: null, unread: 0,
     lastAt: Number.isFinite(item.lastAt) ? item.lastAt : 0, lastText: "", lastAuthor: "",
-    agent: { ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
+    agent: { ...(typeof item.intro==="string"?{intro:item.intro}:{}), ...(item.answerOnly?{answerOnly:true}:{}), exposureId: String(item.exposureId || ""), owner: { name: String(item.ownerName || "") }, presence: null }, limited: true, legacy: item };
 }
 export const ADDRESS_HINT = /^https:\/\/[^\s/?#@]+\/?$/i;
 export const CODE_HINT = /^[A-Za-z0-9][A-Za-z0-9 -]{4,62}[A-Za-z0-9]$/;
@@ -378,6 +378,8 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
       return sessionCsrf && sessionCsrf === csrf ? call("PUT", "/hub/v1/me/prefs", { favorites, onlyIfUnset }) : Promise.resolve(retired());
     },
+    agentIntrosV1: true,
+    saveAgentIntro: (exposureId, revision, text) => call("PUT", `/hub/v1/exposures/${id(exposureId)}/intro`, {revision,text}),
     catalog() { return call("GET", "/hub/v1/exposures"); },
     sharingPauseV1: true,
     sharing(exposureId, revision, sharingEpoch, paused) { return call("POST", `/hub/v1/exposures/${id(exposureId)}/sharing`, { revision, sharingEpoch, paused }); },

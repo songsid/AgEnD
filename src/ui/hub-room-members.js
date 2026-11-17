@@ -1,3 +1,4 @@
+import { hi } from "./hub-agent-intro.js";
 // Hub rooms, the right-hand members panel (docs/design/hub-rooms-ux.md section 5): the people, the agents in presence
 // order, the room assistant, who can see what, and (for a room manager) the way to Room settings. Clicking an agent
 // opens a small card: @ it here, chat with it one-to-one (only when I may ask it), and, for a manager, remove it.
@@ -76,7 +77,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // An agent's second line names whose it is beside its state (「處理中 · 林小華的 Agent」), always shown, not only on hover.
   const row = (m, extra = null) => {
     const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>`;
+    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${m.intro||m.kind==="assistant"?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   return html`<aside class="hub-room-members">
     <section><h4>${heads.member}</h4>
@@ -87,7 +88,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
       <ul>${shown.map(m => html`<li class="hub-member hub-member-agent" key=${m.id}>
         <button type="button" class="hub-member-open" title=${roomSource(m)?.label || ""} aria-label=${`${m.name}. ${memberStatus(m).text}. ${roomSource(m)?.label || ""}`} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
-          <strong>${m.name}</strong>${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
+          <strong>${m.name}</strong>${m.intro?html`<p class="note">${m.intro}</p>`:null}${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
           <small class="note hub-source-explanation">${roomSource(m)?.label}</small>
           <small class="note">${memberStatus(m).text}</small>
           <div class="field-row">

@@ -1,3 +1,4 @@
+import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -453,7 +454,7 @@ export class HubGroupRooms {
       const hits = [...view.mine.map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true, owner: { name: this.core.atomic(db => this.name(db, me)) } })),
         ...view.askable.map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, owner: { name: ownerName } }))]
         .filter(e => e.name.toLowerCase().startsWith(q.trim().toLowerCase())).slice(0, 20);
-      this.fence(ctx).assertCurrent(); return hits;
+      this.fence(ctx).assertCurrent(); return this.core.atomic(db=>hits.map(row=>({...row,...agentIntro(db,row.id)})),this.fence(ctx));
     }
     if (q.trim().length >= 2 && (kind === "group" && this.core.deps.directory.searchPolicyGroups || kind === "person" && this.core.deps.directory.searchGrantPeople)) {
       return this.directory.search(ctx, me, q.trim(), kind as "person" | "group", () => this.core.atomic(db => {
@@ -540,7 +541,7 @@ export class HubGroupRooms {
       const own = this.member(db, id, me), room = this.room(db, id);
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
-        if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, role: m.role,
+        if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
           ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,

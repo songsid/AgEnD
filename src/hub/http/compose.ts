@@ -1,3 +1,4 @@
+import { HubAgentIntros } from "../agent-intro.js";
 import { HubAgentCatalogs } from "../agent-catalog.js";
 import {hubAdminOverviewPermit} from "../roles/overview.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
@@ -63,7 +64,7 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
-export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent.js", "hub-personal-agent-strings.js", "runtime-commands.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
+export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent.js", "hub-personal-agent-strings.js", "runtime-commands.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-agent-intro.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
   // Hub UX U2 (M-2932): the group-search picker (its own words inside), shared with B2's join-code scope.
@@ -168,6 +169,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   if (teams) Object.defineProperties(mountedDeps, {
     roomTeams: { value: teams }, roomTeamCandidates: { value: teams.candidates.bind(teams) },
   });
+  const intros = new HubAgentIntros(core);
   const sharing = new HubSharingService(core);
   const personal=personalFactory?.(core);
   if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
@@ -253,7 +255,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       signedIn(); return send(res, 200, await guard(() => agentCatalogs.view(ctx)));
     }
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["agent-intros-v1", "admin-dashboard-v1", "rooms-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     offered.push("mcp-apps-v1");
@@ -437,7 +439,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
       if (method === "GET") {
         signedIn(); const view = await guard(() => catalog.visible(ctx));
-        return send(res, 200, { ...view, mine: view.mine.map(e => ({ ...e, quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
+        return send(res, 200, { ...view, askable: view.askable.map(row => ({...row,exposure:{...row.exposure,...intros.projection(row.exposure.id)}})), mine: view.mine.map(e => ({ ...e, ...intros.projection(e.id), quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
       }
       if (path === "/hub/v1/grants" && method === "POST") {
         csrf(); const b = await body();
@@ -468,6 +470,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/freeze$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
       csrf(); const b = await body(); await guard(() => catalog.freeze(ctx, uuid(r![1]), int(b.revision), false)); return send(res, 200, { ok: true });
+    }
+    if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/intro$/))) {
+      if (method !== "PUT") throw new HttpError(405,"method");
+      csrf(); const b=await body();
+      if(Object.keys(b).some(k=>!["revision","text"].includes(k)))throw new HubProtocolError("invalid");
+      return send(res,200,await guard(()=>intros.save(ctx,uuid(r![1]),int(b.revision),b.text)));
     }
     if ((r = m(/^\/hub\/v1\/exposures\/([^/]+)\/quota$/))) {
       if (method !== "POST") throw new HttpError(405, "method");
@@ -639,7 +647,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
                 } else {
                   const view = await rooms.view(ctx, event.roomId);
                   if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view)) };
+                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId)) };
                   else {
                     const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
                     const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
@@ -680,15 +688,15 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/rooms") {
       if (method === "GET") { signedIn(); const view = await guard(() => rooms.listAuthorized(ctx));
         // Cached clients draw every row as a direct agent conversation. New roomList() opts into group rows.
-        if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...quota.roomProjection(room, view.grantProof) })) });
+        if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...intros.projection(room.exposureId), ...quota.roomProjection(room, view.grantProof) })) });
         const groups = await guard(() => groupRooms.list(ctx));
         const pending = invitations ? await guard(() => invitations.pending(ctx)) : null;
-        return send(res, 200, { ...groups, invitations: pending?.invitations.length ?? 0, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), ...quota.roomProjection(room, view.grantProof) }))] }); }
+        return send(res, 200, { ...groups, invitations: pending?.invitations.length ?? 0, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
         if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
         const room = await guard(() => rooms.open(ctx, uuid(b.exposureId), uuid(b.grantId)));
-        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...quota.roomProjection(room, room.grantProof) } });
+        return send(res, 200, { room: { id: room.id, exposureId: room.exposureId, grantId: room.grantId, state: room.state, exposureName: room.exposure.displayName, features: rooms.features(room.exposure.fleetId), ...intros.projection(room.exposureId), ...quota.roomProjection(room, room.grantProof) } });
       }
       throw new HttpError(405, "method");
     }
@@ -703,7 +711,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
       } else if (method === "GET") {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
-        return send(res, 200, { room: directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room)), me: { id: person, role: "member" },
+        return send(res, 200, { room: directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), me: { id: person, role: "member" },
           members: [{ id: person, kind: "person", name, role: "member", presence: "online" }, { id: room.exposureId, kind: "agent", name: room.exposureName,
             ...(room.answerOnly?{answerOnly:true}:{}), owner: { name: room.ownerName }, role: "member", presence: rooms.presence(room.exposureId), canAsk: room.state === "active" }],
           settings: { allMention: false, historyForNew: "all" }, invited: [] });
@@ -756,7 +764,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (index >= 0) messages = messages.slice(0, index);
         const limit = int(query.get("limit") ?? "50"), overflow = !query.has("after") && messages.length > limit;
         if (overflow) messages = messages.slice(-limit);
-        return send(res, 200, { entries, room: { ...view, ...quota.roomProjection(view, grantProof) }, messages, more: (more ?? false) || overflow });
+        return send(res, 200, { entries, room: { ...view, ...intros.projection(view.exposureId), ...quota.roomProjection(view, grantProof) }, messages, more: (more ?? false) || overflow });
       }
       if (method === "POST") {
         csrf(); const b = await body();
@@ -1070,7 +1078,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, features: Object.freeze(["agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; agentCatalogs.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
