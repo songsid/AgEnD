@@ -2508,7 +2508,7 @@ export function handleWebRequest(
   // GET /ui/history/older?instance=&before=<boot>-<id>&limit=1..100 → { messages, more }: older than `before`, oldest first.
   // GET /ui/history/newer?instance=&after=<boot>-<id>&limit=1..100 → { messages, more }: newer than `after`.
   // GET /ui/history/around?instance=&key=<boot>-<id>&limit=1..100 → { messages, olderMore, newerMore }: a jump's page.
-  // An admin's, as /ui/subagents (decision 7933bf90: over the public link too, its card-line filter applied as /ui/history's);
+  // An admin's, as /ui/subagents (decision 7933bf90: over the public link too, filtered as /ui/history is — linkRestricted);
   // a guest or a read-only session: 403. A key in neither the window nor the archive: 200 { messages: [], found: false } —
   // an ordinary answer, not an error (#4103: a pin or search jump to a message no longer kept falls back to its copy; a 404
   // was a console error on every such jump).
@@ -2523,7 +2523,8 @@ export function handleWebRequest(
     const history = ctx.webChatHistory;
     const page = !history ? null : archiveRead[1] === "older" ? history.older(instance, key, limit) : archiveRead[1] === "newer" ? history.newer(instance, key, limit) : history.around(instance, key, limit);
     if (!page) { json(res, 200, { messages: [], more: false, olderMore: false, newerMore: false, found: false }); return true; }
-    json(res, 200, { ...page, messages: visibleMessages(ctx, !!gatewayRequestContext(req), page.messages) });
+    // M-3278 parity (#4100): what /ui/history shows over the link — an admin sees what it sees directly (linkRestricted).
+    json(res, 200, { ...page, messages: visibleMessages(ctx, linkRestricted(req, url, ctx), page.messages) });
     return true;
   }
 
