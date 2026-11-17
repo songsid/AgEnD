@@ -51,6 +51,10 @@
  * viewer and device and the share links alike — `autoSkin` beside the list (a skin id: a built-in style's or a pack's;
  * none: the page's default). An older host reads past it; its save drops it (the style falls back to the default).
  *
+ * M-3286: an office's "Idle people stay in their own area" (`stayInArea: true` in what the page reads and sends; off:
+ * no key) is kept beside the list as well — `stayInArea: { "<office id>": true }` — never in the entry, for the same
+ * reason as the overrides: an older host would drop the office. An older host reads past it; its save drops it (off).
+ *
  * #3679: the fleet's own Office level titles, for every office — `levels` beside the list ({ titles, fixed }, checked by
  * a pack's rules: fleet-office-pack.js checkLevels; none: the page's). A pack's own `levels` win for offices drawn in it
  * (fleet-office-levels.js mergeLevels). Kept and dropped by an older host as autoSkin is; one that no longer checks is
@@ -79,7 +83,7 @@ export interface OfficeLayout { seats: OfficeSeat[]; waypoints: OfficePoint[]; e
  */
 export const OFFICE_NOBODY = "team:";
 /** `members`: instance names, or `team:<name>` for a team's members; none means everyone, [OFFICE_NOBODY] nobody. */
-export interface Office { id: string; name: string; skin: string; members: string[]; layout?: OfficeLayout; overrides?: LayoutOverrides }
+export interface Office { id: string; name: string; skin: string; members: string[]; layout?: OfficeLayout; overrides?: LayoutOverrides; stayInArea?: true }
 /** The checked pack an office's overrides are put on (a pack the host keeps), or null (a built-in style: shape only). */
 export type OverridePack = (id: string) => CheckedPack | null;
 export type OfficeCheck = { ok: true; offices: Office[] } | { ok: false; status: 400 | 413; error: string; detail?: string };
@@ -156,7 +160,8 @@ function overrides(v: unknown, at: string, packOf?: OverridePack): LayoutOverrid
 }
 function office(v: unknown, at: string, packOf?: OverridePack): Office {
   if (!isObj(v)) throw new Refused(at, "an object");
-  keysIn(v, ["id", "name", "skin", "members", "layout", "overrides"], at);
+  keysIn(v, ["id", "name", "skin", "members", "layout", "overrides", "stayInArea"], at);
+  if (v.stayInArea !== undefined && typeof v.stayInArea !== "boolean") throw new Refused(`${at}.stayInArea`, "true or false");
   if (typeof v.id !== "string" || !ID.test(v.id)) throw new Refused(`${at}.id`, "1–40 letters, digits, _ or -");
   if (v.id === AUTO_OFFICE_ID) throw new Refused(`${at}.id`, `"${AUTO_OFFICE_ID}" is the page's own office`);
   if (INHERITED_IDS.has(v.id)) throw new Refused(`${at}.id`, "not __proto__, constructor or prototype");
@@ -165,7 +170,7 @@ function office(v: unknown, at: string, packOf?: OverridePack): Office {
   const members = list(v.members ?? [], OFFICE_LIMITS.members, `${at}.members`).map((m, i) => text(m, OFFICE_LIMITS.member, `${at}.members[${i}]`));
   if (new Set(members).size !== members.length) throw new Refused(`${at}.members`, "a name twice");
   return { id: v.id, name: text(v.name, OFFICE_LIMITS.name, `${at}.name`), skin, members, ...(v.layout === undefined ? {} : { layout: layout(v.layout, `${at}.layout`) }),
-    ...(v.overrides === undefined ? {} : { overrides: overrides(v.overrides, `${at}.overrides`, packOf) }) };
+    ...(v.overrides === undefined ? {} : { overrides: overrides(v.overrides, `${at}.overrides`, packOf) }), ...(v.stayInArea === true ? { stayInArea: true as const } : {}) };
 }
 
 /** A whole list of offices, as a person sends it: every rule, or a refusal naming where it broke. */
@@ -201,7 +206,7 @@ export function checkFleetLevels(raw: unknown): { ok: true; levels: LevelWords |
 /** The overrides parts kept beside the offices on disk, apart from the rest (#2665 night places, #2691 seat reservations, #2736 the mail drop). */
 const BESIDE = ["furnitureNight", "seatFor", "mailDrop"] as const;
 type Beside = (typeof BESIDE)[number];
-type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
+type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides>; stayInArea?: Record<string, true> } & { [K in Beside]?: Record<string, NonNullable<LayoutOverrides[K]>> };
 /**
  * #2665/#2706: what goes on disk — the offices without their overrides; beside them, by office id, each office's
  * overrides without those parts, and each part on its own (none: no key). The maps have no prototype (#2708 review), so
@@ -209,7 +214,9 @@ type OnDisk = { offices: Office[]; overrides?: Record<string, LayoutOverrides> }
  */
 export function officesOnDisk(offices: Office[]): OnDisk {
   const out: OnDisk = { offices: [] };
-  out.offices = offices.map(o => {
+  out.offices = offices.map(({ stayInArea, ...o }) => {
+    // M-3286: beside the list too (an older host refuses the key in an entry and would drop the office).
+    if (stayInArea) (out.stayInArea ??= Object.create(null) as Record<string, true>)[o.id] = true;
     if (!o.overrides) return o;
     const { overrides, ...entry } = o, rest: LayoutOverrides = { ...overrides };
     for (const k of BESIDE) {
@@ -242,7 +249,7 @@ export class OfficeStore {
     try { body = readFileSync(this.path, "utf8"); }
     catch (err) { return (this.state = (err as NodeJS.ErrnoException).code === "ENOENT" ? { rev: 0, offices: [], autoSkin: null, levels: null } : "unreadable"); }
     try {
-      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown; autoSkin?: unknown; levels?: unknown } & { [K in Beside]?: unknown };
+      const doc = JSON.parse(body) as { version?: unknown; rev?: unknown; offices?: unknown; overrides?: unknown; autoSkin?: unknown; levels?: unknown; stayInArea?: unknown } & { [K in Beside]?: unknown };
       if (doc.version !== 1 || !Number.isSafeInteger(doc.rev) || !Array.isArray(doc.offices)) return (this.state = "unreadable");
       const offices: Office[] = [], ids = new Set<string>();
       const read = (raw: unknown): Office | null => {
@@ -263,6 +270,8 @@ export class OfficeStore {
           const r = read(next);
           if (r) { cur = next; o = r; }
         }
+        // M-3286: kept beside the list (true only; anything else: off).
+        if (o && own(doc.stayInArea, o.id) && (doc.stayInArea as Record<string, unknown>)[o.id] === true) o = { ...o, stayInArea: true };
         if (o && !ids.has(o.id)) { ids.add(o.id); offices.push(o); }
       }
       // #2716: one that does not check is the default's (none), the offices kept.

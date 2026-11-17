@@ -126,7 +126,8 @@ export function officeOk(x) {
   const name = typeof x.name === "string" && x.name.trim() ? x.name.trim().slice(0, 60) : x.id;
   const skin = typeof x.skin === "string" && ID.test(x.skin) ? x.skin : "pixel";
   const ov = x.overrides === undefined ? null : checkLayoutOverrides(x.overrides);
-  return { id: x.id, name, skin, members: nameList(x.members), layout: layoutOk(x.layout), ...(ov && ov.ok ? { overrides: ov.overrides } : {}) };
+  return { id: x.id, name, skin, members: nameList(x.members), layout: layoutOk(x.layout), ...(ov && ov.ok ? { overrides: ov.overrides } : {}),
+    ...(x.stayInArea === true ? { stayInArea: true } : {}) };   // M-3286: idle people stay in their own area
 }
 /** A stored list of offices: the valid ones, ids unique, at most MAX_OFFICES. */
 export function officesOk(list) {
