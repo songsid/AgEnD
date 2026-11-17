@@ -2490,6 +2490,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // S3c's currentBinding: a fresh, fail-closed read of the pairing state (null unless consistent and connectable).
           boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
+          maxCrossInstanceMessageBytes: () => this.fleetConfig?.defaults?.max_cross_instance_message_bytes,
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
             quota: agent => this.hubAgentQuota(agent),
