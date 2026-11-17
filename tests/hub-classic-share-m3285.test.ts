@@ -50,6 +50,7 @@ it("keeps private room output closed across Fleet restart and beyond the contact
 it("suppresses private-turn progress and public room notices",async()=>{
  const r=rig();expect(await r.ask(false)).toBe(true);const bubble:any={instanceName:"roomAgent",toolProgress:"Earlier room task"};(r.fm as any).cancelButtons.set("fixture-bubble",bubble);
  (r.fm as any).cacheInstanceProgress("roomAgent","PRIVATE_HUB_TOOL_PROGRESS");(r.fm as any).cacheInstanceActivity("roomAgent","PRIVATE_HUB_ACTIVITY");(r.fm as any).refreshBubble(bubble);expect((r.fm as any).instanceActivity.has("roomAgent")).toBe(false);expect(bubble.toolProgress).toBe("Earlier room task");expect((r.fm as any).instanceProgress.has("roomAgent")).toBe(false);
+ const ack=vi.fn();expect(r.fm.notifyInstanceTopic("roomAgent","PRIVATE_HUB_NOTICE",undefined,ack)).toBe(false);expect(ack).toHaveBeenCalledWith(false);
  expect((r.fm as any).sendToInstanceTopic("roomAgent","PRIVATE_HUB_NOTICE")).toBeNull();await r.fm.sendHangNotification("roomAgent");await r.fm.notifyNormalExit("roomAgent");expect(r.adapter.sendText).not.toHaveBeenCalled();
 });
 it("only a new room-person handoff after fresh idle and completed Hub work can reopen room output",async()=>{
