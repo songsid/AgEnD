@@ -151,7 +151,7 @@ again, hoping the person taps Confirm.
 presses Authorize, gets the card (the DM stubbed), and Confirm turns it verified. It also covers Not me (signed out),
 the limits, and the blocked states: the public link, a guest, the switch off.
 
-### 0.2 The admin's named link (2026-10-22, #2453): opt-in, off by default
+### 0.2 The admin's named link (2026-10-22, #2453): opt-in, off by default — on by default since 2026-11-17 (§0.4, decision 7933bf90)
 
 **The request.** The user asked (2026-10-22, relayed by the leader with its Discord receipt) for **Authorize this
 browser** on the admin's own fixed hostname: a named tunnel, `web.public_link.hostname` set (#2321). Until now every
@@ -464,6 +464,70 @@ computer)". `public_link` is no longer a reason anyone sees; it stays a reason c
   - the write over the public link is refused.
 - **Smoke:** a stubbed quick gateway (the fixture's `openPublicLink`), phone width. No trycloudflare quick-tunnel
   smokes from the host (the decision on 429s).
+
+### 0.4 A private /web code is the proof (2026-11-17, M-3277, decision 7933bf90)
+
+The user decided that a `/web` code AgEnD delivered privately to an admin's own Discord or Telegram account is proof of
+identity. The session it makes starts verified, with no second Confirm card.
+
+**Why the card adds nothing here.** The card goes to the same DM the code just went to. Anyone who can read that DM to
+tap Confirm could already read the code. Where the code leaks some other way (a lock-screen preview, a phishing page
+that relays it), the single-use code, the notice below and Not me protect the person better than a card they confirm out
+of habit.
+
+**What counts as private.** The caller marks the code `private` when it issues it (`WebLoginCodes.issue`). It is kept
+only on an admin code with an account (owner or recipient), never on a host code or a guest code. The paths:
+
+| Path | Delivery | Private |
+|---|---|---|
+| Discord `/web` (slash), any channel | the DM, else the slash command's own ephemeral answer, else the code is withdrawn | yes |
+| `/web` menu (Discord or Telegram General) → this computer or the public link | the DM, else (Discord) the click's ephemeral answer, else withdrawn; never the menu message | yes |
+| Telegram `/web` when the bot can't DM yet | no code: the menu offers **Open private chat** (`t.me/<bot>?start=web`); `/start web` in that DM opens the menu there, and the code goes there | yes |
+| A returning device's **Send me a code** | the DM only, else withdrawn | yes |
+| A guest's `/web` | private, but a guest code never qualifies (§3: not an admin) | — |
+| `agend web --code` on a chat fleet | the host's shell; no account | no (as before) |
+| A TOTP or device sign-in | no code sent to an account | no (as before) |
+
+A code that is withdrawn when its delivery isn't confirmed never reaches anyone else, so marking it at issue is enough.
+
+**What happens at sign-in.** In auth-api, after the session is created (and, over a link, activated after its public
+notice), FleetManager.authorizeSignedInSession runs. It judges §3 exactly as a Confirm would (authorizeWebSession):
+- the server switch;
+- **Only this computer** (`loopback_only`);
+- the named-link and quick-link options, for a session over a link;
+- the account still an admin;
+- the namespace.
+
+A refusal leaves the session signed in and unverified, as before; the card is still there. The peer is the link's own
+provenance over the gateway, else what the TCP peer and Host say.
+
+**The notice.** The account's DM gets "🔐 *browser* · *where* signed in with the code sent to you, and is verified
+until *when*", with **Not me**. It is the card a Confirm leaves behind, already confirmed: Not me signs that browser out,
+and at the end the notice says the authorization ended. If no DM can be sent (Discord with DMs closed, when the code went
+by an ephemeral answer), General gets one line with no details, pointing to `/web revoke`. The event log records
+`session_authorization_verified` with `via: "private_code"`.
+
+**Unchanged.**
+- Re-verifying a still-live session whose authorization ran out (48 h at most, against a 7–30 day session) takes the
+  card. That is where a stolen cookie is exactly what the card stops. The card, and its expired and ended texts, now add
+  "or sign in again with /web".
+- Codes that weren't private, guest codes and `agend web --code` on a chat fleet behave as before.
+- `/web revoke` and **Revoke web authority** end everything, as before.
+
+**The named link is on by default too** (decision 7933bf90, item 2): `web.verified_authority.named_link` unset means on,
+like `quick_link` (`namedLinkEffective`). `false` turns it off, and a value the validator refuses is off, never the
+default. Turning it back on is a widening judged on the value in force (Settings: held, confirmed, marked
+`opensLink`). The state file keeps §0.2's rule: a first on moves nothing, and a re-open after it was seen moves the
+epoch. A fleet that never turned the option on gets the new default with no revocation.
+
+**Accepted risk** (the decision): a stolen signed-in admin browser has host-level power remotely. The mitigations are the
+private-code sign-in, this notice with Not me, and `/web revoke`.
+
+**Tests.** `tests/web-private-code-verified-m3277.test.ts` runs a real FleetManager through the real `/auth/login`:
+- verified paths: the Telegram General menu, Telegram `/start web`, the Discord ephemeral answer with the General line,
+  a returning device and the quick link;
+- not-verified paths: an unmarked code, `agend web --code`, the switch off, and "only this computer" from the LAN;
+- the code store's mark and the notice's Not me and end.
 
 ## 1. Summary
 
