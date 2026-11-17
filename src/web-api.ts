@@ -2407,6 +2407,9 @@ export function handleWebRequest(
       linkStreams.set(ctx, open);
       if (open.size >= LINK_STREAMS_MAX) { json(res, 503, { error: "Too many live streams over the public link; this page polls" }); return true; }
       open.add(res);
+      // Freed when the response closes, however it ends — even if the setup below throws (Fable on #4116).
+      const slots = open;
+      res.on("close", () => { slots.delete(res); });
     }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",

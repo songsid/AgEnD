@@ -31,11 +31,12 @@ afterEach(() => { vi.useRealTimers(); });
 const session = (tier: "admin" | "read" | "guest") => sessions.create({ tier, surface: "gateway", exposureId: EXPOSURE, label: "t", tokenEpoch: tokenEpoch(TOKEN),
   ...(tier === "guest" ? { owner: { adapterId: "discord", userId: "111111111111111111" } } : {}) }).sessionId;
 
+let lastRes: EventEmitter | null = null;
 /** /ui/events as the gateway hands it to web-api: its context bound, the session's cookie. */
 function open(sid: string, link: { named: boolean; current?: () => boolean } = { named: true }, guest = false) {
   const frames: string[] = [];
   let status = 0, ended = false, destroyed = false;
-  const res = Object.assign(new EventEmitter(), { headersSent: false, setHeader() {}, writeHead(c: number) { status = c; (res as any).headersSent = true; },
+  const res = lastRes = Object.assign(new EventEmitter(), { headersSent: false, setHeader() {}, writeHead(c: number) { status = c; (res as any).headersSent = true; },
     write: (s: string) => { frames.push(s); return true; }, end: (a?: unknown) => { if (typeof a === "string") frames.push(a); ended = true; if (typeof a === "function") (a as () => void)(); } });
   const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/events", headers: { host: HOST, cookie: `__Host-agend_session=${sid}`, "sec-fetch-site": "same-origin" },
     socket: { remoteAddress: "127.0.0.1", destroy: () => { destroyed = true; } } });
@@ -64,6 +65,19 @@ describe("M-3278 5/5: the live stream on the fixed link, for an admin session", 
     expect(streams.every(s => s.status() === 200)).toBe(true);
     expect(open(sid).status()).toBe(503);
     streams[0]!.res.emit("close");
+    expect(open(sid).status()).toBe(200);
+  });
+  it("a stream whose setup throws still frees its place when its response closes (Fable on #4116)", () => {
+    const sid = session("admin");
+    ctx.getUiStatus = () => { throw new Error("boom"); };
+    for (let n = 0; n < LINK_STREAMS_MAX + 2; n++) {
+      lastRes = null;
+      let threw = false;
+      try { open(sid); } catch { threw = true; }
+      expect(threw).toBe(true);
+      lastRes!.emit("close");
+    }
+    ctx.getUiStatus = () => ({ instances: [] });
     expect(open(sid).status()).toBe(200);
   });
   it("ends at the next heartbeat once the link is no longer current, or the session is revoked", () => {
