@@ -40,7 +40,7 @@ found 120 characters too long; the proposal is **50 characters** (pending the ow
 | Agent can write it | A new Fleet tool, `hub_set_intro`, for itself only, at most 5 changes a day |
 | Owner can edit it | On the Hub: My agents → the agent's page. **Last write wins**: the agent may change it again afterwards, and the owner accepts being overwritten (R2, owner 2026-11-18). There is no lock |
 | Personal agent | Its "One-line description" becomes its introduction, cut at 50 characters; the field's limit on the card drops to 50 |
-| Room assistant | Fixed: "Provided by the Hub. Answers from this room's conversation." |
+| Room assistant | Fixed, and within the same 50 characters: "Hub assistant. Answers from this room's chat." / 「Hub 提供的助理，根據這個房間的對話回答。」 |
 | Empty | Allowed. Shown as nothing, not as a placeholder |
 
 **Where it shows**
@@ -87,6 +87,9 @@ found 120 characters too long; the proposal is **50 characters** (pending the ow
 - Owner edits go straight to the Hub; nothing is sent to the Fleet.
 - The default is sent only when the agent has no introduction yet. Sharing an agent again never replaces one
   that the owner or the agent wrote.
+- **Build split** (settled with the builder, M-3300): H1 is the Hub's storage, the owner's edit and where the
+  introduction shows; it works with any Fleet. The automatic default, the notice for agents already shared and
+  the tool arrive with H2, only for a Fleet that announces `agent-intro-v1`.
 - **Old Fleet** (no `agent-intro-v1`): no default and no tool. The introduction is empty until the owner writes
   one on the Hub, which works with any Fleet. **Old Hub**: the Fleet never offers the ability; the tool answers
   "This Hub doesn't support introductions yet."
