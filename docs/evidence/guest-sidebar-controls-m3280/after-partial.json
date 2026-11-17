@@ -1,0 +1,23 @@
+{
+  "before": false,
+  "results": [
+    {
+      "device": "desk",
+      "tier": "admin",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room",
+        "hidden-agent"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "dark",
+        "lang": "en"
+      },
+      "prefWrites": [],
+      "checks": 4,
+      "errors": []
+    }
+  ]
+}
