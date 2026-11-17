@@ -56,7 +56,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && LIBAVOID_PATHS.includes(path)) return true;
   // M-3278 (decision 7933bf90): an admin session's child-agent progress (the handler refuses guests and read sessions).
   if (method === "GET" && path === "/ui/subagents") return true;
-  if (method === "GET" && /^\/ui\/(backends|poll|history|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|office-acts|office-levels|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
+  if (method === "GET" && /^\/ui\/(backends|poll|history|history\/older|history\/newer|history\/around|file\/[^/]+|prompts|instance\/[^/]+|instances|tasks(?:\/[^/]+)?|schedules(?:\/[^/]+)?|teams(?:\/[^/]+)?|config|org|offices|office-acts|office-levels|traffic|cache|usage-report|prefs|preview-status|steps)$/.test(path)) return true;
   // #2513: the Office view's skin packs, read-only as the offices are (the list, a manifest, its pictures); never uploaded
   // or deleted here (the handler refuses it too).
   if (method === "GET" && /^\/ui\/office-skins(?:\/[A-Za-z0-9_-]{1,40}(?:\/img\/[0-9a-f]{32}\.png)?)?$/.test(path)) return true;

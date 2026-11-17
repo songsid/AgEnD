@@ -2491,6 +2491,27 @@ export function handleWebRequest(
     return true;
   }
 
+  // ── M-3272: scrolling back past the 500-message window (the archive, web-chat-archive.ts) ──
+  // GET /ui/history/older?instance=&before=<boot>-<id>&limit=1..100 → { messages, more }: older than `before`, oldest first.
+  // GET /ui/history/newer?instance=&after=<boot>-<id>&limit=1..100 → { messages, more }: newer than `after`.
+  // GET /ui/history/around?instance=&key=<boot>-<id>&limit=1..100 → { messages, olderMore, newerMore }: a jump's page.
+  // An admin's, as /ui/subagents (decision 7933bf90: over the public link too, its card-line filter applied as /ui/history's);
+  // a guest or a read-only session: 403. A key in neither the window nor the archive: 404.
+  const archiveRead = /^\/ui\/history\/(older|newer|around)$/.exec(path);
+  if (method === "GET" && archiveRead) {
+    if (!adminAdmissionOf(req, url, ctx) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", limit = Number(p.get("limit") ?? 100);
+    const key = p.get(archiveRead[1] === "older" ? "before" : archiveRead[1] === "newer" ? "after" : "key") ?? "";
+    if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !/^[0-9a-f]{1,32}-\d{1,15}$/.test(key) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      json(res, 400, { error: "instance, a message key and limit (1-100) required" }); return true;
+    }
+    const history = ctx.webChatHistory;
+    const page = !history ? null : archiveRead[1] === "older" ? history.older(instance, key, limit) : archiveRead[1] === "newer" ? history.newer(instance, key, limit) : history.around(instance, key, limit);
+    if (!page) { json(res, 404, { error: "not_found" }); return true; }
+    json(res, 200, { ...page, messages: visibleMessages(ctx, !!gatewayRequestContext(req), page.messages) });
+    return true;
+  }
+
   // ── #3212 PR 1: Settings → Agents → Accounts (read-only) ─────────────────────────────────
   // Each CLI's default sign-in and credential profiles, who uses them and their weekly usage. Names, states, the masked
   // identity and the host login command (which, as in the sign-in list, names the profile's folder) — no credential or

@@ -446,6 +446,11 @@ export interface WebConfig {
   /** #2293 global search. #2478: `public_link` (default true) — false keeps it off the temporary public link. */
   search?: { enabled?: boolean; retention_days?: number; public_link?: boolean };
   /**
+   * M-3272: the web chat's archive past each agent's 500-message window (web-chat-archive.ts) — scrolled back to on the
+   * page. `retention_days` (0–3650; unset or 0: keep everything): whole months that ended before it are removed.
+   */
+  chat_archive?: { retention_days?: number };
+  /**
    * #2636: Office share links — the live Office view for people outside the fleet, read-only, on a quick tunnel of its
    * own. `enabled` (default true): false offers no Share and ends every open share. `max_hours` (1–24, default 24): the
    * longest a share may live.
