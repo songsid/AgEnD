@@ -206,8 +206,9 @@ export class HubGroupRooms {
           (SELECT 1 FROM hub_room_agent_operations op WHERE op.post_id=p.id AND op.member_id=p.author_id)`)
           .get(row.answer_to, row.room_id) as { id: string } | undefined : undefined;
         const stopped = row.delivery_id && row.stage === "not-answered" ? db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND reason_code='owner-stopped-sharing'").get(row.delivery_id) : null;
+        const missing=row.delivery_id&&row.stage==="not-answered"?db.prepare("SELECT 1 FROM hub_room_deliveries WHERE id=? AND reason_code='finished-without-answer'").get(row.delivery_id):null;
         const reactions = this.reactions(db, row.id), buttons = row.author_kind === "agent" ? this.buttons.view(db, row.id, id => this.memberName(db, id)) : undefined;
-        return { ...(stopped ? { reasonCode: "owner-stopped-sharing" as const } : {}), ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
+        return { ...(missing?{reasonCode:"finished-without-answer" as const}:{}),...(stopped ? { reasonCode: "owner-stopped-sharing" as const } : {}), ...(ask ? { ask } : {}), ...(asker ? { askedBy: asker.id } : {}), ...(this.assistant.warning(db, row.id) ? { warning: "assistant-unavailable" as const } : {}), ...(reactions.length ? { reactions } : {}), ...(buttons ? { buttons } : {}) }; }) };
   }
   /** M-3127: a post's reactions, each emoji in the order it first appeared, its members in the order they reacted. */
   private reactions(db: DB, postId: string): NonNullable<RoomMessage["reactions"]> {

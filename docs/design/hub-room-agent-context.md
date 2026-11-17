@@ -1,8 +1,8 @@
 # Hub rooms: what an agent knows about the room it is asked in (M-3299)
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
-Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b; H5 assistant-kind/count clarification from 2b18ca396.
-Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 landed in #4139 with the negotiated first brief and confirmed membership delta. H5 adds the bounded member lookup; H6 remains planned until its separate PR lands. "Today" means a source survey of the development branch
+Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b; H5 assistant-kind/count clarification from 2b18ca396; H6 old-Hub result correction from 6d20f0ea1.
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 landed in #4139 with the negotiated first brief and confirmed membership delta. H5 landed in #4140 with the bounded member lookup. H6 adds the wrong-tool warning, one owed-answer reminder and the negotiated early No answer marker. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many
@@ -257,8 +257,7 @@ in a room, **people and agents alike** (R3, agreed):
    The asker can ask again. An answer that still arrives later is accepted and replaces the notice.
 5. ClassicBot agents keep their existing block.
 
-- Protocol: no new message. The existing "not answered" result gains one reason, gated like other reasons; an old
-  Hub shows it as "No reason given". An old Fleet behaves as today.
+- Protocol: keep the `room.answer` message and add the optional `finished-without-answer` marker only under the new Hub-only `room-answer-status-v1` offer. The Hub marks the placeholder but does not seal a real answer. An old Hub receives no marker: the local warning and one reminder still work, while the room keeps today's 24-hour wait. Never send an empty answer to imitate this result. An old Fleet behaves as today.
 - No owner setting. Nothing here changes what leaves the Fleet.
 
 ## 5. Sizes

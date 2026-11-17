@@ -1,3 +1,4 @@
+import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -2575,6 +2576,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           roomToolsChanged: () => this.notifyHubRoomTools(),
           roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
           attachRoomInputs: handler => { this.hubRoomInput = handler; },
+          attachRoomOwed: port=>{this.hubRoomOwed=port;},
           roomNotify: input => this.deliverHubRoomNotification(input),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
@@ -2926,6 +2928,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // A busy Classic room must finish its public turn first; never force a private question into that turn's queue.
         const idle=()=>this.waitForInstanceIdle(input.agent,0,this.lastDeliveryAt.get(input.agent)??0,()=>!input.stillCurrent());
         if(classic&&!await idle())return false;
+        if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
         // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
@@ -2936,12 +2939,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private async deliverHubRoomNotification(input: import("./hub/member/room-post-answers.js").RoomPostNotification): Promise<boolean> {
     const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
-    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent] || isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
-    const prefix=input.kind==="mention-feedback"?"hub-room-mention-feedback":"hub-room-post-answer";
+    const config=input.kind==="answer-reminder"?this.hubAgentConfig(input.agent):this.fleetConfig?.instances[input.agent];
+    if (this.shuttingDown || !config || isNativeExecInstance(config)) return false;
+    const prefix=input.kind==="answer-reminder"?"hub-room-answer-reminder":input.kind==="mention-feedback"?"hub-room-mention-feedback":"hub-room-post-answer";
     const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
       meta:{chat_id:"",message_id:`${prefix}-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
         ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`${prefix}-${input.id}`,
-        request_kind:"notification",requires_reply:"false",task_summary:input.kind==="mention-feedback"?"Hub mention delivery feedback":"A reply to your Hub room post"}},
+        request_kind:"notification",requires_reply:"false",task_summary:input.kind==="answer-reminder"?"Hub room answer reminder":input.kind==="mention-feedback"?"Hub mention delivery feedback":"A reply to your Hub room post"}},
       {isCrossInstance:true,stillCurrent:input.stillCurrent,beforeInput:input.beforeInput});
     return result!==false;
   }
@@ -3048,6 +3052,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   private hubReacts: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<import("./hub-report-target.js").HubReportOutcome> | null) | null = null;
   /** The member side's pane-failure hook for a Hub-issued correlation id (else null). */
+  private hubRoomOwed:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null=null;
+  hubRoomReplyWarning(agent:string):string|undefined{try{return this.hubRoomOwed?.replyWarning(agent);}catch{return undefined;}}
   private hubRoomInput: ((correlationId: string, agent: string, generation: string) => void) | null = null;
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
@@ -12961,6 +12967,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceActivity(name, msg.activity as string | null);
         } else if (msg.type === "instance_progress") {
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
+        } else if(msg.type==="hub_room_turn_ended"){
+          if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);
@@ -14402,6 +14410,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const sourceDaemonBootId = typeof msg.sourceDaemonBootId === "string" ? msg.sourceDaemonBootId : undefined;
 
     const respond = (result: unknown, error?: string) => {
+      if(tool==="reply"&&msg.statusOnly!==true)result=withHubRoomReplyWarning(result,()=>this.hubRoomReplyWarning(instanceName),error);
       const ipc = this.instanceIpcClients.get(instanceName);
       let sent = false;
       if (fleetRequestId) {

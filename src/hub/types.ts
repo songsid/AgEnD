@@ -62,7 +62,7 @@ export interface HubRoomContextRow { author: string; text: string; at: Millis; r
 export interface HubRoomAsk { messageId: MessageId; roomId: RoomId; roomName: string; exposureId: ExposureId;
   asker: { name: string }; text: string; context: readonly HubRoomContextRow[]; attachments?: HubAttachmentRef[];
   contextState?: import("./room-context-model.js").HubRoomContextState;brief?:import("./room-brief-model.js").RoomBrief }
-export interface HubRoomAnswer { messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
+export interface HubRoomAnswer { notAnswered?:"finished-without-answer";messageId: MessageId; roomId: RoomId; exposureId: ExposureId; answerId: string; text: string;
   /** M-3127: room-answer-buttons-v1 links only; bound into the answer digest like its text. */
   buttons?: HubAnswerButtons; attachments?: HubAttachmentRef[]; mentionFeedback?: true }
 export interface HubRoomAnswerAck { messageId: MessageId; answerId: string; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }

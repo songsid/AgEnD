@@ -142,7 +142,7 @@ register("hubRoom", {
     // The @ progress line in parts, a part with 0 left out (Lumen): "Answered 1 · Working 1".
     progAnswered: "Answered {0}", progWorking: "Working {0}", progLater: "Reply later {0}",
     progFailed: "Failed {0}", progBlocked: "Blocked {0}",
-    reasonExpired: "The question expired before an answer", reasonUnavailable: "The room assistant could not answer",
+    reasonUnanswered:"The agent finished without answering here", reasonExpired: "The question expired before an answer", reasonUnavailable: "The room assistant could not answer",
     reasonInterrupted: "The answer was interrupted", reasonRetired: "This agent could not answer", reasonUnknown: "No reason given",
     roomsCanAskIt: "People in its rooms can @ it there. See In these rooms.", invitationsTitle: "Invitations",
   },
@@ -262,7 +262,7 @@ register("hubRoom", {
     peopleOne: "1 人", peopleMany: "{0} 人", agentsOne: "1 個 Agent", agentsMany: "{0} 個 Agent",
     progAnswered: "已回答 {0}", progWorking: "處理中 {0}", progLater: "稍後回覆 {0}",
     progFailed: "未回答 {0}", progBlocked: "無法回答 {0}",
-    reasonExpired: "問題在回答前就過期了", reasonUnavailable: "房間助理暫時無法回答",
+    reasonUnanswered:"Agent 已結束處理，但沒有在這裡回答", reasonExpired: "問題在回答前就過期了", reasonUnavailable: "房間助理暫時無法回答",
     reasonInterrupted: "回答被中斷", reasonRetired: "這個 Agent 無法回答", reasonUnknown: "沒有說明原因",
     roomsCanAskIt: "房間裡的人可以在房間裡 @ 它，見「在這些房間裡」。", invitationsTitle: "邀請",
   },

@@ -113,6 +113,7 @@ export interface HubMemberFactoryOptions {
   attachAgentRooms?(port: import("../member/room-post.js").AgentRoomPort | null): void;
   roomToolsChanged?(): void;
   roomConversationGeneration?(agent: string): string | null;
+  attachRoomOwed?(port:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null):void;
   attachRoomInputs?(handler: ((correlationId: string, agent: string, generation: string) => void) | null): void;
   roomReceipt?(caller: import("../member/room-post.js").RoomCaller, receiptId: string): import("../member/room-post-receipt.js").RoomReceiptProof | null;
   roomNotify?(input: import("../member/room-post-answers.js").RoomPostNotification): Promise<boolean>;
@@ -554,7 +555,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const receiveFeedback=feedback.receive.bind(feedback);
       const room = new HubRoomAskAdapter({ db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
         locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
-        maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,
+        maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,remind:options.roomNotify,
         localExposure: id => {
           if (!roomCurrent()) return null;
           const local = exposures.localExposure(id);
@@ -885,11 +886,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.representative.attachPrivateQuestions?.(agent => service.hasOpenQuestion(agent) || room.hasOpenQuestion(agent));
           options.representative.attachReacts?.(input => room.react(input));
           options.attachRoomInputs?.((cid,agent,generation) => room.inputHandoff(cid,agent,generation));
+          options.attachRoomOwed?.(room);
           teardown.add("the fleet attachments", () => {
             options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
             options.representative.attachPrivateQuestions?.(null);
-            options.attachRoomInputs?.(null);
+            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
             options.attachExposures(null);
           options.attachSharing?.(null);
             intro.connected(null);
@@ -914,7 +916,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           client?.fence();
           options.representative.attachReports(null, null);
           options.representative.attachPrivateQuestions?.(null);
-            options.attachRoomInputs?.(null);
+            options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);
           options.attachExposures(null);
           options.attachSharing?.(null);
           intro.connected(null);

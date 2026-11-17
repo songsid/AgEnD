@@ -1,3 +1,4 @@
+import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { replyPreviews } from "./reply-preview-spec.js";
 /**
  * Agent CLI HTTP endpoint — handles POST /agent requests from thin CLI clients.
@@ -110,6 +111,7 @@ export interface AgentEndpointContext extends OutboundContext {
   /** Absolute data directory (e.g. ~/.agend). Used to locate per-instance token files. */
   readonly dataDir: string;
   /** Duplicate-reply suppression shared with the MCP path (see reply-dedup.ts). */
+  hubRoomReplyWarning?(instance:string):string|undefined;
   readonly replyDeduper?: import("./reply-dedup.js").ReplyDeduper;
   /** The MCP path's `reply.stickers` pre-check (#1226): a refused sticker is the reply's error, sent nothing. */
   replyStickerProblem?(adapter: import("./channel/types.js").ChannelAdapter, args: Record<string, unknown>, threadId: string | undefined, worldId: string | undefined): Promise<string | null>;
@@ -541,7 +543,7 @@ export async function dispatchAgentOperation(
           )
           : undefined;
         if (ticket?.duplicate) {
-          ticket.subscribe((result, error) => resolve(error ? { error } : result));
+          ticket.subscribe((result, error) => resolve(error ? { error } : tool==="reply"?withHubRoomReplyWarning(result,()=>ctx.hubRoomReplyWarning?.(instance)):result));
           return;
         }
 
@@ -552,7 +554,7 @@ export async function dispatchAgentOperation(
           // which replies via POST /agent instead of an MCP tool call) never hit
           // that path, so without this their cancel button would never clear.
           if (!error && tool === "reply") { ctx.clearCancelButton?.(instance); previewDelivered?.(result); }
-          resolve(error ? { error } : result);
+          resolve(error ? { error } : tool==="reply"?withHubRoomReplyWarning(result,()=>ctx.hubRoomReplyWarning?.(instance)):result);
         });
         if (!handled) {
           if (ticket && !ticket.duplicate) ticket.complete(null, "unhandled");

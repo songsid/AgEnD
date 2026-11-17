@@ -7148,6 +7148,11 @@ export class Daemon extends EventEmitter {
   /** M-3239: this launch's turn as its transcript tells it (dispatcher-liveness.ts). */
   private readonly turnWatch = new TurnWatch();
   private turnActivitySentAt = 0;
+  private hubRoomInputEpoch=0;
+  private hubRoomTranscriptActivity=0;
+  private hubRoomTurnActivityStart:number|null=null;
+  private readonly hubRoomTurnBoot=randomUUID();
+  private hubRoomTurnSequence=0;
   private turnEndTimer: ReturnType<typeof setTimeout> | null = null;
 
   /** M-3239: Claude's and Codex's transcripts tell each tool call and answer; their pane's spinner alone is not a turn. */
@@ -7171,13 +7176,20 @@ export class Daemon extends EventEmitter {
   private noteTurnEdge(state: string): void {
     if (state !== "idle") {
       if (this.turnEndTimer) { clearTimeout(this.turnEndTimer); this.turnEndTimer = null; }
-      if (state === "working") this.turnWatch.begin(Date.now());
+      if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;}
       return;
     }
     if (this.turnEndTimer) return;
+    const roomGeneration=this.roomConversationState?this.roomConversationGeneration():null,roomInputEpoch=this.hubRoomInputEpoch;
     this.turnEndTimer = setTimeout(() => {
       this.turnEndTimer = null;                                        // a working edge before this cancels it: the turn went on
       const turn = this.turnWatch.end();
+      // A Claude/Codex compaction spinner is not a completed model turn. Require fresh tool/text evidence.
+      const bin=this.backend?.binaryName,needsTranscript=bin==="claude"||bin==="codex";
+      const realWork=!needsTranscript||this.hubRoomTurnActivityStart!==null&&this.hubRoomTranscriptActivity>this.hubRoomTurnActivityStart;
+      this.hubRoomTurnActivityStart=null;
+      if(turn&&realWork&&roomGeneration&&roomGeneration===this.roomConversationGeneration()&&roomInputEpoch===this.hubRoomInputEpoch)
+        this.broadcastFleetMessage({type:"hub_room_turn_ended",generation:roomGeneration,turn:`${this.hubRoomTurnBoot}:${++this.hubRoomTurnSequence}`});
       if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
       this.broadcastFleetMessage({ type: "turn_ended", instanceName: this.name, startedAt: turn.startedAt, text: turn.text.slice(-4000) });
     }, TURN_END_SETTLE_MS);
@@ -7245,9 +7257,9 @@ export class Daemon extends EventEmitter {
     for (const event of ["tool_use", "tool_result", "assistant_text"] as const) monitor.on(event, touch);
     // M-3239: the turn as the transcript tells it — progress for the board's quiet clock, and the question a turn ends on.
     const mine = () => this.transcriptMonitor === monitor;
-    monitor.on("tool_use", (name: string, input: unknown) => { if (mine()) { this.turnWatch.tool(name, input, Date.now()); this.reportTurnActivity(); } });
-    monitor.on("tool_result", () => { if (mine()) { this.turnWatch.result(Date.now()); this.reportTurnActivity(); } });
-    monitor.on("assistant_text", (text: string) => { if (mine()) { this.turnWatch.text(text, Date.now()); this.reportTurnActivity(); } });
+    monitor.on("tool_use", (name: string, input: unknown) => { if (mine()) { this.hubRoomTranscriptActivity++;this.turnWatch.tool(name, input, Date.now()); this.reportTurnActivity(); } });
+    monitor.on("tool_result", () => { if (mine()) { this.hubRoomTranscriptActivity++;this.turnWatch.result(Date.now()); this.reportTurnActivity(); } });
+    monitor.on("assistant_text", (text: string) => { if (mine()) { this.hubRoomTranscriptActivity++;this.turnWatch.text(text, Date.now()); this.reportTurnActivity(); } });
     return monitor;
   }
 
@@ -14772,6 +14784,7 @@ export class Daemon extends EventEmitter {
   private roomInputHandedOff(meta: Record<string,string>): void {
     const generation=meta.hub_room_context_generation;
     if (meta.from_instance!==HUB_REPORT_TARGET || !generation || generation!==this.roomConversationGeneration()) return;
+    this.hubRoomInputEpoch++;
     this.broadcastFleetMessage({type:"hub_room_input",correlationId:meta.correlation_id,generation});
   }
 

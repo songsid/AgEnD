@@ -51,7 +51,7 @@ it("refuses old frozen deltas after reset and refuses receipts from another agen
 });
 it("keeps the complete legacy ask path without sending new fields or receipt frames",async()=>{
   const h=fixture(false);h.adapter.accept(h.ask(),h.link);await h.adapter.settled();
-  expect(h.deliver.mock.calls[0][0]).not.toHaveProperty("roomContextGeneration");
+  expect(h.deliver.mock.calls[0][0].roomContextGeneration).toBe(h.generation()); // local handoff proof also works on old Hubs; no context RPC is sent.
   h.adapter.inputHandoff(h.deliver.mock.calls[0][0].correlationId,"Notes",h.generation());
   await h.adapter.flushContextInputs();expect(h.link.contextState).not.toHaveBeenCalled();expect(h.link.contextInput).not.toHaveBeenCalled();h.adapter.close();
 });

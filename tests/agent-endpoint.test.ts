@@ -88,11 +88,11 @@ describe("agent CLI reply context", () => {
       getAdapterForInstance: () => fallbackAdapter,
       getGroupIdForInstance: () => "configured-chat",
       classicChannels: null,
-      clearCancelButton,
+      clearCancelButton,hubRoomReplyWarning:()=>"Pending Hub room answer: use report_result.",
     } as any;
 
     const result = await dispatchAgentOperation(ctx, "agy", "reply", { text: "test" });
-    expect(result).toEqual({ messageId: "sent-1" });
+    expect(result).toEqual({ messageId: "sent-1",hub_warning:"Pending Hub room answer: use report_result." });
     expect(sourceAdapter.sendText).toHaveBeenCalledWith("source-chat", "test", {
       threadId: "source-thread", replyTo: undefined, format: undefined,
     });
