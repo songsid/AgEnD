@@ -79,7 +79,8 @@ export function applyStatus(d) {
  */
 export const NOTICES_KEPT = 500;
 function noticesState(enabled, byId, seen) {
-  const items = [...byId.values()].sort((a, b) => b.id - a.id).slice(0, NOTICES_KEPT);
+  const all = [...byId.values()].sort((a, b) => b.id - a.id);
+  const items = all.filter((notice, index) => index < NOTICES_KEPT || (notice.hubSharing?.undoUntil || 0) > Date.now());
   return { enabled, items, seen, unread: items.filter((n) => n.id > seen).length };
 }
 const validNotice = (n) => !!n && Number.isSafeInteger(n.id) && n.id > 0 && typeof n.text === "string";
@@ -91,7 +92,10 @@ export function mergeNoticeList(cur, d) {
   return noticesState(!!(d && d.enabled === true), byId, Math.max(cur ? cur.seen | 0 : 0, d ? d.seen | 0 : 0));
 }
 export function addNotice(cur, n) {
-  if (!cur || !cur.enabled || !validNotice(n) || cur.items.some((x) => x.id === n.id)) return cur;
+  if (!cur || !cur.enabled || !validNotice(n)) return cur;
+  const previous = cur.items.find(x => x.id === n.id);
+  if (previous && (!n.hubSharing || !previous.hubSharing || n.hubSharing.key !== previous.hubSharing.key
+    || n.hubSharing.version <= previous.hubSharing.version)) return cur;
   return noticesState(true, new Map([...cur.items, n].map((x) => [x.id, x])), cur.seen | 0);
 }
 /** The newest Notice the status frame names that the page does not have yet (a polling page hears no `notice`). 0: none. */

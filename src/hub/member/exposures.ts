@@ -54,6 +54,13 @@ export interface HubExposureInput {
   expectedRevision: number;
   contactLimit?: boolean;
 }
+/** Trusted member-domain receipt for one canonical writer transaction, never an outer batch transaction. */
+export interface HubExposureCommit {
+  requestId: string;
+  actor: HubAuditRecord["actor"];
+  assertCurrent(): undefined;
+  committed?(value: HubLocalExposure): undefined;
+}
 export type HubExposureError = "not_paired" | "unknown_agent" | "unknown_view" | "not_enforceable" | "conflict" | "limit";
 export class HubExposureRefusal extends Error { constructor(readonly code: HubExposureError) { super(code); } }
 /** One row for the owner's list (the UI's view is made from it). */
@@ -94,15 +101,19 @@ export class HubExposureStore {
       return row.revision;
     } catch { this.failed = true; throw new HubProtocolError("uncertain"); }
   }
-  private change<T>(action: string, exposureId: string | undefined, work: (revision: number) => T): T {
+  private change<T>(action: string, exposureId: string | undefined, work: (revision: number) => T, receipt?: HubExposureCommit): T {
+    if (receipt && this.database.inTransaction) throw Error("An exposure receipt cannot use an outer transaction");
     let writing = false;
     try {
       return this.database.transaction(() => {
-        const revision = this.check(), value = work(revision); writing = true;
+        const revision = this.check();
+        receipt?.assertCurrent();
+        const value = work(revision);
+        receipt?.assertCurrent(); writing = true;
         // #3115 r1 P6: required audit finishes in THIS transaction. A thenable (an async sink) is refused: the store
         // goes uncertain, the transaction rolls back, and a late rejection is observed (never unhandled).
-        const result: unknown = this.options.audit.appendInTransaction({ id: randomUUID(), sequence: revision + 1, at: (this.options.now ?? Date.now)(), requestId: randomUUID(),
-          actor: { kind: "local-host" }, action, result: "completed", exposureId, policyVersion: revision + 1 }, this.database);
+        const result: unknown = this.options.audit.appendInTransaction({ id: randomUUID(), sequence: revision + 1, at: (this.options.now ?? Date.now)(), requestId: receipt?.requestId ?? randomUUID(),
+          actor: receipt?.actor ?? { kind: "local-host" }, action, result: "completed", exposureId, policyVersion: revision + 1 }, this.database);
         if (result && typeof (result as { then?: unknown }).then === "function") {
           void Promise.resolve(result).catch(() => {});
           throw new HubProtocolError("uncertain");
@@ -115,6 +126,13 @@ export class HubExposureStore {
   }
   private rowOf(agent: string): Row | undefined { return this.database.prepare("SELECT * FROM hub_exposures WHERE agent=?").get(agent) as Row | undefined; }
   private rowById(id: string): Row | undefined { return this.database.prepare("SELECT * FROM hub_exposures WHERE id=?").get(id) as Row | undefined; }
+  private committed(receipt: HubExposureCommit | undefined, value: HubLocalExposure): void {
+    const result: unknown = receipt?.committed?.(structuredClone(value));
+    if (result && typeof (result as { then?: unknown }).then === "function") {
+      void Promise.resolve(result).catch(() => {});
+      throw new HubProtocolError("uncertain");
+    }
+  }
 
   /** Existing representative shares default on without changing their consent or wire descriptor. */
   contactLimitNotice(): boolean {
@@ -165,7 +183,7 @@ export class HubExposureStore {
    * nobody can admit (state "withdrawn" until publish). Refused: not paired, a descriptor that is neither the exact
    * representative agent nor an approved view (agent-mode.ts), a committed revision other than the one the owner saw (conflict), more than HUB_EXPOSURE_MAX published.
    */
-  stage(input: HubExposureInput): HubLocalExposure {
+  stage(input: HubExposureInput, receipt?: HubExposureCommit): HubLocalExposure {
     const binding = this.options.binding();
     if (!binding) throw new HubExposureRefusal("not_paired");
     const policyDigest = policyDigestOf(this.options.views, input);
@@ -183,14 +201,14 @@ export class HubExposureStore {
       if (row) this.database.prepare("UPDATE hub_exposures SET staged=? WHERE id=?").run(JSON.stringify(candidate), id);
       else this.database.prepare("INSERT INTO hub_exposures VALUES(?,?,NULL,?)").run(id, input.agent, JSON.stringify(candidate));
       return candidate;
-    });
+    }, receipt);
   }
   /**
    * The atomic publish: in ONE transaction, recheck that the staged candidate is exactly `candidate`, the committed
    * revision is still the one before it, the binding and the view's policy digest are unchanged, and S4's readiness
    * (called again here, immediately before the write) still holds; then promote it to the committed, published mapping.
    */
-  publish(candidate: HubLocalExposure, ready: (candidate: HubLocalExposure) => HubExecutionReadiness): HubLocalExposure {
+  publish(candidate: HubLocalExposure, ready: (candidate: HubLocalExposure) => HubExecutionReadiness, receipt?: HubExposureCommit): HubLocalExposure {
     const id = candidate.exposure.id;
     return this.change("exposure.published", id, () => {
       const row = this.rowById(id), committed = parse(row?.committed ?? null), binding = this.options.binding();
@@ -204,8 +222,9 @@ export class HubExposureStore {
       if (!(committed && committed.exposure.state === "published") && this.published() >= HUB_EXPOSURE_MAX) throw new HubExposureRefusal("limit");
       const published: HubLocalExposure = { ...candidate, exposure: { ...candidate.exposure, state: "published" } };
       this.database.prepare("UPDATE hub_exposures SET committed=?, staged=NULL WHERE id=?").run(JSON.stringify(published), id);
+      this.committed(receipt, published);
       return published;
-    });
+    }, receipt);
   }
   /** Drop a staged candidate (a refused readiness, a cancelled confirmation); the committed mapping is untouched. */
   discard(id: string): void {
@@ -220,14 +239,15 @@ export class HubExposureStore {
    * Withdraw at once (narrowing needs no consent): the committed mapping becomes withdrawn at the next revision (S1
    * admission then refuses, S4 sees null), any staged candidate goes. `expectedRevision`: the one the owner saw.
    */
-  withdraw(id: string, expectedRevision: number): HubLocalExposure {
+  withdraw(id: string, expectedRevision: number, receipt?: HubExposureCommit): HubLocalExposure {
     return this.change("exposure.withdrawn", id, () => {
       const row = this.rowById(id), committed = parse(row?.committed ?? null);
       if (!committed || committed.exposure.revision !== expectedRevision || committed.exposure.state === "withdrawn") throw new HubExposureRefusal("conflict");
       const out: HubLocalExposure = { ...committed, exposure: { ...committed.exposure, revision: committed.exposure.revision + 1, state: "withdrawn" } };
       this.database.prepare("UPDATE hub_exposures SET committed=?, staged=NULL WHERE id=?").run(JSON.stringify(out), id);
+      this.committed(receipt, out);
       return out;
-    });
+    }, receipt);
   }
   private published(): number {
     return (this.database.prepare("SELECT committed FROM hub_exposures WHERE committed IS NOT NULL").all() as Array<{ committed: string }>)
@@ -240,12 +260,12 @@ export class HubExposureStore {
  * atomic publish (readiness asked again inside it). A refusal at any step drops the candidate and leaves the committed
  * mapping as it was.
  */
-export function publishExposure(store: HubExposureStore, input: HubExposureInput, ready: (candidate: HubLocalExposure) => HubExecutionReadiness): HubLocalExposure {
-  const candidate = store.stage(input);
+export function publishExposure(store: HubExposureStore, input: HubExposureInput, ready: (candidate: HubLocalExposure) => HubExecutionReadiness, receipt?: HubExposureCommit): HubLocalExposure {
+  const candidate = store.stage(input, receipt);
   try {
     const first = ready(candidate);
     if (!first.ok) throw new HubExposureRefusal("not_enforceable");
-    return store.publish(candidate, ready);
+    return store.publish(candidate, ready, receipt);
   } catch (error) {
     try { store.discard(candidate.exposure.id); } catch { /* the store says uncertain on its own */ }
     throw error;

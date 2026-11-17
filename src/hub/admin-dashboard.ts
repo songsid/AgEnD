@@ -52,8 +52,8 @@ type Reason = "offline" | "timedOut" | "permissionEnded" | "stoppedOrRefused" | 
 function reasonGroup(reason: string | null): Reason {
   if (reason === "offline") return "offline";
   if (reason === "expired") return "timedOut";
-  if (["revoked", "denied", "stale", "retired"].includes(reason ?? "")) return "permissionEnded";
-  if (["incompatible", "interrupted", "rejected", "stopped", "refused"].includes(reason ?? "")) return "stoppedOrRefused";
+  if (["revoked", "denied", "stale", "retired", "publication-changed"].includes(reason ?? "")) return "permissionEnded";
+  if (["incompatible", "interrupted", "rejected", "stopped", "refused", "owner-stopped-sharing"].includes(reason ?? "")) return "stoppedOrRefused";
   // unavailable/uncertain do not prove that the Fleet was offline.
   return "unknown";
 }
@@ -88,7 +88,7 @@ export class HubAdminDashboard {
           CASE WHEN stage NOT IN ('rejected','cancelled','failed','uncertain') AND expires_at<=? THEN 'expired' ELSE reason_code END reason
           FROM hub_messages WHERE created_at>=? AND created_at<=?
         UNION ALL SELECT exposure_id,created_at,state='answered',answered_at,(state IN ('retired','expired') OR expires_at<=?),
-          CASE WHEN state='retired' THEN 'retired' WHEN state='expired' OR expires_at<=? THEN 'expired' ELSE NULL END
+          CASE WHEN state='retired' THEN COALESCE(reason_code,'retired') WHEN state='expired' OR expires_at<=? THEN 'expired' ELSE NULL END
           FROM hub_room_deliveries WHERE created_at>=? AND created_at<=?`)
         .all(now, now, cal.week, now, now, now, cal.week, now) as Question[];
       const selected = questions.filter(q => q.created >= start), times: number[] = [];

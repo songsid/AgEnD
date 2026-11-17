@@ -239,8 +239,14 @@ gets the web notice only.
 
 - **Who**: a Fleet administrator, as for other General buttons.
 - **Until when**: 24 hours after the notice.
-- **Undo a share**: the agent stops being shared. Anyone allowed to ask in the meantime loses that; questions
-  already delivered are still answered.
+- **After a Fleet restart**: the chat buttons are kept only in memory today, so the web notice and the Fleet's
+  own record are what count. Undo stays available on the web for the full 24 hours; a chat button posted before
+  the restart either works again or says to use the web notice.
+- **Undo a share**: the agent stops being shared, exactly as a stop does. Anyone allowed to ask in the meantime
+  loses that. **Questions still waiting for an answer are not answered**: today a stopped share sends nothing
+  more, and this keeps that rule rather than adding an exception (settled with the builder, M-3294). Each such
+  asker sees, in the direct conversation or the room: "No answer: {owner} stopped sharing this agent." /
+  「沒有回答：{owner} 已停止分享這個 Agent。」 The same applies to a stop made from the Hub page.
 - **Undo a stop**: the agent is shared again **with its earlier list of who may ask**. For that, the Hub keeps
   the list of a stopped agent for 24 hours before clearing it. (Today it is cleared at once.)
 - Undo acts on the whole notice. To undo one agent of several, use the switches.
@@ -361,3 +367,88 @@ Refusal codes for a row: `not-owner`, `switched-off`, `stale-list`, `not-shareab
 Each development PR starts from the actual tip after its predecessor merges. Acceptance and focused evidence precede Fable's review. No main twin.
 
 The member hello keeps its current 16/17 capability ceiling. The new catalog and request abilities use Hub-only welcome offers plus explicit member opt-in; an old Hub receives no new frame, and a member without the adapter is never sent a request. Catalog metadata is owner-only and never joins the public shared-agent directory.
+
+## 8. Delivery slices and transport (M-3294)
+
+The catalog foundation lands first, then the Fleet switch and durable notice/Undo path, then the My agents page.
+The foundation alone never opts a production Fleet into remote changes. The Settings control, durable web notice
+and Undo controller are mounted together before that adapter opts in. The existing Settings → Hub publish flow
+continues through its existing confirmation.
+
+### 8.1 Negotiation and intent
+
+`agent-catalog-v1` and `exposure-request-v1` are Hub-only welcome offers. They add no member hello names. Offers that
+need the larger welcome are omitted for an older strict peer. A member opts into changes only if its durable sharing
+processor is mounted, and the Hub enables request frames on that link only after the member actually reports
+`requests: true`. Turning the Fleet switch off sends an empty catalog but leaves the mounted processor able to
+report frozen outcomes; it cannot apply new Hub-page changes.
+
+An opted-in catalog row adds only `exposure: null | {id, revision, state}`. The old catalog-only format omits this
+field. Local incarnation tokens stay private and affect the catalog digest; they are neither labels nor wire fields.
+
+The owner submits `POST /hub/v1/me/agent-sharing` with `{idempotencyKey, fleetId, catalogRevision, share, stop}`.
+The server derives the person and display name from the current browser session. A directory-shaped app context,
+MCP token, or administrator acting for another owner is refused. CSRF, directory/session epoch, owner, current Fleet
+generation and publication policy are checked before the frozen intent is admitted. The queue bounds each owner
+to 12 new requests per minute and each Fleet to eight pending requests.
+
+The Hub sends `exposure.request` with the original UUID as its envelope `requestId` and an immutable payload:
+`{by, byName, catalogRevision, share, stop, createdAt, expiresAt}`. `share` contains local agent names, `stop` exact
+exposure IDs; a request holds at most 64 actions and lasts ten minutes. Refresh/reconnect repeats the exact ID and
+payload. Expiry closes the request, rather than proving that a possibly committed change failed. A late accepted
+snapshot or frozen result remains evidence of what actually happened.
+
+### 8.2 Fleet commit, notice and results
+
+Before mutation the member freezes the exact plans, owner/binding, incarnation and committed before-images in its
+own database. It durably upserts one web notice, fixing its 24-hour Undo deadline. If that write fails, no exposure
+changes. Each successful row runs the same canonical exposure writer as Settings: stage/readiness/atomic publish,
+or revision-checked withdrawal. The writer commits its request receipt in the same SQL transaction before advancing
+its independent floor; no batch transaction wraps several floor advances.
+
+A new share gets a fresh consent with the contact limit on. Per-row refusals are frozen, and partial successes remain
+successes on retry. A saved successful effect never becomes a definite failure because a result, notice update or
+ACK was lost. The ordinary shared-exposure snapshot remains publication truth.
+
+`exposure.request-result` carries `{noticeAt, undoUntil, results}`. Each row identifies the original instance or
+exposure ID and either an explicit bounded refusal code or exact before/after exposure pointers. The Hub durably
+checks the result against the original intent and returns `exposure.request-ack`. Reconnect repeats frozen metadata,
+not writer input. A repeated Hub request may cross its member result/ACK under the same operation UUID.
+
+The General copy is posted after the completed web notice. Its single external-send attempt is reserved durably
+before sending; an uncertain chat send is not blindly duplicated after restart. The web notice is always the durable
+fallback. Active Undo entries survive the ordinary 500-notice window, with a bounded admission limit; exhaustion
+refuses before effects. General nonce buttons use the existing Fleet-administrator check and refer back to the
+current controller and journal. An old nonce after restart says to use Undo in web Notices.
+
+### 8.3 Undo and stopped ask lists
+
+Only a current Fleet administrator can invoke Undo, through the web notice or its General button. The action is
+bound to the current pairing and notice key, has one durable Undo UUID, and checks the deadline and original
+post-state/incarnation before each row. A later owner change wins; that row is skipped. Undo-share uses ordinary
+withdrawal. Undo-stop republishes through fresh consent with the earlier contact-limit setting, rather than copying
+an old committed consent object.
+
+The member reports `exposure.undo` under that stable Undo UUID, with `{originalRequestId, noticeAt, results}`.
+Successful rows prove the exact original after-pointer and the next committed pointer; the Hub durably acknowledges
+with `exposure.undo-result`. No local Fleet administrator is fabricated as an AD person.
+
+A withdrawal captures an inert ask-list image before its grants are revoked, in the catalog transaction. Its old
+grants and direct rooms stay revoked/closed. Normal re-sharing never revives it. Only the matching original stop
+and explicit Undo can copy its entries into new grant IDs for the newly accepted publication. Absolute expiry is
+preserved. Current owner/generation, publication/revision, freeze/pause epochs and the exact grant image fence that
+copy. Changed or expired entries are skipped. The Hub also handles the ordinary snapshot and result arriving in
+either order, including a coalesced stop-plus-Undo whose intermediate withdrawn snapshot was never sent.
+
+Stopping or Undo-sharing does not open any answer exception. Pending direct questions are cancelled locally with
+the owner-stopped reason; room reply placeholders become not answered. Later member evidence is retained and ACKed
+without making the question pending again. The asker can receive closed-room metadata and its reason, while the
+withdrawn room's history and every answer-release check remain refused.
+
+### 8.4 Rollback
+
+Turning off Settings → Hub's page-sharing switch stops the private inventory and new Hub-page changes without
+withdrawing existing shares. Old peers continue the catalog-only format or receive no catalog at all. Rolling back
+code after the new migrations requires the normal explicit database rollback procedure; do not delete the journal,
+restore old consent JSON, or make an older strict migration registry silently accept it. Durable notices retain their
+text, and an unavailable Undo controller directs the administrator to Settings → Hub.

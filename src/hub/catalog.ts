@@ -1,3 +1,5 @@
+import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
+import { keepStoppedList } from "./sharing-retention.js";
 /**
  * AgEnD Hub P1, slice 3: the exposure catalog and grants (hub.md §4, §5; seams with S1/S4 on cid-hub-s3-readiness).
  *
@@ -45,7 +47,7 @@ const grantInput = z.strictObject({ exposureId: uuid, exposureRevision: epoch, d
   login: z.string().trim().min(1).max(256).optional(), subject: selectedSubject.optional(),
 }).refine(v => v.subject?.kind === "group" || v.subject?.kind === "team" || !!v.login);
 
-interface ExposureRow { id: string; fleet_id: string|null; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string|null; allowed_tools: string|null; policy_digest: string|null; frozen_through: number; sharing_paused?: number; sharing_epoch?: number;source_kind?:"fleet"|"personal";personal_agent_id?:string|null;answer_only?:number }
+export interface ExposureRow { id: string; fleet_id: string|null; owner: string; display_name: string; revision: number; state: HubExposure["state"]; data_view_id: string|null; allowed_tools: string|null; policy_digest: string|null; frozen_through: number; sharing_paused?: number; sharing_epoch?: number;source_kind?:"fleet"|"personal";personal_agent_id?:string|null;answer_only?:number }
 interface GrantRow { id: string; revision: number; owner: string; exposure_id: string; exposure_revision: number; approved_by: string; approved_at: number; subject: string; subject_kind?: "person" | "group" | "team"; subject_label?: string; permissions: string; starts_at: number; expires_at: number; state: HubGrant["state"] }
 
 /** Presentation only: AD group DNs normally start with CN. Never use this label as identity or rewrite it.
@@ -116,7 +118,7 @@ function selectAskable(db: Database.Database, candidates: HubCatalogView["askabl
 }
 
 export class HubCatalogService {
-  constructor(private readonly core: HubCore) {}
+  constructor(private readonly core: HubCore, private readonly settled?: (value: SharingSettlement) => void) {}
 
   /** A member's complete catalog revision, from its authenticated link (S1 already refused another fleet or owner). */
   async receiveSnapshot(input: HubExposureSnapshot, incoming: HubLinkContext, requestId: string = randomUUID()): Promise<void> {
@@ -185,10 +187,12 @@ export class HubCatalogService {
           }
         });
       } };
-      this.core.atomic((db, tx) => {
+      const settlement = this.core.atomic((db, tx) => {
         validateBindings(db);
+        const closed = settleSharingWithdrawal(db, this.core, tx, narrowed.filter(row => (requested.get(row.id)?.state ?? "withdrawn") === "withdrawn").map(row => row.id));
         for (const row of narrowed) {
           const state = requested.get(row.id)?.state ?? "withdrawn";
+          if (state === "withdrawn") keepStoppedList(db, this.core, row.id, now);
           db.prepare("UPDATE hub_exposures SET state=?,frozen_through=MAX(frozen_through,?),updated_at=? WHERE id=?")
             .run(state, state === "frozen" ? row.revision : row.frozen_through, now, row.id);
           db.prepare("UPDATE hub_grants SET state='revoked',revision=revision+1 WHERE exposure_id=? AND state='active'").run(row.id);
@@ -197,7 +201,9 @@ export class HubCatalogService {
         expectedImage = JSON.stringify(image(db)); written = true;
         this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot-narrowed", result: "completed",
           fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: "publication-refused" });
+        return closed;
       }, narrowingPermit);
+      this.settled?.(settlement);
     };
     let preparedAll = false;
     try {
@@ -215,7 +221,7 @@ export class HubCatalogService {
         }
       }
       preparedAll = true;
-      this.core.atomic((db, tx) => {
+      const settlement = this.core.atomic((db, tx) => {
         const cursor = db.prepare("SELECT revision, digest FROM hub_catalog_cursor WHERE fleet_id=?").get(link.fleetId) as { revision: number; digest: string } | undefined;
         if (cursor && snapshot.revision < cursor.revision) throw new HubProtocolError("stale");
         if (cursor && snapshot.revision === cursor.revision) {
@@ -226,6 +232,9 @@ export class HubCatalogService {
         const listed = new Set(snapshot.exposures.map((e) => e.id));
         const absent = (db.prepare("SELECT id FROM hub_exposures WHERE fleet_id=? AND state<>'withdrawn'").all(link.fleetId) as { id: string }[])
           .filter((r) => !listed.has(r.id));
+        const withdrawn = [...absent.map(row => row.id), ...snapshot.exposures.filter(row => row.state === "withdrawn").map(row => row.id)];
+        const closed = settleSharingWithdrawal(db, this.core, tx, withdrawn);
+        for (const id of withdrawn) keepStoppedList(db, this.core, id, now);
         for (const r of absent) db.prepare("UPDATE hub_exposures SET state='withdrawn', updated_at=? WHERE id=?").run(now, r.id);
         // Leaving "published" (withdrawn by absence or by state) ends its grants and rooms: a later re-publish, even at the
         // same revision, needs the owner to grant again — consent never revives from history.
@@ -247,7 +256,9 @@ export class HubCatalogService {
         for (const p of prepared) p.commit(db);
         this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "member", fleetId: link.fleetId }, action: "exposure.snapshot", result: "completed",
           fleetId: link.fleetId, ownerAtEvent: link.owner, reasonCode: absent.length ? "withdrawn" : undefined });
+        return closed;
       }, permit);
+      if (settlement) this.settled?.(settlement);
     } catch (error) {
       if (!preparedAll && error instanceof HubGroupPolicyError) narrowRefused();
       if ((error instanceof HubGroupAuthorizationError && ["denied", "resume-required"].includes(error.reason))

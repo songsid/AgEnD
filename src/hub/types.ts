@@ -133,6 +133,7 @@ export interface HubRevocation {
 export type HubMemberFrame =
   | HubFrame<"agent.catalog", import("./agent-catalog-model.js").HubAgentCatalog>
   | HubFrame<"exposure.request-result", import("./agent-catalog-model.js").HubExposureRequestResult>
+  | HubFrame<"exposure.undo", import("./agent-catalog-model.js").HubExposureUndo>
   | HubFrame<"room.context-state", import("./room-context-model.js").HubRoomContextRequest>
   | HubFrame<"room.context-input", import("./room-context-model.js").HubRoomContextInput>
   | HubFrame<"room.list", HubRoomListRequest>
@@ -167,6 +168,8 @@ export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha
 export type HubServerFrame =
   | HubFrame<"agent.catalog-refresh", Record<string, never>>
   | HubFrame<"exposure.request", import("./agent-catalog-model.js").HubExposureRequest>
+  | HubFrame<"exposure.request-ack", { ok: true }>
+  | HubFrame<"exposure.undo-result", { ok: true }>
   | HubFrame<"room.context-state-result", import("./room-context-model.js").HubRoomContextResult>
   | HubFrame<"room.context-input-result", import("./room-context-model.js").HubRoomContextInputResult>
   | HubFrame<"room.list-result", HubRoomListResult>

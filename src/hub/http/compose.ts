@@ -1,3 +1,4 @@
+import { HubSharingRequests } from "../sharing-requests.js";
 import { HubAgentCatalogs } from "../agent-catalog.js";
 import {hubAdminOverviewPermit} from "../roles/overview.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
@@ -103,6 +104,7 @@ export interface HubHttp {
   memberConnected?(link: HubLinkContext): void;
   memberReady?(link: HubLinkContext): void;
   readonly agentCatalogV1?: true;
+  readonly exposureRequestsV1?: true;
   /** #3298 S-89: what this Hub offers its pages ("group-policy-v1" only with deps.groupHttp). Presentation only. */
   readonly features: readonly string[];
   readonly directorySessions: HubDirectoryBrowserSessions;
@@ -171,7 +173,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const sharing = new HubSharingService(core);
   const personal=personalFactory?.(core);
   if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
-  const sessions = new HubSessions(core), catalog = new HubCatalogService(core), policy = new HubPolicyService(core);
+  const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
@@ -181,6 +183,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const quota = new HubQuotaService(core);
   const fleetVersions = new HubFleetVersions(core);
   const agentCatalogs = new HubAgentCatalogs(core);
+  const sharingRequests = new HubSharingRequests(core, agentCatalogs, publishSharingSettlement);
   const recommendations = new HubVersionRecommendations(core, fleetVersions);
   const fleetUpdates = new HubFleetUpdates(core, fleetVersions, recommendations);
   const dashboard = new HubAdminDashboard(core, fleetVersions, recommendations);
@@ -246,6 +249,16 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           .map(f => { const view = fleetVersions.view(f.id, recommendedVersion); return { id: f.id, label: f.label ?? null, version: view.version, versionState: view.versionState }; });
         send(res, 200, { fleets });
       });
+    }
+    if (path === "/hub/v1/me/agent-sharing" || /^\/hub\/v1\/me\/agent-sharing\/[a-f0-9-]{36}$/.test(path)) {
+      if (query.size) throw new HubProtocolError("invalid");
+      if (path === "/hub/v1/me/agent-sharing") {
+        if (method !== "POST") throw new HttpError(405, "method");
+        csrf(); const input = await body();
+        return send(res, 200, await guard(() => sharingRequests.request(ctx, input)));
+      }
+      if (method !== "GET") throw new HttpError(405, "method");
+      signedIn(); return send(res, 200, await guard(() => sharingRequests.view(ctx, path.split("/").at(-1)!)));
     }
     if (path === "/hub/v1/me/agents") {
       if (method !== "GET") throw new HttpError(405, "method");
@@ -995,7 +1008,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     const reply = { v: 1 as const, requestId: frame.requestId, linkEpoch: link.linkEpoch };
     switch (frame.type) {
       case "fleet.recommendation-ack": recommendations.acknowledge(frame.payload, link); return;
-      case "agent.catalog": agentCatalogs.report(frame.payload, link); return;
+      case "agent.catalog": agentCatalogs.report(frame.payload, link); sharingRequests.wake(); return;
+      case "exposure.request-result": sharingRequests.result(frame.requestId, frame.payload, link); return { ...reply, type: "exposure.request-ack", payload: { ok: true } };
+      case "exposure.undo": sharingRequests.undo(frame.requestId, frame.payload, link); return { ...reply, type: "exposure.undo-result", payload: { ok: true } };
       case "fleet.info": fleetVersions.report(frame.payload, link); fleetUpdates.report(frame.payload, link); return;
       case "fleet.update-status": await fleetUpdates.status(frame.payload, link); return;
       case "room.list":
@@ -1026,7 +1041,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         try { return { ...reply, type: "room.react-result", payload: await groupRooms.agentReact(frame.payload, link) }; }
         catch (error) { if (!(error instanceof HubProtocolError) || !["invalid", "denied", "not-found", "revoked"].includes(error.code)) throw error;
           return { ...reply, type: "room.react-result", payload: { messageId: frame.payload.messageId, ok: false, code: error.code as "invalid" | "denied" | "not-found" | "revoked" } }; }
-      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); quota.prune(); groupRooms.agents.publicationChanged(link.fleetId); return;
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId);
+        await sharingRequests.snapshot(link); quota.prune(); groupRooms.agents.publicationChanged(link.fleetId); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
@@ -1045,6 +1061,13 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       case "attachment.put": return { ...reply, type: "attachment.ack", payload: rooms.attachmentPut(frame.payload, link) };
       case "error": return;
     }
+  }
+  function publishSharingSettlement(settlement: import("../sharing-withdrawal.js").SharingSettlement): void {
+    for (const id of settlement.direct) {
+      const message = core.atomic(db => db.prepare("SELECT room_id,asker FROM hub_messages WHERE id=?").get(id) as { room_id: string; asker: string } | undefined);
+      if (message) groupRooms.publish({ type: "room.changed", roomId: message.room_id, data: { roomId: message.room_id }, audiencePerson: message.asker });
+    }
+    groupRooms.agents.publicationSettled(settlement.group);
   }
   function directChanged(messageId: string, answer: boolean): void {
     const row = core.atomic(db => db.prepare("SELECT room_id,asker FROM hub_messages WHERE id=?").get(messageId) as { room_id: string; asker: string } | undefined);
@@ -1070,8 +1093,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentCatalogV1: true, exposureRequestsV1: true, features: Object.freeze(["admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; agentCatalogs.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

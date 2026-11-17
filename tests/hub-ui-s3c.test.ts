@@ -108,13 +108,13 @@ describe("the card's agent share and pending rows", () => {
   it("switching on shares the agent itself (no picker, no Hub tools); a 202 says it waits for confirmation; the lead says what sharing means", async () => {
     const setExposed = vi.fn(async () => ({ ok: true, pending: { expiresAt: 9 }, view: { ...ROW, pending: { expiresAt: 9 } }, settled: new Promise(() => {}) }));
     const pg = await cardWith(fakeClient([ROW], setExposed));
-    expect(pg.root.querySelector(".hub-exposures .note")!.textContent).toContain("answers Hub questions in its own conversation");
+    expect(pg.root.querySelector(".hub-exposures > .note")!.textContent).toContain("answers Hub questions in its own conversation");
     const box = pg.root.querySelector(".hub-exposure input") as any;
     box.checked = true; fire(box, "change");
-    await until(() => setExposed.mock.calls.length > 0 && pg.root.querySelector(".hub-exposures .note[role=status]"));
+    await until(() => setExposed.mock.calls.length > 0 && pg.root.querySelector(".hub-exposures > .note[role=status]"));
     expect(setExposed).toHaveBeenCalledWith("atlas", true, 0, { dataViewId: "agent", tools: [], contactLimit: true });
     expect(pg.root.querySelector(".hub-exposure-pick")).toBeNull();
-    expect(pg.root.querySelector(".hub-exposures [role=status]")!.textContent).toContain("Sent for confirmation");
+    expect(pg.root.querySelector(".hub-exposures > [role=status]")!.textContent).toContain("Sent for confirmation");
   });
   it.each(["en", "zh-TW"])("retires only the settled publication hint (%s)", async language => {
     const i18n = await import("/assets/app-i18n.js"); i18n.setLang(language, { store: false });
@@ -127,7 +127,7 @@ describe("the card's agent share and pending rows", () => {
     const c = { ...fakeClient(rows, setExposed), exposures: async () => rows.map(row => ({ ...row })) };
     const pg = await cardWith(c);
     const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
-    await until(() => pg.root.querySelector(".hub-exposures [role=status]"));
+    await until(() => pg.root.querySelector(".hub-exposures > [role=status]"));
     expect(pg.root.textContent).toContain(language === "en" ? "Sent for confirmation" : "已送出確認");
     rows[0] = { ...ROW, revision: 1, state: "published", pending: null } as any;
     finish({ state: "applied" }); await until(() => (pg.root.querySelector(".hub-exposure input") as any).checked);
@@ -150,7 +150,7 @@ describe("the card's agent share and pending rows", () => {
       await settle(8);
     }
     first({ state: "rejected" }); await settle(10);
-    expect(pg.root.querySelector(".hub-exposures [role=status]")?.textContent).toContain("Sent for confirmation");
+    expect(pg.root.querySelector(".hub-exposures > [role=status]")?.textContent).toContain("Sent for confirmation");
   });
   it("a shared agent says where questions go; switching off withdraws", async () => {
     const shared = { ...ROW, exposureId: "e1", revision: 1, state: "published", policy: { dataView: "agent", tools: [] } };

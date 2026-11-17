@@ -13,6 +13,7 @@ import type { HubExecutionAttentionInput } from "../../needs-you.js";
 import { HubProviderSetupError, isHubProviderSetupReason, hubProviderSetupReason, type HubProviderSetupReason } from "./provider-setup.js";
 
 const localSchema = z.strictObject({ agent: identifier, providerId: identifier, consentId: uuid, generation: epoch, contactLimit: z.boolean().optional(), exposure: exposureSchema });
+export { localSchema as hubLocalExposureSchema };
 export type HubLocalExposure = z.infer<typeof localSchema>;
 export interface HubExecutionBinding extends Omit<HubIdentityBinding, "now"> {
   generation: number; linkEpoch: number;

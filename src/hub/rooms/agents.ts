@@ -28,6 +28,7 @@ interface Delivery {
   id: string; room_id: string; parent_id: string; reply_id: string; exposure_id: string; exposure_revision: number; fleet_id: string|null; owner: string;
   asker: string; asker_member: string; agent_member: string; payload_ref: string; payload_digest: string;
   state: "queued" | "sent" | "answered" | "retired" | "expired"; sent_epoch: number; last_sent_at: number; created_at: number; expires_at: number;
+  reason_code?: string | null;
   answer_id: string | null; answer_digest: string | null;
   source_exposure_id: string | null; source_exposure_revision: number | null; source_fleet_id: string | null; on_behalf: number;
   context_generation?: string | null;
@@ -139,9 +140,10 @@ export class HubRoomAgents {
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
     const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
+    const stopped = total === 1 && blocked === 1 && db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='owner-stopped-sharing'").get(parentId);
     return { total, answered: n("answered"), working: n("sent"), later: n("queued"),
       ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
-      ...(total === 1 && failed === 1 ? { reason: "expired" as const } : total === 1 && blocked === 1 ? { reason: "retired" as const } : {}) };
+      ...(total === 1 && failed === 1 ? { reason: "expired" as const } : total === 1 && blocked === 1 ? { reason: stopped ? "owner-stopped-sharing" as const : "retired" as const } : {}) };
   }
   /** Called inside the person's message transaction, once per idempotency key. */
   /**
@@ -258,6 +260,12 @@ export class HubRoomAgents {
     const source = d.source_exposure_id ? await this.core.groupExposure(d.source_exposure_id, null, ctx) : undefined;
     return { assertCurrent: () => { target.assertCurrent(); source?.assertCurrent(); } };
   }
+  publicationSettled(ids: readonly string[]): void {
+    for (const id of ids) {
+      const row = this.core.atomic(db => db.prepare("SELECT * FROM hub_room_deliveries WHERE id=?").get(id) as Delivery | undefined);
+      if (row && row.state === "retired") this.update(row);
+    }
+  }
   private update(d: Delivery, added = false): void {
     const data = this.core.atomic(db => {
       const reply = db.prepare("SELECT * FROM hub_room_posts WHERE id=?").get(d.reply_id) as RoomPostRow;
@@ -277,7 +285,10 @@ export class HubRoomAgents {
       return rows.filter(d => {
         const expired = this.core.now() >= d.expires_at;
         if (!expired && (dueOnly || this.valid(db, d))) return false;
-        db.prepare("UPDATE hub_room_deliveries SET state=? WHERE id=?").run(expired ? "expired" : "retired", d.id);
+        const exposure = readExposure(db, d.exposure_id);
+        const publicationChanged = !expired && exposure && exposure.revision > d.exposure_revision
+          && this.valid(db, { ...d, exposure_revision: exposure.revision });
+        db.prepare("UPDATE hub_room_deliveries SET state=?,reason_code=? WHERE id=?").run(expired ? "expired" : "retired", publicationChanged ? "publication-changed" : null, d.id);
         db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id); return true;
       });
     });

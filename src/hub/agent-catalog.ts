@@ -1,6 +1,6 @@
 /** Separate owner-only inventory: never used by the shared-agent directory or app tools. */
 import type Database from "better-sqlite3";
-import { agentCatalogSchema, HUB_AGENT_CATALOG_CAPABILITY, type HubAgentCatalog } from "./agent-catalog-model.js";
+import { agentCatalogSchema, HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY, type HubAgentCatalog } from "./agent-catalog-model.js";
 import { canonicalArguments, personKeyString } from "./identity.js";
 import { HubProtocolError, validated } from "./validation.js";
 import type { HubCore } from "./http/core.js";
@@ -27,6 +27,7 @@ export class HubAgentCatalogs {
   report(value:unknown,link:HubLinkContext):void {
     const body=validated(agentCatalogSchema,value);
     if(!link.features.has("welcome-caps-v1")||!link.features.has(HUB_AGENT_CATALOG_CAPABILITY))throw new HubProtocolError("incompatible");
+    if(body.requests&&!link.features.has(HUB_EXPOSURE_REQUEST_CAPABILITY))throw new HubProtocolError("incompatible");
     this.core.atomic(db=>{
       if(!link.current())throw new HubProtocolError("stale");
       const fleet=this.core.deps.store.read().fleets.find(f=>f.id===link.fleetId);
@@ -41,14 +42,33 @@ export class HubAgentCatalogs {
       this.links.set(fleet.id,link); this.reports.add(link);
     });
   }
+  async owner(ctx: HubRequestContext) {
+    const person = await ctx.requirePerson(), actor = await ctx.current();
+    const current = () => this.core.live() && ctx.isCurrent?.() === true;
+    if (ctx.application || actor.kind !== "directory" || actor.sessionId.startsWith("mcp:")
+      || personKeyString(actor.person) !== personKeyString(person) || !current()) throw new HubProtocolError("denied");
+    const assertCurrent = () => this.core.atomic(db => {
+      const session = db.prepare("SELECT person,state,directory_epoch,expires_at FROM hub_sessions WHERE id=?").get(actor.sessionId) as { person: string; state: string; directory_epoch: number; expires_at: number } | undefined;
+      if (!current() || !session || session.person !== personKeyString(person) || session.state !== "active"
+        || session.directory_epoch !== this.core.directoryEpoch || session.expires_at <= this.core.now()) throw new HubProtocolError("revoked");
+    });
+    assertCurrent(); return { person, actor, assertCurrent };
+  }
+  /** Internal owner queue view; the browser caller is checked separately and never selected from input. */
+  reportOf(fleetId: string) {
+    return this.core.atomic(db => {
+      const fleet = this.core.deps.store.read().fleets.find(row => row.id === fleetId);
+      const row = db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(fleetId) as Row | undefined;
+      const link = this.links.get(fleetId);
+      if (!fleet || fleet.status !== "active" || !row || row.generation !== fleet.generation || row.owner !== personKeyString(fleet.owner)) return null;
+      return { fleet, catalog: validated(agentCatalogSchema, JSON.parse(row.body)), link: link?.current() && this.reports.has(link) ? link : null };
+    });
+  }
   async view(ctx:HubRequestContext) {
-    const person=await ctx.requirePerson(),actor=await ctx.current();
-    const current=()=>this.core.live()&&ctx.isCurrent?.()===true;
-    if(ctx.application||actor.kind!=="directory"||actor.sessionId.startsWith("mcp:")||personKeyString(actor.person)!==personKeyString(person)||!current())throw new HubProtocolError("denied");
+    const { person, assertCurrent } = await this.owner(ctx);
     this.prune();
     return this.core.atomic(db=>{
-      const session=db.prepare("SELECT person,state,directory_epoch,expires_at FROM hub_sessions WHERE id=?").get(actor.sessionId) as {person:string;state:string;directory_epoch:number;expires_at:number}|undefined;
-      if(!current()||!session||session.person!==personKeyString(person)||session.state!=="active"||session.directory_epoch!==this.core.directoryEpoch||session.expires_at<=this.core.now())throw new HubProtocolError("revoked");
+      assertCurrent();
       return {fleets:this.core.deps.store.read().fleets.filter(f=>f.status==="active"&&personKeyString(f.owner)===personKeyString(person)).map(f=>{
         const row=db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(f.id) as Row|undefined;
         const link=this.links.get(f.id),connected=link?.current()===true;

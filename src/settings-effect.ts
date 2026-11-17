@@ -1,3 +1,4 @@
+import { parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { officeInputPatch } from "./dashboard-permissions.js";
 import { addsSecondGeneral, generalNames, isWebOnlyFleetConfig } from "./web-only-fleet.js";
 
@@ -52,6 +53,7 @@ export interface SettingsEffectContext {
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
   hubBrowserCertificate?(input: unknown, binding: string): HubBrowserCertificateProposal;
   hubMembership?(): { enabled: boolean };
+  hubPageSharing?(): { enabled: boolean };
   hubPilotTrust?(): { enabled: boolean };
   hubExposure?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** S3c PR B: a Hub pairing step's summary (connect, confirm the fingerprint, disconnect). Throws on a refused input. */
@@ -69,7 +71,7 @@ export const isRuntimeCliInstallPath = (path: string): boolean => RUNTIME_CLI_IN
 export const isCliInstallPath = (path: string): boolean => HOST_CLI_PATHS.has(path) || isRuntimeCliInstallPath(path);
 export function isSettingsMutation(method: string, path: string): boolean {
   if (method === "POST" && /^\/api\/hub\/member\/company-join\/(start|resume|repair-trust|reconnect|remove)$/.test(path)) return true;
-  if (method === "PUT" && (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust")) return true;
+  if (method === "PUT" && (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust" || path === "/api/settings/hub/share-from-hub")) return true;
   if (method === "POST" && path === "/api/settings/hub/browser-certificate/apply") return true;
   if (method === "PUT" && path === "/api/settings/hub/retention") return true;
   if (method === "PUT" && (path === "/api/settings/hub/run" || path === "/api/settings/hub/preview")) return true;   // #3451 (M-2682)
@@ -189,6 +191,14 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const next = parseHubMembership(body), previous = context.hubPilotTrust();
     const diff = settingsChangeDiff({ fleet: { hub_member: { pilot_trust: previous.enabled } } }, { fleet: { hub_member: { pilot_trust: next.enabled } } }, { operation });
     return { diff: diff ? { ...diff, section: "access", ...settingsSummary([translatedSummary(next.enabled ? "hub.pilotTrust.enable" : "hub.pilotTrust.disable")]), affectedConnections: [], authority: HUB_AUTHORITY } : null };
+  }
+  if (path === "/api/settings/hub/share-from-hub") {
+    if (method !== "PUT" || !cfg || !context.hubPageSharing) throw new SettingsConfirmationError(503, "unavailable");
+    let next: { enabled: boolean }, previous: { enabled: boolean };
+    try { next = parseHubPageSharing(body); previous = context.hubPageSharing(); }
+    catch { throw new SettingsConfirmationError(400, "invalid_hub_page_sharing"); }
+    const diff = settingsChangeDiff({ fleet: { hub_member: { share_from_hub: previous.enabled } } }, { fleet: { hub_member: { share_from_hub: next.enabled } } }, { operation });
+    return { diff: diff ? { ...diff, section: "access", ...settingsSummary([translatedSummary(next.enabled ? "hub.pageSharing.enable" : "hub.pageSharing.disable")]), affectedConnections: [], authority: HUB_AUTHORITY } : null };
   }
   if (path === "/api/settings/hub/membership") {
     if (method !== "PUT" || !cfg || !context.hubMembership) throw new SettingsConfirmationError(503, "unavailable");

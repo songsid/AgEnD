@@ -97,6 +97,7 @@ const scalar = (value: unknown): boolean => value === undefined || value === nul
  * decrease is never an effective increase.
  */
 const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolean; looser(old: any, next: any): boolean }> = [
+  { path: ["fleet", "hub_member", "share_from_hub"], def: true, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "hub_member", "enabled"], def: false, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "web", "experimental", "canvas_worker"], def: false, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "web_terminal", "enabled"], def: true, looser: (a, b) => b === true && a !== true },
