@@ -1,0 +1,21 @@
+{
+  "README.md": "83619b0c4e2647151063e197a092d39fc68d5e5720318a515a186ae9335368be",
+  "alpha-sync.json": "4d422dc3029a8f8cd9f171d83f2ce7804672a7c723b58f3af6dfe7e10e2e8e5e",
+  "images/desk-en-light-confirmation.png": "d36c7d83386dde5d9e9e904fc524ed452a17e41d685d1e482a9918004c0408d5",
+  "images/desk-en-light-lead.png": "bb862f85472df08b2ec8562078ec36d47b314b81271ecfe16ffd366edbc78042",
+  "images/desk-en-light-room-row.png": "b9ab906512ae787a799ba7decb6722fb5ff7b50d568ff3f0a6c2f18546b069b5",
+  "images/phone-zh-TW-dark-confirmation.png": "dc196489d5be9eae034ee8d3ad66c0b617e8c4a9f102f6c31e16892de953ba65",
+  "images/phone-zh-TW-dark-lead.png": "f645840dd48cd03b2069cab0a7dccd631ce7695f0caac24897ddb296b27f73fd",
+  "images/phone-zh-TW-dark-room-row.png": "6a5394cd7280474a24fcef741b5cbf0f57c013e8143c5af2166f177b6a14a06e",
+  "privacy-audit.json": "ed937ad43c8067e5deaa3c4e42fe98d42456c3d86fefc5f2e3acf07723a7daec",
+  "receipt.json": "49cc34ee879739abfe572d3dcf272cdbab4b1210a6a313b41633fa7a88469656",
+  "validation/affected-routing-final.log": "372eb571d73ce0e21803c6079681ae8f3fb18698cb555497a7f1fd749c9fcee4",
+  "validation/compose-ui-r1.log": "c1458bb79ba033b0f4b042c2f1579bccd6b9b7bd5977c6e945d9eb193c498191",
+  "validation/fail-first.log": "f0e992b77e5d1602988b85bc28142caa862d53ea8688c7b825e37a05599b8585",
+  "validation/focused-final-r1.log": "f1b7731e087f7ab3ce15c322d9535f20120cb0aa710015f769abb1a719abdf25",
+  "validation/handoff-green.log": "f5c8f75458451f7112e46c483de1b88dcdc98d6a2dadd429fe2f7a4f809f304c",
+  "validation/handoff-red.log": "901a4b2d7d271dd85303a1a62192f5a4650c9f1e9aab7d29b99d4ab73ab9678d",
+  "validation/types.json": "62f4d30a64c1268aa4b2f31f55e6e489a01d9e84d82dd06ddf6704d1fb587867",
+  "validation/unregister-green.log": "2518d2a1e1cfbab474db51fc5bc14b7ee7cb72b2f791fa07e7cb94fed1302b4e",
+  "validation/unregister-red.log": "bf6b6b14179a29b46ce1fe4de783c83032509790e5f1d386c6dcaee6936bde1f"
+}

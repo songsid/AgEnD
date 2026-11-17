@@ -1,0 +1,13 @@
+{
+  "source": "8e954ae929cc540751c188d038c802be51df0a3e",
+  "commands": [
+    {
+      "command": "node_modules/.bin/tsc --noEmit",
+      "exitCode": 0
+    },
+    {
+      "command": "node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exitCode": 0
+    }
+  ]
+}

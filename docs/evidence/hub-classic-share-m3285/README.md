@@ -1,0 +1,52 @@
+# ClassicBot agents shared on the Hub (M-3285)
+
+ClassicBot room agents use the existing Fleet-agent publication, owner confirmation, allow-to-ask grants, pause/stop and default contact restriction. Local rows carry the `ClassicBot room` tag. The Hub question and final report use the existing private representative path; no room history is added to that input or its answer metadata. Sharing sends no room notice.
+
+This is **one agent and one memory**. It can use what it learned in the room in a Hub answer, and the other way round. The EN/zh-TW Settings lead and room-specific confirmation disclose that consequence. This change does not create separate model conversations or promise that the model cannot quote prior context.
+
+## Root cause and routing
+
+The old inventory excluded Classic rooms. Merely lifting that exclusion was unsafe: although a Hub input has no chat address, the daemon retains the last real room address, and the manager forces channel tools back to the registered Classic room. The optional contact window neither fences channel output nor survives a successful report or its 30-minute expiry.
+
+The manager now writes a content-free private-turn mark before handing off a Classic Hub input. Reply/reaction/edit and public progress/notices are refused while marked, including after report ACK, expiry, restart or unregister. The final reply sink rechecks after asynchronous validation. Normal person input shares the idle delivery queue, proves fresh idle and no handed-off Hub work, and only reopens output after its own current IPC handoff succeeds. A refused/disconnected handoff leaves the mark intact. A busy public room turn finishes before private Hub input can start.
+
+Classic consent uses the actual backend, workspace and adapter/channel binding. A retarget or remove/re-add invalidates it; a Fleet/Classic name collision is refused. Fleet-only incarnation hashes and Hub wire snapshots are unchanged.
+
+## Validation
+
+Product checkpoint: `16805078e`. Plain alpha sync: `8e954ae929cc540751c188d038c802be51df0a3e`, based on `b644a30785b031f6fef3934c8a92ed1d6221e051`. [alpha-sync.json](alpha-sync.json) pins identical own patch lines across all 19 paths; no unchanged matrix was repeated for the sync.
+
+The retained logs have checkout paths replaced with `<checkout>`. Test scopes overlap; their counts must not be added.
+
+| Scope | Command after `node_modules/.bin/vitest run` | Result |
+|---|---|---|
+| First implementation control | `tests/hub-classic-share-m3285.test.ts --maxWorkers=2` | Initial 4 cases red: missing room inventory and missing private-output refusals. The first version checked missing refusal errors; the final tests assert no adapter call first. |
+| Final-handoff controls | Same file | 2 red before the fix: refused person handoff reopened output; reply validation raced private input. Then 33/33 with `tests/hub-representative-fleet.test.ts`. |
+| Unregister control and routing | Same file plus `tests/classic-outbound-address-1626.test.ts tests/hub-representative-fleet.test.ts --maxWorkers=2` | The new unregister case first observed a real inert adapter send; after the fix 136/136 pass across 3 files. |
+| Exposure, UI language and skill | `tests/hub-classic-share-m3285.test.ts tests/hub-exposure-api-s3c.test.ts tests/hub-skill.test.ts tests/web-pending-page-language-3416.test.ts --maxWorkers=2` | 64/64 before the final three routing controls. |
+| Composed lifecycle, room input and UI | `tests/hub-skill.test.ts tests/web-pending-page-language-3416.test.ts tests/hub-compose-member.test.ts tests/hub-room-compose-track-c.test.ts tests/hub-representative.test.ts tests/hub-room-ask-track-c.test.ts --maxWorkers=2` | 143/143. |
+| Existing Classic address and composition | `tests/classic-outbound-address-1626.test.ts tests/hub-compose-member.test.ts tests/hub-room-compose-track-c.test.ts --maxWorkers=2` | 128/128. |
+
+The 17 Classic tests include Discord and Telegram, contact restriction off, accepted report, restart and expired contact window, notices/progress, normal room input, peer input, corrupt privacy state, exact report metadata, incarnation changes, busy public input, name collision, final handoff, async sink and unregister. [Type-check results](validation/types.json) record both TypeScript programs.
+
+## Rendered views
+
+[receipt.json](receipt.json): **20/20** checks and six originals, on the synced source. The walk uses the real Fleet shell and local exposure/confirmation HTTP APIs with a disposable SQLite store. Pairing and representative readiness are inert. Web authority is off in this fixture to retain the existing pending-confirmation view; the normal owner's self-confirming path was not changed. All people, room names and ids are synthetic.
+
+| View | Desktop EN / light | Phone zh-TW / dark |
+|---|---|---|
+| Settings lead | [PNG](images/desk-en-light-lead.png) | [PNG](images/phone-zh-TW-dark-lead.png) |
+| Complete room row | [PNG](images/desk-en-light-room-row.png) | [PNG](images/phone-zh-TW-dark-room-row.png) |
+| Memory disclosure in confirmation | [PNG](images/desk-en-light-confirmation.png) | [PNG](images/phone-zh-TW-dark-confirmation.png) |
+
+All six originals were visually inspected after fixing the earlier element-capture clipping. The lead shots use the actual viewport; the row and confirmation crops show their complete controls. No live identity or secret was visible.
+
+Reproduce with `scripts/manual/smoke/smoke-hub-classic-share-m3285.mts`, setting `REPO` to the checkout, `PW_DIR` to a local playwright-core installation, `CHROME` to the Linux headless shell, and optional `OUT`/`HP`. The script refuses Windows and mounted Windows browser paths. Its fixture owns and closes the browser, loopback listeners and scratch home. No model, Discord/Telegram service, Windows process or live Runtime was used.
+
+## Limits and rollback
+
+The private mark intentionally survives answer ACK and has no time-based release. It contains only local agent/correlation identity, a random token and time. Invalid storage fails closed. A private task needing approval remains private until resolved and idle; the new room input waits rather than forcing it public.
+
+Functional rollback: withdraw Classic publications and retain the private-output guard for accepted work. Do not delete marks or run an older guard-less binary while private work is pending. A source rollback requires that work to finish and a normal current person-input handoff to release each mark first. No Hub migration or protocol change is involved.
+
+The obsolete M-3014 design, [#3765](https://github.com/songsid/AgEnD/pull/3765), was marked superseded and closed. The sharing implementation follows the new decision instead.
