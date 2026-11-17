@@ -1,3 +1,4 @@
+import {RoomPurposeHeader} from "./hub-room-purpose.js";
 import { hi } from "./hub-agent-intro.js";
 import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 PR 2 (Hub rooms, track U): one room of a Hub with rooms, on the Fleet chat's own thread (/assets/chat-thread.js
@@ -66,6 +67,7 @@ export function authorLine(author, mine = false, direct = false) {
  */
 const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined", "poll-closed": "sysPollClosed" };
 export function systemText(m) {
+  if(m?.system?.kind==="purpose-changed"&&typeof m.system.purpose==="string"&&typeof m.system.name==="string")return hroom(m.system.purpose?"purposeSetSys":"purposeClearedSys",m.system.name,m.system.purpose);
   if(m?.system?.kind==="app-rate-limited")return ha("rateLimited",m.system.name||"");
   if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];
@@ -486,7 +488,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
-        <span class="hub-chat-title"><strong>${title}</strong><span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
+        <span class="hub-chat-title"><strong>${title}</strong>${group&&typeof room.purpose==="string"?html`<${RoomPurposeHeader} purpose=${room.purpose} onEdit=${detail?.me?.role==="manager"&&client.roomPurposeV1===true?openSettings:undefined} />`:null}<span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
         <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}

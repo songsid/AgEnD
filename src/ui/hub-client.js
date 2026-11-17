@@ -450,6 +450,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     /** → { ok, room, me: { role }, members: [Member], settings: { allMention, historyForNew } } */
     room(roomId) { return call("GET", `/hub/v1/rooms/${id(roomId)}`); },
     /** A group room: { name, people: [personId], teams: [teamId], groups: [groupId], agents: [exposureId], assistant }. */
+    roomPurposeV1: true,
     createRoom(input) { return call("POST", "/hub/v1/rooms", input); },
     /** { name?, allMention?, historyForNew?, assistant?, archived? } */
     updateRoom(roomId, patch) { return call("PATCH", `/hub/v1/rooms/${id(roomId)}`, patch); },

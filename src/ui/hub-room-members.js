@@ -1,3 +1,4 @@
+import {rp} from "./hub-room-purpose.js";
 import { hi } from "./hub-agent-intro.js";
 // Hub rooms, the right-hand members panel (docs/design/hub-rooms-ux.md section 5): the people, the agents in presence
 // order, the room assistant, who can see what, and (for a room manager) the way to Room settings. Clicking an agent
@@ -80,6 +81,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${m.intro||m.kind==="assistant"?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   return html`<aside class="hub-room-members">
+    ${detail.room?.purpose?html`<section class="hub-room-purpose-panel"><h4>${rp("title")}</h4><p>${detail.room.purpose}</p></section>`:manager&&client.roomPurposeV1===true&&typeof detail.room?.purpose==="string"?html`<button type="button" class="btn btn-link" onClick=${()=>onSettings?.()}>${rp("add")}</button>`:null}
     <section><h4>${heads.member}</h4>
       <ul>${people.map(m => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`)}</ul>
     </section>

@@ -1,3 +1,4 @@
+import {normalizeRoomPurpose} from "./purpose.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -31,12 +32,13 @@ import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-mod
 import {personalMentionRefusals,recordPersonalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
-interface RoomRow { id: string; name: string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
+interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
 interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "assistant"; subject: string; role: "manager" | "member"; joined_sequence: number; read_sequence: number; owner_at_join: string | null }
 type PostRow = RoomPostRow;
 const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
 const personId = z.string().max(128).refine(s => /^[a-z][a-z0-9_-]{0,63}\/[a-f0-9-]{36}$/.test(s));
-const createSchema = z.strictObject({ name: label, people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(100).default([]),
+const purpose=z.string().transform(normalizeRoomPurpose);
+const createSchema = z.strictObject({ name: label, purpose:purpose.default(""), people: z.array(personId).max(100).default([]), teams: z.array(uuid).max(100).default([]),
   groups: z.array(uuid).max(100).default([]), agents: z.array(uuid).max(64).default([]), assistant: z.boolean().default(false) });
 // M-3125: a post carries up to 10 of the poster's own pending uploads in this room; with files the text may be empty.
 const postSchema = z.strictObject({ text: plain(64 * 1024), mentions: z.array(z.string().max(128)).max(100).default([]),
@@ -78,7 +80,7 @@ export function validRoomEmoji(s: unknown): s is string {
   if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s)) return false;
   return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
 }
-const patchSchema = z.strictObject({ name: label.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
+const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
 
 export class HubRoomRefusal extends Error {
   constructor(readonly status: number, readonly code: string, readonly details: Record<string, string | number> = {}) { super(`Room: ${code}`); }
@@ -177,8 +179,12 @@ export class HubGroupRooms {
   }
   private maximum(db: DB, id: string): number { return (db.prepare("SELECT COALESCE(MAX(sequence),0) AS n FROM hub_room_posts WHERE room_id=?").get(id) as { n: number }).n; }
   private projection(row: PostRow): RoomMessage {
-    const system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed", "app-rate-limited"].includes(row.author_id)
+    let system: RoomSystemEvent | undefined = row.author_kind === "system" && ["room-created", "member-joined", "admin-joined", "poll-closed", "app-rate-limited"].includes(row.author_id)
       ? { kind: row.author_id as "room-created" | "member-joined" | "admin-joined" | "poll-closed" | "app-rate-limited", name: row.author_name } : undefined;
+    if(row.author_kind==="system"&&row.author_id==="purpose-changed"){
+      const event=this.core.atomic(db=>db.prepare("SELECT purpose FROM hub_room_purpose_events WHERE post_id=?").get(row.id)) as {purpose:string}|undefined;
+      if(event)system={kind:"purpose-changed",name:row.author_name,purpose:event.purpose};
+    }
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const agent = row.author_kind === "agent" ? this.core.atomic(db => { const e = readExposure(db, row.author_id);
       return { owner: { name: this.name(db, row.author_subject) }, ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}) }; }) : undefined;
@@ -407,6 +413,13 @@ export class HubGroupRooms {
       VALUES(@id,@room_id,@sequence,@author_kind,@author_id,@author_subject,@author_name,@content_ref,@digest,@mentions,@reply_to,@idempotency_key,@created_at)`).run(row);
     return row;
   }
+  private recordPurpose(db:DB,tx:HubTx,id:string,me:string,purpose:string,requestId:string):PostRow{
+    const name=this.name(db,me),text=purpose?`${name} set the purpose: ${purpose}`:`${name} cleared the purpose.`;
+    const post=this.insert(db,tx,id,{kind:"system",id:"purpose-changed",subject:me,name},text);
+    db.prepare("INSERT INTO hub_room_purpose_events VALUES(?,?)").run(post.id,purpose);
+    this.core.audit(tx,{requestId,actor:{kind:"person",person:personFromString(me)},action:"room.purpose-changed",result:"completed",roomId:id,messageId:post.id,contentRef:post.content_ref});
+    return post;
+  }
   private summary(db: DB, room: RoomRow, member: MemberRow) {
     const counts = db.prepare("SELECT kind,COUNT(*) AS n FROM hub_room_members WHERE room_id=? GROUP BY kind").all(room.id) as { kind: string; n: number }[];
     const floor = member.joined_sequence;
@@ -418,7 +431,7 @@ export class HubGroupRooms {
     const online = (db.prepare(`SELECT COUNT(*) AS n FROM hub_room_members m WHERE m.room_id=? AND m.kind='person' AND EXISTS
       (SELECT 1 FROM hub_sessions s WHERE s.person=m.subject AND s.state='active' AND s.expires_at>?)`).get(room.id, this.core.now()) as { n: number }).n;
     const projected = last ? this.projection(last) : undefined;
-    const summary = { id: room.id, kind: "group" as const, name: room.name, people: counts.find(c => c.kind === "person")?.n ?? 0,
+    const summary = { id: room.id, kind: "group" as const, name: room.name, purpose:room.purpose??"", people: counts.find(c => c.kind === "person")?.n ?? 0,
       agents: counts.find(c => c.kind === "agent")?.n ?? 0, online, unread, lastAt: last?.created_at ?? room.created_at,
       lastText: projected?.text.slice(0, 240) ?? "", ...(projected?.system ? { lastSystem: projected.system } : {}), lastAuthor: last?.author_name ?? "", mentioned, archived: room.archived === 1 };
     return room.assistant_for ? { ...summary, kind: "direct" as const, assistant: true, presence: this.assistant.presence(room.id) } : summary;
@@ -517,11 +530,12 @@ export class HubGroupRooms {
       if (JSON.stringify(expansion(db)) !== image) throw new HubProtocolError("conflict");
       if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
       rememberRoomPeople(db, selectedPeople, this.core.now());
-      const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,?,?,?)").run(id, body.name, me, this.core.now());
+      const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,purpose,created_by,created_at) VALUES(?,?,?,?,?)").run(id, body.name, body.purpose, me, this.core.now());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
       this.insert(db, tx, id, { kind: "system", id: "room-created", subject: me, name: this.name(db, me) }, `${this.name(db, me)} created this room.`);
       for (const agent of body.agents) this.addAgentMember(db, tx, id, agent, me);
       if (body.assistant) this.addAssistant(db, id);
+      if(body.purpose)this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId);
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.created", result: "completed", roomId: id });
       return this.summary(db, this.room(db, id), this.member(db, id, me));
     }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const permit of permits) permit.assertCurrent(); } });
@@ -558,17 +572,20 @@ export class HubGroupRooms {
   }
   async patch(ctx: HubRequestContext, id: string, input: unknown) {
     const body = validated(patchSchema, input), me = await this.who(ctx);
-    this.core.atomic((db, tx) => {
+    const purposePost=this.core.atomic((db, tx) => {
       this.member(db, id, me, true); const row = this.room(db, id);
       if (row.assistant_for) throw new HubRoomRefusal(403, "denied");
       if (body.assistant === true) this.addAssistant(db, id);
       else if (body.assistant === false) db.prepare("DELETE FROM hub_room_members WHERE room_id=? AND kind='assistant'").run(id);
-      db.prepare("UPDATE hub_group_rooms SET name=?,all_mention=?,history_for_new=?,archived=? WHERE id=?")
-        .run(body.name ?? row.name, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), id);
+      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=? WHERE id=?")
+        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), id);
+      const changed=body.purpose!==undefined&&body.purpose!==row.purpose?this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId):null;
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.updated", result: "completed", roomId: id });
+      return changed;
     }, this.fence(ctx));
     if (body.archived || body.assistant === false) this.assistant.forget(id);
     this.agents.sweep(id);
+    if(purposePost)this.emit({type:"message.added",roomId:id,data:{roomId:id,message:this.projection(purposePost)},sequence:purposePost.sequence});
     this.emit({ type: "room.changed", roomId: id, data: { roomId: id } }); return this.detail(ctx, id);
   }
   async add(ctx: HubRequestContext, id: string, input: unknown) {

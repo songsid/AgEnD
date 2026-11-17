@@ -1,3 +1,4 @@
+import {HUB_ROOM_PURPOSE_MIGRATION} from "../rooms/purpose.js";
 import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
 import { HUB_AGENT_INTROS_MIGRATION } from "../agent-intro.js";
 import { HUB_SHARING_WITHDRAWAL_MIGRATION } from "../sharing-withdrawal.js";
@@ -119,6 +120,7 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
     db.exec("ALTER TABLE hub_exposures ADD COLUMN sharing_epoch INTEGER NOT NULL DEFAULT 0 CHECK(sharing_epoch>=0)");
   } }),
   HUB_ROOMS_MIGRATION,
+  HUB_ROOM_PURPOSE_MIGRATION,
   HUB_ROOM_AGENTS_MIGRATION,
   HUB_SHARING_WITHDRAWAL_MIGRATION,
   HUB_ROOM_RETRY_MIGRATION,

@@ -1,5 +1,6 @@
 export type RoomPresence = "online" | "idle" | "working" | "paused" | "offline" | "later";
 export type RoomSystemEvent = { kind: "room-created" | "member-joined" | "admin-joined" | "poll-closed" | "app-rate-limited"; name: string }
+  | { kind:"purpose-changed";name:string;purpose:string }
   | { kind: "agent-mention-stopped"; reason: "all" | "ambiguous" | "depth" | "rate" | "capacity"; name: string; sourceId: string; retryAt?: number };
 export interface RoomMessage {
   id: string; roomId: string; at: number;

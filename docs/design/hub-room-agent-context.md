@@ -2,7 +2,7 @@
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
 Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b.
-Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 adds explicit owner editing and public displays; H2 adds negotiated defaults, the owner review notice and self-editing; H3–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 adds the optional room purpose and its member-facing displays; H4–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many

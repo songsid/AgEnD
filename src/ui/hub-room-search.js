@@ -67,7 +67,7 @@ export function RoomSearch({ client, rooms = [], openRoom, openHit, onClose }) {
   }, [onClose]);
   const query = q.trim();
   // A room or chat by its name, or an agent chat by its owner's (what the list's filter matched before).
-  const names = useMemo(() => (query ? rooms.filter((r) => [roomLabel(r), r.agent?.owner?.name].some((v) => String(v || "").toLowerCase().includes(query.toLowerCase()))).slice(0, 8) : []), [rooms, query]);
+  const names = useMemo(() => (query ? rooms.filter((r) => [roomLabel(r), r.purpose, r.agent?.owner?.name].some((v) => String(v || "").toLowerCase().includes(query.toLowerCase()))).slice(0, 8) : []), [rooms, query]);
   // The messages: debounced; an older answer never replaces a newer query's; "Search older messages" appends.
   const run = async (text, cursor = null) => {
     const mine = ++seq.current;

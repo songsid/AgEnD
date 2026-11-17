@@ -72,7 +72,7 @@ export function rowView(r) {
   const group = r.kind === "group", limited = r.limited === true;
   // Today's chats keep what their row said: closed, or a question waiting (the Fleet's working dot), else its owner.
   const closed = limited && r.legacy?.state === "closed", waiting = limited && !closed && r.legacy?.waiting === true;
-  const line2 = group ? countsLine(r.people, r.agents)
+  const line2 = group ? [countsLine(r.people, r.agents),r.purpose].filter(Boolean).join(" · ")
     : closed ? t("hubChat.tagClosed") : waiting ? t("hubChat.waiting")
     : r.assistant ? hi("assistant") : [r.agent?.intro,r.agent?.answerOnly ? hp("answerOnlyAsker") : String(r.agent?.owner?.name || "")].filter(Boolean).join(" · ");
   return {
