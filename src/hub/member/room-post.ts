@@ -1,3 +1,4 @@
+import {HUB_ROOM_MEMBERS_CAPABILITY,type RoomMemberOptions} from "../room-members-model.js";
 import type Database from "better-sqlite3";
 import { HUB_ROOM_POST_CAPABILITY, roomPostSchema, roomPostResultSchema, roomListResultSchema,
   roomMembersSchema, roomMembersResultSchema, peopleSearchSchema, peopleSearchResultSchema } from "../protocol.js";
@@ -15,7 +16,7 @@ export type RoomPostResult = HubRoomPostResult | { ok:false; code:"uncertain" }
 export interface RoomPostLink {
   features: ReadonlySet<string>; current(): boolean;
   list(exposureId: string): Promise<HubRoomListResult>;
-  members?(exposureId: string, room: string): Promise<HubRoomMembersResult>;
+  members?(exposureId: string, room: string,options?:RoomMemberOptions&{v2?:true}): Promise<HubRoomMembersResult>;
   people?(exposureId: string, q: string): Promise<HubPeopleSearchResult>;
   ack?(id: string): void | Promise<void>;
   post(value: { exposureId: string; room: string; text: string; idempotencyKey: string; onBehalfOf?: {receiptId:string} }): Promise<HubRoomPostResult>;
@@ -23,7 +24,7 @@ export interface RoomPostLink {
 export interface AgentRoomPort {
   available(): boolean;
   rooms(caller: RoomCaller): Promise<RoomListResult>;
-  members(caller: RoomCaller, room: string): Promise<HubRoomMembersResult>;
+  members(caller: RoomCaller, room: string,options?:RoomMemberOptions): Promise<HubRoomMembersResult>;
   people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult>;
   post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult>;
 }
@@ -122,11 +123,14 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       return result;
     } catch { return { ok: false, code: "unavailable" }; }
   }
-  async members(caller: RoomCaller, room: string): Promise<HubRoomMembersResult> {
+  async members(caller: RoomCaller, room: string,options:RoomMemberOptions={}): Promise<HubRoomMembersResult> {
     const link=this.link,local=this.local(caller.agent);
-    if(!roomMembersSchema.safeParse({exposureId:local?.exposureId,room}).success)return {ok:false,code:"invalid"};
+    const modern=link?.features?.has(HUB_ROOM_MEMBERS_CAPABILITY);
+    if(!modern&&Object.values(options).some(v=>v!==undefined))return {ok:false,code:"unavailable",message:"This Hub does not support bounded room-member lookup yet."};
+    if(!roomMembersSchema.safeParse({exposureId:local?.exposureId,room,...(modern?{v2:true,...options}:{})}).success)return {ok:false,code:"invalid"};
     if(!link?.members||!local||!this.current(caller,local,link))return {ok:false,code:"unavailable"};
-    try{const result=roomMembersResultSchema.parse(await link.members(local.exposureId,room));
+    try{const result=roomMembersResultSchema.parse(await (modern?link.members(local.exposureId,room,{v2:true,...options}):link.members(local.exposureId,room)));
+      if(modern&&(Buffer.byteLength(JSON.stringify(result))>8192||result.ok&&!("v2" in result))||!modern&&result.ok&&"v2" in result)return {ok:false,code:"unavailable"};
       return this.current(caller,local,link)?result:{ok:false,code:"stale"};}catch{return {ok:false,code:"unavailable"};}
   }
   async people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult> {

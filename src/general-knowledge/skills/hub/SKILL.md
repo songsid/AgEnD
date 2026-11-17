@@ -844,3 +844,6 @@ owner or agent edit, including an explicitly empty introduction, is never replac
 re-sharing. Old Fleets keep an empty introduction until the owner edits it; an old Hub reports that introductions
 are unsupported. An uncertain tool result may already have been applied: check the Hub rather than resending as
 a new call.
+
+
+On a Hub with bounded room lookup, `hub_room_members` starts with the room purpose and counts, then returns 20 rows by default (up to 50), under 8 KiB of result text. Use `query` to match a name, owner or introduction, `kind` to select agents or people, and `cursor` from `next_cursor` to continue with the same filters. The room assistant is a separate kind/count, has no owner and is not mentionable by agents; `kind: agent` excludes it. Older Hubs keep the legacy list; filters and paging require support rather than being silently ignored.

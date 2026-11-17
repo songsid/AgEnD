@@ -1,3 +1,5 @@
+import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
+import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
@@ -324,11 +326,21 @@ export class HubGroupRooms {
     this.agentReadBuckets.set(owner, { at: b?.at ?? at, count: (b?.count ?? 0) + 1 });
   }
   async agentMembers(input: unknown, link: HubLinkContext): Promise<HubRoomMembersResult> {
-    const body = validated(roomMembersSchema, input), { source, fence } = await this.agentSource(body.exposureId, link); this.agentRead(source.owner);
+    const body = validated(roomMembersSchema, input);if(body.v2&&!link.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");
+    const { source, fence } = await this.agentSource(body.exposureId, link); this.agentRead(source.owner);
     return this.core.atomic(db => {
       const rows = db.prepare(`SELECT r.id,r.name FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id WHERE m.kind='agent' AND m.subject=? AND m.owner_at_join=? AND r.archived=0 AND r.assistant_for IS NULL AND (r.id=? OR r.name=?) ORDER BY r.id LIMIT 201`).all(source.id, source.owner, body.room, body.room) as { id: string; name: string }[];
       const room = rows.find(r => r.id === body.room) ?? (rows.length === 1 ? rows[0] : undefined);
-      if (!room) return rows.length ? { ok: false, code: "ambiguous-room", rooms: rows.slice(0, 200) } : { ok: false, code: "not-found" };
+      if (!room) {const choices=rows.slice(0,200);if(body.v2)while(Buffer.byteLength(JSON.stringify({ok:false,code:"ambiguous-room",rooms:choices}))>8192)choices.pop();return rows.length?{ok:false,code:"ambiguous-room",rooms:choices}:{ok:false,code:"not-found"};}
+      if(body.v2){
+        const roomRow=this.room(db,room.id);
+        const roster=(db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(room.id) as MemberRow[]).map(m=>{
+          if(m.kind==="assistant")return {id:"assistant",kind:"assistant" as const,name:"Hub assistant",presence:this.assistant.presence(room.id),intro:"Hub assistant. Answers from this room's chat.",mentionable:false as const};
+          if(m.kind==="agent"){const e=readExposure(db,m.subject);return {id:m.subject,kind:m.kind,name:e?.display_name??m.subject,presence:this.agents.presence(m.subject).presence,owner:{name:this.name(db,m.owner_at_join??"")},intro:agentIntro(db,m.subject).intro};}
+          return {id:m.id,kind:m.kind,name:this.name(db,m.subject),presence:db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject,this.core.now())?"online":"offline"};
+        });
+        return pageRoomMembers(room.id,roomRow.purpose,roster,body,JSON.stringify([source.id,source.owner]));
+      }
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id LIMIT 201").all(room.id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", presence: this.assistant.presence(room.id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject) }; }

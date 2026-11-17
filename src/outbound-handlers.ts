@@ -131,7 +131,7 @@ export interface OutboundContext {
   hubSetIntro?(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string):Promise<import("./hub/agent-intro-model.js").HubAgentIntroResult>;
   hubRoomToolsAvailable?(): boolean;
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
-  hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string): Promise<import("./hub/types.js").HubRoomMembersResult>;
+  hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions): Promise<import("./hub/types.js").HubRoomMembersResult>;
   hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult>;
   hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
   /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
@@ -2581,7 +2581,7 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => asy
     const value=parsed.data as {room:string;text:string;receipt_id?:string};
     respond(await ctx.hubRoomPost?.(caller, {room:value.room,text:value.text,operationId:meta.operationId,
       ...(value.receipt_id ? {receiptId:value.receipt_id} : {})}) ?? {ok:false,code:"unavailable"});
-  } else if(kind === "members") respond(await ctx.hubRoomMembers?.(caller,(parsed.data as {room:string}).room)??{ok:false,code:"unavailable"});
+  } else if(kind === "members") {const {room,...options}=parsed.data as {room:string}&import("./hub/room-members-model.js").RoomMemberOptions;respond(await ctx.hubRoomMembers?.(caller,room,...(Object.keys(options).length?[options]:[]))??{ok:false,code:"unavailable"});}
   else if(kind === "people") respond(await ctx.hubPeopleSearch?.(caller,(parsed.data as {q:string}).q)??{ok:false,code:"unavailable"});
   else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
 };

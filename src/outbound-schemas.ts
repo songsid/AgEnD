@@ -1,3 +1,4 @@
+import {roomMemberOptions} from "./hub/room-members-model.js";
 /**
  * zod schemas for outbound tool-call args.
  *
@@ -697,7 +698,7 @@ export const DelegateTaskArgs = z.object({
 export const HubSetIntroArgs = z.strictObject({text:z.string().describe("Your public introduction: one line, at most 50 visible characters; empty clears it.")});
 export const HubRoomListArgs = z.strictObject({});
 const HubRoomSelector = z.string().min(1).refine(value => Buffer.byteLength(value,"utf8") <= 128 && !/[\u0000-\u001f\u007f]/.test(value) && value.trim().length > 0);
-export const HubRoomMembersArgs = z.strictObject({ room: HubRoomSelector.describe("Room UUID or exact unique member-room name.") });
+export const HubRoomMembersArgs = z.strictObject({ room: HubRoomSelector.describe("Room UUID or exact unique member-room name."),...roomMemberOptions });
 export const HubPeopleSearchArgs = z.strictObject({ q: z.string().min(2).refine(value => value.trim() === value && Buffer.byteLength(value,"utf8") <= 64 && !/[\u0000-\u001f\u007f]/.test(value))
   .describe("Name prefix, 2–64 bytes. Returns only the owner's existing grant-person search fields; not a directory export.") });
 export const HubRoomPostArgs = z.strictObject({
