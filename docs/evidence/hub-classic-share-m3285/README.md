@@ -31,7 +31,7 @@ The 17 Classic tests include Discord and Telegram, contact restriction off, acce
 
 ## Rendered views
 
-[receipt.json](receipt.json): **20/20** checks and six originals, on `8361945af` (PM copy correction over the synced routing source). The walk uses the real Fleet shell and local exposure/confirmation HTTP APIs with a disposable SQLite store. Pairing and representative readiness are inert. Web authority is off in this fixture to retain the existing pending-confirmation view; the normal owner's self-confirming path was not changed. All people, room names and ids are synthetic.
+[receipt.json](receipt.json): **22/22** checks and six originals, on `462768b5d` (final PM copy correction over the synced routing source). The walk uses the real Fleet shell and local exposure/confirmation HTTP APIs with a disposable SQLite store. Pairing and representative readiness are inert. Web authority is off in this fixture to retain the existing pending-confirmation view; the normal owner's self-confirming path was not changed. All people, room names and ids are synthetic.
 
 | View | Desktop EN / light | Phone zh-TW / dark |
 |---|---|---|
@@ -56,3 +56,9 @@ The obsolete M-3014 design, [#3765](https://github.com/songsid/AgEnD/pull/3765),
 PM accepted the layout at `54bae4f3a` conditional on two exact changes, with no further review round required: the Classic lead is now its own paragraph, and the confirmation is a statement naming the ClassicBot room. Both languages were retaken at `8361945af`; all four changed lead/confirmation originals were inspected again. The runtime guard is unchanged. The exposure and pending-language tests passed (40 cases) and the adjusted story-copy test passed (19 cases); the numeric changelog validator passes 75/75.
 
 The first secret scan flagged two entries in the old sync manifest: public-source SHA-256 values under API-file-name keys. Both were independently recomputed from the public Git diff. The current manifest separates `path` and `sha256`; `.gitleaksignore` names only the two exact historical fingerprints. No credential was involved or rotated. [Classification](validation/scan-classification.json) records the masked locations and the local scan scope; exact CI remains the full remerge scan.
+
+## Review delta: complete two-way consent
+
+The code reviewer found no blocking source issue at `b381c0d6e` and caught the post-await reply guard with a mutant. The remaining consent question is closed by PM's explicit final wording: the summary now also says “What it learns from Hub questions may also come up in the room.” /「它從 Hub 提問中得知的內容，也可能在房間裡提到。」 These are statements about later answers, distinct from the guarantee that no Hub question or answer is automatically posted to the room.
+
+At `462768b5d`, the API and pending-language tests pass 40/40; the 17 Classic tests also pass with a new direct public `notifyInstanceTopic`/negative-ACK assertion. The routing runtime is byte-identical to `b381c0d6e`. The headless walk now checks the full two-way consent in both languages (22/22); both updated confirmation originals were inspected and have complete controls and no clipping. PM requested no further round after applying those exact sentences.

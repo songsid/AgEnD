@@ -1,5 +1,5 @@
 {
-  "source": "8361945af302578d8bdc6b34387dfd79e138383d",
+  "source": "462768b5d9a475941b2f0b7d7bbf39a8a784e141",
   "scope": "Actual Fleet shell and local exposure/confirmation APIs; inert paired view and representative readiness; all identities synthetic; no Hub/chat/model/Windows connection",
   "checks": [
     {
@@ -32,6 +32,10 @@
     },
     {
       "name": "desk-en-light/translated-memory",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/two-way-consent",
       "pass": true
     },
     {
@@ -72,6 +76,10 @@
     },
     {
       "name": "phone-zh-TW-dark/translated-memory",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/two-way-consent",
       "pass": true
     },
     {
