@@ -1,4 +1,4 @@
-// #3226 C: the words of the Hub's My shared agents and Administration pages, en and zh-TW, and their stylesheet. A module
+// #3226 C: the words of the Hub's My agents and Administration pages, en and zh-TW, and their stylesheet. A module
 // of its own (#3261 review): a tab that loaded B's hub-chat-strings.js / hub-chat.css before C keeps them, so C's words
 // and rules come only from here.
 import { register, t } from "/assets/app-i18n.js";
@@ -11,7 +11,7 @@ register("hubOwner", {
     active: "Active", adminLead: "Manage who may connect and see connected Fleets. You cannot read anyone’s chats here.", manualAdvanced: "Advanced: connect with a pairing code",
     allow: "Allow…", allowDays: "For", allowGo: "Allow", allowLogin: "Their sign-in name",
     allowLoginHint: "The account they sign in to this Hub with.", allowTitle: "Allow someone to ask {0}", approveGo: "Approve…",
-    approvedTag: "Approved", backToMine: "My shared agents", codeFor: "Pairing code for {0}", codeUnusedYet: "Not used yet", fleetOf: "{0}'s fleet",
+    mineLeadNew: "The agents you can share on this Hub, and who may ask each one.", approvedTag: "Approved", backToMine: "My agents", codeFor: "Pairing code for {0}", codeUnusedYet: "Not used yet", fleetOf: "{0}'s fleet",
     makeCode: "Create pairing code", mayAsk: "{0} may ask", mayAskNone: "No one may ask yet", mayAskOne: "1 may ask",
     mineLead: "The agents that answer for you on this Hub: who may ask them, until when, and who asked lately. To share or stop sharing one, use your fleet's Settings → Hub.", mineLeadShort: "The agents that answer for you on this Hub: who may ask them, until when, and who asked lately.",
     noFleets: "No fleet is connected yet.", ownerChecked: "The owner confirmed", ownerLogin: "Owner's sign-in name", pairSteps: "Pair a fleet",
@@ -23,14 +23,14 @@ register("hubOwner", {
     yourAgentsCount: "My agents · {0}", sharedCount: "Shared · {0}", stageAnswered: "Answered", stageNot: "Not answered", stageWaiting: "Waiting", statePaused: "Sharing stopped on the Hub",
     stateShared: "Shared", stateWithdrawn: "Withdrawn", stepApprove: "You approve", stepApproveHint: "Check the same fingerprint, then approve.",
     stepCode: "Make a pairing code", stepCodeHint: "For the fleet's owner: they type it in their fleet within 10 minutes; it works once.",
-    stepOwner: "The owner checks the fingerprint", stepOwnerHint: "In their fleet, then on this Hub under My shared agents.",
+    stepOwner: "The owner checks the fingerprint", stepOwnerHint: "In their fleet, then on this Hub under My agents.",
     untilLeft: "until {0} ({1})", waitingOwner: "Waiting for the owner", whoMayAsk: "Who may ask",
   },
   "zh-TW": {
     memberAddress: "Hub 位址", memberAddressHint: "在你的 Fleet「設定 → Hub → 其他方式」的「Hub 位址」欄位貼上這個位址，並輸入配對碼。這與 Hub 的瀏覽器位址不同。",
     memberAddressMissing: "請向管理員索取要填入「Hub 位址」欄位的位址；它的連接埠可能與這個頁面不同。", copyHandoff: "複製位址與配對碼", handoffCopied: "已複製位址與配對碼", handoffCopyFailed: "無法複製。請選取上方的位址與配對碼來複製。",
     active: "使用中", adminLead: "管理允許連接的人員與已連接的 Fleet。這裡看不到任何人的對話。", manualAdvanced: "進階：使用配對碼連接", allow: "允許提問…", allowDays: "期限", allowGo: "允許", allowLogin: "對方的登入名稱",
-    allowLoginHint: "對方登入這個 Hub 用的帳號。", allowTitle: "允許提問 {0}", approveGo: "核准…", approvedTag: "已核准", backToMine: "我分享的 Agent",
+    mineLeadNew: "可以分享到這個 Hub 的 Agent，以及誰可以向它們提問。", allowLoginHint: "對方登入這個 Hub 用的帳號。", allowTitle: "允許提問 {0}", approveGo: "核准…", approvedTag: "已核准", backToMine: "我的 Agent",
     codeFor: "給 {0} 的配對碼", codeUnusedYet: "還沒使用", fleetOf: "{0} 的 Fleet", makeCode: "產生配對碼", mayAsk: "{0} 人可以提問", mayAskNone: "還沒有人可以提問",
     mayAskOne: "1 人可以提問", mineLead: "在這個 Hub 上代表你回答的 Agent：誰可以提問、到什麼時候、最近誰問過。要開始或停止分享，請到你 Fleet 的「設定 → Hub」。", mineLeadShort: "在這個 Hub 上代表你回答的 Agent：誰可以提問、到什麼時候、最近誰問過。", noFleets: "還沒有已連接的 Fleet。",
     ownerChecked: "擁有者已確認", ownerLogin: "擁有者的登入名稱", pairSteps: "配對一個 Fleet", pairedFleets: "已連接的 Fleet · {0}", pauseGo: "停止分享…",
@@ -38,7 +38,7 @@ register("hubOwner", {
     recent: "最近的提問", recentLead: "誰問的、什麼時候，有沒有回答。問了什麼留在你 Fleet 的聊天裡。", recentNone: "還沒有人問過。", refresh: "重新整理", revokeItem: "撤銷…", revokedTag: "已撤銷",
     rowMenu: "{0} 的更多動作", scopeHub: "這個 Hub", scopeYou: "你的", yourAgentsCount: "我的 Agent · {0}", sharedCount: "分享中 · {0}", stageAnswered: "已回答", stageNot: "未回答", stageWaiting: "等待中",
     statePaused: "已在 Hub 停止分享", stateShared: "分享中", stateWithdrawn: "已停止分享", stepApprove: "你核准", stepApproveHint: "核對同一個指紋後核准。", stepCode: "產生配對碼",
-    stepCodeHint: "給 Fleet 的擁有者：10 分鐘內在他的 Fleet 輸入，只能用一次。", stepOwner: "擁有者核對指紋", stepOwnerHint: "在他的 Fleet 上，然後在這個 Hub 的「我分享的 Agent」確認。",
+    stepCodeHint: "給 Fleet 的擁有者：10 分鐘內在他的 Fleet 輸入，只能用一次。", stepOwner: "擁有者核對指紋", stepOwnerHint: "在他的 Fleet 上，然後在這個 Hub 的「我的 Agent」確認。",
     untilLeft: "到 {0}（{1}）", waitingOwner: "等待擁有者", whoMayAsk: "可以提問的人",
   },
 });

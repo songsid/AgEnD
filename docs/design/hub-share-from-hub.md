@@ -452,3 +452,27 @@ withdrawing existing shares. Old peers continue the catalog-only format or recei
 code after the new migrations requires the normal explicit database rollback procedure; do not delete the journal,
 restore old consent JSON, or make an older strict migration registry silently accept it. Durable notices retain their
 text, and an unavailable Undo controller directs the administrator to Settings → Hub.
+
+## 8. Page slice (S172)
+
+The browser's `agent-sharing-v1` feature enables the grouped **My agents** page. A retained tab or older Hub without
+both the server mark and matching client methods keeps its existing shared-agent list. Private inventory is read
+from `/hub/v1/me/agents`; accepted `/hub/v1/exposures` rows alone decide shared counts and successful publication.
+An opted-in owner may request `POST /hub/v1/me/agents/refresh {fleetId}`. The response says only **requested**;
+it is not evidence that a Fleet reported. Old or disconnected links receive no frame.
+
+The page saves the complete frozen sharing request in its session-scoped tab storage before sending it. Reload and
+Refresh reuse its UUID and body. A Fleet result can precede its publication; until an accepted snapshot arrives the
+row stays pending. A refusal is per row. Expiry does not turn a possibly applied operation into a definite failure.
+Changing sign-in retires the page and every queued owner write, including the individual grant writes in a common
+access selection. The existing single-agent picker stays; multiple agents reuse the same picker with separately
+validated target revisions and individual outcomes. Compositions without directory subject search retain exact-login
+access selection.
+
+The previous-list choice has a separate owner-only GET/POST at `/hub/v1/me/agents/:id/previous-access`. Its preview
+returns a digest, absolute expiry and count, with no recipient directory or raw stopped image. An explicit selection
+checks the real current browser, owner, Fleet generation, kept digest, current published revision and publication
+permission again. It creates fresh grant IDs while preserving each original immutable subject and absolute expiry.
+Deterministic new IDs make a lost response replay safe: retry cannot re-enable a new grant that was later revoked.
+It never reopens old chats, invokes Undo, or changes the ordinary new-share default of nobody. Lists containing
+groups or teams use the unnumbered previous-list label rather than inventing a count of individual people.

@@ -11,7 +11,7 @@ register("hubGrantPicker", {
     failed: "The directory could not be searched just now. Try again.", unsupported: "This directory does not support that search.", limited: "Too many searches. Try again shortly.", retry: "Search again",
     days: "Access lasts", day: "{0} days", expiry: "Choose up to 90 days. Access expires automatically; removing the grant also ends access to its chats.",
     groupHint: "Direct members are checked again for every action. Nested and primary groups are not included. Whoever manages this AD group can change who may ask. Each person has a private chat.",
-    save: "Allow", cancel: "Cancel", refused: "The selected person or group changed or is no longer available. Search and choose again.", saveFailed: "Access could not be saved. Check the current agent and try again.",
+    saved: "Saved", save: "Allow", cancel: "Cancel", refused: "The selected person or group changed or is no longer available. Search and choose again.", saveFailed: "Access could not be saved. Check the current agent and try again.",
   },
   "zh-TW": {
     title: "允許向 {0} 提問", kind: "允許對象", person: "個人", group: "AD 安全性群組", team: "團隊", teamPick: "選擇團隊", teamHint: "依團隊目前的成員允許提問；成員離開團隊後就不再適用這份權限，授權的到期時間照常計算。", findPerson: "尋找同仁", query: "姓名或登入帳號", hint: "請輸入 2 到 64 個字。",
@@ -19,7 +19,7 @@ register("hubGrantPicker", {
     failed: "目前無法搜尋目錄，請再試一次。", unsupported: "這個目錄不支援這項搜尋。", limited: "搜尋太多次了，請稍後再試。", retry: "重新搜尋",
     days: "允許多久", day: "{0} 天", expiry: "最長 90 天，到期自動失效；移除授權也會結束其聊天存取權。",
     groupHint: "每次操作都會重新檢查直接成員，不含巢狀或主要群組。能管理這個 AD 群組的人，也能改變誰可以提問。每個人都有自己的私人對話。",
-    save: "允許提問", cancel: "取消", refused: "選取的同仁或群組已變更或無法使用，請重新搜尋選擇。", saveFailed: "無法儲存授權，請確認目前的 Agent 後再試。",
+    saved: "已儲存", save: "允許提問", cancel: "取消", refused: "選取的同仁或群組已變更或無法使用，請重新搜尋選擇。", saveFailed: "無法儲存授權，請確認目前的 Agent 後再試。",
   },
 });
 const g = (key, ...args) => t(`hubGrantPicker.${key}`, ...args);
@@ -32,8 +32,10 @@ export function linkHubGrantPickerCss(doc = typeof document !== "undefined" ? do
     doc.head.appendChild(link);
   } catch { /* The form's existing controls still work if the stylesheet cannot be linked. */ }
 }
-export function HubGrantPicker({ x, client, act, onClose }) {
+export function HubGrantPicker({ x, client, act, onClose, targets, grant, onResults, extra, legacy = false }) {
+  const [login, setLogin] = useState("");
   const [kind, setKind] = useState("person"), [selected, setSelected] = useState(null), [days, setDays] = useState(7), [busy, setBusy] = useState(false), [error, setError] = useState(null), [unsupported, setUnsupported] = useState(false);
+  const [targetResults, setTargetResults] = useState({});
   const life = useRef(0), writing = useRef(false), controllers = useRef(new Set());
   const search = useMemo(() => async (kind, q) => {
     const controller = new AbortController(); for (const old of controllers.current) old.abort(); controllers.current.add(controller);
@@ -49,22 +51,34 @@ export function HubGrantPicker({ x, client, act, onClose }) {
   }, [client, x.id, x.revision]);
   const change = () => { setSelected(null); setError(null); setUnsupported(false); };
   const submit = async event => {
-    event?.preventDefault?.(); if (writing.current || !selected || client !== hubClient()) return;
+    event?.preventDefault?.(); if (writing.current || (legacy ? !login.trim() : !selected) || client !== hubClient()) return;
     writing.current = true; setBusy(true); setError(null); const mine = life.current;
-    const subject = kind === "team" ? { kind: "team", teamId: selected.id } : kind === "group" ? { kind: "group", group: { realm: selected.realm, objectId: selected.objectId }, dn: selected.dn }
+    const subject = legacy ? null : kind === "team" ? { kind: "team", teamId: selected.id } : kind === "group" ? { kind: "group", group: { realm: selected.realm, objectId: selected.objectId }, dn: selected.dn }
       : { kind: "person", person: { ...selected.person } };
-    const input = { exposureId: x.id, exposureRevision: x.revision, days, subject, ...(kind === "person" ? { login: selected.login } : {}) };
+    const input = { exposureId: x.id, exposureRevision: x.revision, days, ...(legacy ? { login: login.trim() } : { subject, ...(kind === "person" ? { login: selected.login } : {}) }) };
     try {
-      const out = await act(() => client.grant(input), undefined, () => { if (mine === life.current) setError(g("refused")); });
-      if (mine === life.current && client === hubClient()) { if (out?.ok) onClose(); else setError(g("refused")); }
+      if (targets && grant) {
+        const results = {}; let failed = false;
+        for (const target of targets) {
+          if (mine !== life.current || client !== hubClient()) return;
+          const out = await grant({ ...input, exposureId: target.id, exposureRevision: target.revision });
+          results[target.id] = out?.ok ? g("saved") : g("saveFailed"); failed ||= !out?.ok;
+        }
+        if (mine === life.current && client === hubClient()) { setTargetResults(results); onResults?.(results); if (!failed) onClose(); else setError(g("saveFailed")); }
+      } else {
+        const out = await act(() => client.grant(input), undefined, () => { if (mine === life.current) setError(g("refused")); });
+        if (mine === life.current && client === hubClient()) { if (out?.ok) onClose(); else setError(g("refused")); }
+      }
     } catch { if (mine === life.current) setError(g("saveFailed")); }
     finally { if (mine === life.current) { writing.current = false; setBusy(false); } }
   };
-  return html`<${Dialog} title=${g("title", x.displayName)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${g("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || !selected} onClick=${submit}>${g("save")}</button>`}>
+  return html`<${Dialog} title=${g("title", x.displayName)} onClose=${onClose} actions=${html`<button type="button" class="btn" onClick=${onClose}>${g("cancel")}</button><button type="button" class="btn btn-primary" disabled=${busy || (legacy ? !login.trim() : !selected)} onClick=${submit}>${g("save")}</button>`}>
     <form class="form hub-grant" data-grant-picker onSubmit=${submit}>
+      ${extra || null}
+      ${targets?.length > 1 ? html`<ul>${targets.map(target => html`<li>${target.displayName}${targetResults[target.id] ? ` · ${targetResults[target.id]}` : ""}</li>`)}</ul>` : null}
       ${error ? html`<p class="err" role="alert">${error}</p>` : null}
-      <${SubjectPicker} client=${client} search=${search} kind=${kind} onKind=${next => { change(); setKind(next); }} selected=${selected} onClear=${change}
-        disabled=${busy} id="hubGrant" label=${g("kind")} onUnsupported=${() => setUnsupported(true)} onPick=${(type, row) => setSelected(type === "group" ? { ...row, realm: x.owner?.realm || "" } : row)} />
+      ${legacy ? html`<label class="field"><span>${g("query")}</span><input data-grant-login autocomplete="off" spellcheck=${false} disabled=${busy} value=${login} onInput=${e => setLogin(e.target.value)} /></label>` : html`<${SubjectPicker} client=${client} search=${search} kind=${kind} onKind=${next => { change(); setKind(next); }} selected=${selected} onClear=${change}
+        disabled=${busy} id="hubGrant" label=${g("kind")} onUnsupported=${() => setUnsupported(true)} onPick=${(type, row) => setSelected(type === "group" ? { ...row, realm: x.owner?.realm || "" } : row)} />`}
       ${unsupported ? html`<p class="err" role="status">${g("unsupported")}</p>` : null}
       ${kind === "group" ? html`<p class="note">${g("groupHint")}</p>` : null}
       ${kind === "team" ? html`<p class="note">${g("teamHint")}</p>` : null}

@@ -161,7 +161,7 @@ describe("the shell", () => {
       const row = pg.root.querySelector(".hub-side-rooms .v-inst")!;
       expect([row.getAttribute("href"), row.querySelector(".inst-name")!.textContent, row.querySelector(".inst-alt")!.textContent, !!row.querySelector(".av-dot.busy")])
         .toEqual(["/ui/hub?room=11111111-2222-4333-8444-555555555555", "Sales numbers", "Waiting for an answer", true]);
-      expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My shared agents", "Search"]);
+      expect([...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent)).toEqual(["Chats", "My agents", "Search"]);
       expect([pg.root.querySelector(".side-nav .side-new"), pg.root.querySelector("#sidebar .hub-side-rooms .side-new")!.textContent]).toEqual([null, "New chat"]);   // M-3190: it heads the list
       await until(() => pg.root.querySelector(".side-foot .hub-session-row button"));
       (pg.root.querySelector(".side-foot .hub-session-row button") as any).click(); await settle(5);
@@ -339,7 +339,7 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     expect(hubPanel.POLL_MS).toBe(10_000);
   });
 
-  it("My shared agents (#3226 C): the agents and a pairing to confirm; Administration only for the administrator", async () => {
+  it("My agents (#3226 C): the agents and a pairing to confirm; Administration only for the administrator", async () => {
     const mine = [{ id: "e1", displayName: "Sales numbers", revision: 3, state: "published", dataViewId: "agent", allowedTools: [],
       grants: [{ id: "g1", revision: 1, subjectName: "Alex", subjectLogin: "alex", expiresAt: 2_000_000_000_000 }] }];
     const { calls } = hubApi({

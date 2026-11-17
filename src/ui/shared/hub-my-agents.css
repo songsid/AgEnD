@@ -1,0 +1,24 @@
+/* Lazy linked: retained shells receive the grouped owner page and its phone action bar together. */
+.hub-my-agents { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; padding-bottom: calc(var(--s-6) * 3); }
+.hub-my-agents > .field-row { justify-content: space-between; }
+.hub-agent-fleet > summary { display: list-item; cursor: pointer; padding: var(--s-2); }
+.hub-agent-fleet > summary strong { margin-right: var(--s-3); }
+.hub-agent-fleet > summary .note { display: inline; }
+.hub-agent-choice { border-bottom: 1px solid var(--border); }
+.hub-agent-choice:last-child { border-bottom: 0; }
+.hub-agent-choice .hub-row-text { overflow-wrap: anywhere; }
+.hub-agent-choice .hub-row-text > .tag { width: fit-content; }
+.hub-agent-tick { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; flex-shrink: 0; }
+.hub-agent-tick input { width: 1.2em; height: 1.2em; }
+.hub-classic-disclosure { margin: 0 var(--s-3) var(--s-3); }
+.hub-share-bar { position: sticky; bottom: var(--s-3); z-index: 5; display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-2); }
+.hub-share-bar > strong { flex: 1; }
+@media (max-width: 899px), (pointer: coarse) {
+ .hub-my-agents .btn { min-height: 44px; }
+ .hub-agent-choice .s-row { flex-wrap: wrap; }
+ .hub-agent-choice .hub-row-text { min-width: 0; flex: 1 1 50%; }
+ .hub-agent-fleet > summary .note { display: block; }
+ .hub-share-bar { bottom: calc(env(safe-area-inset-bottom, 0px) + var(--s-2)); }
+ .hub-share-bar > strong { flex-basis: 100%; }
+ .hub-share-bar > .btn { flex: 1; }
+}
