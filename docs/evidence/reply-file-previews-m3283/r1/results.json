@@ -1,0 +1,35 @@
+{
+  "sourceCommit": "479ec9f013069ccad33337b32cddcda171606e39",
+  "before": {
+    "selectedFailures": 3,
+    "excluded": 31,
+    "reason": "General and coordinator returned 200; raw read allocated 50 MiB"
+  },
+  "after": {
+    "files": 4,
+    "passed": 51,
+    "featureCases": 47,
+    "readerCases": 37
+  },
+  "types": {
+    "sourceDiagnostics": 0,
+    "testDiagnostics": 0
+  },
+  "raw": {
+    "unrangedBytes": 52428800,
+    "largestObservedBufferAllocation": 65536,
+    "rangeCapBytes": 4194304,
+    "retiredStreamClosed": true,
+    "closeBeforeIteration": true
+  },
+  "gitleaks": {
+    "version": "8.24.3",
+    "diagnosticFindings": 0,
+    "historicalExactFingerprints": 3,
+    "wildcards": false,
+    "localGit": "2.34.1",
+    "remergeSupportedLocally": false,
+    "authoritativeExactCI": "pending"
+  },
+  "images": "Prior preferred14 carry; ordinary render/layout is unchanged. No new browser campaign."
+}
