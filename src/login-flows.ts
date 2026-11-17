@@ -262,7 +262,7 @@ export const LOGIN_FLOWS: Record<string, LoginFlow> = Object.assign(Object.creat
     backend: "claude-code",
     command: "claude auth login",
     authCheck: { argv: ["claude", "auth", "status"], validPattern: /"loggedIn":\s*true/ },
-    loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account|Paste code here if prompted >/,
+    loginScreenPattern: /Select login method:|Sign in (?:to|with) your Anthropic account|Paste code here if prompted/,
     loginScreenActive: claudeLoginScreenActive,
     loginScreenBeforeReady: true,
     successPattern: /Login successful|Logged in as/,
