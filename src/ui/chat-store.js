@@ -13,6 +13,8 @@ import { createLiveAgentReplies } from "./chat-live-replies.js";
 const msgKeyOf = (m) => `${m.boot}-${m.id}`;
 
 const R = () => globalThis.AgendChatRender;
+/** M-3272: a page of older (or newer) messages, and the most a chat holds on screen. */
+const PAGE_SIZE = 100, SCREEN_MAX = 1000;
 
 // #1823: this device's own votes on polls (set id → options), so a reload still marks them. A convenience only: the
 // server holds the ballot; storage may be missing or throw (private window), and then marks last for the page.
@@ -52,6 +54,8 @@ export function createChatStore(deps) {
     // view's rev is when it was made, and a polled or replayed view can be minutes old.
     clockSkew: 0,
     exec: {}, awaiting: {}, current: null,
+    // M-3272: scroll-back per instance — { olderMore?, detached?, busy?, held? } (see loadOlder).
+    paging: {},
     // #1269: the last chat command per instance — { command, busy, text?, error?, choices? } — shown above the composer.
     commands: {},
   };
@@ -137,8 +141,13 @@ export function createChatStore(deps) {
   function ingest(m, extra) {
     if (!m || typeof m.instance !== "string") return;
     liveReplies.message(m, extra);
+    // M-3272: scrolled back past what was unloaded at the newest end — the live message waits (the next page down, or
+    // Jump to latest, brings it) and nothing is drawn below the reader meanwhile.
+    const paging = s.paging[m.instance];
+    if (paging?.detached) { (paging.held ??= []).push(m); if (paging.held.length > PAGE_SIZE * 2) paging.held.shift(); return; }
     const before = s.msgs[m.instance];
-    s.msgs[m.instance] = R().mergeMessages(before, [m], 500);
+    s.msgs[m.instance] = R().mergeMessages(before, [m], capOf(m.instance));
+    if (paging && (before || []).length >= capOf(m.instance)) paging.olderMore = true;          // the oldest went: older ones exist
     // The live copy of a message this page sent carries its clientId: its pending bubble goes in this same redraw.
     if (settleOutgoing(m.instance, m.role === "user" ? m.clientId : undefined) && s.msgs[m.instance] === before) changed(m.instance, "msgs");
     if (m.instance === s.current && s.msgs[m.instance] !== before && m.role !== "status" && !isUser(m, m.instance) && (s.msgs[m.instance] || []).length > (before || []).length) deps.announce(tf("chat.a11yReplied", m.sender));
@@ -566,11 +575,83 @@ export function createChatStore(deps) {
     const has = () => (s.msgs[name] || []).some(m => `${m.boot}-${m.id}` === key);
     if (has()) return true;
     try {
-      const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=500`);
-      if (r && Array.isArray(r.messages)) { s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, 500); settleOutgoing(name); changed(name, "msgs"); }
+      if (!s.paging[name]?.detached) {
+        const r = await api("GET", `/ui/history?instance=${encodeURIComponent(name)}&limit=500`);
+        if (r && Array.isArray(r.messages)) { s.msgs[name] = R().mergeMessages(s.msgs[name], r.messages, capOf(name)); settleOutgoing(name); changed(name, "msgs"); }
+      }
+      // M-3272: past the newest 500 — the archive's page around it (a search or pin jump to an older message).
+      if (!has()) await loadAround(name, key);
     } catch { /* the jump says it is not there */ }
     return has();
   }
+
+  // ── M-3272: scroll-back. Older pages come only when the reader reaches the very top (loadOlder, no prefetch); at most
+  // SCREEN_MAX messages are held — past it the far end is unloaded (the newest: `detached`, live messages wait in `held`;
+  // the oldest: `olderMore`), and read again as the reader scrolls back to it (loadNewer / loadOlder). A jump to a message
+  // no longer held loads the page around it (loadAround). The host serves them from its archive past the 500-message
+  // window (GET /ui/history/older | newer | around: an admin's; a guest gets none — it is refused, so nothing more).
+  function pagingOf(name) { return (s.paging[name] ??= {}); }
+  /** How many messages a chat holds: the live 500, or SCREEN_MAX once the reader has paged back. */
+  function capOf(name) { return s.paging[name]?.olderMore !== undefined || s.paging[name]?.detached ? SCREEN_MAX : 500; }
+  const keyOfRow = (m) => `${m.boot}-${m.id}`;
+  /** The reader is at the very top: the PAGE_SIZE messages before the oldest held. False: none (more), or busy. */
+  async function loadOlder(name) {
+    const p = pagingOf(name), rows = s.msgs[name] || [];
+    if (p.busy || p.olderMore === false || !rows.length) return false;
+    p.busy = true;
+    try {
+      const r = await api("GET", `/ui/history/older?instance=${encodeURIComponent(name)}&before=${keyOfRow(rows[0])}&limit=${PAGE_SIZE}`);
+      if (!r || !Array.isArray(r.messages)) { p.olderMore = false; return false; }
+      p.olderMore = r.more === true;
+      if (!r.messages.length) return false;
+      let next = R().mergeMessages(r.messages, s.msgs[name] || [], Infinity);
+      if (next.length > SCREEN_MAX) { next = next.slice(0, SCREEN_MAX); p.detached = true; }     // the newest end unloaded
+      s.msgs[name] = next;
+      changed(name, "page");
+      return true;
+    } catch { return false; } finally { p.busy = false; }
+  }
+  /** Scrolled back down to what is held, the newest unloaded: the next PAGE_SIZE; the live end reached: attached again. */
+  async function loadNewer(name) {
+    const p = pagingOf(name), rows = s.msgs[name] || [];
+    if (p.busy || !p.detached || !rows.length) return false;
+    p.busy = true;
+    try {
+      const r = await api("GET", `/ui/history/newer?instance=${encodeURIComponent(name)}&after=${keyOfRow(rows[rows.length - 1])}&limit=${PAGE_SIZE}`);
+      if (!r || !Array.isArray(r.messages)) return false;
+      let next = R().mergeMessages(s.msgs[name] || [], r.messages, Infinity);
+      if (r.more !== true) { next = R().mergeMessages(next, p.held || [], Infinity); p.detached = false; p.held = []; }
+      if (next.length > SCREEN_MAX) { next = next.slice(next.length - SCREEN_MAX); p.olderMore = true; }   // the oldest unloaded
+      s.msgs[name] = next;
+      if (!p.detached) settleOutgoing(name);
+      changed(name, "page");
+      return true;
+    } catch { return false; } finally { p.busy = false; }
+  }
+  /** The page around one message (a jump): what is held is replaced by it. False: it is in neither window nor archive. */
+  async function loadAround(name, key) {
+    const p = pagingOf(name);
+    const r = await api("GET", `/ui/history/around?instance=${encodeURIComponent(name)}&key=${encodeURIComponent(key)}&limit=${PAGE_SIZE}`);
+    if (!r || !Array.isArray(r.messages) || !r.messages.length) return false;
+    s.msgs[name] = R().mergeMessages([], r.messages, Infinity);
+    p.olderMore = r.olderMore === true; p.detached = r.newerMore === true; p.held = [];
+    changed(name, "msgs");
+    return true;
+  }
+  /** Jump to latest while scrolled back past an unloaded newest end: the live chat again, as a first visit reads it. */
+  async function backToLatest(name) {
+    const p = s.paging[name];
+    if (!p?.detached) return false;
+    const held = p.held || [];
+    delete s.paging[name];
+    s.historyRead.delete(name);
+    s.msgs[name] = R().mergeMessages([], held, 500);
+    changed(name, "msgs");
+    await openHistory(name);
+    return true;
+  }
+  /** What the thread needs to know: whether older or newer pages remain to be read. */
+  function pagingState(name) { const p = s.paging[name] || {}; return { olderMore: p.olderMore !== false, detached: !!p.detached }; }
 
   // ── Stop the reply under way (the composer's Stop, or Esc). Set before the request goes, so a held Esc or a second
   // click sends nothing more (#1317); "Stopping…" until the agent goes idle, or a minute passes.
@@ -685,6 +766,7 @@ export function createChatStore(deps) {
    */
   function onGap() {
     for (const name of new Set([...Object.keys(s.msgs), ...s.historyRead])) { s.historyRead.delete(name); s.gapped.add(name); }
+    s.paging = {};                         // M-3272: read again as a first visit — scroll-back starts over from the newest
     for (const name of shown()) void openHistory(name);
   }
   /** Wire the store to the app's stream, for the life of the page. */
@@ -715,7 +797,7 @@ export function createChatStore(deps) {
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
     uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
-    startReply, clearReply, findQuoted, addToDraft, captureDraft, draftCurrent, clearCapturedDraft, acceptDraft,
+    startReply, clearReply, findQuoted, loadOlder, loadNewer, loadAround, backToLatest, pagingState, addToDraft, captureDraft, draftCurrent, clearCapturedDraft, acceptDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree, reloadModelMenu,
     allHidden: (name) => s.allHidden.has(name),
   };

@@ -721,7 +721,8 @@ export function createThread(list, scroller, opts) {
   // grew by less than 48 px (the working line, a command card, the composer shrinking after a send) used to leave the
   // newest bubble clipped behind it, and the next growth past 48 px put the pill over it.
   const atBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight, 1);
-  function reportJump() { opts.onJump({ show: !nearBottom(), unseen }); }
+  // M-3272: scrolled back past an unloaded newest end, the pill stays (the live chat is not below what is drawn).
+  function reportJump() { opts.onJump({ show: !nearBottom() || opts.detached?.() === true, unseen }); }
   function toBottom() { snap(); scroller.scrollTop = scroller.scrollHeight; pinned = true; mark(); }
   /**
    * #2184: a thread's height is rarely a whole number of pixels, and a pinned view's offset is: so each time older messages
@@ -818,9 +819,22 @@ export function createThread(list, scroller, opts) {
     draw({ older: true });
   }
 
+  /**
+   * M-3272: the first message on screen and where it is, before a page of scroll-back changes what is held (a page
+   * appended below, the oldest unloaded above) — after it, the reader is put back where that message was on screen.
+   * Measured on screen (getBoundingClientRect), so a browser that anchored the scroll itself is not moved twice.
+   */
+  function screenAnchor() {
+    const top = scroller.getBoundingClientRect?.().top ?? 0;
+    for (const v of nodes.values()) { const r = v.node.getBoundingClientRect?.(); if (r && r.bottom > top) return { node: v.node, at: r.top }; }
+    return null;
+  }
   /** Draw `next` (this instance's messages). `restore`: the scroll position to return to (null = the bottom). */
   function render(next, renderOpts = {}) {
-    const stick = pinned || nearBottom();
+    // M-3272: `keep` — a page of scroll-back: never pulled to the bottom (a page appended below the reader is read, not
+    // skipped), the reader kept where they were.
+    const stick = !renderOpts.keep && (pinned || nearBottom());
+    const anchor = renderOpts.keep ? screenAnchor() : null;
     msgs = next || [];
     if (!msgs.length) {
       for (const v of nodes.values()) { stopIn(v.node); v.handle?.unmount(); }
@@ -841,7 +855,10 @@ export function createThread(list, scroller, opts) {
       if (renderOpts.restore == null) toBottom();
       else { scroller.scrollTop = renderOpts.restore; pinned = nearBottom(); mark(); }
     } else if (stick) toBottom();
-    else unseen += added;
+    else if (anchor) {
+      if (anchor.node.isConnected !== false) { const d = (anchor.node.getBoundingClientRect?.().top ?? anchor.at) - anchor.at; if (d) scroller.scrollTop += d; }
+      pinned = false; mark();
+    } else unseen += added;
     reportJump();
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
@@ -922,7 +939,11 @@ export function createThread(list, scroller, opts) {
     mark();
     if (bottom) unseen = 0;
     reportJump();
-    return bottom ? null : scroller.scrollTop;
+    // M-3272: older messages only at the very top, once everything held is drawn (no prefetch); the newest end, unloaded
+    // while scrolled back, again at the very bottom.
+    if (top <= 1 && startIndex() <= 0) opts.onTop?.();
+    if (atBottom() && opts.detached?.() === true) opts.onBottom?.();
+    return bottom && opts.detached?.() !== true ? null : scroller.scrollTop;
   }
   function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
   /** Show one message (the panel's "from …" link, #1481): scrolled into view and briefly marked. */
