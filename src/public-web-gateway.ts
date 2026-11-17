@@ -78,6 +78,10 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/ui\/page-share\/(?:[0-9a-f]{8}|all)$/.test(path)) return true;
   // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
+  // M-3278 (decision 7933bf90): routes the dashboard needs that were simply missing here (no handler refuses the link and
+  // none gave a reason): the model and effort pickers, and an agent's export/import (admin only, in their handlers).
+  if (method === "GET" && (path === "/ui/models" || path === "/ui/effort-options")) return true;
+  if (method === "POST" && (path === "/ui/models/refresh" || path === "/ui/agent-export/build" || path === "/ui/agent-export/parse")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
@@ -88,7 +92,11 @@ export function isPublicWebRoute(method: string, path: string): boolean {
 function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
-  if (method === "GET") return /^\/api\/settings\/(schema|restart-pending|fleet|fleet\/raw|classic|status-emojis|status-emojis\/guild-emojis|connections|provider-secrets|secrets|apply\/[^/]+|quickstart\/environment)$/.test(path)
+  // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
+  // decides who may (settingsSelfConfirmation / settingsCodeSession, by web authority); before, this list refused them
+  // before the handler — which says "over a link too" (AGEND-122).
+  if (method === "POST" && /^\/api\/settings\/pending\/[0-9a-f]{32}\/(confirm|confirm-totp)$/.test(path)) return true;
+  if (method === "GET") return /^\/api\/settings\/(schema|restart-pending|fleet|fleet\/raw|classic|status-emojis|status-emojis\/guild-emojis|connections|connector|provider-secrets|secrets|apply\/[^/]+|quickstart\/environment)$/.test(path)
     || /^\/api\/settings\/(provider-secrets|secrets)\/[^/]+\/apply\/[^/]+$/.test(path)
     || /^\/api\/settings\/connections\/[^/]+\/(secret|binding)\/apply\/[^/]+$/.test(path);
   if (method === "POST") return /^\/api\/settings\/(status-emojis\/preview|apply|restart-fleet|reload|fleet\/instances|quickstart\/(probe|plan|commit))$/.test(path)

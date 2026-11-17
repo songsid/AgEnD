@@ -718,7 +718,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | Log tab | ✅ with `web.log_tab: true` (off by default) | ✅ the same setting | ✅ the same setting |
 | Usage panel | ✅ | ✅ | ✅ |
 | Usage report | ✅ | ✅ with `web.usage_report_on_public_link: true` (off by default) | ✅ as B |
-| Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for a fleet admin's confirmation; a web-verified browser can confirm it by applying, when its account may confirm that change | ✅ a sensitive change always waits for a fleet admin's confirmation (in General, or on the host when no chat can confirm it), never by applying | ✅ as B |
+| Settings: agents, defaults, connections, ClassicBot rooms, apply and restart | ✅ a sensitive change waits for a fleet admin's confirmation; a web-verified browser can confirm it by applying, when its account may confirm that change | ✅ as A when this browser holds web authority over the link (`web.verified_authority.quick_link`, on by default; the fixed link: `named_link`), or by the admin's authenticator code (M-3278); otherwise it waits for a fleet admin's confirmation | ✅ as B |
 | Settings: Web, Appearance, Guests, Web authority, secrets and tokens | ✅ | ❌ refused | ❌ as B |
 | Office editing | ✅ | ❌ view only | ❌ as B |
 | Office share links (Share…, Settings' Revoke) | ✅ | ✅ a fleet admin; the share runs on its own tunnel, never this link's | ✅ as B |
