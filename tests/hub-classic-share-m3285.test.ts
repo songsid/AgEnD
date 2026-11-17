@@ -106,3 +106,9 @@ it("keeps private output fenced after the Classic room is unregistered",async()=
  const r=rig();expect(await r.ask()).toBe(true);r.classic.unregister("111111111111111111","fixture-adapter");
  const result=await r.send("reply",{text:"PRIVATE_AFTER_UNREGISTER"});expect(r.adapter.sendText).not.toHaveBeenCalled();expect(result.error).toMatch(/Hub|private/i);
 });
+
+it("keeps ordinary progress usable on an in-memory host without a data directory",()=>{
+ const fm=Object.create(FleetManager.prototype) as any;fm.instanceActivity=new Map();fm.instanceProgress=new Map();fm.cancelButtons=new Map();
+ fm.cacheInstanceActivity("fixture-agent","Reading");fm.cacheInstanceProgress("fixture-agent","A normal local task");
+ expect(fm.instanceActivity.get("fixture-agent")).toBe("Reading");expect(fm.instanceProgress.get("fixture-agent")).toBe("A normal local task");
+});

@@ -2622,7 +2622,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubClassicPrivacy: HubClassicPrivateTurns | null = null;
   private classicPrivacy():HubClassicPrivateTurns { return this.hubClassicPrivacy??=new HubClassicPrivateTurns(join(this.dataDir,"hub-classic-private.json")); }
   /** The mark outlives registration: a late tool from a removed room must not fall through to General. */
-  private classicHubPrivateBlocked(agent:string):boolean {return this.classicPrivacy().blocked(agent);}
+  private classicHubPrivateBlocked(agent:string):boolean {return !!this.dataDir && this.classicPrivacy().blocked(agent);}
   private classicHubSerialized(agent:string):boolean {
     if(this.classicHubPrivateBlocked(agent))return true;
     if(!this.isClassicInstance(agent))return false;
