@@ -1,6 +1,7 @@
 /**
  * #2453 (design #1939 §0.2): "Authorize this browser" over the admin's own named-tunnel hostname — opt-in
- * (`web.verified_authority.named_link`, off by default). The acceptance list of §0.2:
+ * (`web.verified_authority.named_link`, off by default until decision 7933bf90 — M-3277: on by default, like quick_link;
+ * `false` turns it off). The acceptance list of §0.2:
  * - Provenance: only the gateway says "named", and only on the exact configured hostname — never a header, a quick tunnel,
  *   or a named gateway that pinned a trycloudflare name.
  * - Admission: a quick tunnel is refused (public_link) with the option on or off; the named link with the option off is
@@ -105,9 +106,10 @@ describe("admission (§3 with §0.2)", () => {
     // A local session that claims the named peer off the gateway: never named, never verified as such.
     expect(evaluateWebAuthority(input({ gateway: false, peer: "named_link", session: session("local") })).refusal).toBe("public_link");
   });
-  it("the policy: off by default; only `true` turns it on", () => {
+  it("the policy: on by default (M-3277, decision 7933bf90); `false` turns it off; a value the validator refuses is off, never the default", () => {
     expect([webAuthorityPolicy(undefined).namedLink, webAuthorityPolicy({ verified_authority: { named_link: "yes" as never } }).namedLink,
-      webAuthorityPolicy({ verified_authority: { named_link: true } }).namedLink]).toEqual([false, false, true]);
+      webAuthorityPolicy({ verified_authority: { named_link: true } }).namedLink, webAuthorityPolicy({ verified_authority: { named_link: false } }).namedLink,
+      webAuthorityPolicy({ verified_authority: { named_link: null as never } }).namedLink]).toEqual([true, false, true, false, true]);
   });
 });
 
@@ -132,9 +134,9 @@ describe("the state: named_link remembered; back on after it was on moves the ep
   }
   it("first on: no move (nothing local is revoked by opening it); off: no move (its receipts read as none meanwhile); on again: a move", () => {
     const { s, files } = store();
-    const base = s.current({}).epoch;
+    const base = s.current({ named_link: false }).epoch;
     const first = s.current({ named_link: true });
-    const off = s.current({});
+    const off = s.current({ named_link: false });
     const again = s.current({ named_link: true });
     expect([first.namedLink, first.epoch - base, off.namedLink, off.epoch - base, again.namedLink, again.epoch - base, JSON.parse(files.get("/a.json")!).named_link_seen]).toEqual([true, 0, false, 0, true, 1, true]);
   });
@@ -150,7 +152,9 @@ describe("Settings: on is a confirmed change marked opensLink (AGEND-122: no hos
   const judge = (va: unknown, current?: Record<string, unknown>) =>
     prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: { ...structuredClone(FLEET), web: current ? { verified_authority: current } : {} } as any, classic: {} }).diff;
   it("on: a confirmed change, marked opensLink — alone, or mixed with keys that are immediate on their own", () => {
-    const alone = judge({ named_link: true }), mixed = judge({ named_link: true, loopback_only: true, max_session_hours: 6 });
+    // M-3277: on by default, so "on" is a widening only from an explicit false (to true, or to unset: the default).
+    const alone = judge({ named_link: true }, { named_link: false }), mixed = judge({ named_link: true, loopback_only: true, max_session_hours: 6 }, { named_link: false });
+    expect(judge({ named_link: null }, { named_link: false })?.opensLink, "false → unset (the default, on): a widening too").toBe(true);
     expect([alone?.opensLink, alone?.summary.join("\n").includes("named\\_link"), mixed?.opensLink]).toEqual([true, true, true]);
     expect([alone, mixed].map(d => d && "noSelfConfirm" in d)).toEqual([false, false]);          // the old host-only marks are gone
   });
@@ -185,7 +189,7 @@ describe("the fleet: a named-link session authorized, and the link's end", () =>
     } finally { h.close(); }
   });
   it("option off: named_link_off; a quick tunnel: public_link — and a named-link session at the Confirm tap is judged as the gateway request it is", () => {
-    const off = fleet(NAMED());
+    const off = fleet(NAMED(false));
     try {
       const rec = off.gatewaySession();
       expect([off.s.authorizeWebSession(rec, "named_link", true), off.s.authorizeWebSession(rec, "lan", true)]).toEqual([{ ok: false, refusal: "named_link_off" }, { ok: false, refusal: "public_link" }]);

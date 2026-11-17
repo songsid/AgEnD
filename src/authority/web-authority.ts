@@ -66,7 +66,7 @@ export interface WebAuthorityPolicy {
   /** The server switch as in force (authority-state.ts: off while its state cannot be written). */
   enabled: boolean;
   loopbackOnly: boolean;
-  /** §0.2: sessions over the admin's own named tunnel may qualify (web.verified_authority.named_link; off by default). */
+  /** §0.2: sessions over the admin's own named tunnel may qualify (web.verified_authority.named_link; namedLinkEffective). */
   namedLink: boolean;
   /** §0.3: sessions over the temporary public link may qualify (web.verified_authority.quick_link; quickLinkEffective). */
   quickLink: boolean;
@@ -79,7 +79,7 @@ export function webAuthorityPolicy(web: WebConfig | undefined): WebAuthorityPoli
   const hours = typeof v?.max_session_hours === "number" && Number.isFinite(v.max_session_hours)
     ? Math.min(VERIFIED_SESSION_HOURS.max, Math.max(VERIFIED_SESSION_HOURS.min, v.max_session_hours)) : VERIFIED_SESSION_HOURS.default;
   // §0.1: the switch is on unless fleet.yaml says false (nothing carries authority until its account confirms anyway).
-  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, namedLink: v?.named_link === true,
+  return { enabled: v?.enabled !== false, loopbackOnly: v?.loopback_only === true, namedLink: namedLinkEffective(v),
     quickLink: quickLinkEffective(v), maxSessionMs: hours * 3_600_000 };
 }
 
@@ -96,6 +96,16 @@ export const QUICK_LINK_DEFAULT = true;
  */
 export function quickLinkEffective(v: { quick_link?: unknown } | undefined | null, fallback: boolean = QUICK_LINK_DEFAULT): boolean {
   return v?.quick_link === undefined || v.quick_link === null ? fallback : v.quick_link === true;
+}
+/**
+ * §0.2: the release default of `web.verified_authority.named_link` — on, like quick_link (decision 7933bf90, the user
+ * 2026-11-17: an admin session has the same features on every link; off by default since #2453). A session over the named
+ * link still needs its account's proof (a private /web code, or the Confirm card); `named_link: false` turns it off.
+ */
+export const NAMED_LINK_DEFAULT = true;
+/** §0.2: the named-link option as in force — as quickLinkEffective: unset is the default; a value the validator refuses is off. */
+export function namedLinkEffective(v: { named_link?: unknown } | undefined | null, fallback: boolean = NAMED_LINK_DEFAULT): boolean {
+  return v?.named_link === undefined || v.named_link === null ? fallback : v.named_link === true;
 }
 
 /** Headers a proxy adds; any one of them makes a request `lan`, whatever its peer address (§3.4). */

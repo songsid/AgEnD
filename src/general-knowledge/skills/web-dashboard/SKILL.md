@@ -127,16 +127,23 @@ on, grant them their agents in Settings → Access & security → Guests, and pr
 send `/web`). The Guests section is not in Settings over the public link.
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
-account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
+account.
+- **Signed in with a private /web code (M-3277).** A code sent to the admin privately (a DM, Discord's private reply when
+  DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
+  "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
+  out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
+- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
 **Confirm** and **Not me**. A card left for 5 minutes is marked expired on the card, and the line offers Authorize
 again. Confirm within 5 minutes and the session menu says **Verified · speaks as you until …**; the composer's row says
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
-Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
+Not me signs that browser out, also after Confirm, from the same card. The card, and its expired and ended texts, also
+offer the other way: sign in again with `/web` (a private code verifies at once). At most one card waits per browser, and 3 an hour
 per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
-(`named_link`, off by default); over the temporary public link `/web` opens while **Also over the temporary public
+(`named_link`, on by default since M-3277; `named_link: false` turns it off); over the temporary public link `/web` opens while **Also over the temporary public
 link** is on (`quick_link`, on by default since #2819, §0.3; `quick_link: false` turns it off). That authority ends with the link, and the card says "over your named link"
 or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on

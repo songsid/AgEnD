@@ -146,7 +146,8 @@ function fleet(platform: "telegram" | "discord" = "telegram", ids = ["a", "b"], 
   const dir = mkdtempSync(join(tmpdir(), "agend-2170-fleet-")); roots.push(dir);
   const fm = new FleetManager(dir), any = fm as any;
   const channels = ids.map((id, i) => ({ id, type: types[id] ?? platform, mode: "topic", group_id: `-100${i + 1}`, access: { mode: "open", allowed_users: [`${id}-F`, "both-F"] } }));
-  fm.fleetConfig = { defaults: { backend: "codex" }, channels, web: { verified_authority: { enabled: true } },
+  // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
+  fm.fleetConfig = { defaults: { backend: "codex" }, channels, web: { verified_authority: { enabled: true, named_link: false } },
     instances: Object.fromEntries(ids.map((id, i) => [`general_${id}`, { working_directory: dir, general_topic: true, channel_id: id, topic_id: i + 1 }])) } as any;
   const adapters = channels.map((channel) => Object.assign(new EventEmitter(), { id: channel.id, type: channel.type,
     notifyAlert: vi.fn(async (chatId: string, _a: unknown, o: any) => ({ chatId, messageId: `${channel.id}-prompt`, threadId: o?.threadId })),

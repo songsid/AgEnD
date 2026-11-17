@@ -547,8 +547,9 @@ export interface WebVerifiedAuthorityConfig {
   /** A session's authorization lasts this many hours after it was given, 1–48 (default 48). */
   max_session_hours?: number;
   /**
-   * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — off by
-   * default. Turning it on is confirmed in a General or on the host (never by the asking session); off applies at once
+   * #2453 (§0.2): sessions over the admin's own named tunnel (`web.public_link.hostname`) may be authorized too — on by
+   * default since decision 7933bf90 (the user, 2026-11-17; off before), and `false` turns it off. Turning it back on is
+   * confirmed in a General or on the host (never by the asking session); off applies at once
    * and every receipt from a named-link session reads as none. A quick tunnel is `quick_link`'s (§0.3).
    */
   named_link?: boolean;
