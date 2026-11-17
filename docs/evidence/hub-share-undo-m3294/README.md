@@ -86,3 +86,9 @@ The file reproduced the two missing-table failures locally, then passed all seve
 The PM accepted both connected Settings retakes and the earlier Notices. The remaining required wording is now exact: connecting does not share an agent; **other people can see and ask one only after you share it** / **要你自己分享之後，其他人才看得到、才能提問**. This agrees with the separate hint explaining the owner-only unshared inventory. The PM requested no additional capture round for this sentence. The retakes therefore bind the accepted layout, with this subsequent wording change disclosed. The optional section-lead reordering is left for S-172.
 
 Only the EN/zh-TW `connectedHint` values changed in this step. The two affected connection-card/locale suites pass 42/42, retained in `pm-r3/copy.log.gz`; their cases overlap the earlier packet. `pmR3SourceSha256` binds that one UI file.
+
+## CI confirmation-status selector correction
+
+CI on `8ce7383b` found two failures in `hub-story-fixes-2988`: its helper selected any descendant status under Shared agents, so it read the newly nested setting's unavailable message instead of the individual Share confirmation. The two selectors now target the section's direct status child. All EN/zh-TW confirmation text assertions remain unchanged.
+
+The file reproduced 2 failures / 17 passes, then passed 19/19. `ci-r4/` retains the before and after logs, and `ciR4SourceSha256` binds the one test file. Runtime, UI, skills, captures and production migrations are unchanged; no browser or wider campaign was repeated.

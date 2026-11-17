@@ -258,7 +258,7 @@
   "evidenceSha256": [
     {
       "path": "docs/evidence/hub-share-undo-m3294/README.md",
-      "sha256": "5d3acf20111497f8b23ce7b7bf5a7aad0e88774cc62fcbeb705e0ec9c01d922c"
+      "sha256": "9221ba9bcb6debe5534e713d4cfc2b806254606b9c164b82672843f7a895a4fd"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/ci-r2/after.log.gz",
@@ -267,6 +267,14 @@
     {
       "path": "docs/evidence/hub-share-undo-m3294/ci-r2/before.log.gz",
       "sha256": "507a1c52559facf97999d603d89703aba5c48a96b0ac208317415e85686a9556"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/ci-r4/after.log.gz",
+      "sha256": "03c569c338a6dbaac2959a73767b9076dcfee96782fcc6dd752f17ba1e01913f"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/ci-r4/before.log.gz",
+      "sha256": "7da3c4ba1cc63eb6632a7027ad3119514205e34b92aebd1636082acacb2eaba4"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/logs/browser.log.gz",
@@ -707,6 +715,12 @@
     {
       "path": "src/ui/settings-hub-connection.js",
       "sha256": "1c71cb97d1c4b0899dbcdeb0fdcf389154d3e414a9dfbc5d0044a39fbd409c70"
+    }
+  ],
+  "ciR4SourceSha256": [
+    {
+      "path": "tests/hub-story-fixes-2988.test.ts",
+      "sha256": "06ee2e17cfa21aea6e5e66aa11eeb127f3df6e3510b178a78139d88c06e3df4f"
     }
   ]
 }
