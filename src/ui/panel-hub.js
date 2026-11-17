@@ -938,7 +938,7 @@ function HubRoomInfo({ room, closed = false, denied = false }) {
 // ── My shared agents and Administration (#3226 C): Settings' page layout (PageHead, .s-section-layout cards, .s-row
 // rows), a destructive step behind a row's menu and a confirmation ──
 const DAYS_LEFT = (ms) => daysLeft(ms);
-const stateTag = (state) => state === "published" ? html`<span class="tag ok">${ho("stateShared")}</span>`
+const stateTag = (state, personal = false) => state === "published" ? html`<span class="tag ok">${personal ? hp("publicationSaved") : ho("stateShared")}</span>`
   : state === "paused" ? html`<span class="tag warn">${t("hubSharing.paused")}</span>`
   : state === "frozen" ? html`<span class="tag warn">${ho("statePaused")}</span>` : html`<span class="tag">${ho("stateWithdrawn")}</span>`;
 const mayAsk = (n) => (n === 0 ? ho("mayAskNone") : n === 1 ? ho("mayAskOne") : ho("mayAsk", n));
@@ -1001,10 +1001,10 @@ function HubMine() {
         </div>`)}</div></section>` : null}
       ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
-      ${mine.length ? html`<section class="card hub-shared"><h3>${ho("sharedCount", mine.length)}</h3>
+      ${mine.length ? html`<section class="card hub-shared"><h3>${ho(mine.some(e => e.kind === "personal") ? "yourAgentsCount" : "sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong><small class="note">${grantSummary(e.grants)}</small></span>
-          ${stateTag(e.state)}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
+          ${stateTag(e.state, e.kind === "personal")}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
     </div></div>`;
 }
 
@@ -1038,7 +1038,7 @@ function HubAgentPage({ x, act, msg }) {
   const acts = activity && activity.activity ? activity.activity : [];
   return html`<div class="col hub-owner">
     <a class="hub-crumb" href="/ui/hub/exposures"><${Icon} name="back" size=${14} />${ho("backToMine")}</a>
-    <${PageHead} title=${x.displayName} scope=${stateTag(x.state)} lead=${!grants.length && roomCount > 0
+    <${PageHead} title=${x.displayName} scope=${stateTag(x.state, x.kind === "personal")} lead=${!grants.length && roomCount > 0
       ? `${hroom("agentNoOneToOne")} · ${roomCount === 1 ? hroom("inRoomsOne") : hroom("inRoomsMany", String(roomCount))}` : grantSummary(grants)} />
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}

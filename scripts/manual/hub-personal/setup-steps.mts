@@ -39,6 +39,7 @@ const until=async(fn:()=>boolean)=>{const deadline=Date.now()+5000;while(!fn()){
 try{
  browser=await pw.chromium.launch({headless:true,args:["--no-sandbox"]});
  for(const [index,[device,language,theme]] of [["desktop","en","light"],["phone","zh-TW","dark"]].entries()){
+  if(process.env.DEVICE&&process.env.DEVICE!==device)continue;
   const login=index?"wang":"alex",person=owners[index]!,tag=`${device}-${language}-${theme}`,cookieOwner=await r.signIn(login);
   await r.call(admin,"PUT","/hub/v1/admin/personal-agents",{enabled:false,people:[],teams:[]});
   const ctx=await browser.newContext({viewport:device==="phone"?{width:390,height:844}:{width:1366,height:900},locale:language,colorScheme:theme,ignoreHTTPSErrors:true});
@@ -50,6 +51,7 @@ try{
   const sign=async(cookie:string)=>{const i=cookie.indexOf("=");await ctx.clearCookies();await ctx.addCookies([{name:cookie.slice(0,i),value:cookie.slice(i+1),url:origin,httpOnly:true,secure:true,sameSite:"Strict"}]);};
   const shot=async(name:string,selector:string)=>{
    if(!["disabled-admin","disabled-member","setup","install","ready","working","offline","configure"].includes(name))return;
+   if(process.env.CAPTURE_STATES&&!process.env.CAPTURE_STATES.split(",").includes(name))return;
    const card=p.locator(selector),viewport=p.viewportSize();
    const bounds=await card.boundingBox();
    if(phase!=="compact")await p.setViewportSize({...viewport,height:Math.max(viewport.height,Math.ceil(bounds.height)+180)});
@@ -97,6 +99,6 @@ try{
   reported.status="offline";await p.waitForFunction(expected=>document.querySelector("[data-personal-agent] .tag")?.textContent?.includes(expected),index?"上線時回答":"Answers when connected");await shot("offline","[data-personal-agent]");
   check(`${tag}/no-page-errors`,errors.length===0);await ctx.close();
  }
- check("checked-screens",receipt.pictures.length===(process.env.CHECK_LINK_ONLY?1:phase==="compact"?16:14)&&receipt.checks.length>0);
+ check("checked-screens",receipt.pictures.length===(process.env.CAPTURE_STATES?process.env.CAPTURE_STATES.split(",").length*(process.env.DEVICE?1:2):process.env.CHECK_LINK_ONLY?1:phase==="compact"?16:14)&&receipt.checks.length>0);
  writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2)+"\n");console.log(JSON.stringify({checks:receipt.checks.length,pictures:receipt.pictures.length,pass:true}));
 }finally{await browser?.close();await r.close();runtime.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));rmSync(privateHome,{recursive:true});}
