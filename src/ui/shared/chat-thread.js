@@ -14,7 +14,7 @@ import { textLinkSegments } from "/assets/app-route.js";
 
 const R = () => globalThis.AgendChatRender;
 /** #1589: the public link plays no media in the page (its page says so: <body data-public-link="1">); #2547: its text cards show. */
-const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1";
+const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1" && globalThis.document?.body?.dataset?.linkMedia !== "1";   // M-3278: an admin's link page plays them
 /** #1589: how much of a text attachment is shown before "Show all". */
 export const TEXT_PREVIEW_LINES = 200;
 /** #1589: the most elements one formatted text card may build (table cells, highlight spans, Markdown elements), Show all

@@ -174,9 +174,12 @@ describe("who reads what", () => {
     const off = get({ usage_panel: false }, false); await settle();
     expect(off.json()).toEqual({ enabled: true, unit: 100_000, detail: false, levels: { "dev-a": { level: 12 }, "ops-bot": { level: 4 } } });
   });
-  it("the public link: the level only, unless web.usage_report_on_public_link is true", async () => {
-    const no = get(undefined, true); await settle();
+  // M-3278 (decision 7933bf90): the numbers over the link by default; the level only when the switch is explicitly false.
+  it("the public link: the numbers unless web.usage_report_on_public_link is false (M-3278: on by default)", async () => {
+    const no = get({ usage_report_on_public_link: false }, true); await settle();
     expect([no.status(), no.json().detail, no.json().levels["dev-a"]]).toEqual([200, false, { level: 12 }]);
+    const unset = get(undefined, true); await settle();
+    expect(unset.json().levels["dev-a"]).toEqual(L["dev-a"]);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
     expect(yes.json().levels["dev-a"]).toEqual(L["dev-a"]);
     expect(isPublicWebRoute("GET", "/ui/office-levels")).toBe(true);

@@ -80,8 +80,9 @@ export class SettingsHttpConfirmation {
       json(res, result === null ? 404 : 200, result === null ? { error: "not_found" } : Array.isArray(result) ? result.map(mine) : mine(result)); return true;
     }
     // #2868: "Apply now" — the requester's own pending change, confirmed by this browser exactly as its save would have
-    // been (#2170): web-verified now, an admin of its effect owners, never over the public link, a General told. Anything
-    // else: 403, and the change keeps waiting for General or the host.
+    // been (#2170): web-verified now, an admin of its effect owners, a General told. Over a link the settings role decides
+    // (settingsSelfConfirmation: its link option; M-3278). Anything else: 403, and the change keeps waiting for General or
+    // the host.
     const self = path.match(/^\/api\/settings\/pending\/([0-9a-f]{32})\/confirm$/);
     if (self && method === "POST") {
       const principal = this.options.principal(req);
@@ -125,11 +126,10 @@ export class SettingsHttpConfirmation {
     if (isCliInstallPath(path) && gatewayRequestContext(req)) { json(res, 403, { error: "install_not_over_public_link" }); return true; }
     const installPrincipal = isCliInstallPath(path) ? this.options.principal(req) : undefined;
     if (isCliInstallPath(path) && !installPrincipal?.current()) { json(res, 401, { error: "session_required" }); return true; }
-    // #1620: the web settings (sessions, the browser terminal, the public link itself) are never changed over the
-    // temporary public link — the same rule as tokens and secrets: refused before anything is proposed.
-    if ((path === "/api/settings/fleet/web" || path.startsWith("/api/settings/public-tunnel-token/")) && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
-    // #1629 r4.1 Q3 (b): the card's upload limits too (absent from the public link's manifest as well).
-    if (path === "/api/settings/fleet/appearance" && gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
+    // #1620: the tunnel token is never changed over the public link — the same rule as tokens and secrets. M-3278
+    // (decision 7933bf90): the web settings and the appearance limits are proposed over the link as anywhere; what may be
+    // confirmed there is the settings role's (a change that opens a link still waits for a fleet admin).
+    if (path.startsWith("/api/settings/public-tunnel-token/") && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
     if (path.startsWith("/api/settings/hub/") && gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }

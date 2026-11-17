@@ -473,11 +473,14 @@ describe("GET /ui/usage-report: who gets it", () => {
     const off = get({ usage_panel: false }, false); await settle();
     expect([off.status(), off.usageReport.mock.calls.length]).toEqual([404, 0]);
   });
-  it("the public link: refused unless web.usage_report_on_public_link is true", async () => {
-    const no = get(undefined, true); await settle();
+  // M-3278 (decision 7933bf90): on by default over the link; refused only when the switch is explicitly false.
+  it("the public link: served unless web.usage_report_on_public_link is false (M-3278: on by default)", async () => {
+    const no = get({ usage_report_on_public_link: false }, true); await settle();
     expect([no.status(), JSON.parse(no.body()).error, no.usageReport.mock.calls.length]).toEqual([403, "usage_report_not_over_public_link", 0]);
     // Where it is turned on: Settings → Web on the dashboard reached directly (this computer's own address).
     expect(JSON.parse(no.body()).settings).toBe("http://localhost:19280/settings/web-dashboard");   // #2347: Web dashboard
+    const unset = get(undefined, true); await settle();
+    expect(unset.status()).toBe(200);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
     expect(yes.status()).toBe(200);
   });

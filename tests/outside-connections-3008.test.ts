@@ -19,7 +19,7 @@
  * A real fleet over HTTP, its public link through the REAL gateway with only the tunnel stubbed (no cloudflared, no
  * trycloudflare — the leader's rule for this host):
  *  - setting up / removal answer an admin session on a direct connection (a LAN session too) and nobody else (a session over the
- *    link, a guest, a header token, no session: refused; over the link the gateway refuses the routes outright); the switch
+ *    link, a guest, a header token, no session: refused; over the link the fleet refuses them — M-3278: the gateway routes them); the switch
  *    answers only this computer's host admin;
  *  - on needs an app set up; it opens the link (owned by this computer's admin); the status shows its address here only;
  *  - over the link: the sign-in code works once, makes an admin session that is web-verified as this computer's admin,
@@ -213,15 +213,23 @@ describe("#3008 a real fleet: connections from outside", () => {
     expect(status).toMatchObject({ webOnly: true, here: true, manage: true, enrolled: true, outside: true, link: { state: "open", url: `https://${HOST}/signin`, quick: true } });
     expect(JSON.stringify(status)).not.toContain(Buffer.from(key).toString("hex"));
     expect(parse(await h.local(s, "GET", "/ui/outside", undefined, lan)).link.url).toBeUndefined();          // the address is this computer's only
-    // Over the link: the status reads (no address, nothing to manage), the changes are refused by the gateway itself.
+    // Over the link: the status reads (no address). M-3278 (decision 7933bf90): an admin session there manages it as from the LAN.
     const r = await h.codeIn(key);
     expect(r.status).toBe(200);
     const remote = r as { cookie: string; sessionId: string };
     const there = parse(await h.outside("GET", "/ui/outside", { session: remote }));
-    expect([there.here, there.manage, there.outside, there.link.url]).toEqual([false, false, true, undefined]);
+    expect([there.here, there.manage, there.outside, there.link.url]).toEqual([false, true, true, undefined]);
+    // M-3278: an admin over the link manages the app as from the LAN — changing an app that exists asks its current code (a
+    // wrong one: 401); a set-up is finished only by the attempt that was started; the switch stays this computer's host
+    // admin's (refused from the LAN too).
+    const outcome: Record<string, [number, string]> = {};
     for (const path of ["/ui/outside/enroll", "/ui/outside/enroll/confirm", "/ui/outside/remove", "/ui/outside/switch"]) {
-      expect((await h.outside("POST", path, { session: remote, body: { on: false, code: "123456" } })).status).toBe(404);
+      const over = await h.outside("POST", path, { session: remote, body: { on: false, code: "123456" } });
+      outcome[path] = [over.status, parse(over).error];
     }
+    expect(outcome).toEqual({ "/ui/outside/enroll": [401, "wrong"], "/ui/outside/enroll/confirm": [403, "outside_not_here"],
+      "/ui/outside/remove": [401, "wrong"], "/ui/outside/switch": [403, "outside_not_here"] });
+    expect(h.fm.getPublicWebStatus().state).toBe("open");
     // That session's cookie carried straight to this computer's port (not through the link): a gateway session, no one here.
     expect((await h.local(remote, "POST", "/ui/outside/switch", { on: false })).status).not.toBe(200);
     expect((await h.local(remote, "POST", "/ui/outside/enroll", {})).status).not.toBe(200);

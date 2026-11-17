@@ -314,9 +314,9 @@ describe("a person's card wins, field by field", () => {
 });
 
 describe("the card's routes", () => {
-  it("on the public link (r4.1 Q2) — theme reset and lock still off it; the page's card reads are passive", () => {
-    for (const [m, p] of [["GET", "/api/card/a"], ["GET", "/api/card/a/portrait"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/card/a/portrait"], ["DELETE", "/api/card/a"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
-    for (const [m, p] of [["POST", "/api/card/a"], ["POST", "/api/card/a/avatar"], ["POST", "/ui/themes/a/reset"], ["POST", "/ui/themes/a/lock"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
+  it("on the public link (r4.1 Q2) — theme reset and lock on it too (M-3278); the page's card reads are passive", () => {
+    for (const [m, p] of [["GET", "/api/card/a"], ["GET", "/api/card/a/portrait"], ["POST", "/api/card/a/banner"], ["DELETE", "/api/card/a/portrait"], ["DELETE", "/api/card/a"], ["POST", "/ui/themes/a/reset"], ["POST", "/ui/themes/a/lock"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
+    for (const [m, p] of [["POST", "/api/card/a"], ["POST", "/api/card/a/avatar"]] as const) expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
     expect([isPassiveWebRead("GET", "/api/card/a"), isPassiveWebRead("GET", "/api/card/a/banner"), isPassiveWebRead("DELETE", "/api/card/a")]).toEqual([true, true, false]);
   });
   it("through the handler: a person's edits (session and public link alike), resolved over the agent's; Reset clears only the agent's", async () => {

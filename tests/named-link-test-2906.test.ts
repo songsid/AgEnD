@@ -436,7 +436,7 @@ describe("#2906 wording (the user: never 公司 / company)", () => {
   });
 });
 
-describe("#2906 the route: admin only, never over the public link, closed codes only", () => {
+describe("#2906 the route: admin only (over the public link too, M-3278), closed codes only", () => {
   async function api() {
     const token = "c".repeat(48), sessions = new WebSessionStore({});
     let gateway = false;
@@ -452,7 +452,7 @@ describe("#2906 the route: admin only, never over the public link, closed codes 
     const session = (tier: "admin" | "read" | "guest", surface: "local" | "gateway" = "local") => {
       const made = sessions.create({ tier, surface, label: "scratch", tokenEpoch: tokenEpoch(token), ...(surface === "gateway" ? { exposureId: "e".repeat(32) } : {}), ...(tier === "guest" ? { owner: { adapterId: "web", userId: "g" } } : {}) });
       last = made.sessionId;
-      return { cookie: `agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
+      return { cookie: `${surface === "gateway" ? "__Host-" : ""}agend_session=${made.sessionId}`, origin, "x-agend-csrf": csrfTokenFor(made.sessionId), "content-type": "application/json" } as Record<string, string>;
     };
     let last = "";
     const post = (headers: Record<string, string>, body: unknown) => new Promise<{ status: number; raw: string }>((resolve, reject) => {
@@ -480,13 +480,16 @@ describe("#2906 the route: admin only, never over the public link, closed codes 
     expect(r.raw).not.toContain(TOKEN);
     expect(JSON.parse(r.raw)).toEqual({ steps: [{ step: "values", ok: true, code: "ok" }], hostname: HOST, port: 19282 });
   });
-  it("refused: a read or guest session, no session, and anything over the public link (even an admin's)", async () => {
+  it("refused: a read or guest session and no session, here or over the public link; an admin's over the link is served (M-3278)", async () => {
     const h = await api();
     for (const headers of [h.session("read"), h.session("guest"), { "content-type": "application/json" }]) expect((await h.post(headers, { hostname: HOST })).status).toBeGreaterThanOrEqual(401);
     h.setGateway(true);
-    const over = await h.post(h.session("admin", "gateway"), { hostname: HOST });
-    expect([over.status, JSON.parse(over.raw).error]).toEqual([403, "web_settings_not_over_public_link"]);
+    for (const headers of [h.session("read", "gateway"), h.session("guest", "gateway"), { "content-type": "application/json" }]) expect((await h.post(headers, { hostname: HOST })).status).toBeGreaterThanOrEqual(401);
     expect(h.testNamedLink).not.toHaveBeenCalled();
+    // M-3278 (decision 7933bf90): an admin session over the public link tests the named link as on the dashboard reached directly.
+    const over = await h.post(h.session("admin", "gateway"), { hostname: HOST });
+    expect(over.status).toBe(200);
+    expect(h.testNamedLink).toHaveBeenCalledTimes(1);
   });
   it("#2907 review (1): a session revoked while its body is still arriving starts nothing (401)", async () => {
     const h = await api();

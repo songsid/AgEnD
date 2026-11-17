@@ -235,9 +235,9 @@ describe("3. refusals", () => {
  * One request through the real web routes as the temporary public link's page (a gateway session) or a local page, with
  * a minimal context (schedules-1724's pattern): the board's routes only need the scheduler and the fleet's config.
  */
-function viaLink(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; fleetConfig?: unknown; needs?: unknown[] } = {}) {
+function viaLink(db: SchedulerDb, method: string, path: string, body?: unknown, opts: { local?: boolean; fleetConfig?: unknown; needs?: unknown[]; tier?: "admin" | "read" } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com", local = "http://127.0.0.1:19280";
-  const s = sessions.create({ tier: "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
+  const s = sessions.create({ tier: opts.tier ?? "admin", surface: opts.local ? "local" : "gateway", exposureId: opts.local ? undefined : exposureId, label: "t", tokenEpoch: tokenEpoch(TOKEN) } as never);
   const origin = opts.local ? local : pub;
   const headers: Record<string, string> = { host: new URL(origin).host, cookie: `${opts.local ? "" : "__Host-"}agend_session=${s.sessionId}`, origin, "sec-fetch-site": "same-origin",
     "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" };
@@ -262,60 +262,74 @@ function scratchDb(): SchedulerDb {
 const ANN = { kind: "person" as const, name: "Ann" };
 
 describe("4. the public link reads the board and changes nothing on it", () => {
-  it("its manifest: the reads; no write route of the board's own", () => {
-    for (const [method, path] of [["GET", "/ui/tasks/board"], ["GET", "/ui/tasks/search"], ["GET", "/ui/tasks/cards/M-3"]] as const) {
+  // M-3278 (decision 7933bf90): the board's writes are on the manifest too — an admin session works the board over the link.
+  it("its manifest: the reads and (M-3278) the board's writes", () => {
+    for (const [method, path] of [["GET", "/ui/tasks/board"], ["GET", "/ui/tasks/search"], ["GET", "/ui/tasks/cards/M-3"],
+      ["POST", "/ui/tasks/cards/M-3"], ["POST", "/ui/tasks/cards/M-3/move"], ["POST", "/ui/tasks/cards/S-1/reorder"], ["POST", "/ui/tasks/projects/2"],
+      ["DELETE", "/ui/tasks/cards/M-3"],
+      ["POST", "/ui/tasks"], ["POST", "/ui/tasks/aaaaaaaa-0000-0000-0000-000000000001"],          // the old list's create and update
+    ] as const) {
       expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(true);
     }
-    for (const [method, path] of [
-      ["POST", "/ui/tasks/cards/M-3"], ["POST", "/ui/tasks/cards/M-3/move"], ["POST", "/ui/tasks/cards/S-1/reorder"], ["POST", "/ui/tasks/projects/2"],
-      ["DELETE", "/ui/tasks/cards/M-3"], ["GET", "/ui/tasks/cards/M-3/move"],
-      ["POST", "/ui/tasks"], ["POST", "/ui/tasks/aaaaaaaa-0000-0000-0000-000000000001"],          // the old list's create and update
-    ] as const) expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(false);
+    expect(isPublicWebRoute("GET", "/ui/tasks/cards/M-3/move")).toBe(false);
   });
 
-  it("the handlers refuse every board write over the link (403), the old /ui/tasks create and update too", async () => {
+  // M-3278 (decision 7933bf90): an admin session writes the board over the link as itself (the person), never `script public-link`.
+  it("M-3278: an admin session over the link writes the board as itself", async () => {
     const db = scratchDb();
     db.board.createProject(ANN, { name: "Game" });
     db.board.createCards(ANN, { project: "Game", cards: [{ title: "Ship it", assignee: "dev-a" }] });
-    const refused = { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" };
-    for (const [path, body] of [
-      ["/ui/tasks/cards", { title: "x" }], ["/ui/tasks/cards/M-1", { goal: "x" }], ["/ui/tasks/cards/M-1/move", { to: "done" }],
-      ["/ui/tasks/cards/M-1/reorder", { after: null }], ["/ui/tasks/projects", { name: "Other" }], ["/ui/tasks/projects/1", { archived: true }],
-      ["/ui/tasks", { title: "x" }], [`/ui/tasks/${db.board.getCard("M-1").uuid}`, { action: "update", title: "x" }],
-    ] as const) expect(await viaLink(db, "POST", path, body), path).toEqual({ status: 403, body: refused });
-    expect(db.board.boardCards().map((c) => c.code)).toEqual(["M-1"]);
-    expect(db.board.getCard("M-1")).toMatchObject({ status: "open", goal: "", version: 1 });
-    expect(db.board.listProjects(true).map((p) => [p.name, p.archived])).toEqual([["Game", false]]);
-    const read = await viaLink(db, "GET", "/ui/tasks/board");
-    expect([read.status, read.body.cards.map((c: any) => c.id)]).toEqual([200, ["M-1"]]);
+    expect((await viaLink(db, "POST", "/ui/tasks/cards/M-1", { goal: "from the link" })).status).toBe(200);
+    expect((await viaLink(db, "POST", "/ui/tasks/projects", { name: "Other" })).status).toBe(200);
+    expect(db.board.getCard("M-1")).toMatchObject({ goal: "from the link" });
+    expect(db.board.listProjects(true).map((p) => p.name)).toEqual(["Game", "Other"]);
+    expect(JSON.stringify(db.board.detail("M-1").history)).not.toMatch(/public-link/);
+  });
+  it("M-3278: a read-only session reads the board and changes nothing — over the link or on the local page", async () => {
+    const db = scratchDb();
+    db.board.createProject(ANN, { name: "Game" });
+    db.board.createCards(ANN, { project: "Game", cards: [{ title: "Ship it", assignee: "dev-a" }] });
+    for (const local of [false, true]) {
+      const opts = { tier: "read" as const, ...(local ? { local: true } : {}) };
+      expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, opts)).status, `read board local=${local}`).toBe(200);
+      for (const [path, body] of [["/ui/tasks/cards/M-1", { goal: "no" }], ["/ui/tasks/projects", { name: "No" }], ["/ui/tasks", { title: "No" }]] as const) {
+        const r = await viaLink(db, "POST", path, body, opts);
+        expect([path, local, r.status]).toEqual([path, local, 403]);
+      }
+    }
+    expect(db.board.getCard("M-1").goal ?? "").not.toBe("no");
+    expect(db.board.listProjects(true).map((p) => p.name)).toEqual(["Game"]);
   });
 
-  it("the old /ui/tasks routes: refused over the link, the person's on the local page; a malformed id is a 400", async () => {
+  it("the old /ui/tasks routes: the person's on the local page and (M-3278) an admin's over the link; a malformed id is a 400", async () => {
     const db = scratchDb();
     const card = db.board.createCards(ANN, { cards: [{ title: "Ship it", assignee: "dev-a" }] }).cards[0]!;
     db.claimTask(card.uuid, "dev-a", { kind: "instance", name: "dev-a" });
     db.completeTask(card.uuid, "shipped", { kind: "instance", name: "dev-a" });
-    expect((await viaLink(db, "POST", `/ui/tasks/${card.uuid}`, { action: "update", status: "done" })).status).toBe(403);
+    // M-3278: an admin session over the link creates on the old route, as the person.
+    expect((await viaLink(db, "POST", "/ui/tasks", { title: "From the link" })).status).toBe(200);
     expect(db.board.getCard("M-1").status).toBe("review");
     expect((await viaLink(db, "POST", `/ui/tasks/${card.uuid}`, { action: "update", status: "done" }, { local: true })).body.status).toBe("done");
     expect((await viaLink(db, "POST", "/ui/tasks", { title: "From the page" }, { local: true })).status).toBe(200);
     expect((await viaLink(db, "POST", "/ui/tasks/%E0%A4%A", { action: "update", status: "done" }, { local: true })).status).toBe(400);
   });
 
-  it("cards of instances kept out of sight (cross_instance_visibility: hidden) are left out over the link; the local page shows them", async () => {
+  // M-3278 (decision 7933bf90): the link's hiding applies to a read-only session there; an admin session sees the board whole.
+  it("cards of instances kept out of sight (cross_instance_visibility: hidden) are left out over the link for a read-only session (M-3278: an admin's sees them); the local page shows them", async () => {
     const db = scratchDb();
     db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Secret work", assignee: "spy" },
       { title: "Handed out by the spy", assignee: "dev-a", dispatcher: { kind: "instance", name: "spy" } }] });
     const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
-    expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body.cards.map((c: any) => c.id)).toEqual(["M-1"]);
-    expect((await viaLink(db, "GET", "/ui/tasks/cards/M-2", undefined, { fleetConfig })).status).toBe(404);
-    expect((await viaLink(db, "GET", "/ui/tasks/search?q=work", undefined, { fleetConfig })).body.results.map((r: any) => r.card.id)).toEqual(["M-1"]);
+    expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, tier: "read" })).body.cards.map((c: any) => c.id)).toEqual(["M-1"]);
+    expect((await viaLink(db, "GET", "/ui/tasks/cards/M-2", undefined, { fleetConfig, tier: "read" })).status).toBe(404);
+    expect((await viaLink(db, "GET", "/ui/tasks/search?q=work", undefined, { fleetConfig, tier: "read" })).body.results.map((r: any) => r.card.id)).toEqual(["M-1"]);
+    expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body.cards.map((c: any) => c.id), "M-3278: an admin over the link").toEqual(["M-1", "M-2", "M-3"]);
     expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body.cards.map((c: any) => c.id)).toEqual(["M-1", "M-2", "M-3"]);
   });
 
   // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
   // task, a search hit's main task title — and what an instance kept out of sight wrote on it.
-  it("over the link a visible card does not show hidden related cards (children, main task, a hit's main task) or a hidden instance's words", async () => {
+  it("over the link a visible card does not show hidden related cards (children, main task, a hit's main task) or a hidden instance's words (a read-only session; M-3278)", async () => {
     const db = scratchDb();
     const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
     db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Secret plan", assignee: "dev-a", dispatcher: { kind: "instance", name: "spy" } }] });
@@ -330,7 +344,7 @@ describe("4. the public link reads the board and changes nothing on it", () => {
     db.board.createCards(ANN, { parent: "M-1", cards: [{ title: "Visible step, handed back", assignee: "dev-a" }] });
     db.board.updateCard(ANN, "S-4", { dispatcher: { kind: "instance", name: "spy" } });
     db.board.updateCard(ANN, "S-4", { dispatcher: null });               // hidden in its history, not on the card
-    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig });
+    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, tier: "read" });
     const local = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, local: true });
     const m1 = (await link("/ui/tasks/cards/M-1")).body;
     expect(m1.children.map((c: any) => c.id)).toEqual(["S-1", "S-4"]);
@@ -351,6 +365,8 @@ describe("4. the public link reads the board and changes nothing on it", () => {
     // The local page shows it all.
     const all = (await local("/ui/tasks/cards/M-1")).body;
     expect([all.children.map((c: any) => c.id), all.comments.map((c: any) => c.author), all.logs.map((c: any) => c.author)]).toEqual([["S-1", "S-2", "S-4"], ["spy", "Ann"], ["Ann", "spy"]]);
+    // M-3278: so does an admin session over the link.
+    expect((await viaLink(db, "GET", "/ui/tasks/cards/M-1", undefined, { fleetConfig })).body.children.map((c: any) => c.id)).toEqual(["S-1", "S-2", "S-4"]);
     expect((await local("/ui/tasks/cards/S-3")).body.parent.title).toBe("Secret plan");
     expect((await local("/ui/tasks/search?q=step")).body.results.find((r: any) => r.card.id === "S-3").parentTitle).toBe("Secret plan");
   });
@@ -359,7 +375,7 @@ describe("4. the public link reads the board and changes nothing on it", () => {
 // #2304 review (Fable): a hidden instance's words on a visible card are not found by search, and do not count in the
 // board's comment count or name its last comment — over the link; the local page is unchanged.
 describe("4a. a hidden instance's comments on a visible card, over the link", () => {
-  it("search does not find them; the board's commentCount, newCommentCount and lastComment leave them out", async () => {
+  it("search does not find them; the board's commentCount, newCommentCount and lastComment leave them out (a read-only session; M-3278)", async () => {
     const db = scratchDb();
     const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
     db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Other work", assignee: "dev-a" }] });
@@ -367,10 +383,12 @@ describe("4a. a hidden instance's comments on a visible card, over the link", ()
     db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { comment: "the vault code is 4711" });
     db.board.updateCard({ kind: "instance", name: "spy" }, "M-2", { comment: "only the spy spoke here" });
     db.board.updateCard({ kind: "instance", name: "spy" }, "M-1", { log: "vault log line" });
-    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig });
+    const link = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, tier: "read" });
     const local = (path: string) => viaLink(db, "GET", path, undefined, { fleetConfig, local: true });
     expect((await link("/ui/tasks/search?q=vault")).body.results).toEqual([]);
     expect((await local("/ui/tasks/search?q=vault")).body.results.map((r: any) => [r.card.id, r.match.field])).toEqual([["M-1", "log"]]);
+    // M-3278: an admin session over the link finds them as the local page does.
+    expect((await viaLink(db, "GET", "/ui/tasks/search?q=vault", undefined, { fleetConfig })).body.results.map((r: any) => [r.card.id, r.match.field])).toEqual([["M-1", "log"]]);
     const works = (await link("/ui/tasks/search?q=work")).body.results;
     expect(works.map((r: any) => r.card.id).sort()).toEqual(["M-1", "M-2"]);
     expect(works.map((r: any) => [r.card.id, r.card.commentCount, r.card.lastComment?.author ?? null]).sort()).toEqual([["M-1", 1, "Ann"], ["M-2", 0, null]]);
@@ -398,7 +416,7 @@ describe("4a. a hidden instance's comments on a visible card, over the link", ()
 describe("4d. Needs you over the public link leaves out the cards the board hides there (#2306 review)", () => {
   // #2425/#2434: a card an instance handed out — blocked or in review — is that instance's own, never the person's Needs
   // you; so the hidden instance's card that waits for the person is one the person handed to it.
-  it("a card a hidden instance holds, waiting for the person: not in the link's poll (title and all), while the local page lists it; a visible one is in both", async () => {
+  it("a card a hidden instance holds, waiting for the person: not in the link's poll for a read-only session (title and all; M-3278: an admin's lists it), while the local page lists it; a visible one is in both", async () => {
     const h = rig();
     h.fm.fleetConfig = { ...h.fm.fleetConfig, instances: { ...(h.fm.fleetConfig as any).instances, "dev-a": {}, secret_lead: { cross_instance_visibility: "hidden" } } } as never;
     const fleetConfig = h.fm.fleetConfig;
@@ -414,17 +432,19 @@ describe("4d. Needs you over the public link leaves out the cards the board hide
     h.db.board.createCards(lead, { cards: [{ title: "Lead's own review", assignee: "dev-a", needsReview: true }] });   // M-4: the lead confirms it
     h.db.board.moveCard(ANN, "M-4", "claimed"); h.db.board.moveCard(ANN, "M-4", "review");
     expect((h.s.needsYouTasks() as Array<{ code: string }>).map((t) => t.code).sort()).toEqual(["M-1", "M-2"]);
-    const link = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body;
+    const link = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs, tier: "read" })).body;
     expect(link.needs.map((i: any) => i.card?.code)).toEqual(["M-2"]);
     expect(JSON.stringify(link)).not.toMatch(/HIDDEN_CARD_TITLE|HIDDEN_BLOCKED_TITLE|PRIVATE_BLOCKED_REASON/);
     const local = (await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs, local: true })).body;
     expect(local.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
+    // M-3278: an admin session over the link lists it as the local page does.
+    expect((await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
     // The board says the same over the link, and the link's page has no stream for Needs you to leak through.
-    expect((await viaLink(h.db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body.cards.map((c: any) => c.id)).toEqual(["M-2"]);
+    expect((await viaLink(h.db, "GET", "/ui/tasks/board", undefined, { fleetConfig, tier: "read" })).body.cards.map((c: any) => c.id)).toEqual(["M-2"]);
     expect((await viaLink(h.db, "GET", "/ui/events", undefined, { fleetConfig })).status).toBe(404);
     // Visibility is read when asked: the lead shown again, its card is listed again.
     (fleetConfig as any).instances.secret_lead = {};
-    expect((await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs })).body.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
+    expect((await viaLink(h.db, "GET", "/ui/poll", undefined, { fleetConfig, needs, tier: "read" })).body.needs.map((i: any) => i.card?.code).sort()).toEqual(["M-1", "M-2"]);
   });
 });
 
@@ -454,18 +474,20 @@ describe("4c. who works on what: each instance's `task mine`, by /ui/tasks/work"
     expect(one.body.instances.map((i: any) => i.name)).toEqual(["lead"]);
   });
 
-  it("over the public link, an instance kept out of sight is not listed, nor a card that names one; the local page has both", async () => {
+  it("over the public link, an instance kept out of sight is not listed to a read-only session, nor a card that names one (M-3278: an admin's has both); the local page has both", async () => {
     const db = scratchDb();
     db.board.createCards(ANN, { cards: [{ title: "Open work", assignee: "dev-a" }, { title: "Secret work", assignee: "spy" },
       { title: "Handed out by the spy", assignee: "dev-a", dispatcher: { kind: "instance", name: "spy" } }] });
     const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
-    const link = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig })).body;
+    const link = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig, tier: "read" })).body;
     expect(link.instances.map((i: any) => [i.name, i.ready.map((c: any) => c.id)])).toEqual([["dev-a", ["M-1"]]]);
-    expect((await viaLink(db, "GET", "/ui/tasks/work?instance=spy", undefined, { fleetConfig })).body.instances).toEqual([]);
+    expect((await viaLink(db, "GET", "/ui/tasks/work?instance=spy", undefined, { fleetConfig, tier: "read" })).body.instances).toEqual([]);
+    const admin = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig })).body;
+    expect(admin.instances.map((i: any) => [i.name, i.ready.map((c: any) => c.id)]), "M-3278: an admin over the link").toEqual([["dev-a", ["M-1", "M-3"]], ["spy", ["M-2"]]]);
     const local = (await viaLink(db, "GET", "/ui/tasks/work", undefined, { fleetConfig, local: true })).body;
     expect(local.instances.map((i: any) => [i.name, i.ready.map((c: any) => c.id)])).toEqual([["dev-a", ["M-1", "M-3"]], ["spy", ["M-2"]]]);
     expect(isPublicWebRoute("GET", "/ui/tasks/work")).toBe(true);
-    expect(isPublicWebRoute("POST", "/ui/tasks/work")).toBe(false);
+    expect(isPublicWebRoute("POST", "/ui/tasks/work")).toBe(true);   // M-3278: the board's writes are routed (the handler has no POST here)
   });
 });
 
@@ -538,15 +560,15 @@ describe("5. revisions, refusals and notes the page can say in its language", ()
     expect(views, "the next minute (the 14-day window moves)").toHaveBeenCalledTimes(4);
   });
 
-  it("over the public link the board is built for each read — it is filtered per request (instances kept out of sight)", async () => {
+  it("over the public link the board is built for each read — it is filtered per request (instances kept out of sight; a read-only session, M-3278)", async () => {
     const db = scratchDb();
     const fleetConfig = { defaults: {}, instances: { quiet: { cross_instance_visibility: "hidden" } } };
     db.board.createCards(ANN, { cards: [{ title: "Seen" }, { title: "Quiet's", assignee: "quiet" }] });
     const local = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true, fleetConfig });
     expect(local.body.cards.map((c: any) => c.title).sort()).toEqual(["Quiet's", "Seen"]);
     const views = vi.spyOn(db.board, "views");
-    const l1 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig });
-    const l2 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig });
+    const l1 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, tier: "read" });
+    const l2 = await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, tier: "read" });
     expect(views).toHaveBeenCalledTimes(2);
     for (const r of [l1, l2]) expect(r.body.cards.map((c: any) => c.title)).toEqual(["Seen"]);
     const again = await viaLink(db, "GET", "/ui/tasks/board", undefined, { local: true, fleetConfig });
@@ -717,13 +739,14 @@ describe("#2352 a project's lead instance, and where a waiting card's buttons go
     try { expect(again.board.getProject("Old").leadInstance).toBe("lead"); } finally { again.close(); }
   });
 
-  it("over the public link a hidden lead is not named", async () => {
+  it("over the public link a hidden lead is not named to a read-only session (M-3278: an admin's sees it)", async () => {
     const db = scratchDb();
     db.board.createProject(ANN, { name: "Secret", leadInstance: "spy" });
     db.board.createProject(ANN, { name: "Open", leadInstance: "dev-a" });
     const fleetConfig = { defaults: {}, instances: { "dev-a": {}, spy: { cross_instance_visibility: "hidden" } } };
-    const link = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body;
+    const link = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, tier: "read" })).body;
     expect(link.projects.map((p: any) => [p.name, p.leadInstance])).toEqual([["Secret", null], ["Open", "dev-a"]]);
+    expect((await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig })).body.projects.map((p: any) => p.leadInstance), "M-3278: an admin over the link").toEqual(["spy", "dev-a"]);
     expect(JSON.stringify(link)).not.toMatch(/spy/);
     const local = (await viaLink(db, "GET", "/ui/tasks/board", undefined, { fleetConfig, local: true })).body;
     expect(local.projects.map((p: any) => p.leadInstance)).toEqual(["spy", "dev-a"]);

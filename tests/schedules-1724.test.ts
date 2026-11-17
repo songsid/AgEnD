@@ -69,9 +69,9 @@ beforeEach(() => {
 });
 afterEach(() => { scheduler.shutdown(); rmSync(dir, { recursive: true, force: true }); vi.unstubAllEnvs(); });
 
-function call(method: string, path: string, body?: unknown, opts: { publicLink?: boolean; revoke?: boolean } = {}) {
+function call(method: string, path: string, body?: unknown, opts: { publicLink?: boolean; revoke?: boolean; tier?: "admin" | "read" } = {}) {
   const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com";
-  const s = opts.publicLink || opts.revoke ? sessions.create({ tier: "admin", surface: opts.publicLink ? "gateway" : "local", exposureId: opts.publicLink ? exposureId : undefined, label: "t", tokenEpoch: tokenEpoch(token) } as never) : null;
+  const s = opts.publicLink || opts.revoke ? sessions.create({ tier: opts.tier ?? "admin", surface: opts.publicLink ? "gateway" : "local", exposureId: opts.publicLink ? exposureId : undefined, label: "t", tokenEpoch: tokenEpoch(token) } as never) : null;
   const headers: Record<string, string> = opts.publicLink
     ? { host: "sample.trycloudflare.com", cookie: `__Host-agend_session=${s!.sessionId}`, origin: pub, "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s!.sessionId), "content-type": "application/json" }
     : opts.revoke ? { host: "127.0.0.1:19280", cookie: `agend_session=${s!.sessionId}`, origin: "http://127.0.0.1:19280", "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s!.sessionId), "content-type": "application/json" }
@@ -143,18 +143,26 @@ describe("edit (PATCH): the update_schedule tool's validation and update", () =>
   });
 });
 
-describe("the public link: lists, never writes", () => {
-  it("off its manifest: create, edit, delete; the list stays", () => {
+// M-3278 (decision 7933bf90): an admin session creates, edits and deletes schedules over the public link as here.
+describe("the public link: an admin session writes as here (M-3278)", () => {
+  it("on its manifest: create, edit, delete and the list", () => {
     expect([isPublicWebRoute("POST", "/ui/schedules"), isPublicWebRoute("PATCH", "/ui/schedules/s1"), isPublicWebRoute("DELETE", "/ui/schedules/s1"), isPublicWebRoute("GET", "/ui/schedules")])
-      .toEqual([false, false, false, true]);
+      .toEqual([true, true, true, true]);
   });
-  it("and refused by the handlers (403) — nothing created, edited or deleted", async () => {
+  it("and done by the handlers — created, edited, deleted", async () => {
     const s = scheduler.create({ cron: "0 9 * * *", message: "m", source: "agent", target: "alpha", reply_chat_id: "", reply_thread_id: null });
     const c = await call("POST", "/ui/schedules", { cron: "0 9 * * *", message: "x", target: "alpha" }, { publicLink: true });
     const e = await call("PATCH", `/ui/schedules/${s.id}`, { message: "changed" }, { publicLink: true });
+    const edited = scheduler.get(s.id)!.message;
     const d = await call("DELETE", `/ui/schedules/${s.id}`, undefined, { publicLink: true });
-    expect([[c.status, c.body.error], [e.status, e.body.error], [d.status, d.body.error], scheduler.list().length, scheduler.get(s.id)!.message])
-      .toEqual([[403, "schedule_not_over_public_link"], [403, "schedule_not_over_public_link"], [403, "schedule_not_over_public_link"], 1, "m"]);
+    expect([c.status, e.status, d.status, edited, scheduler.list().length, scheduler.get(s.id)])
+      .toEqual([200, 200, 200, "changed", 1, null]);
+  });
+  it("a read-only session over the link: refused — nothing created or edited", async () => {
+    const s = scheduler.create({ cron: "0 9 * * *", message: "m", source: "agent", target: "alpha", reply_chat_id: "", reply_thread_id: null });
+    const c = await call("POST", "/ui/schedules", { cron: "0 9 * * *", message: "x", target: "alpha" }, { publicLink: true, tier: "read" });
+    const e = await call("PATCH", `/ui/schedules/${s.id}`, { message: "changed" }, { publicLink: true, tier: "read" });
+    expect([c.status, e.status, scheduler.list().length, scheduler.get(s.id)!.message]).toEqual([401, 401, 1, "m"]);
   });
 });
 
@@ -268,10 +276,10 @@ describe("the Schedules tab", () => {
     expect(writes).toEqual([{ path: "/ui/schedules", method: "POST", body: { message: "renew the cert", target: "alpha", at: "2026-11-01T08:15:00+08:00", timezone: TZ } }]);   // the zone the time was read in
   });
 
-  it("the public link lists the schedules but offers no New, Edit or Delete", async () => {
+  it("the public link lists the schedules and offers New, Edit and Delete as here (M-3278)", async () => {
     const { pg } = await tab({ publicLink: true });
-    expect([pg.root.querySelectorAll(".row-item.sched").length, pg.root.querySelector("button.sched-edit"), pg.root.querySelector(".list-head button"), pg.root.querySelector(".row-item button.danger")])
-      .toEqual([4, null, null, null]);
+    expect([pg.root.querySelectorAll(".row-item.sched").length, !!pg.root.querySelector("button.sched-edit"), !!pg.root.querySelector(".list-head button"), !!pg.root.querySelector(".row-item button.danger")])
+      .toEqual([4, true, true, true]);
   });
 });
 

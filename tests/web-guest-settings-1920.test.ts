@@ -29,7 +29,7 @@ vi.mock("../src/backend/index.js", async original => ({ ...await original<typeof
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { request as httpRequest } from "node:http";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
@@ -112,6 +112,8 @@ function harness(fleet: Record<string, unknown> = {}) {
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
+  // M-3278: the public link's own admin session (its surface and exposure; the link reads only its __Host- cookie).
+  const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     guestOverview: overview, revokeGuestWebSessions: revoke } as unknown as SettingsApiContext;
@@ -125,8 +127,10 @@ function harness(fleet: Record<string, unknown> = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
       req.method = method; req.url = url; req.destroy = () => undefined;
-      const who = opts.as === "guest" ? guestSid : opts.as === "none" ? "not-a-session" : sid;
-      req.headers = { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
+      const who = opts.as === "guest" ? guestSid : opts.as === "none" ? "not-a-session" : opts.publicLink ? gwSid : sid;
+      req.headers = opts.publicLink
+        ? { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) }
+        : { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
@@ -158,14 +162,16 @@ describe("through the gate and the real handler", () => {
     expect(h.raw().web.guests).toEqual({ enabled: true, narrow: { "dc:111": ["a"] }, open_instances: { dc: ["a"] } });
     expect(h.config.web.guests.open_instances).toEqual({ dc: ["a"] });
   });
-  it("a body the validator refuses (an unknown connection key shape) is refused; over the public link nothing", async () => {
+  it("a body the validator refuses (an unknown connection key shape) is refused; over the public link an admin's as anywhere (M-3278)", async () => {
     const h = harness();
     expect((await h.request("PUT", WEB, { guests: { narrow: { "dc:bad user": ["a"] } } })).status).toBe(400);
-    const pub = await h.request("PUT", WEB, { guests: { enabled: false } }, { publicLink: true });
-    expect(pub.status).toBe(403);
+    expect((await h.request("PUT", WEB, { guests: { narrow: { "dc:bad user": ["a"] } } }, { publicLink: true })).status).toBe(400);
     expect(h.save).not.toHaveBeenCalled();
+    const pub = await h.request("PUT", WEB, { guests: { enabled: false } }, { publicLink: true });
+    expect(pub.status).toBe(200);
+    expect(h.raw().web.guests.enabled).toBe(false);
   });
-  it("GET /api/settings/guests and POST …/revoke (at once); neither over the public link", async () => {
+  it("GET /api/settings/guests and POST …/revoke (at once); over the public link an admin's only (M-3278)", async () => {
     const h = harness();
     expect(await h.request("GET", "/api/settings/guests")).toEqual({ status: 200, body: { enabled: true, guests: [] } });
     const r = await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" });
@@ -175,9 +181,11 @@ describe("through the gate and the real handler", () => {
     // The handler itself refuses a caller that is not an admin (the global gate refuses them first in the server).
     expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { as: "guest" })).status).toBe(401);
     expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { as: "none" })).status).toBe(401);
-    expect((await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).status).toBe(403);
-    expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(403);
+    for (const as of ["guest", "none"] as const) expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true, as })).status, `link ${as}`).toBe(401);
     expect(h.revoke).toHaveBeenCalledTimes(1);
+    expect(await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).toEqual({ status: 200, body: { enabled: true, guests: [] } });
+    expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(200);
+    expect(h.revoke).toHaveBeenCalledTimes(2);
   });
 });
 

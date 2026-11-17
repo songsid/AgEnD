@@ -943,10 +943,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   useEffect(() => {
     const body = globalThis.document?.body;
     if (!body || body.dataset.tier === "guest") return undefined;
-    const overLink = body.dataset.publicLink === "1";
     let live = true;
     const auth = globalThis.AgendAuth;
-    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true && !overLink); setCanShare(v === true); } }, () => {});
+    if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true); setCanShare(v === true); } }, () => {});
     return () => { live = false; };
   }, []);
   // The stage's width (the grid wraps at it), and the theme (the tokens the canvas reads).

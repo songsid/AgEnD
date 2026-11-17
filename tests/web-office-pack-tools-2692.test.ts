@@ -775,8 +775,9 @@ describe("the fleet", () => {
       const mode = await raw(f.port, "POST", "/ui/office-pack-changes", admin.write, JSON.stringify({ approval: "apply" }));
       expect([mode.status, JSON.parse(mode.body).approval]).toEqual([200, "apply"]);
       expect((await raw(f.port, "POST", "/ui/office-pack-changes", admin.write, JSON.stringify({ approval: "sometimes" }))).status).toBe(400);
-      // Guests and the public link are unaffected: never theirs.
-      expect([isPublicWebRoute("GET", "/ui/office-pack-changes"), isPublicWebRoute("POST", "/ui/office-pack-changes")]).toEqual([false, false]);
+      // Guests are unaffected: never theirs. M-3278 (decision 7933bf90): the public link routes them (the handler still
+      // admits an admin session only, as above).
+      expect([isPublicWebRoute("GET", "/ui/office-pack-changes"), isPublicWebRoute("POST", "/ui/office-pack-changes")]).toEqual([true, true]);
       expect(guestRouteDecision("GET", new URL("http://h/ui/office-pack-changes"), new Set(["alpha"]))).toEqual({ kind: "deny", status: 403, error: "guest_forbidden" });
       expect(guestFrameData("office_pack_changes", {}, new Set(["alpha"]), { owner: { adapterId: "a", userId: "u" } } as never)).toBeUndefined();
     } finally { await f.stop(); }

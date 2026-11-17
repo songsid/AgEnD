@@ -234,10 +234,10 @@ describe("Settings → Web → Web authority, as rendered", () => {
     await w.apply();
     expect([back, w.writes().map((s) => s.body)]).toEqual([["6", true], [{ verified_authority: { loopback_only: true } }]]);
   });
-  it("over the public link the card is not offered", async () => {
+  it("M-3278: over the public link an admin gets the card as anywhere, and its overview is read", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    expect(w.$(".s-web-authority")).toBeNull();
-    expect(sent.filter((s) => s.path === "/api/settings/web-authority")).toEqual([]);
+    expect(w.$(".s-web-authority")).not.toBeNull();
+    expect(sent.filter((s) => s.path === "/api/settings/web-authority").length).toBeGreaterThan(0);
   });
 });

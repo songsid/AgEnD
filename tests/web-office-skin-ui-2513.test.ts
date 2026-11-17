@@ -230,14 +230,16 @@ describe("the Office view with packs", () => {
     await office();
     expect(p.root.querySelector(".oo-note")?.textContent).toBe("Its style “clinic-sample” is not available here: drawn as Desks.");
   });
-  it("Edit layout: an admin only, a stored office on a zones style; hidden for a read-only session, a guest page and the public link", async () => {
+  it("Edit layout: an admin only, a stored office on a zones style; hidden for a read-only session and a guest page — offered to an admin over the public link (M-3278)", async () => {
     withPack();
     offices = { rev: 3, offices: [{ id: "clinic", name: "Clinic", skin: "clinic-sample", members: [] }, { id: "desk", name: "Desk", skin: "pixel", members: [] }] };
     localStorage.setItem("agend_org_office", "clinic");
     const btn = () => p.root.querySelector(".oo-layout");
     auth(false); await office(); expect(btn()).toBeNull();
     await p.unmount(); auth(true); document.body.dataset.tier = "guest"; await office(); expect(btn()).toBeNull();
-    await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office(); expect(btn()).toBeNull();
+    await p.unmount(); delete document.body.dataset.tier; document.body.dataset.publicLink = "1"; await office(); expect(btn()?.textContent.trim()).toBe("Edit layout");   // M-3278
+    await p.unmount(); auth(false); await office(); expect(btn()).toBeNull();                 // M-3278: a read-only session over the link: none
+    auth(true);
     await p.unmount(); delete document.body.dataset.publicLink; await office();
     expect(btn()?.textContent.trim()).toBe("Edit layout");
     const sw = p.root.querySelector(".oo-bar select");
