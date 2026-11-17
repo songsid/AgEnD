@@ -42,3 +42,5 @@ node_modules/.bin/tsc --noEmit -p tsconfig.test.json
 ```
 
 Main twin: 205/205 across the seven affected precaution, daemon, channel-card, web-gate, generic-dialog, warning-footer and trust files; source and test typechecks each report zero errors. The shared parser/card implementation is identical; the main daemon uses its existing tmux-only input API.
+
+CI repair: the detector inventory now registers codex-precaution.ts and the new hold. The generated manifest was rebuilt independently on each branch; its drift check and all 87 static precheck tests pass on each. Runtime source, fixtures and tests are unchanged.
