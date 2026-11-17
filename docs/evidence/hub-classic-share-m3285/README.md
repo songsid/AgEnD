@@ -14,7 +14,7 @@ Classic consent uses the actual backend, workspace and adapter/channel binding. 
 
 ## Validation
 
-Product checkpoint: `16805078e`. Plain alpha sync: `8e954ae929cc540751c188d038c802be51df0a3e`, based on `b644a30785b031f6fef3934c8a92ed1d6221e051`. [alpha-sync.json](alpha-sync.json) pins identical own patch lines across all 19 paths; no unchanged matrix was repeated for the sync.
+Routing product checkpoint: `16805078e`. Plain alpha sync: `8e954ae929cc540751c188d038c802be51df0a3e`, based on `b644a30785b031f6fef3934c8a92ed1d6221e051`. [alpha-sync.json](alpha-sync.json) pins identical own patch lines across all 19 paths; no unchanged matrix was repeated for the sync.
 
 The retained logs have checkout paths replaced with `<checkout>`. Test scopes overlap; their counts must not be added.
 
@@ -31,7 +31,7 @@ The 17 Classic tests include Discord and Telegram, contact restriction off, acce
 
 ## Rendered views
 
-[receipt.json](receipt.json): **20/20** checks and six originals, on the synced source. The walk uses the real Fleet shell and local exposure/confirmation HTTP APIs with a disposable SQLite store. Pairing and representative readiness are inert. Web authority is off in this fixture to retain the existing pending-confirmation view; the normal owner's self-confirming path was not changed. All people, room names and ids are synthetic.
+[receipt.json](receipt.json): **20/20** checks and six originals, on `8361945af` (PM copy correction over the synced routing source). The walk uses the real Fleet shell and local exposure/confirmation HTTP APIs with a disposable SQLite store. Pairing and representative readiness are inert. Web authority is off in this fixture to retain the existing pending-confirmation view; the normal owner's self-confirming path was not changed. All people, room names and ids are synthetic.
 
 | View | Desktop EN / light | Phone zh-TW / dark |
 |---|---|---|
@@ -50,3 +50,9 @@ The private mark intentionally survives answer ACK and has no time-based release
 Functional rollback: withdraw Classic publications and retain the private-output guard for accepted work. Do not delete marks or run an older guard-less binary while private work is pending. A source rollback requires that work to finish and a normal current person-input handoff to release each mark first. No Hub migration or protocol change is involved.
 
 The obsolete M-3014 design, [#3765](https://github.com/songsid/AgEnD/pull/3765), was marked superseded and closed. The sharing implementation follows the new decision instead.
+
+## PM copy correction and scan classification
+
+PM accepted the layout at `54bae4f3a` conditional on two exact changes, with no further review round required: the Classic lead is now its own paragraph, and the confirmation is a statement naming the ClassicBot room. Both languages were retaken at `8361945af`; all four changed lead/confirmation originals were inspected again. The runtime guard is unchanged. The exposure and pending-language tests passed (40 cases) and the adjusted story-copy test passed (19 cases); the numeric changelog validator passes 75/75.
+
+The first secret scan flagged two entries in the old sync manifest: public-source SHA-256 values under API-file-name keys. Both were independently recomputed from the public Git diff. The current manifest separates `path` and `sha256`; `.gitleaksignore` names only the two exact historical fingerprints. No credential was involved or rotated. [Classification](validation/scan-classification.json) records the masked locations and the local scan scope; exact CI remains the full remerge scan.

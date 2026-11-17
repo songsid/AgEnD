@@ -1,0 +1,18 @@
+{
+  "rule": "generic-api-key",
+  "historicalCommit": "54bae4f3a51afa41f6d97af16b650945e5415065",
+  "file": "docs/evidence/hub-classic-share-m3285/alpha-sync.json",
+  "lines": [
+    14,
+    21
+  ],
+  "classification": "Public-source patch-line SHA-256 checksums, not credentials",
+  "recomputedFromPublicGitDiff": true,
+  "currentFormat": "Structured rows with separate path and sha256 fields",
+  "exception": "Two exact historical commit/file/rule/line fingerprints only",
+  "localScan": {
+    "version": "8.24.3",
+    "exitCode": 0,
+    "scope": "Non-merge own history b644a307..8361945af; local Git lacks remerge. Exact CI scan remains authoritative."
+  }
+}

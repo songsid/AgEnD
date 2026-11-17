@@ -1,5 +1,5 @@
 {
-  "source": "8e954ae929cc540751c188d038c802be51df0a3e",
+  "source": "8361945af302578d8bdc6b34387dfd79e138383d",
   "scope": "Actual Fleet shell and local exposure/confirmation APIs; inert paired view and representative readiness; all identities synthetic; no Hub/chat/model/Windows connection",
   "checks": [
     {
