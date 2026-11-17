@@ -2399,7 +2399,15 @@ export function handleWebRequest(
   }
 
   if (method === "GET" && path === "/ui/events") {
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "Use polling on the public link" }); return true; }
+    const overLink = !!gatewayRequestContext(req);
+    if (overLink && !namedLinkStream(req, ctx)) { json(res, 404, { error: "Use polling on the public link" }); return true; }
+    let open: Set<ServerResponse> | undefined;
+    if (overLink) {
+      open = linkStreams.get(ctx) ?? new Set();
+      linkStreams.set(ctx, open);
+      if (open.size >= LINK_STREAMS_MAX) { json(res, 503, { error: "Too many live streams over the public link; this page polls" }); return true; }
+      open.add(res);
+    }
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
@@ -2444,6 +2452,8 @@ export function handleWebRequest(
       // #2049 review: a guest's stream also needs the exact session that opened it — another cookie on the same request
       // still authenticating does not keep a revoked device's stream (with its scope) alive.
       alive: () => {
+        // M-3278: over the fixed link this check also ends the stream once that link is no longer the current one
+        // (web-auth refuses a request whose gateway is not current).
         if (isWebRequestAuthorized(req, url, ctx.webToken, ctx.webSessions, { touch: false }) && (!guest || guest.current())) return true;
         // Close the connection too, not just the response: an ended response leaves the socket idle in
         // keep-alive, still held open by whoever's session just ended.
@@ -2459,6 +2469,7 @@ export function handleWebRequest(
     const cleanup = (): void => {
       if (cleanedUp) return;
       cleanedUp = true;
+      open?.delete(res);
       ctx.sseClients.delete(res);
       unsubscribe();
     };
@@ -4849,6 +4860,20 @@ const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => {
   return v.person ? guestOwnPrefs(view, prefs.readGuestOwn(v.person), v.guestScope?.() ?? new Set<string>()) : guestPrefs(view);
 };
 /** M-3278: an admin session's page over the public link (not a guest, not a read-only session). */
+/**
+ * M-3278 (decision 7933bf90, part 5): the live stream over the public link — only the admin's own fixed (named) link and
+ * only an admin session: a quick tunnel buffers a stream (its page polls), and guests and read-only sessions keep polling
+ * as before. The header token never works over the link.
+ */
+function namedLinkStream(req: IncomingMessage, ctx: Partial<Pick<WebApiContext, "webToken" | "webSessions">>): boolean {
+  const link = gatewayRequestContext(req);
+  if (!link?.named) return false;   // a link that is no longer current is refused by evaluateWebRequest below
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
+}
+/** At most this many live streams over the public link at once (the gateway keeps 32 connections in all): a tab past it polls. */
+export const LINK_STREAMS_MAX = 8;
+const linkStreams = new WeakMap<object, Set<ServerResponse>>();
 function linkAdminPage(req: IncomingMessage, ctx: AppShellContext, viewer: PrefsViewer | null): boolean {
   if (!gatewayRequestContext(req) || viewer?.guest) return false;
   const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -4930,7 +4955,7 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
   const workspaceScope = workspaceMark && viewer?.person && ctx.webToken
     ? createHmac("sha256", ctx.webToken).update(`agend-chat-layout-v1\0${viewer.person}`).digest("hex") : null;
 
-  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
+  return `<body data-mode="${mode}"${childMark ? ' data-subagents="1"' : ""}${workspaceMark ? ' data-chat-workspace="1"' : ""}${workspaceScope ? ` data-chat-layout-scope="${workspaceScope}"` : ""}${mode === "full" && gatewayRequestContext(req) && !namedLinkStream(req, ctx) ? ' data-web-transport="poll"' : ""} data-dashboard-origin="${attr(p?.dashboardOrigin)}" data-preview-origin="${attr(p?.previewOrigin)}"`
     + ` data-preview-boot="${attr(p?.previewOrigin ? p.boot : "")}" data-preview-reason="${attr(p ? p.reason : "Previews are not available on this fleet.")}"`
     // #1554: no availability asked (the public link, or not the full app) still says why, in the page's language.
     + ` data-preview-reason-code="${attr(p ? p.code ?? "" : gatewayRequestContext(req) ? "publicLink" : "notOffered")}"`
