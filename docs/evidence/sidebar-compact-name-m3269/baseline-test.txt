@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/sidebar-compact-name-m3269.test.ts (8 tests | 1 failed | 7 skipped) 410ms
+     × offers exactly two exclusive choices beside density, in Customize and This device 30ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/sidebar-compact-name-m3269.test.ts > M-3269 compact rows show exactly one chosen name > offers exactly two exclusive choices beside density, in Customize and This device
+AssertionError: This device has the compact name control: expected null not to be null
+ ❯ tests/sidebar-compact-name-m3269.test.ts:42:71
+     40| describe("M-3269 compact rows show exactly one chosen name", () => {
+     41|   it("offers exactly two exclusive choices beside density, in Customiz…
+     42|     expect(control(), "This device has the compact name control").not.…
+       |                                                                       ^
+     43|     expect(control().textContent).toBe("Display nameInstance name");
+     44|     await menu(); expect(radios().map(r => r.value)).toEqual(["nicknam…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 skipped (8)
+   Start at  13:09:42
+   Duration  886ms (transform 509ms, setup 103ms, import 207ms, tests 410ms, environment 0ms)
+
