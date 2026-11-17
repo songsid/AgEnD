@@ -51,8 +51,8 @@ describe("the ledger", () => {
   });
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
-      // The maintainer-confirmed ledger of 2026-11-09 21:00 (Taipei).
-      "claude-code": "2.1.325", "codex": "0.169.0", "kiro-cli": "3.3.0", "antigravity": "1.5.9", "grok": "1.0.77", "muse": "1.4.20-R8619.1", "opencode": "1.19.5",
+      // The maintainer-confirmed ledger of 2026-11-09 21:00 (Taipei); Muse 1.4.23-R8977.1 with its audit (M-3290).
+      "claude-code": "2.1.325", "codex": "0.169.0", "kiro-cli": "3.3.0", "antigravity": "1.5.9", "grok": "1.0.77", "muse": "1.4.23-R8977.1", "opencode": "1.19.5",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -104,18 +104,20 @@ describe("where an installed CLI stands", () => {
     expect(cliUpdateView("claude-code", "2.1.316 (Claude Code)", true)).toMatchObject({ state: "behind", audited: "2.1.325", button: true });
   });
   it("behind, but the CLI updates itself (no update in the registry): the versions only, no button", () => {
-    expect(cliUpdateView("muse", "1.4.12-R6909.1", false)).toEqual({ state: "behind", audited: "1.4.20-R8619.1", installed: "1.4.12-R6909.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "1.4.12-R6909.1", false)).toEqual({ state: "behind", audited: "1.4.23-R8977.1", installed: "1.4.12-R6909.1", button: false, latest: false });
+    // M-3290: the release audited before (1.4.20, kept as its number) is behind the newest too
+    expect(cliUpdateView("muse", "1.4.20-R8619.1", false)).toMatchObject({ state: "behind", audited: "1.4.23-R8977.1", button: false });
     // Muse: the same x.y.z but another build is not the audited release — and it says which, faithfully
-    expect(cliUpdateView("muse", "Muse Code 1.4.20-R8500.1", false)).toEqual({ state: "behind", audited: "1.4.20-R8619.1", installed: "1.4.20-R8500.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "Muse Code 1.4.23-R8500.1", false)).toEqual({ state: "behind", audited: "1.4.23-R8977.1", installed: "1.4.23-R8500.1", button: false, latest: false });
   });
   it("at the audited release: current, no button", () => {
     expect(cliUpdateView("codex", "codex-cli 0.169.0", true)).toEqual({ state: "current", audited: "0.169.0", installed: "0.169.0", button: false, latest: false });
-    expect(cliUpdateView("muse", "1.4.20-R8619.1", false)).toEqual({ state: "current", audited: "1.4.20-R8619.1", installed: "1.4.20-R8619.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "1.4.23-R8977.1", false)).toEqual({ state: "current", audited: "1.4.23-R8977.1", installed: "1.4.23-R8977.1", button: false, latest: false });
   });
   it("newer than anything audited (a host that updated itself ahead of the ledger): not verified, never a button", () => {
     expect(cliUpdateView("claude-code", "2.1.326 (Claude Code)", true)).toEqual({ state: "newer", audited: "2.1.325", installed: "2.1.326", button: false, latest: false });
     expect(cliUpdateView("opencode", "1.19.6", true)).toMatchObject({ state: "newer", button: false, latest: false });
-    expect(cliUpdateView("muse", "1.4.20-R8700.1", false)).toMatchObject({ state: "newer", button: false });
+    expect(cliUpdateView("muse", "1.4.23-R9000.1", false)).toMatchObject({ state: "newer", button: false });
   });
   it("a version that cannot be read: unknown, no button", () => {
     expect(cliUpdateView("grok", "who knows", true)).toEqual({ state: "unknown", audited: "1.0.77", installed: null, button: false, latest: false });

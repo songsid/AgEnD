@@ -1,0 +1,84 @@
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=163856
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['workflow', 'read_file', 'search', 'write_file', 'edit_file', 'read_memory', 'add_memory', 'edit_memory'] reminder=False
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90173
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22134
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=18635
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90685
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22693
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19194
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90785
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22793
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19294
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90885
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22893
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=nosuch-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19394
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning=null tools=[] bytes=2172
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=[] reminder=True
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=164003
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['workflow', 'read_file', 'search', 'write_file', 'edit_file', 'read_memory', 'add_memory', 'edit_memory'] reminder=False
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90362
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22327
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=18828
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90874
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22886
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19387
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=90974
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=22986
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19487
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "low", "summary": "auto"} tools=['muse'] bytes=91074
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "minimal", "summary": "auto"} tools=['muse'] bytes=23086
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning={"effort": "high", "summary": "auto"} tools=['muse'] bytes=19587
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=['submit_reminder_decision'] reminder=True
+POST /responses model=mock-model reasoning=null tools=[] bytes=2326
+RAW "POST /responses HTTP/1.1" 200 - | upgrade=None
+  inner=[] reminder=True
