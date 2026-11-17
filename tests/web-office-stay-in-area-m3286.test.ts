@@ -87,6 +87,13 @@ describe("wanderTarget with the person's area", () => {
     const seat = { x: 590, y: 450 };                                   // its nearest waypoint is cor (the corridor)
     expect([...spotsOver("atlas", seat, g, "lounge")]).toEqual(["560,600"]);
   });
+  it("on: a spot whose walk stays inside the area wins over one whose walk goes out through a corridor", () => {
+    // From the seat, i (inside) is walked to directly; b (inside too) only via c, in the corridor.
+    const g = { ...layoutOf(), waypoints: [{ id: "i", x: 540, y: 450 }, { id: "c", x: 650, y: 450 }, { id: "b", x: 560, y: 600 }], edges: [["i", "c"], ["c", "b"]] };
+    const seat = { x: 540, y: 500 };
+    expect([...spotsOver("atlas", seat, g, null)].sort()).toEqual(["540,450", "560,600", "650,450"]);   // off: all three
+    expect([...spotsOver("atlas", seat, g, "lounge")]).toEqual(["540,450"]);
+  });
   it("on, the corridor fallback: a leg that cuts through another area between two corners rules the spot out", () => {
     // The seat's nearest waypoint is w (outside every area); the spot is t, inside the tavern.
     const g = (w: any) => ({ ...layoutOf(), waypoints: [w, { id: "t", x: 560, y: 500 }], edges: [[w.id, "t"]] });
