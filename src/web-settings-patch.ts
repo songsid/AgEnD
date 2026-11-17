@@ -11,7 +11,7 @@ import type { WebConfig, WebGuestsConfig, WebVerifiedAuthorityConfig } from "./t
 
 export const WEB_TERMINAL_TTL_MINUTES = { min: 1, max: 20 } as const;
 /** What Settings → Web may write; everything else under web: / web_terminal: is fleet.yaml's. */
-export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "log_thinking", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority"] as const;
+export const WEB_SETTINGS_BODY_KEYS = ["notify_login", "experimental", "echo_to_channel", "log_tab", "log_thinking", "usage_report_on_public_link", "office_levels", "preview_cdn", "login_qr", "public_link", "session", "web_terminal", "guests", "verified_authority", "chat_archive"] as const;
 
 export type WebSettingsBody = {
   echo?: boolean;
@@ -37,6 +37,12 @@ export type WebSettingsBody = {
   guests?: GuestsPatch;
   /** #1939 S2a: web authority (Settings → Web → Web authority). */
   verifiedAuthority?: VerifiedAuthorityPatch;
+  /**
+   * M-3281: `chat_archive.files_max_gb` — the archived chat files' size limit (GB; null: back to the default, 5). Lowering it
+   * below what is kept removes the oldest files, so that write carries `confirm_remove: true` (the page's confirmation that
+   * named how much goes); without it the handler refuses with what would be removed.
+   */
+  chatArchive?: { filesMaxGb: number | null; confirmRemove: boolean };
 };
 /** The whole body, or what is wrong with it (the handler's 400 message). */
 export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: string } {
@@ -65,6 +71,8 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
   if (guests === "invalid") return { error: "guests must be { enabled?, chat?: boolean|null, open_instances?: { <connection>: [instance…]|null }, narrow?: { \"<connection>:<user>\": [instance…]|null }, grants?: { \"<connection>:<user>\": { name?, instances: [instance…] }|null } }" };
   const verifiedAuthority = verifiedAuthorityPatch(patch.verified_authority);
   if (verifiedAuthority === "invalid") return { error: "verified_authority must be { enabled?, loopback_only?: boolean|null, max_session_hours?: number|null }" };
+  const chatArchive = chatArchivePatch(patch.chat_archive);
+  if (chatArchive === "invalid") return { error: "chat_archive must be { files_max_gb: 0..100000|null, confirm_remove?: boolean }" };
   return {
     ...(patch.notify_login !== undefined ? { notifyLogin: patch.notify_login as WebConfig["notify_login"] } : {}),
     ...(patch.echo_to_channel !== undefined ? { echo: patch.echo_to_channel as boolean } : {}),
@@ -77,9 +85,24 @@ export function parseWebSettingsBody(body: unknown): WebSettingsBody | { error: 
     ...(patch.public_link !== undefined ? { publicLink: patch.public_link as NonNullable<WebConfig["public_link"]> } : {}),
     ...(guests ? { guests } : {}),
     ...(verifiedAuthority ? { verifiedAuthority } : {}),
+    ...(chatArchive ? { chatArchive } : {}),
     ...(publicLinkSession ? { publicLinkSession } : {}),
     session, terminal,
   };
+}
+
+/** M-3281: the bounds of `web.chat_archive.files_max_gb` (GB), as the validator's. */
+export const CHAT_ARCHIVE_FILES_GB = { min: 0, max: 100_000 } as const;
+/** M-3281: `chat_archive` as Settings writes it — only `files_max_gb` (retention_days stays fleet.yaml's). */
+function chatArchivePatch(v: unknown): { filesMaxGb: number | null; confirmRemove: boolean } | null | "invalid" {
+  if (v === undefined) return null;
+  if (!v || typeof v !== "object" || Array.isArray(v)) return "invalid";
+  const o = v as Record<string, unknown>;
+  if (Object.keys(o).some(k => k !== "files_max_gb" && k !== "confirm_remove") || !("files_max_gb" in o)) return "invalid";
+  const gb = o.files_max_gb;
+  if (gb !== null && (typeof gb !== "number" || !Number.isFinite(gb) || gb < CHAT_ARCHIVE_FILES_GB.min || gb > CHAT_ARCHIVE_FILES_GB.max)) return "invalid";
+  if (o.confirm_remove !== undefined && typeof o.confirm_remove !== "boolean") return "invalid";
+  return { filesMaxGb: gb as number | null, confirmRemove: o.confirm_remove === true };
 }
 
 /**

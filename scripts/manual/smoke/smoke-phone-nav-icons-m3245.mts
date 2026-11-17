@@ -6,6 +6,7 @@
 // Cases: phone light en, phone dark zh-TW. Pictured per case: 1-drawer (✕), 2-section (←), 3-list (☰).
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-phone-nav-icons-m3245.mts
+// ui-gate: {"name": "Phone top-left ☰ / ← / ✕", "hp": 19672}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-nav-icons-m3245";

@@ -20,6 +20,7 @@
 // Fails on #4057 (71d5e04e3) and beta.9: 注音 at a person's pace (436 → 480 on every character) and per key while candidates show
 // (keys, keys-pan); on #4026's base English fails too.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [PW_ENGINE=webkit] [MODELS=en,zhuyin] npx tsx scripts/manual/smoke/smoke-phone-typing-steady-m3265.mts
+// ui-gate: {"name": "Phone typing steady per character (IME too)", "hp": 19681}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-typing-steady-m3265";

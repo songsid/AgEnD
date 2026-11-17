@@ -81,7 +81,7 @@ copying its install command stay on the AgEnD computer: a Runtime connects to it
 updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
-page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
+page polls; the fixed address streams for an admin session, at most 8 at once) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -170,8 +170,10 @@ A message to a paused agent wakes it through the same delivery path as Discord/T
 **Scrolling back (M-3272).** A chat opens with its newest messages. Scroll to the very top and the 100 before
 them load; nothing loads before you get there. Past each agent's newest 500, they come from the host's archive
 (`workspaces/<agent>/web-chat-archive/`, kept per `web.chat_archive.retention_days`; unset: kept forever).
-- **Archived messages:** text, author, time and file names (their files are no longer served); a reply's buttons and poll
-  are shown but read-only.
+- **Archived messages:** text, author, time and their files and pictures (M-3281: kept in the archive's `files/`; every
+  agent's together within **Settings → Web dashboard → Archived chat files**, 5 GB by default, `web.chat_archive.files_max_gb`;
+  past it the oldest go first and the message shows the file as "no longer kept"; lowering the limit asks first, naming
+  about how much goes); a reply's buttons and poll are shown but read-only.
 - **At most about 1,000 messages are on screen.** Scrolled far back, the newest end is set aside, and it comes back as you
   scroll down. **Jump to latest** (↓) returns to the live chat at once; sending a message does too.
 - **Search hits and pins** open the page around the message, however far back it is.

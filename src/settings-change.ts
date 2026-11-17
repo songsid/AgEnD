@@ -129,6 +129,10 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   // scans it still has to be signed in as the verified owner to approve (the same approval, rate limits and entry
   // condition as typing the code). A confirmation would stop nothing more.
   { path: ["fleet", "web", "login_qr"], def: false, looser: () => false },
+  // M-3281: the archived chat files' size limit applies at once either way: it is disk space, not reach (who may read the
+  // archive does not change). Lowering it removes files, so the page asks first, naming how much goes, and the handler
+  // refuses a lowering that would remove any without that confirmation (`confirm_remove`).
+  { path: ["fleet", "web", "chat_archive", "files_max_gb"], def: 5, looser: () => false },
   // #1629 r4.1 Q3 (b): the card's upload limits and the picture quota — a lower one applies directly, a higher one is
   // confirmed. Judged as the limit they GIVE (clamped to the bounds, as the loader does): 9999 → 5000 changes nothing.
   ...Object.entries(APPEARANCE_BOUNDS).flatMap(([group, keys]) => Object.entries(keys as Record<string, readonly [number, number]>).map(([key, [floor, ceiling]]) => {

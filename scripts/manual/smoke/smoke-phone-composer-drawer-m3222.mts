@@ -10,6 +10,7 @@
 // 3-composer-lines, 4-drawer-compact, 5-drawer-detailed.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-composer-drawer-m3222.mts
+// ui-gate: {"name": "Phone composer line and drawer reminders", "hp": 19667}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 import { clearDensity, density } from "../smoke-fixture/faces.mts";
 

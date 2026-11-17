@@ -11,6 +11,7 @@
 //               notice's lines evenly spaced
 // Run it on the base too (SMOKE_NAME=…-before): every case FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-hub-member-drawer-m3217.mts
+// ui-gate: {"name": "Hub member drawer and security notice", "hp": 19666}
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-hub-member-drawer-m3217";

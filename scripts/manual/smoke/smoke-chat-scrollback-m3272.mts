@@ -11,6 +11,7 @@
 //   desk (1366×900, light, en) — the same chat scrolled back a few pages (a picture).
 // BEFORE=1 (on the base, SMOKE_NAME=…-before): the top of the chat as it was — 500 messages, nothing older (a picture).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [HP=<port>] npx tsx scripts/manual/smoke/smoke-chat-scrollback-m3272.mts
+// ui-gate: {"name": "Chat scroll-back (phone, bounded)", "hp": 19701}
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-chat-scrollback-m3272";

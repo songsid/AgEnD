@@ -1,7 +1,7 @@
 /**
  * M-3278 (decision 7933bf90, the user's 「全開（只留技術限制）」) part 4: the privileged dashboard routes an admin session uses
  * on the local dashboard are on the public link's route list too. Each handler still admits an admin session only (guests
- * and read sessions are refused there, as before); the technical limits stay — no `/ui/events` stream over the link.
+ * and read sessions are refused there, as before); the technical limits stay — the live stream only on the fixed link (part 5).
  */
 import { describe, expect, it } from "vitest";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
@@ -43,8 +43,7 @@ describe("M-3278 4/5: the public link routes each lifted group", () => {
 
   it("the technical limits and this-computer-only routes stay off the link", () => {
     for (const [m, p] of [
-      ["GET", "/ui/events"],                                   // no SSE over the link
-      ["POST", "/ui/events"],
+      ["POST", "/ui/events"],                                  // GET /ui/events: the fixed link only (part 5, link-sse-named-m3278)
       ["GET", "/runtime/v1/connect"],                          // the paired computers' own protocol
       ["POST", "/api/settings/hub/setup/commit"],              // the host owner's own D3 surfaces (this computer only)
       ["POST", "/api/settings/hub/directory/save"],

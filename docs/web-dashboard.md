@@ -686,7 +686,7 @@ The server answers on `127.0.0.1` only. To use the dashboard from another device
    ```
 3. **Close `/view` to strangers:** set `web.view_access: session`, because `/view` shows your agents' terminals.
 4. **Use HTTPS.** A proxy that sends `X-Forwarded-Proto: https` gets a `Secure` session cookie.
-5. **Live updates.** Some paths cannot carry the live stream (Server-Sent Events): a Cloudflare **Quick Tunnel**, or a proxy that buffers responses. The dashboard notices when the stream stays silent for 15 seconds and fetches the same updates every 5 seconds instead. Nothing is lost or shown twice, and it switches back when the stream works again.
+5. **Live updates.** Some paths cannot carry the live stream (Server-Sent Events): a Cloudflare **Quick Tunnel**, or a proxy that buffers responses. Over the fixed address an admin session gets the live stream (M-3278), at most 8 open at once; past that a page polls. The dashboard notices when the stream stays silent for 15 seconds and fetches the same updates every 5 seconds instead. Nothing is lost or shown twice, and it switches back when the stream works again.
 
 Whoever reaches the address still has to sign in with a code from you, and each sign-in is announced in General.
 
@@ -708,7 +708,7 @@ Show the live Office to people outside the fleet for a while: a link they open i
 | Signing in | ✅ a one-time 8-character code, valid 5 minutes: `/web` in General, or `agend web` on the host | ✅ `/web` → other device: the link and the code come to you privately | ✅ as B; when `auto_open` reopens the link after a restart no code is sent, so ask `/web` for one |
 | Session length | ✅ 48 h, and 48 h unused, by default (`web.session.local.*`, 1–720 h) | ✅ as long as the link, at most 8 h (never longer than the account's own limit); 30 minutes unused | ✅ as B |
 | Link lifetime | — | ✅ 1–480 minutes (default 120); it never reopens by itself | ✅ 1–10080 minutes, or 0 for no expiry; `web.public_link.auto_open: true` reopens it after a restart (off by default) |
-| Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` for an admin session (M-3278), refused to a guest | ✅ as B |
+| Chat | ✅ live updates | ✅ updates by polling; `/raw` and `/save` for an admin session (M-3278), refused to a guest | ✅ as B, and live updates for an admin session (M-3278; a guest or read-only session polls) |
 | Uploads | ✅ 50 MB a file, 100 MB a message by default (`web.upload_max_file_mb`, `web.upload_max_total_mb`, 1–500) | ✅ at most 95 MB a file, whatever the config says | ✅ as B: at most 95 MB a file |
 | File previews (Markdown, CSV/TSV, JSON, code, text) | ✅ the **Show** card: 200 lines, then **Show all**; over 1 MiB, a download | ✅ the same **Show** card (#2547); video and audio stay downloads | ✅ as B |
 | HTML previews | ✅ after this device opts in | ✅ after this device opts in, through a second quick tunnel (`web.preview_on_public_link`, on by default), or through `web.preview_origin` when it is set | ✅ as B: a second quick tunnel even though this link is named, or `web.preview_origin` |
@@ -785,7 +785,7 @@ Full reference: [configuration.md](configuration.md). CLI commands: [cli.md](cli
 | **403** when opening the dashboard through a proxy or tunnel | Its `Host` is not allowed: add it to `web.allowed_hosts`. |
 | The sign-in page says the code is wrong | Codes are single-use and expire after 5 minutes, and only the newest works. Ask for a new one. |
 | "Your session has ended" | 48 hours without use or since sign-in (the defaults); on a public link the link ended (at most 8 hours), 30 minutes unused, or the link closed; or someone used `/web revoke`, **Sign out everywhere** or `agend web-token rotate`. Sign in again. |
-| Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the public link), so the page polls every 5 seconds; the Log tab may lag up to 30 seconds. Nothing to do — it is not shown as a problem. |
+| Updates arrive a few seconds late, with no live stream | The live stream is blocked on your path (or this is the temporary public link, or you are a guest or read-only over a link), so the page polls every 5 seconds; the Log tab may lag up to 30 seconds. Nothing to do — it is not shown as a problem. |
 | A page looks wrong or something is hidden after you saved custom CSS | Add `?safe=1` to the address to load it without your CSS. Settings → **Look** is never styled by it: fix the CSS there, or turn it off. |
 | `/web` answers "disabled" | No fleet admins are configured for that bot: add your user to its `allowed_users`. |
 | The browser's developer tools show a red **401** for `/auth/session` on the sign-in page | Expected: the page checks whether you are already signed in, and "no" is a 401. Nothing to do. |

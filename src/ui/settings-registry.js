@@ -93,6 +93,8 @@ const ROWS = [
   ["dash.preview-cdn", "web-dashboard", "#webPreviewCdn", "settings.webPreviewCdn", "web.preview_cdn", ["cdn", "libraries", "html preview", "chart", "jsdelivr", "cdnjs"], ["CDN", "函式庫", "HTML 預覽", "圖表"]],
   ["dash.office-levels", "web-dashboard", "#webOfficeLevels", "settings.webOfficeLevels", "web.office_levels", ["office", "level", "badge", "profile card"], ["辦公室", "等級", "徽章", "名片"]],
   ["dash.office-level-titles", "web-dashboard", ".s-level-titles", "settings.levelTitlesTitle", null, ["office", "level titles", "rank", "title", "badge"], ["辦公室", "等級頭銜", "頭銜", "稱號", "階級"]],
+  // M-3281: the archived chat files' size limit (settings-archive-files.js; its card is drawn before its field loads).
+  ["dash.archive-files", "web-dashboard", "#webArchiveFiles", null, null, ["archive", "archived files", "chat files", "pictures", "disk", "storage", "size limit", "files_max_gb"], ["封存", "封存檔案", "聊天檔案", "圖片", "磁碟", "空間", "大小上限"], L("Archived chat files", "封存的聊天檔案")],
   ["dash.app-icon", "web-dashboard", ".s-app-icon", "settings.appIconTitle", null, ["app icon", "favicon", "home screen", "icon"], ["App 圖示", "圖示", "主畫面"]],
   ["dash.card-limits", "web-dashboard", ".s-card-limits", "settings.cardLimitsTitle", "web.appearance", ["upload limits", "portrait", "banner", "card limits"], ["上傳限制", "身分卡上傳限制"]],
   // Fleet · Access & security
