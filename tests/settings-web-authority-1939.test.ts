@@ -122,6 +122,19 @@ describe("Settings → Web → Web authority, as rendered", () => {
     // An explicit true shows on; a value the validator refuses shows off, as it is in force.
     expect([(await open({ quick_link: true })).$("#vaQuickLink").checked, (await open({ quick_link: "no" })).$("#vaQuickLink").checked]).toEqual([true, false]);
   });
+  it("M-3277 (decision 7933bf90): the named-link row — shown with a named host (or once set), on by default; off is staged as named_link: false, back on as null", async () => {
+    const none = await open();
+    expect(none.$("#vaNamedLink"), "no named host and nothing set: no row").toBeNull();
+    const w = await open({}, { namedHost: "agend.example.com" });
+    expect(w.$("#vaNamedLink").checked, "unset: on (the default)").toBe(true);
+    await w.check(w.$("#vaNamedLink"), false);
+    await w.review(); await w.apply();
+    const off = await open({ named_link: false });
+    expect([!!off.$("#vaNamedLink"), off.$("#vaNamedLink").checked], "set off, even with no named host: shown, off").toEqual([true, false]);
+    await off.check(off.$("#vaNamedLink"), true);
+    await off.review(); await off.apply();
+    expect(off.writes().map((x: any) => x.body)).toEqual([{ verified_authority: { named_link: false } }, { verified_authority: { named_link: null } }]);
+  });
   it("a session authorized over the temporary public link is marked so", async () => {
     const w = await open({ quick_link: true }, { authorized: [{ handle: "a1b2c3d4e5f60718", label: "Safari on iPhone", account: "owner:admin", authorizedAt: Date.UTC(2026, 9, 18, 9, 0), until: Date.UTC(2026, 9, 18, 13, 0), quick: true }] });
     expect(w.$('#vaSessions li[data-handle="a1b2c3d4e5f60718"] .s-va-quick')?.textContent).toBe("over the temporary public link");

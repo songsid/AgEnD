@@ -88,7 +88,9 @@ export interface IssuedLoginCode {
 }
 
 export type LoginRedeemResult =
-  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient; readonly host?: true }
+  | { readonly kind: "ok"; readonly tier: SessionTier; readonly owner?: LoginCodeOwner; readonly recipient?: LoginCodeRecipient; readonly host?: true;
+    /** M-3277: an admin code AgEnD delivered privately to that account (see issue's `private`). */
+    readonly private?: true }
   /** Wrong, expired, spent, or none issued — deliberately indistinguishable. */
   | { readonly kind: "invalid" }
   /** The breaker is open. Even a correct code is refused until it closes. */
@@ -103,6 +105,8 @@ interface Outstanding {
   readonly host?: true;
   /** #3270: a host code issued while no host session existed — long-lived, redeemable from this computer only, only while none exists. */
   readonly bootstrap?: true;
+  /** M-3277: delivered privately to its account (owner or recipient) — the session it makes starts verified. */
+  readonly private?: true;
   readonly code: string;
   readonly expiresAt: number;
   readonly tier: SessionTier;
@@ -152,8 +156,12 @@ export class WebLoginCodes {
    * Issue a code, replacing any outstanding one. Only ever called from a channel the operator controls.
    * `epoch` is the current web token's (`tokenEpoch`): rotating the token — from this process or from
    * `agend web-token rotate` in another — withdraws an unused code, because redemption re-checks it.
+   * M-3277 (decision 7933bf90): `private` — the caller delivers this code to its account privately (a DM, or a Discord
+   * ephemeral reply) and withdraws it (revokeIfCurrent) when that delivery is not confirmed. Its redemption then says so,
+   * and the admin session it makes starts verified (auth-api → FleetManager.authorizeSignedInSession). Kept only on an admin
+   * code with an account (owner or recipient): a host or guest code never carries it.
    */
-  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true; bootstrap?: true }): IssuedLoginCode {
+  issue(opts: { tier?: SessionTier; epoch: string; audience?: string; owner?: LoginCodeOwner; recipient?: LoginCodeRecipient; host?: true; bootstrap?: true; private?: true }): IssuedLoginCode {
     const code = this.generate();
     const tier = opts.tier ?? "admin";
     // #2910 D1: a host code is the shell's own: an admin code for this computer, sent to no account.
@@ -166,8 +174,10 @@ export class WebLoginCodes {
     const bootstrap = host && opts.bootstrap === true && this.bootstrapWindowEnd !== null && now < this.bootstrapWindowEnd;
     const expiresAt = bootstrap ? this.bootstrapWindowEnd! : now + LOGIN_CODE_TTL_MS;
     const issuanceId = randomBytes(16).toString("hex");
+    const privately = opts.private === true && tier === "admin" && !host && !!(opts.owner || opts.recipient);
     this.outstanding = { code, expiresAt, tier, epoch: opts.epoch, failures: 0, issuanceId, audience: opts.audience ?? "local", owner: opts.owner,
       ...(host ? { host: true as const } : {}),
+      ...(privately ? { private: true as const } : {}),
       ...(bootstrap ? { bootstrap: true as const } : {}),
       // #1827: an owner is also who the code went to; a recipient alone is recognition only.
       ...(opts.owner || opts.recipient ? { recipient: opts.recipient ?? { adapterId: opts.owner!.adapterId, userId: opts.owner!.userId, ...(opts.owner!.username ? { username: opts.owner!.username } : {}) } } : {}) };
@@ -240,7 +250,8 @@ export class WebLoginCodes {
     if (matches && active.audience === audience) {
       this.outstanding = null;
       this.onEvent("spent");
-      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}), ...(active.host ? { host: true as const } : {}) };
+      return { kind: "ok", tier: active.tier, ...(active.owner ? { owner: active.owner } : {}), ...(active.recipient ? { recipient: active.recipient } : {}), ...(active.host ? { host: true as const } : {}),
+        ...(active.private ? { private: true as const } : {}) };
     }
 
     // Foreign-audience guesses still compare in constant time and still feed that

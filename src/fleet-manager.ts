@@ -428,7 +428,7 @@ import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
+import { AuthorityStateStore, namedLinkLastTurnedOff, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
@@ -9998,7 +9998,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     // #1827: the code goes privately to this account (a DM, or else this slash command's ephemeral answer): whoever
     // redeems it is recognised as that account. Recognition only — no owner (this is not an owning General's code).
-    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) } });
+    // M-3277: private — a DM, else this slash command's ephemeral answer, else withdrawn (below): the session starts verified.
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) }, private: true });
     const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
@@ -10169,7 +10170,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const token = this.webToken;
       if (!token || !current()) return false;
       this.initializeWebSessions();
-      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
+      // M-3277: private — the owner's DM, else (Discord) the click's ephemeral answer, else withdrawn below; never the menu itself.
+      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner, private: true });
       // Only a public link has a link expiry (null: none — a named tunnel's ttl_minutes 0); the code's five-minute
       // lifetime applies to either packet.
       const minutes = Math.round(LOGIN_CODE_TTL_MS / 60_000);
@@ -10643,7 +10645,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const link = this.publicWebLink;
       if (!link || !input.exposureId || link.exposureId !== input.exposureId || link.status().state !== "open") return { kind: "refused" };
     } else if (input.exposureId !== undefined) return { kind: "refused" };
-    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner });
+    // M-3277: private — by DM only (withdrawn when that is not confirmed).
+    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner, private: true });
     const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"),
       t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local")) + "\n" + t("dashboard.code_next");
     try {
@@ -19454,6 +19457,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3277 (decision 7933bf90; auth-api, at sign-in): an admin session that signed in with a code AgEnD delivered privately
+   * to its account (a DM, or Discord's ephemeral reply) starts verified — that code went to the very DM a Confirm card
+   * would. §3 is judged as at a Confirm (authorizeWebSession: the switch, loopback only, the named / quick link options,
+   * still an admin, the namespace); a refusal leaves the session signed in and unverified, as before. The account is told
+   * at once, with Not me (noteAuthorized). Re-verifying once that authorization has run out still takes the card.
+   */
+  authorizeSignedInSession(session: SessionRecord, peer: WebPeer, gateway: boolean): void {
+    if (session.tier !== "admin" || !session.owner || session.host) return;
+    const r = this.authorizeWebSession(session, peer, gateway);
+    if (!r.ok) { this.logger.info({ handle: session.handle, refusal: r.refusal }, "Web session signed in with a private code, not verified"); return; }
+    this.logger.info({ handle: session.handle, durable: r.durable }, "Web session verified at sign-in (a private code)");
+    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry) })
+      .catch(err => this.logger.warn({ err: (err as Error)?.message }, "Web sign-in notice failed"));
+  }
+
+  /**
    * #2910 D1 (auth-api, at sign-in): a web-only fleet's host session — signed in with the host's own code (`agend web
    * --code`) on this computer — is the host operator, authorized from now for max_session_hours (as an account's
    * Confirm would be), under the current epoch: a revocation ends it, and only a new sign-in on this computer gives it
@@ -19916,12 +19935,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
+  private namedLinkDefaultChecked = false;
+  /**
+   * M-3277 (#4099 review, F1): the named link is on by default now, and before M-3277 the Settings card turned it off by
+   * removing `named_link` from fleet.yaml. A fleet whose owner did that (the state file: seen, and off now) would read the
+   * absent key as the new default — on again, and the epoch moved — against that owner's last choice. Once per process
+   * (and again after a reload), before the state is read: such a fleet gets `named_link: false`, in memory at once and in
+   * fleet.yaml (a backup first, as every upgrade migration). A fleet that never turned it on gets the default (nothing
+   * was ever authorized over that link); an explicit value is never touched.
+   */
+  private migrateNamedLinkDefault(): void {
+    if (this.namedLinkDefaultChecked || !this.fleetConfig || !this.dataDir) return;
+    this.namedLinkDefaultChecked = true;
+    const va = this.fleetConfig.web?.verified_authority;
+    if (va?.named_link !== undefined && va?.named_link !== null) return;
+    if (!namedLinkLastTurnedOff(join(this.dataDir, "web-authority.json"))) return;
+    this.fleetConfig.web = { ...(this.fleetConfig.web ?? {}), verified_authority: { ...(va ?? {}), named_link: false } };
+    this.logger.info("Web authority over the named link stays off, as last turned off (stored as named_link: false now that it is on by default)");
+    if (!this.configPath || this.configHistory?.isFallback(this.configPath) || !validateFleetConfig(this.rawFleetConfig).valid) return;
+    try {
+      this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
+      this.saveFleetConfig();
+    } catch (err) { this.logger.warn({ err }, "Could not store named_link: false in fleet.yaml; it stays off for this run"); }
+  }
   /**
    * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
     if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 };
+    this.migrateNamedLinkDefault();                  // M-3277 F1: before the first read of the state (it would move the epoch)
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
@@ -20044,6 +20087,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: {
         ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
         confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
+        signedIn: (c) => t("web_auth.signed_in", c.label, where(c.peer), when(c.until)),
+        signedInHint: () => t("web_auth.signed_in_hint"),
         denied: (c) => t("web_auth.card_denied", c.label),
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
@@ -27560,6 +27605,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
+    this.namedLinkDefaultChecked = false; this.migrateNamedLinkDefault();   // M-3277 F1: a reloaded file is checked again
 
     // Classic behavior settings share the fleet defaults but are not entries
     // in fleet.yaml. Snapshot the old effective chain before reloading the
