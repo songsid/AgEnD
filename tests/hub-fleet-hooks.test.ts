@@ -217,3 +217,8 @@ describe("host browser certificate Settings composition", () => {
     await fm.stopAll();
   });
 });
+
+it("M3300 H7 reads the current Fleet history budget after configuration reload",async()=>{
+ const {fm,write}=harness({defaults:{max_cross_instance_message_bytes:4096},hub_member:{enabled:true}});await fm.hubRuntimeCreated();const read=hub.options.member.maxCrossInstanceMessageBytes;expect(read()).toBe(4096);
+ write({defaults:{max_cross_instance_message_bytes:8192},hub_member:{enabled:true}});expect(read()).toBe(8192);write({hub_member:{enabled:true}});expect(read()).toBeUndefined();await fm.stopAll();
+});

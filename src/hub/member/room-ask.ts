@@ -1,5 +1,6 @@
 /** Track C / seam2: injectable Fleet adapter. Track R owns the negotiated wire schemas and socket routing. */
 import type Database from "better-sqlite3";
+import {budgetRoomContext} from "./room-context-budget.js";
 import { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
 import { epoch, HubProtocolError, plain, uuid, validated } from "../validation.js";
@@ -57,6 +58,8 @@ export interface RoomAskOptions {
   localExposure(id: string): RoomExposure | null;
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   locale?: "en" | "zh-TW";
+  /** Read current Fleet defaults when each question is rendered, including after configuration reload. */
+  maxCrossInstanceMessageBytes?(): number | undefined;
   /** M-3125: the Fleet's Hub file handling (the 1:1 representative's): the inbox for an ask's files, the reply rule for an answer's. */
   files?: HubMemberFiles;
   generation?(agent: string): string | null;
@@ -230,7 +233,7 @@ export class HubRoomAskAdapter {
       }
       const delivered = await this.options.deliver({ agent: saved.local.agent, correlationId: saved.cid, contactLimit: this.options.localExposure(saved.ask.exposureId)?.contactLimit !== false,
         ...(saved.generation ? {roomContextGeneration:saved.generation} : {}),
-        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
+        text: formatRoomAskPrompt(saved.ask, saved.cid, this.options.locale, { maxContextBytes: this.options.maxCrossInstanceMessageBytes?.(), react: !!source.features?.has(HUB_ROOM_REACT_CAPABILITY) && typeof source.sendReact === "function", fileLines }), stillCurrent: current,
         beforeInput: async () => {
           if (!current() || this.row(id)?.state !== "dispatching") return false;
           // Durable first-input intent BEFORE handing bytes to the ordinary Fleet delivery path.
@@ -438,9 +441,10 @@ export class HubRoomAskAdapter {
   close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
 }
 
-export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, fileLines = [] }: { react?: boolean; fileLines?: readonly string[] } = {}): string {
+export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, fileLines = [], maxContextBytes }: { react?: boolean; fileLines?: readonly string[]; maxContextBytes?: number } = {}): string {
   const zh = locale === "zh-TW";
-  const data = JSON.stringify({ context: ask.context, question: { asker: ask.asker.name, text: ask.text } }, null, 2);
+  const bounded=budgetRoomContext(ask.context,maxContextBytes);
+  const data = JSON.stringify({ ...(bounded.context!==undefined?{context:bounded.context}:{}), question: { asker: ask.asker.name, text: ask.text } }, null, 2);
   return [zh ? `Hub 房間 ${JSON.stringify(ask.roomName)}｜${JSON.stringify(ask.asker.name)} 提問`
     : `Hub room ${JSON.stringify(ask.roomName)} | Question from ${JSON.stringify(ask.asker.name)}`,
     zh ? "房間裡的每個人都能看到你的回答。請在你目前的對話中處理。" : "Everyone in this room can read your answer. Work in your existing conversation.",
@@ -453,6 +457,7 @@ export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale:
     // M-3127 (agent reactions, on room-answer-buttons-v1): a reaction under the question (the Fleet chat's minimal reply) — only where the Hub takes it.
     ...(react ? [zh ? `要對這個問題表示回應（例如 👍），可以用 react，message_id="${correlationId}"；它會出現在問題下方，但不代替回答。`
       : `To react to the question (e.g. 👍), use react with message_id="${correlationId}"; it shows under the question but does not replace your answer.`] : []),
+    ...(bounded.omitted?[zh?`還有 ${bounded.omitted} 則較早的訊息沒有顯示。`:`${bounded.omitted} earlier messages are not shown.`]:[]),
     `${zh ? "房間對話（由舊到新）與問題" : "Room conversation (oldest first) and question"}:\n\`\`\`json\n${data}\n\`\`\``,
     // M-3125: the asking post's files, saved in your inbox; to answer with files, pass them in report_result's files.
     ...(fileLines.length ? [`${zh ? "這個問題附的檔案（已存到你的收件匣）" : "Files attached to the question (saved in your inbox)"}:\n${fileLines.join("\n")}`] : [])].join("\n\n");

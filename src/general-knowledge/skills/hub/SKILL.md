@@ -578,6 +578,10 @@ On a Hub that offers **Administration → Roles and permissions** (角色與權�
 - Migration preserves existing access, limits, denies and paused resources. **Apply new defaults for myself** is a once-only checked notice for the first administrator. Until self-use is enabled in the allowed list, saved chat/share/Fleet permissions retain the previous behaviour.
 - **Turn roles off** is a forward mode rollback on the current binary: current self-use rules, denies and paused resources remain; only the first administrator manages the Hub. It does not restore an old graph, downgrade a database or permit an older strict-schema binary to read newer role descriptions. Damaged/incomplete migration state stays held for repair.
 
+### Earlier room messages sent to a Fleet agent
+
+The first question carries the recent room window; later questions carry only messages after its confirmed input marker. On an updated Fleet, the rendered earlier-message JSON obeys `defaults.max_cross_instance_message_bytes` (12 KiB by default). Newest messages are kept, older omissions are counted, and a single oversized newest message is cut with a missing-byte note. The current question is not cut by this history rule. This is local Fleet rendering: no new wire field is required, and older Fleets keep their existing behavior.
+
 ## Room assistant administration
 
 On a Hub that offers the room-assistant pilot, a Hub administrator opens **Administration → Room assistant**
