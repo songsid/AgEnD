@@ -137,7 +137,7 @@ describe("an archived message keeps its files", () => {
     expect(a.enforceFilesCap(), "unset: 5 GiB").toBe(0);
     expect(ARCHIVE_FILES_MAX_GB).toBe(5);
     gb = KIB / GIB;
-    expect(a.enforceFilesCap()).toBe(2);
+    expect(a.enforceFilesCap({ exact: true }), "Settings' lowering: exactly to the limit its confirmation named").toBe(2);
     gb = 0;
     expect(a.keepFile("beta", (dest) => { writeFileSync(dest, "z"); return true; })).toBeNull();
     expect(existsSync(join(home, "workspaces", "beta", "web-chat-archive"))).toBe(false);
@@ -146,6 +146,48 @@ describe("an archived message keeps its files", () => {
     w.say("alpha", [f]); w.say("alpha"); w.say("alpha");
     await w.archive.flush();
     expect([w.kept("alpha"), (w.archived("alpha")[0]!.attachments![0] as { gone?: true }).gone]).toEqual([[], true]);
+  });
+
+  it("#4108 review F1: at the limit, keeping a file never walks every kept file in record(); past it, one walk trims to 90% so the next ones fit", async () => {
+    const home = tmp();
+    const a = new WebChatArchive({ home, ownerOf: (n) => `dir:/w/${n}`, logger: { warn: vi.fn() }, now: () => NOV, filesMaxGb: () => (100 * KIB) / GIB });
+    const walks = vi.spyOn(a as any, "keptFiles");
+    const keep = () => a.keepFile("alpha", (dest) => { writeFileSync(dest, "k".repeat(KIB)); return true; });
+    for (let i = 0; i < 300; i++) {
+      const before = walks.mock.calls.length;
+      expect(keep()).not.toBeNull();
+      expect(walks.mock.calls.length, "not inside keepFile (record()'s path)").toBe(before);
+      await a.flush();                                                   // the deferred check, each file in a turn of its own
+    }
+    const kept = readdirSync(join(home, "workspaces", "alpha", "web-chat-archive", "files", "2026-11")).length;
+    expect(kept).toBeLessThanOrEqual(100);
+    expect(kept).toBeGreaterThanOrEqual(90);
+    // 1 count at the first file, then one walk per ~10 files past the limit (to 90 KiB) — not one per file (~200).
+    expect(walks.mock.calls.length).toBeLessThanOrEqual(25);
+  });
+
+  it("#4108 review N1: the archive is ignored by git (an agent's `git add -A` in its workspace never takes the chat files)", async () => {
+    const w = world();
+    const f = w.file("alpha", "p.png", "pic");
+    w.say("alpha", [f]); w.say("alpha"); w.say("alpha");
+    await w.archive.flush();
+    expect(readFileSync(join(w.home, "workspaces", "alpha", "web-chat-archive", ".gitignore"), "utf8")).toBe("*\n");
+  });
+
+  it("#4108 review N2: a file served from the agent's own path (no snapshot) is copied, never linked — the agent changing it later does not change the archive's", async () => {
+    const w = world();
+    const own = join(w.home, "workspaces", "alpha", "report.md");
+    mkdirSync(join(w.home, "workspaces", "alpha"), { recursive: true });
+    writeFileSync(own, "v1");
+    const f = w.ledger.registerServed({ path: own, instance: "alpha" })!;
+    const up = w.file("alpha", "u.txt", "upload");
+    w.say("alpha", [f, up]); w.say("alpha"); w.say("alpha");
+    await w.archive.flush();
+    const [m] = w.archived("alpha");
+    const [copyOf, linkOf] = (m!.attachments as Array<{ id: string }>).map(a => w.ledger.servedFile(a.id)!);
+    expect([statSync(copyOf!.realPath).ino === statSync(own).ino, statSync(linkOf!.realPath).ino === statSync(up.realPath).ino]).toEqual([false, true]);
+    writeFileSync(own, "v2 changed in place");
+    expect(w.ledger.read(copyOf!.id)?.bytes.toString()).toBe("v1");
   });
 
   it("retention_days (off by default): a month past it goes with its kept files; unset keeps them", async () => {

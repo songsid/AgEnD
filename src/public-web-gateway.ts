@@ -109,7 +109,7 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
   // fixed address's test — an admin session's over the link as anywhere (the handlers admit an admin only).
-  if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance)$/.test(path)) return true;
+  if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance|chat-archive)$/.test(path)) return true;   // M-3281: chat-archive
   if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
   if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
   // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet

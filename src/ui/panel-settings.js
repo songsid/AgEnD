@@ -32,6 +32,7 @@ import "./settings-restart-strings.js";   // S-92: the restart words for a fleet
 import "./settings-public-session-strings.js";   // #3708: the public link's session limits (a file of its own: an open tab may hold the older string files)
 import "./settings-access-strings.js";   // the words Access & security added (settings.webLoginQr…): an older settings-strings.js from a tab that visited Fleet first lacks them (#3061)
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
+import { ArchiveFilesSetting } from "./settings-archive-files.js";   // M-3281: the archived chat files' size limit
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
 import {
@@ -1546,6 +1547,7 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${toggleRow("cdn", "webPreviewCdn", "webPreviewCdn", "webPreviewCdnHint", "web.preview_cdn")}
     </section>`) : null}
     ${has("dashboard") && !overPublicLink ? html`<${LevelTitlesCard} />` : null}
+    ${has("dashboard") ? html`<${ArchiveFilesSetting} />` : null}
     ${has("readonly") ? html`<div class="s-effective-view"><p class="s-effective-notice"><${Icon} name="info" size=${18} />${layoutText("revEffectiveHint")}</p>
       <section class="card s-web-readonly"><h3 class="sr-only">${tn("webReadOnlyTitle")}</h3>
         <div class="s-ro-columns" aria-hidden="true"><span>${layoutText("effectiveKey")}</span><span>${layoutText("effectiveValue")}</span><span>${layoutText("effectiveSource")}</span></div>

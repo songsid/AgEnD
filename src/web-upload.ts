@@ -594,16 +594,20 @@ export class WebFileLedger {
   }
 
   /**
-   * M-3281: put the file served under `id` at `dest` for an archived message — a hard link (the same file, no space
-   * taken while the original lives), or a copy where a link cannot be made (another device) — only while it is still the
-   * file registered (device + inode, a regular file, never a link) and never an upload no message took. False: not kept.
+   * M-3281: put the file served under `id` at `dest` for an archived message — only while it is still the file registered
+   * (device + inode, a regular file, never a link) and never an upload no message took. A hard link (the same file, no
+   * space taken while the original lives) only for AgEnD's own copies: a reply's snapshot (#1770) or an upload in the
+   * inbox. A file served from the agent's own path (a reply file that could not be snapshotted) is copied: the agent may
+   * change it in place, and a link would change the archived message's file with it (#4108 review N2). A copy too where a
+   * link cannot be made (another device). False: not kept.
    */
   keepCopy(id: string, dest: string): boolean {
     const file = isFileId(id) ? this.served.get(id) : undefined;
     if (!file || file.kept || basename(file.realPath).startsWith(PENDING_PREFIX)) return false;
     const same = (p: string) => { try { const st = lstatSync(p); return st.isFile() && st.dev === file.dev && st.ino === file.ino && st.size === file.size; } catch { return false; } };
     if (!same(file.realPath)) return false;
-    try { linkSync(file.realPath, dest); return same(dest); } catch { /* another device, or no links: a copy */ }
+    const own = file.snapshot === true || basename(dirname(file.realPath)) === "inbox";
+    if (own) try { linkSync(file.realPath, dest); return same(dest); } catch { /* another device, or no links: a copy */ }
     try {
       copyFileSync(file.realPath, dest, fsConstants.COPYFILE_EXCL);
       const st = lstatSync(dest);

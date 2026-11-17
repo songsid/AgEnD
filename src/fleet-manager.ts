@@ -2817,6 +2817,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubBrowserCertificate(): import("./hub/browser-certificate.js").HubBrowserCertificateControl | null { return this.hubRuntime?.browserCertificateSettings() ?? null; }
   hubRetention(): import("./hub/retention.js").HubRetentionControl | null { return this.hubRuntime?.retentionSettings() ?? null; }
+  /** M-3281: the archived chat files, for Settings (their size limit: what is kept, what a lower one removes). */
+  chatArchiveFiles(): import("./settings-api.js").ChatArchiveFilesControl | null {
+    const archive = this.webChatArchive;
+    return archive ? { usage: (capBytes) => archive.filesUsage(capBytes), enforce: () => archive.enforceFilesCap({ exact: true }) } : null;
+  }
   /** M-2682: an unfinished sealed-settings commit; Hub setting saves wait until recover() has run. */
   hubSettingsBusy(): boolean { return this.hubSettingsWriter?.pending() === true || this.hubSetupController?.pending() === true; }
   /** #3298 S-89: this fleet's own Hub offers group permissions (the page mark that shows Settings → Hub's Group permissions row). */
