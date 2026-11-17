@@ -308,7 +308,7 @@ describe("M-2738 Fable #3504 review: who may reach the routes, asked at the hand
   }
   const ROUTES = [["GET", "/ui/update"], ["POST", "/ui/update/check"], ["POST", "/ui/update/start"], ["GET", "/ui/update/log"]] as const;
 
-  it("(1) M-3278: a request bound to a public link is answered as locally — its admin reads the offer; its read session starts nothing", async () => {
+  it("(1) M-3278: a request bound to a public link is answered as locally — its admin reads the offer; its read session gets nothing (404)", async () => {
     const f = await fleet();
     try {
       await f.offer("2.3.5-beta.3");
@@ -318,10 +318,10 @@ describe("M-2738 Fable #3504 review: who may reach the routes, asked at the hand
       const admin = made("admin"), read = made("read");
       const offer = await call(f, { method: "GET", path: "/ui/update", gateway: true, headers: over(admin) });
       expect([offer.status, offer.body.admin]).toEqual([200, true]);
+      // Fable on #4107 (N1): a read session over the link is answered as before — not found, not even the version.
       for (const [method, path] of ROUTES) {
-        if (method !== "POST") continue;
-        const r = await call(f, { method, path, gateway: true, headers: over(read), body: { confirm: "update-agend" } });
-        expect([path, r.status], path).toEqual([path, 403]);
+        const r = await call(f, { method, path, gateway: true, headers: over(read), ...(method === "POST" ? { body: { confirm: "update-agend" } } : {}) });
+        expect([path, r.status], path).toEqual([path, 404]);
       }
       await new Promise(r => setTimeout(r, 30));
       expect(spawned).toEqual([]);

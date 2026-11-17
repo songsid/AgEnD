@@ -12,6 +12,7 @@ import type { RuntimeMachine } from "./runtime-protocol.js";
 import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { cachedSettingsBody, isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester } from "./settings-request-capability.js";
@@ -50,6 +51,13 @@ function json(res: ServerResponse, status: number, value: unknown): void {
 export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, url: URL, ctx: RuntimeApiContext, bundle = createRuntimeBundle): boolean {
   if (url.pathname !== "/ui/runtimes" && !url.pathname.startsWith("/ui/runtimes/")) return false;
   const method = req.method ?? "GET";
+  // M-3278 (Fable on #4107, N2): the Windows package and its installer pin stay on this computer's dashboard. A Runtime
+  // talks `/runtime/v1/*` to this computer, which the public link never carries, so a package or command made there could
+  // not connect; anyone over the link (its admin included) is told where to do it instead of handed one.
+  if (gatewayRequestContext(req) && (url.pathname === "/ui/runtimes/download/windows" || url.pathname === "/ui/runtimes/installer")) {
+    json(res, 403, { error: "Download the Runtime and copy its install command on this computer's dashboard: a Runtime connects to this computer, never through the public link." });
+    return true;
+  }
   if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Runtime settings require a local dashboard administrator" }); return true; }
   const enabled = remoteRuntimeEnabled() && !!ctx.runtimeCoordinator;
   if (!enabled) { json(res, method === "GET" && url.pathname === "/ui/runtimes" ? 200 : 404, { enabled: false, machines: [] }); return true; }

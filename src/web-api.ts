@@ -3137,6 +3137,11 @@ export function handleWebRequest(
   // session: never the CLI's header token (no person, and the way an agent could reach it); M-3278: the public link's
   // sessions too, as locally. The stylesheet and its assets are that session's
   // person's only: no name or identity in any URL.
+  // M-3278 (Fable on #4107, N1): owner CSS, AgEnD's update and mods over the public link are an admin session's only —
+  // a guest or read-only session there is answered as the gateway answered it before (not found).
+  const linkPrivileged = path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")
+    || path === "/ui/update" || path.startsWith("/ui/update/") || path === "/ui/mods" || path.startsWith("/ui/mods/");
+  if (linkPrivileged && linkRestricted(req, url, ctx)) { json(res, 404, { error: "not_found" }); return true; }
   if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
     return handleOwnerCss(req, res, url, ctx, path, method);
   }
@@ -4827,7 +4832,8 @@ function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiCon
       guestScope: () => g?.scope() ?? new Set<string>() };
   }
   // M-3278 (decision 7933bf90): the public link's admin session gets its own person scope, as on the local dashboard.
-  if (v.via === "session" && v.session) {
+  // A read-only session over the link keeps no person scope, as before (Fable on #4107, N1: the decision is an admin's).
+  if (v.via === "session" && v.session && (v.session.tier === "admin" || !gatewayRequestContext(req))) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
   }

@@ -100,7 +100,7 @@ describe("who may use it", () => {
     } finally { await f.stop(); }
   }, 30_000);
 
-  it("M-3278: the public link carries every route for its admin session (as locally); its read session still writes nothing", async () => {
+  it("M-3278: the public link carries every route for its admin session (as locally); its read session reaches none of it", async () => {
     for (const [m, p] of [["GET", "/ui/owner-css.css"], ["GET", "/ui/owner-css/state"], ["GET", `/ui/owner-css/asset/${"a".repeat(32)}`], ["POST", "/ui/owner-css"],
       ["POST", "/ui/owner-css/shown"], ["POST", "/ui/owner-css/keep"], ["POST", "/ui/owner-css/revert"], ["POST", "/ui/owner-css/restore"], ["POST", "/ui/owner-css/asset"]] as const) {
       expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
@@ -119,7 +119,9 @@ describe("who may use it", () => {
       });
       expect(await call("GET", "/ui/owner-css/state")).toBe(200);
       sessionId = made("read");
-      expect([await call("POST", "/ui/owner-css"), await call("POST", "/ui/owner-css/restore")]).toEqual([403, 403]);
+      // Fable on #4107 (N1): its read session reaches none of it — read or write — as before (not found).
+      expect([await call("GET", "/ui/owner-css.css"), await call("GET", "/ui/owner-css/state"), await call("POST", "/ui/owner-css"), await call("POST", "/ui/owner-css/restore")])
+        .toEqual([404, 404, 404, 404]);
     } finally { await f.stop(); }
   }, 30_000);
 });

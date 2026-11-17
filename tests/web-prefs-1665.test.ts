@@ -241,6 +241,9 @@ describe("/ui/prefs", () => {
     const rw = ro.write({ set: { theme: "dark" } });
     await flush();
     expect([rw.status(), rw.json().error, ro.prefs.read().values]).toEqual([403, "prefs_read_only", {}]);
+    // Fable on #4107 (N1): the read session over the link keeps the scope-less view, as before (no person scope).
+    ro.prefs.write(OPERATOR, new Map([["theme", "dark"]]));
+    expect(ro.read().json().ownerScope).toBe("none");
     // It reads what is in force — M-3278 (decision 7933bf90): in the admin session's own person scope, as on the local
     // dashboard (here the operator's), no longer the scope-less view.
     const t = setup({ publicLink: true });

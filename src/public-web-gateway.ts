@@ -108,8 +108,10 @@ export function isPublicWebRoute(method: string, path: string): boolean {
 /**
  * M-3278 (decision 7933bf90, part 4): the privileged dashboard routes an admin session uses on the local dashboard — the
  * app icon, AgEnD's own update, owner CSS, mods, sign-ins and accounts, installing and updating a CLI, an agent's Files &
- * changes, Runtimes and the Windows CLI. Every handler admits an admin session only (a few, the CLI's header token too) and
- * refuses guests and read sessions itself; the public link's admin session is answered as locally. Never `/ui/events`.
+ * changes, Runtimes and the Windows CLI. Over the link each admits an admin session only and refuses guests and read
+ * sessions itself (owner CSS, update and mods by web-api's linkRestricted check; the header token never works over the
+ * link); the public link's admin session is answered as locally. Never `/ui/events`; Runtime's Windows package and
+ * installer pin answer 403 there (runtime-api).
  */
 function isPublicPrivilegedRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";

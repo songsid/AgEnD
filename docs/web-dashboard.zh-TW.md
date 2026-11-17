@@ -720,7 +720,7 @@ server 只回應 `127.0.0.1`。要從別的裝置使用 dashboard，你需要開
 | 設定：網頁、外觀、訪客、網頁授權 | ✅ | ✅ 管理員可以（M-3278）。會開啟或放寬連結的變更，也能在連結上確認：按**立即套用**或用驗證器代碼，依設定角色而定（連結選項、「只有這台電腦」、嚴格開關）；被偷走的連結 session 靠登入時的保護來防：私訊代碼、登入通知的「不是我」、`/web revoke` | ✅ 同 B |
 | 設定：密鑰與 token（供應商 API 金鑰、連線 token、固定網址的 Cloudflare token） | ✅ | ✅ admin 登入（M-3278） | ✅ 同 B |
 | 設定 → Hub：連線、分享 Agent、成員資格，以及 Hub 主機的執行、預覽、保留期限與瀏覽器憑證 | ✅ | ✅ admin 登入（M-3278）；架設 Hub、它的目錄與網址仍只在 AgEnD 電腦本身上，公司登入需要這個 Fleet 自己的網址 | ✅ 同 B |
-| 登入、AI 帳號、安裝與更新 CLI、更新 AgEnD、Runtime、Windows CLI、Agent 的檔案與變更 | ✅ admin 登入 | ✅ admin 登入（M-3278）；安裝依你在 AgEnD 電腦以外的確認偏好 | ✅ 同 B |
+| 登入、AI 帳號、安裝與更新 CLI、更新 AgEnD、Runtime、Windows CLI、Agent 的檔案與變更 | ✅ admin 登入 | ✅ admin 登入（M-3278），但下載 Windows Runtime 套件和複製安裝指令除外（Runtime 連到 AgEnD 電腦，不經過連結）；安裝依你在 AgEnD 電腦以外的確認偏好 | ✅ 同 B |
 | Office 編輯 | ✅ | ✅ 管理員可以（M-3278） | ✅ 同 B |
 | 辦公室分享連結（分享…、設定裡的撤銷） | ✅ | ✅ fleet 管理員；分享走它自己的通道，不是這個連結的 | ✅ 同 B |
 | 任務看板、排程、團隊 | ✅ | ✅ 管理員以自己的身分操作（M-3278）；唯讀 session 只能看 | ✅ 同 B |

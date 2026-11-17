@@ -299,8 +299,8 @@ describe("runtime update bundle metadata", () => {
 
 describe("the public gateway link never carries the installer", () => {
   it("does not list any installer route among the public routes, for any method", () => {
-    // M-3278: `/ui/runtimes/installer` (the admin's copy of the script's SHA-256) is on the link for its admin session; the
-    // installer files themselves and the pairing protocol never are.
+    // M-3278: `/ui/runtimes/installer` sits under the link's `/ui/runtimes` routes, but its handler answers 403 there
+    // (Fable on #4107, N2 — runtime-api); the installer files themselves and the pairing protocol are never routed.
     expect(isPublicWebRoute("GET", "/ui/runtimes/installer")).toBe(true);
     for (const path of [...INSTALL_ROUTES, "/runtime/v1/pair", "/runtime/v1/claim"])
       for (const method of ["GET", "HEAD", "POST", "PUT", "DELETE"]) expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(false);

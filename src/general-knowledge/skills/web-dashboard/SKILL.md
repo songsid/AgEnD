@@ -76,7 +76,8 @@ Over a public link (temporary or fixed) a fleet admin has the dashboard as reach
 schedules, teams, the task board, the Office editor, preferences and pins, Settings → Access & security (Guests, Web
 authority, sessions, the link itself), **Retry now** and **Close public link** — including confirming a change that opens
 a link, as the settings role allows — and also secrets and tokens, Settings → Hub (setting up a Hub, its directory and
-addresses stay on the AgEnD computer itself), Runtime and Windows CLIs, connecting AI accounts, installing and updating CLIs,
+addresses stay on the AgEnD computer itself), Runtime and Windows CLIs (downloading the Windows Runtime package and
+copying its install command stay on the AgEnD computer: a Runtime connects to it, never through the link), connecting AI accounts, installing and updating CLIs,
 updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
 **Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
 activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
