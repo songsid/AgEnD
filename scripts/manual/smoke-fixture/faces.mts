@@ -45,5 +45,5 @@ export function density(page: any, value: "detailed" | "compact"): Promise<void>
 
 export function clearDensity(fx: any): void {
   // M-3252: the desktop sidebar's and the phone drawer's (setSidebarDensity writes the one for the page's layout).
-  fx.fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null], ["nav.densityPhone", null]]));
+  fx.fm.webPrefs.writeForViewer("operator", new Map<string, unknown>([["nav.density", null], ["nav.densityPhone", null], ["nav.compactName", null]]));
 }

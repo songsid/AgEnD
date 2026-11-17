@@ -392,6 +392,18 @@ export function setNamesPrimary(value) {
   savePref("names.primary", primary);
 }
 onPrefsChanged((keys) => { if (keys.has("names.primary")) namesStore.set({ primary: readNamesPrimary() }); });
+// One compact-name choice for both layouts. Unset preserves the existing leading-name behavior, including native rows.
+function readCompactName() {
+  const p = prefInForce("nav.compactName"), value = p ? p.value : stored("agend_nav_compact_name");
+  return value === "nickname" || value === "instance" ? value : null;
+}
+export const compactNameStore = createStore({ value: readCompactName() });
+export function setCompactName(value) {
+  const name = value === "instance" ? "instance" : "nickname";
+  compactNameStore.set({ value: name });
+  savePref("nav.compactName", name);
+}
+onPrefsChanged((keys) => { if (keys.has("nav.compactName")) compactNameStore.set({ value: readCompactName() }); });
 /**
  * An instance's two names as the web shows them: the one leading (`primary`) and the other (`secondary`), or "" when
  * there is no other — no nickname, or a nickname that is the instance name itself (one line).
@@ -510,6 +522,19 @@ const RECENT_GROUP = "\u0000recent";
 function SortMenu({ sort, phone = false }) {
   const [open, setOpen] = useState(false);
   const box = useRef(null);
+  const popup = useRef(null);
+  useLayoutEffect(() => {
+    if (!open || !popup.current || !window.innerHeight) return undefined;
+    const fit = () => {
+      const menu = popup.current;
+      if (!menu) return;
+      const clip = menu.closest(".side-section")?.getBoundingClientRect();
+      const bottom = Math.min(window.innerHeight, clip?.bottom ?? window.innerHeight);
+      menu.style.maxHeight = `${Math.max(0, bottom - menu.getBoundingClientRect().top - 8)}px`;
+    };
+    fit(); window.addEventListener("resize", fit); window.addEventListener("scroll", fit, true);
+    return () => { window.removeEventListener("resize", fit); window.removeEventListener("scroll", fit, true); };
+  }, [open]);
   useLayoutEffect(() => {
     if (!open) return undefined;
     const doc = box.current && box.current.ownerDocument;
@@ -524,6 +549,8 @@ function SortMenu({ sort, phone = false }) {
   // M-3164: the list's density, the same synced choice as Settings (nav.density, M-3129): either place changes it at once, for both.
   // M-3252: the one for the layout in force (the drawer's on a phone, the sidebar's on a desktop).
   const density = useStore(sidebarDensityStore).value;
+  const leadingName = useStore(namesStore).primary;
+  const compactName = useStore(compactNameStore).value ?? leadingName;
   const drawer = useStore(phoneDrawerStore).value;   // M-3212
   const drawerRadio = (value, label) => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-drawer" value=${value}
       checked=${drawer === value} onChange=${() => setPhoneDrawer(value)} /><span>${label}</span></label>`;
@@ -537,7 +564,7 @@ function SortMenu({ sort, phone = false }) {
       aria-label=${`${tn("sortTitle")}: ${tn(recent ? "sortRecent" : "sortCustom")}`} title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" /></button>`
     : html`<button type="button" class=${`chip-btn nav-sort-btn${recent ? " on" : ""}`} aria-haspopup="dialog" aria-expanded=${open ? "true" : "false"}
       title=${tn("sortTitle")} onClick=${() => setOpen(!open)}><${Icon} name="sort" size=${12} /><span>${tn(recent ? "sortRecent" : "sortCustom")}</span></button>`}
-    ${open ? html`<div class="nav-sort-menu" role="dialog" aria-label=${tn("sortTitle")}>
+    ${open ? html`<div ref=${popup} class="nav-sort-menu" role="dialog" aria-label=${tn("sortTitle")}>
       <fieldset><legend>${tn("sortTitle")}</legend>
         ${radio("mode", "custom", tn("sortCustom"), tn("sortCustomHint"))}
         ${radio("mode", "recent", tn("sortRecent"), tn("sortRecentHint"))}</fieldset>
@@ -547,6 +574,9 @@ function SortMenu({ sort, phone = false }) {
       <fieldset><legend>${tn("sortDisplay")}</legend>
         ${densityRadio("detailed", tn("sortDisplayDetailed"))}
         ${densityRadio("compact", tn("sortDisplayCompact"))}
+        <fieldset class="nav-sort-sub"><legend>${t("app.compactName")}</legend>
+          ${["nickname", "instance"].map(value => html`<label class="nav-sort-opt"><input type="radio" name="nav-sort-compact-name" value=${value}
+            checked=${compactName === value} onChange=${() => setCompactName(value)} /><span>${t(value === "nickname" ? "app.compactNickname" : "app.compactInstance")}</span></label>`)}</fieldset>
         ${/* M-3212: a phone's only (app.css hides it from 900 px): the drawer's width, this browser's own. */ ""}
         <fieldset class="nav-sort-sub nav-sort-drawer"><legend>${tn("sortPhoneDrawer")}</legend>
           ${drawerRadio("full", tn("sortPhoneDrawerFull"))}
@@ -567,6 +597,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   const names = useStore(namesStore);   // #1722: which name leads
   const compact = useStore(sidebarDensityStore).value === "compact";
+  const compactName = useStore(compactNameStore).value;
   useIdentityColors();                  // #1958: repaint when the host's colour settings or the themes switch change
   const filterRef = useRef(null);
   const list = useRef(null);
@@ -707,8 +738,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
   const row = (name, g, i, count) => {
     const it = byName.get(name);
     // #1722: both names, the preferred one first; one line when there is no other.
-    const preferred = namesOf(it, names.primary);
-    const label = it.runtime === "windows" ? it.display_name || preferred.primary : preferred.primary;
+    const preferred = namesOf(it, compact && compactName ? compactName : names.primary);
+    const label = compact && compactName ? preferred.primary : it.runtime === "windows" ? it.display_name || preferred.primary : preferred.primary;
     const secondary = it.runtime === "windows" ? backendLabel(it.backend) : preferred.secondary;
     const facet = facetOf(name);
     const waiting = own(awaiting, name) ? awaiting[name] : null;
@@ -742,6 +773,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     ].filter(Boolean);
     return html`<li key=${name} data-agent-row=${name} class=${`v-li${!compact && two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
+        aria-label=${compact ? [...new Set([label, name, labelOf(it)])].join(" · ") : undefined}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g }, !fav)}>
       ${compact ? html`<${InstanceStatusDot} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} />`
         : html`<${InstanceAvatar} it=${it} state=${dotState(it, own(exec, name) ? exec[name] : null, waiting)} cli=${true} />`}

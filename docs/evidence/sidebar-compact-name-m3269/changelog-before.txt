@@ -1,0 +1,2 @@
+changelog-assemble: changes/m3269-compact-name.md: the name must be <issue>.md or <issue>-<slug>.md (and .zh-TW.md for zh)
+changelog-assemble: changes/m3269-compact-name.zh-TW.md: the name must be <issue>.md or <issue>-<slug>.md (and .zh-TW.md for zh)

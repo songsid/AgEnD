@@ -676,7 +676,7 @@ export function DeviceSection() {
     </section>
     <section class="card s-device s-synced s-pref-content"><div class="s-pref-group-head"><h3>${tn("prefsContentGroup")}</h3><span class="s-scope" title=${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}>${tn("prefsAccountScope")}</span></div>
       ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
-      <${DevicePrefs} labels=${true} fields=${["language", "density"]} />
+      <${DevicePrefs} labels=${true} fields=${["language", "density", "compactName"]} />
       ${P() ? html`<label class="check s-pref-preview"><span>${t("chat.previews")}</span><input id="pref-previews" class="s-ui-toggle" type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} /><small>${layoutText("previewsPersonalHint")}</small></label>` : null}
     </section>
     <section class="card s-device s-local s-pref-help"><h3>${tn("prefsHelpGroup")}</h3>

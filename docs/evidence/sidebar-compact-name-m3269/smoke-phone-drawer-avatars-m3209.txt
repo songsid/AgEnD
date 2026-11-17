@@ -1,0 +1,6 @@
+(node:3065066) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+PASS phone-light-en-detailed
+PASS phone-light-en-compact
+PASS phone-dark-zh-TW-detailed
+PASS phone-dark-zh-TW-compact

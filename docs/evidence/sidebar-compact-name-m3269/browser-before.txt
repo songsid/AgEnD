@@ -1,0 +1,3 @@
+(node:3049123) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+{"stage":"before","results":[{"device":"desk","checks":5,"ok":true},{"device":"phone","checks":5,"ok":true}]}

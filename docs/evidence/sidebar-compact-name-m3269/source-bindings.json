@@ -1,0 +1,26 @@
+{
+  "sourceCommit": "6703b6f9f9de2e58ddd204ab9baa0918b6cebbce",
+  "base": "d253f0e5e1cccd548f92a03b7d1f4d3427f21cba",
+  "files": {
+    ".github/workflows/ci.yml": "204a902e09f4f0c51a25613b05c260efacca4ebf4fade3c71429da6addcca04e",
+    "changes/m3269-compact-name.md": "40d3d8a14ec1d5244f4a82b1bab6c3838c8c7925eb659d64ff893e993d8fc7b8",
+    "changes/m3269-compact-name.zh-TW.md": "eb24a7e418a6ee7d6bf41ff4299841453100e063711816f0c47dfdf2508ccde9",
+    "scripts/manual/smoke-fixture/faces.mts": "14e62a568a15ed0bc7c7697ff9e49027bb17548ab8ab3021b51aba3e83a9038c",
+    "scripts/manual/smoke-fixture/index.mts": "1e55ede6d3e80f41077887da0ba08596733f60dfb07b9d6882882d5ad4442dae",
+    "scripts/manual/smoke/smoke-3164-sort-display.mts": "fab1f280eba2e11e758c0eb5747915827c443cc2770c25af04905ef02596b55d",
+    "scripts/manual/smoke/smoke-compact-name-m3269.mts": "7030b8026552d1e9cc010ba5ee3f64d90794a567a1f631602acdb1d5b6963343",
+    "scripts/manual/smoke/smoke-phone-drawer-avatars-m3209.mts": "7ff74be746c3676a0d58109aa507ef2bfb22ede6221250f3296dfd67a8df6b4f",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md": "eb738086877cec268c8eafefc415fb1ae3bf92148bf01670a3a084922096ba11",
+    "src/ui/panel-settings.js": "061d44cf45c3a9c553789750c5192ec07812cf21ce2e3e13d803312a6d792c54",
+    "src/ui/settings-registry.js": "4ef26826e5fee7fe507982a239da3f3121c6472d26f27354fce6878c633e187f",
+    "src/ui/shared/app-i18n.js": "c7affd3526d1421a645ff5c751e8937e14c3eda28d7086158498388afc70d241",
+    "src/ui/shared/app-prefs.js": "411df2b21082e4b1f98918d4194dc827c27fb2ff99368642100570be88a3080e",
+    "src/ui/shared/app-shell.js": "d0b5eb6b3b592b28e04b9c4daa0730051c59b1182e0ce5593c1cd04c013941a4",
+    "src/ui/shared/app.css": "b5b20ee2309bb7892c8660cb73cf6dc55e92e5471c8881f8bd5b5ea7e2506eff",
+    "src/ui/shared/instance-nav.js": "2a6324e6f517b1af125c9ea931c12691f9d845499f489f9b73e40b6d04a4d50b",
+    "src/web-prefs.ts": "d9bcf25765c3e5ab786ccfb93a0258049255ff913fd282e37316fa88ad188e12",
+    "tests/sidebar-compact-name-m3269.test.ts": "e5f5ae318e42390f2b31879ce34c00d277fe20dd58b8093baf7f385907685481",
+    "tests/sidebar-sort-density-3164.test.ts": "bf8e572309cc58a239cbe871da258bfe9e924d774b8d31a2ae55395116e468f0",
+    "tests/web-prefs-1665.test.ts": "5d3c8180361ebcf812be8a2b727449866ec3a5fa23391dc0244d7efab0334444"
+  }
+}
