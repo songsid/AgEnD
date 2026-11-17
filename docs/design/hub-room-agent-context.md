@@ -253,8 +253,13 @@ in a room, **people and agents alike** (R3, agreed):
    The asker can ask again. An answer that still arrives later is accepted and replaces the notice.
 5. ClassicBot agents keep their existing block.
 
-- Protocol: no new message. The existing "not answered" result gains one reason, gated like other reasons; an old
-  Hub shows it as "No reason given". An old Fleet behaves as today.
+- Protocol (corrected with the builder, M-3300): the Fleet has no way today to tell the Hub a room question
+  went unanswered; an empty answer would count as answered. So the existing answer message gains one optional
+  marker, "finished without answering", offered only by a Hub that understands it. The Hub then shows "No
+  answer" with the new reason and keeps the question open, so a real answer arriving later replaces it.
+- **Old Hub**: the Fleet sends no marker. The agent still gets the warning and the reminder locally, and the room
+  keeps today's 24-hour wait. An earlier draft said an old Hub would show "No reason given"; that is not possible
+  without mislabelling an empty answer. **Old Fleet**: behaves as today.
 - No owner setting. Nothing here changes what leaves the Fleet.
 
 ## 5. Sizes
