@@ -1,0 +1,141 @@
+{
+  "base": "e986d291a295b7a5333f63bc4de1e3f0c52b6385",
+  "productionFleetOptIn": false,
+  "remoteSharingMounted": false,
+  "source": [
+    {
+      "path": "docs/design/hub-share-from-hub.md",
+      "sha256": "c3e118f15f4915c48abb2a714f44aa7d0590e6df927571dd24fe8323c098a8dd"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "6534c1117fe4377c59c41e7f588a3161bbd7ad82832a567c3d68b4e8e5a32114"
+    },
+    {
+      "path": "src/hub/agent-catalog-model.ts",
+      "sha256": "0ae7f44c63caba41e0a15aee16b0182bdb575668d02637dd5fe44134a700e635"
+    },
+    {
+      "path": "src/hub/agent-catalog.ts",
+      "sha256": "f636ca2d984a2157d4c0bf177131955d115cf99676bf5d48a94f6ee5b7a2e4aa"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "6e2d000e4576c742996418b2a16d8ee8f2657fbc498abe2ecc6e401ef7648317"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "69bf9aa1e6e334094e5b9ddbf48dea47e8d890bb08249cae3c7a66adbd46bc89"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "2a1096ccc923515f7432622d78460965b969d7e1cf1e3f6990877c2d47156db6"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "ef5d4085bf1ba0f0cbfb988ce1588ec178f0383cb8f8314a165ff1494744486f"
+    },
+    {
+      "path": "src/hub/http/schema.ts",
+      "sha256": "95c04e5c171cb7a8c872496497d42c5afcf6fae79a18dded4a15bfc972261069"
+    },
+    {
+      "path": "src/hub/member/agent-catalog.ts",
+      "sha256": "25ed276fa0811c2aac307da508b6f3d75ea3ffbddf3f927436e53bb4cae1c0dc"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "daa86205954f9d03d8c73301ec142664b4a3faca53f48515582e579503482e7e"
+    },
+    {
+      "path": "src/hub/runtime.ts",
+      "sha256": "d0a1c62fb631084c1660c496d126acf682fb86d0f8562c138d3e4b000ffc36b7"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "473dbd28f130ff5fb29de0b5e68b6795cfb22562f92bca41af03cee722c37e1a"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "bd5a63f5e4ed442a365ff7f3b97e08cfa8f76f9120fd1aaebb581d6ee5c70e07"
+    },
+    {
+      "path": "tests/helpers/hub-rig.ts",
+      "sha256": "470dde7edda9ce5962bd4923aee5e039d3316f1e1a22cba330909f2fb810567c"
+    },
+    {
+      "path": "tests/hub-share-catalog-m3294.test.ts",
+      "sha256": "2eda4810d530e13075646ba8bfe634c00da59b8662689ed54dfed5b0aedf8ac9"
+    },
+    {
+      "path": "tests/hub-share-fleet-m3294.test.ts",
+      "sha256": "bb1c11cc21c7267519f59cf6c4979d4ce2ec00ba50f3efe1cb4828179983a231"
+    },
+    {
+      "path": "tests/hub-share-link-m3294.test.ts",
+      "sha256": "4ff7afdce575ed0371be94b5ffba984bb785c13827aa091223cb8b895a5a9440"
+    },
+    {
+      "path": "tests/hub-share-member-m3294.test.ts",
+      "sha256": "aa0e5206f1a0f5f015158a3634ed1b29564134e583788da5cc4dfbb14d06016f"
+    },
+    {
+      "path": "tests/hub-share-model-m3294.test.ts",
+      "sha256": "6577783bdd94495e51eb7987180f481d5545dac10011156996ff8d6cb158be3d"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/README.md",
+      "sha256": "5e59832a052e02efc2b29fc43a227acdb494100d2477beaa40c4971a2762d923"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/catalog-before.log.gz",
+      "sha256": "44ccc7542428aa0c4fc252a3f34f499b270b20fc3d335f4a58bc098580b481ad"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/consumers.log.gz",
+      "sha256": "49edbd9d0552d8da41f69233ddda692dab42d9be00542413fbc95c6dace84d2b"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/final-focused.log.gz",
+      "sha256": "e0c944531b58188218d39caf5432d410133e77a97710a825a9f8c9a2ee849963"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/final-negotiation.log.gz",
+      "sha256": "a7270d8c7f7d9749356fb186d894973090e91a8d47e69264d8c7a3487093d8f6"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/migration.log.gz",
+      "sha256": "d2123f3b49f54f65c2710ee60602003ea46946acf83fa8cb2aad19329ab0b4c2"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/model-before.log.gz",
+      "sha256": "a49847506ec3b6d7d73fbf73f80f2c7d8ad3593085e5810d5c27b5cb19d952ad"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/reversal-incarnation-digest.log.gz",
+      "sha256": "8d5ea8210e9e814136f76a2530017f75317de3cb64666fad37a5e7e89cc84d38"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/reversal-mounted-switch.log.gz",
+      "sha256": "7385f98c995c98108bdbf618866f4d0c2e42e165a136ef27483e8945615c1774"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/reversal-owner-filter.log.gz",
+      "sha256": "25712f1b3654e8928df4a74f9e63198ea6a9efe5bcaab62abd6011d03eb683c4"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/source-tsc.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/logs/test-tsc.log.gz",
+      "sha256": "9ceffb7310338057cfe71a4ae1e2c98d2c485d81cdef906532a801f457a38d64"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/reversals.json",
+      "sha256": "edb4c87be52c9dd19d6c6bef1500193a31dd8d533555b9fd1b6da61e4f53b071"
+    }
+  ]
+}

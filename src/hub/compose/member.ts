@@ -1,3 +1,4 @@
+import { HubMemberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -95,6 +96,7 @@ export interface HubMemberFactoryOptions {
   boundHub(): string | null;
   /** The owner's local agents, each with the S4 provider it would run under (null: none). */
   agents(): import("../member/exposure-api.js").HubMemberAgent[];
+  catalogAgents?(): MemberCatalogAgent[];
   views?: HubViewSource;
   /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
   representative: HubRepresentativeHost;
@@ -429,6 +431,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       throw err;
     };
     try {
+      const catalogEnabled = hubPageSharingEnabled(cfg);
       // 0. Every slice present and a current binding, before any I/O.
       if (!options.components.execution || !options.components.exposures) {
         throw new HubStateError("hub-incomplete", "the Hub member side (S4 / S3c) is not in this build");
@@ -698,11 +701,15 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
+      const catalog = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: options.catalogAgents,
+        failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
+      teardown.add("owner agent catalog", () => catalog?.close());
       client = new HubMemberClient({
         allowOfflineStart: true,
         log: options.log,
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
+        agentCatalog: !!catalog,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
@@ -731,6 +738,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if (l.current() && live()) {
             online = l;
+            catalog?.connected(l);
             quota.start(l);
             terminalHold = false; reportLink("online");
             updates?.connected(l);
@@ -741,6 +749,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
+          if (frame.type === "agent.catalog-refresh" && catalog) { if (l.current() && live()) return catalog.refresh(true); return Promise.resolve(); }
           if (updates && (frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack")) {
             try {
               if (frame.type === "fleet.update") updates.receive(frame.payload, l);
@@ -786,6 +795,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         hold: (code) => {
+          catalog?.disconnected();
           stopDisplay();
           stopRooms();
           updates?.connected(null);
@@ -842,6 +852,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         fence() {
           fenced = true;
+          catalog?.close();
           stopDisplay();
           updates?.close(); options.attachUpdates?.(null);
           stopRooms();

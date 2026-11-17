@@ -41,7 +41,7 @@ export const MEMBER_COMPONENTS: HubMemberComponents = {
 };
 
 /** What the fleet gives the member side (FleetManager): its binding, agents and attachment points. */
-export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpdates" | "boundHub" | "agents" | "representative" | "attachAgentRooms" | "roomToolsChanged" | "roomConversationGeneration" | "attachRoomInputs" | "roomReceipt" | "roomNotify" | "attachExposures" | "attachAttention" | "attachPairingNotices" | "attachRecommendations" | "recommendationChanged" | "pokeAttention" | "linkState"> & {
+export type HubMemberHost = Pick<HubMemberFactoryOptions, "updates" | "attachUpdates" | "boundHub" | "agents" | "catalogAgents" | "representative" | "attachAgentRooms" | "roomToolsChanged" | "roomConversationGeneration" | "attachRoomInputs" | "roomReceipt" | "roomNotify" | "attachExposures" | "attachAttention" | "attachPairingNotices" | "attachRecommendations" | "recommendationChanged" | "pokeAttention" | "linkState"> & {
   views?: HubViewSource;
 };
 

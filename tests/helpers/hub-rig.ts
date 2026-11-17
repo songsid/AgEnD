@@ -18,6 +18,7 @@ export async function freeHubPort(): Promise<number> {
 }
 export async function hubRig(options: { parentDir?: string; clientLog?: HubClientOptions["log"]; serverReady?: HubServerOptions["ready"]; clientRecommendations?: boolean; serverConnected?: HubServerOptions["connected"]; serverLog?: HubServerOptions["log"]; serverCapabilities?: readonly string[]; clientCapabilities?: readonly string[];
   clientRoomContext?: HubClientOptions["roomContext"];
+  clientAgentCatalog?: HubClientOptions["agentCatalog"];
   /** A suite may supply a held socket from hubListenerPorts; its TLS listener adopts that same handle. */
   memberPort?: number;
   serverDisplayName?: HubServerOptions["displayName"];
@@ -62,7 +63,7 @@ export async function hubRig(options: { parentDir?: string; clientLog?: HubClien
   /** `capabilities`: the optional features this member offers ([] stands in for an older member). */
   const client = (onFrame: (frame: any, link: HubMemberLink) => Promise<void> = async () => {}, reconcileGate?: () => Promise<void>, capabilities?: readonly string[], home = memberHome) => {
     const state: { link: HubMemberLink | null; holds: string[]; syncs: number } = { link: null, holds: [], syncs: 0 };
-    const value = new HubMemberClient({ home, hubId: identity.hubId, memberOrigin, current: () => enabled, log: options.clientLog, fleetInfo: options.clientInfo, receiveRecommendations: options.clientRecommendations, roomContext: options.clientRoomContext, capabilities: capabilities ?? options.clientCapabilities, webOrigin: options.clientWebOrigin, ...(options.clientDial ? { dial: options.clientDial } : {}),
+    const value = new HubMemberClient({ home, hubId: identity.hubId, memberOrigin, current: () => enabled, log: options.clientLog, fleetInfo: options.clientInfo, receiveRecommendations: options.clientRecommendations, roomContext: options.clientRoomContext, agentCatalog: options.clientAgentCatalog, capabilities: capabilities ?? options.clientCapabilities, webOrigin: options.clientWebOrigin, ...(options.clientDial ? { dial: options.clientDial } : {}),
       reconcile: async link => { state.link = link; state.syncs++; await link.exchange({ v: 1, type: "reconcile", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { afterReceiptSequence: 0, messages: [] } }, "reconcile"); await reconcileGate?.(); }, receive: onFrame,
       hold: code => state.holds.push(code), random: () => 0 }); clients.push(value); return { value, state };
   };

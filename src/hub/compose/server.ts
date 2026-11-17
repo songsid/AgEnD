@@ -1,3 +1,4 @@
+import { HUB_AGENT_CATALOG_CAPABILITY } from "../agent-catalog-model.js";
 import {HubPersonalRuntimeHost} from "../personal/runtime-host.js";
 import {HubPersonalOwnerHost} from "../personal/owner-host.js";
 import {HubPersonalTurns} from "../personal/turns.js";
@@ -142,6 +143,7 @@ export interface HubHttp {
   memberClosed?(fleetId: string): void;
   memberConnected?(link: HubLinkContext): void;
   memberReady?(link: HubLinkContext): void;
+  readonly agentCatalogV1?: true;
   /** #3298 S-89: what the Hub offers its pages ("group-policy-v1" with group permissions composed). Absent on an older entry. */
   readonly features?: readonly string[];
   /** Private adapter only; no token/ref lookup HTTP route or browser capability. */
@@ -745,6 +747,6 @@ export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
-export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; features?: readonly string[] }): string[] {
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
 }
