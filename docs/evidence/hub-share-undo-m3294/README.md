@@ -80,3 +80,9 @@ The `pm-r1` logs retain the initial six semantic failures, the selector fixture 
 CI on `dea8eb7d` found two failures in `hub-rooms-migration-r1`: its pre-room historical registries removed `s3-room-agents` (which creates `hub_room_deliveries`) but still included the new `s3-sharing-withdrawal` migration that alters that table. The test-only correction excludes the dependent migration from those two historical shapes as well. The full current registry still applies it in order, and all original row-preservation, idempotence and older-registry refusal assertions remain.
 
 The file reproduced the two missing-table failures locally, then passed all seven cases. `ci-r2/` retains both logs. No production migration or sharing behavior changed, and the two connected Settings retakes remain exact. `ciR2SourceSha256` identifies the one test file.
+
+## Final connection-card wording
+
+The PM accepted both connected Settings retakes and the earlier Notices. The remaining required wording is now exact: connecting does not share an agent; **other people can see and ask one only after you share it** / **要你自己分享之後，其他人才看得到、才能提問**. This agrees with the separate hint explaining the owner-only unshared inventory. The PM requested no additional capture round for this sentence. The retakes therefore bind the accepted layout, with this subsequent wording change disclosed. The optional section-lead reordering is left for S-172.
+
+Only the EN/zh-TW `connectedHint` values changed in this step. The two affected connection-card/locale suites pass 42/42, retained in `pm-r3/copy.log.gz`; their cases overlap the earlier packet. `pmR3SourceSha256` binds that one UI file.

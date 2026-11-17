@@ -258,7 +258,7 @@
   "evidenceSha256": [
     {
       "path": "docs/evidence/hub-share-undo-m3294/README.md",
-      "sha256": "ee1c22b15f838f06952cbec0f8c375defe7c7e7dacb252984e8f781019ed1035"
+      "sha256": "5d3acf20111497f8b23ce7b7bf5a7aad0e88774cc62fcbeb705e0ec9c01d922c"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/ci-r2/after.log.gz",
@@ -367,6 +367,10 @@
     {
       "path": "docs/evidence/hub-share-undo-m3294/pm-r1/views/phone-dark-zh-TW-settings-on.png",
       "sha256": "4f6ecadfcf7697594ca148060204974aac701d4bbdc4ca6a106148090e8cc96c"
+    },
+    {
+      "path": "docs/evidence/hub-share-undo-m3294/pm-r3/copy.log.gz",
+      "sha256": "62771cd518046689d10e4de02eb1326c1609f910c5448d9be3e83a398652ff6f"
     },
     {
       "path": "docs/evidence/hub-share-undo-m3294/reversals.json",
@@ -697,6 +701,12 @@
     {
       "path": "tests/hub-rooms-migration-r1.test.ts",
       "sha256": "6d0137be7261a327d60b3fb7a07655785f97a7f9a1fda37846cd29c845a21817"
+    }
+  ],
+  "pmR3SourceSha256": [
+    {
+      "path": "src/ui/settings-hub-connection.js",
+      "sha256": "1c71cb97d1c4b0899dbcdeb0fdcf389154d3e414a9dfbc5d0044a39fbd409c70"
     }
   ]
 }
