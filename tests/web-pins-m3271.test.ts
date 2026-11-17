@@ -181,12 +181,16 @@ describe("the routes", () => {
     }
   });
 
-  it("never over the public link: not on its route list, and refused by the handler for an admin's session there", async () => {
-    expect([isPublicWebRoute("GET", "/ui/pins"), isPublicWebRoute("POST", "/ui/pins/alpha")]).toEqual([false, false]);
+  // M-3278 (decision 7933bf90): an admin session reads and writes pins over the public link as here; read-only and guest sessions there do not.
+  it("over the public link (M-3278): on its route list; an admin's session pins and reads there, a read-only or guest session there gets none", async () => {
+    expect([isPublicWebRoute("GET", "/ui/pins"), isPublicWebRoute("POST", "/ui/pins/alpha")]).toEqual([true, true]);
     const t = setup({ publicLink: true });
-    expect(t.get()).toEqual({ status: 403, json: { error: "pins_not_over_public_link" } });
-    expect(await t.post("alpha", { pin: t.key })).toEqual({ status: 403, json: { error: "pins_not_over_public_link" } });
-    expect(t.pinStore.list("alpha")).toEqual([]);
+    expect((await t.post("alpha", { pin: t.key })).status).toBe(200);
+    expect([t.get().status, t.get().json.pins.length, t.pinStore.list("alpha").length]).toEqual([200, 1, 1]);
+    for (const tier of ["read", "guest"] as const) {
+      const r = setup({ tier, publicLink: true });
+      expect([tier, r.get().status, (await r.post("alpha", { pin: r.key })).status, r.pinStore.list("alpha")]).toEqual([tier, 403, 403, []]);
+    }
   });
 
   it("a guest's stream never carries a `pins` frame", () => {

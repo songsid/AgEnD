@@ -608,7 +608,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
-    ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    ...ambientMenuItems(name, { publicLink: false, clear: clearAmbient }),   // M-3278
     // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
     ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
       { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },

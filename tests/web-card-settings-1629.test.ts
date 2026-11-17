@@ -19,6 +19,8 @@ import { handleSettingsRequest, type SettingsApiContext } from "../src/settings-
 import { isSettingsMutation, prepareSettingsEffect } from "../src/settings-effect.js";
 import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { applyAppearanceChanges, parseAppearanceSettingsBody } from "../src/web-settings-patch.js";
 
@@ -82,7 +84,12 @@ function harness(fleet: Record<string, unknown> = {}) {
   writeFileSync(path, yaml.dump(config));
   let revision = 0;
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
-  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // M-3278: the public link's own admin session (its surface and exposure; the link reads only its __Host- cookie).
+  const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
+  const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  // Fable on #4100 (F3): the handler asks for an admin session on every listener — the local page's is a real one too.
+  const localSid = sessions.create({ tier: "admin", surface: "local", label: "local admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() } } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
@@ -91,10 +98,14 @@ function harness(fleet: Record<string, unknown> = {}) {
     baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
   });
   const dispatched = vi.fn();
-  async function request(method: "GET" | "PUT", body: unknown, opts: { publicLink?: boolean; direct?: boolean } = {}) {
+  async function request(method: "GET" | "PUT", body: unknown, opts: { publicLink?: boolean; direct?: boolean; anonymous?: boolean } = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
-      req.method = method; req.url = PATH; req.headers = { "idempotency-key": "k-1", cookie: "opaque" }; req.destroy = () => undefined;
+      req.method = method; req.url = PATH; req.destroy = () => undefined;
+      req.headers = opts.publicLink && !opts.anonymous
+        ? { "idempotency-key": "k-1", host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gwSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(gwSid) }
+        : opts.anonymous ? { "idempotency-key": "k-1", cookie: "opaque" }
+        : { "idempotency-key": "k-1", host: "127.0.0.1:19280", cookie: `agend_session=${localSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(localSid) };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
@@ -139,13 +150,17 @@ describe("through the gate and the real handler", () => {
       .toEqual([200, { portrait: { max_width: 9999 } }, 2048, 1024, [64, 2048]]);
     expect(r.body.warnings).toEqual([{ path: "web.appearance.portrait.max_width", message: "9999 is above the ceiling 2048 — 2048 is used" }]);
   });
-  it("never over the temporary public link: not on its manifest; refused by the gate, and by the handler on its own", async () => {
-    expect([isPublicWebRoute("PUT", PATH), isPublicWebRoute("GET", PATH)]).toEqual([false, false]);
+  it("M-3278: over the temporary public link an admin session's as anywhere — on its manifest; through the gate and the handler", async () => {
+    expect([isPublicWebRoute("PUT", PATH), isPublicWebRoute("GET", PATH)]).toEqual([true, true]);
     const h = harness();
     const viaGate = await h.request("PUT", { portrait: { max_kib: 512 } }, { publicLink: true });
-    expect([viaGate.status, viaGate.body.error, h.dispatched.mock.calls.length]).toEqual([403, "appearance_settings_not_over_public_link", 0]);
-    const direct = await h.request("PUT", { portrait: { max_kib: 512 } }, { publicLink: true, direct: true });
-    expect([direct.status, direct.body.error, h.save.mock.calls.length]).toEqual([403, "appearance_settings_not_over_public_link", 0]);
-    expect((await h.request("GET", undefined, { publicLink: true })).status).toBe(403);
+    expect([viaGate.status, h.raw().web]).toEqual([200, { appearance: { portrait: { max_kib: 512 } } }]);
+    const higher = await h.request("PUT", { banner: { max_kib: 1024 } }, { publicLink: true });
+    expect([higher.status, higher.body.result]).toEqual([202, "pending_confirmation"]);
+    const none = await h.request("PUT", { portrait: { max_kib: 256 } }, { publicLink: true, direct: true, anonymous: true });
+    expect([none.status, h.save.mock.calls.length]).toEqual([401, 1]);
+    const direct = await h.request("PUT", { portrait: { max_kib: 256 } }, { publicLink: true, direct: true });
+    expect([direct.status, h.save.mock.calls.length]).toEqual([200, 2]);
+    expect((await h.request("GET", undefined, { publicLink: true })).status).toBe(200);
   });
 });

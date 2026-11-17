@@ -330,25 +330,32 @@ describe("the routes", () => {
       expect((await raw(f.port, "GET", "/ui/office-skins/nope", reader)).status).toBe(404);
     } finally { await f.stop(); }
   }, 30_000);
-  it("the public link: the reads on its manifest, upload and delete absent — and refused by the handler on its own", async () => {
+  it("the public link: the reads on its manifest, upload and delete too (M-3278) — a read-only session there refused by the handler, an admin's admitted", async () => {
     const id = "a".repeat(32);
     expect([isPublicWebRoute("GET", "/ui/office-skins"), isPublicWebRoute("GET", "/ui/office-skins/clinic-sample"), isPublicWebRoute("GET", `/ui/office-skins/clinic-sample/img/${id}.png`)]).toEqual([true, true, true]);
-    expect([isPublicWebRoute("POST", "/ui/office-skins"), isPublicWebRoute("DELETE", "/ui/office-skins/clinic-sample"), isPublicWebRoute("GET", "/ui/office-skins/a/b")]).toEqual([false, false, false]);
+    expect([isPublicWebRoute("POST", "/ui/office-skins"), isPublicWebRoute("DELETE", "/ui/office-skins/clinic-sample"), isPublicWebRoute("GET", "/ui/office-skins/a/b")]).toEqual([true, true, false]);
     const f = await fleet();
     try {
+      vi.spyOn(f.fm, "emitSseEvent").mockImplementation(() => {});
       f.fm.officeSkins.add(UPLOAD(), "me");
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
-      for (const [method, path] of [["POST", "/ui/office-skins"], ["DELETE", "/ui/office-skins/clinic-sample"]] as const) {
-        const answer = await new Promise<{ status: number; body: string }>(resolve => {
+      const overLink = (tier: "admin" | "read", method: "POST" | "DELETE", path: string) => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: tokenEpoch(f.fm.webToken) });
+        return new Promise<{ status: number; body: string }>(resolve => {
           let code = 0;
           const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end(b: string) { resolve({ status: code, body: String(b) }); } };
           const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
           bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
           expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.fm)).toBe(true);
         });
-        expect([answer.status, JSON.parse(answer.body).error], `${method} ${path}`).toEqual([403, "skins_not_over_public_link"]);
+      };
+      for (const [method, path] of [["POST", "/ui/office-skins"], ["DELETE", "/ui/office-skins/clinic-sample"]] as const) {
+        const answer = await overLink("read", method, path);
+        expect([answer.status, JSON.parse(answer.body).error], `${method} ${path}`).toEqual([403, "skins_need_an_admin_session"]);
       }
       expect(f.fm.officeSkins.list().packs).toHaveLength(1);
+      const removed = await overLink("admin", "DELETE", "/ui/office-skins/clinic-sample");   // M-3278: an admin's, as anywhere
+      expect(removed.status).toBe(200);
+      expect(f.fm.officeSkins.list().packs).toHaveLength(0);
     } finally { await f.stop(); }
   }, 30_000);
   it("review: the reads a page makes on its own — the list, a manifest, its pictures — never slide an idle session; a person's read does; deletes still need CSRF", async () => {

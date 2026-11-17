@@ -109,7 +109,7 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   // #2122: the usage report over the public link applies at once either way. The default (off) is the gate — a link may
   // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
   // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.
-  { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
+  { path: ["fleet", "web", "usage_report_on_public_link"], def: true, looser: () => false },   // M-3278: on by default
   // M-2255: Settings → Runtime. Switching a Windows runtime on lets agents run more — this PC's Windows CLIs, or other
   // computers that pair with the fleet — so it waits for a General admin; switching one off applies at once.
   { path: ["fleet", "runtimes", "windows_cli"], def: false, looser: (a, b) => b === true && a !== true },

@@ -242,13 +242,15 @@ describe("strict mode (the admin's own switch): off this computer a code, never 
     const none = fleet(), q = none.classes().access(), t2 = none.session("code", "lan");
     expect([!!none.any.settingsSelfConfirmation(none.store, t2.req, q.view.id), none.any.webRemoteAccess().strictOf(HOST_ADMIN_KEY)]).toEqual([true, false]);
   });
-  it("a change that opens a link: confirmed with the code from a tailnet-style request, refused over a real gateway request — even with a correct code", () => {
+  it("a change that opens a link: confirmed with the code from a tailnet-style request, and over a real gateway request too (M-3278, decision 7933bf90)", () => {
     const f = fleet({ enrolled: true, strict: true });
     f.any.outsideLink = () => ({ exposureId: "x" });
     const p = f.classes().openLink(), tail = f.session("code", "tailnetServe"), link = f.session("outside", "here");
     const confirm = (s: { req: any }) => f.any.settingsTotpConfirm(f.store, s.req, p.view.id, codeAt(Date.now()), f.store.confirmDigest(p.view.id));
-    expect([f.any.settingsTotpState(f.store, link.req, p.view.id), confirm(link)]).toEqual(["on_host", { error: "not_here" }]);
-    expect(confirm(tail)).toMatchObject({ label: "Authenticator code" });
+    expect(f.any.settingsTotpState(f.store, link.req, p.view.id)).toBe("ready");
+    expect(confirm(link)).toMatchObject({ label: "Authenticator code" });
+    const q = f.classes().openLink();
+    expect(f.any.settingsTotpConfirm(f.store, tail.req, q.view.id, codeAt(Date.now() + 30_000), f.store.confirmDigest(q.view.id))).toMatchObject({ label: "Authenticator code" });
   });
   it("end to end: strict on, a LAN session is refused Apply now, a wrong code and a stale digest burn nothing, the right code confirms; turning the switch off asks the current code, then Apply now is back", async () => {
     const f = fleet({ enrolled: true, strict: true }), s = f.session("code", "lan");
