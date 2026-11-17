@@ -1,5 +1,7 @@
 Guest Discord mentions in the web chat
 
+The initial projection below is superseded by [R1](r1/README.md). Review found that guest-authored tokens could query the Fleet-wide cache; R1 skips own/private rows and uses only the readable room's guild cache. Earlier images and logs remain historical.
+
 At source `3ac5e91283cc35be36854bfe48a81d90a8b2c800`, guests receive cached mention labels with messages they may already read. The shared mention renderer and its existing pills are reused; there is no new markup, CSS or guest directory route.
 
 Root cause: `src/ui/chat-mentions.js:42` at baseline `0f61ea1f` requests `/ui/mentions`. `guestRouteDecision` in `src/web-guest-access.ts:87–99` rejects that route with 403, correctly keeping the member lookup closed. Without labels, `src/ui/shared/chat-render.js:82–84` renders `@user`. Admin requests succeed.
