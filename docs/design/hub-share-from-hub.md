@@ -94,11 +94,16 @@ Each affected row shows "Sharing…" / 「分享中…」 or "Stopping…" / 「
 | Result | EN | zh-TW |
 |---|---|---|
 | Done | Shared | 分享中 (the existing tag) |
-| Fleet did not answer in 30 seconds | Not shared: this Fleet didn't answer. Try again. | 沒有分享：這個 Fleet 沒有回應，請再試一次。 |
+| Fleet did not answer in 30 seconds | Not confirmed yet: this Fleet hasn't answered. Refresh to check. | 還沒有確認：這個 Fleet 尚未回應，請重新整理確認。 |
 | Fleet refused | Not shared: {reason from 2.6} | 沒有分享：{原因} |
 | The list changed meanwhile | This list changed. It has been refreshed; tick again. | 清單已有變動並重新整理，請重新勾選。 |
 
 Rows that succeeded stay done; a failure on one does not undo the others.
+
+**No answer is not a failure** (settled with the builder, M-3294). The request may already have been applied
+and only its answer lost, so the page never says "not shared" on a timeout. The row keeps its pending tick with
+the line above; it is not counted as shared; Refresh, or trying again, re-sends **the same request**, which the
+Fleet applies at most once. The row settles only when the Fleet's own list says what is true.
 
 ### 2.4 Straight on to "who may ask"
 
@@ -114,6 +119,13 @@ A newly shared agent can be asked by nobody. So the moment sharing succeeds, the
 | Choice 1 | The same people for all {n} | {n} 個都用同一份名單 |
 | Choice 2 | Choose for each agent | 每個 Agent 分開選 |
 | Skip | Decide later | 稍後再決定 |
+
+If an agent was stopped less than 24 hours ago and is shared again from the page (not by Undo), it still starts
+with nobody: the owner stopped it on purpose. The step then offers one more choice for that agent:
+
+| | EN | zh-TW |
+|---|---|---|
+| Choice | Use the list it had before ({n} people) | 沿用之前的名單（{n} 人） |
 
 "Decide later" leaves them shared with the summary "nobody may ask yet" / 「還沒有人可以問」 on each row.
 
@@ -309,7 +321,7 @@ Kept to three, plus two abilities announced when the Fleet connects.
 | Hub → Fleet: `exposure.request` | `{requestId, by: person, catalogRevision, share: [instance], stop: [exposureId]}` |
 | Fleet → Hub: `exposure.request-result` | `{requestId, results: [{instance | exposureId, ok, code?}]}`, followed by the usual complete list of shared agents |
 | Fleet handler | Check the switch, the ability, that `by` is the stored owner, and the list revision; apply through the existing share writer with the source marked "from the Hub page"; post the notice with Undo; answer. Undo goes through the same writer |
-| Hub, on stop | Keep a stopped agent's "who may ask" for 24 hours, restore it if the same agent is shared again in that time |
+| Hub, on stop | Keep a stopped agent's "who may ask" for 24 hours. **Only Undo restores it by itself.** A new share of the same agent in that time starts with nobody, and offers the kept list as a choice (2.4) |
 | Records | The request, who made it and each result are recorded as actions on the Hub; the Fleet records the request and any Undo |
 
 Refusal codes for a row: `not-owner`, `switched-off`, `stale-list`, `not-shareable`, `limit`, `not-allowed`,
