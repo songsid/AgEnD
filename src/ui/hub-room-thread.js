@@ -173,7 +173,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       ...(!direct && Array.isArray(m.reactions) && m.reactions.length ? { reactionBar: reactionBar(m.reactions, { meId, names }) } : {}),
       ...(!direct && kind !== "person" && m.buttons ? { buttons: roomButtons(m.buttons, meId) } : {}),
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
-      ...(m.stage === "not-answered" ? { text: hroom("noAnswer") } : {}) });
+      ...(m.stage === "not-answered" ? { text: m.reasonCode === "owner-stopped-sharing" ? hroom("noAnswerStopped", author.owner?.name || "") : hroom("noAnswer") } : {}) });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
     // Spec §10: once an @所有 Agent has answers, under the last one shown, 「請房間助理整理」 (it sends 「@房間助理 整理上面的回答」).
     if (summarise && lastShown && byId.get(m.answerTo)?.mentions?.includes("all"))
@@ -496,6 +496,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ].filter(Boolean)} />` : null}
       </header>
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
+      ${room.closureReason === "owner-stopped-sharing" ? html`<p class="note" role="status">${hroom("noAnswerStopped", room.ownerName || room.agent?.owner?.name || "")}</p>` : null}
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />

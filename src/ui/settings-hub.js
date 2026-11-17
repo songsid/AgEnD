@@ -21,6 +21,7 @@ import { confirmPlace, pendingView } from "./hub-confirm-place.js";
 import { hq } from "./hub-quick-strings.js";
 import { hp } from "./hub-pairing-progress-strings.js";
 import { hpf, pairingCodeState, pairingFailure } from "./hub-pairing-form-strings.js";
+import { HubPageSharingSettings } from "./settings-hub-page-sharing.js";
 import { HubUpdateConsent } from "./settings-hub-updates.js";
 
 register("hubSharingFleet", {
@@ -288,6 +289,7 @@ function HubExposures({ client, pairing }) {
   }, [rows, msg]);
   return html`<div class="hub-exposures">
     <h4>${hw("sharedTitle")}</h4>
+    ${pairing?.link === "online" ? html`<${HubPageSharingSettings} />` : null}
     <p class="note">${hw("agentLead")}</p>
     <p class="note">${hw("classicRoomLead")}</p>
     <p class="note hub-sharing-hint">${t("hubSharingFleet.hint")}</p>

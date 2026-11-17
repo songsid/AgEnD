@@ -1,0 +1,29 @@
+{
+  "controls": [
+    {
+      "name": "notice-durability",
+      "path": "src/hub/member/sharing.ts",
+      "typecheck": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sha256": "f66a70599800456b13e3330137a3447466b2930c8d1edbd7ff5b76874a49dfff"
+    },
+    {
+      "name": "grant-image",
+      "path": "src/hub/sharing-retention.ts",
+      "typecheck": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sha256": "e3dee4bd49ab5590dc957b1c78bc70f1119a88fb15b40aaf8a53418e39892b96"
+    },
+    {
+      "name": "withdrawal-settlement",
+      "path": "src/hub/catalog.ts",
+      "typecheck": 0,
+      "testExit": 1,
+      "semanticRed": true,
+      "sha256": "144bbb60f51ce8ec708e80ad180983ec7573f6494070467550f5c5ebe07d115c"
+    }
+  ],
+  "restored": true
+}

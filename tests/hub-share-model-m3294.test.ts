@@ -32,9 +32,9 @@ it("accepts owner-bound requests with a finite lifetime and rejects ambiguous or
   expect(() => parseServerFrame(envelope("agent.catalog-refresh", {}))).not.toThrow();
 });
 it("requires an unambiguous bounded result per row, with a code only on an explicit refusal",()=>{
-  expect(()=>parseMemberFrame(envelope("exposure.request-result",{results:[{instance:"Docs",ok:true},{exposureId:randomUUID(),ok:false,code:"stale-list"}]}))).not.toThrow();
+  expect(()=>parseMemberFrame(envelope("exposure.request-result",{noticeAt:1,undoUntil:86400001,results:[{instance:"Docs",ok:true,before:null,after:{id:randomUUID(),revision:1,state:"published"}},{exposureId:randomUUID(),ok:false,code:"stale-list"}]}))).not.toThrow();
   for(const results of [[],[{instance:"Docs",ok:false}],[{instance:"Docs",ok:true,code:"limit"}],[{instance:"Docs",exposureId:randomUUID(),ok:true}],[{instance:"Docs",ok:true},{instance:"Docs",ok:true}]]) {
-    expect(()=>parseMemberFrame(envelope("exposure.request-result",{results}))).toThrow();
+    expect(()=>parseMemberFrame(envelope("exposure.request-result",{noticeAt:1,undoUntil:86400001,results}))).toThrow();
   }
 });
 it("does not enlarge an old member's strict welcome with the new offer",()=>{
@@ -42,4 +42,17 @@ it("does not enlarge an old member's strict welcome with the new offer",()=>{
   const legacy=hubWelcomeCapabilities(configured,[...HUB_OPTIONAL_CAPABILITIES,"room-ask-v1","room-post-v1"]);
   expect(legacy).not.toContain("agent-catalog-v1");expect(legacy.length).toBeLessThanOrEqual(16);
   expect(hubWelcomeCapabilities(configured,[...HUB_OPTIONAL_CAPABILITIES,"fleet-update-v1"])).toContain("agent-catalog-v1");
+});
+
+it("keeps request pointers out of the catalog-only shape and validates result ACK/Undo identities", () => {
+  const old = catalog(), modern = { ...old, requests: true, agents: old.agents.map(row => ({ ...row, exposure: null })) };
+  expect(() => parseMemberFrame(envelope("agent.catalog", modern))).not.toThrow();
+  expect(() => parseMemberFrame(envelope("agent.catalog", { ...modern, requests: false }))).toThrow();
+  expect(() => parseMemberFrame(envelope("agent.catalog", { ...old, requests: true }))).toThrow();
+  expect(() => parseServerFrame(envelope("exposure.request-ack", { ok: true }))).not.toThrow();
+  expect(() => parseServerFrame(envelope("exposure.undo-result", { ok: true }))).not.toThrow();
+  const pointer = { id: randomUUID(), revision: 1, state: "published" };
+  const undo = { originalRequestId: randomUUID(), noticeAt: 1, results: [{ index: 0, ok: true, before: pointer, after: { ...pointer, revision: 2, state: "withdrawn" } }] };
+  expect(() => parseMemberFrame(envelope("exposure.undo", undo))).not.toThrow();
+  expect(() => parseMemberFrame(envelope("exposure.undo", { ...undo, results: [...undo.results, ...undo.results] }))).toThrow();
 });

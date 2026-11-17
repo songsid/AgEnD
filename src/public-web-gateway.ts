@@ -170,7 +170,8 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
 }
 
 function isPublicPrivilegedSettingsRoute(method: string, path: string): boolean {
-  if ((method === "GET" || method === "PUT") && /^\/api\/settings\/hub\/(?:update-consent|membership|pilot-trust|retention|run|preview)$/.test(path)) return true;
+  if ((method === "GET" || method === "PUT") && /^\/api\/settings\/hub\/(?:update-consent|membership|pilot-trust|share-from-hub|retention|run|preview)$/.test(path)) return true;
+  if ((method === "GET" || method === "POST") && /^\/api\/settings\/hub\/sharing-notices\/[a-f0-9]{64}(?:\/undo)?$/.test(path)) return true;
   if (method === "GET" && /^\/api\/settings\/hub\/fleet-updates\/[0-9a-f-]{36}$/.test(path)) return true;
   if (method === "POST" && /^\/api\/settings\/hub\/fleet-updates\/[0-9a-f-]{36}\/cancel$/.test(path)) return true;
   if (method === "GET" && path === "/api/settings/hub/browser-certificate") return true;

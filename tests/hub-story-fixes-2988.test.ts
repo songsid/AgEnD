@@ -72,10 +72,10 @@ describe("#8 / #9: where a waiting Hub step is confirmed", () => {
     await pg.mount(h(card.HubConnectCard, {}));
     await until(() => pg.root.querySelector(".hub-exposure input"));
     const box = pg.root.querySelector(".hub-exposure input") as any; box.checked = true; fire(box, "change");
-    await until(() => pg.root.querySelector(".hub-exposures [role=status]"));
+    await until(() => pg.root.querySelector(".hub-exposures > [role=status]"));
     return pg;
   }
-  const status = (pg: AppPage) => pg.root.querySelector(".hub-exposures [role=status]")!.textContent;
+  const status = (pg: AppPage) => pg.root.querySelector(".hub-exposures > [role=status]")!.textContent;
   it.each(["en", "zh-TW"])("a web-only Fleet's Share is never sent to General; the hint follows the request's card (%s)", async (lang) => {
     const pg = await shareOn(lang);
     store.appStore.set({ pendingChanges: [{ id: "q".repeat(32), state: "pending", confirmation: { kind: "host_cli", code: "q", reason: "no_chat" } }] });

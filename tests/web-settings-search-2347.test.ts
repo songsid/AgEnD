@@ -91,7 +91,7 @@ async function coverage(sections: string[], skipAbsent: (e: any) => boolean = ()
 /** Drawn only with a fixed hostname (a named tunnel): checked by the named-tunnel case below. */
 const NAMED_ONLY = new Set(["access.public-auto-open", "access.authority-named-link"]);
 // Settings → Hub: Connect to a Hub is drawn only once membership is on and the page is marked a member (alpha.6 #2).
-const MEMBER_ONLY = new Set(["hub.connect"]);
+const MEMBER_ONLY = new Set(["hub.connect", "hub.page-sharing"]);
 
 describe("#2347 §6: the registry is what Settings draws", () => {
   it("every field with an id in a section has an entry, and every entry's element is drawn in its section", async () => {

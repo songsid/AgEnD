@@ -313,6 +313,7 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
   confirmation"): on the confirm card at the top of the page, or on the card in General when the page names Discord or
   Telegram. Then the row reads "Shared: Hub questions go to this agent's own conversation."
 - Turning the switch off withdraws the agent.
+- **Let me share agents from the Hub page** / **允許我從 Hub 頁面分享 Agent** is on by default in Fleet Settings → Hub, at the top of **Shared agents** while connected; it is hidden without an online Hub connection. It sends only the owner-visible agent list to the connected Hub and lets that owner share or stop from its page without another Fleet confirmation. Each Hub-page change creates a durable General/web notice with **Undo** for 24 hours. Turning this setting off stops that list and new Hub-page changes; existing shares stay as they are. The individual Settings Share switches still use their existing confirmation.
 - **Who may share:** when group permissions are on, only people whose AD group, team, or personal row has **Share agents**. Otherwise the row
   reads "Not shared: your Hub administrator hasn't allowed you to share agents. It will be shared once they do."
   (未分享：Hub 管理員還沒有允許你分享 Agent。) with **Don't share it** to take the request back.
@@ -712,12 +713,13 @@ a Fleet itself (yet).
 
 ## Config keys
 
-Two keys in `fleet.yaml`, both off unless something turned them on. Prefer the pages above to editing them.
+The Hub and membership keys default off; Hub-page sharing defaults on. Prefer the pages above to editing `fleet.yaml`.
 
 | Key | Meaning |
 |---|---|
 | `hub.enabled` | This installation runs a Hub. Set by `agend hub init` or **Set up a Hub**. The Hub's own settings are written by setup and changed on the pages, not by hand: its address in **Settings → Hub → Hub address** on the Hub's computer, its directory and name on the Hub's Administration page. |
 | `hub_member.enabled` | This Fleet may connect to a Hub. Connecting with the Hub address box turns it on by itself; the switch is **Allow this fleet to connect to a Hub**. |
+| `hub_member.share_from_hub` | Defaults on. Fleet Settings → Hub → **Let me share agents from the Hub page**. Off stops the owner-only agent list and new share/stop requests from the Hub page, without stopping existing shares. |
 
 ## Limits
 
