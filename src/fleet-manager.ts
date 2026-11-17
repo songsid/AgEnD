@@ -16866,6 +16866,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return resolveMentions(query, [bots, seen, ...caches]);
   }
 
+  /** Guest labels use the exact instance connection/channel, never Fleet-wide seen users or another bot. */
+  private guestMentionNames(owner: { adapterId: string; userId: string }, instance: string, query: MentionQuery): MentionNames {
+    const adapterId = this.topicAdapterIdOf(instance), world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const cfg = this.fleetConfig?.instances[instance];
+    const channel = cfg?.topic_id ?? this.classicChannels?.getChannelIdByInstance(instance) ?? this.getGroupIdForInstance(instance);
+    if (this.worlds.get(owner.adapterId)?.type !== "discord" || world?.type !== "discord" || !channel || !world.adapter.mentionNamesInChannel) return { u: {}, r: {}, c: {} };
+    return resolveMentions(query, [q => world.adapter.mentionNamesInChannel!(q, String(channel), owner.userId)]);
+  }
+
   /** GET /ui/emojis: the custom emoji of every server the fleet's Discord bots are in (the Settings picker's cache). */
   async webEmojiList(): Promise<Array<{ id: string; name: string; animated: boolean }>> {
     const adopted: Array<{ id: string; world: AdapterWorld; emojis: GuildEmoji[] }> = [];
@@ -29843,7 +29852,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // §3.2: a stream that connects reads its rooms again (in the background; at most once a minute).
             streamOpened: () => { void this.refreshGuestRooms(owner, { mode: "force" }); },
             history: () => this.webChatHistory,
-            mentionNames: (query) => this.webMentionNames(query),
+            mentionNames: (instance, query) => this.guestMentionNames(owner, instance, query),
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false,
             // #2855: the admin's level for this guest, read at each request (a change applies at once).

@@ -13,6 +13,7 @@ const ids = ["900000000000000001", "900000000000000002"];
 const owner = { adapterId: "discord", userId: "900000000000000099" };
 fx.fm.guestScope = () => new Set(["agent-alpha"]);
 fx.fm.seenUsers.record(ids[0], "Avery"); fx.fm.seenUsers.record(ids[1], "Blair");
+if (!before) { const { guestMentionFixture } = await import(process.env.REPO + "/tests/support/guest-mentions-fixture-m3279.ts"); guestMentionFixture(fx.fm); }
 fx.fm.emitSseEvent("message", { instance: "agent-alpha", sender: "Example helper", role: "agent", text: `Hello <@${ids[0]}> and <@!${ids[1]}>. The update is ready.`, ts: new Date().toISOString(), channel: true });
 const results: any[] = [];
 try {

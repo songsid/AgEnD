@@ -113,8 +113,9 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
-Discord mentions in messages they may read show the same cached names as the admin's chat; this does not give guests
-a member directory. An unknown name still shows as `@user`, `@role` or `#channel`.
+Discord mentions in shared-channel messages they may read use that channel's cached names. Guests' own messages and
+private-room replies do not look up names; other servers and unreadable channels stay private. An unknown name still
+shows as `@user`, `@role` or `#channel`.
 
 They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the

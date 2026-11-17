@@ -6,6 +6,8 @@ import { join } from "node:path";
 import { guestFrameData, guestMessages, type GuestRequest } from "../src/web-guest-access.js";
 import { messageMentionNames } from "../src/web-mentions.js";
 import type { WebChatMessage } from "../src/web-chat-history.js";
+import { guestMentionFixture } from "./support/guest-mentions-fixture-m3279.js";
+import { ChannelType } from "discord.js";
 import "../src/ui/chat-render.js";
 // @ts-expect-error — the browser's untyped module
 import { createMentionIndex } from "../src/ui/chat-mentions.js";
@@ -23,7 +25,7 @@ const { tokenEpoch } = await import("../src/web-session.js");
 // Deliberately synthetic Discord-style ids and names; no real account or connection.
 const FIRST = "900000000000000001", SECOND = "900000000000000002", HIDDEN = "900000000000000003";
 const owner = { adapterId: "discord", userId: "900000000000000099" };
-let fm: any, port: number, admin: string, guest: string;
+let fm: any, port: number, admin: string, guest: string, cache: ReturnType<typeof guestMentionFixture>;
 const queried: Array<{ u: string[]; r: string[]; c: string[] }> = [];
 function get(path: string, sid: string): Promise<{ status: number; body: any }> {
   return new Promise((resolve, reject) => {
@@ -56,9 +58,12 @@ beforeAll(async () => {
   port = fm.healthServer.address().port; fm.initializeWebSessions();
   const session = (tier: "admin" | "guest") => fm.webSessions.create({ tier, surface: "local", label: "fixture", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token), ...(tier === "guest" ? { owner } : {}) }).sessionId;
   admin = session("admin"); guest = session("guest");
+  cache = guestMentionFixture(fm);
   for (const [id, name] of [[FIRST, "Avery"], [SECOND, "Blair"], [HIDDEN, "Hidden fixture"]]) fm.seenUsers.record(id, name);
   const read = fm.webMentionNames.bind(fm);
   fm.webMentionNames = (q: { u: string[]; r: string[]; c: string[] }) => { queried.push(q); return read(q); };
+  const guestRead = fm.guestMentionNames.bind(fm);
+  fm.guestMentionNames = (o: unknown, instance: string, q: { u: string[]; r: string[]; c: string[] }) => { queried.push(q); return guestRead(o, instance, q); };
   const message = (instance: string, text: string, channel?: true) => fm.emitSseEvent("message", { instance, sender: "Example agent", role: "agent", text, ts: new Date().toISOString(), ...(channel ? { channel } : {}) });
   message("agent-alpha", `Hello <@${FIRST}> and <@!${SECOND}>.`, true);
   message("agent-alpha", `Hidden <@${HIDDEN}>.`);
@@ -114,7 +119,7 @@ describe("M-3279 mention names belong to permitted messages", () => {
     const [shown] = guestMessages([row], { owner, mentionNames: source, scope: () => scope, current: () => true }, scope);
     expect(shown!.text).toBe(`<@${FIRST}>`);
     expect(shown!.mentionNames).toEqual({ u: { [FIRST]: "Avery" }, r: {}, c: {} });
-    expect(source).toHaveBeenCalledExactlyOnceWith({ u: [FIRST], r: [], c: [] });
+    expect(source).toHaveBeenCalledExactlyOnceWith("agent-alpha", { u: [FIRST], r: [], c: [] });
   });
   it("batches message tokens and keeps only resolved names of those tokens", () => {
     const ids = Array.from({ length: 101 }, (_, i) => String(900000000000001000n + BigInt(i)));
@@ -135,5 +140,50 @@ describe("M-3279 mention names belong to permitted messages", () => {
     expect(fetch).not.toHaveBeenCalled(); expect(changed).toHaveBeenCalledTimes(1);
     idx.ensure([{ ...row, mentionNames: { u: { [FIRST]: "Avery updated" } } }]);
     expect(idx.name("u", FIRST)).toBe("Avery updated"); expect(changed).toHaveBeenCalledTimes(2);
+  });
+  it("does not resolve a guest-authored probe through history or poll", async () => {
+    fm.emitSseEvent("message", { instance: "agent-alpha", role: "user", sender: "Guest fixture", from: `${owner.adapterId}:${owner.userId}`, channel: true, text: `Probe <@${FIRST}> <@${HIDDEN}> <#${HIDDEN}> <@&${FIRST}>`, ts: new Date().toISOString() });
+    const history = await get("/ui/history?instance=agent-alpha", guest), poll = await get("/ui/poll", guest);
+    const own = (body: any) => body.messages.find((m: any) => m.mine && m.text.startsWith("Probe"));
+    expect(own(history.body)).toBeDefined(); expect(own(poll.body)).toBeDefined();
+    expect({ history: own(history.body).mentionNames, poll: own(poll.body).mentionNames }).toEqual({ history: undefined, poll: undefined });
+  });
+  it("does not turn a private-room agent echo into a name lookup", () => {
+    const source = vi.fn(() => ({ u: { [HIDDEN]: "Hidden fixture" } })), scope = new Set(["agent-alpha"]);
+    const context: GuestRequest = { owner, mentionNames: source, scope: () => scope, current: () => true, ownRoom: () => true };
+    const row: WebChatMessage = { boot: "fixture", id: 1, role: "agent", sender: "Example agent", ts: "2026-01-01T00:00:00.000Z", instance: "agent-alpha", text: `Echo <@${HIDDEN}>` };
+    const live = guestFrameData("message", row, scope, context) as Record<string, unknown>;
+    expect(live).toBeDefined(); expect(live.mentionNames).toBeUndefined(); expect(source).not.toHaveBeenCalled();
+  });
+  it("handles an unavailable guest fetch without a rejection or retry", async () => {
+    const fetch = vi.fn(() => null), changed = vi.fn(), idx = createMentionIndex(fetch);
+    idx.subscribe(changed); idx.ensure([{ text: `<@${HIDDEN}>` }]);
+    await vi.waitFor(() => expect(idx.pending()).toBe(0));
+    expect(idx.name("u", HIDDEN)).toBeNull(); expect(changed).not.toHaveBeenCalled();
+    idx.ensure([{ text: `<@${HIDDEN}>` }]); expect(fetch).toHaveBeenCalledTimes(1);
+  });
+  it("uses only the room guild and readable channel caches, not global users", () => {
+    const q = { u: [FIRST, HIDDEN], r: [FIRST, HIDDEN], c: [cache.ids.room, cache.ids.private, cache.ids.foreign] };
+    expect(cache.adapter.mentionNamesInChannel(q, cache.ids.room, owner.userId)).toEqual({ u: { [FIRST]: "Avery" }, r: { [FIRST]: "Example role" }, c: { [cache.ids.room]: "Example room" } });
+    expect(cache.adapter.mentionNamesInChannel(q, cache.ids.room, HIDDEN)).toEqual({ u: {}, r: {}, c: {} });
+    expect(cache.adapter.mentionNamesInChannel(q, cache.ids.private, owner.userId)).toEqual({ u: {}, r: {}, c: {} });
+  });
+  it("never substitutes the Fleet-wide cache or another connection for an unbound room", () => {
+    expect(fm.guestMentionNames(owner, "agent-beta", { u: [HIDDEN], r: [], c: [] })).toEqual({ u: {}, r: {}, c: {} });
+    const read = vi.spyOn(cache.adapter, "mentionNamesInChannel"); read.mockClear();
+    fm.fleetConfig.instances["agent-alpha"].channel_id = "missing-connection";
+    try { expect(fm.guestMentionNames(owner, "agent-alpha", { u: [FIRST], r: [], c: [] })).toEqual({ u: {}, r: {}, c: {} }); expect(read).not.toHaveBeenCalled(); }
+    finally { fm.fleetConfig.instances["agent-alpha"].channel_id = "discord"; read.mockRestore(); }
+  });
+  it("withholds private thread names until the viewer has cached membership", () => {
+    const thread = { ...cache.room, id: cache.ids.private, name: "Private thread", type: ChannelType.PrivateThread, members: { cache: new Map() } };
+    const channels = (cache.adapter as any).client.channels.cache;
+    channels.set(thread.id, thread);
+    try {
+      const q = { u: [FIRST], r: [], c: [thread.id] };
+      expect(cache.adapter.mentionNamesInChannel(q, thread.id, owner.userId)).toEqual({ u: {}, r: {}, c: {} });
+      thread.members.cache.set(owner.userId, {});
+      expect(cache.adapter.mentionNamesInChannel(q, thread.id, owner.userId)).toEqual({ u: { [FIRST]: "Avery" }, r: {}, c: { [thread.id]: "Private thread" } });
+    } finally { channels.set(cache.ids.private, cache.privateRoom); }
   });
 });
