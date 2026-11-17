@@ -41,11 +41,13 @@ interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_cre
 /** A room as the conversation list shows it (#3226 B). */
 export interface HubRoomListItem extends HubRoom {
   agentKind?: "personal"; answerOnly?:true; exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
+  closureReason?: "owner-stopped-sharing";
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
 type RoomViewRow = RoomRow & { fleet_id: string|null; answer_only:number; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
-  owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
+  owner_stopped: number; owner_name: string | null; grant_expires_at: number | null; last_at: number; waiting: number };
 const ROOM_VIEW_SQL = `SELECT r.*, e.answer_only, e.fleet_id AS fleet_id, e.display_name AS exposure_name, e.state AS exposure_state, e.revision AS exposure_revision, e.frozen_through,e.sharing_paused,
+  EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id=r.id AND m.reason_code='owner-stopped-sharing') AS owner_stopped,
   p.display_name AS owner_name, g.expires_at AS grant_expires_at,
   COALESCE((SELECT MAX(m.stage_at) FROM hub_messages m WHERE m.room_id = r.id), r.created_at) AS last_at,
   EXISTS (SELECT 1 FROM hub_messages m WHERE m.room_id = r.id AND m.stage IN ('queued','delivered','consumed')) AS waiting
@@ -54,7 +56,7 @@ function roomListItem(r: RoomViewRow, features: readonly string[]): HubRoomListI
   // A closed room says which chat it was (its agent, its owner) and when it last moved (the list's order) — nothing of
   // its grant, its link or whether a question waited (#3246 review).
   if (r.state !== "active") return { ...roomOf(r), ...(r.answer_only===1?{answerOnly:true as const}:{}), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "", exposureState: r.exposure_state,
-    grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
+    ...(r.owner_stopped ? { closureReason: "owner-stopped-sharing" as const } : {}), grantExpiresAt: 0, lastAt: r.last_at, waiting: false, features: [] };
   return { ...roomOf(r), ...(r.answer_only===1?{answerOnly:true as const}:{}), ...(r.fleet_id===null?{agentKind:"personal" as const}:{}), exposureName: r.exposure_name, ownerName: r.owner_name ?? "",
     exposureState: r.exposure_state === "published" ? r.frozen_through >= r.exposure_revision ? "frozen" : r.sharing_paused ? "paused" : "published" : r.exposure_state,
     grantExpiresAt: r.grant_expires_at ?? 0, lastAt: r.last_at, waiting: !!r.waiting, features };
@@ -457,7 +459,10 @@ export class HubRoomsService {
           const facts = eligible ? messageFacts(db, msg, now, permit) : { ok: false as const, reason: "revoked" as const };
           if (!facts.ok) {
             const stage = facts.reason === "expired" ? "failed" : "cancelled";
-            db.prepare("UPDATE hub_messages SET stage=?, reason_code=?, stage_at=? WHERE id=?").run(stage, facts.reason, now, msg.id);
+            const currentExposure = readExposure(db, msg.exposure_id);
+            const reason = facts.reason === "revoked" && currentExposure && currentExposure.revision > msg.exposure_revision
+              && currentExposure.owner === msg.owner && currentExposure.fleet_id === msg.fleet_id ? "publication-changed" : facts.reason;
+            db.prepare("UPDATE hub_messages SET stage=?, reason_code=?, stage_at=? WHERE id=?").run(stage, reason, now, msg.id);
             this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "local-host" }, action: `question.${stage}`, result: "held", reasonCode: facts.reason,
               messageId: msg.id, roomId: msg.room_id, fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner), grantId: msg.grant_id, grantRevision: msg.grant_revision });
             return null;
@@ -512,8 +517,9 @@ export class HubRoomsService {
       if (POSITIVE.includes(msg.stage) && next !== 0 && next < known) throw new HubProtocolError("stale");   // never downgrade evidence
       db.prepare("INSERT INTO hub_receipts(fleet_id, sequence, message_id, content_digest, stage, at, member_delivery_id, reason_code) VALUES(?,?,?,?,?,?,?,?)")
         .run(link.fleetId, r.sequence, r.messageId, r.contentDigest, r.stage, r.at, r.memberDeliveryId ?? null, r.reasonCode ?? null);
-      const stage = msg.stage === "answered" && r.stage !== "answered" && !TERMINAL.has(r.stage) ? msg.stage : r.stage;
-      db.prepare("UPDATE hub_messages SET stage=?, member_sequence=?, reason_code=?, stage_at=? WHERE id=?").run(stage, r.sequence, r.reasonCode ?? null, now, msg.id);
+      const stopped = msg.stage === "cancelled" && msg.reason_code === "owner-stopped-sharing";
+      const stage = stopped ? msg.stage : msg.stage === "answered" && r.stage !== "answered" && !TERMINAL.has(r.stage) ? msg.stage : r.stage;
+      db.prepare("UPDATE hub_messages SET stage=?, member_sequence=?, reason_code=?, stage_at=? WHERE id=?").run(stage, r.sequence, stopped ? msg.reason_code : r.reasonCode ?? null, stopped ? msg.stage_at : now, msg.id);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: `receipt.${r.stage}`, result: r.stage === "uncertain" ? "held" : "completed",
         reasonCode: r.reasonCode, messageId: msg.id, roomId: msg.room_id, fleetId: link.fleetId, exposureId: msg.exposure_id, ownerAtEvent: personFromString(msg.owner),
         grantId: msg.grant_id, grantRevision: msg.grant_revision });

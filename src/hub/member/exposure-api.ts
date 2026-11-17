@@ -14,7 +14,7 @@ import { settingsSummary, summaryLine, summaryMessage, type SettingsSummaryPrese
  */
 import type { HubExecutionReadiness, HubLocalExposure } from "../execution/service.js";
 import { HUB_AGENT_MODE, isAgentDescriptor } from "./agent-mode.js";
-import { HubExposureRefusal, publishExposure, type HubExposureStore } from "./exposures.js";
+import { HubExposureRefusal, publishExposure, type HubExposureStore, type HubExposureCommit } from "./exposures.js";
 
 export interface HubExposureView {
   agent: string; display: string; kind?: "classic-room"; exposureId: string | null; revision: number;
@@ -35,9 +35,9 @@ export interface HubMemberExposureApi {
   /** The confirmation's summary for a publish (checked: a refusal throws HubExposureRefusal). */
   preview(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
   /** Publish or revise (run only after the owner confirmed). */
-  publish(input: unknown): HubExposureView;
+  publish(input: unknown, receipt?: HubExposureCommit): HubExposureView;
   /** Withdraw at once: ok once the restrictive state is saved; the Hub learns it with the next snapshot ("pending"). */
-  withdraw(exposureId: string, expectedRevision: number): Promise<{ remote: "pending" }>;
+  withdraw(exposureId: string, expectedRevision: number, receipt?: HubExposureCommit): Promise<{ remote: "pending" }>;
 }
 
 /** A publish request, strictly: unknown keys, odd types or a non-whole revision are refused (unknown_agent covers a bad name). */
@@ -107,15 +107,15 @@ export function createHubMemberExposureApi(deps: {
           summaryMessage(input.contactLimit !== false ? "hub.exposure.summary.contactLimited" : "hub.exposure.summary.contactAllowed")),
         summaryLine(`Revision: ${input.expectedRevision + 1}`, summaryMessage("hub.exposure.summary.revision", input.expectedRevision + 1))]);
     },
-    publish(raw) {
+    publish(raw, receipt) {
       const { input, a } = checked(raw);
       publishExposure(deps.store, { agent: a.name, providerId: HUB_AGENT_MODE, displayName: a.display, dataViewId: HUB_AGENT_MODE, allowedTools: [],
-        expectedRevision: input.expectedRevision, contactLimit: input.contactLimit }, readiness);
+        expectedRevision: input.expectedRevision, contactLimit: input.contactLimit }, readiness, receipt);
       void deps.afterCommit().catch(() => {});
       return viewOf(a);
     },
-    async withdraw(exposureId, expectedRevision) {
-      deps.store.withdraw(exposureId, expectedRevision);
+    async withdraw(exposureId, expectedRevision, receipt) {
+      deps.store.withdraw(exposureId, expectedRevision, receipt);
       void deps.afterCommit().catch(() => {});
       return { remote: "pending" };
     },

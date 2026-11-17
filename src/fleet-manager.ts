@@ -1,3 +1,5 @@
+import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
+import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
 import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
@@ -1071,6 +1073,7 @@ const CLEAR_CONFIRM_CALLBACK_PREFIX = "clear-confirm:";
 const KIRO_MIGRATE_CALLBACK_PREFIX = "kiro-migrate:";
 /** M-3140: Update now on a Hub-recommended-version notice in General ("hub-update:" + 32 hex + ":update" = 50 bytes). */
 const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
+const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
@@ -2099,6 +2102,58 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     else await this.startHubRequestedUpdateOnce(`chat:${nonce}`, `${adapterId}:${data.userId}`, () => this.fleetAdminGate(data.userId ?? "", adapterId) === "ok" && !this.shuttingDown, id);
     return true;
   }
+  private hubSharingController: HubSharingController | null = null;
+  private readonly pendingHubSharing = new Map<string, { key: string; controller: HubSharingController }>();
+  hubSharing(): HubSharingController | null { return this.hubSharingController; }
+  private async recordHubSharingNotice(value: HubSharingNotice): Promise<boolean> {
+    const store = this.webNoticeStore(); if (!store) return false;
+    const text = hubSharingNoticeText(value, (key, ...args) => t(key, ...args));
+    const notice = store.upsertSharing(value, text); if (!notice) return false;
+    this.emitSseEvent("notice", { notice, unread: store.unread() });
+    if (value.state === "complete" && !this.webOnlyPromptPlace() && store.startSharingChat(value.key)) {
+      void this.postHubSharingChat(value, text).catch(() => this.logger.warn("Hub sharing chat notice not confirmed; Undo remains in web Notices"));
+    }
+    return true;
+  }
+  private async postHubSharingChat(value: HubSharingNotice, text: string): Promise<void> {
+    const general = this.findGeneralInstance(), controller = this.hubSharingController;
+    if (!general || !controller) return;
+    if (!value.rows.some(row => row.state === "shared" || row.state === "stopped") || Date.now() >= value.undoUntil) {
+      this.notifyInstanceTopic(general, text); return;
+    }
+    const adapter = this.getAdapterForInstance(general), adapterId = this.getInstanceAdapterId(general), chatId = this.getGroupIdForInstance(general);
+    if (!adapter || !adapterId || !chatId) return;
+    const threadId = String(this.fleetConfig?.instances[general]?.topic_id ?? "");
+    const nonce = await this.postNonceButtonPromptOrThrow({ prefix: HUB_SHARING_CALLBACK_PREFIX, alertType: "tip", instanceName: general,
+      adapter, adapterId, chatId, ...(threadId ? { threadId } : {}), message: text, choices: [{ action: "undo", label: t("hub_sharing.undo") }],
+      expiredText: t("hub_sharing.expired"), timeoutMs: Math.max(1, value.undoUntil - Date.now()) });
+    if (this.hubSharingController !== controller || this.shuttingDown) return;
+    this.pendingHubSharing.set(nonce, { key: value.key, controller });
+    const timer = setTimeout(() => this.pendingHubSharing.delete(nonce), Math.max(1, value.undoUntil - Date.now())); timer.unref();
+  }
+  private async handleHubSharingCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    const claimed = this.consumeNonceCallback(HUB_SHARING_CALLBACK_PREFIX, /^hub-share:([0-9a-f]{32}):undo$/, data, adapterId, adapter,
+      { keepText: true, notice: t("hub_sharing.restart") }, userId => this.fleetAdminGate(userId, adapterId) === "ok");
+    if (claimed === null) return false; if (claimed === "consumed") return true;
+    const nonce = data.callbackData.slice(HUB_SHARING_CALLBACK_PREFIX.length, HUB_SHARING_CALLBACK_PREFIX.length + 32);
+    const pending = this.pendingHubSharing.get(nonce); this.pendingHubSharing.delete(nonce);
+    const current = () => !!pending && this.hubSharingController === pending.controller && !this.shuttingDown
+      && this.fleetAdminGate(data.userId ?? "", adapterId) === "ok";
+    let text = t("hub_sharing.restart");
+    if (pending && current()) {
+      try {
+        const value = pending.controller.view(pending.key);
+        if (value && Date.now() >= value.undoUntil) text = t("hub_sharing.expired");
+        else if (value) {
+          const result = await pending.controller.undo(pending.key, `${adapterId}:${data.userId}`, current);
+          text = hubSharingNoticeText(result, (key, ...args) => t(key, ...args));
+        }
+      } catch { text = t("hub_sharing.uncertain"); this.logger.warn("Hub sharing Undo not confirmed; use web Notices"); }
+    }
+    await this.retireNonceButtons(claimed.entry, claimed.entry.messageId ?? data.messageId, text);
+    return true;
+  }
+
   private hubPairingNotices: (() => import("./hub/types.js").HubPairingNotice[]) | null = null;
   hubMemberPairing(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null { return this.hubMemberPairingApi; }
   /** Explicit owner Settings read only. A paused binding is not permission to mount or connect a member. */
@@ -2490,6 +2545,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           // S3c's currentBinding: a fresh, fail-closed read of the pairing state (null unless consistent and connectable).
           boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
+          catalogAgents: () => this.hubCatalogAgents(),
+          sharingNotice: value => this.recordHubSharingNotice(value),
+          attachSharing: controller => { this.hubSharingController = controller; },
           // P1 representative mode (docs/design/hub-representative-agent.md): ordinary delivery + the report_result hook.
           representative: {
             quota: agent => this.hubAgentQuota(agent),
@@ -3858,6 +3916,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       config: () => this.fleetConfig, current: () => [this.settingsGeneration, this.settingsRuntimeRevision, this.shuttingDown],
       generalLocation: input => this.previewGeneralLocation(input),
       hubMembership: raw => hubMembershipSettings(raw),
+      hubPageSharing: raw => hubPageSharingSettings(raw),
       hubPilotTrust: raw => hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
       hubBrowserCertificate: (input: unknown, binding: string) => {
@@ -18568,6 +18627,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
+    if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubFleetUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubUpdateCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroReconcileCallback(data, adapterId, adapter)) return true;

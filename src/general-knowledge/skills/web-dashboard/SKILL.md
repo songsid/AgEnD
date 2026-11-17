@@ -339,6 +339,11 @@ for you — set `true` to list them).
 restart, a sign-in) is listed on the **Notices** page in the sidebar ("What General would have said"; **New**, **Open
 chat**).
 
+Hub-page sharing changes also appear here, even on a Fleet with a chat connection. An administrator can use
+**Undo** on that notice for 24 hours, including after a restart. Undo reverses the unchanged rows of that one
+request; rows changed since then are skipped. Turning off **Let me share agents from the Hub page** in
+Settings → Hub stops new Hub-page changes and its agent list, while existing shares and notice Undo remain.
+
 ## Search
 
 The sidebar row **Search** (under Needs you, with "Ctrl K" / "⌘K"), **Ctrl+K** / **⌘K** anywhere, the header's 🔍 when

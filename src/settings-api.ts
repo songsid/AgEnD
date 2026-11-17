@@ -1,3 +1,4 @@
+import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { connectInstallInfo } from "./connect/install.js";
 import { handleHubWebAddressHttp } from "./hub/settings-web-address-http.js";
@@ -142,6 +143,7 @@ export interface SettingsApiContext extends AppShellContext {
   /** M-2682: an unfinished sealed-settings commit (hub/settings-commit.ts) — Hub setting saves wait until it is recovered. */
   hubSettingsBusy?(): boolean;
   /** S3c (S-55): the member's exposures (null: no Hub member composed here — the routes answer 404 "unavailable"). */
+  hubSharing?(): import("./hub-sharing-notice.js").HubSharingController | null;
   hubMemberExposures?(): import("./hub/member/exposure-api.js").HubMemberExposureApi | null;
   /** S3c PR B: the member's pairing (null: no Hub member composed here — the routes answer 404 "unavailable"). */
   hubMemberPairing?(): ReturnType<typeof import("./hub/member/pairing-api.js").createHubMemberPairingApi> | null;
@@ -574,6 +576,46 @@ export function handleSettingsRequest(
   // #2667: validated with the ClassicBot rooms there are now — a guest grant naming one is not an unknown name.
   const validateFleet = (config: unknown) => validateFleetConfig(config, { rooms: ctx.classicRoomNames?.() ?? [] });
   const method = req.method ?? "GET";
+
+  const sharingNotice = path.match(/^\/api\/settings\/hub\/sharing-notices\/([a-f0-9]{64})(\/undo)?$/);
+  if (sharingNotice) {
+    const caller = () => {
+      const value = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+      return value.kind === "allow" && value.via === "session" && value.session.tier === "admin" ? value.session.handle : null;
+    };
+    const actor = caller(), controller = ctx.hubSharing?.();
+    if (!actor) { json(res, 403, { error: "admin_required" }); return true; }
+    if (!controller) { json(res, 404, { error: "unavailable" }); return true; }
+    const current = () => caller() === actor && ctx.hubSharing?.() === controller;
+    if (method === "GET" && !sharingNotice[2]) {
+      const value = controller.view(sharingNotice[1]!);
+      if (!current()) { json(res, 403, { error: "admin_required" }); return true; }
+      json(res, value ? 200 : 404, value ?? { error: "not_found" }); return true;
+    }
+    if (method !== "POST" || !sharingNotice[2]) { json(res, 405, { error: "method_not_allowed" }); return true; }
+    void readBody(req, 4096).then(async bytes => {
+      if (!current()) { json(res, 403, { error: "admin_required" }); return; }
+      const body: unknown = JSON.parse(bytes.toString("utf8"));
+      if (!body || typeof body !== "object" || Array.isArray(body) || Object.keys(body).length) { json(res, 400, { error: "invalid" }); return; }
+      try {
+        const before = controller.view(sharingNotice[1]!);
+        if (!before) { json(res, 404, { error: "not_found" }); return; }
+        if (before.state !== "undone" && Date.now() >= before.undoUntil) { json(res, 409, { error: "expired" }); return; }
+        if (before.state === "pending" || !before.rows.some(row => row.state === "shared" || row.state === "stopped" || row.state === "undone" || row.state === "changed")) {
+          json(res, 409, { error: "not_available" }); return;
+        }
+        const value = await controller.undo(sharingNotice[1]!, `web:${actor}`, current);
+        if (!current()) { json(res, 403, { error: "admin_required" }); return; }
+        json(res, 200, value);
+      } catch {
+        if (!current()) { json(res, 403, { error: "admin_required" }); return; }
+        // The journal may already contain an effect; a transport/notice failure is not a definite failure of Undo.
+        const value = controller.view(sharingNotice[1]!);
+        json(res, 202, { pending: true, notice: value });
+      }
+    }).catch(() => json(res, 400, { error: "invalid" }));
+    return true;
+  }
 
   const updateConsent = path === "/api/settings/hub/update-consent";
   const updateRequest = path.match(/^\/api\/settings\/hub\/fleet-updates\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(\/cancel)?$/);
@@ -1009,15 +1051,16 @@ export function handleSettingsRequest(
   const cfg = ctx.fleetConfig;
 
   // This pure Settings surface remains available while membership is off; it imports no Hub runtime.
-  if (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust") {
-    const pilot = path.endsWith("/pilot-trust");
-    const settings = (raw: unknown) => pilot ? hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION) : hubMembershipSettings(raw);
+  if (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust" || path === "/api/settings/hub/share-from-hub") {
+    const pilot = path.endsWith("/pilot-trust"), pageSharing = path.endsWith("/share-from-hub");
+    const invalid = pageSharing ? "invalid_hub_page_sharing" : "invalid_hub_membership";
+    const settings = (raw: unknown) => pageSharing ? hubPageSharingSettings(raw) : pilot ? hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION) : hubMembershipSettings(raw);
     // M-3278 (decision 7933bf90): the public link's admin session too (each method asks for an admin below).
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
       // v2 is an explicit local-owner read. Older clients keep the pure boolean response and lazy-off behavior.
-      if (!pilot && url.searchParams.has("v")) {
-        if (url.searchParams.get("v") !== "2" || [...url.searchParams.keys()].length !== 1) { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return true; }
+      if (!pilot && !pageSharing && url.searchParams.has("v")) {
+        if (url.searchParams.get("v") !== "2" || [...url.searchParams.keys()].length !== 1) { json(res, 400, { ok: false, error: invalid }); return true; }
         const owner = ctx.hubCompanySession?.(req), read = ctx.hubMemberPairingView?.bind(ctx), raw = ctx.getRawFleetConfig(), configPath = ctx.configPath;
         if (!owner?.current()) { json(res, 403, { ok: false, error: "admin_required" }); return true; }
         if (!read) { json(res, 404, { ok: false, error: "unavailable" }); return true; }
@@ -1031,7 +1074,7 @@ export function handleSettingsRequest(
         return true;
       }
       try { json(res, 200, { ok: true, ...settings(ctx.getRawFleetConfig()) }); }
-      catch { json(res, 409, { ok: false, error: "invalid_hub_membership" }); }
+      catch { json(res, 409, { ok: false, error: invalid }); }
       return true;
     }
     if (method !== "PUT") { json(res, 405, { error: "method_not_allowed" }); return true; }
@@ -1045,16 +1088,16 @@ export function handleSettingsRequest(
         execution.assert();
         if (!settingsRequestLocalAdmin(req) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath) throw Error("unavailable");
         let input: { enabled: boolean };
-        try { input = parseHubMembership(JSON.parse(bytes.toString("utf8"))); }
-        catch { json(res, 400, { ok: false, error: "invalid_hub_membership" }); return; }
+        try { input = pageSharing ? parseHubPageSharing(JSON.parse(bytes.toString("utf8"))) : parseHubMembership(JSON.parse(bytes.toString("utf8"))); }
+        catch { json(res, 400, { ok: false, error: invalid }); return; }
         settingsWrite(req, () => {
           if (!settingsRequestLocalAdmin(req) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath) throw Error("unavailable");
           settings(ctx.getRawFleetConfig());
-          ctx.saveFleetConfig([{ path: ["hub_member", pilot ? "pilot_trust" : "enabled"], value: input.enabled }]);
+          ctx.saveFleetConfig([{ path: ["hub_member", pageSharing ? "share_from_hub" : pilot ? "pilot_trust" : "enabled"], value: input.enabled }]);
         });
         json(res, 200, { ok: true, ...settings(ctx.getRawFleetConfig()) });
       } catch { json(res, 503, { ok: false, error: "unavailable" }); }
-    }).catch(() => json(res, 400, { ok: false, error: "invalid_hub_membership" }));
+    }).catch(() => json(res, 400, { ok: false, error: invalid }));
     return true;
   }
 

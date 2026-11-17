@@ -4,8 +4,9 @@
  * available update in; they used to be dropped with a log line. They are kept here instead (the newest NOTICES_MAX,
  * `web-notices.json` beside the fleet, 0600, written atomically), pushed to the dashboard as they come, and listed on
  * its Notices page. Which ones the person has read is one mark: the newest id they have seen.
- * A fleet with a chat connection never writes here (FleetManager.recordWebNotice): its General still says them.
+ * Routine chat-connected notices stay in General. Hub sharing also keeps a durable web notice for restart-safe Undo.
  */
+import { hubSharingNoticeSchema, type HubSharingNotice } from "./hub-sharing-notice.js";
 import { readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 
@@ -20,6 +21,8 @@ export type NoticeKind = "fleet" | "instance" | "update" | "schedule" | "summary
 const KINDS: readonly string[] = ["fleet", "instance", "update", "schedule", "summary"];
 
 export interface WebNotice {
+  readonly hubSharingChatAttempted?: boolean;
+  readonly hubSharing?: HubSharingNotice;
   readonly hubUpdate?: import("./hub/member/updates.js").MemberUpdateNotice;
   /** Increasing, never reused (the next one survives a restart). */
   readonly id: number;
@@ -52,6 +55,8 @@ function valid(v: unknown): v is WebNotice {
   const n = v as Record<string, unknown>;
   return Number.isSafeInteger(n.id) && (n.id as number) > 0 && Number.isSafeInteger(n.at) && (n.at as number) > 0
     && typeof n.kind === "string" && KINDS.includes(n.kind) && typeof n.text === "string"
+    && (n.hubSharingChatAttempted === undefined || typeof n.hubSharingChatAttempted === "boolean")
+    && (n.hubSharing === undefined || hubSharingNoticeSchema.safeParse(n.hubSharing).success)
     && (n.hubUpdate === undefined || validHubUpdate(n.hubUpdate))
     && (n.instance === undefined || (typeof n.instance === "string" && n.instance.length > 0));
 }
@@ -75,7 +80,7 @@ export class WebNotices {
       // Increasing ids only (a hand-edited file cannot reorder or repeat them), the newest NOTICES_MAX.
       let last = 0;
       for (const n of v.items) if (valid(n) && n.id > last) { this.items.push(Object.freeze({ ...n, text: n.text.slice(0, NOTICE_TEXT_MAX) })); last = n.id; }
-      this.items = this.items.slice(-NOTICES_MAX);
+      this.items = this.trim(this.items);
       this.next = Math.max(last + 1, Number.isSafeInteger(v.next) ? v.next as number : 1);
       this.seen = Number.isSafeInteger(v.seen) && (v.seen as number) >= 0 ? Math.min(v.seen as number, this.next - 1) : 0;
     } catch {
@@ -89,7 +94,7 @@ export class WebNotices {
     const notice: WebNotice = Object.freeze({ id: this.next++, at: this.now(), kind: input.kind, text: input.text.slice(0, NOTICE_TEXT_MAX),
       ...(input.instance ? { instance: input.instance } : {}), ...(input.hubUpdate && validHubUpdate(input.hubUpdate) ? { hubUpdate: Object.freeze({ ...input.hubUpdate }) } : {}) });
     this.items.push(notice);
-    if (this.items.length > NOTICES_MAX) this.items.splice(0, this.items.length - NOTICES_MAX);
+    this.items = this.trim(this.items);
     this.flush();
     return notice;
   }
@@ -107,10 +112,42 @@ export class WebNotices {
     const notice: WebNotice = Object.freeze({ id: this.next++, at: this.now(), kind: input.kind, text: input.text.slice(0, NOTICE_TEXT_MAX),
       ...(input.instance ? { instance: input.instance } : {}), ...(input.hubUpdate && validHubUpdate(input.hubUpdate) ? { hubUpdate: Object.freeze({ ...input.hubUpdate }) } : {}) });
     this.items.push(notice);
-    if (this.items.length > NOTICES_MAX) this.items.splice(0, this.items.length - NOTICES_MAX);
+    this.items = this.trim(this.items);
     if (this.flush()) return notice;
     this.items = before.items; this.next = before.next;
     return null;
+  }
+
+  /** Preserve every still-live Undo even if routine notices fill the ordinary 500-row window. */
+  private trim(items: WebNotice[]): WebNotice[] {
+    const newest = new Set(items.slice(-NOTICES_MAX));
+    return items.filter(notice => newest.has(notice) || (notice.hubSharing?.undoUntil ?? 0) > this.now());
+  }
+  /** One stable notice per frozen request. Its Undo deadline and original id never move on retry. */
+  upsertSharing(input: HubSharingNotice, text: string): WebNotice | null {
+    const parsed = hubSharingNoticeSchema.safeParse(input);
+    if (!parsed.success) return null;
+    const value = structuredClone(parsed.data), old = this.items.find(notice => notice.hubSharing?.key === value.key);
+    if (old && (old.hubSharing!.at !== value.at || old.hubSharing!.undoUntil !== value.undoUntil)) return null;
+    if (old && old.hubSharing!.version > value.version) return old;
+    if (old && JSON.stringify(old.hubSharing) === JSON.stringify(value) && old.text === text.slice(0, NOTICE_TEXT_MAX)) return old;
+    if (!old && this.items.filter(notice => (notice.hubSharing?.undoUntil ?? 0) > this.now()).length >= 256) return null;
+    const before = { items: this.items, next: this.next };
+    const notice: WebNotice = Object.freeze({ id: old?.id ?? this.next++, at: value.at, kind: "instance", text: text.slice(0, NOTICE_TEXT_MAX), hubSharing: value, ...(old?.hubSharingChatAttempted ? { hubSharingChatAttempted: true } : {}) });
+    this.items = this.trim(old ? this.items.map(row => row === old ? notice : row) : [...this.items, notice]);
+    if (this.flush()) return notice;
+    this.items = before.items; this.next = before.next;
+    return null;
+  }
+
+  /** Reserve the single external-chat attempt before send. An uncertain send is never blindly repeated after restart. */
+  startSharingChat(key: string): boolean {
+    const old = this.items.find(row => row.hubSharing?.key === key);
+    if (!old || old.hubSharingChatAttempted) return false;
+    const before = this.items;
+    this.items = this.items.map(row => row === old ? Object.freeze({ ...row, hubSharingChatAttempted: true }) : row);
+    if (this.flush()) return true;
+    this.items = before; return false;
   }
 
   /** The newest notice of a kind, if one is kept (e.g. not to repeat the same update notice every day). */

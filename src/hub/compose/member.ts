@@ -1,4 +1,8 @@
-import { HubMemberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
+import { HUB_MEMBER_SHARING_MIGRATION, HubMemberSharingJournal } from "../member/sharing-journal.js";
+import { HubMemberSharing } from "../member/sharing.js";
+import { HubMemberSharingLink } from "../member/sharing-link.js";
+import { sharingNotice } from "../member/sharing-result.js";
+import { HubMemberAgentCatalog, memberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -97,6 +101,8 @@ export interface HubMemberFactoryOptions {
   /** The owner's local agents, each with the S4 provider it would run under (null: none). */
   agents(): import("../member/exposure-api.js").HubMemberAgent[];
   catalogAgents?(): MemberCatalogAgent[];
+  sharingNotice?(notice: import("../../hub-sharing-notice.js").HubSharingNotice): Promise<boolean>;
+  attachSharing?(controller: import("../../hub-sharing-notice.js").HubSharingController | null): void;
   views?: HubViewSource;
   /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
   representative: HubRepresentativeHost;
@@ -331,7 +337,7 @@ function openMemberState(options: {
       }
       applyHubMigrations(db, [HUB_INSTANCE_MIGRATION, HUB_AUDIT_MIGRATION, HUB_MEMBER_JOURNAL_MIGRATION,
         { component: "s4-execution", version: 1, up: execution.migrateHubExecution }, exposureStore.HUB_EXPOSURE_MIGRATION,
-        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION, IDLE_UPDATE_MIGRATION, HUB_MEMBER_UPDATES_MIGRATION,HUB_ROOM_MENTION_FEEDBACK_MIGRATION]);
+        HUB_REPRESENTATIVE_MIGRATION, HUB_PAIRING_INBOX_MIGRATION, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, HUB_MEMBER_RECOMMENDATION_MIGRATION, IDLE_UPDATE_MIGRATION, HUB_MEMBER_UPDATES_MIGRATION,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,HUB_MEMBER_SHARING_MIGRATION]);
       bindHubInstance(db, hubId, state, now());
       // P1 never initialized S4, so its absent meta row is valid only with the untouched zero floor.
       const executionMeta = db.prepare("SELECT revision FROM hub_execution_meta WHERE singleton=1").get() as { revision: number } | undefined;
@@ -701,7 +707,45 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
-      const catalog = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: options.catalogAgents,
+      const api = exposureMods.api.createHubMemberExposureApi({
+        store: exposures,
+        // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
+        agents: options.agents,
+        afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); return result; },
+        refused: () => sender.isRefused(),
+        // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
+        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
+      });
+      const catalogAgents = () => (options.catalogAgents?.() ?? []).map(agent => {
+        const exposure = exposures.list().find(row => row.agent === agent.instance)?.committed?.exposure;
+        return { ...agent, exposure: exposure ? { id: exposure.id, revision: exposure.revision, state: exposure.state } : null };
+      });
+      const sharingLive = () => live() && profileCurrent();
+      const sharingJournal = new HubMemberSharingJournal({ db, binding: roomBinding, owner: profile.owner, fleetId: profile.fleetId,
+        agentToken: options.representative.agentToken, current: sharingLive, now });
+      const sharing = options.catalogAgents && options.sharingNotice && options.attachSharing ? new HubMemberSharing({
+        journal: sharingJournal, store: exposures, api, current: sharingLive, now, enabled: () => catalogEnabled,
+        agents: catalogAgents, catalog: () => memberAgentCatalog(catalogEnabled, catalogEnabled ? catalogAgents() : [], true),
+        notice: record => options.sharingNotice!(sharingNotice(record, hubName())),
+        snapshot: () => sender.afterCommit(),
+      }) : null;
+      const sharingLink = sharing ? new HubMemberSharingLink({ sharing, journal: sharingJournal, current: sharingLive,
+        failed: () => options.log("warn", "Hub sharing is not confirmed yet") }) : null;
+      const sharingController: import("../../hub-sharing-notice.js").HubSharingController | null = sharing ? {
+        view: key => {
+          if (!sharingLive()) return null;
+          const record = sharingJournal.byNotice(key);
+          return record && record.noticeAt !== null ? sharingNotice(record, hubName()) : null;
+        },
+        undo: async (key, actor, authorized) => {
+          const record = await sharing.undo(key, actor, authorized);
+          void sharingLink?.flush();
+          return sharingNotice(record, hubName());
+        },
+      } : null;
+      teardown.add("Hub sharing requests", () => { sharingLink?.close(); options.attachSharing?.(null); });
+
+      const catalog = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing,
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
       client = new HubMemberClient({
@@ -710,6 +754,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
         agentCatalog: !!catalog,
+        exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
@@ -739,6 +784,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (l.current() && live()) {
             online = l;
             catalog?.connected(l);
+            sharingLink?.connected(l);
             quota.start(l);
             terminalHold = false; reportLink("online");
             updates?.connected(l);
@@ -749,6 +795,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
         },
         receive: (frame, l) => {
+          if (frame.type === "exposure.request" && sharingLink) { sharingLink.receive(frame.requestId, frame.payload, l); return Promise.resolve(); }
           if (frame.type === "agent.catalog-refresh" && catalog) { if (l.current() && live()) return catalog.refresh(true); return Promise.resolve(); }
           if (updates && (frame.type === "fleet.update" || frame.type === "fleet.update-cancel" || frame.type === "fleet.update-status-ack")) {
             try {
@@ -796,6 +843,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         hold: (code) => {
           catalog?.disconnected();
+          sharingLink?.disconnected();
           stopDisplay();
           stopRooms();
           updates?.connected(null);
@@ -809,15 +857,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       });
       teardown.add("the Hub connection", () => client?.close());
 
-      const api = exposureMods.api.createHubMemberExposureApi({
-        store: exposures,
-        // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
-        agents: options.agents,
-        afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); return result; },
-        refused: () => sender.isRefused(),
-        // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
-        readinessCandidate: (candidate) => service.readinessCandidate(candidate),
-      });
+
 
       return {
         async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
@@ -825,6 +865,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
           options.attachAttention(() => service.attentionItems());
           options.attachExposures(api);
+          options.attachSharing?.(sharingController);
           options.attachAgentRooms?.(posts);
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
             if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
@@ -840,6 +881,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.representative.attachPrivateQuestions?.(null);
             options.attachRoomInputs?.(null);
             options.attachExposures(null);
+          options.attachSharing?.(null);
             options.attachAgentRooms?.(null);
             options.attachAttention(null);
           });
@@ -863,6 +905,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.representative.attachPrivateQuestions?.(null);
             options.attachRoomInputs?.(null);
           options.attachExposures(null);
+          options.attachSharing?.(null);
           options.attachAgentRooms?.(null);
           // Mount drains failed startup too. Keep its actionable rejection until a different pairing takes over.
           if (!terminalHold) reportLink("offline");
