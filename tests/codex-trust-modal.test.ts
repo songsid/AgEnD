@@ -107,7 +107,7 @@ describe("Codex 0.156 trust prompt", () => {
     const config = readFileSync(join(instance, "codex-home", "config.toml"), "utf-8");
     expect(config).toContain(`[projects."${main}"]\ntrust_level = "trusted"`);
     expect(config).not.toContain(`[projects."${worktree}"]`);
-    const [auto] = backend.getStartupDialogs();
+    const [auto] = trustDialogs(backend);
     expect(active(auto, liveTrustPane(worktree, main))).toBe(true);
   });
 
@@ -121,7 +121,7 @@ describe("Codex 0.156 trust prompt", () => {
     execFileSync("git", ["-C", main, "worktree", "add", "-q", "--detach", worktree]);
     backend.writeConfig({ workingDirectory: worktree, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(worktree);
-    const [auto, hold] = backend.getStartupDialogs();
+    const [auto, hold] = trustDialogs(backend);
     for (const variant of ["wide", "narrow"] as const) {
       const pane = capturedTrustPane(variant, worktree, main);
       expect(active(auto, pane)).toBe(true);
@@ -135,7 +135,7 @@ describe("Codex 0.156 trust prompt", () => {
   it("trusts whatever folder or root the prompt names, read or not — preTrust or not (hmsg-53600a2c)", () => {
     const { dir, instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
-    const [auto] = backend.getStartupDialogs();
+    const [auto] = trustDialogs(backend);
     const pane = capturedTrustPane("wide", cwd, join(dir, "not-authorized"));
     expect(active(auto, pane)).toBe(true);                                             // no preTrust at all
     backend.preTrust(cwd);
@@ -175,7 +175,7 @@ describe("Codex 0.156 trust prompt", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
-    const [auto, hold] = backend.getStartupDialogs();
+    const [auto, hold] = trustDialogs(backend);
     expect(auto.keys).toEqual(["Enter"]);
     expect(active(auto, liveTrustPane(cwd))).toBe(true);
     expect(active(auto, liveTrustPane(join(cwd, "stranger")))).toBe(true);
@@ -195,7 +195,7 @@ describe("Codex 0.156 trust prompt", () => {
     const { instance, cwd, backend } = fixture();
     backend.writeConfig({ workingDirectory: cwd, instanceDir: instance, instanceName: "test", mcpServers: {} });
     backend.preTrust(cwd);
-    const [auto, hold] = backend.getStartupDialogs();
+    const [auto, hold] = trustDialogs(backend);
     const pane = liveTrustPane(cwd);
     const reversed = pane.replace("1. Trust and continue", "1. Quit").replace("2. Quit", "2. Trust and continue");
     const extra = pane.replace("  2. Quit", "  2. Quit\n  3. Ask later");
@@ -293,3 +293,10 @@ describe("Codex 0.156 trust prompt", () => {
     expect(keys).toEqual(["Enter"]); // a second startup scan must not re-answer the same modal
   });
 });
+
+// Other owner-only holds may precede trust; select the two trust contracts by their purpose.
+function trustDialogs(backend: CodexBackend) {
+  const dialogs = backend.getStartupDialogs();
+  return [dialogs.find(d => d.description === "Codex folder trust — trusting the agent's own folder")!,
+    dialogs.find(d => d.description === "Codex folder trust needs human confirmation")!] as const;
+}

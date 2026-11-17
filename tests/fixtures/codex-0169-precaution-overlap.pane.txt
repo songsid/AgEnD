@@ -1,0 +1,4 @@
+old terminal text        Chat paused as a precaution
+old terminal text
+› stale draft           › 1. Acknowledge findings and continue
+                          2. Back

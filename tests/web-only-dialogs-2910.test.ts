@@ -109,7 +109,7 @@ describe("#2910 D4 the card read from a CLI's own dialog", () => {
     expect([(selection.remoteCard?.(fixture("codex-0160-resume-cwd-picker.pane.txt")) as RemoteQuestionCard | null)?.options.length, selection.remoteCard?.(fixture("codex-0156-signin.pane.txt"))])
       .toEqual([4, null]);
     expect(codex.filter(d => d.remoteCard).every(d => d.holdOnly === true && d.keys.length === 0)).toBe(true);
-    expect(codex.filter(d => d.remoteCard).map(d => d.description).length).toBe(5);
+    expect(codex.filter(d => d.remoteCard).map(d => d.description).length).toBe(6);
   });
 });
 

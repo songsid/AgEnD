@@ -414,6 +414,15 @@ describe("POST /ui/prompt through the real gate", () => {
       expect(click).not.toHaveBeenCalled();
       expect((await raw(port, "POST", "/ui/prompt", { ...json, origin, cookie, "x-agend-csrf": csrf }, body)).status).toBe(200);
       expect(click).toHaveBeenCalledWith("w", "c".repeat(32), "wait");
+      // Safety decisions accept an admin session, never the script token. A JSON claim grants nothing.
+      vi.spyOn(fm, "webPromptNeedsHuman").mockReturnValue(true);
+      click.mockClear();
+      const token = (fm as unknown as { webToken: string }).webToken;
+      expect((await raw(port, "POST", "/ui/prompt", { ...json, origin, "x-agend-token": token }, body)).status).toBe(403);
+      expect((await raw(port, "POST", "/ui/prompt", { ...json, origin, "x-agend-token": token }, JSON.stringify({ ...JSON.parse(body), humanSession: true }))).status).toBe(403);
+      expect(click).not.toHaveBeenCalled();
+      expect((await raw(port, "POST", "/ui/prompt", { ...json, origin, cookie, "x-agend-csrf": csrf }, body)).status).toBe(200);
+      expect(click).toHaveBeenCalledWith("w", "c".repeat(32), "wait", undefined, true);
     } finally {
       await new Promise<void>(resolve => server.close(() => resolve()));
       (fm as unknown as { healthServer: Server | null }).healthServer = null;

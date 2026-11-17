@@ -1,0 +1,25 @@
+{
+  "alpha": {
+    "testFiles": 16,
+    "passed": 410,
+    "failed": 0,
+    "workers": 2,
+    "command": "vitest run [16 affected files listed in validation command] --maxWorkers=2"
+  },
+  "typecheck": {
+    "sourceErrors": 0,
+    "testErrors": 0
+  },
+  "failFirst": {
+    "failed": 7,
+    "reason": "No registered safety-review hold/card"
+  },
+  "controls": {
+    "caught": 4,
+    "total": 4
+  },
+  "liveCodexExecutions": 0,
+  "modelRequests": 0,
+  "nativeRuns": 0,
+  "visibleWindows": 0
+}

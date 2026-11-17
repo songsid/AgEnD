@@ -44,6 +44,7 @@ import { t } from "../locale.js";
 import { snapshotCodexQuotaHistory, snapshotCodexSessionQuotaHistory } from "./codex-quota-history.js";
 import { quotaLine, quotaLowLine, quotaPausedLine } from "../quota-notice.js";
 import { parse as parseToml } from "smol-toml";
+import { codexPrecaution } from "./codex-precaution.js";
 import { selectionCard } from "../selection-card.js";
 /**
  * #2910 D4: a Codex selection AgEnD holds for a person (an approval, a trust variant, a model switch, a session picker),
@@ -1054,6 +1055,7 @@ export class CodexPaneDetectors {
 
   /** Observed on real Codex 0.156.0: the live input row precedes its footer. */
   isDeliveryInputReadyPane(pane: string): boolean {
+    if (codexPrecaution(pane)) return false;
     if (this.nativeContextlessEmpty(pane)) return true;
     const frame = this.composerFrame(pane);
     if (!frame) return false;
@@ -1177,6 +1179,7 @@ export class CodexPaneDetectors {
    * also used by pause/nudge callers; drafts have a separate state-only proof.
    */
   isPeriodicRedrawIdlePane(pane: string): boolean {
+    if (codexPrecaution(pane)) return false;
     if (codexAppServerDisconnected(pane)) return false;
     if (this.nativeContextlessEmpty(pane)) return true;
     // Astra's 0.154 theme animates U+22C6 star points across otherwise-stable
@@ -1539,6 +1542,7 @@ export class CodexPaneDetectors {
   getStartupDialogs(): StartupDialog[] {
     const trustHold = this.trustHoldDialog();
     return [
+      this.precautionHoldDialog(),
       this.autoTrustDialog(),
       trustHold,
       this.updatePickerDialog(),
@@ -1710,6 +1714,18 @@ export class CodexPaneDetectors {
     };
   }
 
+  private precautionHoldDialog(): RuntimeDialog {
+    return {
+      pattern: /Chat (?:paused|stopped) as a precaution|What we detected/,
+      description: "Codex paused this chat for a safety review — owner decision required",
+      keys: [], holdOnly: true, blocksDelivery: true, inputBlocked: true, humanOnly: true,
+      interactionKind: "safety_review",
+      isActive: pane => codexPrecaution(pane) !== null,
+      requestIdentity: pane => codexPrecaution(pane)?.card.identity ?? "unknown",
+      remoteCard: pane => codexPrecaution(pane)?.card ?? null,
+    };
+  }
+
   private unknownSelectionHoldDialog(): RuntimeDialog {
     return {
       pattern: /^\s*[›❯>]\s+\S/m,
@@ -1725,6 +1741,7 @@ export class CodexPaneDetectors {
 
   getRuntimeDialogs(): RuntimeDialog[] {
     return [
+      this.precautionHoldDialog(),
       this.autoTrustDialog(),
       this.trustHoldDialog(),
       this.rateSwitchPickerDialog(),
