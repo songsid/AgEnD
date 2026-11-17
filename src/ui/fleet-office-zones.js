@@ -184,10 +184,47 @@ export const isNight = (d = new Date()) => { const h = d.getHours(); return NIGH
  * one no seat of the office is on (taken or free), picked anew each time — then walk back. Pure: the page asks every TICK ms and walks the change.
  */
 export const WANDER = { PERIOD: 40000, AWAY: 8000, REACH: 220, TICK: 1000 };
-/** Where `name`, seated at `seat`, should be at `t` (ms) while idle: a spot near the seat, or the seat. */
-export function wanderTarget(name, seat, graph, t, seats = []) {
-  const near = (graph.waypoints || []).filter((w) => Math.hypot(w.x - seat.x, w.y - seat.y) <= WANDER.REACH
+/** Whether `p` is inside `rect` (edges included). */
+const inRect = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+/** Whether the segment p–q passes through the inside of `rect` (its edges not counted: areas may share one). */
+function crosses(r, p, q) {
+  let lo = 0, hi = 1;
+  const dx = q.x - p.x, dy = q.y - p.y;
+  for (const [d, a, b] of [[dx, p.x - r.x, r.x + r.w - p.x], [dy, p.y - r.y, r.y + r.h - p.y]]) {
+    if (d === 0) { if (a <= 0 || b <= 0) return false; continue; }
+    const t1 = -a / d, t2 = b / d, near = Math.min(t1, t2), far = Math.max(t1, t2);
+    lo = Math.max(lo, near); hi = Math.min(hi, far);
+    if (lo >= hi) return false;
+  }
+  return true;
+}
+/** The walk from `a` to `z` as createWalkers draws it (routeVia, straightened on a `straight` graph): its corners. */
+const walkPts = (graph, a, z) => { const via = routeVia({ waypoints: graph.waypoints || [], edges: graph.edges || [] }, a, z); return graph.straight ? straighten(via) : via; };
+/**
+ * M-3286: the stroll spots of `near` that keep a person seated in area `home` (an id of graph.areas) inside it. Only
+ * spots inside the area; of those, the ones whose walk there and back stays inside the area (a rect: every corner
+ * of the walk inside it, so every leg is); none such: the ones whose walk passes through no other area (the room's
+ * corridors may be on the way; an edge two areas share is not inside either); none either: [] (stays seated). An unknown area: `near` as it is.
+ */
+function withinArea(near, seat, graph, home) {
+  const areas = graph.areas || {}, a = own(areas, home);
+  if (!a || !a.rect) return near;
+  const inside = near.filter((w) => inRect(a.rect, w));
+  const legs = (w) => [walkPts(graph, seat, w), walkPts(graph, w, seat)];
+  const kept = inside.filter((w) => legs(w).every((pts) => pts.every((p) => inRect(a.rect, p))));
+  if (kept.length) return kept;
+  const others = Object.keys(areas).filter((k) => k !== home && areas[k].rect).map((k) => areas[k].rect);
+  return inside.filter((w) => legs(w).every((pts) => pts.every((p, i) => !i || !others.some((r) => crosses(r, pts[i - 1], p)))));
+}
+/**
+ * Where `name`, seated at `seat`, should be at `t` (ms) while idle: a spot near the seat, or the seat. `area` (M-3286:
+ * the office keeps idle people in their own area): the id of the area they are seated in — only spots inside it, and
+ * reached without going through another area (withinArea).
+ */
+export function wanderTarget(name, seat, graph, t, seats = [], area = null) {
+  let near = (graph.waypoints || []).filter((w) => Math.hypot(w.x - seat.x, w.y - seat.y) <= WANDER.REACH
     && !seats.some((s) => Math.hypot(w.x - s.x, w.y - s.y) < 4));
+  if (area !== null && near.length) near = withinArea(near, seat, graph, area);
   if (!near.length) return seat;
   const h = nameHash(name), k = t + (h % WANDER.PERIOD), turn = Math.floor(k / WANDER.PERIOD);
   if (k - turn * WANDER.PERIOD >= WANDER.AWAY) return seat;
@@ -269,16 +306,20 @@ export const npcKey = (f) => `furniture/${f.id}`;
  * taken; none: their stroll. `memo` (the page's, one per layout: { claims, idle }) keeps a visitor's seat once taken —
  * a person who turns idle later, or a seat freed later, never moves someone already there — and starts a visit taken
  * late from when it was taken. Without it (or on its first call) every visit is taken as from its start: the same
- * answer for any viewer at any time. A pack without `idleVisits`: exactly as before. */
-export function walkTargets(desks, graph, t, wander = true, furniture = [], night = false, memo = null) {
+ * answer for any viewer at any time. A pack without `idleVisits`: exactly as before. M-3286: `ownArea` keeps every
+ * stroll in its own area (wanderTarget's `area`) and sends nobody on a visit. */
+export function walkTargets(desks, graph, t, wander = true, furniture = [], night = false, memo = null, ownArea = false) {
   // Every seat of the office (anyone's, taken or not: someone may sit down on it any moment), not only the ones in use.
   // And each walking NPC's spot (#2596 review): its home, where it stands outside its stroll and goes back to whenever
   // its stroll would collide, so nobody else's stroll may end there — no two walkers ever share a target.
   const homes = wander ? furniture.filter((f) => f.walk && !(night && f.night)).map((f) => ({ x: f.x, y: f.y })) : [];
   const seats = [...Object.values(graph.areas || {}).flatMap((a) => a.seats || []), ...desks.map((d) => d.seat), ...homes];
   const used = new Set(homes.map((h) => `${h.x},${h.y}`));
-  const stroll = (name, home) => {
-    const p = wanderTarget(name, home, graph, t, seats), k = `${p.x},${p.y}`;
+  // M-3286: `ownArea` (the office's "Idle people stay in their own area"): a stroll stays in the area the person (or
+  // NPC: the area its spot is in; none: as before) is in, and nobody goes on a visit.
+  const areaAt = (p) => Object.keys(graph.areas || {}).find((k) => graph.areas[k].rect && inRect(graph.areas[k].rect, p)) ?? null;
+  const stroll = (name, home, area = null) => {
+    const p = wanderTarget(name, home, graph, t, seats, ownArea ? area ?? areaAt(home) : null), k = `${p.x},${p.y}`;
     if (p === home || used.has(k)) return home;
     used.add(k);
     return p;
@@ -286,7 +327,7 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   const idle = (d) => wander && d.node.state === "idle" && !d.night;
   // #3685: visits claim their seats first (strolls never end on a seat, so nobody's stroll changes for them).
   const away = new Map(), taken = desks.map((d) => d.seat), keep = memo || { claims: new Map(), idle: null };
-  const visits = (graph.idleVisits || []).length ? desks.filter(idle).map((d) => ({ d, v: visitAt(d.node.name, d.seat, graph, t, d.area) })).filter((x) => x.v)
+  const visits = !ownArea && (graph.idleVisits || []).length ? desks.filter(idle).map((d) => ({ d, v: visitAt(d.node.name, d.seat, graph, t, d.area) })).filter((x) => x.v)
     .sort((a, b) => (a.v.start - b.v.start) || (a.d.node.name < b.d.node.name ? -1 : a.d.node.name > b.d.node.name ? 1 : 0)) : [];
   const free = (s, name) => !(s.for && s.lend !== true && !s.for.includes(name)) && !used.has(`${s.x},${s.y}`) && !taken.some((q) => Math.hypot(q.x - s.x, q.y - s.y) < 4);
   const claims = new Map();
@@ -317,7 +358,7 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
     }
   }
   if (memo) { memo.claims = claims; memo.idle = new Set(desks.filter(idle).map((d) => d.node.name)); }
-  const out = new Map(desks.map((d) => [d.node.name, !idle(d) ? d.seat : away.get(d.node.name) || stroll(d.node.name, d.seat)]));
+  const out = new Map(desks.map((d) => [d.node.name, !idle(d) ? d.seat : away.get(d.node.name) || stroll(d.node.name, d.seat, d.area ?? null)]));
   if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }));
   return out;
 }
