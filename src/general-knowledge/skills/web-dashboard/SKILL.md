@@ -135,7 +135,10 @@ default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted 
 also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
-send `/web`). An admin has the Guests section over the public link too (M-3278).
+send `/web`). An admin has the Guests section over the public link too (M-3278). **Guest sign-in length** there (M-3276,
+`web.guests.session`): signed in at most 1–720 h (default 12) and signed out after 15–43200 minutes unused (default 120),
+the same bounds as an admin's own sign-in and never longer than it on this computer (over a link, the link's limits too);
+longer waits for a fleet admin, shorter applies at once.
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
 account.

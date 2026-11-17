@@ -38,8 +38,11 @@ export function savedGuests(fleet) {
   return { enabled: g.enabled === true, chat: g.chat !== false, grants: g.grants ? copyGrants(g.grants) : null,
     sAbs: text(session.absolute_hours), sIdle: text(session.idle_minutes) };
 }
-/** M-3276: GUEST_SESSION_BOUNDS and GUEST_SESSION_POLICY (web-session.ts): 1–24 h, 15–720 min, default 12 h / 120 min. */
-export const GUEST_SESSION = { absMin: 1, absMax: 24, idleMin: 15, idleMax: 720, absDefault: 12, idleDefault: 120 };
+/**
+ * M-3276: GUEST_SESSION_BOUNDS and GUEST_SESSION_POLICY (web-session.ts) — an admin's own bounds: 1–720 h, 15–43200 min
+ * (720 h); default 12 h / 120 min.
+ */
+export const GUEST_SESSION = { absMin: 1, absMax: 720, idleMin: 15, idleMax: 43200, absDefault: 12, idleDefault: 120 };
 const typed = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
 /**
  * M-3276: the guest session fields' checks, as the validator judges them (config-validator.ts, web.guests.session): each
@@ -263,11 +266,11 @@ export function GuestsSection({ ctx, staged }) {
         <h4>${tn("guestSessionTitle")}</h4>
         <div class="grid2">
           <div class=${`field${f.sAbs.trim() !== original.sAbs.trim() ? " s-dirty" : ""}`}><label for="guestSessionAbsolute">${tn("guestSessionAbsolute")}<${Impact} schema=${ctx.schema || DEFAULT_SCHEMA} field="web.guests.session.absolute_hours" /></label>
-            <input id="guestSessionAbsolute" type="number" min="1" max="24" step="any" class=${sessionCheck.abs ? "invalid" : ""} value=${f.sAbs} onInput=${(e) => set({ sAbs: e.target.value })} />
+            <input id="guestSessionAbsolute" type="number" min=${GUEST_SESSION.absMin} max=${GUEST_SESSION.absMax} step="any" class=${sessionCheck.abs ? "invalid" : ""} value=${f.sAbs} onInput=${(e) => set({ sAbs: e.target.value })} />
             <${Feedback} error=${sessionCheck.abs} />
             ${f.sAbs.trim() === "" ? html`<${InEffect} text=${tn("hoursValue", GUEST_SESSION.absDefault)} />` : null}</div>
           <div class=${`field${f.sIdle.trim() !== original.sIdle.trim() ? " s-dirty" : ""}`}><label for="guestSessionIdle">${tn("guestSessionIdle")}<${Impact} schema=${ctx.schema || DEFAULT_SCHEMA} field="web.guests.session.idle_minutes" /></label>
-            <input id="guestSessionIdle" type="number" min="15" max="720" step="any" class=${sessionCheck.idle ? "invalid" : ""} value=${f.sIdle} onInput=${(e) => set({ sIdle: e.target.value })} />
+            <input id="guestSessionIdle" type="number" min=${GUEST_SESSION.idleMin} max=${GUEST_SESSION.idleMax} step="any" class=${sessionCheck.idle ? "invalid" : ""} value=${f.sIdle} onInput=${(e) => set({ sIdle: e.target.value })} />
             <${Feedback} error=${sessionCheck.idle} />
             ${f.sIdle.trim() === "" && !sessionCheck.abs ? html`<${InEffect} text=${tn("minutesValue", sessionCheck.idleNow)} why=${sessionCheck.idleNow < GUEST_SESSION.idleDefault ? tn("cappedBySession") : null} />` : null}</div>
         </div>
@@ -352,13 +355,6 @@ export const CODE_REASONS = { guests_off: "codeGuestsOff", admin: "codeAdmin", n
 const AUDIT_OUTCOMES = { dm_failed: "grantsAuditDmFailed", wait: "grantsAuditWait", admin_limit: "grantsAuditAdminLimit" };
 const auditOutcome = (outcome) => (Object.prototype.hasOwnProperty.call(AUDIT_OUTCOMES, outcome) ? tn(AUDIT_OUTCOMES[outcome]) : guestCodeReason({ outcome }));
 export const guestCodeReason = (b) => (Object.prototype.hasOwnProperty.call(CODE_REASONS, b.outcome) ? tn(CODE_REASONS[b.outcome]) : b.error || b.outcome || "?");
-export const GUESTS_SETTINGS = [
-  { id: "guests.enabled", section: "access", card: "guests", key: "web.guests.enabled",
-    label: { en: "Guest sign-in", "zh-TW": "訪客登入" }, words: { en: ["guest", "sign in", "visitor", "share"], "zh-TW": ["訪客", "登入", "分享"] } },
-  { id: "guests.chat", section: "access", card: "guests", key: "web.guests.chat",
-    label: { en: "Guests may chat", "zh-TW": "訪客可以聊天" }, words: { en: ["guest", "chat", "read-only"], "zh-TW": ["訪客", "聊天", "唯讀"] } },
-  { id: "guests.grants", section: "access", card: "guests", key: "web.guests.grants",
-    label: { en: "People with access", "zh-TW": "有存取權的人" }, words: { en: ["guest", "grant", "access", "person", "user", "agents", "who can see"], "zh-TW": ["訪客", "授權", "存取", "使用者", "誰可以看"] } },
-  { id: "guests.send-code", section: "access", card: "guests",
-    label: { en: "Send sign-in code", "zh-TW": "傳送裝置登入碼" }, words: { en: ["code", "sign-in code", "invite", "token", "DM"], "zh-TW": ["裝置登入碼", "登入碼", "邀請", "私訊"] } },
-];
+// The search entries live in settings-guests-entries.js (no imports): settings-registry reads them, and this file uses
+// settings-dialogs, which reads settings-registry — kept apart, neither import waits on the other (M-3276).
+export { GUESTS_SETTINGS } from "./settings-guests-entries.js";
