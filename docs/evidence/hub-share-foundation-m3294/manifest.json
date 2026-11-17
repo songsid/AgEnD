@@ -87,7 +87,7 @@
   "evidence": [
     {
       "path": "docs/evidence/hub-share-foundation-m3294/README.md",
-      "sha256": "5e59832a052e02efc2b29fc43a227acdb494100d2477beaa40c4971a2762d923"
+      "sha256": "70a26a4f3d3e00dbce8ef5f4f3d9c96d0db4b811954f8eddc81d507df6de801f"
     },
     {
       "path": "docs/evidence/hub-share-foundation-m3294/logs/catalog-before.log.gz",
@@ -136,6 +136,11 @@
     {
       "path": "docs/evidence/hub-share-foundation-m3294/reversals.json",
       "sha256": "edb4c87be52c9dd19d6c6bef1500193a31dd8d533555b9fd1b6da61e4f53b071"
+    },
+    {
+      "path": "docs/evidence/hub-share-foundation-m3294/sync.json",
+      "sha256": "6600c1b46a830321a50451855810f538c81d05ab723ba1159d88cfdd600f2d00"
     }
-  ]
+  ],
+  "sourceCommit": "11c7f2754e18e36cc8b47f689056962e25f385c1"
 }

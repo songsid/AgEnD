@@ -49,3 +49,7 @@ The Hub adds the independent `s3-agent-catalog` version-1 component in the norma
 Before upgrading a Hub, keep its ordinary quiesced whole-state backup, including keys and floors. Keep the newer binary while this database is current; an intentional rollback uses the matching pre-upgrade binary and complete saved state. Do not delete migration records or lower independent floors. This packet checks the additive migration through existing upgrade/idempotence/refusal consumers; it is not a packaged live downgrade rehearsal.
 
 S-171 must keep requests frozen for ten minutes, repeat their exact ID/payload on uncertain outcomes, and provide durable notices before mutation acknowledgement. Only Undo automatically restores a retained ask list; a normal re-share starts with nobody and offers the earlier list. The final Hub page and its desktop/phone PNGs belong to S-172.
+
+## Plain sync before review
+
+Source commit `11c7f2754` was merged with alpha `8e0d0ee03` as `1ff45e971`. Every own added/removed line is identical; applying the original patch in an isolated index reproduces the entire merged tree. Only FleetManager auto-overlaps, in separate hunks. `sync.json` records the proof. Source digests in the manifest bind the tested stage before that sync; no local verification was repeated for unchanged own code. The following evidence/changelog commit changes no runtime or test source.
