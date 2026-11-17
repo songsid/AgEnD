@@ -1,0 +1,102 @@
+{
+  "source": "462768b5d9a475941b2f0b7d7bbf39a8a784e141",
+  "scope": "Actual Fleet shell and local exposure/confirmation APIs; inert paired view and representative readiness; all identities synthetic; no Hub/chat/model/Windows connection",
+  "checks": [
+    {
+      "name": "desk-en-light/room-tickable",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/room-tag",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/one-memory-lead",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/default-contact-limit",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/confirmed-write-required",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/room-memory-summary",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/disclosure-open",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/translated-memory",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/two-way-consent",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/not-published-before-consent",
+      "pass": true
+    },
+    {
+      "name": "desk-en-light/no-page-errors",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/room-tickable",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/room-tag",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/one-memory-lead",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/default-contact-limit",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/confirmed-write-required",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/room-memory-summary",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/disclosure-open",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/translated-memory",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/two-way-consent",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/not-published-before-consent",
+      "pass": true
+    },
+    {
+      "name": "phone-zh-TW-dark/no-page-errors",
+      "pass": true
+    }
+  ],
+  "pictures": [
+    "desk-en-light-lead.png",
+    "desk-en-light-room-row.png",
+    "desk-en-light-confirmation.png",
+    "phone-zh-TW-dark-lead.png",
+    "phone-zh-TW-dark-room-row.png",
+    "phone-zh-TW-dark-confirmation.png"
+  ]
+}

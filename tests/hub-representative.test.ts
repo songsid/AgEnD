@@ -544,3 +544,9 @@ describe("Hub representative files (attachments-v1, #3226 D)", () => {
       expect((await f.rep.report({ correlationId: cid, caller: "rep", text: "Text only then." })!).ok).toBe(true);
     });
 });
+
+it("private Classic output waits for handed-off work, not future queued questions or answer ACKs",async()=>{
+ const f=fixture();f.publish();f.offline();const q=f.question();await f.admission.admit(q);expect(f.rep.hasOpenQuestion("rep")).toBe(false);f.online();f.rep.pump();
+ await until(()=>f.state(q.identity.messageId)?.state==="delivered","handed-off Hub input");expect(f.rep.hasOpenQuestion("rep")).toBe(true);expect(f.rep.hasOpenQuestion("someone-else")).toBe(false);
+ expect(await f.rep.report({correlationId:f.deliveries[0]!.correlationId,caller:"rep",text:"Final answer"})!).toMatchObject({ok:true});expect(f.rep.hasOpenQuestion("rep")).toBe(false);
+});

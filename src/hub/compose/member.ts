@@ -138,6 +138,8 @@ export interface HubRepresentativeHost {
     handler: ((input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: import("../../hub-report-target.js").HubReportExtras }) => Promise<HubReportOutcome> | null) | null,
     failed: ((correlationId: string, agent: string) => void) | null,
   ): void;
+  /** Private Classic input may reopen room output only after its Hub work has ended and a fresh idle proof. */
+  attachPrivateQuestions?(read: ((agent: string) => boolean) | null): void;
   /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
   attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
 }
@@ -819,11 +821,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             if(cid.startsWith("hub-room-mention-feedback-"))feedback.deliveryFailed(cid.slice("hub-room-mention-feedback-".length),agent);
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
+          options.representative.attachPrivateQuestions?.(agent => service.hasOpenQuestion(agent) || room.hasOpenQuestion(agent));
           options.representative.attachReacts?.(input => room.react(input));
           options.attachRoomInputs?.((cid,agent,generation) => room.inputHandoff(cid,agent,generation));
           teardown.add("the fleet attachments", () => {
             options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
+            options.representative.attachPrivateQuestions?.(null);
             options.attachRoomInputs?.(null);
             options.attachExposures(null);
             options.attachAgentRooms?.(null);
@@ -845,6 +849,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           links.fence();
           client?.fence();
           options.representative.attachReports(null, null);
+          options.representative.attachPrivateQuestions?.(null);
             options.attachRoomInputs?.(null);
           options.attachExposures(null);
           options.attachAgentRooms?.(null);

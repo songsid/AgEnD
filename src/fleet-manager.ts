@@ -370,6 +370,7 @@ import { AgentCredentials, agentCredentialPolicy } from "./agent-credentials.js"
 import { writeSecretFile } from "./secret-file.js";
 import { ConfigHistory, ConfigSyntaxError, configIssueText } from "./config-history.js";
 import type { ConfigSource } from "./config-history.js";
+import { HubClassicPrivateTurns } from "./hub-classic-private.js";
 import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassicBackendChoices, inferClassicChannelType, isSelectableClassicBackend, readClassicLastActivityAt, readClassicRoomNames } from "./classic-channel-manager.js";
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
@@ -2507,6 +2508,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inboxDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "inbox") : null,
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
+            attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
@@ -2602,13 +2604,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * delivery addresses, General included, shown by its display name. The dedicated Hub daemon is not a fleet instance.
    */
   private hubMemberAgents(): import("./hub/member/exposure-api.js").HubMemberAgent[] {
-    return Object.keys(this.fleetConfig?.instances ?? {}).map(name => ({ name, display: this.shownInstanceName(name) }));
+    const classicNames=new Set((this.classicChannels?.getAll()??[]).map(ch=>ch.instanceName));
+    const fleet = Object.keys(this.fleetConfig?.instances ?? {}).filter(name=>!classicNames.has(name)).map(name => ({ name, display: this.shownInstanceName(name) }));
+    return [...fleet, ...(this.classicChannels?.getAll() ?? []).filter(ch => !Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName))
+      .map(ch => ({ name: ch.instanceName, display: ch.displayName || ch.name, kind: "classic-room" as const }))];
+  }
+
+  /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */
+  private hubAgentConfig(agent: string): (InstanceConfig & {hubClassicIdentity?:string}) | null {
+    const instances=this.fleetConfig?.instances ?? {};
+    const room=this.classicChannels?.getAll().find(ch=>ch.instanceName===agent);
+    if(Object.hasOwn(instances,agent))return room?null:instances[agent]!;
+    return room?{...DEFAULT_INSTANCE_CONFIG,...this.fleetConfig?.defaults,
+      backend:this.classicChannels!.getBackendByInstance(agent,this.fleetConfig?.defaults?.backend),working_directory:this.classicWorkspaceDir(agent),
+      hubClassicIdentity:JSON.stringify([room.adapterId??"",room.channelId])}:null;
+  }
+  private hubClassicPrivacy: HubClassicPrivateTurns | null = null;
+  private classicPrivacy():HubClassicPrivateTurns { return this.hubClassicPrivacy??=new HubClassicPrivateTurns(join(this.dataDir,"hub-classic-private.json")); }
+  /** The mark outlives registration: a late tool from a removed room must not fall through to General. */
+  private classicHubPrivateBlocked(agent:string):boolean {return !!this.dataDir && this.classicPrivacy().blocked(agent);}
+  private classicHubSerialized(agent:string):boolean {
+    if(this.classicHubPrivateBlocked(agent))return true;
+    if(!this.isClassicInstance(agent))return false;
+    try{return this.hubMemberExposureApi?.list().some(row=>row.agent===agent&&row.state!=="withdrawn")??false;}catch{return true;}
+  }
+  private hubPrivateQuestions:((agent:string)=>boolean)|null=null;
+  private classicRoomPersonInput(agent:string,payload:Record<string,unknown>):boolean {
+    const meta=payload.meta as Record<string,unknown>|undefined;
+    return (this.isClassicInstance(agent)||this.classicHubPrivateBlocked(agent))&&payload.type==="fleet_inbound"&&!!meta&&typeof meta.chat_id==="string"&&!!meta.chat_id
+      &&typeof meta.user_id==="string"&&!!meta.user_id&&!meta.from_instance&&!meta.is_cross_instance;
+  }
+  /** Prepare a public handoff without opening output until IPC accepts that exact input. */
+  private async prepareClassicForPerson(agent: string, payload: Record<string, unknown>, epoch: number,
+    current?: () => boolean): Promise<string | null | false> {
+    if (!this.classicRoomPersonInput(agent, payload)) return null;
+    while (this.classicHubPrivateBlocked(agent)) {
+      if (this.shuttingDown || !this.deliveryCurrent(agent, epoch, current)) return false;
+      const row = this.classicPrivacy().read(agent);
+      if (!row) return false;
+      const idle = await this.waitForInstanceIdle(agent, 60_000, Math.max(row.since + 1, Date.now()),
+        () => !this.deliveryCurrent(agent, epoch, current));
+      if (!this.deliveryCurrent(agent, epoch, current)) return false;
+      let pending = true;
+      try { pending = this.hubPrivateQuestions?.(agent) ?? false; }
+      catch { /* An unreadable journal never grants public output. */ }
+      if (idle && !pending && this.classicPrivacy().read(agent)?.token === row.token) return row.token;
+    }
+    return null;
   }
 
   /** Same cached usage source as the owner's rail, scoped to the representative's CLI and credential profile. */
   private async hubAgentQuota(agent: string): Promise<import("./hub/types.js").HubQuota> {
     const binding = () => {
-      const config = this.fleetConfig?.instances[agent];
+      const config = this.hubAgentConfig(agent);
       if (!config || isWindowsInstance(config)) return null; // runner usage never belongs to a Linux login
       const backend = this.backendNameForInstance(agent), provider = usageProviderIdForBackend(backend);
       if (!provider) return null;
@@ -2634,11 +2682,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * earlier consent never matches again without an explicit republish. Stopping or pausing changes nothing.
    */
   private hubAgentToken(agent: string): string | null {
-    const instances = this.fleetConfig?.instances ?? {};
-    if (!Object.prototype.hasOwnProperty.call(instances, agent)) return null;
+    const config = this.hubAgentConfig(agent);
+    if (!config) return null;
     if (this.hubIncarnationsBroken) return null;
     let id: string | null;
-    try { this.settleHubIncarnations(); id = this.hubIncarnationsBroken ? null : this.hubAgentIncarnation(agent, instances[agent]!, true); }
+    try { this.settleHubIncarnations(); id = this.hubIncarnationsBroken ? null : this.hubAgentIncarnation(agent, config, true); }
     catch (err) { this.logger.warn({ err: (err as Error)?.message, agent }, "Hub agent incarnation could not be saved; the agent is not a deliverable representative"); return null; }
     return id ? createHash("sha256").update(JSON.stringify(["agend-hub-agent-v2", agent, id])).digest("hex") : null;
   }
@@ -2680,7 +2728,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * controls (a config save, a removal) are refused instead of applied.
    */
   private hubIncarnationsBroken = false;
-  private readHubIncarnations(): Record<string, { id: string; fp: string }> {
+  private readHubIncarnations(): Record<string, { id: string; fp: string; classic?: boolean }> {
     try {
       const value = JSON.parse(readFileSync(this.hubIncarnationsPath(), "utf8")) as unknown;
       return value && typeof value === "object" && !Array.isArray(value) ? Object.assign(Object.create(null), value) : Object.create(null);
@@ -2691,7 +2739,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * durably invalidates EVERY earlier incarnation (all consent then needs a republish; never a revival). Throws (and
    * marks the process broken) only when neither is possible.
    */
-  private writeHubIncarnations(map: Record<string, { id: string; fp: string }>): "written" | "cleared" {
+  private writeHubIncarnations(map: Record<string, { id: string; fp: string; classic?: boolean }>): "written" | "cleared" {
     const path = this.hubIncarnationsPath(), tmp = `${path}.${process.pid}.tmp`;
     try {
       mkdirSync(join(this.dataDir, "hub-member"), { recursive: true, mode: 0o700 });
@@ -2715,12 +2763,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
   }
   /** The agent's durable incarnation id (create: make one if none; else null). A changed fingerprint rotates it. */
-  private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string }, create: boolean): string | null {
-    const fp = createHash("sha256").update(JSON.stringify([cfg.backend ?? "claude-code", cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? ""])).digest("hex");
+  private hubAgentIncarnation(agent: string, cfg: { backend?: string; working_directory: string; runtime?: string; machine_id?: string; hubClassicIdentity?: string }, create: boolean): string | null {
+    const fp = createHash("sha256").update(JSON.stringify([cfg.backend ?? "claude-code", cfg.working_directory, cfg.runtime ?? "", cfg.machine_id ?? "", ...(cfg.hubClassicIdentity ? [cfg.hubClassicIdentity] : [])])).digest("hex");
     const map = this.readHubIncarnations(), entry = Object.prototype.hasOwnProperty.call(map, agent) ? map[agent] : undefined;
     if (entry && entry.fp === fp && typeof entry.id === "string") return entry.id;
     if (!entry && !create) return null;
-    map[agent] = { id: randomUUID(), fp };
+    map[agent] = { id: randomUUID(), fp, ...(cfg.hubClassicIdentity ? {classic:true} : {}) };
     // A rotation that could only clear the file still invalidated the old id durably; the new one is made next time.
     return this.writeHubIncarnations(map) === "written" ? map[agent]!.id : null;
   }
@@ -2737,11 +2785,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.settleHubIncarnations();
       if (this.hubIncarnationsBroken) throw new Error("Hub agent incarnations cannot be written here");
       if (!existsSync(this.hubIncarnationsPath())) return;
-      const instances = this.fleetConfig.instances;
       for (const agent of Object.keys(this.readHubIncarnations())) {
         // Gone from the configuration in force (removed by hand in fleet.yaml, too): forgotten, never revived by a re-add.
-        if (Object.prototype.hasOwnProperty.call(instances, agent)) this.hubAgentIncarnation(agent, instances[agent]!, false);
-        else this.forgetHubAgentIncarnation(agent, true);
+        const config=this.hubAgentConfig(agent);
+        if (config) this.hubAgentIncarnation(agent, config, false);
+        else if(this.classicChannels || this.readHubIncarnations()[agent]?.classic!==true)this.forgetHubAgentIncarnation(agent, true);
       }
     } catch (err) {
       this.logger?.warn({ err: (err as Error)?.message }, "Hub agent incarnations could not be checked");
@@ -2773,9 +2821,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private async deliverHubQuestion(input: import("./hub/representative.js").HubRepresentativeDelivery): Promise<boolean> {
     const { HUB_REPORT_TARGET } = await import("./hub/representative.js");
-    if (this.shuttingDown || !this.fleetConfig?.instances[input.agent]) return false;
+    const config=this.hubAgentConfig(input.agent);
+    if (this.shuttingDown || !config) return false;
     // Windows agents run through their own runtime, which has no pre-input hook: not a P1 representative.
-    if (isNativeExecInstance(this.fleetConfig.instances[input.agent])) return false;
+    if (isNativeExecInstance(config)) return false;
     const ipcMeta: Record<string, string> = {
       chat_id: "",
       message_id: `hubmsg-${input.correlationId.slice(4)}`,
@@ -2793,7 +2842,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
+        const classic=this.isClassicInstance(input.agent);
+        // A busy Classic room must finish its public turn first; never force a private question into that turn's queue.
+        const idle=()=>this.waitForInstanceIdle(input.agent,0,this.lastDeliveryAt.get(input.agent)??0,()=>!input.stillCurrent());
+        if(classic&&!await idle())return false;
         if (!(await input.beforeInput())) return false;
+        if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
         // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
         if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
         return input.stillCurrent();
@@ -7387,7 +7441,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.logger[log.level](log.fields, log.message);
     }
     // The Hub representative's begin lease + input intent run inside the final connected hand-off (sendWhenConnected).
-    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold, beforeInput);
+    const sent = await this.sendWhenConnected(instanceName, payload, deliveryEpoch, stillCurrent, onStartRetryHold,
+      beforeInput ?? (this.classicHubPrivateBlocked(instanceName) && this.classicRoomPersonInput(instanceName, payload)
+        ? async () => true : undefined));
     if (!sent) return false;
     if (this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) {
       this.lastDeliveryAt.set(instanceName, Date.now());
@@ -7467,9 +7523,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async handOffAfterBeforeInput(instanceName: string, payload: Record<string, unknown>, deliveryEpoch: number,
     stillCurrent: (() => boolean) | undefined, beforeInput: () => Promise<boolean>): Promise<boolean> {
     if (!(await beforeInput())) return false;
-    if (this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
+    const privateToken = await this.prepareClassicForPerson(instanceName, payload, deliveryEpoch, stillCurrent);
+    if (privateToken === false || this.shuttingDown || !this.deliveryCurrent(instanceName, deliveryEpoch, stillCurrent)) return false;
     const ipc = this.instanceIpcClients.get(instanceName);
-    return !!ipc?.connected && ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+    if (!ipc?.connected || (privateToken && this.classicPrivacy().read(instanceName)?.token !== privateToken)) return false;
+    const sent = ipc.send(this.bindHumanReceiptPayload(instanceName, payload));
+    if (sent && privateToken) {
+      try {
+        if (this.classicPrivacy().resume(instanceName, privateToken)) {
+          this.instanceProgress.delete(instanceName);
+          this.instanceActivity.delete(instanceName);
+        }
+      } catch (err) {
+        // Input was accepted: never invite a duplicate. Keep output closed if its durable release fails.
+        this.logger.warn({ err, instanceName }, "Classic room output remains private after the person input");
+      }
+    }
+    return sent;
   }
 
   /** Poll for the instance's IPC to come back, then send. Throws if it does not. */
@@ -7904,8 +7974,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const inferredCrossInstance = (typeof meta?.from_instance === "string" && meta.from_instance.length > 0)
       || meta?.is_cross_instance === true
       || payload.is_cross_instance === true;
-    const waitForIdle = options.waitForIdle
-      ?? ((options.isCrossInstance ?? inferredCrossInstance) || payload.type === "fleet_schedule_trigger");
+    const waitForIdle = (this.classicHubSerialized(instanceName)&&this.classicRoomPersonInput(instanceName,payload)) || (options.waitForIdle
+      ?? ((options.isCrossInstance ?? inferredCrossInstance) || payload.type === "fleet_schedule_trigger"));
 
     if (!waitForIdle) {
       if (this.lifecycle.isPaused(instanceName)) {
@@ -8542,6 +8612,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const hasDaemon = this.daemons.has(instanceName);
     const wasRunning = hasDaemon || opts?.startIfStopped === true;
     this.classicChannels.reloadFromDisk();
+    this.observeHubAgentIncarnations(true);
     this.reportClassicUnrecoverableIds();
     this.reregisterClassicChannels();
     const channel = this.classicChannels.getAll().find(item => item.instanceName === instanceName);
@@ -11332,6 +11403,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.classicChannels = new ClassicChannelManager(this.dataDir, this.logger, this.getConfigHistory());
     const classicAdapters = fleet.channels?.length ? fleet.channels : (fleet.channel ? [fleet.channel] : []);
     this.classicChannels.configureAdapters(classicAdapters);
+    this.observeHubAgentIncarnations();
     // The unrecoverable-id report is deliberately NOT sent here: no adapter
     // exists yet at this point in startAll(), so notifyFleetError would find
     // nothing to deliver through, drop the message silently, AND burn its
@@ -14290,6 +14362,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (outcome.ok) respond("ok"); else respond(null, outcome.message);
       return;
     }
+    if (this.classicHubPrivateBlocked(instanceName) && usesChannelAddress(tool)) {
+      respond(null, "This ClassicBot agent is handling private Hub input. Room output is blocked; answer the Hub with report_result.");
+      return;
+    }
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
     if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
@@ -14400,6 +14476,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Stickers (#1226) are checked before anything is sent: a refused one is the reply's error, not a gap.
       const stickerProblem = await this.replyStickerProblem(outAdapter, args, threadId, contextAdapterId ?? this.getInstanceAdapterId(senderInstanceName ?? instanceName));
       if (stickerProblem) { respond(null, stickerProblem); return; }
+      // Echo ordering and sticker validation await external work; a Hub turn may have begun meanwhile.
+      if (this.classicHubPrivateBlocked(instanceName)) {
+        respond(null, "This ClassicBot agent is handling private Hub input. Room output is blocked; answer the Hub with report_result.");
+        return;
+      }
       const ticket = this.replyDeduper.begin(
         instanceName,
         replyDedupText(args),
@@ -18042,6 +18123,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * would have to make this async and change every caller.
    */
   notifyInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts, ack?: (delivered: boolean) => void): boolean {
+    if(this.classicHubPrivateBlocked(instanceName)){ack?.(false);return false;}
     if (isNativeExecInstance(this.fleetConfig?.instances[instanceName])) {
       this.emitSseEvent("message",{instance:instanceName,role:"status",sender:"AgEnD",text,ts:new Date().toISOString()});return !ack;   // an SSE event is no acknowledgement
     }
@@ -18060,6 +18142,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private sendToInstanceTopic(instanceName: string, text: string, extraOpts?: import("./channel/types.js").SendOpts):
     { adapterId: string | undefined; sent: Promise<SentMessage>; failure: string } | null {
+    if(this.classicHubPrivateBlocked(instanceName))return null;
     const adapter = this.getAdapterForInstance(instanceName) ?? this.adapter;
     if (!adapter) {
       // Early startup: adapters are created well after the fleet object exists.
@@ -20521,6 +20604,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async notifyNormalExit(instanceName: string, oom: boolean | "unclear" = false): Promise<void> {
+    if(this.classicHubPrivateBlocked(instanceName))return;
     const daemon = oom === "unclear" ? this.daemons.get(instanceName) : undefined;
     const owner = daemon ? { ...daemon.getInteractionSnapshot().owner } : undefined;
     const current = daemon && owner ? () => this.daemons.get(instanceName) === daemon
@@ -21386,6 +21470,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * never used to decide anything — purely what the user is shown.
    */
   private cacheInstanceActivity(name: string, activity: string | null): void {
+    if(this.classicHubPrivateBlocked(name))return;
     if (activity) this.instanceActivity.set(name, activity);
     else this.instanceActivity.delete(name);
   }
@@ -21397,6 +21482,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * rate-limited per bubble AND ride behind the daemon-side 3s coalescer).
    */
   private cacheInstanceProgress(name: string, progress: string | null): void {
+    if(this.classicHubPrivateBlocked(name))return;
     if (progress) this.instanceProgress.set(name, progress);
     else this.instanceProgress.delete(name);
     for (const entry of this.cancelButtons.values()) {
@@ -21462,6 +21548,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Recompose and edit the bubble in place; skips when nothing changed. */
   private refreshBubble(entry: CancelButtonEntry): void {
+    if(this.classicHubPrivateBlocked(entry.instanceName))return;
     if (entry.retiring || !this.cancelButtons.has(entry.messageId)) {
       clearInterval(entry.progressTimer);
       return;
@@ -23770,6 +23857,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   async sendHangNotification(instanceName: string, unchangedForMs?: number): Promise<void> {
+    if(this.classicHubPrivateBlocked(instanceName))return;
     const web = this.webOnlyPromptPlace();     // no chat platform: asked on the dashboard (#1307 item 6)
     const adapter = web?.adapter ?? this.getAdapterForInstance(instanceName) ?? this.adapter;
     const adapterId = web?.adapterId ?? this.getInstanceAdapterId(instanceName);
@@ -27111,6 +27199,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Handle /stop slash command — unregister classic channel */
   async handleClassicStop(channelId: string, adapterId?: string): Promise<string> {
     if (!this.classicChannels) return t("classic.manager_unavailable");
+    const previous=this.classicChannels.getInstanceByChannel(channelId,adapterId);
+    if(previous)this.forgetHubAgentIncarnation(previous,true);
     const ch = this.classicChannels.unregister(channelId, adapterId);
     if (!ch) return t("classic.no_agent");
     // #1664: the room is gone (not paused or stopped): nobody's favorite any more — unless the name is still an
@@ -27674,7 +27764,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             ?? this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, oldConfig?.defaults?.reply_completion_guard),
         });
       }
-      if (this.classicChannels.checkReload()) this.reportClassicUnrecoverableIds();
+      if (this.classicChannels.checkReload()) { this.observeHubAgentIncarnations(); this.reportClassicUnrecoverableIds(); }
     }
 
     this.routing.rebuild(this.fleetConfig!);

@@ -1,0 +1,45 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:3995337) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-classic-share-m3285.test.ts (17 tests | 1 failed) 731ms
+   × keeps private output fenced after the Classic room is unregistered 35ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > keeps private output fenced after the Classic room is unregistered
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "",
+      "PRIVATE_AFTER_UNREGISTER",
+      Object {
+        "format": undefined,
+        "replyTo": undefined,
+        "threadId": undefined,
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-classic-share-m3285.test.ts:106:102
+    104| it("keeps private output fenced after the Classic room is unregistered…
+    105|  const r=rig();expect(await r.ask()).toBe(true);r.classic.unregister("…
+    106|  const result=await r.send("reply",{text:"PRIVATE_AFTER_UNREGISTER"});…
+       |                                                                                                      ^
+    107| });
+    108|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 16 passed (17)
+   Start at  17:58:53
+   Duration  7.63s (transform 5.23s, setup 100ms, import 6.65s, tests 731ms, environment 0ms)

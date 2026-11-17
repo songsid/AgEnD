@@ -1,0 +1,122 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "ee36dab35c42b50ab51de6d648503b35021f2895dfc2b69a2feb14d556b7c0dc"
+  },
+  {
+    "path": "alpha-sync.json",
+    "sha256": "baffd17c8771edd3af8c29f94db7717253799e822cfa0c6383a4914725dae80a"
+  },
+  {
+    "path": "images/desk-en-light-confirmation.png",
+    "sha256": "a1d13f49719377b2484be1b9b5d7a2756b4c48a8bef50708b0746423ff75d6a6"
+  },
+  {
+    "path": "images/desk-en-light-lead.png",
+    "sha256": "be91fda662720cdb372e3b103323fbde537c5ed8f0e2a4810f478bf464b19466"
+  },
+  {
+    "path": "images/desk-en-light-room-row.png",
+    "sha256": "429dbbcd7efe9e610043ade8cc0f547f94d9e4dcd9abb911ad4e4cbeae951433"
+  },
+  {
+    "path": "images/phone-zh-TW-dark-confirmation.png",
+    "sha256": "7383cbcc949cb8494bc46a1c54fd5ff518c57ef8bad20057eb29a2323b1e2418"
+  },
+  {
+    "path": "images/phone-zh-TW-dark-lead.png",
+    "sha256": "d5c9e10d94763d65bee46a15231692aaa9e506ca2adaafcf9822f04b98e65ec4"
+  },
+  {
+    "path": "images/phone-zh-TW-dark-room-row.png",
+    "sha256": "6a5394cd7280474a24fcef741b5cbf0f57c013e8143c5af2166f177b6a14a06e"
+  },
+  {
+    "path": "privacy-audit.json",
+    "sha256": "ed937ad43c8067e5deaa3c4e42fe98d42456c3d86fefc5f2e3acf07723a7daec"
+  },
+  {
+    "path": "receipt.json",
+    "sha256": "a06d2dc81fedb55ea8f670dc54ade95dbe756c43fa7825041f57b3ee141fccfc"
+  },
+  {
+    "path": "validation/affected-routing-final.log",
+    "sha256": "372eb571d73ce0e21803c6079681ae8f3fb18698cb555497a7f1fd749c9fcee4"
+  },
+  {
+    "path": "validation/changelog.log",
+    "sha256": "e45ed8cb06d0d0dbb105e9ac1e42fd9d8e363882f98d6d04cd12d8d986ccc8c4"
+  },
+  {
+    "path": "validation/ci-compat-files.json",
+    "sha256": "ba1f9a1477b726966ee2b4132c4d18500aad6ebea0eadbf7eb21ef304377635b"
+  },
+  {
+    "path": "validation/ci-compat-green.log",
+    "sha256": "51ce74028d58cfd85eddf71868a38b1de5aba556bd5524b4282b432f834df124"
+  },
+  {
+    "path": "validation/compose-ui-r1.log",
+    "sha256": "c1458bb79ba033b0f4b042c2f1579bccd6b9b7bd5977c6e945d9eb193c498191"
+  },
+  {
+    "path": "validation/edf-affected-files.json",
+    "sha256": "fbe9e805f652c83d7b006e4852fcad7a68dee09db0b0de1ae2728f67f7901b85"
+  },
+  {
+    "path": "validation/edf-affected-tests.log",
+    "sha256": "a8ad1c52ec8911488fb9592a12b40e7b0adb9c9904fb9ef87ee6945f5e334858"
+  },
+  {
+    "path": "validation/edf-sync-proof.json",
+    "sha256": "e3b17b7e21f66826ef02e98d3677a3e801ae63997e7d14c0925e6d174fbb49f5"
+  },
+  {
+    "path": "validation/fail-first.log",
+    "sha256": "f0e992b77e5d1602988b85bc28142caa862d53ea8688c7b825e37a05599b8585"
+  },
+  {
+    "path": "validation/focused-final-r1.log",
+    "sha256": "f1b7731e087f7ab3ce15c322d9535f20120cb0aa710015f769abb1a719abdf25"
+  },
+  {
+    "path": "validation/handoff-green.log",
+    "sha256": "f5c8f75458451f7112e46c483de1b88dcdc98d6a2dadd429fe2f7a4f809f304c"
+  },
+  {
+    "path": "validation/handoff-red.log",
+    "sha256": "901a4b2d7d271dd85303a1a62192f5a4650c9f1e9aab7d29b99d4ab73ab9678d"
+  },
+  {
+    "path": "validation/no-dir-red.log",
+    "sha256": "cf4a7cdf437a9c51868ead08a3dfa1260e69c947541327ccda3a3c77c15d1421"
+  },
+  {
+    "path": "validation/notice-public-api.log",
+    "sha256": "4ff9b81f372dec1a0e49603a36b7b0dcfe2dc1f1a33d76b78403a4c609a017c1"
+  },
+  {
+    "path": "validation/pm-copy-r1.log",
+    "sha256": "2ee59e539fd4007c7497b42ad7d31d22d46f56a2eba54ad82ac002b3f996f342"
+  },
+  {
+    "path": "validation/scan-classification.json",
+    "sha256": "12ce81f89ee4f83482f6da5492dde6bfd2eb2938dfd38860963cbb0406f5175f"
+  },
+  {
+    "path": "validation/two-way-copy.log",
+    "sha256": "e5d335bf0a37c26711ed78b57d91a88d2201cf8679e46a9396207f8bd42344f9"
+  },
+  {
+    "path": "validation/types.json",
+    "sha256": "d33550edfcec2455aa7580a819de7ce731369bd6b8d7c98c375d644081c06940"
+  },
+  {
+    "path": "validation/unregister-green.log",
+    "sha256": "2518d2a1e1cfbab474db51fc5bc14b7ee7cb72b2f791fa07e7cb94fed1302b4e"
+  },
+  {
+    "path": "validation/unregister-red.log",
+    "sha256": "bf6b6b14179a29b46ce1fe4de783c83032509790e5f1d386c6dcaee6936bde1f"
+  }
+]

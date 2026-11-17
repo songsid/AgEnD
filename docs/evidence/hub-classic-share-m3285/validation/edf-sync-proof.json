@@ -1,0 +1,109 @@
+{
+  "previousHead": "4ccdddc19d1f594fa0b05375a06c614707904fdf",
+  "previousBase": "c8404fcdbe4b8c542705f4653324d66568aaed72",
+  "newBase": "edf819390ffabc83eae459f51487e90f7740ff8c",
+  "syncedSource": "c71ec159d55259c32796b9a8cc60a0eafb3fc2d2",
+  "ownProductPatchLinesIdentical": true,
+  "paths": [
+    {
+      "path": "changes/4111.md",
+      "sha256": "4761f3504b0d804cb7fac00b26205fd1d02d166c712041264511d64d13176d39"
+    },
+    {
+      "path": "changes/4111.zh-TW.md",
+      "sha256": "726f8e29bdc6e84e9b9fd0eb84fbf050595178d01bdea1d65355d577663a5d7e"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-hub-classic-share-m3285.mts",
+      "sha256": "ea2b35996f0229f34984ccccd075ea15765c62d295bf974af56a1a844ebc6f21"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "8141d8813d3da330e414c62f70ac6916239268c66bd4d2b153dbb2c258d1b0f9"
+    },
+    {
+      "path": "src/general-knowledge/skills/cross-instance-messaging/SKILL.md",
+      "sha256": "c69ade027ce2b0300f6738cdb85d5c01e508cdc5878586cfb799f4cb93016557"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "46c2d5fe55598af0516d58f5ffff271dda6a5bd100207add6ac3f6cc5ada46e6"
+    },
+    {
+      "path": "src/hub-classic-private.ts",
+      "sha256": "b86e8eb16616f315fe3bb9d5ad5a9c3d1b4c4e9bb3e58c58fe18cfc5914dd8fc"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "2f65d907ec1ce3aa6db0f076c634c9ececa37d35d2a0bb526eaefbd9816f688b"
+    },
+    {
+      "path": "src/hub/member/exposure-api.ts",
+      "sha256": "a50878c6a12ba95911302e643f2847c1f14818006c4658cc5a9bcbe0485e18db"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "c5269b5ef13e9184edc6d2cd37f65ad85b317cf4bae4bd85f48761c427f7c897"
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "sha256": "aa32b5ecd1559df04c08444cb6b8363f4b9c55a808e319f5be031277df3c7136"
+    },
+    {
+      "path": "src/ui/hub-agent-copy.js",
+      "sha256": "81f980dcff2dd5b8a8f016e893819f6fbebdeb9362497bf557bb64f047ea4c86"
+    },
+    {
+      "path": "src/ui/settings-hub.js",
+      "sha256": "ba91e517a8a4a16119b6d28c76bfefdb311094ea11dec6e8d6cf854a51d75503"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "cd062a1728842df19980a55dce4e1cc3d14071b8a26cefc4b23fba56bbef85da"
+    },
+    {
+      "path": "tests/general-debug-authority-m2721.test.ts",
+      "sha256": "2afe7b2df7c1b1e56bc5271f19d92641ccb5047b9946b8410c0b119dd280fc5a"
+    },
+    {
+      "path": "tests/hub-classic-share-m3285.test.ts",
+      "sha256": "252099e4d9ca603d5e327c0338b6ca5cc92ea6e028aa23b53cea0ed40212b384"
+    },
+    {
+      "path": "tests/hub-exposure-api-s3c.test.ts",
+      "sha256": "e2a275630ed80b6a6fa3b2ef9c4d27eff12c3f31397d2ff2414aad94f0ae99e0"
+    },
+    {
+      "path": "tests/hub-representative.test.ts",
+      "sha256": "0cee4e0660f72c41f7642d8bb9dfdfcbfc9de2392fa115412309e4ad94967351"
+    },
+    {
+      "path": "tests/hub-room-ask-track-c.test.ts",
+      "sha256": "ec72e8c7f39cbb2892e7cfddbb179636c112f12017d03cb582f46a25dfa91445"
+    },
+    {
+      "path": "tests/hub-skill.test.ts",
+      "sha256": "b75f9ffdf0c2e4284d31c36f201847cacd03510d28119f8067bd449e632a0aca"
+    },
+    {
+      "path": "tests/hub-story-fixes-2988.test.ts",
+      "sha256": "9e5250785102c1c18ee0e21a13ce8231e15ec39a8250504b1679a1c18c542702"
+    },
+    {
+      "path": "tests/muse-background-work-1716-1717.test.ts",
+      "sha256": "cda59545c911d8361401b20fae12651c51a2c8715b265fc0958094f7cfd66fdc"
+    },
+    {
+      "path": "tests/tool-permissions.test.ts",
+      "sha256": "077210a7a7a8b7359abdf8ead332ac4a0cce61339df087bd51b55a2e8368c891"
+    },
+    {
+      "path": "tests/web-favorites-1664.test.ts",
+      "sha256": "e2ece861a56de400b9420c9aafe9f9c936e1dac7b0177d2049fdbdabc6093781"
+    },
+    {
+      "path": "tests/web-pending-page-language-3416.test.ts",
+      "sha256": "89a48e2218dcbabb5291c64fec9ed256f093875c028ccd7795497a43da782b94"
+    }
+  ]
+}

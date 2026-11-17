@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:4181302) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:4181301) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-classic-share-m3285.test.ts (18 tests | 1 failed | 17 skipped) 60ms
+   × keeps ordinary progress usable on an in-memory host without a data directory 58ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > keeps ordinary progress usable on an in-memory host without a data directory
+TypeError: The "path" argument must be of type string. Received undefined
+ ❯ FleetManager.classicPrivacy src/fleet-manager.ts:2623:112
+    2621|   }
+    2622|   private hubClassicPrivacy: HubClassicPrivateTurns | null = null;
+    2623|   private classicPrivacy():HubClassicPrivateTurns { return this.hubCla…
+       |                                                                                                                ^
+    2624|   /** The mark outlives registration: a late tool from a removed room …
+    2625|   private classicHubPrivateBlocked(agent:string):boolean {return this.…
+ ❯ FleetManager.classicHubPrivateBlocked src/fleet-manager.ts:2625:71
+ ❯ FleetManager.cacheInstanceActivity src/fleet-manager.ts:21466:13
+ ❯ tests/hub-classic-share-m3285.test.ts:112:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 skipped (2)
+      Tests  1 failed | 34 skipped (35)
+   Start at  18:44:49
+   Duration  11.99s (transform 18.64s, setup 172ms, import 23.40s, tests 60ms, environment 0ms)

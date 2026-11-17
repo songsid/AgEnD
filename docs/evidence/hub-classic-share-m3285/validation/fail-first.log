@@ -1,0 +1,61 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:3808944) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-classic-share-m3285.test.ts (4 tests | 4 failed) 364ms
+   × lists and resolves a registered Classic room through the same agent-consent path 91ms
+   × never routes Hub-turn reply/react/edit to the discord room, even with contact limit off 143ms
+   × never routes Hub-turn reply/react/edit to the telegram room, even with contact limit off 72ms
+   × does not release the room-output fence when the Hub report is accepted 55ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > lists and resolves a registered Classic room through the same agent-consent path
+AssertionError: expected [] to deep equally contain { name: 'roomAgent', …(2) }
+
+- Expected:
+{
+  "display": "Example room",
+  "kind": "classic-room",
+  "name": "roomAgent",
+}
+
++ Received:
+[]
+
+ ❯ tests/hub-classic-share-m3285.test.ts:26:56
+     24| }
+     25| it("lists and resolves a registered Classic room through the same agen…
+     26|  const r=rig();expect((r.fm as any).hubMemberAgents()).toContainEqual(…
+       |                                                        ^
+     27|  expect((r.fm as any).hubAgentToken("roomAgent")).toMatch(/^[a-f0-9]{6…
+     28|  expect(r.inbound[0]).toMatchObject({type:"fleet_inbound",content:"PRI…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > never routes Hub-turn reply/react/edit to the discord room, even with contact limit off
+ FAIL  tests/hub-classic-share-m3285.test.ts > never routes Hub-turn reply/react/edit to the telegram room, even with contact limit off
+TypeError: .toMatch() expects to receive a string, but got undefined
+ ❯ tests/hub-classic-share-m3285.test.ts:35:61
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > does not release the room-output fence when the Hub report is accepted
+TypeError: .toMatch() expects to receive a string, but got undefined
+ ❯ tests/hub-classic-share-m3285.test.ts:42:78
+     40|  const r=rig("discord",true);expect(await r.ask()).toBe(true);(r.fm as…
+     41|  expect(await r.fm.hubReport({caller:"roomAgent",correlationId:"hub-fi…
+     42|  expect((await r.send("reply",{text:"PRIVATE_HUB_ANSWER_AFTER_ACK"})).…
+       |                                                                              ^
+     43| });
+     44|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed (4)
+   Start at  17:08:28
+   Duration  11.39s (transform 8.01s, setup 197ms, import 10.62s, tests 364ms, environment 0ms)

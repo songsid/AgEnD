@@ -85,3 +85,9 @@ Forward access is read-only and row-scoped. It does not grant commands, visibili
 An error or unknown acknowledgement retains `operation_id` for exact recovery even in compact mode. Query that ID with `delivery_status`; an unclear response after admission must never trigger a blind resend.
 
 When a shared agent answers a Hub question with its contact limit on, contacting other Fleet agents (including broadcast) is refused. Answer `agend-hub` first, then retry your own work. The limit ends on accepted answer or after 30 minutes; `hub_room_post` has its separate limits.
+
+A shared ClassicBot room can also receive private Hub questions. Use the supplied `report_result` target and correlation;
+never use `reply`, `react` or `edit_message` to send that question or answer into Discord or Telegram. Room history is not
+copied to the Hub. The room agent still has one conversation and may use what it learned on either side; sharing does
+not isolate its memory. The private channel-output fence survives an answer acknowledgement, contact expiry or restart;
+normal room output resumes after a new room-person input and a fresh idle check.

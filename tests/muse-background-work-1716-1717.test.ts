@@ -554,7 +554,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
   it("the Classic /stop reply appends the sentence when work was ended", async () => {
     const fleet = await fleetWithMarker("muse-1", true);
     fleet.fleetConfig = { instances: { "muse-1": {} } };
-    fleet.classicChannels = { unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
+    fleet.classicChannels = { getInstanceByChannel: () => "muse-1", unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
     fleet.reregisterClassicChannels = vi.fn();
     const reply = await fleet.handleClassicStop("chan", "discord");
     expect(reply).toContain("Agent stopped");
@@ -564,7 +564,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
   it("the Classic /stop reply survives a stub that resolves nothing (web-favorites-1664 CI)", async () => {
     const fleet = await fleetWithMarker("muse-1", false);
     fleet.fleetConfig = { instances: { "muse-1": {} } };
-    fleet.classicChannels = { unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
+    fleet.classicChannels = { getInstanceByChannel: () => "muse-1", unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
     fleet.reregisterClassicChannels = vi.fn();
     fleet.stopInstance = vi.fn(async () => undefined);
     const reply = await fleet.handleClassicStop("chan", "discord");
@@ -575,7 +575,7 @@ describe("#1716: the stop reply and topic notice name the ended background work"
   it("the Classic /stop reply is unchanged when nothing was ended", async () => {
     const fleet = await fleetWithMarker("muse-1", false);
     fleet.fleetConfig = { instances: { "muse-1": {} } };
-    fleet.classicChannels = { unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
+    fleet.classicChannels = { getInstanceByChannel: () => "muse-1", unregister: () => ({ instanceName: "muse-1" }), getAll: () => [] };
     fleet.reregisterClassicChannels = vi.fn();
     const reply = await fleet.handleClassicStop("chan", "discord");
     expect(reply).not.toContain("Background work");

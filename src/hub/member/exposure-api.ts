@@ -17,7 +17,7 @@ import { HUB_AGENT_MODE, isAgentDescriptor } from "./agent-mode.js";
 import { HubExposureRefusal, publishExposure, type HubExposureStore } from "./exposures.js";
 
 export interface HubExposureView {
-  agent: string; display: string; exposureId: string | null; revision: number;
+  agent: string; display: string; kind?: "classic-room"; exposureId: string | null; revision: number;
   state: "published" | "withdrawn" | "frozen"; policy: { dataView: string; tools: string[] } | null;
   enforceable: boolean; reason?: string;
   contactLimit?: boolean; contactLimitNotice?: boolean;
@@ -27,7 +27,7 @@ export interface HubExposureView {
   pending: { expiresAt: number } | null;
 }
 /** One of this fleet's configured agents, as normal delivery addresses it (`name`) and the owner sees it (`display`). */
-export interface HubMemberAgent { name: string; display: string }
+export interface HubMemberAgent { name: string; display: string; kind?: "classic-room" }
 export interface HubPublishInput { agent: string; dataViewId: string; tools: string[]; expectedRevision: number; contactLimit?: boolean }
 export interface HubMemberExposureApi {
   list(): HubExposureView[];
@@ -80,7 +80,7 @@ export function createHubMemberExposureApi(deps: {
     const legacy = !!c && !!e && e.state !== "withdrawn" && !isAgentDescriptor(c);
     const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable"
       : e?.state === "published" && deps.refused?.() ? "hub_refused" : null;
-    return { agent: a.name, display: a.display, exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
+    return { agent: a.name, display: a.display, ...(a.kind?{kind:a.kind}:{}), exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
       contactLimit: c?.contactLimit !== false, contactLimitNotice: deps.store.contactLimitNotice?.() ?? false,
       policy: e && e.state !== "withdrawn" ? { dataView: e.dataViewId, tools: [...e.allowedTools] } : null,
       enforceable: !reason || reason === "hub_refused", ...(reason ? { reason } : {}),
@@ -99,8 +99,10 @@ export function createHubMemberExposureApi(deps: {
     acknowledgeContactLimitNotice: () => deps.store.acknowledgeContactLimitNotice(),
     preview(raw) {
       const { input, a } = checked(raw);
-      return settingsSummary([summaryLine(`Share "${a.display}" with the Hub`, summaryMessage("hub.exposure.summary.share", a.display)),
-        summaryLine("Hub questions go to this agent's own conversation, with its folder and Settings tools", summaryMessage("hub.exposure.summary.context")),
+      const who=a.kind==="classic-room"?[summaryLine(`Share the agent of the ClassicBot room "${a.display}" with the Hub. People you allow on the Hub can ask it. Their questions and its answers are not posted in the room. It may use what people said in the room when it answers them. What it learns from Hub questions may also come up in the room.`,summaryMessage("hub.exposure.summary.classicRoom",a.display))]
+        :[summaryLine(`Share "${a.display}" with the Hub`, summaryMessage("hub.exposure.summary.share", a.display)),
+          summaryLine("Hub questions go to this agent's own conversation, with its folder and Settings tools", summaryMessage("hub.exposure.summary.context"))];
+      return settingsSummary([...who,
         summaryLine(input.contactLimit !== false ? "While answering a Hub question, this agent may not contact other agents" : "While answering a Hub question, this agent may contact other agents",
           summaryMessage(input.contactLimit !== false ? "hub.exposure.summary.contactLimited" : "hub.exposure.summary.contactAllowed")),
         summaryLine(`Revision: ${input.expectedRevision + 1}`, summaryMessage("hub.exposure.summary.revision", input.expectedRevision + 1))]);

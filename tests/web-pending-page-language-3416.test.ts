@@ -88,3 +88,10 @@ it.each(["en", "zh-TW"])("alpha effect summaries retain every argument in the %s
   expect([...p.root.querySelectorAll(".pending-summary li")].map((el:any)=>el.textContent)).toEqual(expected);
   expect(JSON.stringify(rows)).toBe(canonical);
 });
+
+it.each(["en","zh-TW"])("keeps Classic room sharing consent visible in %s before confirmation",async language=>{
+ const p=page();pages.push(p);words.setLang(language,{store:false});const source='Share the agent of the ClassicBot room "Example room" with the Hub. People you allow on the Hub can ask it. Their questions and its answers are not posted in the room. It may use what people said in the room when it answers them. What it learns from Hub questions may also come up in the room.';const applyNow=vi.fn();
+ const pending={id:"d".repeat(32),state:"pending",summary:[source],summary_i18n:[{v:1,fallback:source,parts:[{key:"hub.exposure.summary.classicRoom",args:["Example room"]}]}],deadline:Date.now()+60000,confirmation:{kind:"web",code:"fixture-share"},applyNow};
+ app.appStore.set({pendingChanges:[pending]});await p.mount(h(shell.PendingChanges,{}));expect(p.root.querySelector(".pending-details").open).toBe(true);
+ expect(p.root.querySelector(".pending-summary").textContent).toContain(language==="en"?"what people said in the room":"可能用到房間裡的人說過的內容");expect(p.root.querySelector(".pending-summary").textContent).toContain("Example room");expect(app.appStore.get().pendingChanges[0]).toBe(pending);expect(applyNow).not.toHaveBeenCalled();
+});

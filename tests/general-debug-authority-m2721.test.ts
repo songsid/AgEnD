@@ -33,6 +33,7 @@ function rig() {
   const adapter = { type: "telegram" };
   const fm = {
     fleetConfig: config, dataDir: home, saveFleetConfig,
+    classicHubPrivateBlocked: () => false,
     lifecycle: { handleCreate, has: () => false },
     classicChannels: { getAll: () => [], getChannelIdByInstance: () => undefined },
     worlds: new Map([["test", { adapter }]]), adapter,

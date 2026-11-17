@@ -713,6 +713,7 @@ register("pendingSummary", {
     "hub.exposure.summary.share": "Share \"{0}\" with the Hub",
     "hub.exposure.summary.contactLimited": "While answering a Hub question, this agent may not contact other agents",
     "hub.exposure.summary.contactAllowed": "While answering a Hub question, this agent may contact other agents",
+    "hub.exposure.summary.classicRoom": "Share the agent of the ClassicBot room \"{0}\" with the Hub. People you allow on the Hub can ask it. Their questions and its answers are not posted in the room. It may use what people said in the room when it answers them. What it learns from Hub questions may also come up in the room.",
     "hub.exposure.summary.context": "Hub questions go to this agent's own conversation, with its folder and Settings tools",
     "hub.exposure.summary.revision": "Revision: {0}",
     "hub.pairing.summary.connect": "Connect this fleet to the Hub at {0}",
@@ -756,6 +757,7 @@ register("pendingSummary", {
     "hub.exposure.summary.share": "將「{0}」分享給 Hub",
     "hub.exposure.summary.contactLimited": "回答 Hub 提問時，這個 Agent 不能聯絡其他 Agent",
     "hub.exposure.summary.contactAllowed": "回答 Hub 提問時，這個 Agent 可以聯絡其他 Agent",
+    "hub.exposure.summary.classicRoom": "將 ClassicBot 房間「{0}」的 Agent 分享給 Hub。你在 Hub 允許的人可以問它。他們的提問和它的回答不會貼到房間裡。它回答時，可能用到房間裡的人說過的內容。它從 Hub 提問中得知的內容，也可能在房間裡提到。",
     "hub.exposure.summary.context": "Hub 提問會送到這個 Agent 自己的對話，使用其資料夾與設定的工具",
     "hub.exposure.summary.revision": "修訂版本：{0}",
     "hub.pairing.summary.connect": "將這個 Fleet 連接到 {0} 的 Hub",
@@ -798,6 +800,7 @@ const pendingSummaryArguments = Object.fromEntries([
   ["general_location.confirm_windows", "s"],
   ["general_location.history", ""],
   ["hub.exposure.summary.share", "s"],
+  ["hub.exposure.summary.classicRoom", "s"],
   ["hub.exposure.summary.contactLimited", ""],
   ["hub.exposure.summary.contactAllowed", ""],
   ["hub.exposure.summary.context", ""],
@@ -860,7 +863,7 @@ export function PendingChanges({ inline = false } = {}) {
       ${p.state === "pending" ? html`<span class="pending-left">${t("app.pendingLeft", mmss(p.deadline - NOW()))}</span>` : null}
       ${p.dismiss ? html`<button type="button" class="icon-btn" aria-label=${t("app.close")} title=${t("app.close")} onClick=${p.dismiss}><${Icon} name="close" size=${14} /></button>` : null}</div>
     ${p.label ? html`<div class="pending-label">${p.label}</div>` : null}
-    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details"><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line, Array.isArray(p.summary_i18n) && p.summary_i18n.length === p.summary.length ? p.summary_i18n[i] : null)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
+    ${Array.isArray(p.summary) && p.summary.length ? html`<details class="pending-details" open=${Array.isArray(p.summary_i18n)&&p.summary_i18n.some(line=>line?.v===1&&Array.isArray(line.parts)&&line.parts.some(part=>part&&typeof part==="object"&&part.key==="hub.exposure.summary.classicRoom"))}><summary>${t("pendingHost.details")}</summary><ul class="pending-summary">${p.summary.map((line, i) => html`<li key=${i}>${String(pendingSummaryLine(line, Array.isArray(p.summary_i18n) && p.summary_i18n.length === p.summary.length ? p.summary_i18n[i] : null)).replace(/\\([\\`*_~[\]()<>|])/g, "$1")}</li>`)}</ul></details>` : null}
     ${p.state === "pending" ? html`<${PendingHow} p=${p} />` : null}
     ${(p.state === "applying" || p.state === "applied") && p.confirmation && p.confirmation.kind === "web" ? html`<p class="note">${t("app.pendingWeb")}</p>` : null}
     ${p.state !== "pending" && p.state !== "applying" && p.state !== "applied" ? html`<${PendingEnded} p=${p} />` : null}

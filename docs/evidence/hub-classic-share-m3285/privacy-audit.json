@@ -1,0 +1,8 @@
+{
+  "scope": "Own added source, tests, docs, logs and six screenshot originals",
+  "textCheck": "check-public on staged diff and PR body before publication",
+  "paths": "Validation logs replace the expanded checkout with <checkout>; no user profile paths retained",
+  "identities": "Synthetic fixture people, agent and room names, repeated numeric ids and example.test origin only",
+  "images": "Six originals inspected; no live identity or secret visible",
+  "overrides": []
+}

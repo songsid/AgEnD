@@ -129,8 +129,11 @@ describe("the hub skill", () => {
     for (const key of ["hub.enabled", "hub_member.enabled"]) expect(SKILL).toContain(`\`${key}\``);
     expect(manager).toContain("raw?.hub?.enabled === true || raw?.hub_member?.enabled === true");
     const notYet = SKILL.slice(SKILL.indexOf("\n## Not available yet\n"), SKILL.indexOf("\n## Troubleshooting\n"));
-    for (const topic of ["ClassicBot room", "second sign-in factor"]) expect(notYet, topic).toContain(topic);
+    for (const topic of ["second sign-in factor"]) expect(notYet, topic).toContain(topic);
     expect(notYet).not.toContain("Pause and resume");
+    expect(notYet).not.toContain("Sharing a ClassicBot room");
+    expect(FLAT).toContain("one agent with one memory");
+    expect(FLAT).toContain("Sharing sends no notice to the room's members.");
     expect(notYet).not.toContain("Custom roles");
     const roles = FLAT.slice(FLAT.indexOf("## Roles and permissions"), FLAT.indexOf("## Room assistant administration"));
     expect(roles).toContain("On a Hub that offers **Administration → Roles and permissions**");

@@ -1,0 +1,53 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:3977820) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-classic-share-m3285.test.ts (16 tests | 2 failed) 651ms
+   × does not reopen the room when a new person's final handoff is refused or disconnected 32ms
+   × rechecks the private turn after asynchronous reply validation 27ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > does not reopen the room when a new person's final handoff is refused or disconnected
+TypeError: .toMatch() expects to receive a string, but got undefined
+ ❯ tests/hub-classic-share-m3285.test.ts:93:73
+     91|  const r=rig();expect(await r.ask()).toBe(true);const person={type:"fl…
+     92|  expect(await (r.fm as any).handOffAfterBeforeInput("roomAgent",person…
+     93|  expect((await r.send("reply",{text:"PRIVATE_REFUSED_HANDOFF"})).error…
+       |                                                                         ^
+     94|  (r.fm.instanceIpcClients.get("roomAgent") as any).connected=false;
+     95|  expect(await (r.fm as any).handOffAfterBeforeInput("roomAgent",person…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-classic-share-m3285.test.ts > rechecks the private turn after asynchronous reply validation
+AssertionError: expected "vi.fn()" to not be called at all, but actually been called 1 times
+
+Received:
+
+  1st vi.fn() call:
+
+    Array [
+      "111111111111111111",
+      "MUST_NOT_LEAK_AFTER_AWAIT",
+      Object {
+        "format": undefined,
+        "replyTo": undefined,
+        "threadId": undefined,
+      },
+    ]
+
+
+Number of calls: 1
+
+ ❯ tests/hub-classic-share-m3285.test.ts:101:33
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 14 passed (16)
+   Start at  17:48:52
+   Duration  11.84s (transform 8.63s, setup 145ms, import 10.81s, tests 651ms, environment 0ms)
