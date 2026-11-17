@@ -89,7 +89,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "phon
     else await agentMsg.evaluate(RUN, `(el) => { ${TOUCH} return new Promise((done) => { const r0 = el.getBoundingClientRect(); touch(el, "touchstart", r0.left + 30, r0.top + 10, 2); setTimeout(done, 650); }); }`);
     const menu = page.locator(".msg-menu");
     await menu.waitFor({ timeout: 5000 });
-    ok(res, "menuItems", JSON.stringify(await menu.locator("button").allTextContents()) === (c.lang === "en" ? '["Reply","Copy text","Copy link"]' : '["回覆","複製文字","複製連結"]'));
+    ok(res, "menuItems", JSON.stringify(await menu.locator("button").allTextContents()) === (c.lang === "en" ? '["Reply","Pin","Copy text","Copy link"]' : '["回覆","釘選","複製文字","複製連結"]'));   // M-3271: Pin, an admin's
     await shot("menu");
     await menu.locator('[data-item="reply"]').click();
     await bar.waitFor();

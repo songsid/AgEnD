@@ -161,10 +161,17 @@ binaries, `.html`/`.svg` and other markup) is stored as **download-only**. The a
 workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
 **Replying to a message (#2272).**
-- **How:** the ↩ on hover, a right-click (Reply / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
+- **How:** the ↩ on hover, a right-click (Reply / Pin / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
 - **The sent bubble** shows the quote, and clicking it jumps to the original.
 - **The agent** gets `(reply_to: "…")`, exactly as from a Discord or Telegram reply, read by the server from the quoted message (one line, at most 500 characters). Nothing new for guests: they reply only to what they can see.
 - **The channel echo** quotes only a message that was already in that channel.
+
+**Pinning a message (「釘選」, M-3271).** Right-click a message (long-press on a phone) → **Pin** (「釘選」); again →
+**Unpin**. The chat's header then shows **📌 N**; on a phone it is the **Pinned messages · N** tile in the ⋯ sheet. It
+opens the list, newest first: click a row to jump to the message (flashed), × to unpin. Pins are kept on the host per
+agent (`web-pins.json`), at most 50 per agent, and sync to every admin device. Each pin keeps a copy of the message
+(text, author, time, file names), so a message that has left the chat's 500-message window opens as that copy. Admins
+only: guests see no pins, and pins are not offered over the public link. Removing an agent removes its pins.
 
 **Quote a passage (「引用」, M-2789).** Select text inside one message: a **Quote** button (「引用」; on a phone **Quote
 selection** / 「引用選取的文字」) appears below the selection. It puts the passage in the message box as `> ` lines with

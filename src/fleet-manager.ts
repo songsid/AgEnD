@@ -297,6 +297,7 @@ import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { WebPinStore } from "./web-pin-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
 import { OfficeActs } from "./web-office-acts.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
@@ -3432,6 +3433,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private officeStoreInstance?: OfficeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json, beside web-themes.json). */
   get officeStore(): OfficeStore { return (this.officeStoreInstance ??= new OfficeStore(this.dataDir, id => this.officeSkins.pack(id))); }
+  private pinStoreInstance?: WebPinStore;
+  /** M-3271: pinned chat messages per agent (web-pins.json, beside web-themes.json). */
+  get pinStore(): WebPinStore { return (this.pinStoreInstance ??= new WebPinStore(this.dataDir)); }
   private officeSkinsInstance?: OfficeSkinStore;
   /** #2513: the Office view's uploaded skin packs (<AGEND_HOME>/web-office-skins/). */
   get officeSkins(): OfficeSkinStore { return (this.officeSkinsInstance ??= new OfficeSkinStore(this.dataDir)); }
@@ -16422,6 +16426,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     clean("files",()=>this.webFiles.forget(name));
     clean("compact",()=>this.compactWatchService?.forget(name));
     clean("preferences",()=>this.webPrefs.forgetInstance(name));
+    clean("pins",()=>{if(this.pinStore.forget(name))this.emitSseEvent("pins",{instance:name,rev:this.pinStore.rev()});});
     clean("appearance",()=>{this.themeStore.forget(name);this.webAppearance.forget(name);this.appearanceTools.forget(name);this.mods.forgetInstance(name);this.officeActsInstance?.forget(name);this.officePackToolsInstance?.forget(name);});
   }
 
@@ -16500,6 +16505,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
+    // M-3271: and its pinned messages (a later instance of the same name starts with none).
+    try { if (this.pinStore.forget(name)) this.emitSseEvent("pins", { instance: name, rev: this.pinStore.rev() }); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's pins failed"); }
     try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.mods.forgetInstance(name); this.officeActsInstance?.forget(name); this.officePackToolsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory

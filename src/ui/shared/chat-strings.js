@@ -40,6 +40,12 @@ register("chat", {
     sendFailure_reply_gone: "The message you replied to is no longer in this chat. Your text is still here: send it without the reply, or reply to another message.",
     reply: "Reply", replyingTo: "Replying to {0}", replyCancel: "Cancel the reply (Esc)", replyHidden: "an earlier message", replyPhoto: "[Photo]", replyFile: "[File]",
     replyGone: "That message is no longer in this chat.", replyJump: "Show the message this replies to", copyText: "Copy text", copyLink: "Copy link", msgMenu: "Message",
+    // M-3271: pinned messages (the message menu, the header's 📌 and its list).
+    pin: "Pin", unpin: "Unpin", pinned: "Pinned", unpinned: "Unpinned", pinsTitle: "Pinned messages", pinsButton: "Pinned messages: {0}",
+    pinsEmpty: "Nothing pinned yet. Right-click a message (or press and hold it on a phone) and choose Pin.",
+    pinsFull: "This agent already has {0} pinned messages — unpin one first.", pinFailed: "Couldn't change the pin. Try again.",
+    pinUnpin: "Unpin “{0}”", pinShow: "Show this message", pinFiles: "Files: {0}",
+    pinCopyTitle: "Pinned message", pinCopyNote: "This message is no longer in the chat. This is the copy kept with the pin.",
 
     cmdConfirm: "Clear", cmdConfirmBackend: "Switch and restart", cmdRunning: "Running /{0}…", cmdNotCommand: "Not a command here — Enter sends it as a message.", cmdNotGuests: "Not one a guest can run here.", cmdDismiss: "Dismiss", cmdCommands: "Commands",
     compactRunning: "Compacting…", compactDone: "✅ Conversation compacted", compactUnknown: "This backend does not report when compaction ends.",
@@ -208,6 +214,11 @@ register("chat", {
     sendFailure_reply_gone: "你回覆的訊息已不在這個聊天裡。內容還在：可以不帶回覆直接送出，或改回覆其他訊息。",
     reply: "回覆", replyingTo: "回覆 {0}", replyCancel: "取消回覆（Esc）", replyHidden: "之前的一則訊息", replyPhoto: "[圖片]", replyFile: "[檔案]",
     replyGone: "那則訊息已不在這個聊天裡。", replyJump: "顯示被回覆的訊息", copyText: "複製文字", copyLink: "複製連結", msgMenu: "訊息",
+    pin: "釘選", unpin: "取消釘選", pinned: "已釘選", unpinned: "已取消釘選", pinsTitle: "釘選的訊息", pinsButton: "釘選的訊息：{0}",
+    pinsEmpty: "還沒有釘選的訊息。在訊息上按右鍵（手機上長按），選「釘選」。",
+    pinsFull: "這個 Agent 已有 {0} 則釘選訊息——請先取消一則。", pinFailed: "釘選沒有變更成功，請再試一次。",
+    pinUnpin: "取消釘選「{0}」", pinShow: "顯示這則訊息", pinFiles: "檔案：{0}",
+    pinCopyTitle: "釘選的訊息", pinCopyNote: "這則訊息已不在聊天裡，以下是釘選時保留的副本。",
 
     cmdConfirm: "清空", cmdConfirmBackend: "切換並重新啟動", cmdRunning: "執行 /{0} 中…", cmdNotCommand: "這裡沒有這個指令——按 Enter 會當成一般訊息送出。", cmdNotGuests: "訪客在這裡不能使用這個指令。", cmdDismiss: "關閉", cmdCommands: "指令",
     compactRunning: "壓縮中…", compactDone: "✅ 對話已壓縮", compactUnknown: "這個後端不會回報壓縮何時完成。",

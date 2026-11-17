@@ -27,6 +27,7 @@ import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { parsePinKey, type PinWrite, type WebPinStore } from "./web-pin-store.js";
 import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
@@ -503,6 +504,8 @@ export interface WebApiContext {
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
   readonly officeStore?: OfficeStore;
+  /** M-3271: pinned chat messages per agent (web-pins.json). */
+  readonly pinStore?: WebPinStore;
   /** #2080: an instance dispatcher no longer in the fleet (its cards fall back to the person: Waiting for you). */
   readonly dispatcherGone?: (name: string) => boolean;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
@@ -2757,6 +2760,56 @@ export function handleWebRequest(
     })().catch(err => {
       ctx.logger.error({ err: (err as Error).message }, "Theme reset/lock failed");
       try { json(res, 500, { error: "Theme change failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
+  // ── M-3271: pinned chat messages (web-pins.json, web-pin-store.ts) ──
+  // GET /ui/pins?instance=<name>: { rev, pins } (newest first). POST /ui/pins/<instance> { pin: "<boot>-<id>" } or
+  // { unpin: "<boot>-<id>" }: { rev, pins }; the copy is taken from the host's chat history, never the page's words.
+  // Admins only, as preference writes (prefsViewer: an admin session, or the CLI token): a guest gets none, and neither
+  // reads nor writes go over the public link (absent from its manifest, and refused here too). A change: an SSE `pins`
+  // frame { instance, rev } (never a guest's: guestFrameData denies it) — every open admin page reads again.
+  if ((path === "/ui/pins" && method === "GET") || (method === "POST" && /^\/ui\/pins\/[^/]+$/.test(path))) {
+    const store = ctx.pinStore;
+    if (!store) { json(res, 404, { error: "Pins are not kept on this fleet" }); return true; }
+    if (guestRequestOf(req)) { json(res, 403, { error: "pins_admin_only" }); return true; }
+    if (gatewayRequestContext(req)) { json(res, 403, { error: "pins_not_over_public_link" }); return true; }
+    const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "pins_admin_only" : WEB_TOKEN_INVALID_MESSAGE });
+    const first = prefsViewer(req, url, ctx);
+    if (!first?.canWrite) { refuse(first); return true; }
+    if (method === "GET") {
+      const name = url.searchParams.get("instance") ?? "";
+      if (!name || !ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return true; }
+      res.setHeader("Cache-Control", "private, no-store");
+      json(res, 200, { rev: store.rev(), pins: store.list(name), readable: store.readable() });
+      return true;
+    }
+    let name: string;
+    try { name = decodeURIComponent(path.slice("/ui/pins/".length)); } catch { json(res, 400, { error: "instance" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = prefsViewer(req, url, ctx);
+      if (!now?.canWrite) { refuse(now); return; }
+      if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "pins_person_changed" }); return; }
+      if (!ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return; }
+      const asked = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+      const pinKey = parsePinKey(asked.pin), unpinKey = parsePinKey(asked.unpin);
+      if (!pinKey === !unpinKey) { json(res, 400, { error: "pin or unpin: one message key" }); return; }
+      let r: PinWrite;
+      if (pinKey) {
+        const row = ctx.webChatHistory?.find(name, pinKey.boot, pinKey.id);
+        if (!row) { json(res, 404, { error: "pin_message_gone" }); return; }
+        r = store.pin(name, row);
+      } else r = store.unpin(name, asked.unpin as string);
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      if (r.changed) ctx.emitSseEvent("pins", { instance: name, rev: r.rev });
+      json(res, 200, { rev: r.rev, pins: r.pins });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Pinning a message failed");
+      try { json(res, 500, { error: "Pinning failed" }); } catch { /* already answered */ }
     });
     return true;
   }

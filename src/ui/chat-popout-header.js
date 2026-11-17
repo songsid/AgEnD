@@ -24,11 +24,11 @@ export function PopoutHeader({ title, sub, headingRef, nav, notice, pageControls
   }, []);
   const items = [...tabs.filter(view => !visibleTabs.includes(view)).map(view => ({ key: `tab-${view}`, label: t(`app.${view}`),
     onSelect: () => navigate(routePath({ panel: view, instance: route.instance })) })), ...(pageActions || [])];
-  const Card = pageControls?.CardMenu;
+  const Card = pageControls?.CardMenu, Pins = pageControls?.Pins;   // M-3271: the 📌
   return html`<header ref=${ref} data-trust="header" class="panel-head ws-pane-head popup-pane-head">
     <div class="panel-title"><h1 ref=${headingRef} tabindex="-1" title=${typeof title === "string" ? title : route?.instance}>${title}</h1>${sub ? html`<div class="panel-sub">${sub}</div>` : null}</div>
     <${PaneScope} value=${{ visibleTabs, navigate }}>${nav}</${PaneScope}>
-    <div class="panel-actions">${Card ? html`<${Card} card=${pageControls.card} ownerKey=${pageControls.navKey} />` : null}
+    <div class="panel-actions">${Pins ? html`<${Pins} ...${pageControls.pins || {}} />` : null}${Card ? html`<${Card} card=${pageControls.card} ownerKey=${pageControls.navKey} />` : null}
       <${HeaderTools} navKey=${pageControls?.navKey} usage=${pageControls?.usage !== false} view=${route?.panel === "view"} />
       <${Menu} items=${items} ownerKey=${pageControls?.navKey} label=${t("app.more")} /></div>${notice || null}
   </header>`;

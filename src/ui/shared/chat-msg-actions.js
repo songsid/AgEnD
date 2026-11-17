@@ -70,6 +70,8 @@ function keepsNativeMenu(e, doc) {
  *   messageOf(key) → the row; reply(row); copyText(text) → Promise<boolean>; linkOf(row) → string (S-152: optional — a
  *   page whose messages have no address, the Hub's, has no Copy link); notice(text);
  *   canReply() → boolean (false: no Reply — a page that cannot send); t(key).
+ *   M-3271 (optional — the Fleet chat's, for an admin; the Hub passes none): pin(row) pins or unpins it; pinned(row) → boolean
+ *   (Unpin, not Pin); canPin(row) → boolean (false: no item — a status line, a page that may not pin).
  * Returns a function that removes everything (and closes an open menu).
  */
 export function installMessageActions(list, deps) {
@@ -99,6 +101,10 @@ export function installMessageActions(list, deps) {
     closeMenu();
     const items = [];
     if (deps.canReply?.() !== false) items.push(["reply", deps.t("chat.reply"), () => deps.reply(row)]);
+    if (typeof deps.pin === "function" && deps.canPin?.(row) !== false) {
+      const on = deps.pinned?.(row) === true;
+      items.push([on ? "unpin" : "pin", deps.t(on ? "chat.unpin" : "chat.pin"), () => deps.pin(row)]);
+    }
     // M-3127: a Hub room's messages take a reaction (deps.react: the thread's quick picker under that message); the Fleet passes none.
     if (typeof deps.react === "function" && deps.canReact?.(row) !== false) items.push(["react", deps.reactLabel || "React", () => deps.react(row)]);
     items.push(["copyText", deps.t("chat.copyText"), async () => { const ok = await deps.copyText(String(row.click?.label ?? row.text ?? "")); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);

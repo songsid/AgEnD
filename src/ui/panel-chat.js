@@ -50,6 +50,7 @@ function nativeCliTag(inst) {
   return html`<span class="tag native-cli-unverified" title=${t("nativecli.unverifiedHint", cli, inst.native_cli_version || "")}>${t("nativecli.unverified")}</span>`;
 }
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { isPinned, pinOffered, PinCopyDialog, PinsButton, PinsDialog, setPin, usePins } from "./chat-pins.js";
 import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
 /** An effort level as a word: low → Low, xhigh → XHigh (the CLIs' own names). Local: a tab on an older model-picker.js still has it. */
 const effortWord = (level) => ({ xhigh: "XHigh" }[level] || String(level).charAt(0).toUpperCase() + String(level).slice(1));
@@ -536,6 +537,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const wide = useStore(chatWide).on;
   useStore(activityPrefs); useStore(activityInfoStore);          // AGEND-181: the ⋯ menu's Show activity / Show thinking
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
+  // M-3271: this agent's pinned messages — the header's 📌 opens the list; a pin no longer in the chat opens its copy.
+  const [pinsOpen, setPinsOpen] = useState(false), [pinCopy, setPinCopy] = useState(null);
+  const pinCount = usePins(guestPage() ? "" : name).pins?.length || 0;
+  const openPins = () => setPinsOpen(true);
+  const jumpPin = (p) => { setPinsOpen(false); void thread.current?.jumpTo(p.key, { onGone: () => setPinCopy(p) }); };
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
   useLayoutEffect(() => {
     const img = bg.current;
@@ -596,6 +602,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
     document.body.dataset.publicLink === "1" || inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
       : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
+    // M-3271: the pinned list — here too, for a phone (its header shows ← title ⋯ only) and a narrow pane.
+    pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: openPins } : null,
     colorMenuItem(name, inst),
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
@@ -625,10 +633,12 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
-      pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
+      pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage"), ...(guest ? {} : { Pins: PinsButton, pins: { name, onOpen: openPins } }) }} pageActions=${[
         ...items]}
-      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} lease=${lease} />`}</${PanelHeader}>
+      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}>${guest ? null : html`<${PinsButton} name=${name} onOpen=${openPins} />`}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} lease=${lease} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
+    ${pinsOpen ? html`<${PinsDialog} name=${name} onClose=${() => setPinsOpen(false)} onJump=${jumpPin} />` : null}
+    ${pinCopy ? html`<${PinCopyDialog} pin=${pinCopy} onClose=${() => setPinCopy(null)} />` : null}
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div ref=${effectSurface} class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
@@ -850,6 +860,10 @@ function Thread({ name, label = name, th, bindings }) {
       t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); bindings.input.current?.focus(); },
       copyText, notice: (text, ok = true) => toast(text, ok),
       linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
+      // M-3271: Pin / Unpin — an admin's (the host answers who may: pinOffered), on a stored agent or person message.
+      pin: (x) => { const key = msgKey(x); void setPin(name, key, !isPinned(name, key)); },
+      pinned: (x) => isPinned(name, msgKey(x)),
+      canPin: (x) => !guestPage() && pinOffered(name) && (x.role === "agent" || x.role === "user") && /^[0-9a-f]{1,32}-\d{1,15}$/.test(msgKey(x)),
     });
     // M-2789: select a passage in a message → 「引用」 → it goes into the composer as a quote at the caret, repeatable.
     const offQuote = installQuoteSelection(ls, {

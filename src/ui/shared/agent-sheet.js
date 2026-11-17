@@ -57,7 +57,7 @@ export function usePhone() {
 /** The item keys that are this agent's controls (their own heading), not its appearance. */
 const CONTROLS = ["start", "restart", "stop", "pause", "wake", "delete"];
 /** The item keys the sheet places itself (a tile or a row of its own), never under Appearance. */
-const PLACED = ["details", "splitChat", "settings", "workspace", "fullWidth", ...CONTROLS];
+const PLACED = ["details", "splitChat", "settings", "workspace", "fullWidth", "pins", ...CONTROLS];
 const untilClock = (ms) => { try { return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); } catch { return ""; } };
 
 /**
@@ -99,6 +99,7 @@ export function AgentSheet({ name, inst, current, items = [], extra = [], chat =
       ${current !== "log" && supportsInstanceFeature(inst, "log") ? tile("file", t("app.log"), () => navigate(logPath(name))) : null}
       ${tile("search", t("agentSheet.search"), () => openSearch({ instance: name }))}
       ${by("workspace") ? tile("diff", t("agentSheet.files"), () => by("workspace").onSelect()) : null}
+      ${by("pins") ? tile("pin", by("pins").label, () => by("pins").onSelect()) : null}
       ${chat?.card ? tile("idcard", t("agentSheet.card"), () => chat.onCard()) : null}
       ${supportsInstanceFeature(inst, "usage") && usageOffered() ? html`<button type="button" class="chat-sheet-tile" onClick=${onUsage}><${Icon} name="chart" size=${20} /><span>${t("agentSheet.usage")}</span></button>` : null}
     </div>
