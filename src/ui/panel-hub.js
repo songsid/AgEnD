@@ -989,10 +989,10 @@ function HubMine() {
   // lands nowhere (useRead's own liveness ends with that page).
   if (x) return html`<${HubAgentPage} key=${x.id} x=${x} act=${act} msg=${msg} />`;
   // Nothing shared yet: the empty state below says where to share from, so the lead doesn't say it too (Argon #20).
-  return html`<div class="col hub-owner"><${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} /><p class="s-page-lead hub-page-lead">${modernSharing ? ho("mineLeadNew") : ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
+  return html`<div class="col hub-owner">${!modernSharing ? html`<${OlderFleetBanner} client=${hubClient()} signIn=${session?.csrf || ""} />` : null}<p class="s-page-lead hub-page-lead">${modernSharing ? ho("mineLeadNew") : ho(cat && !cat.error && !mine.length ? "mineLeadShort" : "mineLead")}</p>
     <div class="s-section-layout">
       ${/* M-3190: 「我的 Fleet」 moved here from 對話 — the person's Fleets and the steps to connect one. */ ""}
-      ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features }} />` : null}
+      ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features, compact: modernSharing }} />` : null}
       ${session?.features?.includes("personal-agents-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-personal-agent.js")} name="HubPersonalAgent" props=${{client:hubClient(),scope:session.csrf,isAdmin:session.admin===true,onSaved:reload}} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}

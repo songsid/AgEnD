@@ -126,7 +126,7 @@ function AddressChip({ host }) {
  * pair from here). `admin` never reads the "your Hub administrator connects fleets" line. The pairing steps show while no Fleet is
  * connected, else behind 「＋ 連接另一個 Fleet」; at the limit, the limit line instead.
  */
-export function MyFleetsCard({ quick = false, admin = false, features = [] }) {
+export function MyFleetsCard({ quick = false, admin = false, features = [], compact = false }) {
   const c = hubClient(), { w, error, load, refresh } = useWelcome();
   const companyJoin = Array.isArray(features) && features.includes("company-join-v1");
   const [joinOn, setJoinOn] = useState(false), [adding, setAdding] = useState(false);
@@ -137,7 +137,7 @@ export function MyFleetsCard({ quick = false, admin = false, features = [] }) {
     c.joinMetadata().then((r) => { if (live) setJoinOn(!!r && r.ok === true && Array.isArray(r.features) && r.features.includes("company-join-v1")); }, () => {});
     return () => { live = false; };
   }, [companyJoin]);
-  const head = (count) => html`<h3>${hg("fleetsTitle")}${count ? html` <small class="note">${count}</small>` : null}</h3>`;
+  const head = (count) => html`<h3>${hg("fleetsTitle")}${count ? html` <small class="note">${compact ? " · " : ""}${count}</small>` : null}</h3>`;
   if (error) return html`<section class="card hub-my-fleets">${head()}${error === "busy"
     ? html`<p class="note" role="status" data-welcome="busy">${hr("busy")}</p>` : html`<${ErrorState} message=${hg("unknown")} onRetry=${load} />`}</section>`;
   if (!w) return html`<section class="card hub-my-fleets" aria-busy="true">${head()}<${Skeleton} variant="rows" lines=${2} /></section>`;
@@ -156,15 +156,15 @@ export function MyFleetsCard({ quick = false, admin = false, features = [] }) {
     ${quickOn ? html`<details class="s-ui-disclosure hub-welcome-other"><summary>${otherWaysLabel()}</summary><div class="s-disclosure-body">
       <${QuickPairingGuide} allowed=${connectOk && !atLimit} publishAllowed=${w.publish?.state === "allow"} onConnected=${refresh} /></div></details>` : null}
   </div>`;
-  return html`<section class="card hub-my-fleets" data-entry="connect">${head(connectOk && max > 0 ? hg("connectCount", used, max) : "")}
-    ${fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
+  return html`<section class="card hub-my-fleets" data-entry="connect"><div class="field-row hub-my-fleets-head">${head(connectOk && max > 0 ? hg("connectCount", used, max) : "")}${compact && used && connectOk && !atLimit && !adding ? html`<button type="button" class="btn btn-sm hub-pair-more" onClick=${() => setAdding(true)}>${hg("connectAnother")}</button>` : null}</div>
+    ${!compact && fleets.length ? html`<div class="hub-rows">${fleets.map((f) => html`<div key=${f.id} class="s-row hub-row" data-fleet=${f.id}>
       <span class="hub-row-text"><strong>${f.label || f.id}</strong></span>
       <span class=${`tag${f.status === "active" ? " ok" : f.status === "suspended" || f.status === "unknown" ? " warn" : ""}`} data-fleet-status=${f.status}>${hg(FLEET_STATUS[f.status] || "fleetUnknown")}</span>
-      ${quickOn ? html`<${FleetRowMenu} fleet=${f} onRevoked=${load} />` : null}</div>`)}</div>` : html`<p class="note">${hg("connectHint")}</p>`}
+      ${quickOn ? html`<${FleetRowMenu} fleet=${f} onRevoked=${load} />` : null}</div>`)}</div>` : !compact ? html`<p class="note">${hg("connectHint")}</p>` : null}
     ${!legacy && !connectOk ? html`<p class="note">${w.chat?.state === "allow" && connect.reason === "no-group" ? hg("connectNotIncluded") : reasonText(connect, "contactAdmin")}</p>`
       : atLimit ? html`<p class="note" data-welcome="limit">${hg("connectLimit")}</p>`
       : !used || adding ? steps
-      : html`<button type="button" class="btn btn-sm hub-pair-more" onClick=${() => setAdding(true)}>${hg("connectAnother")}</button>`}
+      : compact ? null : html`<button type="button" class="btn btn-sm hub-pair-more" onClick=${() => setAdding(true)}>${hg("connectAnother")}</button>`}
     ${!legacy && w.publish && w.publish.state !== "allow" && connectOk ? html`<p class="note" data-welcome="publish">${hg("publishNot")}</p>` : null}
   </section>`;
 }

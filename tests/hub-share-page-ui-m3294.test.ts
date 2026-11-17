@@ -7,7 +7,7 @@ const mounted: AppPage[] = [], exposureId = "aaaaaaaa-1111-4222-8333-44444444444
 beforeAll(async () => { const p = page(); clients = await import("/ui/js/hub-client.js"); panels = await import("/ui/js/panel-hub.js"); words = await import("/assets/app-i18n.js"); p.restore(); });
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } clients.setHubClient(null); panels.resetHubSession(); words.setLang("en", { store: false }); });
 const until = async (f: () => unknown) => { for (let i = 0; i < 100 && !f(); i++) await settle(5); };
-async function mount(mark = true, connected = true) {
+async function mount(mark = true, connected = true, policy = false, old = false) {
  const calls: any[] = [], owner = { realm: "corp", objectId: fleetId };
  const shared = { id: exposureId, fleetId, owner, revision: 1, state: "published", displayName: "Notes", grants: [], sharingEpoch: 0 };
  const agents = [{ instance: "notes", displayName: "Notes", description: "Keeps notes", general: false, kind: "agent", shareable: true, exposure: { id: exposureId, revision: 1, state: "published" } },
@@ -16,8 +16,9 @@ async function mount(mark = true, connected = true) {
   { instance: "support", displayName: "Support", description: "A shared room", general: false, kind: "classic-room", shareable: true, exposure: null }];
  const c = clients.createHubWebClient({ fetchImpl: async (path: string, opts: any) => {
   const body = opts.body ? JSON.parse(opts.body) : undefined; calls.push({ path, method: opts.method, body });
-  const data = path === "/hub/v1/session" ? { signedIn: true, admin: false, csrf: "fixture-owner", displayName: "Owner", hub: { name: "Example Hub" }, features: mark ? ["agent-sharing-v1", "sharing-pause-v1", "grant-subjects-v1"] : [] }
-   : path === "/hub/v1/me/agents" ? { fleets: [{ id: fleetId, label: "Work laptop", connected, catalogSupported: true, catalog: { enabled: true, requests: true, at: Date.now(), revision: "a".repeat(64), agents } }] }
+  const data = path === "/hub/v1/session" ? { signedIn: true, admin: false, csrf: "fixture-owner", displayName: "Owner", hub: { name: "Example Hub" }, features: mark ? ["agent-sharing-v1", "sharing-pause-v1", "grant-subjects-v1", ...(policy ? ["group-policy-v1"] : [])] : [] }
+   : path === "/hub/v1/me/agents" ? { fleets: [{ id: fleetId, label: "Work laptop", connected, catalogSupported: !old, catalog: old ? null : { enabled: true, requests: true, at: Date.now(), revision: "a".repeat(64), agents } }] }
+   : path === "/hub/v1/me/welcome" ? { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 8, fleets: [{ id: fleetId, label: "Work laptop", status: "active" }] } }
    : path === "/hub/v1/exposures" ? { mine: [shared, { ...shared, id: "eeeeeeee-1111-4222-8333-444444444444", fleetId: null, kind: "personal", personalAgentId: "ffffffff-1111-4222-8333-444444444444", displayName: "Personal notes" }], askable: [] }
    : path === "/hub/v1/me/agent-sharing" ? { id: body.idempotencyKey, fleetId, state: "queued", result: null, expiresAt: Date.now() + 600_000 }
    : { pairings: [] };
@@ -58,7 +59,7 @@ it("keeps offline shares ticked and offers their independent Hub-side pause", as
  const { p } = await mount(true, false);
  const input = p.root.querySelector('[data-share-agent="notes"]') as any;
  expect(input.checked).toBe(true); expect(input.disabled).toBe(true);
- expect(p.root.textContent).toContain("This Fleet is offline"); expect(p.root.textContent).toContain("Pause sharing");
+ expect(p.root.textContent).toContain("Offline · last seen"); expect(p.root.textContent).toContain("Pause sharing");
 });
 it("keeps the legacy shared list with an older Hub and makes no owner-inventory call", async () => {
  const { p, calls } = await mount(false);
@@ -79,4 +80,23 @@ it("reuses exact-login access on a Hub without subject search and stops a multi-
  fire(p.root.querySelector("[data-grant-picker]")!, "submit"); await entered; await c.signOut(); release(); await settle(10);
  expect(calls.filter(x => x.path === "/hub/v1/grants")).toHaveLength(1);
  expect(calls.find(x => x.path === "/hub/v1/grants").body).toEqual({ exposureId, exposureRevision: 1, days: 7, login: "reader" });
+});
+
+it("PM batch: compact Fleet summary, one lead, identity avatar and a names-only action summary", async () => {
+ const { p } = await mount(true, true, true);
+ await until(() => p.root.querySelector(".hub-my-fleets"));
+ expect(p.root.querySelector(".hub-my-fleets .hub-rows")).toBeNull();
+ expect(p.root.querySelector(".hub-page-lead")?.textContent).toContain("The agents you can share");
+ expect(p.root.querySelector("[data-my-agents] > .field-row p")).toBeNull();
+ expect(p.root.querySelector(".hub-my-agents .hub-av")?.className).toMatch(/t[0-5]/);
+ (p.root.querySelector("[data-share-all]") as any).click(); await settle(10);
+ expect(p.root.querySelector(".hub-share-bar strong")?.textContent).toBe("Documents and 1 more");
+});
+it("PM batch: offline explanation appears once with normal row descriptions; an old Fleet has no invented total", async () => {
+ const { p } = await mount(true, false);
+ expect((p.root.textContent.match(/last seen/gi) || []).length).toBe(1);
+ expect(p.root.textContent).toContain("Keeps notes");
+ await p.unmount(); p.restore(); mounted.splice(mounted.indexOf(p), 1);
+ const old = await mount(true, true, false, true);
+ expect(old.p.root.textContent).toContain("1 shared"); expect(old.p.root.textContent).not.toContain("1 of 1 shared");
 });

@@ -1,6 +1,6 @@
 /* Lazy linked: retained shells receive the grouped owner page and its phone action bar together. */
 .hub-my-agents { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; padding-bottom: calc(var(--s-6) * 3); }
-.hub-my-agents > .field-row { justify-content: space-between; }
+.hub-my-agents > .field-row { justify-content: flex-end; }
 .hub-agent-fleet > summary { display: list-item; cursor: pointer; padding: var(--s-2); }
 .hub-agent-fleet > summary strong { margin-right: var(--s-3); }
 .hub-agent-fleet > summary .note { display: inline; }
@@ -21,4 +21,14 @@
  .hub-share-bar { bottom: calc(env(safe-area-inset-bottom, 0px) + var(--s-2)); }
  .hub-share-bar > strong { flex-basis: 100%; }
  .hub-share-bar > .btn { flex: 1; }
+}
+
+.hub-my-fleets-head { justify-content: space-between; flex-wrap: wrap; }
+.hub-my-fleets-head h3 { margin: 0; }
+.hub-agent-choice[data-unavailable] .hub-row-text { opacity: .65; }
+.hub-share-access-list { list-style: none; padding: 0; margin: 0; }
+.hub-share-access-item { display: flex; align-items: center; gap: var(--s-3); padding-block: var(--s-2); flex-wrap: wrap; }
+@media (max-width: 899px), (pointer: coarse) {
+ .hub-agent-choice .hub-row { display: grid; grid-template-columns: 44px 28px minmax(0, 1fr); }
+ .hub-agent-choice .hub-agent-pause { grid-column: 3; justify-self: start; }
 }

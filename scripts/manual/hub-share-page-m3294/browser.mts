@@ -7,6 +7,7 @@ import { resolve, join } from "node:path";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import Database from "better-sqlite3";
 import { createHubGroupPolicyStore, groupPolicyMigration } from "../../../src/hub/group-policy/store.js";
+import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../../../src/hub/invitations.js";
 import { s3bRig } from "../../../tests/helpers/hub-s3b-rig.js";
 import { createOwnedPki, trustOwnedBrowserCa } from "../hub-connector-4c/rig.mjs";
 import { HubExposureStore, HUB_EXPOSURE_MIGRATION } from "../../../src/hub/member/exposures.js";
@@ -57,13 +58,16 @@ try {
   await ctx.requirePerson(); if (!ctx.current()) throw Error("ended");
   return { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 8, fleets: hub.store.read().fleets.filter(f => f.owner.objectId === owner.objectId).map(f => ({ id: f.id, label: f.label || null, generation: f.generation, status: "active" })) } };
  } };
+ HUB_ROOM_INVITATIONS_MIGRATION.up(r.db);
+ r.httpDeps.roomInvitations = (core, host) => createHubRoomInvitations(core, host);
  await r.restartHttp(); await r.signIn("reader");
  r.store.mutate({ requestId: randomUUID(), at: Date.now(), actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
   for (const [id, label] of [[fleetId, "Work laptop"], [homeId, "Home server"], [oldId, "Older Fleet"]]) state.fleets.push({ id: id!, label: label!, owner, generation: 1, credentialHash: "a".repeat(64), status: "active" });
  });
- const link = r.link(fleetId, owner, 1, ["welcome-caps-v1", "room-ask-v1", "agent-catalog-v1", "exposure-request-v1"]); r.http.memberConnected!(link);
- const offline = r.link(homeId, owner, 1, ["welcome-caps-v1", "agent-catalog-v1", "exposure-request-v1"]); r.http.memberConnected!(offline);
+ const link = r.link(fleetId, owner, 1, ["welcome-caps-v1", "room-ask-v1", "agent-catalog-v1", "exposure-request-v1", "fleet-info-v1"]); r.http.memberConnected!(link);
+ const offline = r.link(homeId, owner, 1, ["welcome-caps-v1", "room-ask-v1", "agent-catalog-v1", "exposure-request-v1", "fleet-info-v1"]); r.http.memberConnected!(offline);
  await r.http.receive(r.frame("agent.catalog", { enabled: true, requests: true, revision: "f".repeat(64), agents: [{ instance: "notes", displayName: "Home notes", description: "Personal research notes", avatar: null, kind: "agent" as const, general: false, shareable: true as const, exposure: null }] }, offline), offline); offline.alive = false;
+ for (const current of [link, offline]) { const was = current.alive; current.alive = true; await r.http.receive(r.frame("fleet.info", { version: "2.4.0-beta.10", runsAsService: true }, current), current); current.alive = was; }
  const older = r.link(oldId, owner); r.http.memberConnected!(older);
  for (const m of [HUB_EXPOSURE_MIGRATION, HUB_MEMBER_SHARING_MIGRATION, HUB_AUDIT_MIGRATION]) m.up(localDb);
  let floor = 0, snapshotRevision = 0;
@@ -94,6 +98,10 @@ try {
  })().catch(() => failures.push("in-process member failed")).finally(() => { running = false; }); }, 20); timer.unref();
  browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox", "--no-proxy-server", "--host-resolver-rules=MAP hub.example.com 127.0.0.1"] });
  for (const c of [{ tag: "desk-light-en", lang: "en", theme: "light", width: 1366, height: 900 }, { tag: "phone-dark-zh-TW", lang: "zh-TW", theme: "dark", width: 390, height: 844 }].filter(c => !process.env.CASES || process.env.CASES.split(",").includes(c.tag))) {
+  if (process.env.RETAKE === "1" && c.width < 600) {
+   const stops = store.list().flatMap(x => x.agent !== "notes" && x.committed?.exposure.state === "published" ? [x.committed.exposure.id] : []);
+   if (stops.length) { const at = Date.now(); await domain.apply(randomUUID(), { by: owner, byName: "Owner", catalogRevision: memberAgentCatalog(true, agents(), true).revision, share: [], stop: stops, createdAt: at, expiresAt: at + 600_000 }); }
+  }
   const context = await browser.newContext({ viewport: { width: c.width, height: c.height }, isMobile: c.width < 600, hasTouch: c.width < 600, ignoreHTTPSErrors: false });
   await context.addInitScript(({ lang, theme }: { lang: string; theme: string }) => { localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_theme", theme); localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); }, c);
   const page = await context.newPage(), errors: string[] = [];
@@ -104,6 +112,8 @@ try {
    await page.locator(stage === "before" ? ".hub-shared" : "[data-my-agents] [data-share-agent]").first().waitFor();
    await page.evaluate(() => document.fonts.ready);
    if (stage === "before") { await page.screenshot({ path: join(out, c.tag + "-before.png") }); check(c.tag + ": old shared-only page", await page.locator("[data-share-agent]").count() === 0); continue; }
+   check(c.tag + ": invitation service mounted without error", (await page.locator(".hub-owner").innerText()).includes(c.lang === "en" ? "Invitations could not be loaded" : "無法載入邀請") === false);
+   check(c.tag + ": compact Fleet summary has no duplicate rows", await page.locator(".hub-my-fleets .hub-rows").count() === 0);
    const group = page.locator(".hub-agent-fleet").filter({ hasText: "Work laptop" }); await group.scrollIntoViewIfNeeded();
    check(c.tag + ": own grouped inventory", await page.locator(".hub-agent-fleet").count() === 3);
    check(c.tag + ": offline and old reasons", (await page.locator("[data-my-agents]").innerText()).includes(c.lang === "en" ? "Update this Fleet" : "請更新這個 Fleet"));
@@ -119,6 +129,13 @@ try {
     await group.locator('[data-share-agent="notes"]').uncheck(); await page.locator(".hub-share-bar .btn-danger").click();
     await page.getByRole("button", { name: c.lang === "en" ? "Pause instead" : "改為暫停", exact: true }).waitFor();
     await page.screenshot({ path: join(out, c.tag + "-stop-confirm.png") });
+    await page.getByRole("button", { name: c.lang === "en" ? "Cancel" : "取消", exact: true }).last().click();
+    await page.locator(".hub-share-bar .btn").last().click();
+    await group.locator("[data-share-all]").click(); await page.locator(".hub-share-bar .btn-primary").click();
+    const common = page.getByRole("button", { name: c.lang === "en" ? "The same people for all 2" : "2 個都用同一份名單", exact: true }); await common.waitFor({ timeout: 15_000 });
+    check(c.tag + ": common access is primary", (await common.getAttribute("class")).includes("btn-primary"));
+    check(c.tag + ": access names use a plain list", await page.locator(".hub-share-access-item").count() === 2 && await page.locator(".hub-share-access-item.s-row").count() === 0);
+    await page.screenshot({ path: join(out, c.tag + "-access.png") });
     check(c.tag + ": no page errors", errors.length === 0); continue;
    }
    if (c.width > 600) {
