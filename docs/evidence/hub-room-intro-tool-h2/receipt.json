@@ -1,0 +1,31 @@
+{
+  "source": "e7c55595cd79778b1bb33f23a6afae9db1d8126b",
+  "baseline": false,
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "status": "PASS",
+      "checks": [
+        "existing-share notice lists the agent",
+        "notice acknowledgement persists",
+        "sharing previews the first line",
+        "inline edit saves without granting",
+        "no nested forms or horizontal overflow"
+      ]
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "status": "PASS",
+      "checks": [
+        "existing-share notice lists the agent",
+        "notice acknowledgement persists",
+        "sharing previews the first line",
+        "inline edit saves without granting",
+        "no nested forms or horizontal overflow"
+      ]
+    }
+  ],
+  "pageErrors": [],
+  "foreign": [],
+  "status": "PASS"
+}

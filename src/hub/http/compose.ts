@@ -1,3 +1,4 @@
+import {defaultAgentIntro,HUB_AGENT_INTRO_CAPABILITY} from "../agent-intro-model.js";
 import { HubAgentIntroTool } from "../agent-intro-tool.js";
 import { HubPreviousAccess } from "../sharing-previous-access.js";
 import { HubAgentIntros } from "../agent-intro.js";
@@ -181,6 +182,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
+  const ownerIntro=(e:{id:string;fleetId:string|null})=>{
+    const value=intros.projection(e.id),report=e.fleetId?agentCatalogs.reportOf(e.fleetId):null;
+    const row=report?.link?.features.has(HUB_AGENT_INTRO_CAPABILITY)?report.catalog.agents.find(a=>a.exposure?.id===e.id):undefined;
+    return {...value,...(!value.introBy&&row?{introDefault:defaultAgentIntro(row.description)}:{})};
+  };
+
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core);
   const mcp = new HubMcpDoor(core,sessions,{groups:groupRooms,direct:rooms,catalog});
@@ -476,7 +483,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (path === "/hub/v1/exposures" || path === "/hub/v1/grants") {
       if (method === "GET") {
         signedIn(); const view = await guard(() => catalog.visible(ctx));
-        return send(res, 200, { ...view, askable: view.askable.map(row => ({...row,exposure:{...row.exposure,...intros.projection(row.exposure.id)}})), mine: view.mine.map(e => ({ ...e, ...intros.projection(e.id), quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
+        return send(res, 200, { ...view, askable: view.askable.map(row => ({...row,exposure:{...row.exposure,...intros.projection(row.exposure.id)}})), mine: view.mine.map(e => ({ ...e, ...ownerIntro(e), quotaVisible: quota.visible(e.id), ...quota.projection(e.id) })) });
       }
       if (path === "/hub/v1/grants" && method === "POST") {
         csrf(); const b = await body();

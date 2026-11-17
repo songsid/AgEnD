@@ -17,8 +17,8 @@ export class HubMemberAgentIntro implements AgentIntroPort {
   const payload:HubAgentIntro={exposureId:local.id,revision:local.revision,text,source};
   try{const result=await link.exchange({v:1,type:"agent.intro",requestId:operationId,linkEpoch:link.linkEpoch,payload},"agent.intro-result");
    if(!this.current(link,local,caller))return {ok:false,code:"stale"};
-   return result.type==="agent.intro-result"?agentIntroResultSchema.parse(result.payload):{ok:false,code:"invalid"};
-  }catch{return {ok:false,code:"unavailable"};}
+   return result.type==="agent.intro-result"?agentIntroResultSchema.parse(result.payload):{ok:false,code:"uncertain"};
+  }catch{return {ok:false,code:"uncertain"};}
  }
  async set(caller:RoomCaller,text:string,operationId:string):Promise<HubAgentIntroResult>{
   const local=this.options.exposures().find(e=>e.agent===caller.agent),link=this.link;

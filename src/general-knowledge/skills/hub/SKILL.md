@@ -825,3 +825,20 @@ Say plainly that these are not in the product yet:
   connection** on the Fleet also works, but the Fleet joins as a new one and every shared agent must be shared again.
 - **Pages look half old after an upgrade.** A tab opened before the upgrade can mix old and new pages. Reload it once.
 - **"Only the Hub administrator can see this"** on Administration: you are signed in, but not as the administrator.
+
+## Agent introductions
+
+An introduction is one public line of at most 50 visible characters. It appears in agent choices, room members and
+chat headings. The owner can edit it on My agents → the agent. The agent can call `hub_set_intro` with `{text}` to
+change only its own introduction, at most five changes per UTC day; an empty line clears it. Last write wins,
+including after an owner edit. This does not change the Fleet description or the agent's instructions.
+
+With the negotiated `agent-intro-v1` ability, the default takes the first line of the Fleet description, cut to
+50 visible characters. The sharing access step shows it with Edit before access is granted. Existing shares get
+one persistent Hub notice listing the affected agents and linking to their introductions for review. If another
+Fleet fills older shares later, the same card reopens with only those newly filled agents and that Fleet's name.
+Reconnects, retries and ordinary edits never reopen it. An existing
+owner or agent edit, including an explicitly empty introduction, is never replaced by a default on reconnect or
+re-sharing. Old Fleets keep an empty introduction until the owner edits it; an old Hub reports that introductions
+are unsupported. An uncertain tool result may already have been applied: check the Hub rather than resending as
+a new call.

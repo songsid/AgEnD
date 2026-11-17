@@ -13,8 +13,9 @@ export const HUB_AGENT_INTRO_TOOL_MIGRATION=Object.freeze({component:"s3-agent-i
  CREATE TABLE hub_agent_intro_operations(fleet_id TEXT NOT NULL,operation_id TEXT NOT NULL,input TEXT NOT NULL,result TEXT NOT NULL,PRIMARY KEY(fleet_id,operation_id));
  CREATE TABLE hub_agent_intro_existing(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id) ON DELETE CASCADE);
  INSERT INTO hub_agent_intro_existing SELECT id FROM hub_exposures WHERE source_kind='fleet' AND state!='withdrawn' AND NOT EXISTS(SELECT 1 FROM hub_agent_intros i WHERE i.exposure_id=hub_exposures.id);
- CREATE TABLE hub_agent_intro_notices(owner TEXT PRIMARY KEY,agents TEXT NOT NULL,acknowledged_at INTEGER);
+ CREATE TABLE hub_agent_intro_notices(owner TEXT PRIMARY KEY,batches TEXT NOT NULL,acknowledged_at INTEGER,seen INTEGER NOT NULL DEFAULT 0);
 `);}});
+interface IntroNoticeBatch{fleetId:string;fleet:string|null;more:boolean;agents:{id:string;name:string}[]}
 export class HubAgentIntroTool {
  constructor(private core:HubCore){}
  receive(raw:unknown,link:HubLinkContext,operationId:string):HubAgentIntroResult {
@@ -35,10 +36,12 @@ export class HubAgentIntroTool {
     db.prepare("INSERT INTO hub_agent_intros(exposure_id,text,source,updated_at) VALUES(?,?,?,?) ON CONFLICT(exposure_id) DO UPDATE SET text=excluded.text,source=excluded.source,updated_at=excluded.updated_at").run(e.id,text,value.source,now);
     if(value.source==="agent")db.prepare("INSERT INTO hub_agent_intro_changes VALUES(?,?,1) ON CONFLICT(exposure_id,day) DO UPDATE SET changes=changes+1").run(e.id,day);
     if(value.source==="default"&&text&&db.prepare("SELECT 1 FROM hub_agent_intro_existing WHERE exposure_id=?").get(e.id)){
-     const n=db.prepare("SELECT agents FROM hub_agent_intro_notices WHERE owner=?").get(owner) as {agents:string}|undefined;
-     const agents=n?JSON.parse(n.agents) as {id:string;name:string}[]:[];
-     if(!agents.some(a=>a.id===e.id))agents.push({id:e.id,name:e.display_name});
-     db.prepare("INSERT INTO hub_agent_intro_notices(owner,agents) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET agents=excluded.agents").run(owner,JSON.stringify(agents));
+     const n=db.prepare("SELECT batches,acknowledged_at,seen FROM hub_agent_intro_notices WHERE owner=?").get(owner) as {batches:string;acknowledged_at:number|null;seen:number}|undefined;
+     const batches:IntroNoticeBatch[]=n&&n.acknowledged_at===null?JSON.parse(n.batches):[];
+     let batch=batches.find(b=>b.fleetId===link.fleetId);
+     if(!batch){batch={fleetId:link.fleetId,fleet:this.core.deps.store.read().fleets.find(f=>f.id===link.fleetId)?.label??null,more:!!n&&(n.seen===1||batches.length>0),agents:[]};batches.push(batch);}
+     if(!batch.agents.some(a=>a.id===e.id))batch.agents.push({id:e.id,name:e.display_name});
+     db.prepare("INSERT INTO hub_agent_intro_notices(owner,batches) VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET batches=excluded.batches,acknowledged_at=NULL").run(owner,JSON.stringify(batches));
     }
     this.core.audit(tx,{requestId:operationId,actor:{kind:"member",fleetId:link.fleetId},action:"agent.intro-updated",result:"completed",exposureId:e.id,ownerAtEvent:link.owner});
    }
@@ -51,9 +54,9 @@ export class HubAgentIntroTool {
  async notice(ctx:HubRequestContext){
   const owner=personKeyString(await ctx.requirePerson());
   return this.core.atomic(db=>{
-   const row=db.prepare("SELECT agents FROM hub_agent_intro_notices WHERE owner=? AND acknowledged_at IS NULL").get(owner) as {agents:string}|undefined;
-   return {notice:row?{id:"agent-introductions",agents:JSON.parse(row.agents) as {id:string;name:string}[]}:null};
+   const row=db.prepare("SELECT batches FROM hub_agent_intro_notices WHERE owner=? AND acknowledged_at IS NULL").get(owner) as {batches:string}|undefined;
+   return {notice:row?{id:"agent-introductions",batches:JSON.parse(row.batches) as IntroNoticeBatch[]}:null};
   });
  }
- async acknowledge(ctx:HubRequestContext){const owner=personKeyString(await ctx.requirePerson());this.core.atomic(db=>{if(ctx.isCurrent&&!ctx.isCurrent())throw new HubProtocolError("revoked");db.prepare("UPDATE hub_agent_intro_notices SET acknowledged_at=? WHERE owner=?").run(this.core.now(),owner);});return {ok:true};}
+ async acknowledge(ctx:HubRequestContext){const owner=personKeyString(await ctx.requirePerson());this.core.atomic(db=>{if(ctx.isCurrent&&!ctx.isCurrent())throw new HubProtocolError("revoked");db.prepare("UPDATE hub_agent_intro_notices SET acknowledged_at=?,seen=1 WHERE owner=?").run(this.core.now(),owner);});return {ok:true};}
 }

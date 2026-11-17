@@ -27,3 +27,10 @@ it("serializes the default burst and discards a result after its caller or expos
  const pending=member.set({agent:locals[0]!.agent,current:()=>current},"late",randomUUID());current=false;
  reply({type:"agent.intro-result",payload:{ok:true,intro:"late",introBy:"agent",introAt:2,changed:true}});expect(await pending).toEqual({ok:false,code:"stale"});live=false;member.close();
 });
+it("reports a lost RPC outcome as uncertain and never retries an agent edit as a new operation",async()=>{
+ const local={agent:"guide",id:randomUUID(),revision:1,description:""},exchange=vi.fn(async(_frame:any)=>{throw Error("lost acknowledgement");});
+ const link={features:new Set(["agent-intro-v1"]),current:()=>true,exchange,linkEpoch:1} as unknown as HubMemberLink;
+ const member=new HubMemberAgentIntro({current:()=>true,exposures:()=>[local]});member.connected(link);await member.defaults();exchange.mockClear();
+ const operationId=randomUUID();expect(await member.set({agent:"guide",current:()=>true},"Own line",operationId)).toEqual({ok:false,code:"uncertain"});
+ expect(exchange).toHaveBeenCalledTimes(1);expect(exchange.mock.calls[0]?.[0]).toMatchObject({requestId:operationId,payload:{source:"agent"}});member.close();
+});

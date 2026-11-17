@@ -3,7 +3,7 @@ export const HUB_AGENT_INTRO_CAPABILITY="agent-intro-v1";
 export const agentIntroSchema=z.strictObject({exposureId:z.uuid(),revision:z.number().int().min(1),text:z.string(),source:z.enum(["default","agent"])});
 export const agentIntroResultSchema=z.union([
  z.strictObject({ok:z.literal(true),intro:z.string(),introBy:z.enum(["default","agent","owner"]),introAt:z.number().int().min(0),changed:z.boolean()}),
- z.strictObject({ok:z.literal(false),code:z.enum(["invalid","limit","denied","unavailable","unsupported","stale"]),resetsAt:z.number().int().min(0).optional()})
+ z.strictObject({ok:z.literal(false),code:z.enum(["invalid","limit","denied","unavailable","unsupported","stale","uncertain"]),resetsAt:z.number().int().min(0).optional()})
 ]);
 export type HubAgentIntro=z.infer<typeof agentIntroSchema>;
 export type HubAgentIntroResult=z.infer<typeof agentIntroResultSchema>;

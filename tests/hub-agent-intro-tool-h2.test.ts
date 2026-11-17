@@ -38,9 +38,40 @@ it("shows one persistent owner notice for existing-share defaults, never for pri
  const w=await world();w.r.db.prepare("INSERT INTO hub_agent_intro_existing VALUES(?)").run(w.e.id);
  expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toBeNull();
  expect((await w.send("I handle notes.","default"))?.payload).toMatchObject({ok:true,introBy:"default"});
- expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toEqual({id:"agent-introductions",agents:[{id:w.e.id,name:"Guide"}]});
+ expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toEqual({id:"agent-introductions",batches:[{fleetId:w.link.fleetId,fleet:null,more:false,agents:[{id:w.e.id,name:"Guide"}]}]});
  const other=await w.r.signIn("admin");expect((await w.r.call(other,"GET","/hub/v1/me/intro-notice")).json.notice).toBeNull();
  expect((await w.r.call(w.o,"DELETE","/hub/v1/me/intro-notice")).status).toBe(200);
  await w.send("A new introduction");await w.send("Default again","default");
+ expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toBeNull();
+});
+it("keeps the daily counter across service recreation and does not rate-limit the owner",async()=>{
+ const w=await world();for(let n=0;n<5;n++)await w.send(`Line ${n}`);
+ const {HubAgentIntroTool}=await import("../src/hub/agent-intro-tool.js"),{HubCore}=await import("../src/hub/http/core.js");
+ const restarted=new HubAgentIntroTool(new HubCore(w.r.httpDeps,w.r.sql));
+ expect(restarted.receive({exposureId:w.e.id,revision:1,text:"Six",source:"agent"},w.link,randomUUID())).toMatchObject({ok:false,code:"limit"});
+ expect((await w.r.call(w.o,"PUT",`/hub/v1/exposures/${w.e.id}/intro`,{revision:1,text:"Owner override"})).status).toBe(200);
+ expect((await w.read()).intro).toBe("Owner override");
+});
+it("the migration marks only pre-existing Fleet shares without an explicit introduction",async()=>{
+ const {default:Database}=await import("better-sqlite3"),{HUB_HTTP_MIGRATIONS}=await import("../src/hub/http/schema.js"),{applyHubMigrations}=await import("../src/hub/db.js");
+ const db=new Database(":memory:");try{
+  applyHubMigrations(db,HUB_HTTP_MIGRATIONS.filter(m=>m.component!=="s3-agent-intro-tool"));
+  const first=randomUUID(),edited=randomUUID();
+  for(const id of [first,edited])db.prepare("INSERT INTO hub_exposures(id,fleet_id,owner,display_name,revision,state,data_view_id,allowed_tools,policy_digest,updated_at) VALUES(?,?,?,'Guide',1,'published','agent','[]',?,1)").run(id,randomUUID(),"example/"+randomUUID(),"b".repeat(64));
+  db.prepare("INSERT INTO hub_agent_intros VALUES(?,'','owner',1)").run(edited);
+  applyHubMigrations(db,HUB_HTTP_MIGRATIONS);
+  expect(db.prepare("SELECT exposure_id FROM hub_agent_intro_existing").all()).toEqual([{exposure_id:first}]);
+  expect(db.prepare("SELECT COUNT(*) n FROM hub_agent_intro_notices").get()).toEqual({n:0});
+ }finally{db.close();}
+});
+
+it("reopens the same notice for a later Fleet, listing only its newly filled agents",async()=>{
+ const w=await world();w.r.db.prepare("INSERT INTO hub_agent_intro_existing VALUES(?)").run(w.e.id);await w.send("First default","default");await w.r.call(w.o,"DELETE","/hub/v1/me/intro-notice");
+ const link=w.r.link(randomUUID(),w.link.owner,1,["agent-intro-v1"]),e={...w.e,id:randomUUID(),fleetId:link.fleetId,displayName:"Second guide"};
+ w.r.store.mutate({requestId:randomUUID(),at:1,actor:{kind:"local-host"},action:"fixture",result:"completed"},state=>{state.fleets.push({id:link.fleetId,owner:link.owner,generation:1,status:"active",credentialHash:"a".repeat(64),label:"Another Fleet"});});
+ await w.r.http.receive(w.r.frame("exposure.snapshot",{revision:1,exposures:[e]},link) as never,link);w.r.db.prepare("INSERT INTO hub_agent_intro_existing VALUES(?)").run(e.id);
+ await w.send("Later default","default",randomUUID(),link,e.id);
+ expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toEqual({id:"agent-introductions",batches:[{fleetId:link.fleetId,fleet:"Another Fleet",more:true,agents:[{id:e.id,name:"Second guide"}]}]});
+ await w.r.call(w.o,"DELETE","/hub/v1/me/intro-notice");await w.send("Repeated default","default",randomUUID(),link,e.id);
  expect((await w.r.call(w.o,"GET","/hub/v1/me/intro-notice")).json.notice).toBeNull();
 });

@@ -210,7 +210,7 @@ export function HubPanel({ route }) {
   if (s && tab === "ask" && view === "notices" && noticesOffered(s)) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-notices">
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
-        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
+        ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${introNoticeOffered(s,hubClient()) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
         ${introNoticeOffered(s,hubClient())?html`<${IntroNotice} client=${hubClient()} />`:null}${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">

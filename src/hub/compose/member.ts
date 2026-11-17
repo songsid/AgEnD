@@ -712,7 +712,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
-      const intro = new HubMemberAgentIntro({current:live,exposures:()=>exposures.list().flatMap(row=>{const e=row.committed?.exposure;const agent=(options.catalogAgents?.()??[]).find(a=>a.instance===row.agent);const consent=row.committed&&db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(row.committed.consentId) as {agent:string;token:string}|undefined;return e&&e.state==="published"&&agent&&consent?.agent===row.agent&&options.representative.agentToken(row.agent)===consent.token?[{agent:row.agent,id:e.id,revision:e.revision,description:agent.description}]:[];})});
+      const intro = new HubMemberAgentIntro({current:roomCurrent,exposures:()=>exposures.list().flatMap(row=>{const e=row.committed?.exposure;const agent=(options.catalogAgents?.()??[]).find(a=>a.instance===row.agent);const consent=row.committed&&db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(row.committed.consentId) as {agent:string;token:string}|undefined;return e&&e.state==="published"&&agent&&consent?.agent===row.agent&&options.representative.agentToken(row.agent)===consent.token?[{agent:row.agent,id:e.id,revision:e.revision,description:agent.description}]:[];})});
       options.attachAgentIntro?.(intro);
       teardown.add("agent introductions",()=>{intro.close();options.attachAgentIntro?.(null);});
       const api = exposureMods.api.createHubMemberExposureApi({
@@ -792,11 +792,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if (l.current() && live()) {
             online = l;
-            intro.connected(l);
             catalog?.connected(l);
             sharingLink?.connected(l);
             quota.start(l);
             terminalHold = false; reportLink("online");
+            intro.connected(l);
             updates?.connected(l);
             startRooms(l);
             // Questions admitted while offline (or before a restart, with no input yet) go out on this link.
@@ -893,7 +893,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.attachExposures(null);
           options.attachSharing?.(null);
             intro.connected(null);
-          options.attachAgentRooms?.(null);
+            options.attachAgentRooms?.(null);
             options.attachAttention(null);
           });
           options.attachUpdates?.(updates);

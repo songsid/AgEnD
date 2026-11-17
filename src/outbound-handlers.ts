@@ -2571,7 +2571,7 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => asy
   if(kind === "intro") {
     if(!meta.operationId){respond(null,"Hub introductions require an operation identity");return;}
     const result=await ctx.hubSetIntro?.({agent:meta.instanceName,current},(parsed.data as {text:string}).text,meta.operationId)??{ok:false,code:"unavailable"};
-    const message=!result.ok?(result.code==="unsupported"?"This Hub doesn't support introductions yet.":result.code==="invalid"?"Not changed: an introduction is one line of at most 50 characters.":result.code==="limit"?"Not changed: this agent can change its introduction five times per UTC day.":"Not changed: this agent is not currently shared with a compatible connected Hub."):undefined;
+    const message=!result.ok?(result.code==="uncertain"?"Not confirmed: the introduction may already have changed. Check it on the Hub; do not resend as a new call.":result.code==="stale"?"Not confirmed: the invoking agent or Hub changed while this call was running.":result.code==="unsupported"?"This Hub doesn't support introductions yet.":result.code==="invalid"?"Not changed: an introduction is one line of at most 50 characters.":result.code==="limit"?"Not changed: this agent can change its introduction five times per UTC day.":"Not changed: this agent is not currently shared with a compatible connected Hub."):undefined;
     respond({...result,...(message?{message}:{})});return;
   }
   if (!ctx.hubRoomToolsAvailable?.()) { respond({ok:false,code:"unavailable",message:"This Fleet isn't connected to a Hub."}); return; }
