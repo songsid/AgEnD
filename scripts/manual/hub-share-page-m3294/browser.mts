@@ -133,6 +133,7 @@ try {
     await group.locator('[data-share-agent="notes"]').uncheck(); await page.locator(".hub-share-bar .btn-danger").click();
     await page.getByRole("button", { name: c.lang === "en" ? "Pause instead" : "改為暫停", exact: true }).waitFor();
     await page.screenshot({ path: join(out, c.tag + "-stop-confirm.png") });
+    if (process.env.VIEWS_ONLY === "1") { check(c.tag + ": no page errors", errors.length === 0); continue; }
     await page.getByRole("button", { name: c.lang === "en" ? "Cancel" : "取消", exact: true }).last().click();
     await page.locator(".hub-share-bar .btn").last().click();
     await group.locator("[data-share-all]").click(); await page.locator(".hub-share-bar .btn-primary").click();

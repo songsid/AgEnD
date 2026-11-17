@@ -14,7 +14,8 @@
 .hub-share-bar { position: sticky; bottom: var(--s-3); z-index: 5; display: flex; align-items: center; gap: var(--s-3); flex-wrap: wrap; padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-2); }
 .hub-share-bar > strong { flex: 1; }
 @media (max-width: 899px), (pointer: coarse) {
- .hub-my-agents .btn { min-height: 44px; }
+ .hub-my-agents .btn { min-height: 44px; min-width: 44px; }
+ .hub-my-agents a { display: inline-flex; align-items: center; min-height: var(--tap); min-width: var(--tap); }
  .hub-agent-choice .s-row { flex-wrap: wrap; }
  .hub-agent-choice .hub-row-text { min-width: 0; flex: 1 1 50%; }
  .hub-agent-fleet > summary .note { display: block; }
