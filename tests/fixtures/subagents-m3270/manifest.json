@@ -1,0 +1,22 @@
+{
+ "claude": "2.1.326",
+ "session": "43cb84b6-3551-4db6-84de-5edd5a712315",
+ "agent": "a2d43408cbd62385c",
+ "child": {
+  "records": 41,
+  "rawBytes": 372259,
+  "rawSha256": "0c313d28af8d228f2895848ebf0ff456f5cae98fab101d5b1fb208e6459da8a1"
+ },
+ "parentRecords": [
+  "user",
+  "assistant",
+  "user",
+  "attachment",
+  "queue-operation",
+  "queue-operation",
+  "attachment",
+  "queue-operation",
+  "attachment"
+ ],
+ "normalization": "Owned paths \u2192 /rig/\u2026; message texts, tool inputs/outputs, attachment and API payloads replaced or omitted; identity fields, field presence, record order and timestamps kept."
+}
