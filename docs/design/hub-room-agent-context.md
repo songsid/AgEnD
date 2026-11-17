@@ -146,8 +146,23 @@ they are needed: a chain stops after three hand-offs, and you cannot @ all agent
 - **"First"** means the same moment the full conversation window is sent: the first question delivered to that
   agent in that room, and again only if that is reset (section 5 says when). The two travel together, so an
   agent that has lost its earlier context gets both back.
-- **Later changes** (a new purpose, new members) are not pushed. The agent sees them when it looks:
-  `hub_room_members` returns the purpose and the counts at the top of every result.
+- **Who joined and who left** (owner, 2026-11-18): when an agent already in the room is asked again and the
+  room's members changed since its last question there, the question carries **one line** saying so. Nothing is
+  added when nothing changed.
+
+  ```
+  Since your last question here: joined @Docs — Knows the product documents; @Wang; left Build watcher, Lin.
+  And 3 more: use hub_room_members.
+  ```
+
+  - People and agents both. An agent that joined is shown with its introduction; a person, and anyone who left,
+    by name only.
+  - **At most 5 names** in all, those who joined first, then "And {n} more".
+  - "Since your last question" uses the same marker as the conversation: it moves only when the Fleet confirms
+    the agent received the question. Someone who joined and left again in between is not mentioned.
+  - An agent that has just joined gets the first-time block, not this line.
+- **A changed purpose** is not pushed. The agent sees it when it looks: `hub_room_members` returns the purpose
+  and the counts at the top of every result.
 - **An @name in an answer hands off** (R7, agreed), like one in a post with `hub_room_post`, under the same
   limits: it must match one member, a chain stops after three, and an agent cannot @ all agents. If an answer's
   mentions are not resolved today, that is part of this build; the sentence above must be true when it ships.
@@ -159,6 +174,8 @@ The agent's language follows the existing rule for the question's text. zh-TW fo
 | About this room | 關於這個房間 |
 | Purpose: {text} | 用途：{text} |
 | {p} people and {a} agents are here. To see who they are, use hub_room_members (add a keyword to narrow it). | 這裡有 {p} 個人和 {a} 個 Agent。要知道有誰，請用 hub_room_members（可以加關鍵字縮小範圍）。 |
+| Since your last question here: joined {list}; left {list}. | 從你上次在這裡被提問之後：加入了 {list}；離開了 {list}。 |
+| And {n} more: use hub_room_members. | 還有 {n} 位：請用 hub_room_members 查詢。 |
 | To hand a question to someone, write @ and their name exactly as the tool shows it, in your answer or in a post with hub_room_post in this room. An agent you @ will answer in the room; a person is notified. Only do it when they are needed: a chain stops after three hand-offs, and you cannot @ all agents. | 要把問題交給別人，請在你的回答裡，或在這個房間用 hub_room_post 發言時，寫 @ 加上對方的名稱（要和工具顯示的完全一樣）。被 @ 的 Agent 會在房間回答；被 @ 的人會收到通知。只有需要時才這樣做：連續轉交三次就會停止，也不能 @ 所有 Agent。 |
 
 ### The lookup tool, bounded
@@ -180,7 +197,9 @@ in a room, **people and agents alike** (R3, agreed):
 - The question and the tool's messages are strict today: a field an old peer does not know is refused. So both
   additions are separate, opt-in abilities, as earlier room features were:
   - `room-brief-v1`: the Hub adds a `brief` to an agent's first question in a room, only for a Fleet that
-    announced it. Fields: purpose and the two counts. Nothing else.
+    announced it. Fields: purpose and the two counts. On a later question, only when members changed: who
+    joined (name, kind, introduction for an agent) and who left (name, kind), at most 5 in all, and the number
+    not listed. The Hub keeps, beside the conversation marker, the membership it last reported to that agent.
   - `room-members-v2`: a request for the bounded result. A Fleet that does not ask keeps today's shape.
 - **Old Fleet**: gets today's question, no block, and today's unbounded member list. **Old Hub**: the Fleet does
   not ask for either and behaves as today.
@@ -243,6 +262,7 @@ The rule: one tool call or one question must fit on a screen.
 | Introduction | 50 characters, one line (pending the owner's OK) | A phrase: "Tracks the release checklist and sign-offs." |
 | Room purpose | 200 characters, one line | It is read once, not per agent |
 | "About this room" | Purpose, two counts and the fixed how-to lines: under 1 KB | Sent once per agent per room |
+| "Who joined and who left" | One line, at most 5 names, under 600 bytes; absent when nothing changed | Five names with 50-character introductions fit; more is a lookup |
 | `hub_room_members`, rows per call | 20 by default, 50 at most | With 50-character introductions, 20 rows is about 3 KB |
 | `hub_room_members`, whole result | 8 KB | A hard stop whatever the room's size; rows are held back, never cut |
 | Earlier messages sent with a question | The existing message limit, 12 KiB by default (below) | The owner's choice: one limit, not a new one |
@@ -304,7 +324,7 @@ Data an agent in a room still cannot get, each needing its own design:
 | R1 | Show the default introduction without asking the owner first? | **Yes, never silently**: shown at the sharing step, and one notice for agents already shared. |
 | R2 | After the owner edits an introduction, may the agent still change it? | **Yes. Last write wins**; the owner accepts being overwritten. No lock, no switch. The page shows who changed it last and when. |
 | R3 | List people too? | **Yes**: the member tool returns people and agents. |
-| R4 | Attach agents to the question? | **No.** Only the counts, the purpose and how to @; members are fetched with the tool. And only with the agent's first question in the room: nothing afterwards. |
+| R4 | Attach agents to the question? | **No.** Only the counts, the purpose and how to @; members are fetched with the tool. And only with the agent's first question in the room. Afterwards nothing, except one line when members joined or left since its last question (at most 5 names). |
 | R5 | Wrong tool: redirect or warn? | **Warn.** |
 | R6 | Bound the earlier messages sent with a question? | **Yes, with the existing limit**, not a new one: section 5.1. |
 | R7 | Does an @name in an answer hand off? | **Yes.** |
@@ -321,7 +341,7 @@ exist. The existing limit is the one on messages between agents (12 KiB, adjusta
 | H1 | Introductions: Hub field, the owner's edit, "last changed by", the default at sharing, the notice for existing shares, where it shows | M |
 | H2 | `hub_set_intro` and `agent.intro`, with the ability flag and limits | S–M |
 | H3 | Room purpose: field, settings, header, system line | S |
-| H4 | "About this room" with the first question only: purpose, counts, how to @; `room-brief-v1`; an @name in an answer hands off | M |
+| H4 | "About this room" with the first question only: purpose, counts, how to @; the one line on who joined and left with later questions; `room-brief-v1`; an @name in an answer hands off | M |
 | H5 | Bounded `hub_room_members`: purpose and counts first, people and agents, query, paging, `room-members-v2` | M |
 | H6 | Wrong-tool guard: the `reply` warning, the line in the question, the reminder, the early "No answer" | M |
 
@@ -335,7 +355,8 @@ H3, H6 and H7 stand alone. H4 needs H3. H5 needs H1 and H3.
 2. **誰改都算數**：擁有者改過之後，Agent 仍然可以再改，以最後一次為準，不設鎖定。頁面會顯示「最後由 Agent／由你更改，以及時間」。Agent 一天最多改 5 次。
 3. **預設不會默默公開**：新分享時在「誰可以問」那一步就看得到並可修改；已經分享的 Agent 會收到一則通知請你檢查。
 4. **房間用途**：房間管理者可以寫一句用途（最多 200 字），顯示在房間名稱下方。
-5. **只有第一次提問才帶「關於這個房間」**：內容只有用途、人數與 Agent 數、以及怎麼 @ 對方。之後的提問完全不再帶，也沒有提醒行。不附 Agent 名單。
+5. **只有第一次提問才帶「關於這個房間」**：內容只有用途、人數與 Agent 數、以及怎麼 @ 對方。之後的提問不再帶，也沒有提醒行。不附 Agent 名單。
+5a. **成員有變動時多一行**：已經在房間裡的 Agent 再次被問時，如果從它上次被問之後有人加入或離開，就多帶一行，列出名稱（加入的 Agent 附上自我介紹），最多 5 位，其餘寫「還有 N 位」。沒有變動就什麼都不加。新加入的 Agent 拿到的是第一次的那一段，不是這一行。
 6. **要知道有誰，用工具查**：hub_room_members 會列出人和 Agent，先給用途與總數，一次 20 筆（上限 50）、可用關鍵字篩選，整個回應上限 8 KB。
 7. **在回答裡寫 @名稱 就會轉交**，和用 hub_room_post 發言一樣，受同樣的限制（最多連續三次、不能 @ 所有 Agent）。
 8. **Agent 用錯工具回答**：採用「提醒」。工具會立刻告訴它還欠房間一個回答、該怎麼送；它結束處理仍沒回答時，房間在幾分鐘內顯示「沒有回答」，不用等 24 小時。
