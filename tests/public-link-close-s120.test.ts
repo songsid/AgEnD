@@ -135,6 +135,9 @@ describe("S-120: POST /ui/public-link/close", () => {
     expect(answer).toEqual({ status: 202, body: { ok: true, closing: true } });
     await vi.waitFor(() => expect(closeSpy).toHaveBeenCalledTimes(1));
     expect(closeSpy).toHaveBeenCalledTimes(1);
+    // The close runs after the answer: await the very call the handler started (the spy passes the real one through),
+    // never the state at some moment — it reads "closing" until that call has finished (b644a307 post-merge).
+    await closeSpy.mock.results[0]!.value;
     expect(h.fm.getPublicWebStatus().state).toBe("closed");
   }, 30_000);
 
