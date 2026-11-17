@@ -144,7 +144,7 @@ describe("Silver Ag dashboard icons", () => {
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
     // M-3278 (decision 7933bf90): an admin session's page over the link plays media from the link's own file route.
-    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : `https://${host}/ui/file/`);
+    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : `https://${host}/ui/file/`, path === "/signin" ? undefined : `https://${host}/ui/reply-preview`);
     if (path !== "/signin") {
       // …a read-only session there keeps downloads only (M-3278).
       const ro = d.sessions.create({ tier: "read", surface: "gateway", exposureId: exposure, label: "fixture-ro", tokenEpoch: tokenEpoch(token) });

@@ -71,8 +71,8 @@ function uiFiles(dir = UI): string[] {
   });
 }
 
-describe("the preview factory is the only frame (§5.3; #2799 removed the Canvas Worker one)", () => {
-  it("only the reviewed preview factory creates iframes or writes sandbox", () => {
+describe("HTML uses the reviewed preview factory; file PDFs use the exact authenticated endpoint", () => {
+  it("only the reviewed HTML factory and narrow PDF component create frames", () => {
     const hits = uiFiles().flatMap(f => {
       // Code only: comments may name these words.
       // Strip until nothing changes, so a comment that removal joins up is stripped too.
@@ -83,8 +83,12 @@ describe("the preview factory is the only frame (§5.3; #2799 removed the Canvas
       } while (src !== before);
       return [...src.matchAll(/createElement\(\s*["'`]iframe["'`]\s*\)|<iframe\b|["'`]sandbox["'`]|\.sandbox\b/gi)].map(m => `${f.slice(UI.length + 1)}: ${m[0]}`);
     });
-    expect(hits.sort()).toEqual([`${join("shared", "preview.js")}: createElement("iframe")`, `${join("shared", "preview.js")}: "sandbox"`].sort());
+    expect(hits.sort()).toEqual([`${join("shared", "preview.js")}: createElement("iframe")`, `${join("shared", "preview.js")}: "sandbox"`, "reply-file-preview.js: <iframe"].sort());
     expect(PREVIEW.indexOf('createElement("iframe")')).toBeGreaterThan(PREVIEW.indexOf("function mountPreview("));
+    const pdf = readFileSync(join(UI, "reply-file-preview.js"), "utf8");
+    expect(pdf).toContain('state.body?.kind === "pdf"');
+    expect(pdf).toContain('src=${replyPreviewUrl(open.instance, spec.path, "raw")}');
+    expect(pdf).not.toMatch(/srcdoc|allow-scripts/);
   });
 
   it("its attributes are exactly these: allow-scripts only, no permissions, no referrer — and the URL carries no content", () => {
