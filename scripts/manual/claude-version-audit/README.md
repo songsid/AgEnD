@@ -312,3 +312,30 @@ The binaries were 2.1.325 (sha256 `0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4e
   - The busy pattern was case-sensitive, so a retrying turn could look idle. The 429/5xx/401/403 notices use `/i` and still matched the "in Ns" form.
   - The no-wait form never showed in 350 frames sampled every 0.2 s (`retry-fast.sh`, not committed): the row moves on within the tick. Its fixture is the real 429 frame with only the wait replaced.
 - **Fixtures:** `tests/fixtures/claude-2.1.326-*.pane.txt`: the menu at 160 and 80 columns, the screen after Down and Enter, the 429/401/500 and generic-attempt retry rows (production launch), and the no-wait row. They are held by `tests/claude-2.1.326-surfaces.test.ts`. Paths in the frames are normalised to `/tmp/agend-audit/…`.
+
+## 2.1.325 → 2.1.326, part 2: sign-in screens, the queue marker and the full set (2026-11-17)
+
+Part 1 (the resume menu and the retry row) is its own section. Same binaries and the same passes.
+
+- **Classification:** all 62 captures, the gateway pair and the error frames now read alike under the production predicates, except the two known timing races:
+  - `123-mcp-enter-fast`: 2.1.326 took the instant Enter on the trust dialog as `No, exit`, while 2.1.325 dropped it. AgEnD never sends a bare Enter there; its trust entries move and check the cursor first, and production pre-trusts the folder.
+  - `132-danger-fast`: the instant Down+Enter race; this time 2.1.326 kept the menu on No.
+
+  Before the fixes below, `03-oauth-url` also differed: 2.1.326's sign-in screen read as nothing.
+- **The OAuth sign-in screen was redrawn.** "Browser didn't open? Use the URL below to sign in" (was "url"). The paste prompt is a label, `Paste code here if prompted`, over a boxed input, with `Esc to go back` as the last row. It was `Paste code here if prompted >`, which `claudeLoginScreenActive` anchored on.
+  - Now both shapes are recognised: the footer, then only the box and blank rows up to the label, and the URL above it.
+  - The plain-terminal `claude auth login` still prints `Paste code here if prompted > `, so the dashboard and Runtime sign-ins are unaffected.
+- **Cloud gateway** (user settings `forceLoginMethod: "gateway"` + a loopback `forceLoginGatewayUrl`, then `/login`; `gw.sh`, not committed):
+  - The URL screen's footer is composed from key hints: `Enter to connect · Esc to go back` (was `Press Enter to connect · Esc for other login methods`).
+  - The login-method menu that Esc returns to now ends with `Esc to cancel` under its options.
+  - Both are recognised now, along with the older footers.
+- **The native queue's marker** is a `⎿` row: `  ⎿  Queued · ctrl+x ctrl+s to send now` (was `  ctrl+x ctrl+s to send now`). The queue walk skipped it as a tip row, so `InputBox.queued` was lost.
+  - Delivery still proved itself by its unique id or its text on screen.
+  - The marker is now checked before the tip skip.
+- **`esc to interrupt` under the statusline:** 2.1.326 shows it in a running turn's footer even with AgEnD's statusline. The busy test is the spinner's slot, not the footer (#1239), so nothing changes.
+- **Cold-resume prompt, live** (`cold-resume/live.mts`, 326 cases added): `326-lookup`, `326-summary-lookup` and `326-summary-newfocus` all PASS. Each time the prompt was seen, Escape was sent, the history was kept and the prompt was gone.
+- **Fixtures:** `tests/fixtures/claude-2.1.326-*.pane.txt`, held by `tests/claude-2.1.326-screens.test.ts` (32 tests).
+  - The 33 screens of the 2.1.325 set, each from the same capture of this pass (`bypass-dialog-cursor-accept` from capture 92), the two live cold-resume frames, and the gateway URL screen and login-method menu.
+  - The queued-transcript fixture is not re-made: the transcript record types are unchanged.
+  - Paths are normalised to `/tmp/agend-audit/…`.
+- **Mutation checks:** reverting the OAuth shape, the gateway footer, the login-menu footer or the queue marker each turns the screens test red.
