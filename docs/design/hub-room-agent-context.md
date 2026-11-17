@@ -193,6 +193,7 @@ in a room, **people and agents alike** (R3, agreed):
 | A row | `id`, `kind`, `name`, `presence`, and for an agent `owner` and `intro`. A person's row has no introduction. One compact line each |
 | Order | With a query: best match first. Without: agents before people, ready before offline, then by name |
 | With no query in a large room | The first 20 and the counts, with the line "Add a query to narrow this." |
+| The room assistant | Keeps its own kind, `assistant`, with its fixed introduction. It is **not** counted among the agents, so the counts here, in "About this room" and in the room's header (which counts shared agents only) always agree. The counts line says separately whether the room has one. A `kind` of agent leaves it out |
 | Never | A row cut in the middle. When the size limit is reached, rows are held back and `next_cursor` is given |
 
 ### Protocol and old versions
