@@ -17,9 +17,8 @@ export const PINS_MAX = 50;
 /** { [instance]: { offered, pins: [{ key, role, sender, text, ts, files?, pinnedAt }] (newest first), rev } } */
 export const pinsStore = createStore({});
 
-const publicLink = () => typeof document !== "undefined" && document.body?.dataset?.publicLink === "1";
 /** Whether this page asks at all: never a guest's page or the public link (the host refuses them too). */
-export const pinsAsked = () => !guestPage() && !publicLink();
+export const pinsAsked = () => !guestPage();   // M-3278: the public link's admin too
 const put = (name, v) => { const all = pinsStore.get(); pinsStore.set({ ...all, [name]: { offered: false, pins: [], ...(all[name] || {}), ...v } }); };
 const listOf = (j) => (Array.isArray(j?.pins) ? j.pins.filter((p) => p && typeof p.key === "string") : []);
 

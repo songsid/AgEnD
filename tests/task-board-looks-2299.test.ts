@@ -74,7 +74,8 @@ describe("#2299 the task board's looks", () => {
     expect([...actions.children].map((c: any) => c.className)).toEqual(["muted", "btn btn-primary btn-sm"]);
   });
 
-  it("3. over the public link the card's project, priority, size and review are text — no select, no checkbox", async () => {
+  // M-3278 (decision 7933bf90): the public link's admin edits the card as here.
+  it("3. over the public link the card's project, priority, size and review are editable as here (M-3278)", async () => {
     (globalThis as any).document.body.dataset.publicLink = "1";
     await mount("public");
     fire(p.root.querySelector(".tb-project-open"), "click");
@@ -83,8 +84,8 @@ describe("#2299 the task board's looks", () => {
     await settle(8);
     const meta = p.root.querySelector("dialog .tc-meta") ?? (globalThis as any).document.querySelector("dialog .tc-meta");
     expect(meta, "the card is open").toBeTruthy();
-    expect(meta.querySelectorAll("select, input").length).toBe(0);
-    expect([...meta.querySelectorAll(".tc-value")].map((v: any) => v.textContent)).toEqual(["Leaderboard", "High", "Medium", "Stops at review for your confirmation"]);
+    expect(meta.querySelectorAll("select").length).toBeGreaterThan(0);
+    expect(meta.querySelectorAll("input[type=checkbox]").length).toBeGreaterThan(0);
   });
 
   it("4. the toasts are a manual popover, shown while there is one (into the top layer, above a dialog's backdrop)", async () => {

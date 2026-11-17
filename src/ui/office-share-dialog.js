@@ -4,8 +4,8 @@
 // #2716: the whole-fleet office can be shared too ("auto", the default while it is the one shown); #2715: the link's
 // look — light or dark as this dashboard shows it now (the default, the device's when it follows the device), or the
 // viewer's device's.
-// GET / POST /ui/office-share, DELETE /ui/office-share/<id|all> (web-api.ts): an admin session on the dashboard reached
-// directly only; the public link never offers these.
+// GET / POST /ui/office-share, DELETE /ui/office-share/<id|all> (web-api.ts): an admin session, on the dashboard reached
+// directly or over the public link (#2636 follow-up); never a guest or a read-only session.
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";

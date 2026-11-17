@@ -229,10 +229,9 @@ export function widgetFor(name, slot) {
 }
 
 const SIDEBAR_KEY = "widget.sidebar";
-const publicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
 /** The person's own sidebar widget (a synced preference), raw; null when none. Never on the public link or in safe mode. */
 export function sidebarWidgetRaw() {
-  if (publicLink() || safeMode()) return null;
+  if (safeMode()) return null;   // M-3278: the public link's admin too
   const f = prefInForce(SIDEBAR_KEY);
   let v = f ? f.value : undefined;
   if (!f) { try { v = JSON.parse(localStorage.getItem("agend_widget_sidebar") || "null"); } catch { v = null; } }

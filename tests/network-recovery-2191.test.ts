@@ -199,8 +199,10 @@ describe("operator retry route", () => {
     expect(call().res.writeHead).toHaveBeenCalledWith(403, expect.anything()); expect(retry).not.toHaveBeenCalled();
     expect(call(undefined, guest).res.writeHead).toHaveBeenCalledWith(403, expect.anything());
     expect(call(fm.webToken, undefined, true).res.writeHead).toHaveBeenCalledWith(403, expect.anything());
-    expect(call(undefined, publicAdmin, true).res.writeHead).toHaveBeenCalledWith(403, expect.anything());
     expect(retry).not.toHaveBeenCalled();
+    // M-3278 (decision 7933bf90): the public link's admin session retries too.
+    expect(call(undefined, publicAdmin, true).answer).toEqual({ queued: true }); expect(retry).toHaveBeenCalledOnce();
+    retry.mockClear();
     expect(call(fm.webToken).answer).toEqual({ queued: true }); expect(retry).toHaveBeenCalledOnce();
   });
 });

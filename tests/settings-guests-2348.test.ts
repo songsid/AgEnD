@@ -362,11 +362,12 @@ describe("Settings → Guests, as rendered (#2348)", () => {
     expect(sent.filter((s) => s.path === "/api/settings/guests/revoke").map((s) => s.body)).toEqual([{ adapterId: "dc", userId: "111" }]);
     expect(sent.filter((s) => s.path === "/api/settings/guests").length, "reloaded").toBe(before + 1);
   });
-  it("over the public link the card is not offered (the server never serves its list there), and nothing is read", async () => {
+  it("M-3278: over the public link an admin gets the card as anywhere, and its list is read", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     const w = await open();
-    expect(w.$(".s-guest-fields")).toBeNull();
-    expect(sent.filter((s) => s.path.startsWith("/api/settings/guests"))).toEqual([]);
+    expect(w.$(".s-guest-fields")).not.toBeNull();
+    expect(w.$(".s-guest-fields")?.disabled).toBe(false);
+    expect(sent.filter((s) => s.path === "/api/settings/guests").length).toBeGreaterThan(0);
   });
   it("a read-only card keeps every guest's details visible while edits and immediate actions remain unavailable", async () => {
     fleet = { defaults: {}, instances: { alpha: {}, beta: {} }, web: { guests: { enabled: true, grants: structuredClone(GRANTS) } } };

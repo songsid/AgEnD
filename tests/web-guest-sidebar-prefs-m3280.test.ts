@@ -44,10 +44,10 @@ describe("M-3280 guest sidebar choices stay in the guest bucket", () => {
     expect(f.prefs.read("operator").values).toEqual(host);
     expect((await f.call("guest", true, undefined, "900000000000000098")).body.values).not.toHaveProperty("nav.compactName");
   });
-  it("keeps admin local saves and its public-link refusal unchanged", async () => {
+  it("keeps admin local saves; an admin over the public link saves too (M-3278, decision 7933bf90)", async () => {
     const f = fixture(); expect((await f.call("admin", false, choice)).status).toBe(200);
     expect(f.prefs.read("operator").values).toMatchObject(choice);
-    expect((await f.call("admin", true, { "nav.density": "compact" })).status).toBe(403);
+    expect((await f.call("admin", true, { "nav.density": "compact" })).status).toBe(200);
   });
   it("does not inherit host nav choices or expose an ungranted agent in a guest preference view", async () => {
     const f = fixture(); f.prefs.write("operator", new Map<string, unknown>(Object.entries({ ...choice, "nav.favorites": ["hidden-agent"], "nav.collapsed": ["Hidden team"] })));

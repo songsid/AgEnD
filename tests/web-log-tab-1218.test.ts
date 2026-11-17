@@ -115,11 +115,11 @@ describe("off by default", () => {
     expect(puts).toEqual([{ url: "/api/settings/fleet/web", body: { log_tab: true } }]);
     expect(rows(pg)).toEqual([expect.stringContaining("Asked")]);
   });
-  it("over the public link: no Turn on (Settings cannot be written there) — where it can be turned on is said instead", async () => {
+  it("M-3278: over the public link Turn on is offered as anywhere (an admin writes Settings there too)", async () => {
     answers = [{ enabled: false }];
     const pg = await app("/ui/log/web-dev", { publicLink: "1" });
-    expect(pg.root.querySelector(".p-log .log-enable")).toBeNull();
-    expect(pg.root.querySelector(".p-log .log-off")?.textContent).toContain("Settings → Web");
+    expect(pg.root.querySelector(".p-log .log-enable")).not.toBeNull();
+    expect(pg.root.querySelector(".p-log .log-off")?.textContent).not.toContain("A fleet admin can turn it on in Settings → Web");
   });
 });
 

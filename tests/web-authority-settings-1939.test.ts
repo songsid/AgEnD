@@ -34,7 +34,7 @@ vi.mock("../src/backend/index.js", async original => ({ ...await original<typeof
 vi.mock("../src/tmux-manager.js", async original => ({ ...await original<typeof import("../src/tmux-manager.js")>(), TmuxManager: new Proxy({}, { get: () => () => { throw Error("No tmux"); } }) }));
 import { FleetManager } from "../src/fleet-manager.js";
 import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
-import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE } from "../src/web-auth.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { SettingsConfirmationStore } from "../src/settings-confirmation.js";
 import { SettingsHttpConfirmation } from "../src/settings-http-confirmation.js";
 import { SettingsBaselines } from "../src/settings-baseline.js";
@@ -107,6 +107,8 @@ function harness(fleet: Record<string, unknown> = {}) {
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const sid = sessions.create({ tier: "admin", surface: "local", label: "admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const guestSid = sessions.create({ tier: "guest", surface: "local", label: "guest", tokenEpoch: tokenEpoch(TOKEN), owner: { adapterId: "dc", userId: "999" } }).sessionId as string;
+  // M-3278: the public link's own admin session (its surface and exposure; the link reads only its __Host- cookie).
+  const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() },
     webAuthorityOverview: overview, revokeWebAuthority: revoke,
@@ -122,8 +124,10 @@ function harness(fleet: Record<string, unknown> = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
       req.method = method; req.url = url; req.destroy = () => undefined;
-      const who = opts.as === "guest" ? guestSid : opts.as === "none" ? "not-a-session" : sid;
-      req.headers = { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
+      const who = opts.as === "guest" ? guestSid : opts.as === "none" ? "not-a-session" : opts.publicLink ? gwSid : sid;
+      req.headers = opts.publicLink
+        ? { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) }
+        : { "idempotency-key": `k-${Math.random()}`, host: "localhost", origin: "http://localhost", cookie: `${WEB_SESSION_COOKIE}=${who}`, [WEB_CSRF_HEADER]: csrfTokenFor(who) };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
@@ -148,22 +152,29 @@ describe("through the gate and the real handler", () => {
     expect(h.raw().web.verified_authority).toEqual({ max_session_hours: 24 });
     expect(h.config.web.verified_authority.enabled).toBeUndefined();                      // on: the default
   });
-  it("a body it doesn't take (a step-up list) or a result the validator refuses (a 49 h age) is refused; over the public link nothing", async () => {
+  it("a body it doesn't take (a step-up list) or a result the validator refuses (a 49 h age) is refused; over the public link an admin's as anywhere (M-3278)", async () => {
     const h = harness();
     expect((await h.request("PUT", WEB, { verified_authority: { step_up: { enforce: ["merge"] } } })).status).toBe(400);
-    expect((await h.request("PUT", WEB, { verified_authority: { max_session_hours: 49 } })).status).toBe(400);
-    expect((await h.request("PUT", WEB, { verified_authority: { enabled: false } }, { publicLink: true })).status).toBe(403);
+    expect((await h.request("PUT", WEB, { verified_authority: { max_session_hours: 49 } }, { publicLink: true })).status).toBe(400);
     expect(h.save).not.toHaveBeenCalled();
+    expect((await h.request("PUT", WEB, { verified_authority: { enabled: false } }, { publicLink: true })).status).toBe(200);
+    expect(h.raw().web.verified_authority).toEqual({ enabled: false });
   });
-  it("GET /api/settings/web-authority and POST …/revoke (at once); neither for a non-admin nor over the public link", async () => {
+  it("GET /api/settings/web-authority and POST …/revoke (at once); never for a non-admin, over the public link an admin's too (M-3278)", async () => {
     const h = harness();
     expect(await h.request("GET", "/api/settings/web-authority")).toEqual({ status: 200, body: { state: { enabled: false, loopbackOnly: false, epoch: 0 } } });
     expect(await h.request("POST", "/api/settings/web-authority/revoke", {})).toEqual({ status: 200, body: { ok: true, epoch: 3, durable: true, kept: true } });
     expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { as: "guest" })).status).toBe(401);
     expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { as: "none" })).status).toBe(401);
-    expect((await h.request("GET", "/api/settings/web-authority", undefined, { publicLink: true })).status).toBe(403);
-    expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { publicLink: true })).status).toBe(403);
+    for (const as of ["guest", "none"] as const) expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { publicLink: true, as })).status, `link ${as}`).toBe(401);
     expect(h.revoke).toHaveBeenCalledTimes(1);
+    expect(await h.request("GET", "/api/settings/web-authority", undefined, { publicLink: true })).toEqual({ status: 200, body: { state: { enabled: false, loopbackOnly: false, epoch: 0 } } });
+    // Fable on #4100 (F3): the overview is an admin's only, on any listener.
+    for (const publicLink of [false, true]) for (const as of ["guest", "none"] as const) {
+      expect((await h.request("GET", "/api/settings/web-authority", undefined, { publicLink, as })).status, `GET ${as} publicLink=${publicLink}`).not.toBe(200);
+    }
+    expect((await h.request("POST", "/api/settings/web-authority/revoke", {}, { publicLink: true })).status).toBe(200);
+    expect(h.revoke).toHaveBeenCalledTimes(2);
   });
   it("AGEND-138: an admin who is not the verified owner is refused (403 owner_required) and nothing is revoked", async () => {
     const h = harness();
@@ -188,9 +199,10 @@ describe("§0.3: the quick-link option through the gate (#2819: on by default)",
       expect([r.status, r.body.result, h.store.opensLink(r.body.pending_change.id), h.save.mock.calls.length], String(quick_link)).toEqual([202, "pending_confirmation", true, 0]);
     }
   });
-  it("off, true over the default, or a true removed: written at once; and never over the public link", async () => {
+  it("off, true over the default, or a true removed: written at once; over the public link too (M-3278)", async () => {
     const dflt = harness();
-    expect((await dflt.request("PUT", WEB, { verified_authority: { quick_link: false } }, { publicLink: true })).status).toBe(403);
+    expect((await dflt.request("PUT", WEB, { verified_authority: { quick_link: false } }, { publicLink: true })).status).toBe(200);
+    expect(dflt.raw().web.verified_authority).toEqual({ quick_link: false });
     expect((await dflt.request("PUT", WEB, { verified_authority: { quick_link: false } })).status).toBe(200);
     expect(dflt.raw().web.verified_authority).toEqual({ quick_link: false });
     expect((await harness().request("PUT", WEB, { verified_authority: { quick_link: true } })).status).toBe(200);
@@ -206,10 +218,11 @@ describe("#2453 (§0.2): the named-link option through the gate", () => {
     const r = await h.request("PUT", WEB, { verified_authority: { named_link: true } });
     expect([r.status, r.body.result, h.store.opensLink(r.body.pending_change.id), h.save.mock.calls.length]).toEqual([202, "pending_confirmation", true, 0]);
   });
-  it("off: written at once; and never over the public link", async () => {
+  it("off: written at once; and over the public link an admin's as anywhere (M-3278)", async () => {
     const h = harness({ web: { verified_authority: { named_link: true } } });
-    expect((await h.request("PUT", WEB, { verified_authority: { named_link: true } }, { publicLink: true })).status).toBe(403);
-    expect((await h.request("PUT", WEB, { verified_authority: { named_link: null } })).status).toBe(200);
+    expect((await h.request("PUT", WEB, { verified_authority: { named_link: true } }, { publicLink: true })).status).toBe(200);
+    expect(h.raw().web.verified_authority).toEqual({ named_link: true });
+    expect((await h.request("PUT", WEB, { verified_authority: { named_link: null } }, { publicLink: true })).status).toBe(200);
     expect(h.raw().web.verified_authority).toBeUndefined();
   });
   it("control — an ordinary held change is not marked opensLink (no Notice-for-a-link, no strict-mode link refusal)", async () => {

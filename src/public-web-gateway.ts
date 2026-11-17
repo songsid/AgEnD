@@ -79,6 +79,21 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "DELETE" && /^\/ui\/page-share\/(?:[0-9a-f]{8}|all)$/.test(path)) return true;
   // #2478 (the user's request): global search, an admin's (the handler refuses a guest, and web.search.public_link: false).
   if (method === "GET" && (path === "/ui/search" || path === "/ui/search/context")) return true;
+  // M-3278 (decision 7933bf90, part 3): an admin session's writes over the public link as anywhere — the task board,
+  // schedules, teams, the Office editor and skin packs, agents' themes, Access's outside switch and closing the link. Each
+  // handler still admits an admin session only (a read-only session and a guest are refused there).
+  if ((method === "POST" || method === "PATCH" || method === "DELETE") && /^\/ui\/tasks(?:\/.*)?$/.test(path)) return true;
+  if (method === "POST" && path === "/ui/schedules") return true;
+  if ((method === "PATCH" || method === "DELETE") && /^\/ui\/schedules\/[^/]+$/.test(path)) return true;
+  if (method === "POST" && path === "/ui/teams") return true;
+  if ((method === "PATCH" || method === "PUT" || method === "DELETE") && /^\/ui\/teams\/[^/]+$/.test(path)) return true;
+  if (method === "PUT" && (path === "/ui/offices" || path === "/ui/office-style" || path === "/ui/office-level-titles")) return true;
+  if ((method === "POST" && path === "/ui/office-skins") || (method === "DELETE" && /^\/ui\/office-skins\/[A-Za-z0-9_-]{1,40}$/.test(path))) return true;
+  if ((method === "GET" || method === "POST") && /^\/ui\/office-pack-changes(?:\/[0-9a-f]{32})?$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/themes\/[^/]+\/(?:reset|lock|widget|ambient)$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/outside\/(?:enroll|enroll\/confirm|remove|switch|strict)$/.test(path)) return true;
+  if (method === "POST" && path === "/ui/public-link/close") return true;
+  if ((method === "GET" && path === "/ui/pins") || (method === "POST" && /^\/ui\/pins\/[^/]+$/.test(path))) return true;
   // M-3278 (decision 7933bf90): routes the dashboard needs that were simply missing here (no handler refuses the link and
   // none gave a reason): the model and effort pickers, and an agent's export/import (admin only, in their handlers).
   if (method === "GET" && (path === "/ui/models" || path === "/ui/effort-options")) return true;
@@ -93,6 +108,11 @@ export function isPublicWebRoute(method: string, path: string): boolean {
 function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
+  // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
+  // fixed address's test — an admin session's over the link as anywhere (the handlers admit an admin only).
+  if (method === "GET" && /^\/api\/settings\/(?:guests|guests\/people|web-authority|fleet\/appearance)$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/settings\/(?:guests\/send-code|guests\/revoke|web-authority\/revoke|public-link\/test|connections\/[^/]+\/retry)$/.test(path)) return true;
+  if (method === "PUT" && path === "/api/settings/fleet/appearance") return true;
   // M-3278 (decision 7933bf90): "Apply now" and the authenticator's confirmation of one's own pending change. The fleet
   // decides who may (settingsSelfConfirmation / settingsCodeSession, by web authority); before, this list refused them
   // before the handler — which says "over a link too" (AGEND-122).
