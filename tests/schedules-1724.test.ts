@@ -158,11 +158,12 @@ describe("the public link: an admin session writes as here (M-3278)", () => {
     expect([c.status, e.status, d.status, edited, scheduler.list().length, scheduler.get(s.id)])
       .toEqual([200, 200, 200, "changed", 1, null]);
   });
-  it("a read-only session over the link: refused — nothing created or edited", async () => {
+  it("a read-only session over the link: refused — nothing created, edited or deleted (Fable on #4100, F1: the delete too)", async () => {
     const s = scheduler.create({ cron: "0 9 * * *", message: "m", source: "agent", target: "alpha", reply_chat_id: "", reply_thread_id: null });
     const c = await call("POST", "/ui/schedules", { cron: "0 9 * * *", message: "x", target: "alpha" }, { publicLink: true, tier: "read" });
     const e = await call("PATCH", `/ui/schedules/${s.id}`, { message: "changed" }, { publicLink: true, tier: "read" });
-    expect([c.status, e.status, scheduler.list().length, scheduler.get(s.id)!.message]).toEqual([401, 401, 1, "m"]);
+    const d = await call("DELETE", `/ui/schedules/${s.id}`, undefined, { publicLink: true, tier: "read" });
+    expect([c.status, e.status, d.status, scheduler.list().length, scheduler.get(s.id)!.message]).toEqual([401, 401, 403, 1, "m"]);
   });
 });
 

@@ -184,6 +184,10 @@ describe("through the gate and the real handler", () => {
     for (const as of ["guest", "none"] as const) expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true, as })).status, `link ${as}`).toBe(401);
     expect(h.revoke).toHaveBeenCalledTimes(1);
     expect(await h.request("GET", "/api/settings/guests", undefined, { publicLink: true })).toEqual({ status: 200, body: { enabled: true, guests: [] } });
+    // Fable on #4100 (F3): the overview is an admin's only, on any listener.
+    for (const publicLink of [false, true]) for (const as of ["guest", "none"] as const) {
+      expect((await h.request("GET", "/api/settings/guests", undefined, { publicLink, as })).status, `GET ${as} publicLink=${publicLink}`).not.toBe(200);
+    }
     expect((await h.request("POST", "/api/settings/guests/revoke", { adapterId: "dc", userId: "111" }, { publicLink: true })).status).toBe(200);
     expect(h.revoke).toHaveBeenCalledTimes(2);
   });

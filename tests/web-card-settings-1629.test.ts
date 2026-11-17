@@ -87,6 +87,8 @@ function harness(fleet: Record<string, unknown> = {}) {
   // M-3278: the public link's own admin session (its surface and exposure; the link reads only its __Host- cookie).
   const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
   const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  // Fable on #4100 (F3): the handler asks for an admin session on every listener — the local page's is a real one too.
+  const localSid = sessions.create({ tier: "admin", surface: "local", label: "local admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
   const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() } } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
@@ -102,7 +104,8 @@ function harness(fleet: Record<string, unknown> = {}) {
       req.method = method; req.url = PATH; req.destroy = () => undefined;
       req.headers = opts.publicLink && !opts.anonymous
         ? { "idempotency-key": "k-1", host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gwSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(gwSid) }
-        : { "idempotency-key": "k-1", cookie: "opaque" };
+        : opts.anonymous ? { "idempotency-key": "k-1", cookie: "opaque" }
+        : { "idempotency-key": "k-1", host: "127.0.0.1:19280", cookie: `agend_session=${localSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(localSid) };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),

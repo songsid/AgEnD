@@ -154,6 +154,9 @@ describe("PATCH /ui/teams/<name>", () => {
       .toEqual([200, 200, 2, true, false, true, true, true]);
     const ro = await call("POST", "/ui/teams", { name: "ops", members: ["alpha"] }, { publicLink: true, tier: "read" });
     expect([ro.status >= 400, ro.saved, Object.hasOwn(ro.f.teams, "ops")], "a read-only session over the link").toEqual([true, 0, false]);
+    // Fable on #4100 (F1): nor deletes one (the handler asks the tier on every listener).
+    const rd = await call("DELETE", "/ui/teams/core", undefined, { publicLink: true, tier: "read" });
+    expect([rd.status, rd.saved, Object.hasOwn(rd.f.teams, "core")], "read-only delete over the link").toEqual([403, 0, true]);
   });
   it("#1693 r1: a session revoked, or the token rotated, while the body was on its way — nothing written, nothing saved", async () => {
     const outcomes: unknown[] = [];

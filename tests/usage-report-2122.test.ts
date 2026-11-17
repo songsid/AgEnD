@@ -453,9 +453,9 @@ describe("get_usage_report: scope and words", () => {
 
 describe("GET /ui/usage-report: who gets it", () => {
   const X = "a".repeat(32), ORIGIN = "https://sample.trycloudflare.com", TOKEN = "c".repeat(48);
-  function get(web: Record<string, unknown> | undefined, publicLink: boolean) {
+  function get(web: Record<string, unknown> | undefined, publicLink: boolean, tier: "admin" | "read" = "admin") {
     const sessions = new WebSessionStore();
-    const sid = sessions.create({ tier: "admin", surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
+    const sid = sessions.create({ tier, surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
     const cookie = publicLink ? `__Host-agend_session=${sid}` : `agend_session=${sid}`;
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/usage-report?range=today", headers: { host: publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280", cookie } as Record<string, string>, destroy: vi.fn() });
     let status = 0, body = "";
@@ -482,6 +482,12 @@ describe("GET /ui/usage-report: who gets it", () => {
     const unset = get(undefined, true); await settle();
     expect(unset.status()).toBe(200);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
+    expect(yes.status()).toBe(200);
+  });
+  it("Fable on #4100 (F2): a read-only session over the link gets it only when the owner opted in (true), as before", async () => {
+    const unset = get(undefined, true, "read"); await settle();
+    expect([unset.status(), unset.usageReport.mock.calls.length]).toEqual([403, 0]);
+    const yes = get({ usage_report_on_public_link: true }, true, "read"); await settle();
     expect(yes.status()).toBe(200);
   });
   /** The report held until `release`: what may change meanwhile is the switch, the session and the public link. */

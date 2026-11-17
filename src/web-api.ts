@@ -262,6 +262,15 @@ const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
 function linkRestricted(req: IncomingMessage, url: URL, ctx: WebApiContext): boolean {
   return !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx);
 }
+/**
+ * M-3278: the usage report (and the Office level numbers) over the public link — an admin's unless
+ * `web.usage_report_on_public_link: false`; any other session there only when the owner opted in (`true`), as before
+ * (Fable on #4100, F2).
+ */
+function linkUsageOffered(req: IncomingMessage, url: URL, ctx: WebApiContext): boolean {
+  const flag = ctx.fleetConfig?.web?.usage_report_on_public_link;
+  return linkRestricted(req, url, ctx) ? flag === true : flag !== false;
+}
 function boardHiding(ctx: WebApiContext, gateway: boolean) {
   const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
   const hiddenName = (n: unknown) => gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
@@ -2899,7 +2908,7 @@ export function handleWebRequest(
     const admitted = admissionOf(req, url, ctx);
     if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
     const detail = (): boolean => ctx.fleetConfig?.web?.usage_panel !== false
-      && (!gatewayRequestContext(req) || ctx.fleetConfig?.web?.usage_report_on_public_link !== false);   // M-3278: on by default
+      && (!gatewayRequestContext(req) || linkUsageOffered(req, url, ctx));
     void import("./office-levels.js").then(async ({ LEVEL, levelsFor }) => {
       const levels = await ctx.officeLevels!();
       // Asked again before it is sent (it was awaited): a session signed out or a switch turned off meanwhile.
@@ -3977,6 +3986,9 @@ export function handleWebRequest(
     return true;
   }
   if (method === "DELETE" && schedDelMatch) {
+    // Fable on #4100 (F1): a deletion is an admin's (or the CLI token's) as a create or an edit is — never a read-only session's,
+    // on any listener (the link's blanket refusal used to hide that this one never asked).
+    if (scheduleWriterGone()) { json(res, 403, { error: "schedule_needs_an_admin_session" }); return true; }
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     try {
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
@@ -4054,8 +4066,8 @@ export function handleWebRequest(
     // session signed out or a public link ended meanwhile gets nothing). The same boundary both times, no new gate.
     const refusal = (): [number, string] | null => {
       if (!ctx.usageReport || ctx.fleetConfig?.web?.usage_panel === false) return [404, "Not available"];
-      // M-3278 (decision 7933bf90): offered over the public link unless `web.usage_report_on_public_link: false`.
-      if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link === false) return [403, "usage_report_not_over_public_link"];
+      // M-3278 (decision 7933bf90): offered to an admin over the public link unless `web.usage_report_on_public_link: false`.
+      if (gatewayRequestContext(req) && !linkUsageOffered(req, url, ctx)) return [403, "usage_report_not_over_public_link"];
       return null;
     };
     // Over the public link, where to turn it on: Settings → Web dashboard on the dashboard reached directly (this computer's own
@@ -4168,6 +4180,9 @@ export function handleWebRequest(
 
   const teamDelMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if (method === "DELETE" && teamDelMatch) {
+    // Fable on #4100 (F1): an admin's (or the CLI token's) on any listener, as creating and editing a team.
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow" || (v.via === "session" && v.session?.tier !== "admin")) { json(res, 403, { error: "teams_need_an_admin_session" }); return true; }
     const name = decodeURIComponent(teamDelMatch[1]);
     // Own keys (#1689): a team is one fleet.yaml defines — "__proto__" or "constructor" is not found.
     if (!ctx.fleetConfig?.teams || !Object.hasOwn(ctx.fleetConfig.teams, name)) { json(res, 404, { error: `Team not found: ${name}` }); return true; }

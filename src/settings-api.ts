@@ -1060,6 +1060,8 @@ export function handleSettingsRequest(
   // ── #1920 phase 3: Settings → Web sign-ins → Guests. The list (GET) and an account's sign-out (POST — it only takes
   // away, so it is not a confirmed change). Never over the public link. The switches and lists are fleet/web's PUT.
   if (path === "/api/settings/guests" && method === "GET") {
+    // Fable on #4100 (F3): an admin's (or the CLI token's) on any listener — the overview names guests and their reach.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.guestOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.guestOverview());
@@ -1113,6 +1115,8 @@ export function handleSettingsRequest(
   // takes away, so it is not a confirmed change; the caller is asked again after the body, as the guests' sign-out).
   // Never over the public link. The switches and the lists are fleet/web's PUT.
   if (path === "/api/settings/web-authority" && method === "GET") {
+    // Fable on #4100 (F3): an admin's on any listener — it lists the authorized sessions and LAN hosts.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.webAuthorityOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.webAuthorityOverview(req));
@@ -1626,6 +1630,9 @@ export function handleSettingsRequest(
   // ── #1629 r4.1 Q3 (b): the identity card's upload limits (Settings → Appearance) — never over the public link: absent
   // from its manifest, and refused here too. A lower limit applies directly; a higher one is confirmed (settings-change.ts).
   if (path === "/api/settings/fleet/appearance" && (method === "GET" || method === "PUT")) {
+    // Fable on #4100 (F3): reading it is an admin's on any listener (a change comes through the confirmation gate, which asks
+    // who it is, and is applied by its replay).
+    if (method === "GET" && !guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     const view = (configured: unknown) => {
       const { limits, warnings } = effectiveAppearanceLimits(configured);

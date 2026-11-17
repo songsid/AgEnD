@@ -128,7 +128,7 @@ export class SettingsHttpConfirmation {
     if (isCliInstallPath(path) && !installPrincipal?.current()) { json(res, 401, { error: "session_required" }); return true; }
     // #1620: the tunnel token is never changed over the public link — the same rule as tokens and secrets. M-3278
     // (decision 7933bf90): the web settings and the appearance limits are proposed over the link as anywhere; what may be
-    // confirmed there is the settings role's (a change that opens a link still waits for a fleet admin).
+    // confirmed there is the settings role's (the leader's (a): a change that opens a link too, by Apply now or the code).
     if (path.startsWith("/api/settings/public-tunnel-token/") && gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     // M-2255: Settings → Runtime's switches and limit (who may run agents where) — refused before anything is proposed.
     if (path === "/api/settings/fleet/runtimes" && gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
