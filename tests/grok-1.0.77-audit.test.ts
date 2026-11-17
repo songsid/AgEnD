@@ -36,7 +36,7 @@ const LOGO = "Grok intro logo[Enter]";
 const TRUST = "Grok workspace trust[y]";
 const WEEKLY = "Grok Build weekly limit (Grok 週限)[]";
 const WEEKLY_RT = "Grok Build weekly limit (Grok 週限)[X]";
-const WEEKLY_SB = "Grok Build weekly limit scrollback (Grok 週限)[ ]";
+const WEEKLY_SB = "Grok Build weekly limit scrollback (Grok 週限)[\t]";
 const EMPTY = { text: "", collapsedPastes: 0 };
 
 const STEPS_120: Record<string, ReturnType<typeof verdict>> = {

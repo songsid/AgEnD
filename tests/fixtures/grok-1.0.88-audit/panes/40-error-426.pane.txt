@@ -1,0 +1,43 @@
+
+  master /r/work/errors-120                                                                  1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn d                                                                                          1:15 PM
+
+
+  ┃  Request failed (426): invalid_request_error: Upgrade required
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

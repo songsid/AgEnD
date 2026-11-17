@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/grok-1.0.88-audit.test.ts (7 tests | 1 failed) 80ms
+     × holds the actual unauthenticated screen even though the ready pattern sees a prompt 18ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/grok-1.0.88-audit.test.ts > Grok1.0.88 sign-in before a usable composer > holds the actual unauthenticated screen even though the ready pattern sees a prompt
+AssertionError: expected [] to deep equally contain ObjectContaining{…}
+
+- Expected:
+ObjectContaining {
+  "blocksDelivery": true,
+  "inputBlocked": true,
+  "keys": [],
+}
+
++ Received:
+[]
+
+ ❯ tests/grok-1.0.88-audit.test.ts:44:21
+     42|     expect(b.getReadyPattern().test(pane)).toBe(true);
+     43|     const startup = b.getStartupDialogs().filter(d => d.isActive ? d.i…
+     44|     expect(startup).toContainEqual(expect.objectContaining({ keys: [],…
+       |                     ^
+     45|     expect(active(b, pane)).toContainEqual(expect.objectContaining({ k…
+     46|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 6 passed (7)
+   Start at  21:26:16
+   Duration  4.45s (transform 3.26s, setup 110ms, import 4.07s, tests 80ms, environment 0ms)
