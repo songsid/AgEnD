@@ -41,3 +41,8 @@ Harness: `scripts/manual/hub-room-reply-h6/browser.mts`. `receipt.json` records 
 Early No answer needs two observed completed turns and a reminder handoff; it is not a timer that interrupts work. Unknown or interrupted work remains pending. An old Hub keeps the normal 24-hour expiry. The existing consent, conversation-generation and expiry fences still limit late answers. Warning reads use the local pending-state journal index and do not await a Hub request.
 
 There is no new SQL migration, but retained encrypted ask records gain optional obligation/proof fields. Restore the pre-change member-state backup when rolling back to a binary whose strict journal reader does not know them; do not delete the active journal to make an older binary start. Hub status data can fall back to its old pending/expiry presentation after a code rollback. No private message text is added to the Hub marker or audit.
+
+
+## Review follow-up
+
+The review found a missing regression pin: two completed turns while the reminder is unwired or has not reached its input must remain in phase one, without a marker identity or send. Both cases now assert that state, survive adapter restart, then allow the real reminder handoff before a later turn can escalate. The requested one-line mutant (`prior ? 2 : 1`) makes both cases fail; production transition code is unchanged. The localized full No answer sentence now has dedicated EN/zh-TW strings, with full-width Chinese punctuation, pinned in the thread projection tests. The original PNG packet predates this punctuation-only adjustment; no new browser matrix was run.

@@ -43,3 +43,11 @@ it("H6 a real answer wins while the No-answer marker is in flight",async()=>{
 it("H6 a cold agent binds the owned generation at positive input and still gets its reminder",async()=>{
  const w=await world(true,"en",true,true);expect(w.inputs[0].roomContextGeneration).toBeUndefined();expect(w.adapter.replyWarning("Notes")).toContain("report_result");await w.adapter.turnEnded("Notes",w.generation,"one");expect(w.reminders).toHaveLength(1);w.adapter.close();
 });
+
+it.each(["unwired","refused"])("H6 two completed turns without reminder input stay pending (%s)",async mode=>{
+ const w=await world();if(mode==="unwired")delete w.options.remind;else w.options.remind=vi.fn(async()=>false);
+ await w.adapter.turnEnded("Notes",w.generation,"one");await w.adapter.turnEnded("Notes",w.generation,"two");
+ const owed=w.adapter.obligations("Notes")[0].saved.owed;expect(owed.phase).toBe(1);expect(owed.reminderInput).toBeUndefined();expect(owed.markerId).toBeUndefined();expect(w.sent).toEqual([]);
+ w.adapter.close();const restored=w.create();await restored.flush();expect(w.sent).toEqual([]);
+ w.options.remind=async input=>input.beforeInput();await restored.flush();await restored.turnEnded("Notes",w.generation,"three");expect(w.sent).toHaveLength(1);expect(w.sent[0].notAnswered).toBe("finished-without-answer");restored.close();
+});

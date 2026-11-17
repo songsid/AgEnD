@@ -38,7 +38,7 @@ register("hubRoom", {
     searchResults: "Results", searchRooms: "Rooms and chats", searchBadgeRoom: "Room", searchBadgeChat: "Chat", searchCount: "{0} results",
     searchOlder: "Search older messages", searchKeys: "↑↓ move · Enter open · Esc close", jumpMissing: "That message is no longer in this room.",
     filterPh: "Filter: name or owner", filterClear: "Clear the filter",
-    laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer", noAnswerStopped: "No answer: {0} stopped sharing this agent.",
+    laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer", noAnswerUnanswered:"No answer: The agent finished without answering here", noAnswerStopped: "No answer: {0} stopped sharing this agent.",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
     // §4 composer
     composer: "Speak in “{0}”; @ an agent to have it answer",
@@ -172,7 +172,7 @@ register("hubRoom", {
     searchResults: "結果", searchRooms: "房間與聊天", searchBadgeRoom: "房間", searchBadgeChat: "聊天", searchCount: "{0} 筆結果",
     searchOlder: "搜尋更早的訊息", searchKeys: "↑↓ 移動 · Enter 開啟 · Esc 關閉", jumpMissing: "這則訊息已不在這個房間裡。",
     filterPh: "篩選：名稱或擁有者", filterClear: "清除篩選",
-    laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答", noAnswerStopped: "沒有回答：{0} 已停止分享這個 Agent。",
+    laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答", noAnswerUnanswered:"沒有回答：Agent 已結束處理，但沒有在這裡回答。", noAnswerStopped: "沒有回答：{0} 已停止分享這個 Agent。",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",
     composerShort: "說話，或 @ Agent 請它回答",

@@ -18,13 +18,14 @@ c7ba9dbf5a8cf82e28f6731208714f6cd975d25c3645edcc197f449815a778af  src/hub/rooms/
 e62e3f829c476a49448914a6c15a18a9cb1b4d37da5de84d335324b804314a37  src/hub/runtime.ts
 4208559527adb4efaa6929d81c883380a14ab3b1cca219d9062b1849f64f41ce  src/hub/server.ts
 40c9175c80fce4eeab33ed5f532df30e796ae3b4f18a998d7534f20bbd558fe8  src/hub/types.ts
-598b87612d7ba28980c4747c186289fc3c02ff2fb6d809de5ad3c1128cb38198  src/ui/hub-room-strings.js
-f5fa522caf70823081ec958cc5e2fcd6faf536b1ae87864bd007226b39ed71df  src/ui/hub-room-thread.js
+eb02de4fdb760b08f7282cb8f541dde7a2216eb3e3c665aff7348d8e35199d39  src/ui/hub-room-strings.js
+aa86f35ed8b98c1b91315b7f66d0057cffa443340247cfc9c3979510bca2bcb0  src/ui/hub-room-thread.js
 15989fea8d95b6adb48b3c71df823c96ca137d8d08b7c4f7c8828b6ee4df16b9  tests/agent-endpoint.test.ts
 cb1e9ee7388b3d64bfa39b85fc529eabf9b75a3ef23e112eaa9a2ee0576b1999  tests/hub-groups-mount-s89.test.ts
 f45e2e42f0cda356a8f6c9c86ecdb959d2188e4bc2ec1bd93a0782fef0d52529  tests/hub-room-answer-status-h6.test.ts
 9a545978e490fd9681a4207a68742073d6f25c4bc63d751b525351bc07295f5b  tests/hub-room-answer-status-link-h6.test.ts
 590d209d23e50c265776db4419b7090d4718c4f71f0a1c0079f8977ea8920c27  tests/hub-room-context-fleet-m3122.test.ts
 13f2f060ed1e1297bc30dc9824d285af49eb61c3c1de13818051acfb7cea2c6d  tests/hub-room-context-member-m3122.test.ts
-dd5bb1b19ed95f1ba293b8c78e75bdb4b85e9a8dc31e2bc4ff64accfd1808f2a  tests/hub-room-owed-h6.test.ts
+00767c45bddbca1a9a79c17ba206b541e42b8cb31243d6787585a7485e8c5dc7  tests/hub-room-owed-h6.test.ts
 5e5acbae2b760c98513566fd562cfb38f13c487bda593de7381374f0feed20ac  tests/hub-room-owed-wiring-h6.test.ts
+127f685eb362dc7e0799c19cc20836129e54291bd0b719108842dcf2283bfcde  tests/hub-room-thread-3092.test.ts
