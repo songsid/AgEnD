@@ -1,0 +1,10 @@
+CI repair for the old 07bd2ac5 run 44059572952. The runtime repair remains R1; this delta changes five existing tests only.
+
+- Shard 1: web-shell-routes still asserted that an admin's public-link shell contained no frame-src. It now pins exactly the link's own `/ui/reply-preview` source. Poll transport, no HTML-preview origin and no preview-runtime lookup stay asserted.
+- Shard 2: hub-preview-e pinned a two-piece Fleet wrapper, while the new file viewer is the third registered piece. The exact imports/registration list is updated and the shared-core prohibition now also includes the Fleet-only file viewer. Five web-icons cases pinned the old admin CSP; they now include the exact file endpoint. Their read-only, anonymous, icon, nonce, media and host checks remain.
+- Shard 3: web-preview pinned frame-src to only the HTML preview origin, or nothing when HTML was unavailable. It now pins the HTML origin plus exact own file endpoint; sign-in and anonymous view-only remain unchanged. The iframe factory inventory adds exactly the reviewed native-PDF component and pins its PDF-only branch, exact raw URL builder and absence of srcdoc/allow-scripts. The HTML factory's sandbox assertions remain intact.
+- Build was the failed-shard aggregate, with no separate source-build finding reported.
+
+The five affected suites contain 291 distinct passing cases across the final staged runs: four unchanged suites passed 142 cases; the final shell suite passed 149. The first local repair run had one test-only variable-scope mistake in the new expectation; returning the fixture origin fixed it, and that suite then passed. Test TypeScript has no diagnostics. No runtime source, image matrix or native campaign was repeated for this assertion repair.
+
+A plain merge consumed alpha b644a307 (#4105 and #4106). Applying the full pre-sync own patch to that alpha in an isolated index reproduced the entire merged tree. Incoming office/archive changes were retained; own source and tests are unchanged by that sync. The earlier source evidence, R1 controls and preferred image scopes carry. Fresh exact-head CI and Fable's verdict remain required.
