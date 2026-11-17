@@ -6,7 +6,7 @@ import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
 import { quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
-import { LOCAL_SESSION_HOURS, localSessionPolicy, PUBLIC_LINK_SESSION_BOUNDS, publicLinkSessionPolicy } from "./web-session.js";
+import { GUEST_SESSION_BOUNDS, guestSessionPolicy, LOCAL_SESSION_HOURS, localSessionPolicy, PUBLIC_LINK_SESSION_BOUNDS, publicLinkSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
 import { DASHBOARD_FEATURES, SEPARATE_FEATURE_KEYS, dashboardFeatureDefault, featureConfigKey, separateAccessValue, type DashboardFeature } from "./dashboard-permissions.js";
 import { isCodexSpeed } from "./backend/codex-speed.js";
@@ -194,7 +194,7 @@ const GUESTS = ["fleet", "web", "guests"] as const;
 /** At the gate's root (fleet.web.guests) and at the fleet's (web.guests — settings-authority.ts walks a fleet alone). */
 const atGuests = (path: readonly string[]): boolean => (path.length === 3 && GUESTS.every((k, i) => path[i] === k))
   || (path.length === 2 && path[0] === "web" && path[1] === "guests");
-const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow", "grants"];
+const GUEST_JUDGED: readonly string[] = ["enabled", "chat", "open_instances", "narrow", "grants", "session"];
 /**
  * #1920 phase 3: guest sign-in is judged by what it lets guests reach. Confirmed: turning it on, letting guests chat,
  * naming more agents for an open connection, and widening or lifting one guest's narrowing. Applied directly: the
@@ -213,6 +213,26 @@ function guestsChange(old: unknown, next: unknown): Array<[string, unknown, unkn
     if (typeof x !== "boolean" || typeof y !== "boolean" || (y === true && x !== true)) out.push([key, a[key], b[key]]);
   };
   flag("enabled", false); flag("chat", true);
+  // M-3276: the session limits, judged as sessionChange judges the local ones — by the policy they GIVE
+  // (guestSessionPolicy): a longer sign-in or idle window is confirmed; a shorter one applies at once; a value the store
+  // would not take as written (out of bounds, not a number) is never applied quietly.
+  if (changed.includes("session")) {
+    const sa = a.session, sb = b.session;
+    if ((sa !== undefined && sa !== null && !object(sa)) || (sb !== undefined && sb !== null && !object(sb))) out.push(["session", sa, sb]);
+    else {
+      const x: Record<string, unknown> = object(sa) ? sa : {}, y: Record<string, unknown> = object(sb) ? sb : {};
+      const before = guestSessionPolicy(x), after = guestSessionPolicy(y);
+      const looser: Record<string, boolean> = { absolute_hours: after.absoluteMs > before.absoluteMs, idle_minutes: after.idleMs > before.idleMs };
+      const { absoluteHours: ah, idleMinutes: im } = GUEST_SESSION_BOUNDS;
+      const range: Record<string, { min: number; max: number }> = { absolute_hours: ah, idle_minutes: im };
+      for (const key of new Set([...Object.keys(x), ...Object.keys(y)])) {
+        if (same(x[key], y[key])) continue;
+        const v = y[key];
+        const taken = Object.hasOwn(range, key) && (v === undefined || v === null || (typeof v === "number" && Number.isFinite(v) && v >= range[key]!.min && v <= range[key]!.max));
+        if (!taken || looser[key]) out.push([`session.${key}`, x[key], y[key]]);
+      }
+    }
+  }
   const lists = (v: unknown): Record<string, unknown> => (object(v) ? v : {});
   const names = (v: unknown): string[] | null => (Array.isArray(v) && v.every(n => typeof n === "string") ? v as string[] : null);
   for (const key of ["open_instances", "narrow"] as const) {
