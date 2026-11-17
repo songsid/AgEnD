@@ -143,11 +143,13 @@ nothing from the Fleet.
 
 ### 2.6 Rows that cannot be ticked, and why
 
-The checkbox is greyed and the reason replaces the description.
+The checkbox is greyed and the reason replaces the description, except where a reason applies to a whole Fleet:
+then it is said once in the group's header (settled at the first build review, M-3294). A Fleet too old to send
+its list shows "{n} shared" / 「已分享 {n}」 with no total, since its unshared agents are unknown.
 
 | Case | EN | zh-TW |
 |---|---|---|
-| Fleet offline | This Fleet is offline. Shown as last seen at {time}. | 這個 Fleet 目前離線，顯示的是 {time} 的狀態。 |
+| Fleet offline (said once, in the group's header; its rows are greyed and keep their descriptions) | Offline · last seen {time} · {n} of {m} shared | 離線 · 最後上線 {time} · 已分享 {n} / {m} |
 | Administrator has not allowed sharing (banner above the groups; every unshared row greyed) | Your Hub administrator hasn't allowed you to share agents. | Hub 管理員還沒有允許你分享 Agent。 |
 | ClassicBot room, until M-3285 lands | ClassicBot rooms can't be shared yet. | ClassicBot 房間還不能分享。 |
 | Windows one-shot agent | This kind of agent can't answer Hub questions yet. | 這種 Agent 還不能回答 Hub 的提問。 |
