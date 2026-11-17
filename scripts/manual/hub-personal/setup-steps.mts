@@ -13,6 +13,7 @@ import {HubPersonalOwnerHost} from "../../../src/hub/personal/owner-host.js";
 import {HubPersonalTurns} from "../../../src/hub/personal/turns.js";
 import {createHubTeams,HUB_TEAMS_MIGRATION,HUB_TEAM_MANAGEMENT_MIGRATION,HUB_TEAM_GRANTS_MIGRATION} from "../../../src/hub/teams/index.js";
 import {personKeyString} from "../../../src/hub/identity.js";
+import {createHubRoomInvitations} from "../../../src/hub/invitations.js";
 if(process.platform!=="linux")throw Error("This walk runs headless inside Linux/WSL only");
 const phase=process.env.PHASE??"before";
 const out=resolve(process.env.OUT??`.artifacts/m3262/${phase}`);mkdirSync(out,{recursive:true});
@@ -25,18 +26,23 @@ const server=createServer(runtimeUpdateTlsFixture(),(req,res)=>{if(!rig?.http.ha
 await new Promise<void>(resolve=>server.listen(0,"127.0.0.1",resolve));const origin=`https://127.0.0.1:${(server.address() as {port:number}).port}`;
 rig=await s3bRig({realAudit:true,webOrigin:origin});const r=rig;
 for(const migration of [HUB_TEAMS_MIGRATION,HUB_TEAM_MANAGEMENT_MIGRATION,HUB_TEAM_GRANTS_MIGRATION])migration.up(r.db);
+const controlAdmin=await r.signIn("admin");
+const invitationsBefore=(await r.call(controlAdmin,"GET","/hub/v1/invitations")).status;
+r.httpDeps.roomInvitations=createHubRoomInvitations;
 r.httpDeps.teams=core=>createHubTeams(core);
 r.httpDeps.personalAgents=core=>{const owner=new HubPersonalOwnerHost(core,runtime);turns=new HubPersonalTurns(core,runtime,owner);return {owner,turns};};
 r.httpDeps.personalInstaller=()=>({version:"2.4.0-fixture",scriptSha256:"a".repeat(64),scriptBytes:1,bundleSha256:"b".repeat(64)});
 const owners=[r.addPerson("alex","Alex"),r.addPerson("wang","王經理")];
 r.directory.searchGrantPeople=async q=>({ok:true,truncated:false,people:owners.filter((_,i)=>["Alex","王經理"][i]!.toLowerCase().includes(q.toLowerCase())).map((person,i)=>({person,login:personKeyString(person)===personKeyString(owners[0]!)?"alex":"wang",displayName:personKeyString(person)===personKeyString(owners[0]!)?"Alex":"王經理"}))});
 await r.restartHttp();const admin=await r.signIn("admin");
+const invitationsAfter=await r.call(admin,"GET","/hub/v1/invitations");
 const pw=createRequire(resolve(process.env.PW_DIR??".artifacts/browser-tools","package.json"))("playwright");
 let browser:any;
-const receipt:any={sourceCommit:execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),phase,scope:"M3262; Headless WSL; real product shell/HTTP/SQL/audit; inert directory and Runtime inventory/turn; no Windows process/auth/provider/installer execution. Command token masked only in screenshot.",checks:[],pictures:[]};
+const receipt:any={sourceCommit:execFileSync("git",["rev-parse","HEAD"],{encoding:"utf8"}).trim(),phase,scope:"M3262; Headless WSL; real product shell/HTTP/SQL/audit; inert directory and Runtime inventory/turn; no Windows process/auth/provider/installer execution. Command token masked only in screenshot.",rigInvitations:{beforeMountStatus:invitationsBefore,afterMountStatus:invitationsAfter.status},checks:[],pictures:[]};
 const check=(name:string,ok:unknown)=>{receipt.checks.push({name,pass:!!ok});if(!ok)throw Error(name);};
 const until=async(fn:()=>boolean)=>{const deadline=Date.now()+5000;while(!fn()){if(Date.now()>=deadline)throw Error("State wait expired");await new Promise(resolve=>setTimeout(resolve,25));}};
 try{
+ check("invitations-service-control",invitationsBefore===404&&invitationsAfter.status===200&&Array.isArray(invitationsAfter.json.invitations));
  browser=await pw.chromium.launch({headless:true,args:["--no-sandbox"]});
  for(const [index,[device,language,theme]] of [["desktop","en","light"],["phone","zh-TW","dark"]].entries()){
   if(process.env.DEVICE&&process.env.DEVICE!==device)continue;
@@ -60,6 +66,7 @@ try{
     const box=await card.boundingBox();receipt.geometry??=[];receipt.geometry.push({name:`${tag}/${name}`,height:Math.ceil(box.height),viewportHeight:viewport.height,top:Math.floor(box.y),bottom:Math.ceil(box.y+box.height)});
     check(`${tag}/${name}/one-screen`,box.y>=0&&box.y+box.height<=viewport.height+1);
    }
+   check(`${tag}/${name}/no-invitation-error`,await p.locator(".hub-invitations-error").count()===0);
    const codes=card.locator("pre code"),originals=await codes.allTextContents();
    for(let n=0;n<originals.length;n++)await codes.nth(n).evaluate((el:HTMLElement)=>{el.textContent=el.textContent!.replace(/agend_enroll_[A-Za-z0-9_-]+/g,"[private one-time token]");});
    check(`${tag}/${name}/no-token`,!(/agend_enroll_[A-Za-z0-9_-]{43}/.test(await card.textContent())));
@@ -67,7 +74,7 @@ try{
    for(let n=0;n<originals.length;n++)await codes.nth(n).evaluate((el:HTMLElement,text:string)=>{el.textContent=text;},originals[n]);
    await p.setViewportSize(viewport);
   };
-  const openMine=async(cookie:string)=>{await sign(cookie);const response=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/me/personal-agent")&&res.request().method()==="GET");await p.goto(origin+"/ui/hub/exposures");await response;};
+  const openMine=async(cookie:string)=>{await sign(cookie);const response=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/me/personal-agent")&&res.request().method()==="GET");const invited=p.waitForResponse((res:any)=>res.url().endsWith("/hub/v1/invitations")&&res.request().method()==="GET");await p.goto(origin+"/ui/hub/exposures");await response;const result=await invited;check(`${tag}/invitations-http`,result.status()===200&&Array.isArray((await result.json()).invitations));};
   await openMine(admin.cookie);await p.getByText(phase==="before"?(index?"這個 Hub 尚未啟用個人 Agent。":"Personal agents are not enabled on this Hub."):(index?'這個 Hub 還沒有開啟個人 Agent。':'Personal agents are turned off on this Hub.'),{exact:true}).waitFor();await shot("disabled-admin","[data-personal-agent]");
   if(phase!=="before"){await p.getByRole("link",{name:index?"前往設定":"Open the setting",exact:true}).click();await p.locator("#hub-personal-agents form").waitFor();await p.waitForFunction(()=>{const heading=document.querySelector("#hub-personal-agents h3"),box=heading?.getBoundingClientRect();return new URLSearchParams(location.search).get("section")==="personal-agents"&&(window as any).__personalScroll>0&&box&&box.top>=0&&box.bottom<=innerHeight;});check(`${tag}/admin-link-target`,true);}
   if(process.env.CHECK_LINK_ONLY){await ctx.close();break;}
@@ -99,6 +106,6 @@ try{
   reported.status="offline";await p.waitForFunction(expected=>document.querySelector("[data-personal-agent] .tag")?.textContent?.includes(expected),index?"上線時回答":"Answers when connected");await shot("offline","[data-personal-agent]");
   check(`${tag}/no-page-errors`,errors.length===0);await ctx.close();
  }
- check("checked-screens",receipt.pictures.length===(process.env.CAPTURE_STATES?process.env.CAPTURE_STATES.split(",").length*(process.env.DEVICE?1:2):process.env.CHECK_LINK_ONLY?1:phase==="compact"?16:14)&&receipt.checks.length>0);
+ check("checked-screens",receipt.pictures.length===(process.env.CAPTURE_STATES?process.env.CAPTURE_STATES.split(",").length*(process.env.DEVICE?1:2):process.env.CHECK_LINK_ONLY?1:phase==="compact"?(process.env.DEVICE?8:16):14)&&receipt.checks.length>0);
  writeFileSync(join(out,"receipt.json"),JSON.stringify(receipt,null,2)+"\n");console.log(JSON.stringify({checks:receipt.checks.length,pictures:receipt.pictures.length,pass:true}));
 }finally{await browser?.close();await r.close();runtime.close();server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));rmSync(privateHome,{recursive:true});}
