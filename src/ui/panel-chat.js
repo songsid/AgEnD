@@ -1,3 +1,4 @@
+import { previewReplyFile, replyPreviewLabel } from "./reply-file-preview.js";
 import { NativePaneRecovery } from "./native-pane-recovery.js";
 import { GeneralLocation } from "./general-location.js";
 // #1408 step 1: the chat panel. Behind the session gate (/ui/js/), loaded by the app with a dynamic import in "full"
@@ -770,6 +771,8 @@ function threadEntry(name, doc) {
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
     panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
       openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
+    previewFile: !guestPage() ? (spec, opener, msgKey) => previewReplyFile(name, spec, opener, msgKey) : undefined,
+    previewFileLabel: replyPreviewLabel,
     openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names

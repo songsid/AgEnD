@@ -16,6 +16,7 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && isWebIconPath(path)) return true;
+  if (method === "GET" && path === "/ui/reply-preview") return true; // handler requires an admin session on every read
   if (reads && ["/", "/signin", "/signin/authenticator", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).

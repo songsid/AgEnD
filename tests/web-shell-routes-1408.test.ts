@@ -312,16 +312,16 @@ describe("the public link (#1367)", () => {
     const res = Object.assign(new EventEmitter(), { headersSent: false, setHeader(k: string, v: string) { headers[k.toLowerCase()] = v; }, writeHead(c: number) { status = c; }, end(t = "") { body = String(t); }, write() { return true; } });
     const previewForUi = vi.fn(() => ({ dashboardOrigin: pub, previewOrigin: "https://x.example", reason: null, boot: "b".repeat(16) }));
     handleWebRequest(req as never, res as never, new URL(path, pub), { webToken: token, webSessions: store, previewForUi, logger: { info() {}, debug() {}, error() {}, warn() {} } } as never);
-    return { status: () => status, body: () => body, headers, previewForUi };
+    return { status: () => status, body: () => body, headers, previewForUi, origin: pub };
   }
-  it("the shell polls (no stream on this link) and has no previews, on every entry", () => {
+  it("the shell polls, has no HTML preview runtime, and permits only its admin file frame", () => {
     for (const p of ["/ui", "/ui/chat/web-dev", "/ui/fleet/teams"]) {
       const r = gatewayGet(p);
       expect(r.status(), p).toBe(200);
       const tag = /<body[^>]*>/.exec(r.body())![0];
       expect(tag, p).toContain('data-web-transport="poll"');
       expect(tag, p).toContain('data-preview-origin=""');
-      expect(r.headers["content-security-policy"], p).not.toContain("frame-src");
+      expect(r.headers["content-security-policy"].split(";").map(s => s.trim()).find(s => s.startsWith("frame-src ")), p).toBe(`frame-src ${r.origin}/ui/reply-preview`);
       expect(r.previewForUi, p).not.toHaveBeenCalled();
     }
   });

@@ -416,6 +416,16 @@ export function createThread(list, scroller, opts) {
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
     if (x?.sourceBadge) opts.senderBadge?.(node.querySelector(".meta .sender"), x);
+    if (x?.role === "agent" && typeof opts.previewFile === "function" && Array.isArray(x.previews)) {
+      const row = list.ownerDocument.createElement("div"); row.className = "rb-row reply-previews"; row.dataset.trust = "thread-control";
+      x.previews.slice(0, 10).forEach((spec, i) => {
+        if (!spec || typeof spec.path !== "string") return;
+        const button = list.ownerDocument.createElement("button"); button.type = "button"; button.className = "chip-btn"; button.dataset.replyPreview = String(i);
+        button.textContent = opts.previewFileLabel?.(spec) || spec.path;
+        button.addEventListener("click", () => opts.previewFile(spec, button, msgKey(x))); row.append(button);
+      });
+      node.querySelector(".body")?.append(row);
+    }
     return node;
   }
 

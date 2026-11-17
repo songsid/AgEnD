@@ -1,0 +1,51 @@
+{
+  "initialWalk": [
+    {
+      "device": "desk",
+      "before": false,
+      "errors": []
+    },
+    {
+      "device": "phone",
+      "before": false,
+      "errors": []
+    }
+  ],
+  "documentRepair": [
+    {
+      "device": "desk",
+      "before": false,
+      "errors": []
+    },
+    {
+      "device": "phone",
+      "before": false,
+      "errors": []
+    }
+  ],
+  "pdf": {
+    "pages": 1,
+    "encrypted": false,
+    "javascript": false,
+    "visibleText": "Example PDF preview",
+    "nativeViewerObserved": true,
+    "consoleFrameRefusals": 0
+  },
+  "preferredImageReview": {
+    "before": 2,
+    "after": 12,
+    "allClear": true
+  },
+  "types": {
+    "sourceExit": 0,
+    "testsExit": 0,
+    "note": "Both programs had no diagnostics after the file-frame CSP fix. Final PDF response repair changes only header strings plus an existing assertion."
+  },
+  "resources": {
+    "browserClosed": true,
+    "listenersClosed": true,
+    "slotReleased": true,
+    "headlessLinuxOnly": true,
+    "liveFleetOrModels": false
+  }
+}
