@@ -270,7 +270,7 @@ The rule: one tool call or one question must fit on a screen.
 |---|---|---|
 | Introduction | 50 characters, one line (pending the owner's OK) | A phrase: "Tracks the release checklist and sign-offs." |
 | Room purpose | 200 characters, one line | It is read once, not per agent |
-| "About this room" | Purpose, two counts and the fixed how-to lines: under 1 KB | Sent once per agent per room |
+| "About this room" | Purpose, two counts and the fixed how-to lines: at most 2 KiB (2,048 bytes) | Measured by the builder: about 640 bytes in English and 1,076 in zh-TW with a full 200-character purpose, so a normal purpose is never cut in either language. Beyond 2 KiB, only the purpose is cut, at a whole character, ending "… (cut: full purpose in hub_room_members)" / 「…（已截短，完整用途請用 hub_room_members 查詢）」; the counts and the how-to lines are never dropped |
 | "Who joined and who left" | One line, at most 5 names, under 600 bytes; absent when nothing changed | Five names with 50-character introductions fit; more is a lookup |
 | `hub_room_members`, rows per call | 20 by default, 50 at most | With 50-character introductions, 20 rows is about 3 KB |
 | `hub_room_members`, whole result | 8 KB | A hard stop whatever the room's size; rows are held back, never cut |
