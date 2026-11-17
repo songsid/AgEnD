@@ -46,7 +46,7 @@ export interface CliRuntimeSwitchEntry {
 const ONE_TOKEN = /^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,127}$/;
 
 // ── muse ────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
-// Rig (scripts/manual/muse-version-audit/switch.sh; 1.4.4, 1.4.6, 1.4.20, offline): `/model ID` answers `Model set to ID for this session
+// Rig (scripts/manual/muse-version-audit/switch.sh; 1.4.4, 1.4.6, 1.4.20, 1.4.23, offline): `/model ID` answers `Model set to ID for this session
 // (saved model unchanged)` and keeps the effort; `/effort LEVEL` answers nothing; both show at once in the footer `MODEL · EFFORT · <cwd> · …`.
 // A bad level is refused (`◆ unsupported reasoning effort …`); ANY model id is taken (`/model nosuch-model` too), so the fleet checks the
 // name against muse's catalog first. `/model ID` is a one-command switch from 1.4.6 (1.4.4 answers `◆ model catalog has no visible
