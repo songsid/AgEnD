@@ -1,0 +1,61 @@
+/** Separate owner-only inventory: never used by the shared-agent directory or app tools. */
+import type Database from "better-sqlite3";
+import { agentCatalogSchema, HUB_AGENT_CATALOG_CAPABILITY, type HubAgentCatalog } from "./agent-catalog-model.js";
+import { canonicalArguments, personKeyString } from "./identity.js";
+import { HubProtocolError, validated } from "./validation.js";
+import type { HubCore } from "./http/core.js";
+import type { HubLinkContext } from "./server.js";
+import type { HubRequestContext } from "./types.js";
+
+export const HUB_AGENT_CATALOG_MIGRATION = Object.freeze({ component:"s3-agent-catalog",version:1,up(db:Database.Database) {
+  db.exec("CREATE TABLE hub_agent_catalogs(fleet_id TEXT PRIMARY KEY,owner TEXT NOT NULL,generation INTEGER NOT NULL,revision TEXT NOT NULL,body TEXT NOT NULL,received_at INTEGER NOT NULL)");
+} });
+interface Row { owner:string;generation:number;revision:string;body:string;received_at:number }
+export class HubAgentCatalogs {
+  private readonly links=new Map<string,HubLinkContext>();
+  private readonly reports=new WeakSet<HubLinkContext>();
+  constructor(private readonly core:HubCore) {}
+  connected(link:HubLinkContext):void { if(link.current())this.links.set(link.fleetId,link); }
+  prune():void {
+    this.core.atomic(db=>{
+      const fleets=this.core.deps.store.read().fleets;
+      for(const row of db.prepare("SELECT fleet_id,owner,generation FROM hub_agent_catalogs").all() as (Row&{fleet_id:string})[]) {
+        if(!fleets.some(f=>f.id===row.fleet_id&&f.status==="active"&&f.generation===row.generation&&personKeyString(f.owner)===row.owner)) db.prepare("DELETE FROM hub_agent_catalogs WHERE fleet_id=?").run(row.fleet_id);
+      }
+    });
+  }
+  report(value:unknown,link:HubLinkContext):void {
+    const body=validated(agentCatalogSchema,value);
+    if(!link.features.has("welcome-caps-v1")||!link.features.has(HUB_AGENT_CATALOG_CAPABILITY))throw new HubProtocolError("incompatible");
+    this.core.atomic(db=>{
+      if(!link.current())throw new HubProtocolError("stale");
+      const fleet=this.core.deps.store.read().fleets.find(f=>f.id===link.fleetId);
+      if(!fleet||fleet.status!=="active"||personKeyString(fleet.owner)!==personKeyString(link.owner))throw new HubProtocolError("revoked");
+      const known=this.links.get(fleet.id);
+      if(known && known!==link && known.current())throw new HubProtocolError("stale");
+      const previous=db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(fleet.id) as Row|undefined;
+      const bytes=canonicalArguments(body);
+      if(previous?.owner===personKeyString(fleet.owner)&&previous.generation===fleet.generation&&previous.revision===body.revision&&previous.body!==bytes)throw new HubProtocolError("conflict");
+      db.prepare(`INSERT INTO hub_agent_catalogs VALUES(?,?,?,?,?,?) ON CONFLICT(fleet_id) DO UPDATE SET owner=excluded.owner,generation=excluded.generation,revision=excluded.revision,body=excluded.body,received_at=excluded.received_at`)
+        .run(fleet.id,personKeyString(fleet.owner),fleet.generation,body.revision,bytes,this.core.now());
+      this.links.set(fleet.id,link); this.reports.add(link);
+    });
+  }
+  async view(ctx:HubRequestContext) {
+    const person=await ctx.requirePerson(),actor=await ctx.current();
+    const current=()=>this.core.live()&&ctx.isCurrent?.()===true;
+    if(ctx.application||actor.kind!=="directory"||actor.sessionId.startsWith("mcp:")||personKeyString(actor.person)!==personKeyString(person)||!current())throw new HubProtocolError("denied");
+    this.prune();
+    return this.core.atomic(db=>{
+      const session=db.prepare("SELECT person,state,directory_epoch,expires_at FROM hub_sessions WHERE id=?").get(actor.sessionId) as {person:string;state:string;directory_epoch:number;expires_at:number}|undefined;
+      if(!current()||!session||session.person!==personKeyString(person)||session.state!=="active"||session.directory_epoch!==this.core.directoryEpoch||session.expires_at<=this.core.now())throw new HubProtocolError("revoked");
+      return {fleets:this.core.deps.store.read().fleets.filter(f=>f.status==="active"&&personKeyString(f.owner)===personKeyString(person)).map(f=>{
+        const row=db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(f.id) as Row|undefined;
+        const link=this.links.get(f.id),connected=link?.current()===true;
+        return {id:f.id,label:f.label??null,connected,catalogSupported:connected?this.reports.has(link!):null,
+          catalog:row?{...validated(agentCatalogSchema,JSON.parse(row.body)) as HubAgentCatalog,at:row.received_at}:null};
+      })};
+    });
+  }
+  close():void {this.links.clear();}
+}

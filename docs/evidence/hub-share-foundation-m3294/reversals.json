@@ -1,0 +1,17 @@
+[
+  {
+    "guard": "owner-filter",
+    "result": "caught",
+    "selected": "keeps unshared metadata owner-only"
+  },
+  {
+    "guard": "incarnation-digest",
+    "result": "caught",
+    "selected": "hashes incarnation changes"
+  },
+  {
+    "guard": "mounted-switch",
+    "result": "caught",
+    "selected": "mounted switch-off"
+  }
+]

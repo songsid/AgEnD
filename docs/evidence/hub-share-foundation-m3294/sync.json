@@ -1,0 +1,13 @@
+{
+  "syncedBase": "8e0d0ee035f9f672efbc9c100e26481a7c9c5d82",
+  "merge": "1ff45e9719f25f3b95c56eb7531c77af9adea6dd",
+  "ownAddedRemovedLinesIdentical": true,
+  "wholeMergedTreeMatchesIsolatedApply": true,
+  "tree": "2a365593b19600be9c56665dcbcce579950e90a1",
+  "automaticOverlap": [
+    "src/fleet-manager.ts"
+  ],
+  "localVerificationRepeated": false,
+  "sourceCommit": "11c7f2754e18e36cc8b47f689056962e25f385c1",
+  "sourceBase": "e986d291a295b7a5333f63bc4de1e3f0c52b6385"
+}

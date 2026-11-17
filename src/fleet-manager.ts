@@ -314,7 +314,7 @@ import { isUploadRequest, limitRequestReceive, publicAttachment, sweepOrphanedUp
 import { REPLY_FILES_MAX_BYTES, snapshotReplyFile, sweepReplySnapshots, webFilesDir } from "./web-reply-files.js";
 import type { ActiveDecisionRow } from "./daemon.js";
 import { cardPicture, handleViewRequest, humanCards, identityColors, instanceTeams, isViewPath, personBannerFocus, personIdentityColour, profileIdentities, resolveInstanceIdentity, setPersonBannerFocus, setPersonIdentityColour } from "./view-api.js";
-import { autoIdentityColor } from "./web-identity-color.js";
+import { autoIdentityColor, identityColorValue } from "./web-identity-color.js";
 import { AppearanceTools } from "./web-appearance-tools.js";
 import type { FrameEntry } from "./web-appearance-view.js";
 import { cardVersion, resolveCard } from "./web-card.js";
@@ -2608,6 +2608,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const fleet = Object.keys(this.fleetConfig?.instances ?? {}).filter(name=>!classicNames.has(name)).map(name => ({ name, display: this.shownInstanceName(name) }));
     return [...fleet, ...(this.classicChannels?.getAll() ?? []).filter(ch => !Object.hasOwn(this.fleetConfig?.instances ?? {}, ch.instanceName))
       .map(ch => ({ name: ch.instanceName, display: ch.displayName || ch.name, kind: "classic-room" as const }))];
+  }
+
+  /** Owner-only cosmetic inventory. Lifecycle tokens only fence its digest; no paths or tools are projected. */
+  private hubCatalogAgents(): import("./hub/member/agent-catalog.js").MemberCatalogAgent[] {
+    const profiles = profileIdentities(this.dataDir), colors = identityColors(this.dataDir);
+    const rooms = new Map((this.classicChannels?.getAll() ?? []).map(room => [room.instanceName, room]));
+    return this.hubMemberAgents().map(agent => {
+      const config = this.hubAgentConfig(agent.name), room = rooms.get(agent.name);
+      const identity = resolveInstanceIdentity({ cfg: config, classic: room, profile: profiles.get(agent.name) });
+      const avatar = avatarFor({ name: agent.name, displayName: identity.display_name,
+        personaEmoji: (config?.status_emojis as Record<string, unknown> | undefined)?.delivered });
+      let color: string | null = colors.get(agent.name)?.color ? identityColorValue(colors.get(agent.name)!.color!, "light") : null;
+      try { color ??= this.webIdentityImage(agent.name, identity.display_name, null, { own: new Map(), speaking: new Map() }).agentColor ?? null; } catch { /* no cosmetic fallback data */ }
+      const base = { instance: agent.name, displayName: identity.display_name || agent.display,
+        description: identity.description ?? room?.description ?? "", avatar: { emoji: avatar.kind === "emoji" && "text" in avatar ? avatar.text : null, color: color ?? identityColorValue(autoIdentityColor(agent.name), "light") },
+        kind: agent.kind ?? "agent" as const, general: config?.general_topic === true, incarnation: this.hubAgentToken(agent.name) };
+      return !config || !base.incarnation ? { ...base, shareable: false as const, reason: "delivery-unavailable" as const }
+        : isNativeExecInstance(config) ? { ...base, shareable: false as const, reason: "remote-windows" as const }
+        : { ...base, shareable: true as const };
+    });
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */

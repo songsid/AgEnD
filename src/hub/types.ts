@@ -131,6 +131,8 @@ export interface HubRevocation {
 }
 
 export type HubMemberFrame =
+  | HubFrame<"agent.catalog", import("./agent-catalog-model.js").HubAgentCatalog>
+  | HubFrame<"exposure.request-result", import("./agent-catalog-model.js").HubExposureRequestResult>
   | HubFrame<"room.context-state", import("./room-context-model.js").HubRoomContextRequest>
   | HubFrame<"room.context-input", import("./room-context-model.js").HubRoomContextInput>
   | HubFrame<"room.list", HubRoomListRequest>
@@ -163,6 +165,8 @@ export type HubPairingNotice = {
 /** #3429 option B: an issuer-signed member-address relocation (member-origin.ts). */
 export interface HubRelocation { v: 1; from: string; to: string; spkiSha256: Sha256; revision: Epoch; signature: string }
 export type HubServerFrame =
+  | HubFrame<"agent.catalog-refresh", Record<string, never>>
+  | HubFrame<"exposure.request", import("./agent-catalog-model.js").HubExposureRequest>
   | HubFrame<"room.context-state-result", import("./room-context-model.js").HubRoomContextResult>
   | HubFrame<"room.context-input-result", import("./room-context-model.js").HubRoomContextInputResult>
   | HubFrame<"room.list-result", HubRoomListResult>
