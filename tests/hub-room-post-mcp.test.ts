@@ -1,3 +1,5 @@
+import {pageRoomMembers} from "../src/hub/rooms/members-page.js";
+import {randomUUID} from "node:crypto";
 /** Actual stdio MCP child and owned IPC stub; never starts a Fleet or vendor CLI. */
 import { afterEach, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -53,6 +55,14 @@ it("actual MCP menu stays static and posts only as its current connected IPC own
   const spoofIntro:any=await h.client.callTool({name:"hub_set_intro",arguments:{text:"forged",agent:"agent-B"}});expect(spoofIntro.isError).toBe(true);
   expect(h.ctx.hubSetIntro).toHaveBeenCalledTimes(2);
   const members:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly"}});
+  const boundedOptions={query:"notes",kind:"agent",limit:7,cursor:"cursor"};
+  await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly",...boundedOptions}});
+  expect(h.ctx.hubRoomMembers).toHaveBeenLastCalledWith(expect.objectContaining({agent:"agent-A"}),"Weekly",boundedOptions);
+  const tooMany:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly",limit:51}});expect(tooMany.isError).toBe(true);
+  const rows=Array.from({length:50},(_,i)=>({id:String(i),kind:"agent" as const,name:`Notes ${i}`,owner:{name:"Owner"},intro:"說明".repeat(100),presence:"idle"}));
+  const bounded:any=pageRoomMembers(randomUUID(),"Purpose",rows,{limit:50},"owned");h.ctx.hubRoomMembers.mockResolvedValueOnce(bounded);
+  const sized:any=await h.client.callTool({name:"hub_room_members",arguments:{room:"Weekly",limit:50}});expect(Buffer.byteLength(sized.content[0].text)).toBeLessThanOrEqual(8192);const sizedBody=JSON.parse(sized.content[0].text);expect(sizedBody.counts.returned).toBeGreaterThan(0);expect(sizedBody.next_cursor).toBeTypeOf("string");expect(sizedBody.members[0].intro).toBe("說明".repeat(100));
+
   const people:any=await h.client.callTool({name:"hub_people_search",arguments:{q:"Al"}});
   expect(JSON.parse(members.content[0].text)).toMatchObject({ok:true,members:[{name:"Alex"}]});
   expect(JSON.parse(people.content[0].text)).toMatchObject({ok:true,people:[{login:"alex"}]});

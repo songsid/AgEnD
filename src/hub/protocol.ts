@@ -1,3 +1,4 @@
+import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
 import {roomBriefSchema} from "./room-brief-model.js";
 import {agentIntroSchema,agentIntroResultSchema} from "./agent-intro-model.js";
 import { agentCatalogSchema, agentCatalogRefreshSchema, exposureRequestSchema, exposureRequestResultSchema, exposureRequestAckSchema, exposureUndoSchema, exposureUndoResultSchema } from "./agent-catalog-model.js";
@@ -125,8 +126,8 @@ export const roomPostResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
 ]);
 
-export const roomMembersSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)) });
-export const roomMembersResultSchema = z.discriminatedUnion("ok", [
+export const roomMembersSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),v2:z.literal(true).optional(),...roomMemberOptions }).refine(v=>v.v2||![v.query,v.kind,v.limit,v.cursor].some(x=>x!==undefined));
+export const roomMembersResultSchema = z.union([boundedRoomMembersSchema,
   z.strictObject({ ok: z.literal(true), roomId: uuid, members: z.array(z.strictObject({ id: plain(128), kind: z.enum(["person", "agent", "assistant"]), name: plain(256), presence: plain(32),
     owner: z.strictObject({ name: plain(256) }).optional(), presenceReason: plain(32).optional(), presenceNote: plain(256).optional() })).max(200) }),
   z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),

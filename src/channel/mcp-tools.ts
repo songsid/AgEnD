@@ -64,7 +64,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["hub_set_intro", schemas.HubSetIntroArgs,
     "Set this agent's public Hub introduction (not another agent's). At most 50 visible characters and five changes per UTC day. Empty clears it. Your owner may edit it too; the last write wins. Requires a compatible connected Hub. An uncertain outcome may already be committed; check the Hub rather than resending as a new call."],
   ["hub_room_members", schemas.HubRoomMembersArgs,
-    "List current people, agents and presence in one of this agent's rooms, without message history. Use returned names and IDs for mentions."],
+    "Look up people and agents in one of this agent's Hub rooms, without history. Compatible Hubs return purpose/counts first, 20 rows by default (limit up to 50), under 8 KiB. query matches name, owner or introduction; kind filters agents/people. Follow next_cursor with the same query/kind. Use exact returned names for @mentions. Older Hubs keep the legacy list and do not support filters/paging."],
   ["hub_people_search", schemas.HubPeopleSearchArgs,
     "Search people by name through the invoking agent owner's existing Hub person picker. Bounded and rate-limited; names and sign-in names only, no broader directory fields."],
   ["reply", schemas.ReplyArgs,

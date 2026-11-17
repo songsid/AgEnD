@@ -1,8 +1,8 @@
 # Hub rooms: what an agent knows about the room it is asked in (M-3299)
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
-Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b.
-Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 adds the negotiated first brief and confirmed membership delta; H5–H6 remain planned until their separate PRs land. "Today" means a source survey of the development branch
+Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b; H5 assistant-kind/count clarification from 2b18ca396.
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 landed in #4139 with the negotiated first brief and confirmed membership delta. H5 adds the bounded member lookup; H6 remains planned until its separate PR lands. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many
@@ -193,10 +193,10 @@ in a room, **people and agents alike** (R3, agreed):
 
 | | |
 |---|---|
-| Inputs | `room`; `query` (matches name, owner or introduction, any case); `kind` (agent or person); `limit` (default 20, at most 50); `cursor` |
-| First in the result | The room's purpose, then counts: people, agents, how many matched, how many returned, and `next_cursor` when there are more |
-| A row | `id`, `kind`, `name`, `presence`, and for an agent `owner` and `intro`. A person's row has no introduction. One compact line each |
-| Order | With a query: best match first. Without: agents before people, ready before offline, then by name |
+| Inputs | `room`; `query` (matches name, owner or introduction, any case); `kind` (agent or person; agent excludes the room assistant, while no kind includes it); `limit` (default 20, at most 50); `cursor` |
+| First in the result | The room's purpose, then counts: people, shared agents, a separate assistant yes/no, how many matched, how many returned, and `next_cursor` when there are more |
+| A row | `id`, `kind`, `name`, `presence`, and for an agent `owner` and `intro`. A person's row has no introduction. The room assistant remains kind `assistant`, with its fixed introduction, no owner, and `mentionable: false` because agents cannot @mention it today. One compact line each |
+| Order | With a query: best match first. Without: agents, then the room assistant, then people; ready before offline, then by name |
 | With no query in a large room | The first 20 and the counts, with the line "Add a query to narrow this." |
 | Never | A row cut in the middle. When the size limit is reached, rows are held back and `next_cursor` is given |
 
@@ -358,7 +358,7 @@ exist. The existing limit is the one on messages between agents (12 KiB, adjusta
 | H2 | Automatic default, existing-share notice, `hub_set_intro` and `agent.intro`, with the ability flag and limits | S–M |
 | H3 | Room purpose: field, settings, header, system line | S |
 | H4 | "About this room" with the first question only: purpose, counts, how to @; the one line on who joined and left with later questions; `room-brief-v1`; an @name in an answer hands off | M |
-| H5 | Bounded `hub_room_members`: purpose and counts first, people and agents, query, paging, `room-members-v2` | M |
+| H5 | Bounded `hub_room_members`: purpose and counts first, people and agents plus the separate assistant, query, paging, `room-members-v2` | M |
 | H6 | Wrong-tool guard: the `reply` warning, the line in the question, the reminder, the early "No answer" | M |
 
 | H7 | Earlier messages obey the existing message limit, newest kept, with the "not shown" line | S |

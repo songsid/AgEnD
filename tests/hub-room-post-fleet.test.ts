@@ -179,3 +179,13 @@ it("outbound admission refuses a sibling session, forged identity fields and a r
   await handler(ctx,{room:"Weekly",text:"Update"},reply,meta);expect(post).toHaveBeenCalledTimes(1);
   expect(post.mock.calls[0]![0]).toMatchObject({agent:"agent-A"});
 });
+
+it("H5 negotiates bounded options, refuses unsupported filters and fences an awaited disclosure",async()=>{
+ const h=fixture();h.adapter.connected(h.link);h.link.members=vi.fn(async()=>({ok:true as const,roomId:h.roomId,members:[]}));
+ expect(await h.adapter.members(h.caller,"Weekly",{query:"Notes"})).toMatchObject({ok:false,code:"unavailable",message:expect.stringContaining("does not support")});expect(h.link.members).not.toHaveBeenCalled();
+ const result={ok:true as const,v2:true as const,roomId:h.roomId,purpose:"Purpose",counts:{people:0,agents:0,assistant:false,matched:0,returned:0},members:[]};
+ const modern={...h.link,features:new Set([...h.link.features,"room-members-v2"]),members:vi.fn(async()=>result)};h.adapter.connected(modern);
+ expect(await h.adapter.members(h.caller,"Weekly",{query:"Notes",kind:"agent",limit:7})).toEqual(result);
+ expect(modern.members).toHaveBeenCalledWith(expect.any(String),"Weekly",{v2:true,query:"Notes",kind:"agent",limit:7});
+ modern.members.mockImplementationOnce(async()=>{h.replace();return result;});expect(await h.adapter.members(h.caller,"Weekly")).toEqual({ok:false,code:"stale"});
+});

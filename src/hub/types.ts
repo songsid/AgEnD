@@ -75,9 +75,9 @@ export interface HubRoomListRequest { exposureId: ExposureId }
 export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string }[]; truncated?: boolean }
   | { ok: false; exposureId: ExposureId; code: HubRoomPostRefusalCode; retryAt?: Millis };
 export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string }; mentionFeedback?: true }
-export interface HubRoomMembersRequest { exposureId: ExposureId; room: string }
-export type HubRoomMembersResult = { ok: true; roomId: RoomId; members: readonly { id: string; kind: "person" | "agent" | "assistant"; name: string; presence: string; owner?: { name: string }; presenceReason?: string; presenceNote?: string }[] }
-  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
+export type HubRoomMembersRequest = { exposureId: ExposureId; room: string;v2?:true } & import("./room-members-model.js").RoomMemberOptions;
+export type HubRoomMembersResult = import("zod").z.infer<typeof import("./room-members-model.js").boundedRoomMembersSchema> | { ok: true; roomId: RoomId; members: readonly { id: string; kind: "person" | "agent" | "assistant"; name: string; presence: string; owner?: { name: string }; presenceReason?: string; presenceNote?: string }[] }
+  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis;message?:string; rooms?: readonly { id: RoomId; name: string }[] };
 export interface HubPeopleSearch { exposureId: ExposureId; q: string }
 export type HubPeopleSearchResult = { ok: true; people: readonly { id: string; name: string; login: string }[]; truncated: boolean }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis };
