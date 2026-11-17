@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "2f3fe00343ae00335bf25572171ab1e41edef41b5d92e15ce1f9d85be6a3d38f"
+    "sha256": "ee36dab35c42b50ab51de6d648503b35021f2895dfc2b69a2feb14d556b7c0dc"
   },
   {
     "path": "alpha-sync.json",
@@ -60,6 +60,18 @@
     "sha256": "c1458bb79ba033b0f4b042c2f1579bccd6b9b7bd5977c6e945d9eb193c498191"
   },
   {
+    "path": "validation/edf-affected-files.json",
+    "sha256": "fbe9e805f652c83d7b006e4852fcad7a68dee09db0b0de1ae2728f67f7901b85"
+  },
+  {
+    "path": "validation/edf-affected-tests.log",
+    "sha256": "a8ad1c52ec8911488fb9592a12b40e7b0adb9c9904fb9ef87ee6945f5e334858"
+  },
+  {
+    "path": "validation/edf-sync-proof.json",
+    "sha256": "e3b17b7e21f66826ef02e98d3677a3e801ae63997e7d14c0925e6d174fbb49f5"
+  },
+  {
     "path": "validation/fail-first.log",
     "sha256": "f0e992b77e5d1602988b85bc28142caa862d53ea8688c7b825e37a05599b8585"
   },
@@ -97,7 +109,7 @@
   },
   {
     "path": "validation/types.json",
-    "sha256": "0515aa50e740124035763ee9da674f2ca3eee2c125813b80bdba3e857f480965"
+    "sha256": "d33550edfcec2455aa7580a819de7ce731369bd6b8d7c98c375d644081c06940"
   },
   {
     "path": "validation/unregister-green.log",
