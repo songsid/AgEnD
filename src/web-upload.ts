@@ -12,7 +12,7 @@
  * label, and a file can be fetched back only by an id this process issued for it — never by a path.
  */
 import { randomBytes } from "node:crypto";
-import { constants as fsConstants, closeSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
+import { constants as fsConstants, closeSync, copyFileSync, existsSync, fstatSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, renameSync, rmdirSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, sep } from "node:path";
 import { displaySize } from "./web-image-meta.js";
 
@@ -263,7 +263,15 @@ export interface ServedFile {
    * — outside the served-id cap, and removed from disk when the message leaves the history (dropServed).
    */
   snapshot?: true;
+  /**
+   * M-3281: a file kept for an archived message (web-chat-archive.ts `files/`), served while a page reads that message —
+   * the archive's to remove (its size limit, retention), never this ledger's; outside the served-id cap, in one of its
+   * own (KEPT_SERVED_MAX, the least recently read go first: read again, it is served again); never a guest's.
+   */
+  kept?: true;
 }
+/** M-3281: at most this many archived messages' files served at once (the ones read longest ago leave first). */
+export const KEPT_SERVED_MAX = 2000;
 
 const ID_PATTERN = /^[0-9a-f]{32}$/;
 export const isFileId = (id: string): boolean => ID_PATTERN.test(id);
@@ -447,7 +455,7 @@ export class WebFileLedger {
    * Make a file fetchable by id (an upload, or a file an agent attached to its reply). The path is
    * resolved now and must be a regular file within the size limit; null when it is not.
    */
-  registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind; snapshot?: boolean }): ServedFile | null {
+  registerServed(input: { id?: string; path: string; name?: string; mime?: string; instance: string; kind?: UploadKind; snapshot?: boolean; kept?: boolean }): ServedFile | null {
     let realPath: string;
     let size: number;
     let dev: number;
@@ -471,16 +479,19 @@ export class WebFileLedger {
       kind,
       ...(drawn ? { width: drawn.width, height: drawn.height } : {}),
       ...(input.snapshot ? { snapshot: true as const } : {}),
+      ...(input.kept ? { kept: true as const } : {}),
     };
     this.served.set(file.id, file);
     // The cap bounds what this process registered by path. A snapshot is bounded by the history it belongs to (#1770):
-    // it leaves with its message, never here — dropping it here would lose a file its message still shows.
+    // it leaves with its message, never here — dropping it here would lose a file its message still shows. M-3281: an
+    // archived message's kept file has a cap of its own (a page reading far back must not push the chat's files out).
+    const kept = !!input.kept;
     let over = 0;
-    for (const f of this.served.values()) if (!f.snapshot) over++;
-    over -= this.maxServed;
+    for (const f of this.served.values()) if (!f.snapshot && !!f.kept === kept) over++;
+    over -= kept ? KEPT_SERVED_MAX : this.maxServed;
     for (const [id, f] of this.served) {
       if (over <= 0) break;
-      if (!f.snapshot) { this.served.delete(id); over--; }
+      if (!f.snapshot && !!f.kept === kept) { this.served.delete(id); over--; }
     }
     return file;
   }
@@ -580,6 +591,67 @@ export class WebFileLedger {
         if (st.isFile() && st.dev === f.dev && st.ino === f.ino) unlinkSync(f.realPath);
       } catch { /* already gone */ }
     }
+  }
+
+  /**
+   * M-3281: put the file served under `id` at `dest` for an archived message — only while it is still the file registered
+   * (device + inode, a regular file, never a link) and never an upload no message took. A hard link (the same file, no
+   * space taken while the original lives) only for AgEnD's own copies: a reply's snapshot (#1770) or an upload in the
+   * inbox. A file served from the agent's own path (a reply file that could not be snapshotted) is copied: the agent may
+   * change it in place, and a link would change the archived message's file with it (#4108 review N2). A copy too where a
+   * link cannot be made (another device). False: not kept.
+   */
+  keepCopy(id: string, dest: string): boolean {
+    const file = isFileId(id) ? this.served.get(id) : undefined;
+    if (!file || file.kept || basename(file.realPath).startsWith(PENDING_PREFIX)) return false;
+    const same = (p: string) => { try { const st = lstatSync(p); return st.isFile() && st.dev === file.dev && st.ino === file.ino && st.size === file.size; } catch { return false; } };
+    if (!same(file.realPath)) return false;
+    const own = file.snapshot === true || basename(dirname(file.realPath)) === "inbox";
+    if (own) try { linkSync(file.realPath, dest); return same(dest); } catch { /* another device, or no links: a copy */ }
+    try {
+      copyFileSync(file.realPath, dest, fsConstants.COPYFILE_EXCL);
+      const st = lstatSync(dest);
+      return st.isFile() && st.size === file.size && same(file.realPath);
+    } catch { return false; }
+  }
+
+  /**
+   * M-3281: serve an archived message's kept file under the id its line names — only a file directly within the
+   * instance's kept-files tree (`keptDir`: `workspaces/<instance>/web-chat-archive/files`, itself not a link elsewhere),
+   * not a link, a regular file within the size limit. Read again, it is the same entry (if still that file). Null when
+   * any check fails: the message shows it as no longer kept.
+   */
+  restoreKept(entry: { id: string; path: string; name?: string; mime?: string; kind?: string }, instance: string, keptDir: string): ServedFile | null {
+    if (!isFileId(entry.id)) return null;
+    const had = this.served.get(entry.id);
+    if (had && !had.kept) return null;                       // never another file's id
+    let own: ReturnType<typeof lstatSync>, real: string;
+    try {
+      own = lstatSync(entry.path);
+      if (own.isSymbolicLink() || !own.isFile() || own.size > this.maxServedBytes()) { if (had) this.served.delete(entry.id); return null; }
+      real = realpathSync(entry.path);
+      const d = realpathSync(keptDir);
+      if (d !== join(realpathSync(dirname(keptDir)), basename(keptDir)) || !real.startsWith(d + sep)) { if (had) this.served.delete(entry.id); return null; }
+    } catch { if (had) this.served.delete(entry.id); return null; }
+    if (had && had.realPath === real && had.dev === own.dev && had.ino === own.ino && had.size === own.size && had.instance === instance) {
+      this.served.delete(entry.id); this.served.set(entry.id, had);       // read again: the most recent
+      return had;
+    }
+    const kind = entry.kind === "photo" || entry.kind === "document" ? entry.kind : undefined;
+    const file = this.registerServed({ id: entry.id, path: real, instance, kept: true,
+      ...(typeof entry.name === "string" ? { name: entry.name } : {}), ...(typeof entry.mime === "string" ? { mime: entry.mime } : {}), ...(kind ? { kind } : {}) });
+    if (file && (file.realPath !== real || file.dev !== own.dev || file.ino !== own.ino)) { this.served.delete(file.id); return null; }
+    return file;
+  }
+
+  /**
+   * M-3281: the files the web chat shows now (device + inode, `dev:ino`) — the 7-day inbox rotation leaves them alone, so a
+   * message's file is still there when it reaches the archive (an upload no message took is not one).
+   */
+  shownFiles(): Set<string> {
+    const out = new Set<string>();
+    for (const f of this.served.values()) if (!f.kept && !basename(f.realPath).startsWith(PENDING_PREFIX)) out.add(`${f.dev}:${f.ino}`);
+    return out;
   }
 
   /** #1770: the ids of an instance's snapshots served now — what a fleet start's sweep keeps. */

@@ -6,15 +6,22 @@
  *     owner                  who the agent is (as web-chat.json's `owner`): another agent that only shares the name
  *                            never reads this archive; its first write moves it aside (never deletes it)
  *     2026-11.jsonl          one JSON object per line, oldest first — append-only, one file per month (of eviction)
+ *     files/2026-11/<ms>-<id>  M-3281: a file an archived message showed, kept with it (below)
  *
  * A line is `{"key":"<boot>-<id>",…}`: the key first, so a scan finds a message without parsing every line. What is kept
  * is what web-chat.json keeps of a message (WebChatHistory.stored), plus its buttons as they last were, closed for good
- * (an archived reply's buttons and polls are read-only), and its files by name only (a file leaves with its message:
- * nothing is served under its id any more, #1565). Writes are queued per instance (one append in flight, order kept).
- * Retention (`web.chat_archive.retention_days`, unset or 0: keep everything) drops whole months that ended before it.
+ * (an archived reply's buttons and polls are read-only), and its files (M-3281, the user 2026-11-17: an archived message
+ * keeps its files and pictures): each one the message still served is hard-linked (a copy across devices) into `files/`
+ * as the message leaves the window — before the window lets go of it (a reply's snapshot is deleted then, an inbox file
+ * after 7 days) — under a new id of its own, which the line names (`{id, file: "<month>/<ms>-<id>", …}`); one that could
+ * not be kept is named only (`gone`), as before. Writes are queued per instance (one append in flight, order kept).
+ * Retention (`web.chat_archive.retention_days`, unset or 0: keep everything) drops whole months that ended before it —
+ * their kept files too. The kept files of every agent's archive together stay within `web.chat_archive.files_max_gb`
+ * (GiB, default 5; 0 keeps none): past it the oldest go first, and their messages show the file as no longer kept.
  * Reads go backwards through the files in fixed-size chunks: a page costs what it reads, never the whole archive.
  */
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import { closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, renameSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { appendFile } from "node:fs/promises";
 import { join } from "node:path";
 import { isSafeInstanceDirName } from "./web-chat-store.js";
@@ -22,6 +29,20 @@ import { isSafeInstanceDirName } from "./web-chat-store.js";
 export const ARCHIVE_DIR = "web-chat-archive";
 const OWNER_FILE = "owner";
 const MONTH_FILE = /^(\d{4})-(\d{2})\.jsonl$/;
+/** M-3281: where an archive keeps its messages' files, one directory per month (of eviction), as its lines are. */
+export const KEPT_DIR = "files";
+const MONTH_DIR = /^(\d{4})-(\d{2})$/;
+const KEPT_NAME = /^\d{13}-[0-9a-f]{32}$/;
+/** M-3281: what an archive line names a kept file by — `<month>/<ms>-<id>`, nothing else (never a path of its own). */
+export const KEPT_FILE = /^\d{4}-\d{2}\/\d{13}-[0-9a-f]{32}$/;
+/** M-3281: `web.chat_archive.files_max_gb` when fleet.yaml leaves it out — GiB, for every agent's archive together. */
+export const ARCHIVE_FILES_MAX_GB = 5;
+const GIB = 1024 ** 3;
+/** #4108 review F1: past the limit, kept files are removed down to this share of it (not just under it). */
+export const FILES_LOW_WATER = 0.9;
+const monthOf = (ms: number): string => { const d = new Date(ms); return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`; };
+/** The first moment of the month after `<yyyy>-<mm>`. */
+const monthEnd = (y: string, m: string): number => Date.UTC(Number(y), Number(m), 1);
 const CHUNK = 64 * 1024;
 /** A line longer than this is not one of ours (a message is at most 16,000 characters): skipped. */
 const LINE_MAX = 1024 * 1024;
@@ -32,6 +53,8 @@ export interface ArchiveLogger { warn(obj: unknown, msg?: string): void; debug?(
 export class WebChatArchive {
   private readonly queues = new Map<string, Promise<void>>();
   private readonly prunedAt = new Map<string, number>();
+  /** M-3281: the bytes every archive's kept files take, once counted (null: not yet); kept current as files come and go. */
+  private filesTotal: number | null = null;
 
   constructor(private readonly opts: {
     home: string;
@@ -39,6 +62,8 @@ export class WebChatArchive {
     ownerOf: (instance: string) => string | null;
     /** `web.chat_archive.retention_days` as in force: unset or 0 keeps everything. */
     retentionDays?: () => number | undefined;
+    /** M-3281: `web.chat_archive.files_max_gb` as in force (GiB, all archives together): unset is ARCHIVE_FILES_MAX_GB, 0 keeps none. */
+    filesMaxGb?: () => number | undefined;
     logger: ArchiveLogger;
     now?: () => number;
   }) {}
@@ -64,57 +89,206 @@ export class WebChatArchive {
    */
   append(instance: string, lines: ArchivedLine[]): void {
     if (!lines.length) return;
-    const prev = this.queues.get(instance) ?? Promise.resolve();
-    const next = prev.then(() => this.write(instance, lines)).catch(err => this.opts.logger.warn({ err: (err as Error)?.message, instance }, "Web chat archive: lines could not be written"));
+    const prev = this.queues.get(instance) ?? Promise.resolve(), month = monthOf(this.now());
+    const next = prev.then(() => this.write(instance, lines, month)).catch(err => this.opts.logger.warn({ err: (err as Error)?.message, instance }, "Web chat archive: lines could not be written"));
     this.queues.set(instance, next);
     void next.finally(() => { if (this.queues.get(instance) === next) this.queues.delete(instance); });
   }
-  private async write(instance: string, lines: ArchivedLine[]): Promise<void> {
+  private async write(instance: string, lines: ArchivedLine[], month: string): Promise<void> {
+    const dir = this.claimDir(instance);
+    if (!dir) return;
+    await appendFile(join(dir, `${month}.jsonl`), lines.map(l => JSON.stringify(l)).join("\n") + "\n", { mode: 0o600 });
+    this.pruneSoon(instance, dir);
+  }
+  /**
+   * This instance's archive directory, made this instance's when it is not yet: created with its owner file, or — another
+   * agent's archive under this name (it was removed while the fleet was down) — that one set aside, never mixed in.
+   * Null: not configured, or the other one could not be set aside.
+   */
+  private claimDir(instance: string): string | null {
     const dir = this.dirOf(instance), owner = this.opts.ownerOf(instance);
-    if (!dir || !owner) return;
+    if (!dir || !owner) return null;
     if (existsSync(dir)) {
       let was: string | null = null;
       try { was = readFileSync(join(dir, OWNER_FILE), "utf8"); } catch { was = null; }
-      if (was !== owner) {
-        // Another agent's archive under this name (it was removed while the fleet was down): set aside, never mixed in.
-        const aside = `${dir}.${Math.floor(this.now() / 1000)}.old`;
-        try { renameSync(dir, aside); this.opts.logger.warn({ instance, aside }, "Web chat archive: another agent's archive under this name was set aside"); }
-        catch (err) { this.opts.logger.warn({ err: (err as Error)?.message, instance }, "Web chat archive: another agent's archive could not be set aside; not appending"); return; }
+      if (was === owner) { this.ignoreInGit(dir); return dir; }
+      const aside = `${dir}.${Math.floor(this.now() / 1000)}.old`;
+      try { renameSync(dir, aside); this.ignored.delete(dir); this.opts.logger.warn({ instance, aside }, "Web chat archive: another agent's archive under this name was set aside"); this.filesTotal = null; }
+      catch (err) { this.opts.logger.warn({ err: (err as Error)?.message, instance }, "Web chat archive: another agent's archive could not be set aside; not appending"); return null; }
+    }
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    writeFileSync(join(dir, OWNER_FILE), owner, { mode: 0o600 });
+    this.ignoreInGit(dir);
+    return dir;
+  }
+  /**
+   * #4108 review N1: the archive sits in the agent's workspace — by default its working directory — and now holds chat
+   * files and pictures: a `.gitignore` of `*` keeps an agent's `git add -A` from committing any of it. Written once, with
+   * the archive (and for one made before it).
+   */
+  private readonly ignored = new Set<string>();
+  private ignoreInGit(dir: string): void {
+    if (this.ignored.has(dir)) return;
+    try { writeFileSync(join(dir, ".gitignore"), "*\n", { mode: 0o600, flag: "wx" }); } catch { /* already there */ }
+    this.ignored.add(dir);
+  }
+
+  /** M-3281: the cap on every archive's kept files together, in bytes (0: none are kept). */
+  private filesCap(): number {
+    const gb = this.opts.filesMaxGb?.();
+    return typeof gb === "number" && Number.isFinite(gb) && gb >= 0 ? Math.floor(gb * GIB) : ARCHIVE_FILES_MAX_GB * GIB;
+  }
+  /** M-3281: the directory an instance's kept files are in, when the archive is this instance's (null otherwise). */
+  keptDirOf(instance: string): string | null {
+    const dir = this.ownDir(instance);
+    return dir ? join(dir, KEPT_DIR) : null;
+  }
+  /**
+   * M-3281: keep a file an archived message shows — synchronously, while the window still holds it. `copy(dest)` puts it
+   * at `dest` (the file ledger's hard link, or a copy) and says whether it did. Returns the new id and what the line names
+   * the file by; null when it is not kept (no files kept at all, the archive not this instance's, or the copy failed).
+   */
+  keepFile(instance: string, copy: (dest: string) => boolean): { id: string; file: string } | null {
+    const cap = this.filesCap();
+    if (cap <= 0) return null;
+    const dir = this.claimDir(instance);
+    if (!dir) return null;
+    const now = this.now(), month = monthOf(now), id = randomBytes(16).toString("hex"), name = `${String(Math.max(0, Math.floor(now))).padStart(13, "0").slice(-13)}-${id}`;
+    const dest = join(dir, KEPT_DIR, month, name);
+    try {
+      mkdirSync(join(dir, KEPT_DIR, month), { recursive: true, mode: 0o700 });
+      if (!copy(dest)) { try { unlinkSync(dest); } catch { /* not made */ } return null; }
+      const size = lstatSync(dest).size;
+      if (this.filesTotal !== null) this.filesTotal += size;
+    } catch (err) {
+      this.opts.logger.warn({ err: (err as Error)?.message, instance }, "Web chat archive: a file could not be kept with its message");
+      try { unlinkSync(dest); } catch { /* not made */ }
+      return null;
+    }
+    // #4108 review F1: never the walk of every kept file here (record()'s path): only the running total above, and — when
+    // it is unknown or over the limit — one check soon after, off this path, trimming to a low-water mark so the next ones
+    // fit without another walk.
+    if (this.filesTotal === null || this.filesTotal > cap) this.capCheckSoon();
+    return { id, file: `${month}/${name}` };
+  }
+  /** #4108 review F1: one cap check after the current turn (however many files were kept meanwhile). */
+  private capCheck: Promise<void> | null = null;
+  private capCheckSoon(): void {
+    if (this.capCheck) return;
+    this.capCheck = new Promise<void>((resolve) => {
+      const t = setTimeout(() => {
+        try { this.enforceFilesCap(); }
+        catch (err) { this.opts.logger.warn({ err: (err as Error)?.message }, "Web chat archive: the kept files' size limit could not be checked"); }
+        finally { this.capCheck = null; resolve(); }
+      }, 0);
+      t.unref?.();
+    });
+  }
+  /**
+   * M-3281: every archive's kept files, oldest first — `{ path, size, rel }` (`rel`: `<instance>/<month>/<name>`, which
+   * sorts by month, then by when each was kept). Only what this archive writes: month directories and kept names, never
+   * a link (a symlinked archive or files directory is not walked).
+   */
+  private keptFiles(): Array<{ path: string; size: number; month: string; dir: string }> {
+    const out: Array<{ path: string; size: number; month: string; dir: string; order: string }> = [];
+    const root = join(this.opts.home, "workspaces");
+    let names: string[];
+    try { names = readdirSync(root); } catch { return []; }
+    for (const instance of names) {
+      if (!isSafeInstanceDirName(instance)) continue;
+      const kept = join(root, instance, ARCHIVE_DIR, KEPT_DIR);
+      try { if (!lstatSync(join(root, instance, ARCHIVE_DIR)).isDirectory() || !lstatSync(kept).isDirectory()) continue; } catch { continue; }
+      let months: string[];
+      try { months = readdirSync(kept).filter(m => MONTH_DIR.test(m)); } catch { continue; }
+      for (const month of months) {
+        const dir = join(kept, month);
+        let files: string[];
+        try { if (!lstatSync(dir).isDirectory()) continue; files = readdirSync(dir).filter(f => KEPT_NAME.test(f)); } catch { continue; }
+        for (const f of files) {
+          try { const st = lstatSync(join(dir, f)); if (st.isFile()) out.push({ path: join(dir, f), size: st.size, month, dir, order: `${month}/${f}` }); } catch { /* gone */ }
+        }
       }
     }
-    if (!existsSync(dir)) { mkdirSync(dir, { recursive: true, mode: 0o700 }); writeFileSync(join(dir, OWNER_FILE), owner, { mode: 0o600 }); }
-    const d = new Date(this.now());
-    const file = join(dir, `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}.jsonl`);
-    await appendFile(file, lines.map(l => JSON.stringify(l)).join("\n") + "\n", { mode: 0o600 });
-    this.pruneSoon(instance, dir);
+    return out.sort((a, b) => (a.order < b.order ? -1 : a.order > b.order ? 1 : 0)).map(({ order: _o, ...f }) => f);
   }
-  /** At most once an hour per instance: drop the months that ended before the retention cut-off. */
+  /**
+   * M-3281: past `web.chat_archive.files_max_gb`, remove kept files, the oldest first (of every agent's archive), until
+   * they fit; their messages then show the file as no longer kept. Counts them the first time (the fleet's start, or the
+   * first file kept), then keeps the count as it goes. Returns how many were removed.
+   */
+  /**
+   * M-3281: what every archive's kept files take now, and what a limit of `capBytes` would remove (the oldest first, as
+   * enforceFilesCap removes them) — nothing is removed here: Settings names it before a lower limit is saved.
+   */
+  filesUsage(capBytes: number = this.filesCap()): { usedBytes: number; files: number; removeBytes: number; removeFiles: number; capBytes: number } {
+    const files = this.keptFiles();
+    let total = files.reduce((n, f) => n + f.size, 0), removeBytes = 0, removeFiles = 0;
+    const usedBytes = total;
+    for (const f of files) { if (total <= capBytes) break; total -= f.size; removeBytes += f.size; removeFiles++; }
+    this.filesTotal = usedBytes;
+    return { usedBytes, files: files.length, removeBytes, removeFiles, capBytes };
+  }
+  /** M-3281: the limit in force, in bytes (`web.chat_archive.files_max_gb`; unset ARCHIVE_FILES_MAX_GB). */
+  filesCapBytes(): number { return this.filesCap(); }
+  /**
+   * `exact` (Settings lowering the limit: what its confirmation named) trims to the limit itself; otherwise — a file kept
+   * past it, the hourly check — to FILES_LOW_WATER of it, so the walk of every kept file is not repeated for each file
+   * kept after it (#4108 review F1).
+   */
+  enforceFilesCap(opts: { exact?: boolean } = {}): number {
+    const cap = this.filesCap();
+    if (this.filesTotal !== null && this.filesTotal <= cap) return 0;
+    const files = this.keptFiles(), target = opts.exact ? cap : Math.floor(cap * FILES_LOW_WATER);
+    let total = files.reduce((n, f) => n + f.size, 0), removed = 0;
+    const emptied = new Set<string>();
+    for (const f of files) {
+      if (total <= target) break;
+      try { unlinkSync(f.path); total -= f.size; removed++; emptied.add(f.dir); }
+      catch (err) { this.opts.logger.warn({ err: (err as Error)?.message }, "Web chat archive: a kept file past the size limit could not be removed"); }
+    }
+    for (const d of emptied) try { if (!readdirSync(d).length) rmSync(d, { recursive: true, force: true }); } catch { /* still in use */ }
+    this.filesTotal = total;
+    if (removed) this.opts.logger.debug?.({ removed, cap }, "Web chat archive: the oldest kept files removed to stay within files_max_gb");
+    return removed;
+  }
+  /** At most once an hour per instance: drop the months that ended before the retention cut-off (and, M-3281, re-check the files' cap — it may have been lowered). */
   private pruneSoon(instance: string, dir: string): void {
     const now = this.now();
     if (now - (this.prunedAt.get(instance) ?? -Infinity) < 3_600_000) return;
     this.prunedAt.set(instance, now);
     this.prune(instance, dir);
+    this.enforceFilesCap();
   }
-  /** Drop whole months that ended before `retention_days` ago (unset or 0: nothing). Returns the files removed. */
+  /**
+   * Drop whole months that ended before `retention_days` ago (unset or 0: nothing) — M-3281: their kept files too.
+   * Returns the month files removed.
+   */
   prune(instance: string, dir = this.ownDir(instance)): string[] {
     const days = this.opts.retentionDays?.();
     if (!dir || !days || !(days > 0)) return [];
     const cutoff = this.now() - days * 86_400_000, removed: string[] = [];
     for (const f of this.months(dir)) {
       const m = MONTH_FILE.exec(f)!;
-      const monthEnd = Date.UTC(Number(m[1]), Number(m[2]), 1);          // the first moment of the next month
-      if (monthEnd > cutoff) continue;
+      if (monthEnd(m[1]!, m[2]!) > cutoff) continue;
       try { rmSync(join(dir, f), { force: true }); removed.push(f); } catch (err) { this.opts.logger.warn({ err: (err as Error)?.message, instance, file: f }, "Web chat archive: a month past retention could not be removed"); }
+    }
+    let kept: string[] = [];
+    try { if (lstatSync(join(dir, KEPT_DIR)).isDirectory()) kept = readdirSync(join(dir, KEPT_DIR)).filter(d => MONTH_DIR.test(d)); } catch { kept = []; }
+    for (const d of kept) {
+      const m = MONTH_DIR.exec(d)!;
+      if (monthEnd(m[1]!, m[2]!) > cutoff) continue;
+      try { rmSync(join(dir, KEPT_DIR, d), { recursive: true, force: true }); this.filesTotal = null; }
+      catch (err) { this.opts.logger.warn({ err: (err as Error)?.message, instance, month: d }, "Web chat archive: a month's kept files past retention could not be removed"); }
     }
     return removed;
   }
-  /** Every append queued so far, written (tests; shutdown). */
-  async flush(): Promise<void> { await Promise.all([...this.queues.values()]); }
+  /** Every append queued so far, written — and a pending check of the kept files' limit, run (tests; shutdown). */
+  async flush(): Promise<void> { await Promise.all([...this.queues.values()]); await this.capCheck; }
   /** The agent was removed: its archive goes with it (after any append under way). */
   async forget(instance: string): Promise<void> {
     await (this.queues.get(instance) ?? Promise.resolve());
     const dir = this.dirOf(instance);
-    if (dir) rmSync(dir, { recursive: true, force: true });
+    if (dir) { rmSync(dir, { recursive: true, force: true }); this.ignored.delete(dir); this.filesTotal = null; }   // M-3281: its kept files with it
   }
 
   /**
