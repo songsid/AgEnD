@@ -378,6 +378,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     savePersonPrefs(sessionCsrf, favorites, onlyIfUnset = false) {
       return sessionCsrf && sessionCsrf === csrf ? call("PUT", "/hub/v1/me/prefs", { favorites, onlyIfUnset }) : Promise.resolve(retired());
     },
+    agentIntroDefaultsV1: true,
+    introNotice: () => call("GET", "/hub/v1/me/intro-notice"),
+    acknowledgeIntroNotice: () => call("DELETE", "/hub/v1/me/intro-notice"),
     agentIntrosV1: true,
     saveAgentIntro: (exposureId, revision, text) => call("PUT", `/hub/v1/exposures/${id(exposureId)}/intro`, {revision,text}),
     catalog() { return call("GET", "/hub/v1/exposures"); },

@@ -1,3 +1,4 @@
+import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
@@ -36,6 +37,7 @@ export interface HubClientOptions {
   receiveRecommendations?: boolean;
   /** Explicit opt-in without another hello capability name. */
   roomContext?: boolean;
+  agentIntro?: boolean;
   agentCatalog?: boolean;
   exposureRequests?: boolean;
   roomMentionFeedback?: boolean;
@@ -184,6 +186,7 @@ export class HubMemberClient implements HubMemberTransport {
       const canReportInfo = offered.includes("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_FLEET_INFO_CAPABILITY) === true;
       const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
       const features = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      if(this.options.agentIntro && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_INTRO_CAPABILITY))features.add(HUB_AGENT_INTRO_CAPABILITY);
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
@@ -193,6 +196,7 @@ export class HubMemberClient implements HubMemberTransport {
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
+          if(value.type === "agent.intro" && !features.has(HUB_AGENT_INTRO_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && !features.has(HUB_AGENT_CATALOG_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && value.payload.requests && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "exposure.request-result" || value.type === "exposure.undo") && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
@@ -230,6 +234,7 @@ export class HubMemberClient implements HubMemberTransport {
     // Negotiation is checked before resolving RPCs as well as before dispatching unsolicited work.
     if ((frame.type === "exposure.request" || frame.type === "exposure.request-ack" || frame.type === "exposure.undo-result")
       && !view.features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) throw new HubProtocolError("incompatible");
+    if(frame.type === "agent.intro-result" && !view.features.has(HUB_AGENT_INTRO_CAPABILITY))throw new HubProtocolError("incompatible");
     const pending = this.pending.get(frame.requestId);
     // The Hub can retry its request while our result waits for an ACK with the same operation id.
     if (pending && !(frame.type === "exposure.request" && pending.expected === "exposure.request-ack")) {

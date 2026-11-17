@@ -41,7 +41,7 @@ describe("native MCP capabilities and live menus",()=>{
   it("grants one ephemeral child capability and exposes only the supported profile-filtered tools",async()=>{
     const f=fixture();expect(f.lease.connection.token).toMatch(/^[a-f0-9]{64}$/);expect(f.manager.hasActive(name)).toBe(true);
     const {status,value}=await invoke(f,listing).done();expect(status).toBe(200);
-    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status","hub_room_list","hub_room_post","hub_room_members","hub_people_search"].sort());
+    expect(value.tools.map((tool:any)=>tool.name).sort()).toEqual(["list_instances","describe_instance","task","send_to_instance","delegate_task","request_information","report_result","delivery_status","hub_room_list","hub_room_post","hub_room_members","hub_people_search","hub_set_intro"].sort());
     expect(f.lease.connection.tools.sort()).toEqual(value.tools.map((tool:any)=>tool.name).sort());
     expect(value.tools.find((tool:any)=>tool.name==="task").annotations.readOnlyHint).toBe(false);
     expect(value.tools.find((tool:any)=>tool.name==="delegate_task").annotations.readOnlyHint).toBe(false);

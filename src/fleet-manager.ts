@@ -1743,7 +1743,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (!isWindowsInstance(this.fleetConfig?.instances[target])) return { result: null, error: "Native panes can only read Windows runtime model inventories" };
           return { result: await this.listModelCatalog({ instanceName: target }) };
         }
-        const ops: Record<string, string> = { hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
+        const ops: Record<string, string> = { hub_set_intro:"hub-set-intro",hub_room_list:"hub-room-list",hub_room_post:"hub-room-post",hub_room_members:"hub-room-members",hub_people_search:"hub-people-search",list_instances: "list", describe_instance: "describe", task: "task", send_to_instance: "send",
           delegate_task: "delegate", request_information: "ask", report_result: "report", delivery_status: "delivery-status" };
         const { nativeAgentAdmissionContext } = await import("./native-agent-admission.js");
         const { dispatchAgentOperation } = await import("./agent-endpoint.js");
@@ -2570,6 +2570,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
+          attachAgentIntro: port => { this.hubAgentIntro=port; },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
           roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
@@ -3051,6 +3052,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
   private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
+  private hubAgentIntro: import("./hub/member/agent-intro.js").AgentIntroPort|null=null;
+  hubSetIntro(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string){return this.hubAgentIntro?.set(caller,text,operationId)??Promise.resolve({ok:false as const,code:"unavailable" as const});}
   hubRoomToolsAvailable(): boolean { return this.hubAgentRooms?.available() === true; }
   hubRoomList(caller: import("./hub/member/room-post.js").RoomCaller) {
     return this.hubAgentRooms?.rooms(caller) ?? Promise.resolve({ok:false as const,code:"unavailable"});

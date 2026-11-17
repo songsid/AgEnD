@@ -1,3 +1,4 @@
+import {HUB_AGENT_INTRO_CAPABILITY} from "../agent-intro-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "../agent-catalog-model.js";
 import {HubPersonalRuntimeHost} from "../personal/runtime-host.js";
 import {HubPersonalOwnerHost} from "../personal/owner-host.js";
@@ -748,6 +749,6 @@ export type HubServerFactory = ReturnType<typeof createHubServerFactory>;
 export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
-export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; exposureRequestsV1?: true; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
+export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; exposureRequestsV1?: true; agentIntroV1?:true; features?: readonly string[] }): string[] {
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentIntroV1 ? [HUB_AGENT_INTRO_CAPABILITY] : []), ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY, ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])];
 }

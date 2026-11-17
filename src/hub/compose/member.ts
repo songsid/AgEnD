@@ -1,3 +1,4 @@
+import {HubMemberAgentIntro} from "../member/agent-intro.js";
 import { HUB_MEMBER_SHARING_MIGRATION, HubMemberSharingJournal } from "../member/sharing-journal.js";
 import { HubMemberSharing } from "../member/sharing.js";
 import { HubMemberSharingLink } from "../member/sharing-link.js";
@@ -108,6 +109,7 @@ export interface HubMemberFactoryOptions {
   views?: HubViewSource;
   /** P1's representative mode: the fleet's ordinary delivery, the agent lifecycle token and the report_result hook. */
   representative: HubRepresentativeHost;
+  attachAgentIntro?(port: import("../member/agent-intro.js").AgentIntroPort|null):void;
   attachAgentRooms?(port: import("../member/room-post.js").AgentRoomPort | null): void;
   roomToolsChanged?(): void;
   roomConversationGeneration?(agent: string): string | null;
@@ -710,11 +712,14 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
+      const intro = new HubMemberAgentIntro({current:live,exposures:()=>exposures.list().flatMap(row=>{const e=row.committed?.exposure;const agent=(options.catalogAgents?.()??[]).find(a=>a.instance===row.agent);const consent=row.committed&&db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(row.committed.consentId) as {agent:string;token:string}|undefined;return e&&e.state==="published"&&agent&&consent?.agent===row.agent&&options.representative.agentToken(row.agent)===consent.token?[{agent:row.agent,id:e.id,revision:e.revision,description:agent.description}]:[];})});
+      options.attachAgentIntro?.(intro);
+      teardown.add("agent introductions",()=>{intro.close();options.attachAgentIntro?.(null);});
       const api = exposureMods.api.createHubMemberExposureApi({
         store: exposures,
         // P1 representative agent (docs/design/hub-representative-agent.md): the owner shares a configured agent.
         agents: options.agents,
-        afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); return result; },
+        afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); void intro.defaults(); return result; },
         refused: () => sender.isRefused(),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
@@ -756,6 +761,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         log: options.log,
         fleetInfo: reportedInfo,
         receiveRecommendations: !!recommendations,
+        agentIntro: true,
         agentCatalog: !!catalog,
         exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
@@ -786,6 +792,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if (l.current() && live()) {
             online = l;
+            intro.connected(l);
             catalog?.connected(l);
             sharingLink?.connected(l);
             quota.start(l);
@@ -885,7 +892,8 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.attachRoomInputs?.(null);
             options.attachExposures(null);
           options.attachSharing?.(null);
-            options.attachAgentRooms?.(null);
+            intro.connected(null);
+          options.attachAgentRooms?.(null);
             options.attachAttention(null);
           });
           options.attachUpdates?.(updates);
@@ -909,6 +917,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.attachRoomInputs?.(null);
           options.attachExposures(null);
           options.attachSharing?.(null);
+          intro.connected(null);
           options.attachAgentRooms?.(null);
           // Mount drains failed startup too. Keep its actionable rejection until a different pairing takes over.
           if (!terminalHold) reportLink("offline");

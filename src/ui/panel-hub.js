@@ -1,3 +1,4 @@
+import { IntroNotice, introNoticeOffered } from "./hub-intro-notice.js";
 import { AgentIntroEditor, hi } from "./hub-agent-intro.js";
 import {hp,personalAgentQuestionHint} from "./hub-personal-agent-strings.js";
 import * as ownerEntryWords from "./hub-owner-strings.js";
@@ -210,7 +211,7 @@ export function HubPanel({ route }) {
     <${PanelHeader} title=${hc("noticesTitle")}><span class="hub-head-tools"><${HubNotifyToggle} /></span></${PanelHeader}><div data-trust="panel-content" class="panel-body hub-page-body">
       <div class="col hub-owner hub-notices-col"><p class="s-page-lead hub-page-lead">${roleNoticesOffered(s, hubClient()) ? roleNoticeLead() : directoryNoticesOffered(s, hubClient()) ? dn("pageLead") : hc("noticesLead")}</p>
         ${pairingNoticesOffered(s) ? html`<${PairingNotices} admin=${!!s.admin} empty=${directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient()) ? null : html`<${Empty} icon="bell" title=${hc("noNotices")} />`} />` : null}
-        ${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
+        ${introNoticeOffered(s,hubClient())?html`<${IntroNotice} client=${hubClient()} />`:null}${directoryNoticesOffered(s, hubClient()) ? html`<${DirectoryNotices} client=${hubClient()} />` : null}${roleNoticesOffered(s, hubClient()) ? html`<${RoleNotices} client=${hubClient()} />` : null}</div></div></div>`;
   // M-3092: the owner's invitations (spec §8), a page of the chats like Notices.
   if (s && tab === "ask" && view === "invitations" && roomsLive()) return html`<div data-effect-panel="hub" class="panel p-hub p-hub-invitations">
     <${PanelHeader} title=${hroom("invitationsTitle")} /><div data-trust="panel-content" class="panel-body hub-page-body"><div class="col hub-owner">
@@ -384,7 +385,7 @@ export const NOTICES_PATH = "/ui/hub?view=notices";
 export const INVITATIONS_PATH = "/ui/hub?view=invitations";
 export const MY_TEAMS_PATH = "/ui/hub?view=teams";
 const pairingNoticesOffered = (s) => !!s && Array.isArray(s.features) && s.features.includes("quick-pairing-v1") && !!hubClient().quickPairingV1;
-const noticesOffered = s => pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient());
+const noticesOffered = s => introNoticeOffered(s,hubClient()) || pairingNoticesOffered(s) || directoryNoticesOffered(s, hubClient()) || roleNoticesOffered(s, hubClient());
 const initial = (name) => (String(name || "?").trim()[0] || "?").toUpperCase();
 const AV_TONES = 6;
 const tone = (name) => { let h = 0; for (const c of String(name || "")) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % AV_TONES; };
@@ -958,6 +959,7 @@ function readActivity(exposureId) {
       () => ({ ok: false, code: "unreachable" }));
 }
 function HubMine() {
+  const introSession=useSession();
   useStore(navStore);                                 // ?agent= changes without a new route
   const [cat, reload] = useRead(() => hubClient().catalog());
   const [pairings, reloadPairings] = useRead(() => hubClient().pairings());
@@ -1002,6 +1004,7 @@ function HubMine() {
         </div>`)}</div></section>` : null}
       ${!cat ? html`<${Skeleton} variant="rows" lines=${4} />` : cat.error ? html`<${ErrorState} message=${cat.error} onRetry=${reload} />` : null}
       ${cat && !cat.error && !mine.length ? html`<div class="center hub-empty"><${Empty} icon="globe" title=${hw("exposuresEmpty")} hint=${hw("exposuresHint")} /></div>` : null}
+      ${introNoticeOffered(introSession,hubClient())?html`<${IntroNotice} client=${hubClient()} />`:null}
       ${mine.length ? html`<section class="card hub-shared"><h3>${ho(mine.some(e => e.kind === "personal") ? "yourAgentsCount" : "sharedCount", mine.length)}</h3>
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong>${e.intro?html`<small class="note">${e.intro}</small>`:null}<small class="note">${grantSummary(e.grants)}</small></span>

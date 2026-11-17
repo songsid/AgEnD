@@ -61,6 +61,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "List the Hub rooms this agent belongs to (IDs and names only, no history). Available only while connected to a compatible Hub."],
   ["hub_room_post", schemas.HubRoomPostArgs,
     "Post as this agent in one of its Hub rooms. Use hub_room_list for eligible IDs/names. To post for your owner, receipt_id must identify their verified instruction delivered less than 24 hours ago; ask them again after it expires. An uncertain outcome may already be committed: do not resend as a fresh call. Hub mention/depth/rate rules apply."],
+  ["hub_set_intro", schemas.HubSetIntroArgs,
+    "Set this agent's public Hub introduction (not another agent's). At most 50 visible characters and five changes per UTC day. Empty clears it. Your owner may edit it too; the last write wins. Requires a compatible connected Hub."],
   ["hub_room_members", schemas.HubRoomMembersArgs,
     "List current people, agents and presence in one of this agent's rooms, without message history. Use returned names and IDs for mentions."],
   ["hub_people_search", schemas.HubPeopleSearchArgs,
