@@ -1,8 +1,8 @@
 # Hub rooms: what an agent knows about the room it is asked in (M-3299)
 
 Status: approved by the owner on 2026-11-18, including the 50-character introduction cap.
-Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b; H5 assistant-kind/count clarification from 2b18ca396; H6 old-Hub result correction from 6d20f0ea1.
-Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 landed in #4139 with the negotiated first brief and confirmed membership delta. H5 landed in #4140 with the bounded member lookup. H6 adds the wrong-tool warning, one owed-answer reminder and the negotiated early No answer marker. "Today" means a source survey of the development branch
+Copied from approved source 71cf82a65 with the H1/H2 split and assistant-copy clarification from 8646bd61b; H5 assistant-kind/count clarification from 2b18ca396; H6 old-Hub result correction from 6d20f0ea1; measured first-brief budget correction from b5ceff5c5.
+Implementation order starts with H7 per the owner’s priority; H7 landed in #4133. H1 landed in #4135 with explicit owner editing and public displays; H2 landed in #4137 with negotiated defaults, the owner review notice and self-editing. H3 landed in #4138 with the optional room purpose and its member-facing displays. H4 landed in #4139 with the negotiated first brief and confirmed membership delta. H5 landed in #4140 with the bounded member lookup. H6 landed in #4141 with the wrong-tool warning, one owed-answer reminder and the negotiated early No answer marker. The measured first-brief follow-up enforces the corrected 2 KiB budget. "Today" means a source survey of the development branch
 at `13abcddd8`; nothing was run.
 
 Four gaps, raised by the owner on 2026-11-18, and one rule that runs through all of them: **in a room with many
@@ -268,11 +268,13 @@ The rule: one tool call or one question must fit on a screen.
 |---|---|---|
 | Introduction | 50 characters, one line (approved) | A phrase: "Tracks the release checklist and sign-offs." |
 | Room purpose | 200 characters, one line | It is read once, not per agent |
-| "About this room" | Purpose, two counts and the fixed how-to lines: under 1 KB | Sent once per agent per room |
+| "About this room" | Purpose, two counts, framing and fixed how-to lines: at most 2 KiB (2,048 UTF-8 bytes) | Sent once per agent per room |
 | "Who joined and who left" | One line, at most 5 names, under 600 bytes; absent when nothing changed | Five names with 50-character introductions fit; more is a lookup |
 | `hub_room_members`, rows per call | 20 by default, 50 at most | With 50-character introductions, 20 rows is about 3 KB |
 | `hub_room_members`, whole result | 8 KB | A hard stop whatever the room's size; rows are held back, never cut |
 | Earlier messages sent with a question | The existing message limit, 12 KiB by default (below) | The owner's choice: one limit, not a new one |
+
+The full first-question block is at most 2,048 bytes. A normal 200-character purpose stays intact in either language. Only if the block exceeds that budget does the Fleet cut the purpose at a whole grapheme, ending its display with `… (cut: full purpose in hub_room_members)` / 「…（已截短，完整用途請用 hub_room_members 查詢）」. Counts and how-to lines are never shortened or dropped. The stored and displayed room purpose stays at 200 characters; H5 keeps its 8 KiB result rule.
 
 ### 5.1 Earlier messages: what is sent, and the limit
 

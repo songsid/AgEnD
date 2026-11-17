@@ -1,0 +1,1 @@
+Normal first-question blocks recorded with the pure formatter on base `100eb998c`, including the existing member-content disclaimer. Each uses synthetic 200-character purpose text, three people and four agents. No CLI, account or model call. They pin unchanged normal output across the byte-budget fix.

@@ -1,0 +1,70 @@
+{
+  "base": "100eb998c",
+  "limit": 2048,
+  "cases": [
+    {
+      "lang": "en",
+      "name": "normal200",
+      "purposeBytes": 200,
+      "beforeBlockBytes": 698,
+      "afterBlockBytes": 698,
+      "unchanged": true
+    },
+    {
+      "lang": "en",
+      "name": "emoji200",
+      "purposeBytes": 800,
+      "beforeBlockBytes": 1298,
+      "afterBlockBytes": 1298,
+      "unchanged": true
+    },
+    {
+      "lang": "en",
+      "name": "familyMix200",
+      "purposeBytes": 2600,
+      "beforeBlockBytes": 3098,
+      "afterBlockBytes": 2024,
+      "unchanged": false
+    },
+    {
+      "lang": "en",
+      "name": "combining1",
+      "purposeBytes": 2601,
+      "beforeBlockBytes": 3099,
+      "afterBlockBytes": 542,
+      "unchanged": false
+    },
+    {
+      "lang": "zh-TW",
+      "name": "normal200",
+      "purposeBytes": 600,
+      "beforeBlockBytes": 1122,
+      "afterBlockBytes": 1122,
+      "unchanged": true
+    },
+    {
+      "lang": "zh-TW",
+      "name": "emoji200",
+      "purposeBytes": 800,
+      "beforeBlockBytes": 1322,
+      "afterBlockBytes": 1322,
+      "unchanged": true
+    },
+    {
+      "lang": "zh-TW",
+      "name": "familyMix200",
+      "purposeBytes": 2600,
+      "beforeBlockBytes": 3122,
+      "afterBlockBytes": 2041,
+      "unchanged": false
+    },
+    {
+      "lang": "zh-TW",
+      "name": "combining1",
+      "purposeBytes": 2601,
+      "beforeBlockBytes": 3123,
+      "afterBlockBytes": 585,
+      "unchanged": false
+    }
+  ]
+}
