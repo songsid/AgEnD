@@ -140,11 +140,11 @@ describe("runWebCommand", () => {
 // ── The route ──
 const token = "c".repeat(48), pub = "https://sample.trycloudflare.com", exposureId = "a".repeat(32);
 /** A POST locally (the header token), or over the public link (a gateway session with its cookie, origin and CSRF). */
-function post(path: string, body: unknown, over: Record<string, unknown> = {}, gateway = false) {
+function post(path: string, body: unknown, over: Record<string, unknown> = {}, gateway: boolean | "read" = false) {
   const store = new WebSessionStore();
   let headers: Record<string, string> = { host: "127.0.0.1:19280", "x-agend-token": token, "content-type": "application/json" };
   if (gateway) {
-    const s = store.create({ tier: "admin", surface: "gateway", exposureId, label: "phone", tokenEpoch: tokenEpoch(token) });
+    const s = store.create({ tier: gateway === "read" ? "read" : "admin", surface: "gateway", exposureId, label: "phone", tokenEpoch: tokenEpoch(token) });
     headers = { host: "sample.trycloudflare.com", cookie: `__Host-agend_session=${s.sessionId}`, origin: pub, "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" };
   }
   const req = Object.assign(new EventEmitter(), { method: "POST", url: path, headers, destroy: vi.fn(), socket: { destroy: vi.fn() } });
@@ -174,13 +174,15 @@ describe("POST /ui/command", () => {
     expect(webCommand).not.toHaveBeenCalled();
     expect((await post("/ui/command", { instance: "w", command: "ctx" })).status).toBe(404);
   });
-  it("on the public link: admitted as a POST (not a GET), and told it is the public link", async () => {
+  it("on the public link: admitted as a POST (not a GET); told it is the public link unless it is the link's admin session (M-3278)", async () => {
     expect(isPublicWebRoute("POST", "/ui/command")).toBe(true);
     expect(isPublicWebRoute("GET", "/ui/command")).toBe(false);
     expect(isPassiveWebRead("POST", "/ui/command")).toBe(false);
     const webCommand = vi.fn(async (_input: unknown, _opts: unknown) => ({ status: 403, body: { error: "no" } }));
-    await post("/ui/command", { instance: "w", command: "save", args: "a.md" }, { webCommand }, true);
+    await post("/ui/command", { instance: "w", command: "save", args: "a.md" }, { webCommand }, "read");
     expect(webCommand.mock.calls[0]![1]).toMatchObject({ publicLink: true });
+    await post("/ui/command", { instance: "w", command: "save", args: "a.md" }, { webCommand }, true);
+    expect(webCommand.mock.calls[1]![1]).toMatchObject({ publicLink: false });
   });
 });
 
@@ -190,12 +192,16 @@ describe("/raw over the public link (#1269 decision)", () => {
     return { deliverToInstance, ctx: { deliverToInstance, fleetConfig: { instances: { w: { working_directory: "/w" } } }, adapter: null,
       lastInboundUser: new Map(), emitSseEvent: vi.fn() } };
   };
-  it("refused on the public link — nothing delivered, a clear message; allowed locally", async () => {
+  it("refused on the public link to anyone but its admin session — nothing delivered, a clear message; allowed locally and (M-3278) to the link's admin", async () => {
     const pub = sendCtx();
-    const r = await post("/ui/send", { instance: "w", message: "/raw ls -la" }, pub.ctx, true);
+    const r = await post("/ui/send", { instance: "w", message: "/raw ls -la" }, pub.ctx, "read");
     expect(r.status).toBe(403);
     expect(r.body.error).toContain("/raw");
     expect(pub.deliverToInstance).not.toHaveBeenCalled();
+    const admin = sendCtx();
+    const ar = await post("/ui/send", { instance: "w", message: "/raw ls -la" }, admin.ctx, true);
+    expect(ar.status, JSON.stringify(ar.body)).toBe(200);
+    expect(admin.deliverToInstance).toHaveBeenCalledTimes(1);
     const local = sendCtx();
     const lr = await post("/ui/send", { instance: "w", message: "/raw ls -la" }, local.ctx);
     expect(lr.status, JSON.stringify(lr.body)).toBe(200);

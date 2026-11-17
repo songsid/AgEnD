@@ -12,6 +12,7 @@ import type { RuntimeMachine } from "./runtime-protocol.js";
 import type { WindowsCliProbe } from "./windows-cli.js";
 import { validateNativeTask } from "./windows-cli-worker.js";
 import { runtimeServerOrigin } from "./runtime-connection.js";
+import { gatewayRequestContext } from "./web-request-context.js";
 import type { RuntimeInstallService } from "./runtime-install.js";
 import { LATEST_ACK_FIELD } from "./cli-audited.js";
 import { cachedSettingsBody, isSettingsReplay, settingsRequestExecution, settingsRequestLocalAdmin, settingsRequestRequester } from "./settings-request-capability.js";
@@ -50,6 +51,13 @@ function json(res: ServerResponse, status: number, value: unknown): void {
 export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, url: URL, ctx: RuntimeApiContext, bundle = createRuntimeBundle): boolean {
   if (url.pathname !== "/ui/runtimes" && !url.pathname.startsWith("/ui/runtimes/")) return false;
   const method = req.method ?? "GET";
+  // M-3278 (Fable on #4107, N2): the Windows package and its installer pin stay on this computer's dashboard. A Runtime
+  // talks `/runtime/v1/*` to this computer, which the public link never carries, so a package or command made there could
+  // not connect; anyone over the link (its admin included) is told where to do it instead of handed one.
+  if (gatewayRequestContext(req) && (url.pathname === "/ui/runtimes/download/windows" || url.pathname === "/ui/runtimes/installer")) {
+    json(res, 403, { error: "Download the Runtime and copy its install command on this computer's dashboard: a Runtime connects to this computer, never through the public link." });
+    return true;
+  }
   if (!nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Runtime settings require a local dashboard administrator" }); return true; }
   const enabled = remoteRuntimeEnabled() && !!ctx.runtimeCoordinator;
   if (!enabled) { json(res, method === "GET" && url.pathname === "/ui/runtimes" ? 200 : 404, { enabled: false, machines: [] }); return true; }
@@ -83,7 +91,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
     return true;
   }
   const hub = ctx.runtimeCoordinator!();
-  // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session on the directly reached dashboard is (accountIdentityVisible).
+  // The header token (an agent's) may still use these routes, but it is shown no account: only an admin session is (accountIdentityVisible; M-3278: the public link's too).
   const machineFor = (machine: RuntimeMachine): RuntimeMachine => accountIdentityVisible(req, url, ctx) ? machine : machineWithoutAccountIdentity(machine);
   // `enrollments` is what the page shows next to a token it issued (a status and a time, never the token or its hash), so a computer that joins is noticed on the next refresh. Only the administrator
   // session that makes and revokes them is shown them: the header token (an agent's) gets none.
@@ -141,7 +149,7 @@ export function handleRuntimeRequest(req: IncomingMessage, res: ServerResponse, 
   }
   const setupRoute = /^\/ui\/runtimes\/machines\/([a-f0-9-]{36})\/(remote-setup|cli-install)$/.exec(url.pathname);
   if (setupRoute) {
-    // Only a local administrator session (remoteSetupActor); a header token, guest, public link or gateway gets nothing, and is not told why.
+    // Only an administrator session (remoteSetupActor; M-3278: the public link's too); a header token or guest gets nothing, and is not told why.
     const id = setupRoute[1], what = setupRoute[2], machine = hub.machine(id);
     // AGEND-148 (Prism R3 on #3539): an install (and the Update that reuses it) is the Settings gate's confirmed replay and nothing else — the same gate, principal, per-admin policy and replay
     // that #3542 put in front of the host's install (settings-http-confirmation.ts proposes it; the administrator's own Apply now / digest-bound code confirms it). The replay has no session: the

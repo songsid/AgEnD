@@ -453,9 +453,9 @@ describe("get_usage_report: scope and words", () => {
 
 describe("GET /ui/usage-report: who gets it", () => {
   const X = "a".repeat(32), ORIGIN = "https://sample.trycloudflare.com", TOKEN = "c".repeat(48);
-  function get(web: Record<string, unknown> | undefined, publicLink: boolean) {
+  function get(web: Record<string, unknown> | undefined, publicLink: boolean, tier: "admin" | "read" = "admin") {
     const sessions = new WebSessionStore();
-    const sid = sessions.create({ tier: "admin", surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
+    const sid = sessions.create({ tier, surface: publicLink ? "gateway" : "local", label: "phone", tokenEpoch: tokenEpoch(TOKEN), ...(publicLink ? { exposureId: X } : {}) }).sessionId as string;
     const cookie = publicLink ? `__Host-agend_session=${sid}` : `agend_session=${sid}`;
     const req = Object.assign(new EventEmitter(), { method: "GET", url: "/ui/usage-report?range=today", headers: { host: publicLink ? "sample.trycloudflare.com" : "127.0.0.1:19280", cookie } as Record<string, string>, destroy: vi.fn() });
     let status = 0, body = "";
@@ -473,12 +473,21 @@ describe("GET /ui/usage-report: who gets it", () => {
     const off = get({ usage_panel: false }, false); await settle();
     expect([off.status(), off.usageReport.mock.calls.length]).toEqual([404, 0]);
   });
-  it("the public link: refused unless web.usage_report_on_public_link is true", async () => {
-    const no = get(undefined, true); await settle();
+  // M-3278 (decision 7933bf90): on by default over the link; refused only when the switch is explicitly false.
+  it("the public link: served unless web.usage_report_on_public_link is false (M-3278: on by default)", async () => {
+    const no = get({ usage_report_on_public_link: false }, true); await settle();
     expect([no.status(), JSON.parse(no.body()).error, no.usageReport.mock.calls.length]).toEqual([403, "usage_report_not_over_public_link", 0]);
     // Where it is turned on: Settings → Web on the dashboard reached directly (this computer's own address).
     expect(JSON.parse(no.body()).settings).toBe("http://localhost:19280/settings/web-dashboard");   // #2347: Web dashboard
+    const unset = get(undefined, true); await settle();
+    expect(unset.status()).toBe(200);
     const yes = get({ usage_report_on_public_link: true }, true); await settle();
+    expect(yes.status()).toBe(200);
+  });
+  it("Fable on #4100 (F2): a read-only session over the link gets it only when the owner opted in (true), as before", async () => {
+    const unset = get(undefined, true, "read"); await settle();
+    expect([unset.status(), unset.usageReport.mock.calls.length]).toEqual([403, 0]);
+    const yes = get({ usage_report_on_public_link: true }, true, "read"); await settle();
     expect(yes.status()).toBe(200);
   });
   /** The report held until `release`: what may change meanwhile is the switch, the session and the public link. */

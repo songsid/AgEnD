@@ -227,20 +227,29 @@ describe("/ui/prefs", () => {
     await flush();
     expect([w.status(), t.emitSseEvent.mock.calls.length]).toEqual([200, 0]);
   });
-  it("the public link can read but an admin's session can never write there — any key, the preview opt-in included (the route is offered for a guest's own preferences, #2855 / #4084)", async () => {
+  // M-3278 (decision 7933bf90): an admin session writes its preferences over the public link as here; a read-only one there cannot.
+  it("the public link reads, and an admin's session writes there too (M-3278) — any key, the preview opt-in included; a read-only session there cannot", async () => {
     const outcomes: unknown[] = [];
     for (const set of [{ theme: "dark" }, { "preview.optIn": true }, { lang: "en" }, { "nav.order": [] }]) {
       const t = setup({ publicLink: true });
       const w = t.write({ set });
       await flush();
-      outcomes.push([w.status(), w.json().error, t.prefs.read().values, t.emitSseEvent.mock.calls.length]);
+      outcomes.push([w.status(), t.prefs.read().values, t.emitSseEvent.mock.calls.length > 0]);
     }
-    expect(outcomes).toEqual(Array(4).fill([403, "prefs_not_over_public_link", {}, 0]));
-    // It reads what is in force.
+    expect(outcomes).toEqual([[200, { theme: "dark" }, true], [200, { "preview.optIn": true }, true], [200, { lang: "en" }, true], [200, { "nav.order": [] }, true]]);
+    const ro = setup({ publicLink: true, tier: "read" });
+    const rw = ro.write({ set: { theme: "dark" } });
+    await flush();
+    expect([rw.status(), rw.json().error, ro.prefs.read().values]).toEqual([403, "prefs_read_only", {}]);
+    // Fable on #4107 (N1): the read session over the link keeps the scope-less view, as before (no person scope).
+    ro.prefs.write(OPERATOR, new Map([["theme", "dark"]]));
+    expect(ro.read().json().ownerScope).toBe("none");
+    // It reads what is in force — M-3278 (decision 7933bf90): in the admin session's own person scope, as on the local
+    // dashboard (here the operator's), no longer the scope-less view.
     const t = setup({ publicLink: true });
     t.prefs.write(OPERATOR, new Map([["theme", "dark"]]));
     const r = t.read();
-    expect([r.status(), r.json()]).toEqual([200, { values: { theme: "dark" }, rev: 1, ownerScope: "none", ownerEpoch: null }]);
+    expect([r.status(), r.json()]).toEqual([200, { values: { theme: "dark" }, rev: 1, ownerScope: "operator", ownerEpoch: expect.stringMatching(/^[0-9a-f]{16}$/) }]);
     expect([isPublicWebRoute("GET", "/ui/prefs"), isPublicWebRoute("POST", "/ui/prefs")]).toEqual([true, true]);
   });
   it("a read-only session cannot write", async () => {
@@ -370,7 +379,7 @@ describe("#2855: a guest's own preferences in the store", () => {
 });
 
 describe("#2855: a guest saves its own preferences over the public link too (only its own bucket is written)", () => {
-  it("a guest session on the gateway: POST /ui/prefs → its bucket; an admin session there is still refused", async () => {
+  it("a guest session on the gateway: POST /ui/prefs → its bucket; an admin session there writes the host's (M-3278)", async () => {
     const sessions = new WebSessionStore(), prefs = new WebPrefsStore(tmp(), { exists: (n) => n === "alpha" });
     const owner = { adapterId: "discord", userId: "42" };
     const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, logger: { info() {}, debug() {}, error() {}, warn() {} },
@@ -389,7 +398,7 @@ describe("#2855: a guest saves its own preferences over the public link too (onl
     expect([g.status(), g.json().values]).toEqual([200, { theme: "dark", "nav.favorites": ["alpha"] }]);
     expect([prefs.read(`person:discord:42`).values, prefs.read(OPERATOR).values]).toEqual([{ theme: "dark", "nav.favorites": ["alpha"] }, {}]);
     const a = post("admin", { set: { theme: "dark" } }); await flush();
-    expect([a.status(), a.json().error]).toEqual([403, "prefs_not_over_public_link"]);
+    expect([a.status(), prefs.read(OPERATOR).values]).toEqual([200, { theme: "dark" }]);
   });
   it("#4084: through the public link's own listener — a guest's star is kept (it was refused before the handler, and vanished)", async () => {
     const sessions = new WebSessionStore(), prefs = new WebPrefsStore(tmp(), { exists: (n) => n === "alpha-t1500000000000000001" || n === "beta" });
@@ -419,8 +428,8 @@ describe("#2855: a guest saves its own preferences over the public link too (onl
     const g = post("guest", { set: { "nav.favorites": ["beta", "alpha-t1500000000000000001"] } }); await flush();
     expect([g.status(), g.json().values?.["nav.favorites"]]).toEqual([200, ["beta", "alpha-t1500000000000000001"]]);
     expect([prefs.read("person:discord:42").values, prefs.read(OPERATOR).values]).toEqual([{ "nav.favorites": ["beta", "alpha-t1500000000000000001"] }, {}]);
-    // An admin's session over the link is still refused — by the handler, not the route list.
+    // M-3278 (decision 7933bf90): an admin's session over the link writes the host's preferences.
     const a = post("admin", { set: { theme: "dark" } }); await flush();
-    expect([a.status(), a.json().error]).toEqual([403, "prefs_not_over_public_link"]);
+    expect([a.status(), prefs.read(OPERATOR).values]).toEqual([200, { theme: "dark" }]);
   });
 });

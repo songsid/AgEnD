@@ -1,0 +1,77 @@
+{
+ "cases": {
+  "desk-light-en": {
+   "mounted": true,
+   "box:offByDefault": true,
+   "box:label": {
+    "pass": true,
+    "detail": "Idle people stay in their own area"
+   },
+   "api:stayInArea": {
+    "pass": true,
+    "detail": {
+     "name": "Tavern",
+     "skin": "cozy",
+     "stayInArea": true
+    }
+   },
+   "disk:beside": {
+    "pass": true,
+    "detail": {
+     "stayInArea": {
+      "office-ld68hv": true
+     }
+    }
+   },
+   "reopen:ticked": true,
+   "untick:gone": {
+    "pass": true,
+    "detail": {
+     "disk": null
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-zh-TW": {
+   "mounted": true,
+   "box:offByDefault": true,
+   "box:label": {
+    "pass": true,
+    "detail": "待命只在自己的區域走動"
+   },
+   "api:stayInArea": {
+    "pass": true,
+    "detail": {
+     "name": "酒館",
+     "skin": "cozy",
+     "stayInArea": true
+    }
+   },
+   "disk:beside": {
+    "pass": true,
+    "detail": {
+     "stayInArea": {
+      "office-2j014j": true
+     }
+    }
+   },
+   "reopen:ticked": true,
+   "untick:gone": {
+    "pass": true,
+    "detail": {
+     "disk": null
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": true
+}

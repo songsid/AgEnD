@@ -106,6 +106,14 @@ function guestSettingsCaller(req: IncomingMessage, url: URL, ctx: { webToken?: s
   if (v.via === "header-token") return "header-token";
   return v.session.tier === "admin" ? `session:${v.session.handle}` : null;
 }
+/**
+ * M-3278 (decision 7933bf90): a request over the public link by anyone but an admin (a read-only session; a guest never
+ * reaches Settings). The link's admin session is answered as on the local dashboard; this keeps the link's old refusal
+ * for everyone else where a route has no admin check of its own.
+ */
+function linkNonAdmin(req: IncomingMessage, url: URL, ctx: { webToken?: string | null; webSessions?: import("./web-session.js").WebSessionStore | null }): boolean {
+  return !!gatewayRequestContext(req) && !guestSettingsCaller(req, url, ctx);
+}
 
 export interface SettingsApiContext extends AppShellContext {
   hubFleetUpdates?(): import("./hub/member/updates.js").HubMemberUpdates | null;
@@ -560,7 +568,7 @@ export function handleSettingsRequest(
   const updateConsent = path === "/api/settings/hub/update-consent";
   const updateRequest = path.match(/^\/api\/settings\/hub\/fleet-updates\/([0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})(\/cancel)?$/);
   if (updateConsent || updateRequest) {
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    // M-3278 (decision 7933bf90): the public link's admin session too (the caller below is an admin session).
     const caller = () => {
       const v = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
       return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session.handle : null;
@@ -710,7 +718,6 @@ export function handleSettingsRequest(
 
   const retryConnection = path.match(/^\/api\/settings\/connections\/([^/]+)\/retry$/);
   if (method === "POST" && retryConnection) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Connection retries are not permitted over a public link" }); return true; }
     if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "An admin sign-in is required" }); return true; }
     if (!ctx.retryAdapterNow) { json(res, 503, { error: "The fleet is not running" }); return true; }
     try {
@@ -726,7 +733,6 @@ export function handleSettingsRequest(
   // only and never over the public link, like the rest of Access; the typed token is read from the body once, used
   // only in the test connector's environment, and never echoed — the answer is closed step codes.
   if (method === "POST" && path === "/api/settings/public-link/test") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }, true); return true; }
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 403, { error: "An admin sign-in is required" }, true); return true; }
     if (!ctx.testNamedLink) { json(res, 501, { error: "test unavailable" }, true); return true; }
@@ -772,7 +778,7 @@ export function handleSettingsRequest(
 
   const providerSecretVerifyMatch = providerPath.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/verify$/);
   if (method === "POST" && providerSecretVerifyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.verifyProviderSecret) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretVerifyMatch[1]!);
@@ -801,7 +807,7 @@ export function handleSettingsRequest(
 
   const providerSecretApplyMatch = providerPath.match(/^\/api\/settings\/(?:provider-secrets|secrets)\/([^/]+)\/apply$/);
   if (method === "POST" && providerSecretApplyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     if (!providerSecretsEnabled) { json(res, 404, { error: "not found" }, true); return true; }
     if (!ctx.startProviderSecretApply) { json(res, 501, { error: "provider secret registry unavailable" }, true); return true; }
     const specId = decodeURIComponent(providerSecretApplyMatch[1]!);
@@ -835,7 +841,7 @@ export function handleSettingsRequest(
 
   const secretVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/verify$/);
   if (method === "POST" && secretVerifyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     const verifyConnectionSecret = ctx.verifyConnectionSecret;
     if (!verifyConnectionSecret) { json(res, 501, { error: "connection secret verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretVerifyMatch[1]!);
@@ -872,7 +878,7 @@ export function handleSettingsRequest(
 
   const secretApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/secret\/apply$/);
   if (method === "POST" && secretApplyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     if (!ctx.startConnectionSecretApply) { json(res, 501, { error: "connection secret apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(secretApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
@@ -920,7 +926,7 @@ export function handleSettingsRequest(
 
   const bindingVerifyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/verify$/);
   if (method === "POST" && bindingVerifyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     if (!ctx.verifyConnectionBinding) { json(res, 501, { error: "connection binding verification unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingVerifyMatch[1]!);
     readBody(req, 16 * 1024).then(async buf => {
@@ -957,7 +963,7 @@ export function handleSettingsRequest(
 
   const bindingApplyMatch = path.match(/^\/api\/settings\/connections\/([^/]+)\/binding\/apply$/);
   if (method === "POST" && bindingApplyMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "Secret operations are not permitted over a public link" }, true); return true; }   // M-3278: its admin may
     if (!ctx.startConnectionBindingApply) { json(res, 501, { error: "connection binding apply unavailable" }); return true; }
     const connectionId = decodeURIComponent(bindingApplyMatch[1]!);
     readBody(req, 16 * 1024).then(buf => {
@@ -996,7 +1002,7 @@ export function handleSettingsRequest(
   if (path === "/api/settings/hub/membership" || path === "/api/settings/hub/pilot-trust") {
     const pilot = path.endsWith("/pilot-trust");
     const settings = (raw: unknown) => pilot ? hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION) : hubMembershipSettings(raw);
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    // M-3278 (decision 7933bf90): the public link's admin session too (each method asks for an admin below).
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
       // v2 is an explicit local-owner read. Older clients keep the pure boolean response and lazy-off behavior.
@@ -1007,7 +1013,7 @@ export function handleSettingsRequest(
         if (!read) { json(res, 404, { ok: false, error: "unavailable" }); return true; }
         void (async () => {
           const pairing = await read();
-          if (!owner.current() || gatewayRequestContext(req) || !guestSettingsCaller(req, url, ctx) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath || hubMembershipSettings(ctx.getRawFleetConfig()).enabled !== hubMembershipSettings(raw).enabled) {
+          if (!owner.current() || !guestSettingsCaller(req, url, ctx) || ctx.fleetConfig !== cfg || ctx.configPath !== configPath || hubMembershipSettings(ctx.getRawFleetConfig()).enabled !== hubMembershipSettings(raw).enabled) {
             json(res, 409, { ok: false, error: "unavailable" }); return;
           }
           json(res, 200, { ok: true, connectionCardV1: true, ...hubMembershipSettings(raw), pairing });
@@ -1062,7 +1068,8 @@ export function handleSettingsRequest(
   // ── #1920 phase 3: Settings → Web sign-ins → Guests. The list (GET) and an account's sign-out (POST — it only takes
   // away, so it is not a confirmed change). Never over the public link. The switches and lists are fleet/web's PUT.
   if (path === "/api/settings/guests" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): an admin's (or the CLI token's) on any listener — the overview names guests and their reach.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.guestOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.guestOverview());
@@ -1072,7 +1079,6 @@ export function handleSettingsRequest(
   // a minute per account — a code is not a settings change: the grant it needs was already confirmed). Never over the
   // public link; the caller asked again after the body, as the sign-out below.
   if (path === "/api/settings/guests/people" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.guestPeople) { json(res, 404, { error: "not available" }); return true; }
     if (!guestSettingsCaller(req, url, ctx)) { json(res, 401, { error: "not authorized" }); return true; }
     res.setHeader("Cache-Control", "no-store");
@@ -1080,7 +1086,6 @@ export function handleSettingsRequest(
     return true;
   }
   if (path === "/api/settings/guests/send-code" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.sendGuestCodeByAdmin) { json(res, 404, { error: "not available" }); return true; }
     const caller = guestSettingsCaller(req, url, ctx);
     if (!caller) { json(res, 401, { error: "not authorized" }); return true; }
@@ -1097,7 +1102,6 @@ export function handleSettingsRequest(
     return true;
   }
   if (path === "/api/settings/guests/revoke" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "guest_settings_not_over_public_link" }); return true; }
     if (!ctx.revokeGuestWebSessions) { json(res, 404, { error: "not available" }); return true; }
     // #2103 review: not a gated settings change (it only takes away), so no transaction fences it — the caller is
     // asked again after the body: the same admin session (or the header token) still current, else nothing happens.
@@ -1119,14 +1123,14 @@ export function handleSettingsRequest(
   // takes away, so it is not a confirmed change; the caller is asked again after the body, as the guests' sign-out).
   // Never over the public link. The switches and the lists are fleet/web's PUT.
   if (path === "/api/settings/web-authority" && method === "GET") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): an admin's on any listener — it lists the authorized sessions and LAN hosts.
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!ctx.webAuthorityOverview) { json(res, 404, { error: "not available" }); return true; }
     res.setHeader("Cache-Control", "no-store");
     json(res, 200, ctx.webAuthorityOverview(req));
     return true;
   }
   if (path === "/api/settings/web-authority/revoke" && method === "POST") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_authority_not_over_public_link" }); return true; }
     if (!ctx.revokeWebAuthority) { json(res, 404, { error: "not available" }); return true; }
     // AGEND-138: only the verified owner (webAuthorityRevoker: this fleet's owner, or a chat fleet's web-verified admin) may
     // revoke — any other admin sign-in, a guest, a read-only session: 403 `owner_required`, whatever the page showed. The
@@ -1146,11 +1150,11 @@ export function handleSettingsRequest(
     return true;
   }
 
-  // S3c (S-55): the member's exposures — local owner only, never over the public link. GET the list; POST publish or
+  // S3c (S-55): the member's exposures — an admin only (M-3278: over the public link too). GET the list; POST publish or
   // revise (only as a confirmed Settings replay: the confirmation layer intercepts the first request); POST
   // .../<id>/withdraw at once (narrowing needs no confirmation), ok once the restrictive state is saved.
   if (path === "/api/hub/member/contact-limit-notice" && method === "POST") {
-    if (gatewayRequestContext(req) || !guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }   // M-3278: over the link too
     const api = ctx.hubMemberExposures?.();
     if (!api?.acknowledgeContactLimitNotice) { json(res, 404, { error: "unavailable" }); return true; }
     try { api.acknowledgeContactLimitNotice(); json(res, 200, { ok: true }); }
@@ -1159,7 +1163,7 @@ export function handleSettingsRequest(
   }
   const hubExposures = path === "/api/hub/member/exposures" ? "list" : /^\/api\/hub\/member\/exposures\/[0-9a-f-]{36}\/withdraw$/.test(path) ? "withdraw" : null;
   if (hubExposures) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }   // M-3278: its admin may
     const api = ctx.hubMemberExposures?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const refused = (err: unknown) => { const code = (err as { code?: string }).code; json(res, 409, { ok: false, error: typeof code === "string" ? code : "unsaved" }); };
@@ -1196,7 +1200,7 @@ export function handleSettingsRequest(
   // #3423: an original private cookie session owns each company-join operation. No header token or Hub identity is Fleet authority.
   const companyRoute = path.match(/^\/api\/hub\/member\/company-join(?:\/(start|resume|cancel|bridge|repair-trust|probe|reconnect|remove))?$/);
   if (companyRoute) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }   // M-3278: its admin may
     if (!ctx.hubCompanyJoin || !ctx.hubCompanySession) { json(res, 404, { error: "unavailable" }); return true; }
     const step = companyRoute[1], execution = settingsRequestExecution(req);
     const authority = settingsRequestJoinAuthority(req);
@@ -1273,7 +1277,7 @@ export function handleSettingsRequest(
   // public link; no member composed: 404 "unavailable".
   const pairingRoute = path.match(/^\/api\/hub\/member\/pairing(?:\/(connect|confirm|disconnect|cancel))?$/);
   if (pairingRoute) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_member_not_over_public_link" }); return true; }   // M-3278: its admin may
     const api = ctx.hubMemberPairing?.() ?? null;
     if (!api) { json(res, 404, { error: "unavailable" }); return true; }
     const step = pairingRoute[1];
@@ -1305,7 +1309,7 @@ export function handleSettingsRequest(
   }
 
   if (path === "/api/settings/general-location" && (method === "GET" || method === "POST")) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     if (!ctx.generalLocations || !ctx.switchGeneralLocation) { json(res, 404, { error: "not available" }); return true; }
     if (method === "GET") { try { json(res, 200, ctx.generalLocations()); } catch (err) { json(res, 409, { error: (err as Error).message }); } return true; }
     const execution = settingsRequestExecution(req);
@@ -1321,7 +1325,7 @@ export function handleSettingsRequest(
   }
 
   if (["/api/settings/hub/browser-certificate", "/api/settings/hub/browser-certificate/prepare", "/api/settings/hub/browser-certificate/apply"].includes(path)) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     const control = ctx.hubBrowserCertificate?.() ?? null;
     if (!control) { json(res, 404, { error: "unavailable" }); return true; }
     const refused = (err: unknown) => {
@@ -1371,9 +1375,9 @@ export function handleSettingsRequest(
   if (handleHubDirectoryHostSettingsHttp(req, res, url, ctx)) return true;
 
   // M-2682 (leader, cid-hubname-ui): "Run this Hub" — hub.enabled, not sealed: the ordinary save; the runtime mounts or stops the
-  // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); never over the public link.
+  // Hub on it. Host owner only, confirmed like retention (and the page asks once before stopping it); M-3278: over the public link too.
   if (path === "/api/settings/hub/run") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
       json(res, 200, { ok: true, ...hubRunView(ctx.getRawFleetConfig()) }); return true;
@@ -1402,9 +1406,9 @@ export function handleSettingsRequest(
   }
 
   // M-2682: "HTML previews on this Hub" — hub.web.preview_port, outside the sealed digest: the ordinary save (no reseal), checked
-  // against the Hub's own rule, this fleet's ports and a free bind. Host owner only, confirmed like retention; never over the public link.
+  // against the Hub's own rule, this fleet's ports and a free bind. Host owner only, confirmed like retention; M-3278: over the public link too.
   if (path === "/api/settings/hub/preview") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     if (method === "GET") {
       if (!guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
       json(res, 200, { ok: true, ...hubPreviewSettingsView(ctx.getRawFleetConfig()) }); return true;
@@ -1435,7 +1439,7 @@ export function handleSettingsRequest(
   }
 
   if (path === "/api/settings/hub/retention") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "hub_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     const control = ctx.hubRetention?.() ?? null;
     if (!control) { json(res, 404, { error: "unavailable" }); return true; }
     const refused = (err: unknown) => {
@@ -1467,14 +1471,14 @@ export function handleSettingsRequest(
 
   // ── M-2255: Settings → Runtime's switches — "Use this PC's Windows CLIs" (runtimes.windows_cli) and "Allow other
   // Windows computers to pair" (runtimes.remote_runtime). Off by default; the environment overrides them (said here).
-  // Never over the public link. Switching one on is confirmed by a General admin (settings-change.ts); off applies at once.
+  // M-3278: over the public link too, for its admin session. Switching one on is confirmed by a General admin (settings-change.ts); off applies at once.
   if (method === "GET" && path === "/api/settings/runtimes") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     json(res, 200, runtimeSettingsView(cfg));
     return true;
   }
   if (method === "PUT" && path === "/api/settings/fleet/runtimes") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "runtime_settings_not_over_public_link" }); return true; }   // M-3278: its admin may
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     readBody(req, 4096).then(buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
@@ -1504,7 +1508,6 @@ export function handleSettingsRequest(
   if (method === "PUT" && path === "/api/settings/fleet/web") {
     // #1620: never over the temporary public link — refused before the body is read (the confirmation gate refuses it
     // first; this is the second wall, for any path that reaches the handler without it).
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "web_settings_not_over_public_link" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     // #1920 phase 3: room for guest lists (open_instances, narrow — up to 200 names each); the gate reads up to 512 KiB.
     readBody(req, 256 * 1024).then(buf => {
@@ -1635,7 +1638,9 @@ export function handleSettingsRequest(
   // ── #1629 r4.1 Q3 (b): the identity card's upload limits (Settings → Appearance) — never over the public link: absent
   // from its manifest, and refused here too. A lower limit applies directly; a higher one is confirmed (settings-change.ts).
   if (path === "/api/settings/fleet/appearance" && (method === "GET" || method === "PUT")) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "appearance_settings_not_over_public_link" }); return true; }
+    // Fable on #4100 (F3): reading it is an admin's on any listener (a change comes through the confirmation gate, which asks
+    // who it is, and is applied by its replay).
+    if (method === "GET" && !guestSettingsCaller(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
     if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
     const view = (configured: unknown) => {
       const { limits, warnings } = effectiveAppearanceLimits(configured);

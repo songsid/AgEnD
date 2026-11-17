@@ -2,7 +2,7 @@
  * #1620 part 2 (baseline: the maintainer's comment on the issue): Settings → Web writes the local session limits, the
  * browser terminal (enabled / ttl_minutes), web echo and the public link's menu through PUT /api/settings/fleet/web.
  * A change that LOOSENS access waits for the #1423 General-admin confirmation; one that TIGHTENS it applies at once;
- * over the temporary public link none of it can be changed. The real classifier and effect projection; the real
+ * over the temporary public link an admin session changes it as anywhere (M-3278; #1620 refused it there). The real classifier and effect projection; the real
  * confirmation gate in front of the real handler, on a fleet.yaml on disk.
  */
 import { EventEmitter } from "node:events";
@@ -19,6 +19,8 @@ import { prepareSettingsEffect } from "../src/settings-effect.js";
 import { settingsChangeDiff } from "../src/settings-change.js";
 import { noteSettingsWrite } from "../src/settings-transaction.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import { WebSessionStore, csrfTokenFor, tokenEpoch } from "../src/web-session.js";
+import { WEB_CSRF_HEADER, WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { parseWebSettingsBody } from "../src/web-settings-patch.js";
@@ -140,7 +142,10 @@ function harness(fleet: Record<string, unknown> = {}) {
   writeFileSync(path, yaml.dump(config));
   let revision = 0;
   const save = vi.fn(() => { noteSettingsWrite(path, yaml.load(readFileSync(path, "utf8")), config); writeFileSync(path, yaml.dump(config)); revision++; });
-  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+  // M-3278: the public link's own admin session (its surface and exposure; the link reads only its __Host- cookie).
+  const TOKEN = "c".repeat(48), sessions = new WebSessionStore();
+  const gwSid = sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway admin", tokenEpoch: tokenEpoch(TOKEN) }).sessionId as string;
+  const ctx = { fleetConfig: config, dataDir: root, configPath: path, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, webToken: TOKEN, webSessions: sessions,
     getRawFleetConfig: () => config, saveFleetConfig: save, lifecycle: { isPaused: () => false, pause: vi.fn(), wake: vi.fn() } } as unknown as SettingsApiContext;
   const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
   const baselines = new SettingsBaselines({ dataDir: root, configPath: () => path, config: () => config, current: () => revision });
@@ -150,10 +155,13 @@ function harness(fleet: Record<string, unknown> = {}) {
   });
   const dispatched = vi.fn();
   /** Through the gate (as the server mounts it) unless `direct`; `publicLink` binds the request to the public link's listener. */
-  async function request(body: unknown, opts: { publicLink?: boolean; direct?: boolean; key?: string } = {}) {
+  async function request(body: unknown, opts: { publicLink?: boolean; direct?: boolean; key?: string; anonymous?: boolean } = {}) {
     return new Promise<{ status: number; body: any }>((resolve, reject) => {
       const req = new EventEmitter() as any;
-      req.method = "PUT"; req.url = WEB; req.headers = { "idempotency-key": opts.key ?? "k-1", cookie: "opaque" }; req.destroy = () => undefined;
+      req.method = "PUT"; req.url = WEB; req.destroy = () => undefined;
+      req.headers = opts.publicLink && !opts.anonymous
+        ? { "idempotency-key": opts.key ?? "k-1", host: "localhost", origin: "https://x.example", cookie: `${WEB_SESSION_COOKIE_SECURE}=${gwSid}`, [WEB_CSRF_HEADER]: csrfTokenFor(gwSid) }
+        : { "idempotency-key": opts.key ?? "k-1", cookie: "opaque" };
       if (opts.publicLink) bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.example", isCurrent: () => true });
       let status = 0;
       const res = { headersSent: false, destroyed: false, writeHead(code: number) { status = code; this.headersSent = true; }, setHeader: vi.fn(),
@@ -258,10 +266,10 @@ describe("#2122: the usage report over the public link — one switch in Setting
     expect(off.status).toBe(200);
     expect(h.config.web.usage_report_on_public_link).toBe(false);
   });
-  it("never over the public link itself", async () => {
+  it("M-3278: over the public link an admin session turns it on as anywhere", async () => {
     const h = harness();
     const r = await h.request({ usage_report_on_public_link: true }, { publicLink: true });
-    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+    expect([r.status, r.body.error, h.save.mock.calls.length, h.config.web.usage_report_on_public_link]).toEqual([200, undefined, 1, true]);
   });
 });
 
@@ -295,10 +303,10 @@ describe("#2911 (7): CDN libraries in HTML previews — one switch in Settings �
     expect((await h.request({ preview_cdn: false }, { key: "k-2" })).status).toBe(200);
     expect(h.config.web.preview_cdn).toBe(false);
   });
-  it("never over the public link itself", async () => {
+  it("M-3278: over the public link an admin session turns it on as anywhere", async () => {
     const h = harness();
     const r = await h.request({ preview_cdn: true }, { publicLink: true });
-    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+    expect([r.status, r.body.error, h.save.mock.calls.length, h.config.web.preview_cdn]).toEqual([200, undefined, 1, true]);
   });
 });
 
@@ -322,30 +330,38 @@ describe("Refs #3061 (P2b): the QR code on the new-device sign-in page — one s
     expect((await h.request({ login_qr: false }, { key: "k-2" })).status).toBe(200);
     expect(h.config.web.login_qr).toBe(false);
   });
-  it("never over the public link itself", async () => {
+  it("M-3278: over the public link an admin session turns it on as anywhere", async () => {
     const h = harness();
     const r = await h.request({ login_qr: true }, { publicLink: true });
-    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+    expect([r.status, r.body.error, h.save.mock.calls.length, h.config.web.login_qr]).toEqual([200, undefined, 1, true]);
   });
 });
 
-describe("never over the temporary public link", () => {
+// M-3278 (decision 7933bf90): an admin session changes the web settings over the public link as on the dashboard reached
+// directly (#1620 refused them there); a request over the link that is no admin session's still changes nothing.
+describe("over the temporary public link (M-3278: an admin session's as anywhere)", () => {
   it.each([
     ["a tightening", { session: { local: { absolute_hours: 6 } } }],
     ["a loosening", { web_terminal: { ttl_minutes: 20 } }],
     ["web echo", { echo_to_channel: false }],
     ["the public link's own menu", { public_link: { allow_public: false } }],
-  ])("%s: refused by the gate — nothing proposed, nothing dispatched, nothing written", async (_what, body) => {
+  ])("%s: the gate treats it as on the dashboard reached directly (applied, or proposed for confirmation)", async (_what, body) => {
+    const local = harness();
+    const here = await local.request(body);
     const h = harness();
     const r = await h.request(body, { publicLink: true });
-    expect([r.status, r.body.error]).toEqual([403, "web_settings_not_over_public_link"]);
-    expect([h.store.list("session-a"), h.dispatched.mock.calls.length, h.save.mock.calls.length]).toEqual([[], 0, 0]);
+    expect([r.status, r.body.result, r.body.error]).toEqual([here.status, here.body.result, here.body.error]);
+    expect([h.store.list("session-a").length, h.save.mock.calls.length]).toEqual([local.store.list("session-a").length, local.save.mock.calls.length]);
+    expect(h.raw()).toEqual(local.raw());
   });
-  it("and by the handler itself, for anything that reaches it without the gate", async () => {
+  it("and by the handler itself: an admin session over the link is written; a request with no session there is not", async () => {
     const h = harness();
-    const r = await h.request({ session: { local: { absolute_hours: 6 } } }, { publicLink: true, direct: true });
-    expect([r.status, r.body.error, h.save.mock.calls.length]).toEqual([403, "web_settings_not_over_public_link", 0]);
+    const none = await h.request({ session: { local: { absolute_hours: 6 } } }, { publicLink: true, direct: true, anonymous: true });
+    expect([none.status, h.save.mock.calls.length]).toEqual([401, 0]);
     expect(h.raw().web).toBeUndefined();
+    const r = await h.request({ session: { local: { absolute_hours: 6 } } }, { publicLink: true, direct: true, key: "k-2" });
+    expect([r.status, h.save.mock.calls.length]).toEqual([200, 1]);
+    expect(h.raw().web.session).toEqual({ local: { absolute_hours: 6 } });
   });
   it("the same requests from the dashboard's own address go through (control)", async () => {
     const h = harness();

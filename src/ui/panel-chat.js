@@ -1,3 +1,4 @@
+import { previewReplyFile, replyPreviewLabel } from "./reply-file-preview.js";
 import { NativePaneRecovery } from "./native-pane-recovery.js";
 import { GeneralLocation } from "./general-location.js";
 // #1408 step 1: the chat panel. Behind the session gate (/ui/js/), loaded by the app with a dynamic import in "full"
@@ -50,6 +51,7 @@ function nativeCliTag(inst) {
   return html`<span class="tag native-cli-unverified" title=${t("nativecli.unverifiedHint", cli, inst.native_cli_version || "")}>${t("nativecli.unverified")}</span>`;
 }
 import { confirmDialog } from "/assets/ui-confirm.js";
+import { isPinned, pinOffered, PinCopyDialog, PinsButton, PinsDialog, setPin, usePins } from "./chat-pins.js";
 import { modelLabel, modelPickerStyles, mw } from "./model-picker.js";
 /** An effort level as a word: low → Low, xhigh → XHigh (the CLIs' own names). Local: a tab on an older model-picker.js still has it. */
 const effortWord = (level) => ({ xhigh: "XHigh" }[level] || String(level).charAt(0).toUpperCase() + String(level).slice(1));
@@ -357,7 +359,7 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     ...deps,
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
-  mentionIndex = createMentionIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
+  mentionIndex = createMentionIndex((url) => guestPage() ? null : (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
   // belong to the app, once (they are never per mount).
@@ -536,6 +538,11 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
   const wide = useStore(chatWide).on;
   useStore(activityPrefs); useStore(activityInfoStore);          // AGEND-181: the ⋯ menu's Show activity / Show thinking
   const view = useRef(null), split = useRef(null), thread = useRef(null), bg = useRef(null), effectSurface = useRef(null);
+  // M-3271: this agent's pinned messages — the header's 📌 opens the list; a pin no longer in the chat opens its copy.
+  const [pinsOpen, setPinsOpen] = useState(false), [pinCopy, setPinCopy] = useState(null);
+  const pinCount = usePins(guestPage() ? "" : name).pins?.length || 0;
+  const openPins = () => setPinsOpen(true);
+  const jumpPin = (p) => { setPinsOpen(false); void thread.current?.jumpTo(p.key, { onGone: () => setPinCopy(p) }); };
   useLayoutEffect(() => { applyTheme(view.current, theme, mode); }, [themeKey, mode]);
   useLayoutEffect(() => {
     const img = bg.current;
@@ -592,15 +599,17 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
     running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
     // #1958: its identity colour and where it shows (the public link too, as profile edits).
-    // #3153 P1: the folder it works in, read-only — this computer's admin only (never over the public link), and not an
+    // #3153 P1: the folder it works in, read-only — an admin only (M-3278: over the public link too), and not an
     // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
-    document.body.dataset.publicLink === "1" || inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
+    inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
       : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
+    // M-3271: the pinned list — here too, for a phone (its header shows ← title ⋯ only) and a narrow pane.
+    pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: openPins } : null,
     colorMenuItem(name, inst),
     // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
     ...themeMenuItems(name),
     // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
-    ...ambientMenuItems(name, { publicLink: document.body.dataset.publicLink === "1", clear: clearAmbient }),
+    ...ambientMenuItems(name, { publicLink: false, clear: clearAmbient }),   // M-3278
     // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
     ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
       { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
@@ -625,10 +634,12 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
 
   return html`<div class=${`panel p-chat${wrap ? " wrap-code" : ""}`} data-width=${wide ? "full" : undefined} ref=${view}>
     <${PanelHeader} title=${inst.runtime === "windows" ? inst.display_name || name : headerName(namesOf(inst || { name }, names.primary))} sub=${sub}
-      pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage") }} pageActions=${[
+      pageControls=${{ CardMenu, card, navKey, usage: supportsInstanceFeature(inst,"usage"), ...(guest ? {} : { Pins: PinsButton, pins: { name, onOpen: openPins } }) }} pageActions=${[
         ...items]}
-      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}><${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} lease=${lease} />`}</${PanelHeader}>
+      nav=${guest ? (guestTrusted() ? html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" guest=${true} />` : null) : html`<${InstanceSwitch} name=${name} instance=${inst} current="chat" />`}>${guest ? null : html`<${PinsButton} name=${name} onOpen=${openPins} />`}<${CardMenu} card=${card} /><${HeaderTools} navKey=${navKey} usage=${supportsInstanceFeature(inst,"usage")} />${guest ? null : html`<${ChatMoreMenu} items=${items} name=${name} inst=${inst} card=${card} navKey=${navKey} lease=${lease} />`}</${PanelHeader}>
     <${ChatCard} key=${name} name=${name} card=${card} />
+    ${pinsOpen ? html`<${PinsDialog} name=${name} onClose=${() => setPinsOpen(false)} onJump=${jumpPin} />` : null}
+    ${pinCopy ? html`<${PinCopyDialog} pin=${pinCopy} onClose=${() => setPinCopy(null)} />` : null}
     <${AgentWidget} slot="chat_header" widget=${widgetFor(name, "chat_header")} binds=${instanceBinds(inst, exec, awaiting)} />
     <div class="chat-split" ref=${split}>
       <div ref=${effectSurface} class=${`chat-main${theme && theme.background ? " has-th-bg" : ""}`}>
@@ -750,12 +761,18 @@ function threadEntry(name, doc) {
     // #2272: reply to a message (the bar above the composer), and show the one a reply quotes.
     startReply: (x) => { store.startReply(name, x); composerField(name)?.focus(); },
     findQuoted: (key) => store.findQuoted(name, key),
+    // M-3272: scroll-back — older at the very top, the unloaded newest end again at the bottom (chat-store.js loadOlder).
+    onTop: () => { if (!guestPage()) void store.loadOlder(name); },   // #4103 review N1: a guest is refused; never asked
+    onBottom: () => { void store.loadNewer(name); },
+    detached: () => store.pagingState(name).detached,
     notice: (text) => toast(text, false),
     replyButtonBusy: (id) => store.state.rbBusy.has(id),
     pollMine: (id) => store.state.pollMine[id],                            // #1823: this device's own vote
     serverNow: () => Date.now() + store.state.clockSkew,                   // #1823: the deadline is the server's
     panel: { shown: shownKey, open: (spec, o) => openPanel(spec, o), version: panelVersion, claim: claimPanel, claims: panelClaims,   // #1481, #1704
       openMarkdown: (spec) => openMarkdown(spec) },   // M-2448: a Markdown file in the side panel
+    previewFile: !guestPage() ? (spec, opener, msgKey) => previewReplyFile(name, spec, opener, msgKey) : undefined,
+    previewFileLabel: replyPreviewLabel,
     openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
@@ -804,8 +821,11 @@ function follow(name, thread) {
     }
     if (instance !== name) return;
     if (kind === "msgs") { thread.render(rowsOf(name)); wantEmojis(store.state.msgs[name]); if (feed) feed.nudge(); }   // a message came or went: read the steps now
+    // M-3272: a page of scroll-back (older at the top, newer at the bottom): drawn with the reader kept where they were.
+    else if (kind === "page") { thread.render(rowsOf(name), { keep: true }); wantEmojis(store.state.msgs[name]); }
     else if (kind === "progress") thread.progress();                       // an upload moved: its bar, in place
-    else if (kind === "sent") thread.jumpLatest();
+    // Sent while scrolled back past an unloaded newest end: the live chat again, then its end (M-3272).
+    else if (kind === "sent") { if (store.pagingState(name).detached) void store.backToLatest(name).then(() => thread.jumpLatest()); else thread.jumpLatest(); }
   }));
   offs.push(P() ? P().onChange(() => thread.refreshCards()) : () => {});
   offs.push(panelStore.subscribe(() => thread.refreshCards()));   // a card shows whether the panel has its block
@@ -850,6 +870,10 @@ function Thread({ name, label = name, th, bindings }) {
       t, messageOf: thread.messageOf, rove: thread.rove, reply: (x) => { store.startReply(name, x); bindings.input.current?.focus(); },
       copyText, notice: (text, ok = true) => toast(text, ok),
       linkOf: (x) => `${location.origin}/ui/chat/${encodeURIComponent(name)}#m=${msgKey(x)}`,
+      // M-3271: Pin / Unpin — an admin's (the host answers who may: pinOffered), on a stored agent or person message.
+      pin: (x) => { const key = msgKey(x); void setPin(name, key, !isPinned(name, key)); },
+      pinned: (x) => isPinned(name, msgKey(x)),
+      canPin: (x) => !guestPage() && pinOffered(name) && (x.role === "agent" || x.role === "user") && /^[0-9a-f]{1,32}-\d{1,15}$/.test(msgKey(x)),
     });
     // M-2789: select a passage in a message → 「引用」 → it goes into the composer as a quote at the caret, repeatable.
     const offQuote = installQuoteSelection(ls, {
@@ -918,7 +942,7 @@ function Thread({ name, label = name, th, bindings }) {
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
       : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}
+    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => { const t2 = th.current; if (!t2) return; if (store.pagingState(name).detached) void store.backToLatest(name).then(() => t2.jumpLatest()); else t2.jumpLatest(); }}
         aria-label=${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}>
       <${Icon} name="down" size=${16} /><span class="jump-text">${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</span>${
         /* The user (before 2.4.0-beta.3): no unread counts for now — a phone's round button has no badge. */ ""}</button>` : null}</div>
@@ -928,7 +952,7 @@ function Thread({ name, label = name, th, bindings }) {
 // Missing optional chunks on an older server never prevent chat from loading. No shared export added.
 function SubagentProgress({ name }) {
   const [Component, setComponent] = useState(null);
-  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage() && !publicLinkPage();
+  const offered = typeof document !== "undefined" && document.body?.dataset.subagents === "1" && !guestPage();   // M-3278: the public link's admin too
   useEffect(() => {
     if (!offered) return;
     let live = true;
@@ -959,8 +983,6 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   </div></div>`;
 }
 
-/** #2233: the public link's page — the dashboard's Sign in is refused there, so it is never offered (#2262 review). */
-const publicLinkPage = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
 /** #2233: a backend's "not signed in" choice offers Sign in (the module behind the session gate, loaded when asked). */
 function openBackendSignIn(backend) {
   import("./backend-signin.js").then((m) => m.openSignIn({ backend }), () => toast(t("app.loadFailed"), false));
@@ -1056,7 +1078,7 @@ function ModelMenu({ name, c, lease }) {
       <div class="model-menu-seg" role="group" aria-label=${mm("effort")}>${cur.effort.levels.map((level) => html`<button key=${level} type="button"
         class=${level === cur.effort.current ? "on" : ""} aria-pressed=${level === cur.effort.current ? "true" : "false"} disabled=${c.busy}
         onClick=${() => store.runCommand(name, "effort", level, { alive })}>${effortWord(level)}</button>`)}</div>` : null}
-    ${options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="model-menu-signin">${options.filter((o) => o.signIn).map((o) => html`<button
+    ${options.some((o) => o.signIn) ? html`<div class="model-menu-signin">${options.filter((o) => o.signIn).map((o) => html`<button
       key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
   if (narrow) return html`<${Dialog} title=${mm("title")} onClose=${close} cls="model-menu-sheet"
@@ -1122,7 +1144,7 @@ function CommandCard({ name, lease }) {
     })}</div>` : null}
     ${c.command === "model" && c.choices ? html`<p class="note">${mw("selectionHint")}</p>` : null}
     ${actions.includes("more") ? html`<div class="cmd-model-more"><button type="button" class="btn btn-sm btn-ghost" data-model-action="more" disabled=${c.busy} onClick=${() => run("", "more")}>${mw("more")}</button></div>` : null}
-    ${c.choices && c.choices.options.some((o) => o.signIn) && !publicLinkPage() ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
+    ${c.choices && c.choices.options.some((o) => o.signIn) ? html`<div class="cmd-choices" role="group" aria-label=${t("chat.cmdSignIn")}>${c.choices.options.filter((o) => o.signIn).map((o) => html`<button
       key=${`signin:${o.signIn}`} type="button" class="btn btn-sm btn-primary" onClick=${() => openBackendSignIn(o.signIn)}>${t("chat.cmdSignInTo", o.signIn)}</button>`)}</div>` : null}
   </div>`;
 }

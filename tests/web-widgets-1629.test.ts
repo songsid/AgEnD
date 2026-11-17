@@ -459,23 +459,25 @@ describe("the routes", () => {
       expect(f.fm.themeStore.widgets()).toEqual({});
     } finally { await f.stop(); }
   }, 30_000);
-  it("the public link: the removal is off its manifest and refused by the handler on its own", async () => {
+  it("the public link: the removal is on its manifest (M-3278) — a read-only session there refused by the handler, an admin's removes", async () => {
     const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
     const { handleWebRequest } = await import("../src/web-api.js");
     const { bindGatewayRequest } = await import("../src/web-request-context.js");
-    expect([isPublicWebRoute("GET", "/ui/themes"), isPublicWebRoute("POST", "/ui/themes/a/widget")]).toEqual([true, false]);
+    expect([isPublicWebRoute("GET", "/ui/themes"), isPublicWebRoute("POST", "/ui/themes/a/widget")]).toEqual([true, true]);
     const f = await fleet();
     try {
       f.fm.handleWebThemeHttp("alpha", "set_web_widget", { slot: "details", spec: DETAILS });
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: f.tokenEpoch(f.fm.webToken) });
-      const status = await new Promise<number>(resolve => {
+      const overLink = (tier: "admin" | "read") => new Promise<number>(resolve => {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: f.tokenEpoch(f.fm.webToken) });
         let code = 0;
         const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end() { resolve(code); } };
         const req = Object.assign(new EventEmitter(), { method: "POST", url: "/ui/themes/alpha/widget", headers: { host: "x.trycloudflare.com", cookie: `__Host-agend_session=${sessionId}`, origin: "https://x.trycloudflare.com", "x-agend-csrf": f.csrfTokenFor(sessionId), "content-type": "application/json" }, destroy() {}, resume() {} });
         bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
         expect(handleWebRequest(req as never, res, new URL("https://x.trycloudflare.com/ui/themes/alpha/widget"), f.fm)).toBe(true);
+        req.emit("data", Buffer.from(JSON.stringify({ slot: "details" }))); req.emit("end");
       });
-      expect([status, Object.keys(f.fm.themeStore.widgets().alpha ?? {})]).toEqual([403, ["details"]]);
+      expect([await overLink("read"), Object.keys(f.fm.themeStore.widgets().alpha ?? {})]).toEqual([403, ["details"]]);
+      expect([await overLink("admin"), f.fm.themeStore.widgets()]).toEqual([200, {}]);   // M-3278
     } finally { await f.stop(); }
   }, 30_000);
   it("the removal asks again once the body is in: a session revoked meanwhile removes nothing (#1894 review)", async () => {
@@ -641,12 +643,12 @@ describe("the page", () => {
     themes.themesStore.set({ widgets: { alpha: { details: { spec: DETAILS, data: {}, by: "agent" } } }, shown: true });
     expect(widget.widgetFor("alpha", "details")).toBeNull();
   });
-  it("the sidebar widget: the person's; never on the public link or in safe mode; the editor says why before saving", async () => {
+  it("the sidebar widget: the person's, on the public link too (M-3278); never in safe mode; the editor says why before saving", async () => {
     const SIDE = { spec: { v: 1, title: "Fleet", items: [{ type: "stat", label: "Working", bind: "fleet.working" }] }, data: {} };
     let { widget } = await load({ storage: { agend_widget_sidebar: JSON.stringify(SIDE) } });
     expect(widget.sidebarWidget()?.title).toBe("Fleet");
     ({ widget } = await load({ publicLink: true, storage: { agend_widget_sidebar: JSON.stringify(SIDE) } }));
-    expect(widget.sidebarWidget()).toBeNull();
+    expect(widget.sidebarWidget()?.title).toBe("Fleet");   // M-3278
     ({ widget } = await load({ url: "http://127.0.0.1:19280/ui?safe=1", storage: { agend_widget_sidebar: JSON.stringify(SIDE) } }));
     expect(widget.sidebarWidget()).toBeNull();
     expect(widget.widgetProblem("sidebar", SIDE)).toBeNull();
@@ -654,7 +656,7 @@ describe("the page", () => {
     expect(widget.widgetProblem("sidebar", { spec: { ...SIDE.spec, items: [{ type: "stat", label: "x", bind: "cost_usd" }] }, data: {} })).toBe("spec.items.0.bind: fleet.idle, fleet.working, fleet.needs_you, fleet.stopped");
     expect(widget.widgetProblem("sidebar", { spec: SIDE.spec })).toContain("spec");
   });
-  it("a person's Remove for each placed widget, in the theme menu — none over the public link", async () => {
+  it("a person's Remove for each placed widget, in the theme menu — over the public link too (M-3278)", async () => {
     let { themes } = await load();
     themes.themesStore.set({ widgets: { alpha: { chat_header: { spec: SPEC, data: {}, by: "agent" } } } });
     expect(themes.themeMenuItems("alpha").map((i: { key: string }) => i.key)).toEqual(["widget-remove-chat_header", "theme-lock", "theme-reset"]);
@@ -664,6 +666,6 @@ describe("the page", () => {
     expect(calls).toEqual([["/ui/themes/alpha/widget", JSON.stringify({ slot: "chat_header" })]]);
     ({ themes } = await load({ publicLink: true }));
     themes.themesStore.set({ widgets: { alpha: { chat_header: { spec: SPEC, data: {}, by: "agent" } } } });
-    expect(themes.themeMenuItems("alpha")).toEqual([]);
+    expect(themes.themeMenuItems("alpha").map((i: { key: string }) => i.key)).toEqual(["widget-remove-chat_header", "theme-lock", "theme-reset"]);   // M-3278
   });
 });

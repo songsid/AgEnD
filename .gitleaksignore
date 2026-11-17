@@ -150,3 +150,8 @@ b1827bb363eac62e13091de50451437d0c9b69ba:docs/evidence/hub-rooms-integration-r3/
 
 # Same public subject-key expression after its whitespace-only CI fix.
 8d738e6d5052a8405bf34174bb7ac405be244ab0:src/ui/hub-role-forms.js:generic-api-key:75
+
+# M-3283: exact historical source-file SHA-256 bindings, recomputed against the recorded source; no credentials.
+22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:17
+22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:36
+22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:38

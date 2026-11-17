@@ -287,20 +287,24 @@ describe("the routes", () => {
     expect((await f.call("DELETE", "/ui/accounts/codex/w", noCsrf, { confirm: "w" })).status).toBe(401);
     expect([f.add.mock.calls.length, f.rm.mock.calls.length]).toEqual([0, 0]);
   });
-  it("the public link: not in its manifest or the guest table; a bound gateway request is refused even as an admin", async () => {
+  it("M-3278: the public link carries them for its admin session (on its manifest, not the guest table); its read session is refused", async () => {
     const f = await fixture();
     for (const [method, path] of [["POST", "/ui/accounts/codex"], ["DELETE", "/ui/accounts/codex/w"]] as const) {
-      expect(isPublicWebRoute(method, path)).toBe(false);
+      expect(isPublicWebRoute(method, path)).toBe(true);
       expect(GUEST_ROUTES.some(r => (r.methods as readonly string[]).includes(method) && r.pattern.test(path))).toBe(false);
-      const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
-      let status = 0;
-      const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; return this; }, end() {} };
-      const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
-      bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
-      let sent = "";
-      res.end = (chunk?: unknown) => { sent = String(chunk ?? ""); };
-      expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.ctx)).toBe(true);
-      expect([status, JSON.parse(sent).error]).toEqual([403, "accounts_not_over_public_link"]);
+      for (const tier of ["admin", "read"] as const) {
+        const made = f.sessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+        let status = 0;
+        const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; return this; }, end() {} };
+        const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
+        bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
+        let sent = "";
+        res.end = (chunk?: unknown) => { sent = String(chunk ?? ""); };
+        expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.ctx)).toBe(true);
+        // The admin is admitted and waits for its body (nothing answered yet); the read session is refused at once.
+        if (tier === "admin") expect(status).toBe(0);
+        else expect([status, JSON.parse(sent).error]).toEqual([403, "accounts_need_a_local_admin"]);
+      }
     }
     expect([f.add.mock.calls.length, f.rm.mock.calls.length]).toEqual([0, 0]);
   });

@@ -76,7 +76,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
       if (auth.kind !== "ok") return null;
       const record = auth.session, sessions = any.webSessions, exposure = gatewayRequestContext(req);
       return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", requester: { handle: record.handle, label: record.label },
-        localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
+        localAdmin: () => record.tier === "admin" && (!exposure || exposure.isCurrent()),   // M-3278: as FleetManager's principal
         current: () => sessions === any.webSessions && !!any.webToken && sessions.isCurrent(record, tokenEpoch(any.webToken)) && (!exposure || exposure.isCurrent()) };
     },
     baseline: async () => { const config = fm.fleetConfig; if (hold && ++calls > 1) await hold; return { config, classic: {}, fingerprint: settingsFingerprint(config) } as any; },
@@ -174,10 +174,16 @@ describe("an administrator who asked for their own code takes it for an Install 
 });
 
 describe("who may not, and what never becomes a held change", () => {
-  it("the public link: refused before anything is proposed", async () => {
+  it("M-3278: the public link's admin session proposes it as any admin off the AgEnD computer does (a held change)", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "here", { gateway: true });
     const r = await h.install(s);
-    expect([r.status, r.body.error]).toEqual([403, "install_not_over_public_link"]);
+    expect([r.status, r.body.result]).toEqual([202, "pending_confirmation"]);
+    expect(h.store.list(s.record.idHash)).toHaveLength(1);
+  });
+  it("the public link's read session: refused before anything is proposed", async () => {
+    const h = harness({ enrolled: true }), s = h.session("read", "here", { gateway: true });
+    const r = await h.install(s);
+    expect([r.status, r.body.error]).toEqual([403, "install_needs_a_local_admin"]);
     expect(h.store.list(s.record.idHash)).toEqual([]);
     expect(h.starts.length).toBe(0);
   });
@@ -249,7 +255,7 @@ describe("Update takes the same path (the audited release is the server's, shown
     expect(h.store.list(s.record.idHash)).toEqual([]);
     expect(h.starts.length).toBe(0);
   });
-  it("AGEND-153 Antigravity: a strict admin takes their own digest-bound code first; the public link, a guest and a hand-built POST start nothing", async () => {
+  it("AGEND-153 Antigravity: a strict admin takes their own digest-bound code first; the public link's read session, a guest and a hand-built POST start nothing", async () => {
     const strict = harness({ enrolled: true, strict: true }), s = strict.session("code", "lan");
     const r = await update(strict, s, "antigravity");
     expect([r.body.pending_change.state, r.body.pending_change.totp]).toEqual(["pending", "ready"]);
@@ -260,17 +266,17 @@ describe("Update takes the same path (the audited release is the server's, shown
     await vi.waitFor(() => expect(strict.stateOf(r, s)).toBe("applied"));
     expect(strict.starts.map(x => [x.backend, x.mode])).toEqual([["antigravity", "update"]]);
     const h = harness({ enrolled: true });
-    const link = h.session("code", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");
-    expect((await update(h, link, "antigravity")).body.error).toBe("install_not_over_public_link");
+    const link = h.session("read", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");   // M-3278: the link's admin may; its read session may not
+    expect((await update(h, link, "antigravity")).body.error).toBe("install_needs_a_local_admin");
     expect((await update(h, guest, "antigravity")).body.error).toBe("install_needs_a_local_admin");
     expect((await h.send(admin, "POST", "/ui/host-update", { backend: "antigravity" }, "route")).body.error).toBe("install_confirmation_required");
     expect(h.store.list(admin.record.idHash)).toEqual([]);
     expect(h.starts.length).toBe(0);
   });
-  it("the public link, a guest and a hand-built POST start nothing; a CLI with no update is refused before it is proposed", async () => {
+  it("the public link's read session, a guest and a hand-built POST start nothing; a CLI with no update is refused before it is proposed", async () => {
     const h = harness({ enrolled: true });
-    const link = h.session("code", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");
-    expect((await update(h, link)).body.error).toBe("install_not_over_public_link");
+    const link = h.session("read", "here", { gateway: true }), guest = h.session("guest", "here"), admin = h.session("code", "here");   // M-3278: the link's admin may; its read session may not
+    expect((await update(h, link)).body.error).toBe("install_needs_a_local_admin");
     expect((await update(h, guest)).body.error).toBe("install_needs_a_local_admin");
     expect((await h.send(admin, "POST", "/ui/host-update", { backend: "grok" }, "route")).body.error).toBe("install_confirmation_required");
     const none = await update(h, admin, "muse");

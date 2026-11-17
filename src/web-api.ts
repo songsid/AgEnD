@@ -1,3 +1,4 @@
+import { pipeline } from "node:stream/promises";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
 import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
@@ -27,6 +28,7 @@ import { checkOwnerCss, ownerCssAssetRefs } from "./web-owner-css.js";
 import { canonicalText } from "./web-theme.js";
 import type { ThemeStore } from "./web-theme-store.js";
 import type { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { parsePinKey, type PinWrite, type WebPinStore } from "./web-pin-store.js";
 import { SKIN_WIRE_BYTES, type OfficeSkinStore } from "./web-office-skins.js";
 import type { OfficeActs } from "./web-office-acts.js";
 import type { OfficePackTools } from "./web-office-pack-tools.js";
@@ -73,6 +75,8 @@ import { PAGE_SHARE_LIMITS, htmlFences, htmlTitle } from "./page-share.js";
 import { attachmentDelivery, createPartFile, displayName, fileTooLargeText, INLINE_MIME, isFileId, MEDIA_RANGE_MAX, publicAttachment, removeQuietly, UPLOAD_LIMITS, UPLOAD_MAX_MS, UPLOAD_STALL_MS, UploadSniffer, uploadLimits, wellFormed, type ServedFile, type UploadEntry, type WebFileLedger } from "./web-upload.js";
 import { getAgendHome } from "./paths.js";
 import { workspaceChanges, workspaceFile, workspaceFileDiff, workspaceImage, workspaceList, workspaceRoot, WorkspaceError } from "./agent-workspace.js";
+import { readReplyPreview, ReplyPreviewError } from "./reply-preview-files.js";
+import { REMOTE_PREVIEW_REFUSAL } from "./reply-preview-spec.js";
 import { resolveFollowSteps, type FollowStep } from "./workspace-follow.js";
 import { isGeneralInstance } from "./general-instance.js";
 import { resolveToolSet } from "./tool-permissions.js";
@@ -253,6 +257,23 @@ const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
  * shown, nor a card that names one as its assignee, creator or dispatcher. Off the link nothing is hidden. Read when
  * asked: the fleet's config as it is now.
  */
+/**
+ * M-3278 (decision 7933bf90): whether the public link's own data rules apply to this request — a request over the link that
+ * is not an admin's (a read-only session; guests have their own projections). An admin session sees what it would see on
+ * the dashboard reached directly.
+ */
+function linkRestricted(req: IncomingMessage, url: URL, ctx: WebApiContext): boolean {
+  return !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx);
+}
+/**
+ * M-3278: the usage report (and the Office level numbers) over the public link — an admin's unless
+ * `web.usage_report_on_public_link: false`; any other session there only when the owner opted in (`true`), as before
+ * (Fable on #4100, F2).
+ */
+function linkUsageOffered(req: IncomingMessage, url: URL, ctx: WebApiContext): boolean {
+  const flag = ctx.fleetConfig?.web?.usage_report_on_public_link;
+  return linkRestricted(req, url, ctx) ? flag === true : flag !== false;
+}
 function boardHiding(ctx: WebApiContext, gateway: boolean) {
   const fleet = ctx.fleetConfig as Parameters<typeof crossInstanceVisibility>[0];
   const hiddenName = (n: unknown) => gateway && typeof n === "string" && !!n && !!ctx.fleetConfig?.instances?.[n] && crossInstanceVisibility(fleet, n) === "hidden";
@@ -503,6 +524,8 @@ export interface WebApiContext {
   readonly themeStore?: ThemeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json); absent: /ui/offices is not offered. */
   readonly officeStore?: OfficeStore;
+  /** M-3271: pinned chat messages per agent (web-pins.json). */
+  readonly pinStore?: WebPinStore;
   /** #2080: an instance dispatcher no longer in the fleet (its cards fall back to the person: Waiting for you). */
   readonly dispatcherGone?: (name: string) => boolean;
   /** How often a person may save the offices (absent: no limit, as in a test without it). */
@@ -725,7 +748,7 @@ function stillAuthorized(req: IncomingMessage, res: ServerResponse, url: URL, ct
 /**
  * #2308: the app icon. GET: its state, for the settings card (a signed-in person's session). PUT (one PNG, at most
  * 5 MiB) and DELETE (back to the bundled icon): a signed-in admin's session only — never the CLI's token, a read-only
- * session, a guest or the public link; checked again once the body has arrived.
+ * session or a guest (M-3278: the public link's admin session may); checked again once the body has arrived.
  */
 /** An app icon refusal as the page reads it: its code, the English detail and, when named, the detail's key (#2390). */
 function appIconRefusal(r: { error: string; detail?: string; detail_key?: string; detail_args?: Array<string | number> }): Record<string, unknown> {
@@ -736,7 +759,6 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
   if (!store) { json(res, 404, { error: "app_icon_not_kept", detail: "The app icon is not kept on this fleet" }); return true; }
   const reading = method === "GET" || method === "HEAD";
   if (!reading && method !== "PUT" && method !== "DELETE") { res.setHeader("Allow", "GET, PUT, DELETE"); json(res, 405, { error: "method not allowed" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "app_icon_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -788,7 +810,7 @@ function handleAppIcon(req: IncomingMessage, res: ServerResponse, url: URL, ctx:
  *   POST /ui/update/check  look now (one a minute) → the GET's answer
  *   POST /ui/update/start  { confirm: "update-agend" } + Idempotency-Key → 202 { started } (the progress is the GET's)
  *   GET  /ui/update/log    { text, error } — the updater's own words, for the failure's "full log"
- * Signed-in sessions only (never the CLI's token, a guest or the public link: none of these is a public route); an
+ * Signed-in sessions only (never the CLI's token or a guest; M-3278: the public link's sessions too, as locally); an
  * admin's for all but the version. Asked again once a body is in.
  */
 function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
@@ -797,7 +819,6 @@ function handleWebUpdate(req: IncomingMessage, res: ServerResponse, url: URL, ct
   const routes: Record<string, string> = { "/ui/update": "GET", "/ui/update/check": "POST", "/ui/update/start": "POST", "/ui/update/log": "GET" };
   if (!routes[path]) { json(res, 404, { error: "not found" }); return true; }
   if (routes[path] !== method) { res.setHeader("Allow", routes[path]!); json(res, 405, { error: "method not allowed" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 404, { error: "not found" }); return true; }
   res.setHeader("Cache-Control", "no-store");
   const who = (): { admin: boolean; person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -1021,7 +1042,6 @@ function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, c
 }): boolean {
   const store = ctx.officeStore;
   if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401 };
@@ -1094,7 +1114,6 @@ function handleOfficeSkins(req: IncomingMessage, res: ServerResponse, url: URL, 
   }
   const upload = method === "POST" && path === "/ui/office-skins", removal = method === "DELETE" && !!one;
   if (!upload && !removal) { json(res, 404, { error: "not found" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "skins_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401 };
@@ -1151,7 +1170,6 @@ function handleOfficePackChanges(req: IncomingMessage, res: ServerResponse, url:
   if (!tools) { json(res, 404, { error: "Pack changes are not kept on this fleet" }); return true; }
   const one = /^\/ui\/office-pack-changes\/([0-9a-f]{32})$/.exec(path);
   if (!(method === "GET" && path === "/ui/office-pack-changes") && !(method === "POST" && (path === "/ui/office-pack-changes" || one))) { json(res, 404, { error: "not found" }); return true; }
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "pack_changes_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401 };
@@ -1193,7 +1211,6 @@ function handleOwnerCss(req: IncomingMessage, res: ServerResponse, url: URL, ctx
   const store = ctx.ownerCss;
   if (!store) { json(res, 404, { error: "Owner CSS is not kept on this fleet" }); return true; }
   const reading = method === "GET" || method === "HEAD";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "owner_css_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -1303,10 +1320,9 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = req.method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
   const who = () => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;   // M-3278: the public link's admin too
   };
   const owner = who();
   if (!owner) { json(res, 403, { error: "sign_in_needs_a_local_admin" }); return true; }
@@ -1421,18 +1437,17 @@ function handleBrowserBackendSignIns(req: IncomingMessage, res: ServerResponse, 
 
 /**
  * #2233: signing a backend in from the dashboard (web-backend-login.ts). A signed-in admin session on the local surface
- * only — never the CLI's header token (an agent's), a guest, a read session or the public link (refused before the body
+ * only (M-3278: the public link's too) — never the CLI's header token (an agent's), a guest or a read session (refused before the body
  * is read, and again after it). Every answer is no-store: the starter's view carries the terminal's access code.
  */
 function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "sign_in_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "sign_in_needs_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "sign_in_needs_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1479,7 +1494,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
 
 /**
  * AGEND-133 (upstream #3521): installing a CLI on the AgEnD host from the dashboard (web-host-install.ts). The gate is the sign-in routes' own — a signed-in admin
- * session on the local surface; never the CLI's header token (an agent's), a guest, a read session, or the public link (refused before the body is read, and again
+ * session (M-3278: the public link's too); never the CLI's header token (an agent's), a guest or a read session (refused before the body is read, and again
  * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
@@ -1488,7 +1503,6 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "install_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     if (isSettingsReplay(req)) {
       const requester = settingsRequestRequester(req);
@@ -1497,7 +1511,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
     }
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "install_needs_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "install_needs_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1543,7 +1557,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  * folder); `DELETE /ui/accounts/<backend>/<name>` `{ confirm: <name> }` removes one (accounts-profiles.ts: every refusal
  * deletes nothing). PR 3: `POST /ui/accounts/<backend>/signout` `{ profile: <name> | null, confirm: true }` signs an
  * account out with the CLI's own logout (accounts-signout.ts). The fleet's local admin session only, as the sign-in routes: never the CLI's header token, a guest,
- * a read session, the public link or the gateway — refused before the body is read, and again after it.
+ * or a read session (M-3278: the public link's admin session may) — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
@@ -1555,11 +1569,10 @@ const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
 function handleAccountWrite(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "accounts_need_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1628,12 +1641,11 @@ const KEEPALIVE_STATUS: Readonly<Record<string, number>> = { backend: 400, profi
 function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
-  if (gatewayRequestContext(req)) { json(res, 403, { error: "accounts_not_over_public_link" }); return true; }
   if (method !== "POST") { json(res, 405, { error: "method_not_allowed" }); return true; }
   const who = (): { handle: string; label: string } | { error: string; status: number } => {
     const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (v.kind !== "allow") return { error: WEB_TOKEN_INVALID_MESSAGE, status: 401 };
-    if (v.via !== "session" || v.session.tier !== "admin" || v.session.surface !== "local") return { error: "accounts_need_a_local_admin", status: 403 };
+    if (v.via !== "session" || v.session.tier !== "admin") return { error: "accounts_need_a_local_admin", status: 403 };   // M-3278: any listener
     return { handle: v.session.handle, label: v.session.label };
   };
   const first = who(); if ("error" in first) { json(res, first.status, { error: first.error }); return true; }
@@ -1656,14 +1668,13 @@ function handleAccountKeepAlive(req: IncomingMessage, res: ServerResponse, url: 
 
 /**
  * #1629 r4 §4 (r4-5): mods — a person's import (stage, then commit), uninstall and export. Every route is a signed-in
- * session's, writes an admin's: never the CLI's header token (the way an agent could reach it) and never the public link
- * (absent from its manifest, and refused here too). `who()` is asked first and again once a body is in.
+ * session's, writes an admin's: never the CLI's header token (the way an agent could reach it); M-3278: the public link's
+ * sessions too, as locally. `who()` is asked first and again once a body is in.
  */
 function handleMods(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   const mods = ctx.mods;
   if (!mods) { json(res, 404, { error: "Mods are not kept on this fleet" }); return true; }
   const reading = method === "GET";
-  if (gatewayRequestContext(req)) { json(res, reading ? 404 : 403, { error: "mods_not_over_public_link" }); return true; }
   const who = (): { person: string } | { status: number; error: string } => {
     const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
     if (verdict.kind !== "allow") return { status: 401, error: WEB_TOKEN_INVALID_MESSAGE };
@@ -2004,7 +2015,6 @@ function webPersonOr401(req: IncomingMessage, res: ServerResponse, url: URL, ctx
  * so neither confirms work waiting for the person.
  */
 function boardActor(req: IncomingMessage, url: URL, ctx: WebApiContext, p: WebPerson): BoardActor {
-  if (gatewayRequestContext(req)) return { kind: "script", name: "public-link" };
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
   return v.kind === "allow" && v.via === "session" ? { kind: "person", name: p.name } : { kind: "script", name: "web-token" };
 }
@@ -2367,7 +2377,7 @@ export function handleWebRequest(
       // M-2260: the newest within the catch-up budget; `truncated` when older ones were left out (the page re-reads its
       // chats' newest history, as a reload would) — never megabytes that a slow link cannot bring in time.
       ...(() => {
-        const w = catchUpWindow(history ? visibleMessages(ctx, !!gatewayRequestContext(req), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : []);
+        const w = catchUpWindow(history ? visibleMessages(ctx, linkRestricted(req, url, ctx), fresh ? history.after(0) : history.replayFor(parseLastEventId(after))) : []);
         return w.truncated ? { messages: w.messages, truncated: true } : { messages: w.messages };
       })(),
       // The ticks too, so polling never has to re-read a chat's history — that read would count as the person's
@@ -2381,7 +2391,7 @@ export function handleWebRequest(
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll. Over the public link,
       // without the task board's hidden cards (#2306 review).
-      needs: visibleNeeds(ctx, !!gatewayRequestContext(req), ctx.needsYouItems?.() ?? []),
+      needs: visibleNeeds(ctx, linkRestricted(req, url, ctx), ctx.needsYouItems?.() ?? []),
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
@@ -2480,11 +2490,35 @@ export function handleWebRequest(
     // #1920 §5.2: a guest gets what the channel showed of it, and its own messages (the gate checked the scope).
     const guest = guestRequestOf(req);
     const messages = !ctx.webChatHistory ? [] : guest ? guestHistory(ctx.webChatHistory, instance, limit, guest, guest.scope())
-      : visibleMessages(ctx, !!gatewayRequestContext(req), ctx.webChatHistory.list(instance, limit));
+      : visibleMessages(ctx, linkRestricted(req, url, ctx), ctx.webChatHistory.list(instance, limit));
     // #2848: the chat has messages, none of them a guest's to see (all between agents, or kept before they were marked):
     // said, so its empty chat is explained rather than blank. Only that there are some — never how many, or what.
     const allHidden = !!guest && messages.length === 0 && (ctx.webChatHistory?.list(instance, 1).length ?? 0) > 0;
     json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
+    return true;
+  }
+
+  // ── M-3272: scrolling back past the 500-message window (the archive, web-chat-archive.ts) ──
+  // GET /ui/history/older?instance=&before=<boot>-<id>&limit=1..100 → { messages, more }: older than `before`, oldest first.
+  // GET /ui/history/newer?instance=&after=<boot>-<id>&limit=1..100 → { messages, more }: newer than `after`.
+  // GET /ui/history/around?instance=&key=<boot>-<id>&limit=1..100 → { messages, olderMore, newerMore }: a jump's page.
+  // An admin's, as /ui/subagents (decision 7933bf90: over the public link too, filtered as /ui/history is — linkRestricted);
+  // a guest or a read-only session: 403. A key in neither the window nor the archive: 200 { messages: [], found: false } —
+  // an ordinary answer, not an error (#4103: a pin or search jump to a message no longer kept falls back to its copy; a 404
+  // was a console error on every such jump).
+  const archiveRead = /^\/ui\/history\/(older|newer|around)$/.exec(path);
+  if (method === "GET" && archiveRead) {
+    if (!adminAdmissionOf(req, url, ctx) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", limit = Number(p.get("limit") ?? 100);
+    const key = p.get(archiveRead[1] === "older" ? "before" : archiveRead[1] === "newer" ? "after" : "key") ?? "";
+    if (!instance || instance.length > 128 || !safeInstanceSegment(instance) || !/^[0-9a-f]{1,32}-\d{1,15}$/.test(key) || !Number.isInteger(limit) || limit < 1 || limit > 100) {
+      json(res, 400, { error: "instance, a message key and limit (1-100) required" }); return true;
+    }
+    const history = ctx.webChatHistory;
+    const page = !history ? null : archiveRead[1] === "older" ? history.older(instance, key, limit) : archiveRead[1] === "newer" ? history.newer(instance, key, limit) : history.around(instance, key, limit);
+    if (!page) { json(res, 200, { messages: [], more: false, olderMore: false, newerMore: false, found: false }); return true; }
+    // M-3278 parity (#4100): what /ui/history shows over the link — an admin sees what it sees directly (linkRestricted).
+    json(res, 200, { ...page, messages: visibleMessages(ctx, linkRestricted(req, url, ctx), page.messages) });
     return true;
   }
 
@@ -2495,10 +2529,10 @@ export function handleWebRequest(
   // same rule as the sign-in list it extends).
   if (method === "GET" && path === "/ui/accounts") {
     res.setHeader("Cache-Control", "private, no-store");
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    // M-3278 (decision 7933bf90): an admin session on any listener, the public link too (temporary or fixed).
     const localAdmin = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;
     };
     const who = localAdmin();
     if (!who) { json(res, 403, { error: "accounts_need_a_local_admin" }); return true; }
@@ -2510,17 +2544,54 @@ export function handleWebRequest(
     return true;
   }
 
+  // M-3283: one reply-linked file, for an admin session on any listener. No folder listing or gateway refusal.
+  if (method === "GET" && path === "/ui/reply-preview") {
+    res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
+    const admin = () => { const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false }); return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null; };
+    const who = admin(); if (!who) { json(res, 403, { error: "preview_needs_admin" }); return true; }
+    const p = url.searchParams, instance = p.get("instance") ?? "", op = p.get("op") ?? "meta";
+    const cfg = ctx.fleetConfig?.instances && Object.hasOwn(ctx.fleetConfig.instances, instance) ? ctx.fleetConfig.instances[instance] : undefined;
+    if (!cfg) { json(res, 404, { error: "not_found" }); return true; }
+    if (cfg.runtime === "windows" || cfg.machine_id) { json(res, 403, { error: "preview_remote_unavailable", message: REMOTE_PREVIEW_REFUSAL }); return true; }
+    const offered = () => !isGeneralInstance(ctx.fleetConfig as never, instance) && resolveToolSet(cfg as never, instance) !== "coordinator" && cfg.runtime !== "windows" && !cfg.machine_id;
+    if (!offered()) { json(res, 404, { error: "workspace_not_offered" }); return true; }
+    if (op !== "meta" && op !== "raw") { json(res, 400, { error: "invalid" }); return true; }
+    const wd = String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+    const current = () => admin()?.handle === who.handle && ctx.fleetConfig?.instances[instance] === cfg && String(cfg.working_directory ?? "").replace(/^~(?=$|\/)/, process.env.HOME ?? "~") === wd && offered();
+    void (async () => {
+      let closeRead: (() => Promise<void>) | undefined;
+      try {
+        const r = await readReplyPreview(wd, getAgendHome(), p.get("path"), op === "raw", current, req.headers.range);
+        if (r.kind === "raw") closeRead = r.close;
+        if (!current()) throw new ReplyPreviewError("preview_changed");
+        if (r.kind === "meta") { json(res, 200, r.body); return; }
+        if (r.mime === "application/pdf") res.setHeader("X-Frame-Options", "SAMEORIGIN");
+        res.setHeader("Content-Security-Policy", r.mime === "application/pdf" ? "default-src 'none'; frame-ancestors 'self'" : "default-src 'none'; sandbox");
+        res.setHeader("Content-Type", r.mime); res.setHeader("Content-Length", String(r.length)); res.setHeader("Accept-Ranges", "bytes");
+        if (r.partial) res.setHeader("Content-Range", `bytes ${r.start}-${r.end}/${r.size}`);
+        res.writeHead(r.partial ? 206 : 200);
+        await pipeline(r.chunks, res, { end: false }); res.end();
+      } catch (error) {
+        if (res.headersSent || res.destroyed) { res.destroy(); return; }
+        const e = error instanceof ReplyPreviewError ? error : new ReplyPreviewError("unavailable");
+        if (e.code === "range_not_satisfiable") res.setHeader("Content-Range", `bytes */${e.size}`);
+        json(res, e.code === "not_found" || e.code === "not_a_directory" ? 404 : e.code === "range_not_satisfiable" ? 416 : e.code === "too_large" ? 413 : e.code === "unavailable" ? 503 : 403, { error: e.code });
+      } finally { if (closeRead) await closeRead().catch(() => {}); }
+    })();
+    return true;
+  }
+
   // ── #3153 P1: an agent's Files / Changes (read-only) ─────────────────────────────────
-  // The fleet's local admin session only: never the public link, a guest, a token or a connection from outside. One
+  // The fleet's admin session only (M-3278: the public link's too): never a guest or a token. One
   // agent's own working directory (agent-workspace.ts confines and filters every path); not General or a coordinator
   // (they work in the fleet's own directory), not an agent on another machine.
   if (method === "GET" && path === "/ui/workspace") {
     res.setHeader("Cache-Control", "private, no-store");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    if (gatewayRequestContext(req)) { json(res, 404, { error: "not_found" }); return true; }
+    // M-3278 (decision 7933bf90): an admin session on any listener, the public link too (temporary or fixed).
     const localAdmin = () => {
       const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
-      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local" ? v.session : null;
+      return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" ? v.session : null;
     };
     const who = localAdmin();
     if (!who) { json(res, 403, { error: "workspace_needs_a_local_admin" }); return true; }
@@ -2592,15 +2663,16 @@ export function handleWebRequest(
   // link on purpose (the user's decision): the same masking applies to every viewer. Passive (web-auth.ts).
 
 
-  // Deliberately absent from public gateway, guest, View and Hub projections.
+  // Deliberately absent from guest, View and Hub projections. M-3278 (decision 7933bf90): an admin session reads it over
+  // the public link too (temporary or fixed).
   if (method === "GET" && path === "/ui/subagents") {
     const admission = adminAdmissionOf(req, url, ctx), name = url.searchParams.get("instance") ?? "";
-    if (!admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
+    if (!admission || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return true; }
     if (!name || name.length > 128 || !safeInstanceSegment(name)) { json(res, 400, { error: "invalid instance" }); return true; }
     if (!ctx.subagentRuns) { json(res, 404, { error: "not available" }); return true; }
     void ctx.subagentRuns(name).then(answer => {
       if (res.destroyed) return;
-      if (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
+      if (adminAdmissionOf(req, url, ctx) !== admission || guestRequestOf(req)) { json(res, 403, { error: "admin_only" }); return; }
       if (answer.status === "busy") { res.setHeader("Retry-After", "2"); json(res, 429, { error: "busy" }); return; }
       json(res, 200, answer);
     }).catch(() => { if (!res.destroyed) json(res, 503, { error: "unavailable" }); });
@@ -2624,11 +2696,11 @@ export function handleWebRequest(
       return true;
     }
     if (!ctx.logSteps) { json(res, 404, { error: "not available" }); return true; }
-    // AGEND-181: thinking only for an admin session on the local dashboard, decided here — never the public link, a
-    // guest or a View projection, whatever the query says. The service makes none otherwise (its parser is not asked).
+    // AGEND-181: thinking only for an admin session, decided here — never a guest or a View projection, whatever the query
+    // says (M-3278: the public link's admin session too). The service makes none otherwise (its parser is not asked).
     // AGEND-197: the chat's activity block (chat=1) is for the same viewer and no other: a refusal here, not a hidden block.
     const admission = adminAdmissionOf(req, url, ctx);
-    const admin = !!admission && !gatewayRequestContext(req) && !guestRequestOf(req);
+    const admin = !!admission && !guestRequestOf(req);
     const chat = p.get("chat") === "1";
     if (chat && !admin) { json(res, 403, { error: "admin_only" }); return true; }
     const thinking = p.get("thinking") === "1" && admin;
@@ -2643,7 +2715,7 @@ export function handleWebRequest(
       // Prism #3709 R1: the transcript read is asynchronous — an admin session revoked, or the web token rotated, while it
       // ran must not receive the private steps (the chat's block, thinking) it was admitted for. Asked again here, as
       // /ui/subagents does; the Log tab's own read (no chat, no thinking) is not private and is left as it was.
-      if ((chat || thinking) && (adminAdmissionOf(req, url, ctx) !== admission || gatewayRequestContext(req) || guestRequestOf(req))) {
+      if ((chat || thinking) && (adminAdmissionOf(req, url, ctx) !== admission || guestRequestOf(req))) {
         json(res, 403, { error: "admin_only" }); return;
       }
       if (answer === null) json(res, 404, { error: `Instance not found: ${instance}` });
@@ -2731,7 +2803,6 @@ export function handleWebRequest(
   if (method === "POST" && themeWrite) {
     const service = ctx.webAppearance;
     if (!service) { json(res, 404, { error: "Themes are not kept on this fleet" }); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "theme_not_over_public_link" }); return true; }
     let name: string;
     try { name = decodeURIComponent(themeWrite[1]!); } catch { json(res, 400, { error: "instance" }); return true; }
     const who = (): number => {
@@ -2761,6 +2832,55 @@ export function handleWebRequest(
     return true;
   }
 
+  // ── M-3271: pinned chat messages (web-pins.json, web-pin-store.ts) ──
+  // GET /ui/pins?instance=<name>: { rev, pins } (newest first). POST /ui/pins/<instance> { pin: "<boot>-<id>" } or
+  // { unpin: "<boot>-<id>" }: { rev, pins }; the copy is taken from the host's chat history, never the page's words.
+  // Admins only, as preference writes (prefsViewer: an admin session, or the CLI token): a guest gets none. M-3278
+  // (decision 7933bf90): the public link's admin session reads and writes them too. A change: an SSE `pins`
+  // frame { instance, rev } (never a guest's: guestFrameData denies it) — every open admin page reads again.
+  if ((path === "/ui/pins" && method === "GET") || (method === "POST" && /^\/ui\/pins\/[^/]+$/.test(path))) {
+    const store = ctx.pinStore;
+    if (!store) { json(res, 404, { error: "Pins are not kept on this fleet" }); return true; }
+    if (guestRequestOf(req)) { json(res, 403, { error: "pins_admin_only" }); return true; }
+    const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "pins_admin_only" : WEB_TOKEN_INVALID_MESSAGE });
+    const first = prefsViewer(req, url, ctx);
+    if (!first?.canWrite) { refuse(first); return true; }
+    if (method === "GET") {
+      const name = url.searchParams.get("instance") ?? "";
+      if (!name || !ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return true; }
+      res.setHeader("Cache-Control", "private, no-store");
+      json(res, 200, { rev: store.rev(), pins: store.list(name), readable: store.readable() });
+      return true;
+    }
+    let name: string;
+    try { name = decodeURIComponent(path.slice("/ui/pins/".length)); } catch { json(res, 400, { error: "instance" }); return true; }
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const now = prefsViewer(req, url, ctx);
+      if (!now?.canWrite) { refuse(now); return; }
+      if (now.person !== first.person || now.epoch !== first.epoch || now.via !== first.via) { json(res, 409, { error: "pins_person_changed" }); return; }
+      if (!ctx.isKnownInstance?.(name)) { json(res, 404, { error: "unknown instance" }); return; }
+      const asked = body && typeof body === "object" && !Array.isArray(body) ? body : {};
+      const pinKey = parsePinKey(asked.pin), unpinKey = parsePinKey(asked.unpin);
+      if (!pinKey === !unpinKey) { json(res, 400, { error: "pin or unpin: one message key" }); return; }
+      let r: PinWrite;
+      if (pinKey) {
+        const row = ctx.webChatHistory?.find(name, pinKey.boot, pinKey.id);
+        if (!row) { json(res, 404, { error: "pin_message_gone" }); return; }
+        r = store.pin(name, row);
+      } else r = store.unpin(name, asked.unpin as string);
+      if (!r.ok) { json(res, r.status, { error: r.error }); return; }
+      if (r.changed) ctx.emitSseEvent("pins", { instance: name, rev: r.rev });
+      json(res, 200, { rev: r.rev, pins: r.pins });
+    })().catch(err => {
+      ctx.logger.error({ err: (err as Error).message }, "Pinning a message failed");
+      try { json(res, 500, { error: "Pinning failed" }); } catch { /* already answered */ }
+    });
+    return true;
+  }
+
   // ── Fleet → Org chart → Office: the offices people made (web-offices.json, web-office-store.ts) ──
   // GET /ui/offices: { rev, offices, readable } for whoever may open the org chart (the public link too: it reads the
   // chart; a guest's routes do not include it). PUT /ui/offices { offices, rev? }: a person's change, as a theme's reset
@@ -2775,7 +2895,6 @@ export function handleWebRequest(
   if (method === "PUT" && path === "/ui/offices") {
     const store = ctx.officeStore;
     if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "offices_not_over_public_link" }); return true; }
     // The person (an admin session's account), or the status that refuses the request.
     const who = (): { person: string } | { status: number } => {
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
@@ -2845,7 +2964,7 @@ export function handleWebRequest(
     const admitted = admissionOf(req, url, ctx);
     if (!admitted) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return true; }
     const detail = (): boolean => ctx.fleetConfig?.web?.usage_panel !== false
-      && (!gatewayRequestContext(req) || ctx.fleetConfig?.web?.usage_report_on_public_link === true);
+      && (!gatewayRequestContext(req) || linkUsageOffered(req, url, ctx));
     void import("./office-levels.js").then(async ({ LEVEL, levelsFor }) => {
       const levels = await ctx.officeLevels!();
       // Asked again before it is sent (it was awaited): a session signed out or a switch turned off meanwhile.
@@ -3028,7 +3147,6 @@ export function handleWebRequest(
     // the public link too, since nothing of the host's is written. At most GUEST_PREF_WRITES a minute per account.
     const guest = guestRequestOf(req);
     if (guest) { saveGuestPrefs(req, res, ctx, prefs, guest); return true; }
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "prefs_not_over_public_link" }); return true; }
     const refuse = (viewer: PrefsViewer | null) => json(res, viewer ? 403 : 401, { error: viewer ? "prefs_read_only" : WEB_TOKEN_INVALID_MESSAGE });
     const first = prefsViewer(req, url, ctx);
     if (!first?.canWrite) { refuse(first); return true; }
@@ -3057,9 +3175,14 @@ export function handleWebRequest(
   }
 
   // #1629 r4 §3: owner CSS — one person's own stylesheet, for their own screens. Every route is a signed-in human's
-  // session: never the CLI's header token (no person, and the way an agent could reach it), never the public link
-  // (absent from its manifest, and refused here too), reads included. The stylesheet and its assets are that session's
+  // session: never the CLI's header token (no person, and the way an agent could reach it); M-3278: the public link's
+  // sessions too, as locally. The stylesheet and its assets are that session's
   // person's only: no name or identity in any URL.
+  // M-3278 (Fable on #4107, N1): owner CSS, AgEnD's update and mods over the public link are an admin session's only —
+  // a guest or read-only session there is answered as the gateway answered it before (not found).
+  const linkPrivileged = path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")
+    || path === "/ui/update" || path.startsWith("/ui/update/") || path === "/ui/mods" || path.startsWith("/ui/mods/");
+  if (linkPrivileged && linkRestricted(req, url, ctx)) { json(res, 404, { error: "not_found" }); return true; }
   if (path === "/ui/owner-css.css" || path === "/ui/owner-css" || path.startsWith("/ui/owner-css/")) {
     return handleOwnerCss(req, res, url, ctx, path, method);
   }
@@ -3068,7 +3191,7 @@ export function handleWebRequest(
   if (path === "/ui/app-icon") return handleAppIcon(req, res, url, ctx, method);
   if (path === "/ui/update" || path.startsWith("/ui/update/")) return handleWebUpdate(req, res, url, ctx, path, method);
 
-  // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only, never the public link).
+  // #1629 r4-5: mods — a person's import, uninstall and export (handleMods: sessions only; M-3278: the public link's too).
   if (path === "/ui/mods" || path.startsWith("/ui/mods/")) return handleMods(req, res, url, ctx, path, method);
 
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
@@ -3121,7 +3244,6 @@ export function handleWebRequest(
     return true;
   }
   if (method === "POST" && (path === "/ui/outside/enroll" || path === "/ui/outside/enroll/confirm" || path === "/ui/outside/remove" || path === "/ui/outside/switch" || path === "/ui/outside/strict")) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "outside_not_here" }); return true; }
     (async () => {
       let body: Record<string, unknown>;
       try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
@@ -3212,7 +3334,6 @@ export function handleWebRequest(
   // menu's 確定關閉 does (its remembered owner forgotten, so auto_open never reopens a deliberate close). A web-only fleet's
   // outside link is the owner's switch on this computer (#3008): 409 outside_link, left open.
   if (method === "POST" && path === "/ui/public-link/close") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "public_link_close_not_here" }); return true; }
     const act = ctx.closePublicLinkFromWeb?.bind(ctx);
     if (!act) { json(res, 404, { error: "not_found" }); return true; }
     (async () => {
@@ -3222,6 +3343,14 @@ export function handleWebRequest(
       if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       if (verdict.via !== "session" || verdict.session?.tier !== "admin") { json(res, 403, { error: "public_link_close_needs_an_admin_session" }); return; }
       res.setHeader("Cache-Control", "no-store");
+      // M-3278: closed over the link itself, the close ends the very connection this answer would travel on — so the
+      // answer goes first (202), then the link closes; a refusal (an outside-owned link, say) is logged.
+      if (gatewayRequestContext(req)) {
+        json(res, 202, { ok: true, closing: true });
+        setImmediate(() => { void act().then(r => { if (r.status >= 300) ctx.logger.info({ status: r.status, body: r.body }, "Public link close over the link refused"); },
+          err => ctx.logger.error({ err: (err as Error).message }, "Public link close failed")); });
+        return;
+      }
       const r = await act();
       json(res, r.status, r.body);
     })().catch(err => {
@@ -3384,7 +3513,9 @@ export function handleWebRequest(
       try {
         const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
         const r = await run({ instance, command, args: str(body.args, MAX_COMMAND_ARGS), confirm: body.confirm as string | undefined, ...(body.action ? { action: body.action as WebModelAction } : {}) },
-          { publicLink: !!gatewayRequestContext(req), person, authority, ...(guest ? { guest: true } : {}) });
+          // M-3278 (decision 7933bf90): `publicLink` is a request over the link by anyone but an admin session — the link's
+          // admin runs /save and gets /model and /backend's Sign in, as on the local dashboard.
+          { publicLink: !!gatewayRequestContext(req) && !adminAdmissionOf(req, url, ctx), person, authority, ...(guest ? { guest: true } : {}) });
         if (!stillAuthorized(req, res, url, ctx)) return;
         json(res, r.status, r.body);
       } finally { if (guest) guestCommandsRunning.delete(account); }
@@ -3638,12 +3769,10 @@ export function handleWebRequest(
     return true;
   }
 
-  // #2246: the public link writes no task — the old list's create and update are board writes now (see below).
-  if (method === "POST" && (path === "/ui/tasks" || /^\/ui\/tasks\/[^/]+$/.test(path)) && gatewayRequestContext(req)) {
-    json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" });
-    return true;
-  }
 
+  // M-3278: the old task list's writes are an admin session's too (a read-only session reads), on any listener.
+  if (method === "POST" && (path === "/ui/tasks" || /^\/ui\/tasks\/[^/]+$/.test(path)) && !path.startsWith("/ui/tasks/cards") && !path.startsWith("/ui/tasks/projects")
+    && !adminAdmissionOf(req, url, ctx)) { json(res, 403, { error: "task_board_needs_an_admin_session", code: "forbidden", key: "needs_admin" }); return true; }
   if (method === "POST" && path === "/ui/tasks") {
     if (!ctx.scheduler) {
       json(res, 500, { error: "Scheduler not initialized" });
@@ -3678,10 +3807,11 @@ export function handleWebRequest(
   if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
     const board = ctx.scheduler?.db.board;
     if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
-    // The temporary public link reads the board and changes nothing on it: confirming, sending back, cancelling and
-    // assigning are the person's authority, which the public link never carries (docs/web-dashboard.md).
-    const gateway = gatewayRequestContext(req);
-    if (gateway && method !== "GET") { json(res, 403, { error: "task_board_not_over_public_link", code: "forbidden", key: "not_over_public_link" }); return true; }
+    // M-3278 (decision 7933bf90): an admin session changes the board over the public link too, as itself (boardActor), and
+    // sees it whole; a read-only session over the link keeps the link's hiding.
+    const gateway = linkRestricted(req, url, ctx);
+    // A write is an admin session's (or the CLI's header token): a read-only session reads the board, on any listener.
+    if (method !== "GET" && !adminAdmissionOf(req, url, ctx)) { json(res, 403, { error: "task_board_needs_an_admin_session", code: "forbidden", key: "needs_admin" }); return true; }
     // …nor shows the cards of instances kept out of sight (cross_instance_visibility: hidden).
     const { hiddenName, hidden } = boardHiding(ctx, !!gateway);
     // #2303 review: what a visible card shows of the cards around it follows the same rule — its children, its main
@@ -3877,7 +4007,6 @@ export function handleWebRequest(
 
   if (method === "POST" && path === "/ui/schedules") {
     // #1724: schedules are not created, edited or deleted over the public link (absent from its manifest too, #1689).
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     (async () => {
       try {
@@ -3903,7 +4032,6 @@ export function handleWebRequest(
   // #1724: Edit — the update_schedule tool's validation (UpdateScheduleArgs) and its call (scheduler.update): cron and at
   // clear each other there; silent is not touched.
   if (method === "PATCH" && schedDelMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
     if (!ctx.scheduler || typeof ctx.scheduler.update !== "function") { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     const id = decodeURIComponent(schedDelMatch[1]);
     (async () => {
@@ -3921,7 +4049,9 @@ export function handleWebRequest(
     return true;
   }
   if (method === "DELETE" && schedDelMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "schedule_not_over_public_link" }); return true; }
+    // Fable on #4100 (F1): a deletion is an admin's (or the CLI token's) as a create or an edit is — never a read-only session's,
+    // on any listener (the link's blanket refusal used to hide that this one never asked).
+    if (scheduleWriterGone()) { json(res, 403, { error: "schedule_needs_an_admin_session" }); return true; }
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     try {
       ctx.scheduler.delete(decodeURIComponent(schedDelMatch[1]));
@@ -3999,7 +4129,8 @@ export function handleWebRequest(
     // session signed out or a public link ended meanwhile gets nothing). The same boundary both times, no new gate.
     const refusal = (): [number, string] | null => {
       if (!ctx.usageReport || ctx.fleetConfig?.web?.usage_panel === false) return [404, "Not available"];
-      if (gatewayRequestContext(req) && ctx.fleetConfig?.web?.usage_report_on_public_link !== true) return [403, "usage_report_not_over_public_link"];
+      // M-3278 (decision 7933bf90): offered to an admin over the public link unless `web.usage_report_on_public_link: false`.
+      if (gatewayRequestContext(req) && !linkUsageOffered(req, url, ctx)) return [403, "usage_report_not_over_public_link"];
       return null;
     };
     // Over the public link, where to turn it on: Settings → Web dashboard on the dashboard reached directly (this computer's own
@@ -4059,7 +4190,6 @@ export function handleWebRequest(
 
   if (method === "POST" && path === "/ui/teams") {
     // #1689: not over the public link (absent from its manifest too), like editing and deleting a team.
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
     (async () => {
       try {
         const body = await parseBody(req);
@@ -4082,7 +4212,6 @@ export function handleWebRequest(
   // what to add and remove is worked out against the team as it is now. Never over the public link.
   const teamEditMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if ((method === "PATCH" || method === "PUT") && teamEditMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
     const name = decodeURIComponent(teamEditMatch[1]);
     // Who may write, asked again once the body is in (#1693 review): a session revoked or a token rotated meanwhile
     // writes nothing.
@@ -4114,7 +4243,9 @@ export function handleWebRequest(
 
   const teamDelMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if (method === "DELETE" && teamDelMatch) {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "teams_not_over_public_link" }); return true; }
+    // Fable on #4100 (F1): an admin's (or the CLI token's) on any listener, as creating and editing a team.
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    if (v.kind !== "allow" || (v.via === "session" && v.session?.tier !== "admin")) { json(res, 403, { error: "teams_need_an_admin_session" }); return true; }
     const name = decodeURIComponent(teamDelMatch[1]);
     // Own keys (#1689): a team is one fleet.yaml defines — "__proto__" or "constructor" is not found.
     if (!ctx.fleetConfig?.teams || !Object.hasOwn(ctx.fleetConfig.teams, name)) { json(res, 404, { error: `Team not found: ${name}` }); return true; }
@@ -4320,9 +4451,9 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // The same tags and meta a Telegram photo/document produces, so the agent needs nothing new.
       const delivery = attachmentDelivery(typed, files);
       // #1269: `/raw ` is pasted into the CLI with no [user:] envelope (the daemon's own check, on this exact text).
-      // A signed-in local session may do that, as a fleet admin on the platform may; the public link — the outward-
-      // facing surface — may not.
-      if (gatewayRequestContext(req) && delivery.text.startsWith("/raw ")) {
+      // M-3278 (decision 7933bf90): the public link's admin session may do that too, as a local one may; anyone else
+      // over the link (a guest) still may not.
+      if (gatewayRequestContext(req) && delivery.text.startsWith("/raw ") && !adminAdmissionOf(req, new URL(req.url ?? "/", "http://localhost"), ctx)) {
         ctx.webFiles?.release(files);
         json(res, 403, { error: t("web.raw_public_refused") });
         return;
@@ -4741,7 +4872,9 @@ function prefsViewer(req: IncomingMessage, url: URL, ctx: Partial<Pick<WebApiCon
     return { person: webPersonKey(v.session.owner), epoch: v.session.handle, scope: "person", canWrite: false, via: "session", ...guest,
       guestScope: () => g?.scope() ?? new Set<string>() };
   }
-  if (!gatewayRequestContext(req) && v.via === "session" && v.session) {
+  // M-3278 (decision 7933bf90): the public link's admin session gets its own person scope, as on the local dashboard.
+  // A read-only session over the link keeps no person scope, as before (Fable on #4107, N1: the decision is an admin's).
+  if (v.via === "session" && v.session && (v.session.tier === "admin" || !gatewayRequestContext(req))) {
     const person = webPersonKey(v.session.owner);
     return { person, epoch: v.session.handle, scope: person === OPERATOR ? "operator" : "person", canWrite: v.session.tier === "admin", via: "session", ...guest };
   }
@@ -4755,6 +4888,12 @@ const prefsView = (prefs: WebPrefsStore, v: PrefsViewer | null) => {
   // #2855: the host's look, then the guest's own preferences (only on a guest with an account: its bucket).
   return v.person ? guestOwnPrefs(view, prefs.readGuestOwn(v.person), v.guestScope?.() ?? new Set<string>()) : guestPrefs(view);
 };
+/** M-3278: an admin session's page over the public link (not a guest, not a read-only session). */
+function linkAdminPage(req: IncomingMessage, ctx: AppShellContext, viewer: PrefsViewer | null): boolean {
+  if (!gatewayRequestContext(req) || viewer?.guest) return false;
+  const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
+}
 function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   if (mode !== "full" || !ctx.webPrefs) return '<html lang="en">';
   const view = prefsView(ctx.webPrefs, viewer);
@@ -4765,7 +4904,7 @@ function shellHtmlTag(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVie
 
 /**
  * #1629 r4 §3: the owner CSS this load links (its sha), or null. Only the full app of a signed-in human session — never
- * the public link, the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels).
+ * the anonymous View reader, the CLI's header token or the sign-in and setup pages (other panels); M-3278: the public link's too.
  */
 function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string | null {
   return mode === "full" && !viewer?.guest && viewer?.person !== null && viewer?.person !== undefined && ctx.ownerCss ? ctx.ownerCss.active(viewer.person) : null;
@@ -4783,7 +4922,12 @@ function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
   let config: HubSwitches = null;
   try { config = (ctx.getRawFleetConfig?.() ?? null) as HubSwitches; } catch { config = null; }
   // hub.md §1: member handlers are local-owner-only and unavailable through the public gateway — no member mark there.
-  const member = hubModeOf(config).member && !gatewayRequestContext(req) ? ' data-hub="member"' : "";
+  // M-3278 (decision 7933bf90): except for the link's admin session, which the member handlers now answer as locally.
+  const linkAdmin = (): boolean => {
+    const v = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
+    return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
+  };
+  const member = hubModeOf(config).member && (!gatewayRequestContext(req) || linkAdmin()) ? ' data-hub="member"' : "";
   // #3298 S-89 (leader, #3372 N2): Settings → Hub's Group permissions row only when this fleet's own Hub has them composed —
   // learned in this process, never by reading a Hub session across origins. Never over the public link.
   let groups = false;
@@ -4811,17 +4955,18 @@ function guestBodyAttrs(ctx: AppShellContext, owner: WebAccount, attr: (v: strin
 function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShellMode, viewer: PrefsViewer | null): string {
   const p = shellPreview(req, ctx, mode);
   const ownerCss = shellOwnerCss(ctx, mode, viewer);
-  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && (gatewayRequestContext(req) || viewer?.guest) ? "off" : "unknown";
+  let ownerCssState: "off" | "on" | "unknown" = mode === "full" && viewer?.guest ? "off" : "unknown";   // M-3278: the public link's admin as locally
   if (mode === "full" && !viewer?.guest && viewer?.person != null && ctx.ownerCss) {
     ownerCssState = ctx.ownerCss.effectState(viewer.person);
     if (ownerCssState === "off" && ownerCss !== null || ownerCssState === "on" && ownerCss === null) ownerCssState = "unknown";
   }
   const attr = (v: string | null | undefined) => String(v ?? "").replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`);
   const admission = evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false });
-  const childMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow"
+  // M-3278 (decision 7933bf90): an admin session has these on every listener — the public link too, temporary or fixed.
+  const childMark = mode === "full" && !viewer?.guest && admission.kind === "allow"
     && (admission.via !== "session" || admission.session.tier === "admin");
   // #3637: display-only capability and a non-authorizing namespace. No account/session/token value reaches storage.
-  const workspaceMark = mode === "full" && !gatewayRequestContext(req) && !viewer?.guest && admission.kind === "allow";
+  const workspaceMark = mode === "full" && !viewer?.guest && admission.kind === "allow";
   const workspaceScope = workspaceMark && viewer?.person && ctx.webToken
     ? createHmac("sha256", ctx.webToken).update(`agend-chat-layout-v1\0${viewer.person}`).digest("hex") : null;
 
@@ -4838,8 +4983,8 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     // AGEND-181: whether thinking may be asked for (web.log_thinking; OFF by default, AGEND-197). The server answers
     // `thinking: true` only to an admin session on the local dashboard (GET /ui/steps), whatever this says.
     + ` data-log-thinking="${ctx.fleetConfig?.web?.log_thinking === true ? "1" : "0"}"`
-    // AGEND-197: whether this page may ask for the chat's activity block at all — an admin session on the local dashboard
-    // only (a guest, the public link and a read-only session are never offered it, and the server refuses them anyway).
+    // AGEND-197: whether this page may ask for the chat's activity block at all — an admin session (M-3278: on any listener,
+    // the public link too); a guest and a read-only session are never offered it, and the server refuses them anyway.
     // Each agent's own tool_progress decides whether there is anything to show (the answer's `level`).
     + ` data-chat-activity="${childMark ? "1" : "0"}"`
     // #1937: the upload limits in force for this page (the config's; the public link's own cap on it) — what the chat
@@ -4849,8 +4994,9 @@ function shellBodyTag(req: IncomingMessage, ctx: AppShellContext, mode: AppShell
     + ` data-fleet-tz="${attr(resolveTz())}"`
     // #1629 r4 §3: the person's owner CSS in force (a sha), linked by the page unless this device or this load says not.
     + ` data-owner-css-state="${ownerCssState}"${ownerCss ? ` data-owner-css="${attr(ownerCss)}"` : ""}`
-    // #1589: the public link shows attachments as downloads only (no inline text or media): its scope is unchanged.
-    + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}`
+    // #1589: the public link shows attachments as downloads only (no inline text or media) — M-3278: except to an admin
+    // session (data-link-media="1"), which plays them in the page as on the dashboard reached directly.
+    + `${gatewayRequestContext(req) ? ' data-public-link="1"' : ""}${gatewayRequestContext(req) && linkAdminPage(req, ctx, viewer) ? ' data-link-media="1"' : ""}`
     // #2478: search is offered over the public link unless web.search.public_link is false (the page then shows no entry).
     + `${gatewayRequestContext(req) && ctx.fleetConfig?.web?.search?.public_link === false ? ' data-search-link="0"' : ""}`
     // AgEnD Hub P1 (docs/design/hub-ui-client.md): the Hub's marks — only when a switch is on, never on a guest's page.
@@ -4895,14 +5041,21 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const viewer = mode === "full" ? prefsViewer(req, new URL(req.url ?? "/", "http://localhost"), ctx) : null;
     const p = shellPreview(req, ctx, mode);
     // #1589: media plays only from this listener's own file route (path-scoped, like frame-src), at the address this page
-    // was loaded from (a Host the host guard accepted); never on the public link, nor where no chat is shown.
-    const own = mode === "full" && !gatewayRequestContext(req)
-      ? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req)) : null;
+    // was loaded from (a Host the host guard accepted); never where no chat is shown. M-3278 (decision 7933bf90): on the
+    // public link too for an admin session — its own origin (the link's address); a guest or read-only session there keeps
+    // downloads only.
+    const link = gatewayRequestContext(req);
+    const own = mode !== "full" ? null : !link
+      ? dashboardOriginFor(typeof req.headers.host === "string" ? req.headers.host : undefined, isSecureRequest(req))
+      : linkAdminPage(req, ctx, viewer) ? link.expectedOrigin : null;
     const mediaSrc = own ? `${own}/ui/file/` : "'none'";
     // A public-link page frames what its exposure's preview names (the quick-tunnel wildcard: its host is not known when
     // the page may load); every other page frames exactly the origin this load chose (#1723).
     const previewFrames = p && "frameSrc" in p ? p.frameSrc : p?.previewOrigin ? `${p.previewOrigin}/frame` : null;
-    const frameSrc = previewFrames ?? "";
+    // M-3283: frame only the narrow file endpoint, never all of this origin. Recheck the actual session tier locally too.
+    const fileViewer = own ? evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false }) : null;
+    const fileFrame = own && fileViewer?.kind === "allow" && fileViewer.via === "session" && fileViewer.session.tier === "admin" ? `${own}/ui/reply-preview` : null;
+    const frameSrc = [previewFrames, fileFrame].filter(Boolean).join(" ");
     sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

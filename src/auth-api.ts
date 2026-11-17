@@ -100,6 +100,11 @@ export interface AuthApiContext {
    * it is the host operator, authorized for its life (capped as every authorization). Anything else: nothing happens.
    */
   authorizeHostSession?(record: SessionRecord, peer: WebPeer): void;
+  /**
+   * M-3277 (decision 7933bf90): an admin session signed in with a code AgEnD delivered privately to its account starts
+   * verified (§3 judged there; a refusal leaves it unverified), and the account is told with Not me.
+   */
+  authorizeSignedInSession?(record: SessionRecord, peer: WebPeer, gateway: boolean): void;
   /** #2910 D5: no Discord or Telegram connection at all — the sign-in page leads with `agend web --code`. */
   isWebOnlyFleet?(): boolean;
   /** S-117 story 1: web-only, or no chat connected yet — the sign-in page never says "send /web" then. */
@@ -263,6 +268,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
   // Hub rooms, track U2: New room, Room settings, the members panel, invitations, Administration → Rooms (linked by hub-room-new-strings.js).
   "hub-rooms-u2.css": { file: join("shared", "hub-rooms-u2.css"), type: "text/css; charset=utf-8" },
   // #3153 P1: the Files & changes panel's own stylesheet (linked by its lazy module; an older app.css lacks it).
+  "reply-previews.css": { file: join("shared", "reply-previews.css"), type: "text/css; charset=utf-8" },
   "workspace.css": { file: join("shared", "workspace.css"), type: "text/css; charset=utf-8" },
   // #3212: the Accounts view's stylesheet (linked by accounts-view.js; an older app.css lacks it).
   "accounts.css": { file: join("shared", "accounts.css"), type: "text/css; charset=utf-8" },
@@ -654,6 +660,15 @@ export function handleAuthRequest(
       ctx.logger.info({ handle: record.handle, label, tier: record.tier, surface: record.surface }, "Web sign-in");
       if (record.host) {
         try { ctx.authorizeHostSession?.(record, classifyWebPeer(req)); } catch (err) { ctx.logger.debug({ err }, "host session not authorized"); }
+      }
+      // M-3277: a code AgEnD delivered privately to this account (a DM, or Discord's ephemeral reply): no Confirm card —
+      // the session starts verified. Its peer as a Confirm would judge it: the link itself over the gateway (its own
+      // provenance: the named tunnel or the quick link), else what the TCP peer and Host say.
+      if (result.private && record.tier === "admin" && record.owner) {
+        const peer: WebPeer = gateway ? (gateway.named === true ? "named_link" : "quick_link") : classifyWebPeer(req);
+        // Read again (activated over a link); one already gone (revoked meanwhile) is not verified, nor told about.
+        const live = sessions.authenticate(sessionId, tokenEpoch(token), { touch: false, surface: gateway?.surface, exposureId: gateway?.exposureId });
+        if (live) try { ctx.authorizeSignedInSession?.(live, peer, !!gateway); } catch (err) { ctx.logger.debug({ err }, "signed-in session not verified"); }
       }
       try { if (!gateway) ctx.onWebLogin?.({ label, surface: record.surface, tier: record.tier, handle: record.handle, ...(record.owner ? { owner: record.owner } : {}) }); } catch (err) { ctx.logger.debug({ err }, "web sign-in notice failed"); }
       // #1570: a code delivered privately to its owner makes this browser a returning device (a separate cookie; the

@@ -72,8 +72,16 @@ hostname (named tunnel, `web.public_link.hostname`) the minutes go up to 10080, 
 `web.public_link.auto_open` reopens the link after AgEnD starts for the admin who last opened it (nothing posted; sign-in
 still needs a code).
 Close it with **Close public link** → **Close link (signs public browsers out)**, `/web revoke`, or let it expire.
-A public link is limited on purpose: no live stream (the page polls), no custom CSS, and Settings → Access & security, Look,
-schedule edits and preference writes are refused. HTML previews work over it through a second tunnel
+Over a public link (temporary or fixed) a fleet admin has the dashboard as reached directly (M-3278, the user's decision):
+schedules, teams, the task board, the Office editor, preferences and pins, Settings → Access & security (Guests, Web
+authority, sessions, the link itself), **Retry now** and **Close public link** — including confirming a change that opens
+a link, as the settings role allows — and also secrets and tokens, Settings → Hub (setting up a Hub, its directory and
+addresses stay on the AgEnD computer itself), Runtime and Windows CLIs (downloading the Windows Runtime package and
+copying its install command stay on the AgEnD computer: a Runtime connects to it, never through the link), connecting AI accounts, installing and updating CLIs,
+updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
+**Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
+activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
+page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -111,6 +119,15 @@ as their own Discord or Telegram account. What a guest sees:
   ClassicBot room, and ClassicBot group rooms while their membership is verified, minus any `web.guests.narrow`.
   **Start from today's guests** turns that into grants.
 
+Guests can filter their granted agents and rooms, change sorting, and use **Custom** (「自訂」) for detailed or compact
+rows and a compact row's display name or instance name. Choices belong to that guest's account, including over the
+public link; they never change the host's preferences. Desktop and phone keep separate density choices and share the
+compact-name choice. The phone drawer puts Filter and Custom together at the top, as the admin's does.
+
+Discord mentions in shared-channel messages they may read use that channel's cached names. Guests' own messages and
+private-room replies do not look up names; other servers and unreadable channels stay private. An unknown name still
+shows as `@user`, `@role` or `#channel`.
+
 They can chat there unless `web.guests.chat` is false, run only the commands the command table lets anyone run in that
 agent's channel (on the web: `/ctx`, `/steer`, `/btw`, `/cancel`; anything else is refused), open the usage panel, and the
 agent sees them as `@web:g`. A guest's app has no Fleet, Settings or Needs you. Each person is **Chat** (the
@@ -118,19 +135,26 @@ default) or **Trusted** (#2855, `level: trusted` on the grant; Chat → Trusted 
 also gets a read-only **View** of those agents (no typing; 2 reads a second, 2 agents at once; for Claude Code with its earlier conversation) and **search** of the chat
 messages it can already see (6 a minute, 20 results; no messages between agents, tasks or settings). To invite someone: turn it
 on, grant them their agents in Settings → Access & security → Guests, and press **Send sign-in code** (or tell them to
-send `/web`). The Guests section is not in Settings over the public link.
+send `/web`). An admin has the Guests section over the public link too (M-3278).
 
 **Web authority (#1939).** A signed-in fleet admin's browser can speak as their own Discord or Telegram
-account. The one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
+account.
+- **Signed in with a private /web code (M-3277).** A code sent to the admin privately (a DM, Discord's private reply when
+  DMs are closed, or Telegram's `/start web` DM) makes the browser **Verified** at once, with no card. The same DM gets
+  "*browser* signed in with the code sent to you, and is verified until …" with **Not me**, which signs that browser
+  out. With no DM, General gets one line with no details: `/web revoke` if it wasn't you.
+- **Codes that don't verify:** a guest code, or `agend web --code` on a fleet with a chat connection.
+- **Otherwise** (and to re-verify once the authorization runs out) the one row under the composer (bottom left, before the Enter hint) says **Not verified · Authorize**; the
 session menu says **Not verified · Authorize this browser**. Pressing it
 sends a card to that account's DM, saying which browser (device, on this computer or the network, when, until when), with
 **Confirm** and **Not me**. A card left for 5 minutes is marked expired on the card, and the line offers Authorize
 again. Confirm within 5 minutes and the session menu says **Verified · speaks as you until …**; the composer's row says
 just **✓ Verified**, with the until-when in its tooltip, its accessible name and a tap. That
 browser's messages then carry the account's authority in their delivery receipt for `max_session_hours` (default 48).
-Not me signs that browser out, also after Confirm, from the same card. At most one card waits per browser, and 3 an hour
+Not me signs that browser out, also after Confirm, from the same card. The card, and its expired and ended texts, also
+offer the other way: sign in again with `/web` (a private code verifies at once). At most one card waits per browser, and 3 an hour
 per account. Never for a guest. Over the admin's own named link (#2453) only with **Also over my named link**
-(`named_link`, off by default); over the temporary public link `/web` opens while **Also over the temporary public
+(`named_link`, on by default since M-3277; `named_link: false` turns it off); over the temporary public link `/web` opens while **Also over the temporary public
 link** is on (`quick_link`, on by default since #2819, §0.3; `quick_link: false` turns it off). That authority ends with the link, and the card says "over your named link"
 or "over the temporary public link". When a browser can't be authorized, the line says why (with a link to Settings when the switch, "Only
 this computer" or the named-link option is the reason). Settings → Access & security → **Web authority** (`web.verified_authority`, on
@@ -142,6 +166,16 @@ Agents then see that browser's messages as `@web:v` and check their receipt like
 ## Chat
 
 A message to a paused agent wakes it through the same delivery path as Discord/Telegram, including ClassicBot. The composer shows **Waking…**; a refused wake explains why, keeps the draft/files and offers **Retry send**. No automatic resend. Stopped agents still require Start. Upload/history/Cancel do not wake agents. Existing guest/public-link send permissions are unchanged.
+
+**Scrolling back (M-3272).** A chat opens with its newest messages. Scroll to the very top and the 100 before
+them load; nothing loads before you get there. Past each agent's newest 500, they come from the host's archive
+(`workspaces/<agent>/web-chat-archive/`, kept per `web.chat_archive.retention_days`; unset: kept forever).
+- **Archived messages:** text, author, time and file names (their files are no longer served); a reply's buttons and poll
+  are shown but read-only.
+- **At most about 1,000 messages are on screen.** Scrolled far back, the newest end is set aside, and it comes back as you
+  scroll down. **Jump to latest** (↓) returns to the live chat at once; sending a message does too.
+- **Search hits and pins** open the page around the message, however far back it is.
+- **Admins only** (over the public link too); a guest sees only the chat's newest messages, as before.
 
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
@@ -160,11 +194,20 @@ read from the bytes: PNG/JPEG/GIF/WebP are photos, PDF a document, UTF-8 a text 
 binaries, `.html`/`.svg` and other markup) is stored as **download-only**. The agent receives the path in its
 workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
+**Previewing a file from a reply.** After editing code, use `reply` with `previews: [{path: "src/app.ts", line: 1000, endLine: 1002}]` and explain the change in `text`. A web administrator gets a Preview button that opens the current file with those lines highlighted; images use the image viewer, Markdown and PDF use the preview panel. Paths are relative to your own working folder, with no `..` or symlinks. Guests cannot use it, and General/coordinator working folders are unavailable. Discord and Telegram get plain `path:line` references. Local CLI callers use `agend-agent reply "Changed." --previews '[{"path":"src/app.ts","line":1000}]'`. Previews of files on a paired Windows computer aren't available yet. Nothing runs or changes a file when previewed.
+
 **Replying to a message (#2272).**
-- **How:** the ↩ on hover, a right-click (Reply / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
+- **How:** the ↩ on hover, a right-click (Reply / Pin / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
 - **The sent bubble** shows the quote, and clicking it jumps to the original.
 - **The agent** gets `(reply_to: "…")`, exactly as from a Discord or Telegram reply, read by the server from the quoted message (one line, at most 500 characters). Nothing new for guests: they reply only to what they can see.
 - **The channel echo** quotes only a message that was already in that channel.
+
+**Pinning a message (「釘選」, M-3271).** Right-click a message (long-press on a phone) → **Pin** (「釘選」); again →
+**Unpin**. The chat's header then shows **📌 N**; on a phone it is the **Pinned messages · N** tile in the ⋯ sheet. It
+opens the list, newest first: click a row to jump to the message (flashed), × to unpin. Pins are kept on the host per
+agent (`web-pins.json`), at most 50 per agent, and sync to every admin device. Each pin keeps a copy of the message
+(text, author, time, file names), so a message that has left the chat's 500-message window opens as that copy. Admins
+only: guests see no pins; an admin over the public link has them too (M-3278). Removing an agent removes its pins.
 
 **Quote a passage (「引用」, M-2789).** Select text inside one message: a **Quote** button (「引用」; on a phone **Quote
 selection** / 「引用選取的文字」) appears below the selection. It puts the passage in the message box as `> ` lines with
@@ -186,7 +229,8 @@ Linux mean no colour emoji font is installed). A bare URL is a link, also right 
 full-width punctuation (it ends at the first one, #3716). There is no @-autocomplete in the composer.
 
 **Subagents (#3516).** When Claude Code runs child agents, a read-only **Subagents** (「子 Agent」) row in the chat lists
-them: "N running", "N finished", "Main Agent task: …" (up to 16 recent).
+them: "N running", "N finished", "Main Agent task: …" (up to 16 recent). A fleet admin sees it over the public link too
+(M-3278); guests never.
 
 **Activity steps (#3709, #3738, alpha).** For a fleet admin, an agent's work shows in the chat: while it works, one live
 line above where its reply will come (the current step · N tools · elapsed; grok says **Reasoning…**, **Running a
@@ -217,8 +261,8 @@ Access & security → **Shared pages** lists the live ones.
 
 **Slash commands** (the **Commands** palette): `/ctx`, `/compact [instructions]`, `/clear` (asks first), `/model
 [name]`, `/backend [backend] [model] [effort]` (asks first), `/effort [level]`, `/cancel`, `/btw`, `/steer`, `/pause`,
-`/wake`, `/save <file>` (not on a public link). Anything else: "Not a command here — Enter sends it as a message."
-At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (local only) passes text to the CLI
+`/wake`, `/save <file>` (not for a guest on a public link; an admin session there may, M-3278). Anything else: "Not a command here — Enter sends it as a message."
+At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (an admin session, the public link's too since M-3278; never a guest there) passes text to the CLI
 unwrapped.
 
 **On a phone (M-3115).** Inside an agent's pages (chat, View, Log, Settings) there are no bottom tabs. **‹** at the top
@@ -259,7 +303,8 @@ Alpha (#3637, #3689, #3702, #3707). On a computer whose window is at least 1200 
   pane**.
 - **Quote into the other pane (*B*)** (「引用到另一格（*B*）」) appears next to **Quote**: the passage goes into the
   other agent's box. From the image editor, **Quote to *B*** puts the PNG there too.
-- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat.
+- A narrower window shows one pane with a tab per agent; phones keep the single chat. Guests have no split chat; an admin
+  over the public link has it too (M-3278).
 
 ## Claude model switch observations
 
@@ -341,7 +386,7 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   to them first). An agent with the task board off (Dashboard access) is greyed out as an assignee: the board hands
   it no cards. **Insights** (beside the project's numbers): its cards counted per assignee / status / priority / size,
   each row a bar split by status, priority or size, every card or main tasks only — what the board shows
-  (`agend_tasks_insights` keeps the choices). Read-only over the public link.
+  (`agend_tasks_insights` keeps the choices). Over the public link an admin changes it as itself (M-3278); a read-only session reads it.
   **When an assignee stops** (#3647; Settings → Shared agent settings → Advanced, `defaults.task_board.liveness`): the
   agent that handed out a card is told once when its assignee crashes and is not back, is paused, looks stuck, waits on
   a prompt (10 min) or stays quiet with the card (60 min), and again when it works; a person's own cards show in Needs
@@ -349,8 +394,8 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
 - **Schedules** — every schedule (silent ones included): when it runs in words, "next …", the target. **New
   schedule** (Repeat with a cron expression, or Once at a date and time; message, target, label, timezone),
   **Edit** (with an **Enabled** box — that is how you pause one), **Delete**. There is no "run now", and silent can't
-  be set from the web. Read only on a public link.
-- **Teams** — **New team**, **Edit** (members, description; no rename), **Delete**. Read only on a public link.
+  be set from the web. An admin edits them over the public link too (M-3278).
+- **Teams** — **New team**, **Edit** (members, description; no rename), **Delete**. An admin over the public link too (M-3278).
 - **Org chart** — see below.
 - **Cache** — see [the cache report](#usage-and-the-cache-report).
 
@@ -380,8 +425,9 @@ JSON shape, admin only, kept in `web-offices.json` — a pack's own titles still
 name by name). **Find** dims
 the rest. **Show** picks a team or the Lobby and **People** pins chosen instances (both kept per browser); the
 **Office** switcher lists offices kept on the host (`web-offices.json`, `GET`/`PUT /ui/offices`). An admin session
-(never a read-only one, a guest or the public link) gets **Edit offices**: add, rename and delete offices, pick who is
-in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style, and upload or delete **skin packs** (an
+(over the public link too, M-3278; never a read-only one or a guest) gets **Edit offices**: add, rename and delete offices, pick who is
+in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style,
+#4104 **Idle people stay in their own area** (per office, off by default: idle strolls stay in the seat's area, no visits), and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
@@ -573,9 +619,9 @@ backend or profile keeps its history as it was. `notMeasured` lists kiro and the
 they are never a $0 row, and what such an instance measured before still shows. Messages are counted per instance, so
 by backend they go under its backend now. Coverage only says "read" for a catch-up that listed and read every source
 (an unreadable directory or transcript is not covered, never a 0). Scope as
-`get_cache_report`. The dashboard reaches it over the public link only with `web.usage_report_on_public_link: true`
-(Settings → Web dashboard → **Usage report over the public link**, applies at once; otherwise the page says "Not offered over
-the public link" and links to that switch on the dashboard reached directly); guests never. The page adds a daily trend (top 5 and
+`get_cache_report`. The dashboard reaches it over the public link too unless `web.usage_report_on_public_link: false`
+(Settings → Web dashboard → **Usage report over the public link**, on by default since M-3278; when off the page says "Not
+offered over the public link" and links to that switch); guests never. The page adds a daily trend (top 5 and
 others), a heatmap that tells a day read with nothing used from a day not collected, and **Download CSV** (the shown
 answer's daily rows, with the basis). Claude subagent (sidechain) turns aren't counted yet. A long range whose daily rows
 are too many says from which date the charts and the CSV start (the totals stay whole); a day used only by an unpriced
@@ -611,7 +657,7 @@ authorize bypassing sender/profile restrictions. Keep the Fleet running. For a W
 The prompt contains command metadata only, no token. After sending, use the returned cursor to read answers; an uncertain
 send is never retried automatically, and an operation ID no longer retained after a Fleet restart cannot resend old input.
 
-**Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. Local admin only, unavailable over public links. It changes no token or binding; refresh to read the later result.
+**Chat & connections → Retry now** retries a disconnected connection without a fleet restart; a running login is reused. Startup retries continue with a five-minute cap. An admin's, over the public link too (M-3278). It changes no token or binding; refresh to read the later result.
 
 Sections (`/settings/<section>`, #2347), in two groups. **You**: **Preferences**, **Look**. **Fleet**: **Agents**,
 **Runtime** (Windows computers), **Shared agent settings**, **Notifications**, **Chat & connections**, **Web dashboard**,
@@ -648,7 +694,7 @@ confirm. After a failure, unapplied changes are staged again
 **Look** — see [Look](#look) for the cards and what they mean.
 
 **Connecting an AI account (#2233; S-117 wording: 連接 AI 帳號 / 已連接 / 撤銷連接, never "sign in with a device
-code")** — local admin sessions only (never a guest or the public link): Settings → Agents → **AI accounts and API keys** → **Accounts** (one card per CLI: its default
+code")** — admin sessions only (never a guest; over the public link too since M-3278): Settings → Agents → **AI accounts and API keys** → **Accounts** (one card per CLI: its default
 connection and every named account, with which account it is, its state — **connected** / **not connected** / **needs
 reconnecting** / **not installed** / **too old** —, who uses it and its weekly usage; **Connect** / **Reconnect**, or the
 host command where the dashboard cannot), the web
@@ -674,7 +720,7 @@ from here (#3521; Antigravity: **Update to latest (not audited by AgEnD)**; Muse
 installed and checked versions). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
 
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
-before), from Settings → Agents → AI accounts and API keys → Accounts, local admin sessions only. What the Antigravity
+before), from Settings → Agents → AI accounts and API keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity
 card offers, and what it means:
 - **Connect / Reconnect** on the **Default connection** and on each named account: the dashboard runs `agy acp --login`
   in its own login window (never in an agent's pane; needs agy 1.5.0 or newer, otherwise the card keeps the command to

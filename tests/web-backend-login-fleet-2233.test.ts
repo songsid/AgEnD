@@ -34,7 +34,7 @@ function makeFleet(installed: string[]) {
 const chat = { adapter: {} as never, adapterId: "web", chatId: "web", userId: "web:x" };
 
 describe("#2233 FleetManager: a dashboard sign-in", () => {
-  it("a local admin session of the current token counts; read, guest, gateway, revoked and an older token do not", () => {
+  it("an admin session of the current token counts (M-3278: the public link's too); read, guest, revoked and an older token do not", () => {
     const { fm, sessions, token } = makeFleet([]);
     const make = (tier: "admin" | "read" | "guest", surface: "local" | "gateway" = "local", epoch = tokenEpoch("fleet-web-token")) =>
       sessions.create({ tier, surface, label: "x", tokenEpoch: epoch, ...(surface === "gateway" ? { exposureId: "e".repeat(32) } : {}), ...(tier === "guest" ? { owner: { adapterId: "discord", userId: "g" } } : {}) }).record.handle;
@@ -42,7 +42,8 @@ describe("#2233 FleetManager: a dashboard sign-in", () => {
     expect(fm.isLocalAdminSession(admin)).toBe(true);
     expect(fm.isLocalAdminSession(make("read"))).toBe(false);
     expect(fm.isLocalAdminSession(make("guest"))).toBe(false);
-    expect(fm.isLocalAdminSession(make("admin", "gateway"))).toBe(false);
+    expect(fm.isLocalAdminSession(make("admin", "gateway"))).toBe(true);    // M-3278: the public link's admin session counts too
+    expect(fm.isLocalAdminSession(make("read", "gateway"))).toBe(false);
     expect(fm.isLocalAdminSession(make("admin", "local", tokenEpoch("an-older-token")))).toBe(false);
     expect(fm.isLocalAdminSession("0".repeat(16))).toBe(false);
     sessions.revokeByHandle(admin);

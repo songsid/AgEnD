@@ -69,3 +69,21 @@ export function resolveMentions(query: MentionQuery, sources: MentionSource[]): 
   }
   return { u: { ...out.u }, r: { ...out.r }, c: { ...out.c } };
 }
+
+/** Labels for one already-visible message, never an arbitrary guest query. Reads the existing memory-only sources. */
+export function messageMentionNames(text: string, source: MentionSource): MentionNames | undefined {
+  const ids = new Map<string, { kind: MentionKind; id: string }>();
+  for (const m of text.replace(/\u0000/g, "").matchAll(/<(@!?|@&|#)(\d{15,25})>/g)) {
+    const kind: MentionKind = m[1] === "#" ? "c" : m[1] === "@&" ? "r" : "u";
+    ids.set(`${kind}:${m[2]}`, { kind, id: m[2]! });
+  }
+  if (!ids.size) return undefined;
+  const out: MentionNames = { u: {}, r: {}, c: {} }, entries = [...ids.values()];
+  for (let i = 0; i < entries.length; i += MAX_MENTION_IDS) {
+    const query: MentionQuery = { u: [], r: [], c: [] };
+    for (const { kind, id } of entries.slice(i, i + MAX_MENTION_IDS)) query[kind].push(id);
+    const names = resolveMentions(query, [source]);
+    for (const kind of ["u", "r", "c"] as const) Object.assign(out[kind], names[kind]);
+  }
+  return Object.values(out).some(names => Object.keys(names).length) ? out : undefined;
+}

@@ -438,7 +438,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "web-dashboard" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="dashboard" /><${AppearanceSection} ...${you} part="dashboard" />`
     : section === "access" ? html`<${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="access" />`
     // alpha.6 feedback (#2): the Hub cards have their own section (they were under Access & security, unfound by search).
-    : section === "hub" ? html`<${HubSection} overPublicLink=${typeof document !== "undefined" && document.body?.dataset?.publicLink === "1"} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
+    : section === "hub" ? html`<${HubSection} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />`
     : html`<${UpdateSection} /><${AdvancedSettings} ctx=${ctx} staged=${staged} formKey=${formKey} draftEpoch=${draftEpoch} />`;
   // #2347 §6: the setting a search result opened — brought into view once its section is drawn (its data may still be
   // on its way), focused, and flashed for 2 s.
@@ -668,14 +668,13 @@ export function DeviceSection() {
     };
     setTimeout(go, 0);
   };
-  const publicLink = typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1";
   return html`<div class="s-pref-stack">
     <section class="card s-device s-pref-personal"><h3>${tn("prefsProfileGroup")}</h3>
       <${ProfileCard} embedded=${true} />
       <div class="s-pref-name-format"><${DevicePrefs} labels=${true} fields=${["names"]} /></div>
     </section>
-    <section class="card s-device s-synced s-pref-content"><div class="s-pref-group-head"><h3>${tn("prefsContentGroup")}</h3><span class="s-scope" title=${publicLink ? tn("syncedPublicLink") : tn("syncedLead")}>${tn("prefsAccountScope")}</span></div>
-      ${publicLink ? html`<p class="sub">${tn("syncedPublicLink")}</p>` : null}
+    <section class="card s-device s-synced s-pref-content"><div class="s-pref-group-head"><h3>${tn("prefsContentGroup")}</h3><span class="s-scope" title=${tn("syncedLead")}>${tn("prefsAccountScope")}</span></div>
+
       <${DevicePrefs} labels=${true} fields=${["language", "density", "compactName"]} />
       ${P() ? html`<label class="check s-pref-preview"><span>${t("chat.previews")}</span><input id="pref-previews" class="s-ui-toggle" type="checkbox" checked=${on} onChange=${(e) => { const want = e.target.checked; setPreviewOptIn(want).then(setOn); }} /><small>${layoutText("previewsPersonalHint")}</small></label>` : null}
     </section>
@@ -925,7 +924,6 @@ function ConnectionRetry({ id, ctx }) {
 }
 
 function Bots({ ctx, search, openDialog }) {
-  const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
   const all = channelsOf(ctx.fleet);
   const needle = search.trim().toLowerCase();
   const rows = all.map((ch, i) => ({ ch, i })).filter(({ ch }) => !needle || [ch.id, ch.type, ch.group_id, ch.bot_token_env].some((v) => String(v ?? "").toLowerCase().includes(needle)));
@@ -954,7 +952,7 @@ function Bots({ ctx, search, openDialog }) {
         <span class="s-actions">
           <span class=${`tag${token ? "" : " warn"}`}>${token ? tn("tokenConfigured") : tn("tokenMissing")}</span>
           <span class=${`s-state ${state.cls}`} title=${stateText}>${stateText}</span>
-          <span class="s-conn-buttons">${!overPublicLink && ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
+          <span class="s-conn-buttons">${ctx.fleetUp && meta.status !== "connected" ? html`<${ConnectionRetry} id=${channelId(ch, i)} ctx=${ctx} />` : null}
             <button type="button" class="btn btn-sm" onClick=${() => openDialog({ kind: "bot", id: channelId(ch, i) })}>${tn("settingsButton")}</button></span></span>
       </div>`;
     })}</div>`}</section>`;
@@ -1268,15 +1266,15 @@ function WebSection({ ctx, staged, part = "all" }) {
   const [accessTab, setAccessTab] = useSettingsTabs("access", "overview");
   const web = ctx.fleet.web || {}, local = (web.session && web.session.local) || {}, term = ctx.fleet.web_terminal || {};
   const plSession = (web.session && web.session.public_link) || {};   // #3708
-  // Over the public link the fields read only; the Guests and Web authority cards are not offered (the server never
-  // serves their reads there).
-  const overPublicLink = globalThis.document?.body?.dataset?.publicLink === "1";
+  // M-3278 (decision 7933bf90): over the public link an admin edits these as anywhere (Guests and Web authority included);
+  // the tunnel token and the Hub too (part 4).
+  const overPublicLink = false;
   const original = useMemo(() => ({
     notify: noticeMode(web.notify_login),
     echo: web.echo_to_channel ?? true,
     log: web.log_tab === true,                                                  // #1218: off by default
     thinking: web.log_thinking === true,                                        // AGEND-197: off by default
-    usagePub: web.usage_report_on_public_link === true,                         // #2122: off by default
+    usagePub: web.usage_report_on_public_link !== false,                        // #2122; M-3278: on by default
     levels: web.office_levels !== false,                                        // #2661: on by default
     cdn: web.preview_cdn === true,                                              // #2911 (7): off by default
     loginQr: web.login_qr === true,                                             // #3061 (P2b): off by default
@@ -1484,7 +1482,7 @@ function WebSection({ ctx, staged, part = "all" }) {
     </section>`)}
           ${!overPublicLink ? html`<${WebAuthorityCard} ctx=${ctx} staged=${staged} />` : null}
           ${/* A tab whose shell is from before Settings → Hub (its app-route.js has no "hub"): the Hub cards stay here. */ ""}
-          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} overPublicLink=${overPublicLink} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
+          ${!SETTINGS_SECTIONS.includes("hub") ? html`<${HubSection} hubHost=${!!ctx.fleet.hub?.hubId} hubOrigin=${ctx.fleet.hub?.webOrigin} />` : null}
           <details class="drawer s-terminal-disclosure"><summary>${tn("webTerminalTitle")}</summary><div class="drawer-body">${lock(html`<section class="card s-access-terminal"><h3>${tn("webTerminalTitle")}</h3>
       <p class="note">${tn("webTerminalHint")}</p>
       <label class=${fc("check", "termOn")}><input id="webTerminalEnabled" type="checkbox" checked=${f.termOn} onChange=${(e) => set("termOn")(e.target.checked)} /><span>${tn("webTerminalEnabled")}</span><${Impact} schema=${schema} field="web_terminal.enabled" /></label>
@@ -1497,7 +1495,7 @@ function WebSection({ ctx, staged, part = "all" }) {
         </div><aside class="card s-access-related"><h3>${layoutText("revRelatedAccess")}</h3>
           <button type="button" onClick=${() => setAccessTab("guests")}><${Icon} name="user" size=${18} /><span><strong>${layoutText("accessGuests")}</strong><small>${layoutText("revRelatedGuests")}</small></span><${Icon} name="chevron" size=${16} /></button>
           <button type="button" onClick=${() => setAccessTab("sharing")}><${Icon} name="globe" size=${18} /><span><strong>${layoutText("accessSharing")}</strong><small>${layoutText("revRelatedSharing")}</small></span><${Icon} name="chevron" size=${16} /></button>
-          ${!overPublicLink && SETTINGS_SECTIONS.includes("hub") ? html`<button type="button" onClick=${() => navigate(sectionPath("hub"))}><${Icon} name="plug" size=${18} /><span><strong>${hubSectionText("relatedTitle")}</strong><small>${hubSectionText("relatedHint")}</small></span><${Icon} name="chevron" size=${16} /></button>` : null}
+          ${/* M-3278: the Hub entry over the public link too */ ""}${SETTINGS_SECTIONS.includes("hub") ? html`<button type="button" onClick=${() => navigate(sectionPath("hub"))}><${Icon} name="plug" size=${18} /><span><strong>${hubSectionText("relatedTitle")}</strong><small>${hubSectionText("relatedHint")}</small></span><${Icon} name="chevron" size=${16} /></button>` : null}
         </aside></div>
       </${SettingsTabPanel}>
       <${SettingsTabPanel} group="access" id="guests" active=${accessTab === "guests"}>
@@ -1522,8 +1520,10 @@ function WebSection({ ctx, staged, part = "all" }) {
       ${named || f.autoOpen ? html`<label class=${fc("check", "autoOpen")}><input id="publicAutoOpen" type="checkbox" checked=${f.autoOpen} onChange=${(e) => set("autoOpen")(e.target.checked)} /><span>${tn("publicAutoOpen")}</span><${Impact} schema=${schema} field="web.public_link.auto_open" /></label>
       <p class="note">${tn("publicAutoOpenHint")}</p><${Feedback} error=${errors.autoOpen} />` : null}
 
-      ${!overPublicLink ? html`<div class="s-public-credentials"><${PublicTunnelToken} /></div>` : null}
+      <div class="s-public-credentials"><${PublicTunnelToken} /></div>
     </section>`)}
+          ${/* M-3278 (decision 7933bf90): the fixed link's token over the public link too, for its admin — outside the locked fields. */ ""}
+          ${overPublicLink ? html`<section class="card s-public-entry"><div class="s-public-credentials"><${PublicTunnelToken} /></div></section>` : null}
           <div class="s-sharing-list"><h3>${layoutText("revReadOnlySharing")}</h3><p class="note">${layoutText("revSharingOrigin")}</p><${OfficeSharesCard} /><${PageSharesCard} /></div>
         </div>
       </${SettingsTabPanel}>` : null}

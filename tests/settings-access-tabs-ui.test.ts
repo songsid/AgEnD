@@ -96,14 +96,16 @@ describe("the real Settings forms across page tabs", () => {
     expect(writes).toEqual([]);
   });
 
-  it("reveals a deep-linked Access field while keeping the public-link form disabled", async () => {
+  it("reveals a deep-linked Access field over the public link, the form editable for an admin (M-3278)", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     await open("access", "#publicWebHostname");
     expect(byId("access-tab-sharing").getAttribute("aria-selected")).toBe("true");
-    expect(byId("publicWebHostname").closest("fieldset").disabled).toBe(true);
-    expect(byId("publicTunnelToken")).toBeNull();
-    expect(byId("vaEnabled")).toBeNull();
-    expect(byId("guestsEnabled")).toBeNull();
+    // M-3278 (decision 7933bf90): an admin edits the Web fields over the link as anywhere, and the fixed address's token too
+    // (part 4), outside the form's fields.
+    expect(byId("publicWebHostname").closest("fieldset").disabled).toBe(false);
+    expect(byId("publicTunnelToken")).not.toBeNull();
+    expect(byId("vaEnabled")).not.toBeNull();
+    expect(byId("guestsEnabled")).not.toBeNull();
     expect(writes).toEqual([]);
   });
 

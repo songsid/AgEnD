@@ -107,7 +107,7 @@ describe("GET /ui/accounts (#3212)", () => {
       expect(r.body.toString("utf8")).not.toContain("spare-account");
     } finally { spy.mockRestore(); }
   });
-  it("a request that came in through the public link (gateway-bound) is not found, before any session check", async () => {
+  it("M-3278: a request through the public link (gateway-bound) by its admin session is served as locally; its read session is refused", async () => {
     class Res extends ServerResponse { status = 0; body = "";
       override writeHead(code: number): this { this.status = code; return this; }
       override end(chunk?: unknown): this { this.body += String(chunk ?? ""); return this; } }
@@ -120,8 +120,19 @@ describe("GET /ui/accounts (#3212)", () => {
     const res = new Res(req);
     expect(handleWebRequest(req, res, new URL("/ui/accounts", "http://localhost"), fm)).toBe(true);
     await vi.waitFor(() => expect(res.status).not.toBe(0));
-    expect([res.status, JSON.parse(res.body).error]).toEqual([404, "not_found"]);
-    expect(spy).not.toHaveBeenCalled();
+    expect(res.status).toBe(200);
+    expect(spy).toHaveBeenCalledTimes(1);
+    // The link's read session: refused before anything is read.
+    const rd = fm.webSessions.create({ tier: "read", surface: "gateway", exposureId: "e".repeat(32), label: "gateway-read", tokenEpoch: tokenEpoch(fm.getDashboardAccess().token!) });
+    const req2 = Readable.from([]) as unknown as IncomingMessage; req2.method = "GET"; req2.url = "/ui/accounts";
+    req2.headers = { host: "localhost", cookie: `${WEB_SESSION_COOKIE_SECURE}=${rd.sessionId}` };
+    Object.defineProperty(req2, "socket", { value: { remoteAddress: "127.0.0.1" }, configurable: true });
+    bindGatewayRequest(req2, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://public.example", isCurrent: () => true });
+    const res2 = new Res(req2);
+    expect(handleWebRequest(req2, res2, new URL("/ui/accounts", "http://localhost"), fm)).toBe(true);
+    await vi.waitFor(() => expect(res2.status).not.toBe(0));
+    expect([res2.status, JSON.parse(res2.body).error]).toEqual([403, "accounts_need_a_local_admin"]);
+    expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
 });

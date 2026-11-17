@@ -57,3 +57,12 @@ describe("CLI explicit references", () => {
     expect(h.requests[0]).toMatchObject({ op: "delivery-status", args: { message_id: "hmsg-original" } });
   });
 });
+
+describe("reply preview CLI arguments", () => {
+  it("passes structured previews without interpreting them as attachment paths", async () => {
+    const h = await client(), previews = [{ path: "src/app.ts", line: 1000, endLine: 1002 }];
+    await h.invoke("reply", "Changed.", "--previews", JSON.stringify(previews));
+    expect(h.requests[0]).toMatchObject({ args: { text: "Changed.", previews } });
+    expect(h.requests[0].args).not.toHaveProperty("files");
+  });
+});

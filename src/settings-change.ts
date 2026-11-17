@@ -4,7 +4,7 @@ import { t } from "./locale.js";
 import { SettingsConfirmationError, type SettingsChangeSection } from "./settings-confirmation.js";
 import { settingsFingerprint } from "./settings-transaction.js";
 import { STATUS_EMOJI_CONFIG_KEYS } from "./status-emojis.js";
-import { quickLinkEffective } from "./authority/web-authority.js";
+import { namedLinkEffective, quickLinkEffective } from "./authority/web-authority.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { GUEST_SESSION_BOUNDS, guestSessionPolicy, LOCAL_SESSION_HOURS, localSessionPolicy, PUBLIC_LINK_SESSION_BOUNDS, publicLinkSessionPolicy } from "./web-session.js";
 import { APPEARANCE_BOUNDS, APPEARANCE_DEFAULTS } from "./web-appearance-limits.js";
@@ -109,7 +109,7 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   // #2122: the usage report over the public link applies at once either way. The default (off) is the gate — a link may
   // be shared with people who should not see 400 days of usage; the switch is reached only from a signed-in session on
   // the dashboard reached directly, and it shows counts and amounts, not content: a second confirmation stops nothing more.
-  { path: ["fleet", "web", "usage_report_on_public_link"], def: false, looser: () => false },
+  { path: ["fleet", "web", "usage_report_on_public_link"], def: true, looser: () => false },   // M-3278: on by default
   // M-2255: Settings → Runtime. Switching a Windows runtime on lets agents run more — this PC's Windows CLIs, or other
   // computers that pair with the fleet — so it waits for a General admin; switching one off applies at once.
   { path: ["fleet", "runtimes", "windows_cli"], def: false, looser: (a, b) => b === true && a !== true },
@@ -293,7 +293,7 @@ function verifiedAuthorityChange(old: unknown, next: unknown): Array<[string, un
   const changed = [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(k => !same(a[k], b[k]));
   if (changed.some(k => !["enabled", "loopback_only", "max_session_hours", "named_link", "quick_link"].includes(k))) return null;
   const held: Array<[string, unknown, unknown]> = [];
-  if (a.named_link !== true && b.named_link === true) held.push(["named_link", a.named_link, b.named_link]);
+  if (!namedLinkEffective(a) && namedLinkEffective(b)) held.push(["named_link", a.named_link, b.named_link]);
   if (!quickLinkEffective(a) && quickLinkEffective(b)) held.push(["quick_link", a.quick_link, b.quick_link]);
   return held;
 }

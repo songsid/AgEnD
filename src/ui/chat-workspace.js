@@ -57,7 +57,7 @@ export function createPageControls(doc = document) {
   const move = (token, slot, asMenu = false) => {
     if (owner !== token || !slot) return;
     if (node.parentNode !== slot) slot.appendChild(node);
-    for (const button of node.querySelectorAll(".hd-text, .hd-usage, .chat-card-menu > button")) {
+    for (const button of node.querySelectorAll(".hd-text, .hd-usage, .chat-card-menu > button, .chat-pins-btn")) {
       if (asMenu) button.setAttribute("role", "menuitem"); else button.removeAttribute("role");
     }
   };
@@ -65,8 +65,8 @@ export function createPageControls(doc = document) {
     node, move,
     show(token, slot, meta = {}, asMenu = false) {
       owner = token;
-      const Card = meta.CardMenu;
-      render(html`${Card ? html`<${Card} card=${meta.card} ownerKey=${meta.navKey} />` : null}<${HeaderTools}
+      const Card = meta.CardMenu, Pins = meta.Pins;   // M-3271: the 📌 (the chat's own list opens)
+      render(html`${Pins ? html`<${Pins} ...${meta.pins || {}} />` : null}${Card ? html`<${Card} card=${meta.card} ownerKey=${meta.navKey} />` : null}<${HeaderTools}
         navKey=${meta.navKey} view=${meta.view === true} usage=${meta.usage !== false} />`, node);
       move(token, slot, asMenu);
     },

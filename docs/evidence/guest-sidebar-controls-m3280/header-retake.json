@@ -1,0 +1,83 @@
+{
+  "before": false,
+  "results": [
+    {
+      "device": "desk",
+      "tier": "admin",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room",
+        "hidden-agent"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "dark",
+        "lang": "en"
+      },
+      "prefWrites": [],
+      "checks": 5,
+      "errors": []
+    },
+    {
+      "device": "desk",
+      "tier": "guest",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room"
+      ],
+      "phoneCustom": false,
+      "stored": {
+        "theme": "dark",
+        "lang": "en",
+        "nav.sort": {
+          "mode": "recent",
+          "favs": "fixed"
+        },
+        "nav.filter": {
+          "q": "Beacon",
+          "status": [],
+          "cli": []
+        },
+        "nav.density": "compact",
+        "nav.compactName": "instance"
+      },
+      "prefWrites": [
+        200
+      ],
+      "checks": 12,
+      "errors": []
+    },
+    {
+      "device": "phone",
+      "tier": "guest",
+      "initial": [
+        "agent-alpha",
+        "agent-beta",
+        "shared-room"
+      ],
+      "phoneCustom": true,
+      "stored": {
+        "theme": "light",
+        "lang": "zh-TW",
+        "nav.sort": {
+          "mode": "recent",
+          "favs": "fixed"
+        },
+        "nav.filter": {
+          "q": "Beacon",
+          "status": [],
+          "cli": []
+        },
+        "nav.densityPhone": "compact",
+        "nav.compactName": "instance"
+      },
+      "prefWrites": [
+        200
+      ],
+      "checks": 12,
+      "errors": []
+    }
+  ]
+}

@@ -14,7 +14,7 @@ import { textLinkSegments } from "/assets/app-route.js";
 
 const R = () => globalThis.AgendChatRender;
 /** #1589: the public link plays no media in the page (its page says so: <body data-public-link="1">); #2547: its text cards show. */
-const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1";
+const PUBLIC_LINK = () => globalThis.document?.body?.dataset?.publicLink === "1" && globalThis.document?.body?.dataset?.linkMedia !== "1";   // M-3278: an admin's link page plays them
 /** #1589: how much of a text attachment is shown before "Show all". */
 export const TEXT_PREVIEW_LINES = 200;
 /** #1589: the most elements one formatted text card may build (table cells, highlight spans, Markdown elements), Show all
@@ -416,6 +416,16 @@ export function createThread(list, scroller, opts) {
     if (x) decorateHtmlCards(node, x, stoppedKeys || []);
     if (x) decorateTextCards(node, x);
     if (x?.sourceBadge) opts.senderBadge?.(node.querySelector(".meta .sender"), x);
+    if (x?.role === "agent" && typeof opts.previewFile === "function" && Array.isArray(x.previews)) {
+      const row = list.ownerDocument.createElement("div"); row.className = "rb-row reply-previews"; row.dataset.trust = "thread-control";
+      x.previews.slice(0, 10).forEach((spec, i) => {
+        if (!spec || typeof spec.path !== "string") return;
+        const button = list.ownerDocument.createElement("button"); button.type = "button"; button.className = "chip-btn"; button.dataset.replyPreview = String(i);
+        button.textContent = opts.previewFileLabel?.(spec) || spec.path;
+        button.addEventListener("click", () => opts.previewFile(spec, button, msgKey(x))); row.append(button);
+      });
+      node.querySelector(".body")?.append(row);
+    }
     return node;
   }
 
@@ -721,7 +731,8 @@ export function createThread(list, scroller, opts) {
   // grew by less than 48 px (the working line, a command card, the composer shrinking after a send) used to leave the
   // newest bubble clipped behind it, and the next growth past 48 px put the pill over it.
   const atBottom = () => R().isNearBottom(scroller.scrollTop, scroller.clientHeight, scroller.scrollHeight, 1);
-  function reportJump() { opts.onJump({ show: !nearBottom(), unseen }); }
+  // M-3272: scrolled back past an unloaded newest end, the pill stays (the live chat is not below what is drawn).
+  function reportJump() { opts.onJump({ show: !nearBottom() || opts.detached?.() === true, unseen }); }
   function toBottom() { snap(); scroller.scrollTop = scroller.scrollHeight; pinned = true; mark(); }
   /**
    * #2184: a thread's height is rarely a whole number of pixels, and a pinned view's offset is: so each time older messages
@@ -818,9 +829,22 @@ export function createThread(list, scroller, opts) {
     draw({ older: true });
   }
 
+  /**
+   * M-3272: the first message on screen and where it is, before a page of scroll-back changes what is held (a page
+   * appended below, the oldest unloaded above) — after it, the reader is put back where that message was on screen.
+   * Measured on screen (getBoundingClientRect), so a browser that anchored the scroll itself is not moved twice.
+   */
+  function screenAnchor() {
+    const top = scroller.getBoundingClientRect?.().top ?? 0;
+    for (const v of nodes.values()) { const r = v.node.getBoundingClientRect?.(); if (r && r.bottom > top) return { node: v.node, at: r.top }; }
+    return null;
+  }
   /** Draw `next` (this instance's messages). `restore`: the scroll position to return to (null = the bottom). */
   function render(next, renderOpts = {}) {
-    const stick = pinned || nearBottom();
+    // M-3272: `keep` — a page of scroll-back: never pulled to the bottom (a page appended below the reader is read, not
+    // skipped), the reader kept where they were.
+    const stick = !renderOpts.keep && (pinned || nearBottom());
+    const anchor = renderOpts.keep ? screenAnchor() : null;
     msgs = next || [];
     if (!msgs.length) {
       for (const v of nodes.values()) { stopIn(v.node); v.handle?.unmount(); }
@@ -841,7 +865,10 @@ export function createThread(list, scroller, opts) {
       if (renderOpts.restore == null) toBottom();
       else { scroller.scrollTop = renderOpts.restore; pinned = nearBottom(); mark(); }
     } else if (stick) toBottom();
-    else unseen += added;
+    else if (anchor) {
+      if (anchor.node.isConnected !== false) { const d = (anchor.node.getBoundingClientRect?.().top ?? anchor.at) - anchor.at; if (d) scroller.scrollTop += d; }
+      pinned = false; mark();
+    } else unseen += added;
     reportJump();
   }
   /** Put the messages from startIndex() on in the list (nodes reused when unchanged). Returns how many are new. */
@@ -922,7 +949,11 @@ export function createThread(list, scroller, opts) {
     mark();
     if (bottom) unseen = 0;
     reportJump();
-    return bottom ? null : scroller.scrollTop;
+    // M-3272: older messages only at the very top, once everything held is drawn (no prefetch); the newest end, unloaded
+    // while scrolled back, again at the very bottom.
+    if (top <= 1 && startIndex() <= 0) opts.onTop?.();
+    if (atBottom() && opts.detached?.() === true) opts.onBottom?.();
+    return bottom && opts.detached?.() !== true ? null : scroller.scrollTop;
   }
   function jumpLatest() { toBottom(); unseen = 0; reportJump(); }
   /** Show one message (the panel's "from …" link, #1481): scrolled into view and briefly marked. */
@@ -1005,11 +1036,14 @@ export function createThread(list, scroller, opts) {
    * #2272: show the message a reply quotes, flashed — drawn now, or after the chat reads back the longest history the
    * server keeps; otherwise it says it is no longer there.
    */
-  async function jumpTo(key) {
-    if (typeof key !== "string" || !key) return;
-    if (reveal(key)) return;
+  async function jumpTo(key, { onGone } = {}) {
+    if (typeof key !== "string" || !key) return false;
+    if (reveal(key)) return true;
     const found = opts.findQuoted ? await opts.findQuoted(key) : false;
-    if (!found || !reveal(key)) opts.notice?.(tr("chat.replyGone"));
+    if (found && reveal(key)) return true;
+    // M-3271: a pin's jump shows the copy it kept instead of the notice (onGone).
+    if (typeof onGone === "function") onGone(); else opts.notice?.(tr("chat.replyGone"));
+    return false;
   }
   /** #2272: a drawn message's row (for the message menu and gestures), or undefined. */
   function messageOf(key) { return msgs.find(y => msgKey(y) === key); }

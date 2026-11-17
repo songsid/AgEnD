@@ -17,6 +17,7 @@
 import { shellRoute } from "./web-shell-routes.js";
 import type { WebChatButtons, WebChatHistory, WebChatMessage, WebDeliveryState } from "./web-chat-history.js";
 import { catchUpWindow } from "./web-chat-history.js";
+import { messageMentionNames, type MentionNames, type MentionQuery } from "./web-mentions.js";
 
 export type GuestRouteState = "on" | "later";
 export interface GuestRoute {
@@ -120,6 +121,8 @@ export interface GuestRequest {
   ownRoom?(instance: string): boolean;
   /** #1920 §5.2: the kept messages, to show a tick or a reply's buttons only on a message the guest may see. */
   history?(): WebChatHistory | null;
+  /** Memory-only labels from this instance's channel, not the Fleet-wide member cache. */
+  mentionNames?(instance: string, query: MentionQuery): Partial<MentionNames>;
   /** #1920 §5.1: guests may chat (web.guests.chat, default true); false: read-only. Absent: read-only. */
   chat?(): boolean;
   /** #1920 §3.2: its stream connected — its rooms' membership is read again, in the background. */
@@ -224,7 +227,7 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
  * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
-  const { from, channel: _channel, messageId, anchor, delivery, seenSeq: _seen, replyTo, ...rest } = m;
+  const { from, previews: _previews, channel: _channel, messageId, anchor, delivery, seenSeq: _seen, replyTo, ...rest } = m;
   void _channel; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
@@ -233,7 +236,10 @@ export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: Rea
   const quotedRow = replyTo && scope ? guest.history?.()?.find(m.instance, replyTo.boot, replyTo.id) : undefined;
   const quote = !replyTo ? {} : quotedRow && scope && guestSeesMessage(quotedRow, guest, scope)
     ? { replyTo } : { replyTo: { boot: replyTo.boot, id: replyTo.id, hidden: true } };
-  return { ...rest, ...click, ...quote, ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && anchor ? { anchor } : {}), ...(mine && delivery ? { delivery } : {}) };
+  // A guest's input or private-room echo must not turn arbitrary ids into cache lookups.
+  const mentionNames = !mine && m.channel === true && guest.mentionNames
+    ? messageMentionNames(rest.click ? rest.click.label : rest.text, q => guest.mentionNames!(m.instance, q)) : undefined;
+  return { ...rest, ...click, ...quote, ...(mentionNames ? { mentionNames } : {}), ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && anchor ? { anchor } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
   rows.filter((m) => guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));

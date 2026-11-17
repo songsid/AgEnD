@@ -94,12 +94,12 @@ function callWith(method: string, path: string, body: unknown, f: ReturnType<typ
 }
 
 describe("PATCH /ui/teams/<name>", () => {
-  function call(method: string, path: string, body: unknown, opts: { publicLink?: boolean; f?: ReturnType<typeof fleet> } = {}) {
+  function call(method: string, path: string, body: unknown, opts: { publicLink?: boolean; f?: ReturnType<typeof fleet>; tier?: "admin" | "read" } = {}) {
     const f = opts.f ?? fleet();
     const saveFleetConfig = vi.fn();
     // The public link: its own listener's request with its __Host- session (a header token is not taken there).
     const sessions = new WebSessionStore(), exposureId = "a".repeat(32), pub = "https://sample.trycloudflare.com";
-    const s = opts.publicLink ? sessions.create({ tier: "admin", surface: "gateway", exposureId, label: "t", tokenEpoch: tokenEpoch(token) }) : null;
+    const s = opts.publicLink ? sessions.create({ tier: opts.tier ?? "admin", surface: "gateway", exposureId, label: "t", tokenEpoch: tokenEpoch(token) }) : null;
     const headers: Record<string, string> = s
       ? { host: "sample.trycloudflare.com", cookie: `__Host-agend_session=${s.sessionId}`, origin: pub, "sec-fetch-site": "same-origin", "x-agend-csrf": csrfTokenFor(s.sessionId), "content-type": "application/json" }
       : { host: "127.0.0.1:19280", "x-agend-token": token, "content-type": "application/json" };
@@ -138,17 +138,25 @@ describe("PATCH /ui/teams/<name>", () => {
     const r = await call("PATCH", "/ui/teams/core", { name: "renamed", members: ["alpha"] });
     expect([r.status, r.saved, Object.hasOwn(r.f.teams, "renamed")]).toEqual([400, 0, false]);
   });
-  it("the public link: the edit is refused by the handler (403) and its manifest has no route for it", async () => {
+  // M-3278 (decision 7933bf90): an admin session edits, creates and deletes teams over the public link as here.
+  it("the public link (M-3278): an admin session's edit is made, and its manifest routes it; a read-only session's is refused", async () => {
     const r = await call("PATCH", "/ui/teams/core", { members: ["gamma"] }, { publicLink: true });
-    expect([r.status, r.body.error, r.saved, isPublicWebRoute("PATCH", "/ui/teams/core"), isPublicWebRoute("PUT", "/ui/teams/core")])
-      .toEqual([403, "teams_not_over_public_link", 0, false, false]);
+    expect([r.status, r.saved, r.f.teams.core.members, isPublicWebRoute("PATCH", "/ui/teams/core"), isPublicWebRoute("PUT", "/ui/teams/core")])
+      .toEqual([200, 1, ["gamma"], true, true]);
+    const ro = await call("PATCH", "/ui/teams/core", { members: ["gamma"] }, { publicLink: true, tier: "read" });
+    expect([ro.status >= 400, ro.saved, ro.f.teams.core.members]).toEqual([true, 0, ["alpha", "beta"]]);
   });
-  it("separate tightening: the public link no longer creates or deletes a team (manifest and handler); reading stays", async () => {
+  it("the public link (M-3278): an admin session creates and deletes a team (manifest and handler); reading stays", async () => {
     const created = await call("POST", "/ui/teams", { name: "ops", members: ["alpha"] }, { publicLink: true });
     const deleted = await call("DELETE", "/ui/teams/core", undefined, { publicLink: true });
-    expect([created.status, deleted.status, created.saved + deleted.saved, Object.hasOwn(deleted.f.teams, "core"),
+    expect([created.status, deleted.status, created.saved + deleted.saved, Object.hasOwn(created.f.teams, "ops"), Object.hasOwn(deleted.f.teams, "core"),
       isPublicWebRoute("POST", "/ui/teams"), isPublicWebRoute("DELETE", "/ui/teams/core"), isPublicWebRoute("GET", "/ui/teams")])
-      .toEqual([403, 403, 0, true, false, false, true]);
+      .toEqual([200, 200, 2, true, false, true, true, true]);
+    const ro = await call("POST", "/ui/teams", { name: "ops", members: ["alpha"] }, { publicLink: true, tier: "read" });
+    expect([ro.status >= 400, ro.saved, Object.hasOwn(ro.f.teams, "ops")], "a read-only session over the link").toEqual([true, 0, false]);
+    // Fable on #4100 (F1): nor deletes one (the handler asks the tier on every listener).
+    const rd = await call("DELETE", "/ui/teams/core", undefined, { publicLink: true, tier: "read" });
+    expect([rd.status, rd.saved, Object.hasOwn(rd.f.teams, "core")], "read-only delete over the link").toEqual([403, 0, true]);
   });
   it("#1693 r1: a session revoked, or the token rotated, while the body was on its way — nothing written, nothing saved", async () => {
     const outcomes: unknown[] = [];
@@ -260,9 +268,9 @@ describe("the Teams tab: Edit opens the form filled in", () => {
     fire(save, "click"); await settle(6);
     expect(writes).toEqual([{ path: "/ui/teams/core", method: "PATCH", body: { members: ["gone", "beta"], description: "The core" } }]);
   });
-  it("the public link lists the teams but offers no New, Edit or Delete", async () => {
+  it("the public link lists the teams and offers New, Edit and Delete as here (M-3278)", async () => {
     const { pg } = await teamsTab({ publicLink: true });
-    expect([pg.root.querySelectorAll(".row-item").length, pg.root.querySelector("button.team-edit"), pg.root.querySelector(".list-head button"), pg.root.querySelector(".row-item button.danger")])
-      .toEqual([1, null, null, null]);
+    expect([pg.root.querySelectorAll(".row-item").length, !!pg.root.querySelector("button.team-edit"), !!pg.root.querySelector(".list-head button"), !!pg.root.querySelector(".row-item button.danger")])
+      .toEqual([1, true, true, true]);
   });
 });

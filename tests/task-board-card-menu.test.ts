@@ -195,7 +195,8 @@ describe("a right click on a card", () => {
     expect((globalThis as any).document.activeElement.className).toBe("tb-tile-title");
   });
 
-  it("anywhere else: the browser's own menu; over the public link only open and copy", async () => {
+  // M-3278 (decision 7933bf90): the public link's admin works the board — its card menu is the dashboard's.
+  it("anywhere else: the browser's own menu; over the public link the same card menu as here (M-3278)", async () => {
     await mount();
     const e = fire(q(".tb-bar-head"), "contextmenu", { cancelable: true });
     expect(e.defaultPrevented).toBe(false);
@@ -203,10 +204,14 @@ describe("a right click on a card", () => {
     const shift = fire(q('[data-tile="M-1"]'), "contextmenu", { cancelable: true, shiftKey: true });
     await settle(4);
     expect([shift.defaultPrevented, q(".tb-card-menu")], "Shift: the browser's, as on a chat message").toEqual([false, null]);
+    await mount();
+    await rightClick(q('[data-tile="M-1"]'));
+    const here = labels();
+    expect(here).toContain("To do");
     (globalThis as any).document.body.dataset.publicLink = "1";
     await mount();
     await rightClick(q('[data-tile="M-1"]'));
-    expect(labels()).toEqual(["Open", "# ", "Copy link", "Copy card number"]);
+    expect(labels()).toEqual(here);
   });
 });
 

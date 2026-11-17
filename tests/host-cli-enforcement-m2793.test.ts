@@ -92,11 +92,11 @@ it("the lenient admin installs without an extra confirmation click; an enforcing
   expect(r.start).toHaveBeenCalledTimes(1);
 });
 
-it("public links are refused before any held change, even for a lenient admin", async () => {
+it("M-3278: a public link's admin session proposes it as a held change, as any admin away from the AgEnD computer", async () => {
   const r = await rig(), s = r.session("200", true);
-  expect((await r.call("/ui/host-install", s, { backend: "grok" })).status).toBe(403);
-  expect(r.gate.store.list(s.record.idHash)).toEqual([]);
-  expect(r.start).not.toHaveBeenCalled();
+  const p = await r.call("/ui/host-install", s, { backend: "grok" });
+  expect([p.status, p.body.result]).toEqual([202, "pending_confirmation"]);
+  expect(r.gate.store.list(s.record.idHash)).toHaveLength(1);
 });
 
 it("the enforcing admin on the AgEnD computer still needs no code", async () => {

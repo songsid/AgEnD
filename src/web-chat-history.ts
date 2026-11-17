@@ -1,3 +1,4 @@
+import { replyPreviews, type ReplyPreviewSpec } from "./reply-preview-spec.js";
 /**
  * What the web chat has said, kept so that a reload — or a dropped SSE stream — does not leave the chat empty.
  *
@@ -21,6 +22,7 @@
 import { randomBytes } from "node:crypto";
 import { webTextLinks, type TextLink } from "./topic-link.js";
 import { WEB_REACTIONS_MAX, webReactionsOf } from "./web-reactions.js";
+import type { ArchivedLine, WebChatArchive } from "./web-chat-archive.js";
 
 /** A file shown with a message: an id the dashboard can fetch, never a path. */
 export interface WebChatAttachment { id: string; kind: "photo" | "document"; name: string; size: number; mime: string; width?: number; height?: number }
@@ -101,6 +103,8 @@ export interface WebChatMessage {
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
   buttons?: WebChatButtons;
+  /** Inert relative file references, delivered by the agent; read only after an admin clicks. */
+  previews?: ReplyPreviewSpec[];
   /**
    * A person's click on a reply button (user messages only): the page shows the button's label as a chip instead of
    * `text` — the line the agent was given, value and all. `of`: the buttons' set id, to link to the reply (live only).
@@ -160,6 +164,8 @@ export interface WebChatMessage {
    * Distinct emojis of the web set (web-reactions.ts), at most WEB_REACTIONS_MAX, in the order they were added.
    */
   reactions?: string[];
+  /** M-3272: read back from the archive (past the 500-message window): its buttons are closed, its files gone. */
+  archived?: true;
   /**
    * #2341 review: a status line that names task board cards (the board's daily summary) — their numbers, so the public
    * link withholds the line while one of them is hidden there (web-api.ts visibleMessages). Kept on disk with the row.
@@ -285,6 +291,7 @@ export interface WebChatHistoryOptions {
 
 /** #1565: a message as it is kept on disk — what was said, never the interactive state; files with their paths. */
 export interface StoredWebChatMessage {
+  previews?: ReplyPreviewSpec[];
   boot: string;
   id: number;
   instance: string;
@@ -376,6 +383,8 @@ export class WebChatHistory {
   private readonly restoredBoots = new Map<string, string>();
   /** #2281: each row's platform posts, beside it (never a field of it). Gone with the row. */
   private readonly posts = new WeakMap<WebChatMessage, WebChatPost[]>();
+  /** M-3272: where messages leaving the window go (web-chat-archive.ts); none: they are dropped, as before. */
+  private archive: WebChatArchive | null = null;
 
   constructor(opts: WebChatHistoryOptions = {}) {
     this.perInstance = opts.perInstance ?? 500;
@@ -392,6 +401,9 @@ export class WebChatHistory {
   /** #1565: the file ledger (set at fleet start, before restore()). */
   setFiles(files: WebChatFiles | null): void { this.files = files; }
 
+  /** M-3272: archive the messages that leave the window from now on (the fleet sets it at start, beside the store). */
+  setArchive(archive: WebChatArchive | null): void { this.archive = archive; }
+
   private persist(instance: string): void {
     if (!this.store) return;
     this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
@@ -401,7 +413,7 @@ export class WebChatHistory {
   private stored(m: WebChatMessage): StoredWebChatMessage {
     const row: StoredWebChatMessage = { boot: m.boot, id: m.id, instance: m.instance, role: m.role, sender: m.sender, text: m.text, ts: m.ts, ...(m.anchor ? { anchor: m.anchor } : {}), ...(m.click ? { click: { label: m.click.label } } : {}), ...(m.links ? { links: m.links } : {}),
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
-      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}) };
+      ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}), ...(m.role === "agent" && m.previews?.length ? { previews: m.previews } : {}) };
     if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
@@ -508,7 +520,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -540,6 +552,8 @@ export class WebChatHistory {
     if (anchor && ANCHOR_ID.test(anchor)) entry.anchor = anchor.slice(0, 80);
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
+    const previews = entry.role === "agent" ? replyPreviews(msg.previews) : null;
+    if (previews?.length) entry.previews = previews;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
     // #1990: only a status line (the server's own text) links; never an agent's or a person's message.
@@ -573,6 +587,8 @@ export class WebChatHistory {
       slot.chars -= old.text.length;
       evicted.push(old);
     }
+    // M-3272: archived, not dropped (before its files go: the line keeps their names).
+    if (evicted.length && this.archive) this.archive.append(entry.instance, evicted.map(m => this.archived(m)));
     // #1565: a file leaves with its message — nothing is served under its id any more.
     if (evicted.length) this.dropFiles(entry.instance, evicted);
     this.persist(entry.instance);
@@ -815,6 +831,93 @@ export class WebChatHistory {
     this.byInstance.delete(instance);
     this.dropFiles(instance, messages);
     if (this.store) void this.store.remove(instance);
+    if (this.archive) void this.archive.forget(instance);           // M-3272: its archive too
+  }
+
+  /**
+   * M-3272: a message leaving the window, as its archive line — the key first (the archive's scan reads it unparsed),
+   * then what web-chat.json keeps of it (stored(), its platform posts aside), its buttons as they last were and closed
+   * for good (an archived reply's buttons and poll are read-only), and its files by name only (they leave with it).
+   */
+  private archived(m: WebChatMessage): ArchivedLine {
+    const { posts: _posts, attachments: _files, messageId: _mid, ...kept } = this.stored(m);
+    return {
+      key: `${m.boot}-${m.id}`, ...kept,
+      ...(m.attachments?.length ? { attachments: m.attachments.map(a => ({ gone: true as const, kind: a.kind, name: a.name, size: a.size, mime: a.mime })) } : {}),
+      ...(m.buttons ? { buttons: { ...m.buttons, labels: [...m.buttons.labels], state: m.buttons.state === "open" ? "expired" as const : m.buttons.state } } : {}),
+    };
+  }
+  /** M-3272: an archive line as the page reads a message (`archived: true`); null when it no longer checks. */
+  private fromArchive(line: ArchivedLine, instance: string): WebChatMessage | null {
+    const k = /^([0-9a-f]{1,32})-(\d{1,15})$/.exec(line.key);
+    const role = line.role, text = line.text, sender = line.sender, ts = line.ts;
+    if (!k || typeof role !== "string" || !ROLES.has(role) || typeof text !== "string" || typeof sender !== "string" || typeof ts !== "string") return null;
+    const { key: _key, ...rest } = line;
+    return { ...(rest as object), boot: k[1]!, id: Number(k[2]), instance, role: role as WebChatRole, sender, text: text.slice(0, WEB_CHAT_TEXT_MAX), ts, archived: true } as WebChatMessage;
+  }
+  private keyOf(m: WebChatMessage): string { return `${m.boot}-${m.id}`; }
+  /** Whether the instance has archived messages at all. */
+  private archiveHasAny(instance: string): boolean { return !!this.archive && this.archive.older(instance, null, 1).lines.length > 0; }
+
+  /**
+   * M-3272: up to `limit` messages older than `before` (`<boot>-<id>`), oldest first — the window's, then (past its
+   * start) the archive's. `more`: older ones remain. Null: `before` is in neither.
+   */
+  older(instance: string, before: string, limit: number): { messages: WebChatMessage[]; more: boolean } | null {
+    const window = this.byInstance.get(instance)?.messages ?? [];
+    const i = window.findIndex(m => this.keyOf(m) === before);
+    if (i >= 0) {
+      const fromWindow = window.slice(Math.max(0, i - limit), i);
+      const need = limit - fromWindow.length;
+      if (need <= 0) return { messages: fromWindow, more: i - limit > 0 || this.archiveHasAny(instance) };
+      const arch = this.archive ? this.archive.older(instance, null, need) : { lines: [], more: false };
+      const archived = arch.lines.map(l => this.fromArchive(l, instance)).filter((m): m is WebChatMessage => !!m);
+      return { messages: [...archived, ...fromWindow], more: arch.more };
+    }
+    if (!this.archive) return null;
+    const arch = this.archive.older(instance, before, limit);
+    if (!arch.found) return null;
+    return { messages: arch.lines.map(l => this.fromArchive(l, instance)).filter((m): m is WebChatMessage => !!m), more: arch.more };
+  }
+  /**
+   * M-3272: up to `limit` messages newer than `after`, oldest first — the archive's (when `after` is archived), then the
+   * window's. `more`: newer ones remain. Null: `after` is in neither.
+   */
+  newer(instance: string, after: string, limit: number): { messages: WebChatMessage[]; more: boolean } | null {
+    const window = this.byInstance.get(instance)?.messages ?? [];
+    const i = window.findIndex(m => this.keyOf(m) === after);
+    if (i >= 0) return { messages: window.slice(i + 1, i + 1 + limit), more: i + 1 + limit < window.length };
+    if (!this.archive) return null;
+    const arch = this.archive.around(instance, after, 0, limit);
+    if (!arch) return null;
+    const archived = arch.lines.slice(1).map(l => this.fromArchive(l, instance)).filter((m): m is WebChatMessage => !!m);
+    const need = limit - archived.length;
+    const fromWindow = arch.newerMore || need <= 0 ? [] : window.slice(0, need);
+    return { messages: [...archived, ...fromWindow], more: arch.newerMore || fromWindow.length < window.length };
+  }
+  /**
+   * M-3272: the page around one message (a search or pin jump to one no longer loaded): `key` with up to half of `limit`
+   * older and the rest newer, oldest first, from the archive and the window alike. Null: `key` is in neither.
+   */
+  around(instance: string, key: string, limit: number): { messages: WebChatMessage[]; olderMore: boolean; newerMore: boolean } | null {
+    const window = this.byInstance.get(instance)?.messages ?? [];
+    const half = Math.max(0, Math.floor((limit - 1) / 2)), rest = Math.max(0, limit - 1 - half);
+    const i = window.findIndex(m => this.keyOf(m) === key);
+    if (i >= 0) {
+      const from = Math.max(0, i - half), to = Math.min(window.length, i + 1 + rest);
+      const need = half - (i - from);
+      const arch = need > 0 && this.archive ? this.archive.older(instance, null, need) : { lines: [], more: false };
+      const archived = arch.lines.map(l => this.fromArchive(l, instance)).filter((m): m is WebChatMessage => !!m);
+      return { messages: [...archived, ...window.slice(from, to)], olderMore: from > 0 || (need > 0 ? arch.more : this.archiveHasAny(instance)), newerMore: to < window.length };
+    }
+    if (!this.archive) return null;
+    const arch = this.archive.around(instance, key, half, rest);
+    if (!arch) return null;
+    const archived = arch.lines.map(l => this.fromArchive(l, instance)).filter((m): m is WebChatMessage => !!m);
+    const at = archived.findIndex(m => this.keyOf(m) === key), newerCount = at < 0 ? 0 : archived.length - at - 1;
+    const need = rest - newerCount;
+    const fromWindow = arch.newerMore || need <= 0 ? [] : window.slice(0, need);
+    return { messages: [...archived, ...fromWindow], olderMore: arch.olderMore, newerMore: arch.newerMore || fromWindow.length < window.length };
   }
 
   /** The SSE cursor for one message: `<boot>-<n>`, n its place in its boot's sequence (id, or seenSeq once later). */
@@ -880,6 +983,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
   const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  const previews = role === "agent" ? replyPreviews(r.previews) : null;
+  if (previews?.length) message.previews = previews;
   if (nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;
   // A click comes back as its label only (the link to its buttons belonged to the process that ended).
   const click = role === "user" ? webChatClick(r.click) : undefined;

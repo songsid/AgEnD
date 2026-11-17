@@ -5,8 +5,8 @@
  *  - an admin session on this fleet's own listener closes the open link, at once, and the remembered owner is forgotten
  *    (auto_open never reopens a deliberate close);
  *  - it only closes: with no link open it answers closed:false and opens nothing;
- *  - never over the public link itself (the gateway refuses the route; the handler refuses it too), never a guest, a
- *    read-only session or the CLI's header token — the link stays open each time;
+ *  - M-3278 (decision 7933bf90): over the public link itself too, for an admin session there (the gateway routes it); never
+ *    a guest, a read-only session or the CLI's header token — the link stays open each time;
  *  - a web-only fleet's outside link is not closed here (its switch is the owner's, on this computer): 409 outside_link,
  *    the link stays open.
  */
@@ -113,9 +113,9 @@ async function startFleet(opts: { chat?: boolean; holdStart?: Promise<void> } = 
 const close = (h: Awaited<ReturnType<typeof startFleet>>, s: Signed) => h.local(s, "POST", "/ui/public-link/close", {});
 
 describe("S-120: POST /ui/public-link/close", () => {
-  it("never over the public link, even past the gateway: the handler itself refuses a gateway request (403 public_link_close_not_here)", async () => {
+  it("M-3278: past the gateway the handler closes it for an admin session over the link (no public_link_close_not_here)", async () => {
     // Fable #3570 R1: a request handed to the route as the gateway hands it (its context bound, an admin session's
-    // cookie and CSRF) — the handler's own check answers, before any session is looked at or anything is closed.
+    // cookie and CSRF). M-3278 (decision 7933bf90): an admin session over the link closes it as on this computer.
     const h = await startFleet({ chat: true });
     await h.openChatLink();
     const remote = h.stored({ label: "Over the link", surface: "gateway" });
@@ -131,11 +131,13 @@ describe("S-120: POST /ui/public-link/close", () => {
       expect(handleWebRequest(req, res, new URL("/ui/public-link/close", `https://${HOST}`), h.fm as any)).toBe(true);
       setImmediate(() => { req.emit("data", Buffer.from("{}")); req.emit("end"); });
     });
-    expect(answer).toEqual({ status: 403, body: { error: "public_link_close_not_here" } });
-    expect(closeSpy).not.toHaveBeenCalled();
-    expect(h.fm.getPublicWebStatus().state).toBe("open");
-    // The refusal leaves the real way intact: an admin on this fleet's own listener still closes it.
-    expect((await close(h, await h.hostSignIn())).status).toBe(200);
+    // M-3278: closed over the link itself, the answer goes first (202), then the link closes.
+    expect(answer).toEqual({ status: 202, body: { ok: true, closing: true } });
+    await vi.waitFor(() => expect(closeSpy).toHaveBeenCalledTimes(1));
+    expect(closeSpy).toHaveBeenCalledTimes(1);
+    // The close runs after the answer: await the very call the handler started (the spy passes the real one through),
+    // never the state at some moment — it reads "closing" until that call has finished (b644a307 post-merge).
+    await closeSpy.mock.results[0]!.value;
     expect(h.fm.getPublicWebStatus().state).toBe("closed");
   }, 30_000);
 
@@ -166,14 +168,18 @@ describe("S-120: POST /ui/public-link/close", () => {
     expect(h.any.publicWebLink.exposureId).toBeUndefined();
   }, 30_000);
 
-  it("never over the public link itself: the gateway does not route it — the link stays open", async () => {
-    expect(isPublicWebRoute("POST", "/ui/public-link/close")).toBe(false);
+  it("M-3278: over the public link itself the gateway routes it — a read-only session there is refused, an admin's closes it", async () => {
+    expect(isPublicWebRoute("POST", "/ui/public-link/close")).toBe(true);
     const h = await startFleet({ chat: true });
     await h.openChatLink();
-    const remote = h.stored({ label: "Over the link", surface: "gateway" });
-    const r = await h.outside(remote, "POST", "/ui/public-link/close", {});
-    expect(r.status).not.toBe(200);
+    const reader = await h.outside(h.stored({ tier: "read", label: "A reader over the link", surface: "gateway" }), "POST", "/ui/public-link/close", {});
+    expect([401, 403]).toContain(reader.status);
     expect(h.fm.getPublicWebStatus().state).toBe("open");
+    const remote = h.stored({ label: "Over the link", surface: "gateway" });
+    // The close ends the link this very request came over: the answer (202) goes first, then the link closes.
+    const r = await h.outside(remote, "POST", "/ui/public-link/close", {});
+    expect(r.status).toBe(202);
+    await vi.waitFor(() => expect(h.fm.getPublicWebStatus().state).toBe("closed"));
   }, 30_000);
 
   it("closes only the exposure it read: a link opened again before the close runs is left open", async () => {

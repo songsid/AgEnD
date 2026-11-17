@@ -36,7 +36,7 @@ export function TaskBoardTab({ lease }) {
   const [state, setState] = useState(null);
   // `ifMoved`: a refresh that only wants the board if its revision moved (a stream event, a reconnect).
   const [version, setVersion] = useState({ n: 0, ifMoved: false });
-  const writable = !onPublicLink();
+  const writable = true;   // M-3278: the public link's admin too (the host refuses a read-only session)
   const [at, setAtRaw] = useState(() => {
     let v = readStored(PROJECT_KEY, "");
     try { v = new URLSearchParams(globalThis.location?.search || "").get("tp") ?? v; } catch { /* no address bar */ }

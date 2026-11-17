@@ -20,7 +20,7 @@ export type WebSettingsBody = {
   logTab?: boolean;
   /** AGEND-181: thinking in the chat timeline (web.log_thinking; default off). */
   logThinking?: boolean;
-  /** #2122: the usage report over the temporary public link (web.usage_report_on_public_link). */
+  /** #2122: the usage report over the public link (web.usage_report_on_public_link; M-3278: on by default). */
   usageOnPublicLink?: boolean;
   /** #2661: Office levels (web.office_levels). */
   officeLevels?: boolean;

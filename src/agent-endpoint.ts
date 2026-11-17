@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 /**
  * Agent CLI HTTP endpoint — handles POST /agent requests from thin CLI clients.
  * Replaces MCP tool calls with a simple JSON-in/JSON-out HTTP API.
@@ -111,6 +112,8 @@ export interface AgentEndpointContext extends OutboundContext {
   readonly replyDeduper?: import("./reply-dedup.js").ReplyDeduper;
   /** The MCP path's `reply.stickers` pre-check (#1226): a refused sticker is the reply's error, sent nothing. */
   replyStickerProblem?(adapter: import("./channel/types.js").ChannelAdapter, args: Record<string, unknown>, threadId: string | undefined, worldId: string | undefined): Promise<string | null>;
+  /** Capture the sending incarnation before an HTTP reply awaits its channel; only new preview replies use this hook. */
+  captureReplyPreview?(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined;
   /** Mark an HTTP durable-operation result once its response is written. */
   markDurableResponseDelivered?(sourceInstance: string, operationId: string): void;
   handleScheduleCrudHttp(instance: string, op: string, args: Record<string, unknown>): Promise<unknown>;
@@ -489,6 +492,8 @@ export async function dispatchAgentOperation(
       })();
     }
     return (async (): Promise<unknown> => {
+      if (tool === "reply" && !replyPreviews((args as Record<string, unknown>).previews)) return { error: "reply: invalid previews" };
+      const previewDelivered = tool === "reply" ? ctx.captureReplyPreview?.(instance, args as Record<string, unknown>) : undefined;
       const persisted = readPersistedReplyContext(ctx.dataDir, instance);
       const configuredThreadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
         ? String(ctx.fleetConfig.instances[instance].topic_id)
@@ -545,7 +550,7 @@ export async function dispatchAgentOperation(
           // MCP path (handleOutboundFromInstance). HTTP agents (e.g. Antigravity,
           // which replies via POST /agent instead of an MCP tool call) never hit
           // that path, so without this their cancel button would never clear.
-          if (!error && tool === "reply") ctx.clearCancelButton?.(instance);
+          if (!error && tool === "reply") { ctx.clearCancelButton?.(instance); previewDelivered?.(result); }
           resolve(error ? { error } : result);
         });
         if (!handled) {

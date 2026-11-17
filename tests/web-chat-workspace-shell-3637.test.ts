@@ -24,7 +24,13 @@ describe("split-view marks carry convenience, never account or session authority
     expect(scope(a)).not.toBe(scope(shell({ fleetToken: "b".repeat(48) })));
     expect(a).not.toContain('discord:one'); expect(a).not.toContain(token);
   });
-  it.each([{ gateway: true }, { tier: "guest" as const }, { mode: "view-only" as const }])("never offers it on an excluded shell: %j", opts => {
+  it("M-3278 (decision 7933bf90): the public link's admin page offers it too (「在旁邊開啟」)", () => {
+    // M-3278 (part 4): the link's admin session has its own person scope now (prefsViewer), so its layout is kept as locally —
+    // the same opaque per-person scope as the local dashboard's.
+    const html = shell({ gateway: true }); expect(html).toContain('data-chat-workspace="1"'); expect(scope(html)).toHaveLength(64);
+    expect(scope(html)).toBe(scope(shell()));
+  });
+  it.each([{ tier: "guest" as const }, { mode: "view-only" as const }])("never offers it on an excluded shell: %j", opts => {
     const html = shell(opts); expect(html).not.toContain("data-chat-workspace"); expect(scope(html)).toBeUndefined();
   });
   it("a read-only viewer gets only the same display convenience; server role policy is unchanged", () => {

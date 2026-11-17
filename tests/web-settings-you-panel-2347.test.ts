@@ -91,19 +91,20 @@ describe("the Settings panel: the \"You\" group saves with the bar", () => {
     expect([before, prefPosts(), !!bar(), sent.some((s) => s.path === "/api/settings/apply")])
       .toEqual([[["dark"], true, []], [{ theme: "dark" }], false, false]);
   });
-  it("over the temporary public link the bar still saves this person's own choices (this browser only, as before)", async () => {
+  it("M-3278: over the temporary public link the bar saves this person's own choices to the host as anywhere", async () => {
     p.document.body.setAttribute("data-public-link", "1");
     try {
       await open("look");
-      expect($(".s-owner-css")).toBeNull();                         // customization stays unavailable over the public link
+      expect($(".s-owner-css")).not.toBeNull();                     // M-3278: custom CSS is drawn over the public link too (its admin's)
       const was = (globalThis as any).AgendTheme.get();
       await chooseTheme(was === "dark" ? "light" : "dark");
       const shown = !!bar();
       button("Save", bar()).click(); await settle(12);
       await wait(450);
-      expect([shown, !!bar(), prefPosts(), (globalThis as any).AgendTheme.get() !== was]).toEqual([true, false, [], true]);
-      // Kept in this browser only: put this browser's copy back for the next test (the host still has `was`).
-      (globalThis as any).AgendTheme.set(was); (globalThis as any).localStorage.setItem("agend_theme", was);
+      // M-3278 (decision 7933bf90): an admin's preference write reaches the host over the link too.
+      expect([shown, !!bar(), prefPosts(), (globalThis as any).AgendTheme.get() !== was]).toEqual([true, false, [{ theme: was === "dark" ? "light" : "dark" }], true]);
+      // Put the host's and this browser's copy back for the next test (the same way: chosen and saved).
+      await chooseTheme(was); button("Save", bar()).click(); await settle(12); await wait(450);
     } finally { p.document.body.removeAttribute("data-public-link"); }
   });
   it("Discard puts the theme back and sends nothing", async () => {

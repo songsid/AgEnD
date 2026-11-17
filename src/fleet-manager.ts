@@ -1,3 +1,4 @@
+import { replyPreviews } from "./reply-preview-spec.js";
 import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } from "./settings-summary.js";
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
@@ -291,12 +292,14 @@ import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./vi
 import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
+import { WebChatArchive } from "./web-chat-archive.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
 import { OPERATOR, WebPrefsStore } from "./web-prefs.js";
 import { agendVersion } from "./agent-whats-new.js";
 import { OwnerCssStore } from "./web-owner-css-store.js";
 import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
+import { WebPinStore } from "./web-pin-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
 import { OfficeActs } from "./web-office-acts.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
@@ -427,7 +430,7 @@ import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
 import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
-import { AuthorityStateStore, type AuthorityState } from "./authority/authority-state.js";
+import { AuthorityStateStore, namedLinkLastTurnedOff, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
 import { GuestLoginCodes, WebLoginCodes, LOGIN_CODE_TTL_MS } from "./web-login.js";
@@ -3311,6 +3314,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly webChatHistory = new WebChatHistory();
   /** #1565: the web chat history's files (set at fleet start, once the home and the instances are known). */
   private webChatStore: WebChatDiskStore | null = null;
+  /** M-3272: the archive past each agent's 500-message web chat window (web-chat-archive.ts). */
+  private webChatArchive: WebChatArchive | null = null;
   /** #2293: the dashboard's global search (null: web.search.enabled is false, or the fleet has not started). */
   searchIndex: SearchIndex | null = null;
   /** Uploaded files and the files the dashboard may fetch back (uploads, reply attachments). */
@@ -3432,6 +3437,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private officeStoreInstance?: OfficeStore;
   /** Fleet → Org chart → Office: the offices people made (web-offices.json, beside web-themes.json). */
   get officeStore(): OfficeStore { return (this.officeStoreInstance ??= new OfficeStore(this.dataDir, id => this.officeSkins.pack(id))); }
+  private pinStoreInstance?: WebPinStore;
+  /** M-3271: pinned chat messages per agent (web-pins.json, beside web-themes.json). */
+  get pinStore(): WebPinStore { return (this.pinStoreInstance ??= new WebPinStore(this.dataDir)); }
   private officeSkinsInstance?: OfficeSkinStore;
   /** #2513: the Office view's uploaded skin packs (<AGEND_HOME>/web-office-skins/). */
   get officeSkins(): OfficeSkinStore { return (this.officeSkinsInstance ??= new OfficeSkinStore(this.dataDir)); }
@@ -3821,7 +3829,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (auth.kind !== "ok" || !current()) return null;
         const record = auth.session, sessions = this.webSessions, exposure = gatewayRequestContext(req);
         return { requester: { handle: record.handle, label: record.label }, localSession: this.hubCompanySession(req) ?? undefined, id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session",
-          localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
+          // M-3278 (decision 7933bf90): an admin session on any listener, the public link's too (its exposure still
+          // current: `current` below; a closed link's sessions are revoked with it).
+          localAdmin: () => record.tier === "admin" && (!exposure || exposure.isCurrent()),
           current: () => current() && sessions === this.webSessions && !!this.webToken
             && sessions!.isCurrent(record, tokenEpoch(this.webToken!)) && (!exposure || exposure.isCurrent()) };
       }, baseline: () => baselines.read(), snapshot: () => baselines.snapshot(),
@@ -4037,7 +4047,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!role.ok || !handle || role.onHost) return null;
       if (asking && !this.strictFor(role.actor)) return null;
       if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
-      if (store.opensLink(id) && gatewayRequestContext(req)) return null;
+      // M-3278 (decision 7933bf90, the leader's (a)): a verified admin over a link confirms a change that opens a link too, as
+      // by Apply now; the role decides (its link option, Only this computer, the strict switch), and a Notice is posted.
       return { handle, actor: role.actor, account: role.account };
     };
     const first = check(true);
@@ -4079,7 +4090,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Apply now is open to it (the option is off, or this is the AgEnD computer's own browser): no code is asked.
     if (!this.strictFor(role.actor) || role.onHost) return null;
     if (role.account && !this.settingsAccountMayConfirm(store, id, role.actor)) return null;
-    if (store.opensLink(id) && gatewayRequestContext(req)) return "on_host";
     return this.webRemoteAccess()?.isEnrolled(adminKey(role.actor.adapter_id, role.actor.user_id)) ? "ready" : "not_set_up";
   }
   /**
@@ -9994,7 +10004,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.initializeWebSessions();
     // #1827: the code goes privately to this account (a DM, or else this slash command's ephemeral answer): whoever
     // redeems it is recognised as that account. Recognition only — no owner (this is not an owning General's code).
-    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) } });
+    // M-3277: private — a DM, else this slash command's ephemeral answer, else withdrawn (below): the session starts verified.
+    const login = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), recipient: { adapterId, userId: data.userId, ...(data.username ? { username: data.username } : {}) }, private: true });
     const current = (): boolean => !this.shuttingDown && this.adapters.get(adapterId) === adapter
       && this.webToken === token && this.hasFleetAdmins(adapterId) && this.isFleetAdmin(data.userId, adapterId);
     const privateText = `${text}\n${t("dashboard.code", login.display, Math.round(LOGIN_CODE_TTL_MS / 60_000))}`;
@@ -10165,7 +10176,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const token = this.webToken;
       if (!token || !current()) return false;
       this.initializeWebSessions();
-      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner });
+      // M-3277: private — the owner's DM, else (Discord) the click's ephemeral answer, else withdrawn below; never the menu itself.
+      const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: exposureId, owner, private: true });
       // Only a public link has a link expiry (null: none — a named tunnel's ttl_minutes 0); the code's five-minute
       // lifetime applies to either packet.
       const minutes = Math.round(LOGIN_CODE_TTL_MS / 60_000);
@@ -10639,7 +10651,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const link = this.publicWebLink;
       if (!link || !input.exposureId || link.exposureId !== input.exposureId || link.status().state !== "open") return { kind: "refused" };
     } else if (input.exposureId !== undefined) return { kind: "refused" };
-    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner });
+    // M-3277: private — by DM only (withdrawn when that is not confirmed).
+    const issued = this.webLoginCodes!.issue({ epoch: tokenEpoch(token), audience: input.exposureId ?? "local", owner, private: true });
     const text = t("web.resend_code", issued.display, Math.round(LOGIN_CODE_TTL_MS / 60_000), input.label || t("web.resend_unknown_browser"),
       t(input.surface === "gateway" ? "web.resend_public" : "web.resend_local")) + "\n" + t("dashboard.code_next");
     try {
@@ -14344,6 +14357,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // still in flight and about to succeed. One real send, everyone gets its
     // outcome; a genuinely failed send clears the entry so a retry passes.
     if (tool === "reply") {
+      if (!replyPreviews(args.previews)) { respond(null, "reply: invalid previews"); return; }
       // Registered synchronously before a web message is handed to this CLI.
       // This waits only on display ordering, never on the web delivery itself.
       const echoTail = this.webChannelEchoTails.get(instanceName)?.tail;
@@ -14516,6 +14530,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
+  captureReplyPreview(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined {
+    if (!replyPreviews(args.previews)?.length) return undefined;
+    const identity = this.webChatIdentity(instance);
+    return result => { void this.afterReplyRouted(instance, args, instance, null, false, undefined, identity, result); };
+  }
+
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName), replyResult: unknown = sentAs?.result): Promise<void> {
     // AGEND-181: the id the reply call returned (also on a fleet with no adapter: web-only), the row's anchor.
     const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
@@ -14564,6 +14584,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ts,
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
+        ...(replyPreviews(args.previews)?.length ? { previews: replyPreviews(args.previews) } : {}),
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
         ...(post ? { posts: [post] } : {}),              // #2281
         ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
@@ -16422,6 +16443,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     clean("files",()=>this.webFiles.forget(name));
     clean("compact",()=>this.compactWatchService?.forget(name));
     clean("preferences",()=>this.webPrefs.forgetInstance(name));
+    clean("pins",()=>{if(this.pinStore.forget(name))this.emitSseEvent("pins",{instance:name,rev:this.pinStore.rev()});});
     clean("appearance",()=>{this.themeStore.forget(name);this.webAppearance.forget(name);this.appearanceTools.forget(name);this.mods.forgetInstance(name);this.officeActsInstance?.forget(name);this.officePackToolsInstance?.forget(name);});
   }
 
@@ -16500,6 +16522,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.compactWatchService?.forget(name);
     // #1664: and it is nobody's favorite any more (every device sees that at its next status frame).
     try { this.webPrefs.forgetInstance(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance from web favorites failed"); }
+    // M-3271: and its pinned messages (a later instance of the same name starts with none).
+    try { if (this.pinStore.forget(name)) this.emitSseEvent("pins", { instance: name, rev: this.pinStore.rev() }); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's pins failed"); }
     try { this.themeStore.forget(name); this.webAppearance.forget(name); this.appearanceTools.forget(name); this.mods.forgetInstance(name); this.officeActsInstance?.forget(name); this.officePackToolsInstance?.forget(name); } catch (err) { this.logger.warn({ err: (err as Error).message, name }, "Dropping a removed instance's web theme failed"); }
 
     // Clean up statusline watcher + instance directory
@@ -16857,6 +16881,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     const caches: MentionSource[] = [...this.adapters.values()].filter(a => typeof a.mentionNames === "function").map(a => (q: MentionQuery) => a.mentionNames!(q));
     return resolveMentions(query, [bots, seen, ...caches]);
+  }
+
+  /** Guest labels use the exact instance connection/channel, never Fleet-wide seen users or another bot. */
+  private guestMentionNames(owner: { adapterId: string; userId: string }, instance: string, query: MentionQuery): MentionNames {
+    const adapterId = this.topicAdapterIdOf(instance), world = adapterId ? this.worlds.get(adapterId) : undefined;
+    const cfg = this.fleetConfig?.instances[instance];
+    const channel = cfg?.topic_id ?? this.classicChannels?.getChannelIdByInstance(instance) ?? this.getGroupIdForInstance(instance);
+    if (this.worlds.get(owner.adapterId)?.type !== "discord" || world?.type !== "discord" || !channel || !world.adapter.mentionNamesInChannel) return { u: {}, r: {}, c: {} };
+    return resolveMentions(query, [q => world.adapter.mentionNamesInChannel!(q, String(channel), owner.userId)]);
   }
 
   /** GET /ui/emojis: the custom emoji of every server the fleet's Discord bots are in (the Settings picker's cache). */
@@ -19438,6 +19471,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
+   * M-3277 (decision 7933bf90; auth-api, at sign-in): an admin session that signed in with a code AgEnD delivered privately
+   * to its account (a DM, or Discord's ephemeral reply) starts verified — that code went to the very DM a Confirm card
+   * would. §3 is judged as at a Confirm (authorizeWebSession: the switch, loopback only, the named / quick link options,
+   * still an admin, the namespace); a refusal leaves the session signed in and unverified, as before. The account is told
+   * at once, with Not me (noteAuthorized). Re-verifying once that authorization has run out still takes the card.
+   */
+  authorizeSignedInSession(session: SessionRecord, peer: WebPeer, gateway: boolean): void {
+    if (session.tier !== "admin" || !session.owner || session.host) return;
+    const r = this.authorizeWebSession(session, peer, gateway);
+    if (!r.ok) { this.logger.info({ handle: session.handle, refusal: r.refusal }, "Web session signed in with a private code, not verified"); return; }
+    this.logger.info({ handle: session.handle, durable: r.durable }, "Web session verified at sign-in (a private code)");
+    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry) })
+      .catch(err => this.logger.warn({ err: (err as Error)?.message }, "Web sign-in notice failed"));
+  }
+
+  /**
    * #2910 D1 (auth-api, at sign-in): a web-only fleet's host session — signed in with the host's own code (`agend web
    * --code`) on this computer — is the host operator, authorized from now for max_session_hours (as an account's
    * Confirm would be), under the current epoch: a revocation ends it, and only a new sign-in on this computer gives it
@@ -19555,7 +19604,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * and their switch are another thing and stay a web-only fleet's, on its own computer (liveOwner).
    */
   private authenticatorOwner(req: IncomingMessage): { handle: string; who: string; actor: { adapter_id: string; user_id: string }; onHost: boolean; current(): boolean } | null {
-    if (gatewayRequestContext(req)) return null;
+    // M-3278 (decision 7933bf90): over a link too — the settings role decides (its link option, Only this computer), and an
+    // app that exists asks its current code off this computer (authenticatorCodeAsked), as from the LAN.
     const first = this.settingsRole(req);
     if (!first.role.ok || !first.handle) return null;
     const handle = first.handle, actor = first.role.actor, who = adminKey(actor.adapter_id, actor.user_id);
@@ -19900,12 +19950,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private authorityStateStore: AuthorityStateStore | null = null;
+  private namedLinkDefaultChecked = false;
+  /**
+   * M-3277 (#4099 review, F1): the named link is on by default now, and before M-3277 the Settings card turned it off by
+   * removing `named_link` from fleet.yaml. A fleet whose owner did that (the state file: seen, and off now) would read the
+   * absent key as the new default — on again, and the epoch moved — against that owner's last choice. Once per process
+   * (and again after a reload), before the state is read: such a fleet gets `named_link: false`, in memory at once and in
+   * fleet.yaml (a backup first, as every upgrade migration). A fleet that never turned it on gets the default (nothing
+   * was ever authorized over that link); an explicit value is never touched.
+   */
+  private migrateNamedLinkDefault(): void {
+    if (this.namedLinkDefaultChecked || !this.fleetConfig || !this.dataDir) return;
+    this.namedLinkDefaultChecked = true;
+    const va = this.fleetConfig.web?.verified_authority;
+    if (va?.named_link !== undefined && va?.named_link !== null) return;
+    if (!namedLinkLastTurnedOff(join(this.dataDir, "web-authority.json"))) return;
+    this.fleetConfig.web = { ...(this.fleetConfig.web ?? {}), verified_authority: { ...(va ?? {}), named_link: false } };
+    this.logger.info("Web authority over the named link stays off, as last turned off (stored as named_link: false now that it is on by default)");
+    if (!this.configPath || this.configHistory?.isFallback(this.configPath) || !validateFleetConfig(this.rawFleetConfig).valid) return;
+    try {
+      this.writeFleetConfigBackup(readFileSync(this.configPath, "utf8"));
+      this.saveFleetConfig();
+    } catch (err) { this.logger.warn({ err }, "Could not store named_link: false in fleet.yaml; it stays off for this run"); }
+  }
   /**
    * #1939 §10: the switch, "Only this computer can authorize" and the revocation epoch in force for the configuration as
    * it is now (a change since last seen moves the epoch first; authority-state.ts). No data directory: off.
    */
   webAuthorityState(): AuthorityState {
     if (!this.dataDir) return { enabled: false, loopbackOnly: true, namedLink: false, quickLink: false, epoch: 0 };
+    this.migrateNamedLinkDefault();                  // M-3277 F1: before the first read of the state (it would move the epoch)
     this.authorityStateStore ??= new AuthorityStateStore(join(this.dataDir, "web-authority.json"), this.logger, undefined, undefined,
       () => { this.ensureDeliveryOutbox?.(); return this.deliveryOutbox?.maxWebAuthorityEpoch() ?? 0; });
     const state = this.authorityStateStore.current(this.fleetConfig?.web?.verified_authority);
@@ -20028,6 +20102,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: {
         ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
         confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
+        signedIn: (c) => t("web_auth.signed_in", c.label, where(c.peer), when(c.until)),
+        signedInHint: () => t("web_auth.signed_in_hint"),
         denied: (c) => t("web_auth.card_denied", c.label),
         expired: (c) => t("web_auth.card_expired", c.label),
         refused: (c) => t("web_auth.card_refused", c.label, t(`web_auth.refusal_${c.refusal}`)),
@@ -20139,7 +20215,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { handle, current: verified, revoke: () => { const session = live(); return this.revokeWebAuthority(session ? { session, peer, gateway: false } : undefined); } };
   }
 
-  /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request. */
+  /** #1269: an instance's chat command from the web chat (web-commands.ts); `publicLink`: a gateway request by anyone but an admin session (M-3278). */
   /** #2855: the table scope of an instance the web chat may command (a fleet instance or a ClassicBot room), else null. */
   private webCommandScope(instance: string): CommandScope | null {
     // Own entries only: a name like "__proto__" or "constructor" must not be found on the prototype (#1476 review).
@@ -20238,6 +20314,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return { choices: { step: step.step, args: joinBackendArgs(step.args), ...(step.step === "model" ? { actions: ["refresh" as const] } : {}), prompt: step.text, current: step.current === null ? null : id(step.current), options: step.choices.map(c => {
             // #2233: the web offers Sign in beside it, so its reason is no longer "use /login".
             // Not over the public link: Sign in is refused there, so the choice keeps its "(use /login)" (#2262 review).
+            // M-3278 (decision 7933bf90): `publicLink` is set for a non-admin only, so the link's admin session gets Sign in.
             const signIn = c.signIn && !stepOpts?.publicLink && dashboardSignInSupported(c.signIn) ? c.signIn : null;
             const disabled = signIn ? t("backend.reason_not_signed_in_web") : c.disabled;
             return { id: id(c.token), label: signIn ? `${c.token} — ${disabled}` : c.label, ...(disabled ? { disabled } : {}), ...(signIn ? { signIn } : {}) };
@@ -22552,11 +22629,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return out;
   }
 
-  /** #2233: the session with this handle is live, admin, local and of the current dashboard token. */
+  /**
+   * #2233: the session with this handle is live, admin and of the current dashboard token. M-3278 (decision 7933bf90): on
+   * any listener — the public link's admin session too (closing the link revokes its sessions, so none outlives it).
+   */
   private isLocalAdminSession(handle: string): boolean {
     const sessions = this.webSessions, token = this.webToken;
     const record = sessions?.findByHandle(handle);
-    return !!record && !!token && record.tier === "admin" && record.surface === "local" && sessions!.isCurrent(record, tokenEpoch(token));
+    return !!record && !!token && record.tier === "admin" && sessions!.isCurrent(record, tokenEpoch(token));
   }
 
   /**
@@ -23543,6 +23623,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (swept) this.logger.info({ swept }, "Removed web reply snapshots no message holds");
       this.webChatStore = store;
       this.webChatHistory.setStore(store);
+      // M-3272: messages leaving the 500-message window are archived per agent (owner-bound as web-chat.json is), kept
+      // for web.chat_archive.retention_days (unset or 0: everything).
+      this.webChatArchive = new WebChatArchive({ home: getAgendHome(), ownerOf: (name) => this.webChatOwner(name), logger: this.logger,
+        retentionDays: () => this.fleetConfig?.web?.chat_archive?.retention_days });
+      this.webChatHistory.setArchive(this.webChatArchive);
       if (restored) this.logger.info({ restored, instances: names.size }, "Web chat history restored from disk");
     } catch (err) {
       this.logger.warn({ err }, "Web chat history could not be restored; it starts empty");
@@ -23566,7 +23651,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -23574,6 +23659,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
         buttons: m.buttons,
+        previews: m.previews,
         click: m.click,
         links: m.links,
         channel: m.channel,
@@ -27161,7 +27247,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ledger flush completes before process.exit(0) in doStopAll's caller.
     const cacheStopped = this.cacheService?.stop() ?? Promise.resolve();
     // #1565: the web chat's last changes reach the disk (bounded: a slow disk does not hold the shutdown).
-    const webChatStopped = this.webChatStore ? Promise.race([this.webChatStore.flush().catch(() => {}), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
+    const webChatStopped = this.webChatStore ? Promise.race([Promise.all([this.webChatStore.flush().catch(() => {}), this.webChatArchive?.flush().catch(() => {})]), new Promise<void>(r => setTimeout(r, 3_000).unref?.())]) : Promise.resolve();
     const profileStopped = this.runtimeCpuProfiler?.shutdown("fleet shutdown");
     // S-51: the Hub closes in the same drain, bounded so an unanswering listener does not hold the shutdown.
     const hubInit = this.hubRuntimeInit, hubNow = this.hubRuntime;
@@ -27544,6 +27630,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.probeChangedCliEnvs(oldConfig);
     this.migrateOfficeStorage();
     this.migrateNoticeDeliveryStorage();
+    this.namedLinkDefaultChecked = false; this.migrateNamedLinkDefault();   // M-3277 F1: a reloaded file is checked again
 
     // Classic behavior settings share the fleet defaults but are not entries
     // in fleet.yaml. Snapshot the old effective chain before reloading the
@@ -29836,6 +29923,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             // §3.2: a stream that connects reads its rooms again (in the background; at most once a minute).
             streamOpened: () => { void this.refreshGuestRooms(owner, { mode: "force" }); },
             history: () => this.webChatHistory,
+            mentionNames: (instance, query) => this.guestMentionNames(owner, instance, query),
             // #1920 §5.1: guests chat unless the host made them read-only (web.guests.chat: false).
             chat: () => this.fleetConfig?.web?.guests?.chat !== false,
             // #2855: the admin's level for this guest, read at each request (a change applies at once).

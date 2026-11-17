@@ -29,7 +29,7 @@ describe("cached child component visibility defence",()=>{
  it.each(["guest","publicLink","unoffered","admin"])("respects %s even with an already loaded component",kind=>{
   const dataset={subagents:kind==="unoffered"?"0":"1",guest:kind==="guest"?"1":"",publicLink:kind==="publicLink"?"1":""};
   const scope:any={document:{body:{dataset}},useState:()=>[()=>null,()=>{}],useEffect:()=>{},html:()=>({rendered:true}),guestPage:()=>!!dataset.guest,publicLinkPage:()=>!!dataset.publicLink};
-  runInNewContext(wrapper+"\nglobalThis.result=SubagentProgress({name:'dev'})",scope);expect(scope.result).toEqual(kind==="admin"?{rendered:true}:null);
+  runInNewContext(wrapper+"\nglobalThis.result=SubagentProgress({name:'dev'})",scope);expect(scope.result).toEqual(kind==="admin"||kind==="publicLink"?{rendered:true}:null);   // M-3278: the public link's admin too
  });
 });
 

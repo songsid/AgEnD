@@ -403,6 +403,25 @@ jobs:
           HP: '19681'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-phone-typing-steady-m3265.mts
+      # M-3271 (the user): pin web chat messages — right-click / long press → Pin, the header's 📌 (a phone: the ⋯ sheet's
+      # tile), the list (a jump flashes the message), and a pin whose message left the 500-message history opens its copy.
+      - name: Chat pinned messages (desk and phone)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19691'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-chat-pins-m3271.mts
+      # M-3272 (the user): web chat scroll-back — a phone scrolled up through 4,000 messages (into the archive past the 500):
+      # a page only at the very top, the reader kept in place, at most 1,000 on screen with DOM nodes and heap bounded, back
+      # down to the live end, a jump deep into the archive, an archived reply's buttons read-only.
+      - name: Chat scroll-back (phone, bounded)
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19701'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-chat-scrollback-m3272.mts
       # M-3210 (the user, phone): the image viewer swipes — sideways through the chat's pictures (message order, no wrap), up
       # or down to close with the dark fading; a short one springs back; a zoomed-in picture pans. Real touch input.
       - name: Phone image viewer swipes
@@ -527,6 +546,22 @@ jobs:
           HP: '19676'
           FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
         run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-compact-name-m3269.mts
+      - name: Guest sidebar controls and preference isolation
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19677'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-guest-sidebar-m3280.mts
+      # M-3286 (#4104): Edit offices → "Idle people stay in their own area" — off by default, ticked and saved, kept beside
+      # the office list on the host, shown ticked again, unticked and gone.
+      - name: Office idle people stay in their own area
+        if: (success() || failure()) && needs.detect-changes.outputs.text-only != 'true'
+        env:
+          OUT: ${{ runner.temp }}/ui-gate
+          HP: '19693'
+          FONTCONFIG_FILE: ${{ steps.cjk-fonts.outputs.fontconfig }}
+        run: PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" npx tsx scripts/manual/smoke/smoke-m3286-office-stay-in-area.mts
       - name: Save verified CJK archive (best effort, after the gate)
         if: always() && needs.detect-changes.outputs.text-only != 'true' && steps.cjk-fonts.outcome == 'success' && steps.cjk-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5

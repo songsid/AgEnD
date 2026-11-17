@@ -143,8 +143,13 @@ describe("Silver Ag dashboard icons", () => {
     const d = dispatcher(), g = publicDispatcher(d);
     const session = d.sessions.create({ tier: "admin", surface: "gateway", exposureId: exposure, label: "fixture", tokenEpoch: tokenEpoch(token) });
     const h = exchange(path, "GET", { host, cookie: `__Host-agend_session=${session.sessionId}` });
-    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : "'none'");
+    // M-3278 (decision 7933bf90): an admin session's page over the link plays media from the link's own file route.
+    g.dispatch(h); expect(h.status()).toBe(200); assertLinks(h, path === "/signin" ? undefined : `https://${host}/ui/file/`, path === "/signin" ? undefined : `https://${host}/ui/reply-preview`);
     if (path !== "/signin") {
+      // …a read-only session there keeps downloads only (M-3278).
+      const ro = d.sessions.create({ tier: "read", surface: "gateway", exposureId: exposure, label: "fixture-ro", tokenEpoch: tokenEpoch(token) });
+      const roPage = exchange(path, "GET", { host, cookie: `__Host-agend_session=${ro.sessionId}` });
+      g.dispatch(roPage); expect(roPage.status()).toBe(200); assertLinks(roPage, "'none'");
       expect(h.text()).toContain('data-web-transport="poll"');
       // #2396: this real dispatcher admits an owned legacy cookie and upgrades it before serving the page.
       expect(String(h.headers["set-cookie"] ?? "")).toMatch(new RegExp(`^__Host-agend_session_[0-9a-f]{16}=${session.sessionId};.*; Secure$`));

@@ -59,7 +59,8 @@ async function startFleet(config: Record<string, unknown> = {}, opts: { strict?:
   const sink = () => {};
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as unknown as typeof fm.logger;
   const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);          // the Notice a remote confirmation posts
-  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true } }, ...config } as never;
+  // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
+  fm.fleetConfig = { defaults: {}, instances: {}, web: { verified_authority: { enabled: true, named_link: false } }, ...config } as never;
   any.initializeWebAuthTokens();
   any.startHealthServer(0);
   await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
@@ -194,7 +195,7 @@ describe("a link option turned on (#2453): marked opensLink; any signed-in admin
   it("the effect marks only turning a link option on: named_link or quick_link on → opensLink (the old noSelfConfirm / hostSessionOnly marks are gone); off → none", () => {
     const fleet = (va?: Record<string, unknown>) => ({ defaults: {}, ...CHAT, web: va ? { verified_authority: va } : {} }) as never;
     const judge = (va: unknown, current?: Record<string, unknown>) => prepareSettingsEffect("PUT", "/api/settings/fleet/web", { verified_authority: va }, { config: fleet(current), classic: {} }).diff;
-    for (const on of [judge({ named_link: true }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.opensLink, on && "noSelfConfirm" in on, on && "hostSessionOnly" in on]).toEqual([true, false, false]);
+    for (const on of [judge({ named_link: true }, { named_link: false }), judge({ quick_link: true }, { quick_link: false })]) expect([on?.opensLink, on && "noSelfConfirm" in on, on && "hostSessionOnly" in on]).toEqual([true, false, false]);
     expect(judge({ named_link: null }, { named_link: true })).toBeNull();
     const other = judge({ max_session_hours: 6 }, { max_session_hours: 1 });
     expect(other?.opensLink).toBeUndefined();
@@ -297,7 +298,9 @@ describe("a link opener and a web-verified admin's Apply now / an authenticator 
     if (!chat) writeFileSync(join(dir, WEB_REMOTE_ACCESS_FILE), enrolled(strict), { mode: 0o600 });
     const fm = new FleetManager(dir), any = fm as any;
     fm.fleetConfig = { defaults: { backend: "codex" }, ...(chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: ["1"] } }] } : {}),
-      instances: { general: { working_directory: dir, general_topic: true } } } as any;
+      instances: { general: { working_directory: dir, general_topic: true } },
+      // M-3277: the named link is on by default now; kept off so that turning it on is still a link opener here.
+      web: { verified_authority: { named_link: false } } } as any;
     writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
     const notify = vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
     const store = new SettingsConfirmationStore({ audit: vi.fn() }); stores.push(store);
@@ -348,23 +351,25 @@ describe("a link opener and a web-verified admin's Apply now / an authenticator 
     await expect(f.store.decide(ordinary.view.id, "confirm", { ...own, via: "web" })).rejects.toMatchObject({ code: "admin_required" });
     expect([f.any.settingsSelfConfirmation(f.store, f.req(session.sessionId), ordinary.view.id), ordinary.apply.mock.calls.length]).toEqual([null, 0]);
   });
-  it("F2 — web-only fleet, the admin's own strict switch on: a correct authenticator code with the right digest, POSTed for a link opener over the public link, is refused (nothing applied); from a LAN device, or for an ordinary change over the link, it is accepted", async () => {
+  it("F2 — web-only fleet, the admin's own strict switch on: a correct authenticator code with the right digest, POSTed for a link opener over the public link, confirms it too (M-3278, the leader's ruling (a)); from a LAN device, or for an ordinary change over the link, it is accepted", async () => {
     const f = fixture(false, true), outside = f.make({ link: true, remote: true }), lan = f.make();
     vi.spyOn(f.any, "outsideLink").mockReturnValue({ exposureId: EXPOSURE });                      // the link "connections from outside" opened
     const link = f.propose(true), ordinary = f.propose(false);
-    expect([f.any.settingsTotpState(f.store, f.req(outside.sessionId, "link"), link.view.id), f.any.settingsTotpState(f.store, f.req(outside.sessionId, "link"), ordinary.view.id)]).toEqual(["on_host", "ready"]);
+    expect([f.any.settingsTotpState(f.store, f.req(outside.sessionId, "link"), link.view.id), f.any.settingsTotpState(f.store, f.req(outside.sessionId, "link"), ordinary.view.id)]).toEqual(["ready", "ready"]);
     expect(f.any.settingsSelfConfirmation(f.store, f.req(outside.sessionId, "link"), link.view.id)).toBeNull();     // strict: no Apply now off this computer, link or not
-    const refused = f.any.settingsTotpConfirm(f.store, f.req(outside.sessionId, "link"), link.view.id, codeAt(Date.now()), f.store.confirmDigest(link.view.id));
-    expect(refused).toEqual({ error: "not_here" });
-    expect(link.apply).not.toHaveBeenCalled();
-    // Controls: the same app confirms the link opener from a device on the LAN (a direct connection, not a link), and an ordinary change over the link.
-    expect(f.any.settingsTotpState(f.store, f.req(lan.sessionId, "lan"), link.view.id)).toBe("ready");
-    const r = f.any.settingsTotpConfirm(f.store, f.req(lan.sessionId, "lan"), link.view.id, codeAt(Date.now()), f.store.confirmDigest(link.view.id));
+    // M-3278 (decision 7933bf90, the leader's (a)): the link opener is confirmed with the code over the link too.
+    const over = f.any.settingsTotpConfirm(f.store, f.req(outside.sessionId, "link"), link.view.id, codeAt(Date.now() - 30_000), f.store.confirmDigest(link.view.id));
+    expect(over.label).toBe("Authenticator code");
+    // Controls: the same app confirms a link opener from a device on the LAN too, and an ordinary change over the link.
+    const link2 = f.propose(true);
+    expect(f.any.settingsTotpState(f.store, f.req(lan.sessionId, "lan"), link2.view.id)).toBe("ready");
+    const r = f.any.settingsTotpConfirm(f.store, f.req(lan.sessionId, "lan"), link2.view.id, codeAt(Date.now()), f.store.confirmDigest(link2.view.id));
     expect(r.label).toBe("Authenticator code");
     const c = f.any.settingsTotpConfirm(f.store, f.req(outside.sessionId, "link"), ordinary.view.id, codeAt(Date.now() + 30_000), f.store.confirmDigest(ordinary.view.id));
     expect(c.label).toBe("Authenticator code");
     // On this computer nothing is asked in strict mode: Apply now, and no code is taken.
-    expect([f.any.settingsTotpState(f.store, f.req(lan.sessionId, "here"), link.view.id), f.any.settingsSelfConfirmation(f.store, f.req(lan.sessionId, "here"), link.view.id)?.label])
+    const link3 = f.propose(true);
+    expect([f.any.settingsTotpState(f.store, f.req(lan.sessionId, "here"), link3.view.id), f.any.settingsSelfConfirmation(f.store, f.req(lan.sessionId, "here"), link3.view.id)?.label])
       .toEqual([null, "This fleet's admin"]);
   });
   it("F2 control — the same fleet with the app set up but the admin's switch OFF: Apply now for the link opener from the LAN and over the link, no code asked, a correct code refused", () => {

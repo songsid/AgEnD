@@ -72,7 +72,7 @@ function fleet(o: { enrolled?: boolean; chat?: boolean; strict?: boolean; va?: R
   const fm = new FleetManager(dir), any = fm as any;
   fm.fleetConfig = { defaults: { backend: "codex" },
     ...(o.chat ? { channels: [{ id: "a", type: "telegram", mode: "topic", group_id: "-1001", access: { mode: "locked", allowed_users: [ADMIN, ADMIN2] } }] } : {}),
-    web: { verified_authority: { ...o.va } },
+    web: { verified_authority: { named_link: false, ...o.va } },   // M-3277: the named link is on by default now; these fixtures keep it off so that turning it on still opens a link
     instances: { general: { working_directory: dir, general_topic: true } } } as any;
   writeFileSync(join(dir, "web.token"), TOKEN, { mode: 0o600 }); any.initializeWebSessions();
   any.outsideLink = () => ({ exposureId: "outside" });   // a web-only fleet whose "connections from outside" opened a link: the owner who signed in over it (remote: "totp") is the fleet's admin there
@@ -429,18 +429,16 @@ describe("#3352 security review: binding, shared budget, and the link rule", () 
     expect(f.any.webRemoteAccess().verify(code).kind).toBe("ok");
     expect(f.confirm(s, p.view.id, code)).toEqual({ error: "wrong" });
   });
-  it.each([["named" as const], ["quick" as const]])("never over a link: a change that opens a link, over the %s link — on_host and refused with a correct code, the code unspent; the same change from the LAN is code-confirmable", (link) => {
+  it.each([["named" as const], ["quick" as const]])("M-3278 (decision 7933bf90, the leader's (a)): a change that opens a link, over the %s link — the code confirms it there too; no Apply now (the strict option asks the code)", (link) => {
     const f = fleet(), p = f.linkOn(), over = f.session({ link });
-    expect(f.any.settingsTotpState(f.store, over.req, p.view.id)).toBe("on_host");
-    expect(f.confirm(over, p.view.id)).toEqual({ error: "not_here" });
-    expect(f.asked(over, p.view.id)[1], "and no Apply now either: the strict option sends a link's request to the code").toBeNull();
-    // The refusal is before the code: the same code still confirms it from a page that is not over a link.
-    expect(f.confirm(f.session(), p.view.id)).toMatchObject({ label: "Authenticator code" });
+    expect(f.any.settingsTotpState(f.store, over.req, p.view.id)).toBe("ready");
+    expect(f.asked(over, p.view.id)[1], "no Apply now: the strict option sends a link's request to the code").toBeNull();
+    expect(f.confirm(over, p.view.id)).toMatchObject({ label: "Authenticator code" });
   });
-  it("never over a link, a chat account too: its change that opens the quick link, over the named link (its option on), is on_host / not_here", () => {
+  it("M-3278: a chat account too — its change that opens the quick link, over the named link (its option on), is code-confirmable there", () => {
     const f = fleet({ chat: true, va: { named_link: true, quick_link: false } }), p = f.linkOn("quick_link"), over = f.session({ account: ADMIN, link: "named" });
-    expect([f.any.settingsTotpState(f.store, over.req, p.view.id), f.confirm(over, p.view.id)]).toEqual(["on_host", { error: "not_here" }]);
-    expect(f.confirm(f.session({ account: ADMIN }), p.view.id)).toMatchObject({ label: "Authenticator code" });
+    expect(f.any.settingsTotpState(f.store, over.req, p.view.id)).toBe("ready");
+    expect(f.confirm(over, p.view.id)).toMatchObject({ label: "Authenticator code" });
   });
   it("an outward Hub change is no longer special: from the LAN the same code confirms it (it used to be Apply-now-only for the host's session, and no code for anyone else)", () => {
     const f = fleet(), p = f.hubConnect(), s = f.session();

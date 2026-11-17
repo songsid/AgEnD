@@ -206,17 +206,17 @@ describe("through the gate and the real handler, on a fleet.yaml on disk", () =>
     expect((await h.request("PUT", RUNTIMES, { remote_runtime: false })).status).toBe(409);
     expect(h.raw().runtimes).toEqual({ remote_runtime: true });
   });
-  it("never over the public link: neither the read nor the write (on or off)", async () => {
+  it("M-3278: over the public link a caller with no admin session reads nothing; the confirmed change is proposed as locally", async () => {
     const h = harness({ runtimes: { remote_runtime: true } });
     expect((await h.request("GET", "/api/settings/runtimes", undefined, { publicLink: true })).status).toBe(403);
-    for (const body of [{ remote_runtime: false }, { windows_cli: true }, { max_agents_per_machine: 2 }]) {
-      expect((await h.request("PUT", RUNTIMES, body, { publicLink: true })).status, JSON.stringify(body)).toBe(403);
-    }
+    // The gate's principal here is an admin's (the harness's): over the link too it proposes the change, which waits for its confirmation.
+    const proposed = await h.request("PUT", RUNTIMES, { windows_cli: true }, { publicLink: true });
+    expect([proposed.status, proposed.body.result]).toEqual([202, "pending_confirmation"]);
     expect(h.raw().runtimes).toEqual({ remote_runtime: true });
   });
-  it("…and the public link's own manifest never forwards them; a guest is refused both", () => {
+  it("…M-3278: the public link's manifest forwards them for its admin session; a guest is refused both", () => {
     for (const [method, path] of [["GET", "/api/settings/runtimes"], ["PUT", RUNTIMES]]) {
-      expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(false);
+      expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(true);
       expect(guestRouteDecision(method, new URL(path, "http://localhost"), new Set(["any"])), `${method} ${path}`).toMatchObject({ kind: "deny", status: 403 });
     }
   });

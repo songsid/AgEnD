@@ -145,10 +145,12 @@ describe("#1604: Settings → Preferences and Look", () => {
       const local = pg.root.querySelector(".s-device.s-local") as any;
       const scope = account.querySelector(".s-scope");
       const publicNote = "On the public link these are read-only: a change here stays in this browser.";
+      // M-3278: the public link's admin saves them to the host as anywhere: no "stays in this browser" note.
       expect([scope.textContent, scope.getAttribute("title")], String(publicLink)).toEqual([
-        "Your account", publicLink ? publicNote : "Changes here apply on every device where you are signed in.",
+        "Your account", "Changes here apply on every device where you are signed in.",
       ]);
-      expect(account.querySelector("p.sub")?.textContent ?? null).toBe(publicLink ? publicNote : null);
+      expect(account.querySelector("p.sub")?.textContent ?? null).toBe(null);
+      void publicNote;
       expect(account.querySelector("#pref-lang")).toBeTruthy();
       expect(local.querySelector("#tourBtn")?.textContent).toBe("Replay tour");
       expect(local.querySelector("#pref-lang, #pref-previews, #profile-name"), "account controls stay out of local guidance").toBeNull();
@@ -158,7 +160,8 @@ describe("#1604: Settings → Preferences and Look", () => {
       expect(theme.querySelector("legend")?.textContent, String(publicLink)).toBe("Theme");
       expect([...theme.querySelectorAll('input[type="radio"]')].map((input: any) => input.value)).toEqual(["light", "dark", "system"]);
       const lookHints = [...pg.root.querySelectorAll(".s-look-display p.sub")].map((p: any) => p.textContent);
-      expect(lookHints.includes(publicNote), "public Look retains the browser-only scope warning").toBe(publicLink);
+      // M-3278 (decision 7933bf90): the public link draws the full Look as locally — the theme card carries no link-only note.
+      expect(lookHints.includes(publicNote), "the Look's theme card has no link-only note").toBe(false);
       await pg.unmount(); pg.restore(); mounted.splice(mounted.indexOf(pg), 1);
     }
   });

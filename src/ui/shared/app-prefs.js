@@ -111,7 +111,7 @@ if (host) {
  * #2855: the preferences a guest keeps as its own, on the host under its account (the same list as web-prefs.ts
  * GUEST_OWN_PREF_KEYS); the rest of a guest's page follows the host's look and stays on this browser.
  */
-export const GUEST_OWN_PREF_KEYS = Object.freeze(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter"]);
+export const GUEST_OWN_PREF_KEYS = Object.freeze(["theme", "lang", "nav.favorites", "nav.sort", "nav.filter", "nav.density", "nav.densityPhone", "nav.compactName"]);
 const GUEST_OWN = new Set(GUEST_OWN_PREF_KEYS);
 /**
  * This page may change a preference on the host: the signed-in app, not over the public link (#1920). A guest's page
@@ -120,7 +120,8 @@ const GUEST_OWN = new Set(GUEST_OWN_PREF_KEYS);
 export function prefsWritable(key) {
   if (!initial) return false;
   if (guestPage()) return key !== undefined && GUEST_OWN.has(key);
-  return !(typeof document !== "undefined" && document.body && document.body.dataset.publicLink === "1");
+  // M-3278 (decision 7933bf90): the public link's admin session writes them too (a read-only one is refused by the host).
+  return true;
 }
 /**
  * The value in force for a key, in memory — never only in this browser's storage (a full storage must not bring back

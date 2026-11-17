@@ -83,7 +83,8 @@ A fleet admin, on the dashboard reached directly (not over the public link), use
 1. **Add office**, and give it a name.
 2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (#2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
 3. **Style**: Desks, Studio, Cozy, Guild, School or a kept skin pack.
-4. **Save.**
+4. **Idle people stay in their own area** (off by default, #4104): on a zones style, idle people stroll only inside the area they sit in and never go on [visits](#bedtime-strolls-and-mail).
+5. **Save.**
 
 Offices are the fleet's: everyone sees the same ones. The host keeps them in `web-offices.json` in the AgEnD home (`GET` / `PUT /ui/offices`), never in fleet.yaml, so a change restarts nothing. There can be at most 20 offices, and one person can save at most 20 times a minute.
 
@@ -218,7 +219,7 @@ Some poses are drawn for one seat, such as two people leaning towards each other
 These need a zones style.
 
 - **Bedtime** (the **Bedtime 0–6: the idle sleep** box, per device, off by default): from 00:00 to 06:00 on the viewer's clock, idle people go to the sleeping area (the area `paused` uses) while it has a free seat, and sleep there with Zzz bubbles. The rest doze where they are. Working people keep working. Furniture with a `night` is drawn asleep at its night place.
-- **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open.
+- **Strolls:** now and then an idle person walks to a nearby waypoint that no seat is on, stays a few seconds and walks back. A furniture item with `walk` strolls the same way. Strolls happen in a single office (not All offices), not with reduced motion, and not while Edit layout is open. With the office's **Idle people stay in their own area** (#4104), a stroll ends only at a waypoint inside the area the person (or the furniture's spot) is in. The walk there and back stays inside that area where the graph allows, or else crosses only corridors (outside every area). A spot that can only be reached through another area isn't used, so the person stays seated, and nobody goes on a visit. A walking furniture item whose spot is in no area strolls as before.
 - **Visits** (a pack's `idleVisits`, #3685): now and then an idle person goes to another area instead, such as a garden or a hot spring, sits on a free seat there for a while and walks back to their own seat. A free seat is one nobody sits on, no other visitor is heading for, and that isn't reserved for someone else (unless it's lent). With no free seat they stroll as usual. At each turn when they could stroll, each entry's `weight` is weighed against 100 for the usual stroll, so one entry of weight 20 sends them off at 20 of every 120 turns. The stay is `minSeconds`–`maxSeconds` after they get there. Nobody visits their own area, anyone who isn't idle stays put, and visits follow the same rules as strolls (a single office, no reduced motion, not in Edit layout). Whether and when someone visits, and which area, follows from the name and the time alone, so it is the same on every screen. Which free seat they take there can differ between screens: each open page keeps the seats its visitors are already in, so someone who turns idle later doesn't move them, and a page opened later works the seats out afresh.
 - **Mail:** a message to someone in this office from someone outside it flies in at the door as a letter and lands at the pack's `mailDrop` (or the office's own from Edit layout). Without one it lands at the waypoint nearest the middle of the room, off every seat. More letters wait 16 px apart to the right, never on a seat. With reduced motion no letters are shown. Its person walks over and picks it up, unless they're asleep. A letter waits up to a minute.
 - **Traffic** between people in the same office flies from sender to receiver. A delegation stays in progress until the worker's report comes back.
@@ -315,7 +316,7 @@ Each instance has a level, from the work it has done over its whole recorded lif
 
 Who sees what:
 
-- **The dashboard:** every level, with the work tokens, today's work and requests, and first seen. The numbers follow the usage report's rules: none while `web.usage_panel` is `false`, and over the public link only with `web.usage_report_on_public_link: true`. Otherwise only the level is shown.
+- **The dashboard:** every level, with the work tokens, today's work and requests, and first seen. The numbers follow the usage report's rules: none while `web.usage_panel` is `false`, and over the public link only with `web.usage_report_on_public_link` is not `false` (on by default since M-3278). Otherwise only the level is shown.
 - **Share-link viewers:** the level of the people the share shows, and nothing else.
 - **Guests:** no Office, so no levels.
 - **Agents:** `office_view` lists each member's `level`. It changes nothing an agent can do.
@@ -532,3 +533,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Feature | First version |
 |---|---|
 | Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
+| Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |

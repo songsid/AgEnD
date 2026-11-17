@@ -1,3 +1,4 @@
+import { replyPreviews, replyPreviewText } from "../reply-preview-spec.js";
 import { resolve, sep, join } from "node:path";
 import { realpathSync, existsSync, readFileSync } from "node:fs";
 import yaml from "js-yaml";
@@ -61,6 +62,9 @@ export function routeToolCall(
 
   switch (tool) {
     case "reply": {
+      const previews = replyPreviews(args.previews);
+      if (!previews) { respond(null, "reply: invalid previews; use relative paths and valid line ranges"); return true; }
+      const text = replyPreviewText(String(args.text ?? ""), previews);
       const files = Array.isArray(args.files) ? args.files as string[] : [];
       if (files.length > 20) {
         respond(null, `reply: too many files (${files.length}); max 20 per message`);
@@ -84,8 +88,8 @@ export function routeToolCall(
       }
       const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format, ...(extra.replyButtons?.length ? { replyButtons: extra.replyButtons } : {}), ...(extra.replyPoll ? { replyPoll: extra.replyPoll } : {}) };
       const sending = stickers.length
-        ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text: (args.text as string | undefined) ?? "" })
-        : adapter.sendText(chatId, args.text as string ?? "", sendOpts);
+        ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text })
+        : adapter.sendText(chatId, text, sendOpts);
       sending.then(async (sent) => {
         // Text and attachments are separate platform messages, so `messageId`
         // — the text's — is not the one carrying the image. A caller that GETs

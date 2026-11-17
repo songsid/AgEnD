@@ -152,7 +152,8 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
   it("#2819 upgrade: a file from before the default went on (no quick_link) and no key in fleet.yaml — moved once, then steady", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
     const s = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => files.get(p)!, write: (p, d) => { files.set(p, d); } });
-    expect([s.current({}).epoch, s.current({}).epoch, JSON.parse(files.get("/a.json")!)]).toEqual([8, 8, { v: 1, epoch: 8, enabled: true, loopback_only: false, quick_link: true }]);
+    // M-3277: the named link is on by default too — recorded (and seen), its first on moving nothing.
+    expect([s.current({}).epoch, s.current({}).epoch, JSON.parse(files.get("/a.json")!)]).toEqual([8, 8, { v: 1, epoch: 8, enabled: true, loopback_only: false, named_link: true, named_link_seen: true, quick_link: true }]);
     const kept = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 7, enabled: true, loopback_only: false })]]);
     const off = new AuthorityStateStore("/a.json", { warn() {} }, { read: (p) => kept.get(p)!, write: (p, d) => { kept.set(p, d); } });
     expect(off.current({ quick_link: false }).epoch).toBe(7);                  // explicitly off: nothing moves
@@ -160,8 +161,8 @@ describe("the state: quick_link remembered; back on after it was on moves the ep
   it("each link remembered on its own: the named one's first on does not move it, the quick one's does; the named one back on does", () => {
     const { s } = store();
     const base = s.current({ named_link: true, quick_link: false }).epoch;
-    s.current({ quick_link: false });
-    expect([s.current({}).epoch - base, s.current({ named_link: true }).epoch - base]).toEqual([1, 2]);
+    s.current({ named_link: false, quick_link: false });
+    expect([s.current({ named_link: false }).epoch - base, s.current({ named_link: true }).epoch - base]).toEqual([1, 2]);
   });
   it("a file from before §0.3 (no quick_link) reads as off; one that cannot be written counts the option off", () => {
     const files = new Map([["/a.json", JSON.stringify({ v: 1, epoch: 5, enabled: true, loopback_only: false, named_link: true, named_link_seen: true })]]);
