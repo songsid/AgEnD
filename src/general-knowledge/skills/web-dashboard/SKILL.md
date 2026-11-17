@@ -75,10 +75,13 @@ Close it with **Close public link** → **Close link (signs public browsers out)
 Over a public link (temporary or fixed) a fleet admin has the dashboard as reached directly (M-3278, the user's decision):
 schedules, teams, the task board, the Office editor, preferences and pins, Settings → Access & security (Guests, Web
 authority, sessions, the link itself), **Retry now** and **Close public link** — including confirming a change that opens
-a link, as the settings role allows. Not over a link yet: secrets and tokens, the Hub, runtimes, installs and updates, AI
-account sign-in, custom CSS and mods, an agent's Files & changes, `/save` and `/raw`; and two technical limits stay: no live
-stream on a temporary link (the page polls) and 95 MB a file. Guests and read-only sessions are unchanged. An admin there also has **Open beside** (split chat; its layout is kept
-for that page only), the **Subagents** row and the chat's activity steps (and **Show thinking** when it is on). HTML previews work over it through a second tunnel
+a link, as the settings role allows — and also secrets and tokens, Settings → Hub (setting up a Hub, its directory and
+addresses stay on the AgEnD computer itself), Runtime and Windows CLIs (downloading the Windows Runtime package and
+copying its install command stay on the AgEnD computer: a Runtime connects to it, never through the link), connecting AI accounts, installing and updating CLIs,
+updating AgEnD, an agent's Files & changes, custom CSS, the app icon, mods, `/raw` and `/save`. An admin there also has
+**Open beside** (split chat; its layout is kept as on the dashboard reached directly), the **Subagents** row and the chat's
+activity steps (and **Show thinking** when it is on). Two technical limits stay: no live stream on a temporary link (the
+page polls) and 95 MB a file. Guests and read-only sessions are unchanged. HTML previews work over it through a second tunnel
 of their own (`web.preview_on_public_link`, default on).
 HTML previews cannot load from the network; Settings → Web dashboard → **HTML previews may load libraries from cdnjs /
 jsDelivr** (`web.preview_cdn`, default off) allows scripts, styles and fonts from cdnjs `/ajax/libs/` and jsDelivr `/npm/`
@@ -191,6 +194,8 @@ read from the bytes: PNG/JPEG/GIF/WebP are photos, PDF a document, UTF-8 a text 
 binaries, `.html`/`.svg` and other markup) is stored as **download-only**. The agent receives the path in its
 workspace `inbox/`; an unused upload is deleted after 30 minutes.
 
+**Previewing a file from a reply.** After editing code, use `reply` with `previews: [{path: "src/app.ts", line: 1000, endLine: 1002}]` and explain the change in `text`. A web administrator gets a Preview button that opens the current file with those lines highlighted; images use the image viewer, Markdown and PDF use the preview panel. Paths are relative to your own working folder, with no `..` or symlinks. Guests cannot use it, and General/coordinator working folders are unavailable. Discord and Telegram get plain `path:line` references. Local CLI callers use `agend-agent reply "Changed." --previews '[{"path":"src/app.ts","line":1000}]'`. Previews of files on a paired Windows computer aren't available yet. Nothing runs or changes a file when previewed.
+
 **Replying to a message (#2272).**
 - **How:** the ↩ on hover, a right-click (Reply / Pin / Copy text / Copy link), a swipe left (as in Telegram; a swipe right still opens the drawer) or long-press on a phone, or R on a focused message. A bar above the composer shows what is answered; ✕ or Esc cancels.
 - **The sent bubble** shows the quote, and clicking it jumps to the original.
@@ -256,8 +261,8 @@ Access & security → **Shared pages** lists the live ones.
 
 **Slash commands** (the **Commands** palette): `/ctx`, `/compact [instructions]`, `/clear` (asks first), `/model
 [name]`, `/backend [backend] [model] [effort]` (asks first), `/effort [level]`, `/cancel`, `/btw`, `/steer`, `/pause`,
-`/wake`, `/save <file>` (not on a public link). Anything else: "Not a command here — Enter sends it as a message."
-At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (local only) passes text to the CLI
+`/wake`, `/save <file>` (not for a guest on a public link; an admin session there may, M-3278). Anything else: "Not a command here — Enter sends it as a message."
+At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (an admin session, the public link's too since M-3278; never a guest there) passes text to the CLI
 unwrapped.
 
 **On a phone (M-3115).** Inside an agent's pages (chat, View, Log, Settings) there are no bottom tabs. **‹** at the top
@@ -690,7 +695,7 @@ confirm. After a failure, unapplied changes are staged again
 **Look** — see [Look](#look) for the cards and what they mean.
 
 **Connecting an AI account (#2233; S-117 wording: 連接 AI 帳號 / 已連接 / 撤銷連接, never "sign in with a device
-code")** — local admin sessions only (never a guest or the public link): Settings → Agents → **AI accounts and API keys** → **Accounts** (one card per CLI: its default
+code")** — admin sessions only (never a guest; over the public link too since M-3278): Settings → Agents → **AI accounts and API keys** → **Accounts** (one card per CLI: its default
 connection and every named account, with which account it is, its state — **connected** / **not connected** / **needs
 reconnecting** / **not installed** / **too old** —, who uses it and its weekly usage; **Connect** / **Reconnect**, or the
 host command where the dashboard cannot), the web
@@ -716,7 +721,7 @@ from here (#3521; Antigravity: **Update to latest (not audited by AgEnD)**; Muse
 installed and checked versions). A paired Windows computer's Claude Code accounts are listed under **On *computer***.
 
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
-before), from Settings → Agents → AI accounts and API keys → Accounts, local admin sessions only. What the Antigravity
+before), from Settings → Agents → AI accounts and API keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity
 card offers, and what it means:
 - **Connect / Reconnect** on the **Default connection** and on each named account: the dashboard runs `agy acp --login`
   in its own login window (never in an agent's pane; needs agy 1.5.0 or newer, otherwise the card keeps the command to

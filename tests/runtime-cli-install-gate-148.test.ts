@@ -79,7 +79,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
       if (auth.kind !== "ok") return null;
       const record = auth.session, sessions = any.webSessions, exposure = gatewayRequestContext(req);
       return { id: record.idHash, label: record.label, source: exposure ? "public_link" : "web_session", requester: { handle: record.handle, label: record.label },
-        localAdmin: () => record.tier === "admin" && record.surface === "local" && !exposure,
+        localAdmin: () => record.tier === "admin" && (!exposure || exposure.isCurrent()),   // M-3278: as FleetManager's principal
         current: () => sessions === any.webSessions && !!any.webToken && sessions.isCurrent(record, tokenEpoch(any.webToken)) && (!exposure || exposure.isCurrent()) };
     },
     baseline: async () => { const config = fm.fleetConfig; if (hold && ++looks > 1) await hold; return { config, classic: {}, fingerprint: settingsFingerprint(config) } as any; },
@@ -170,10 +170,10 @@ describe("AGEND-153: Antigravity's update to the vendor's latest goes through th
     expect(h.updates()).toHaveLength(1);
     expect(h.installs()).toHaveLength(0);
   });
-  it("the public link and a guest start nothing; a hand-built POST is refused", async () => {
+  it("the public link's read session and a guest start nothing; a hand-built POST is refused (M-3278: the link's admin may)", async () => {
     const h = harness({ enrolled: true });
     h.has("antigravity", "1.5.9");
-    expect((await h.install(h.session("code", "here", { gateway: true }), "antigravity")).body.error).toBeTruthy();
+    expect((await h.install(h.session("read", "here", { gateway: true }), "antigravity")).body.error).toBeTruthy();
     expect((await h.install(h.session("guest", "here"), "antigravity")).body.error).toBeTruthy();
     expect((await h.send(h.session("code", "here"), "POST", INSTALL, { cli: "antigravity" }, "route")).body.error).toBe("install_confirmation_required");
     await h.settle();
@@ -230,10 +230,16 @@ describe("the PC owner's consent is the computer's own and stays separate", () =
 });
 
 describe("who may not, and what never becomes a held change", () => {
-  it("the public link: refused before anything is proposed", async () => {
+  it("M-3278: the public link's admin session proposes it as any admin off the AgEnD computer does (a held change)", async () => {
     const h = harness({ enrolled: true }), s = h.session("code", "here", { gateway: true });
     const r = await h.install(s);
-    expect([r.status, r.body.error]).toEqual([403, "install_not_over_public_link"]);
+    expect([r.status, r.body.result]).toEqual([202, "pending_confirmation"]);
+    expect(h.store.list(s.record.idHash)).toHaveLength(1);
+  });
+  it("the public link's read session: refused before anything is proposed", async () => {
+    const h = harness({ enrolled: true }), s = h.session("read", "here", { gateway: true });
+    const r = await h.install(s);
+    expect([r.status, r.body.error]).toEqual([403, "install_needs_a_local_admin"]);
     expect(h.store.list(s.record.idHash)).toEqual([]);
     expect(h.calls).toEqual([]);
   });

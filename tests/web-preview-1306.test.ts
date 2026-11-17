@@ -149,7 +149,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
       const r = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie });
       expect(r.status).toBe(200);
       const csp = String(r.headers["content-security-policy"]);
-      expect(directive(csp, "frame-src")).toBe(`frame-src http://127.0.0.1:${h.pport.port}/frame`);
+      expect(directive(csp, "frame-src")).toBe(`frame-src http://127.0.0.1:${h.pport.port}/frame http://127.0.0.1:${h.port}/ui/reply-preview`);
       expect(directive(csp, "frame-ancestors")).toBe("frame-ancestors 'none'");
       expect(r.headers["x-frame-options"]).toBe("DENY");
       expect(bodyAttrs(r.body)).toEqual({
@@ -165,16 +165,16 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
         "data-owner-css-state": "off",
       });
       const lh = await raw(h.port, "GET", "/ui", { host: `localhost:${h.port}`, cookie: h.cookie });
-      expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame`);
+      expect(directive(String(lh.headers["content-security-policy"]), "frame-src")).toBe(`frame-src http://localhost:${h.pport.port}/frame http://localhost:${h.port}/ui/reply-preview`);
     } finally { h.stop(); }
   });
 
-  it("a non-loopback Host without web.preview_origin: HTML preview disabled, nothing framed — X-Forwarded-Host is never read", async () => {
+  it("a non-loopback Host without web.preview_origin: HTML preview disabled, only its own file frame — X-Forwarded-Host is never read", async () => {
     const h = await startFleet({ web: { allowed_hosts: ["fleet.example.net"] } });
     try {
       const r = await raw(h.port, "GET", "/ui", { host: "fleet.example.net", cookie: h.cookie, "x-forwarded-host": `127.0.0.1:${h.port}`, "x-forwarded-proto": "https" });
       const csp = String(r.headers["content-security-policy"]);
-      expect(directive(csp, "frame-src")).toBe("");
+      expect(directive(csp, "frame-src")).toBe("frame-src https://fleet.example.net/ui/reply-preview");
       const a = bodyAttrs(r.body);
       expect([a["data-dashboard-origin"], a["data-preview-origin"], a["data-preview-boot"]]).toEqual(["https://fleet.example.net", "", ""]);
       expect(a["data-preview-reason"]).toMatch(/web\.preview_origin/);
@@ -189,7 +189,7 @@ describe("the fleet runs it beside the web listener (scratch AGEND_HOME)", () =>
   it("/view and /settings signed in carry /ui's preview attributes and frame-src; anonymous /view is view-only with none; sign-in never gets one; every dashboard response keeps DENY and frame-ancestors 'none'", async () => {
     const h = await startFleet();
     try {
-      const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame`;
+      const frame = `frame-src http://127.0.0.1:${h.pport.port}/frame http://127.0.0.1:${h.port}/ui/reply-preview`;
       const ui = await raw(h.port, "GET", "/ui", { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });
       for (const p of ["/view", "/view/alpha", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", p, { host: `127.0.0.1:${h.port}`, cookie: h.cookie, accept: "text/html" });

@@ -8,6 +8,7 @@
 // Pictured per case: the help opened.
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (Wi-Fi first, no /web).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> HP=<port> npx tsx scripts/manual/smoke/smoke-signin-phone-help-m3251.mts
+// ui-gate: {"name": "Sign-in phone help (chat and web-only)", "hp": 19674}
 import { bootFixture, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-signin-phone-help-m3251";

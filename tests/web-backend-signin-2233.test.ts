@@ -184,29 +184,31 @@ describe("#2233 the Sign in dialog", () => {
 });
 
 describe("#2262 review", () => {
-  it("over the public link: a refusal is said plainly (where to sign in instead), and Needs you offers no Sign in", async () => {
+  it("over the public link: a refusal is said plainly (where to sign in instead), and a guest's Needs you offers no Sign in (M-3278: the link's admin's does)", async () => {
     answer = r => r.url === "/ui/backend-login/check" ? { __status: 403, error: "sign_in_not_over_public_link" } : {};
     await dialog({ backend: "codex" });
     expect(text()).toContain("Connecting an AI account is not available over the public link");
     await p.unmount();
     p.document.body.setAttribute("data-public-link", "1");
+    expect(S.signInOffered()).toBe(true);                                 // M-3278: the link's admin page
+    p.document.body.setAttribute("data-tier", "guest");
     try {
       app.appStore.set({ instances: [], needs: [{ id: "auth:a:1", type: "instance", instance: "a", reason: "auth_paused", detail: "", since: Date.now(), signIn: { backend: "codex" } }] });
       await p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" })); await settle(6);
       expect(p.root.querySelectorAll(".n-item button").map((b: any) => b.textContent.trim())).toEqual([]);
       expect(S.signInOffered()).toBe(false);
-    } finally { p.document.body.removeAttribute("data-public-link"); }
+    } finally { p.document.body.removeAttribute("data-public-link"); p.document.body.removeAttribute("data-tier"); }
   });
 
-  it("over the public link Settings' sign-in list neither reads /ui/backend-login (the link does not serve it) nor shows", async () => {
+  it("over the public link a guest's page: Settings' sign-in list neither reads /ui/backend-login nor shows (M-3278: the link's admin page does)", async () => {
     await p.unmount();
     S.signInStore.set({ loaded: true, login: null, targets: [{ backend: "codex", state: "not_signed_in", signIn: true }] });
     reqs = [];
-    p.document.body.setAttribute("data-public-link", "1");
+    p.document.body.setAttribute("data-public-link", "1"); p.document.body.setAttribute("data-tier", "guest");
     try {
       await p.mount(h(S.SignInList, {})); await settle(6);
       expect([reqs.filter(r => r.url.startsWith("/ui/backend-login")), p.root.querySelectorAll(".signin-list").length]).toEqual([[], 0]);
-    } finally { p.document.body.removeAttribute("data-public-link"); }
+    } finally { p.document.body.removeAttribute("data-public-link"); p.document.body.removeAttribute("data-tier"); }
     await p.unmount();
     answer = r => r.url === "/ui/backend-login" ? { login: null, targets: [{ backend: "codex", state: "not_signed_in", signIn: true }] } : {};
     await p.mount(h(S.SignInList, {})); await settle(6);                  // control: on the dashboard itself it reads and shows

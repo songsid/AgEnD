@@ -3,6 +3,7 @@ import { type SettingsExecution, SettingsExecutionError, settingsFileResource, t
 import { readBoundedWebBody } from "./web-body.js";
 import { permitWebContinuation } from "./web-continuation.js";
 import { gatewayRequestContext } from "./web-request-context.js";
+import { evaluateWebRequest } from "./web-auth.js";
 import { GENERAL_NAME, generalTopicFor } from "./general-instance.js";
 /**
  * The Settings setup wizard's server side.
@@ -607,6 +608,11 @@ function commitWebOnly(req: IncomingMessage, res: ServerResponse, ctx: Quickstar
 }
 
 /** Handle one wizard route. Returns false when the path is not one of ours. */
+/** M-3278: an admin session (or the header token) — the public link's admin is answered as on the local dashboard. */
+function linkAdmin(req: IncomingMessage, url: URL, ctx: QuickstartApiContext): boolean {
+  const v = evaluateWebRequest(req as never, url, ctx.webToken ?? null, ctx.webSessions ?? null, { touch: false });
+  return v.kind === "allow" && (v.via === "header-token" || v.session.tier === "admin");
+}
 export function handleQuickstartRequest(
   req: IncomingMessage,
   res: ServerResponse,
@@ -632,7 +638,8 @@ export function handleQuickstartRequest(
   }
 
   if (method === "POST" && path === "/api/settings/quickstart/probe") {
-    if (gatewayRequestContext(req)) { json(res, 403, { error: "Token verification is not permitted over a public link" }); return true; }
+    // M-3278 (decision 7933bf90): the public link's admin session verifies a token as locally; anyone else over the link may not.
+    if (gatewayRequestContext(req) && !linkAdmin(req, url, ctx)) { json(res, 403, { error: "Token verification is not permitted over a public link" }); return true; }
     readBody(req, 16 * 1024).then(async buf => {
       if (!permitWebContinuation(req, res, ctx)) return;
       let body: Record<string, unknown>;

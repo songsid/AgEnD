@@ -22,7 +22,8 @@ Commands print JSON. `usage` defaults to compact account rows; `usage --detail` 
 
 ```bash
 # Communication
-agend-agent reply "text" [FILE…] [--sticker ID]   # Reply to user (files; up to 3 stickers from list_stickers)
+agend-agent reply "text" [FILE…] [--sticker ID] [--previews JSON]   # Reply to user (files; up to 3 stickers from list_stickers)
+# Preview after editing: --previews '[{"path":"src/app.ts","line":1000,"endLine":1002}]'
 agend-agent react EMOJI MESSAGE_ID                # React to a message
 agend-agent edit MESSAGE_ID "text"                # Edit a message you sent
 agend-agent download FILE_ID                      # Fetch an attachment (attachment_file_id)

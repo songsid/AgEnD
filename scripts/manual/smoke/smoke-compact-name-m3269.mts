@@ -1,4 +1,5 @@
 // Real app/HTTP preferences; inert agents, scratch home, headless Linux Chromium. STAGE=before uses the pinned base.
+// ui-gate: {"name": "Compact sidebar name choice (desktop and phone)", "hp": 19676}
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";

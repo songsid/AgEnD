@@ -1,0 +1,29 @@
+[
+  {
+    "rule": "generic-api-key",
+    "file": "docs/evidence/reply-file-previews-m3283/manifest.json",
+    "line": 17,
+    "hashInput": "src/auth-api.ts",
+    "verifiedFileDigest": true,
+    "credential": false,
+    "fingerprint": "22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:17"
+  },
+  {
+    "rule": "generic-api-key",
+    "file": "docs/evidence/reply-file-previews-m3283/manifest.json",
+    "line": 36,
+    "hashInput": "src/web-api.ts",
+    "verifiedFileDigest": true,
+    "credential": false,
+    "fingerprint": "22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:36"
+  },
+  {
+    "rule": "generic-api-key",
+    "file": "docs/evidence/reply-file-previews-m3283/manifest.json",
+    "line": 38,
+    "hashInput": "src/web-guest-access.ts",
+    "verifiedFileDigest": true,
+    "credential": false,
+    "fingerprint": "22718dc5af6c175e9009a7f2e48bd874a71e41ed:docs/evidence/reply-file-previews-m3283/manifest.json:generic-api-key:38"
+  }
+]

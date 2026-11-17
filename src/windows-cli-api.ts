@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { evaluateWebRequest, type WebGateRequest } from "./web-auth.js";
 import type { WebSessionStore } from "./web-session.js";
-import { gatewayRequestContext } from "./web-request-context.js";
 import { readBoundedWebBody } from "./web-body.js";
 import { windowsBridgeFor, windowsCliEnabled, type WindowsCliBridge, type WindowsCliProbe } from "./windows-cli.js";
 import type { RuntimeMachine } from "./runtime-protocol.js";
@@ -26,9 +25,11 @@ function json(res: ServerResponse, code: number, value: unknown): void {
   res.writeHead(code, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
   res.end(JSON.stringify(value));
 }
-/** The ordinary dashboard gate AND an explicit admin-only, non-public boundary. Rechecked after every await. */
+/**
+ * The ordinary dashboard gate AND an explicit admin-only boundary. Rechecked after every await. M-3278 (decision
+ * 7933bf90): the public link's admin session too, temporary or fixed; its guests and read sessions are refused as anywhere.
+ */
 export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
-  if (gatewayRequestContext(req)) return false;
   // Confirmed creation replays intentionally carry no browser cookies or bearer headers. Only the server-owned,
   // still-current administrator capability may continue this exact operation; it grants no other native route.
   if (isSettingsReplay(req)) {
@@ -39,15 +40,15 @@ export function nativeCliAuthorization(req: IncomingMessage, url: URL, ctx: Wind
   return v.kind === "allow" && (v.via === "header-token" || v.session.tier === "admin");
 }
 /**
- * Who may be shown WHICH account a sign-in is (a masked e-mail and a plan): an admin SESSION on the dashboard reached directly (surface "local": this machine, a LAN, a tailnet or your own proxy), and no one else. These routes also
+ * Who may be shown WHICH account a sign-in is (a masked e-mail and a plan): an admin SESSION (this machine, a LAN, a tailnet, your own proxy, or the public link: M-3278), and no one else. These routes also
  * serve the CLI's own header token (an agent's) and other flows that predate the account display, so the callers are not turned away: the
- * answer is the same without the account (`withoutAccountIdentity`). No public link or gateway, no read or guest session, no header token,
- * no replayed confirmation.
+ * answer is the same without the account (`withoutAccountIdentity`). No read or guest session, no header token, no replayed
+ * confirmation. M-3278 (decision 7933bf90): the public link's admin session is shown it too.
  */
 /**
  * #3327: who may create a pairing code or approve a computer — an administrator SESSION on the directly reached dashboard
  * (cookie and CSRF: the page's own Connect a computer and Approve computer buttons). Never the bare header token, a replayed
- * confirmation, the public link or gateway, a guest or a read session. The threat model (fleet decision 64a289a0): a
+ * confirmation, a guest or a read session (M-3278: the public link's admin session may). The threat model (fleet decision 64a289a0): a
  * process running as this fleet's OS user is its owner, so this is defence in depth — a raw API call cannot pair a
  * computer; the person's existing click on the page can, with no step added.
  */
@@ -55,13 +56,14 @@ export function runtimePairingAdmin(req: IncomingMessage, url: URL, ctx: Windows
   return accountIdentityVisible(req, url, ctx);
 }
 export function accountIdentityVisible(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): boolean {
-  if (gatewayRequestContext(req) || isSettingsReplay(req)) return false;
+  if (isSettingsReplay(req)) return false;
+  // M-3278 (decision 7933bf90): an admin SESSION on any listener — the public link's too (its surface is "gateway").
   const v = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken, ctx.webSessions, { touch: false });
-  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin" && v.session.surface === "local";
+  return v.kind === "allow" && v.via === "session" && v.session.tier === "admin";
 }
 /**
- * #3190 Part 3b: who may ask a paired computer to install a CLI. The same people as `accountIdentityVisible` (a local administrator SESSION; no public link,
- * gateway, header token, guest or replayed confirmation), and the name the computer's audit log records for them: an opaque session handle, never an
+ * #3190 Part 3b: who may ask a paired computer to install a CLI. The same people as `accountIdentityVisible` (an administrator SESSION, the public link's too
+ * (M-3278); no header token, guest or replayed confirmation), and the name the computer's audit log records for them: an opaque session handle, never an
  * address or a free-text label. Null means refused. Checked again after every await.
  */
 export function remoteSetupActor(req: IncomingMessage, url: URL, ctx: WindowsCliApiContext): string | null {

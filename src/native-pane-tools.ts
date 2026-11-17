@@ -1,3 +1,4 @@
+import { REMOTE_PREVIEW_REFUSAL } from "./reply-preview-spec.js";
 /** Until an owned runner file-transfer port exists, never interpret a Windows path on the coordinator. */
 const RUNNER_ONLY = new Set([
   "checkout_repo", "release_repo", "get_usage", "download_attachment", "set_web_theme_asset", "preview_web_appearance",
@@ -6,6 +7,7 @@ const RUNNER_ONLY = new Set([
 export function nativePaneToolAvailable(tool: string): boolean { return !RUNNER_ONLY.has(tool); }
 export function nativePaneToolRefusal(tool: string, args: Record<string, unknown>): string | null {
   if (!nativePaneToolAvailable(tool)) return "This tool is unavailable for native panes; coordinator files and accounts are not the Windows workspace";
+  if (tool === "reply" && args.previews !== undefined && (!Array.isArray(args.previews) || args.previews.length > 0)) return REMOTE_PREVIEW_REFUSAL;
   if (tool === "reply" && args.files !== undefined && (!Array.isArray(args.files) || args.files.length > 0))
     return "Native pane file transfer is unavailable; use a text reply without files";
   return null;

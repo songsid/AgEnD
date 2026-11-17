@@ -570,17 +570,18 @@ describe("the routes", () => {
       expect([big.status, JSON.parse(big.body).error]).toEqual([413, "mod_too_large"]);
     } finally { await f.stop(); }
   }, 30_000);
-  it("the public link: no mod route on its manifest, and the handler refuses on its own", async () => {
+  it("M-3278: the public link carries the mod routes for its admin session; its read session gets nothing", async () => {
     const { isPublicWebRoute } = await import("../src/public-web-gateway.js");
     const { handleWebRequest } = webApiModule;
     const { bindGatewayRequest } = await import("../src/web-request-context.js");
     for (const [m, p] of [["GET", "/ui/mods"], ["POST", "/ui/mods/stage"], ["POST", "/ui/mods/commit"], ["POST", "/ui/mods/uninstall"], ["POST", "/ui/mods/export"], ["GET", `/ui/mods/file/${"a".repeat(32)}`]] as const) {
-      expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(false);
+      expect(isPublicWebRoute(m, p), `${m} ${p}`).toBe(true);
     }
     const f = await fleet();
     try {
-      const { sessionId } = f.fm.webSessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: f.tokenEpoch(f.fm.webToken) });
-      for (const [method, path] of [["POST", "/ui/mods/stage"], ["GET", "/ui/mods"]] as const) {
+      // Fable on #4107 (N1): a read session over the link reads no mod either (not found, as before).
+      for (const [tier, method, path] of [["read", "POST", "/ui/mods/stage"], ["read", "GET", "/ui/mods"], ["admin", "GET", "/ui/mods"]] as const) {
+        const { sessionId } = f.fm.webSessions.create({ tier, surface: "gateway", exposureId: "e".repeat(32), label: "t", tokenEpoch: f.tokenEpoch(f.fm.webToken) });
         const status = await new Promise<number>(resolve => {
           let code = 0;
           const res: any = { headersSent: false, setHeader() {}, writeHead(c: number) { code = c; res.headersSent = true; return res; }, end() { resolve(code); } };
@@ -588,7 +589,7 @@ describe("the routes", () => {
           bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
           expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.fm)).toBe(true);
         });
-        expect(status, `${method} ${path}`).toBe(method === "GET" ? 404 : 403);
+        expect(status, `${tier} ${method} ${path}`).toBe(tier === "admin" ? 200 : 404);
       }
     } finally { await f.stop(); }
   }, 30_000);

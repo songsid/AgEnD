@@ -149,22 +149,22 @@ describe("#2233 who may sign a backend in from the dashboard", () => {
     expect(f.events).toEqual([]);
   });
 
-  it("the public link: not in its manifest, absent from the guest table, and a bound gateway request is refused even as an admin", async () => {
+  it("M-3278: the public link carries the routes for its admin session (not the guest table); its read session is refused", async () => {
     const f = await fixture();
     for (const path of ["/ui/backend-login", "/ui/backend-login/check", "/ui/backend-login/start", "/ui/backend-login/cancel"]) {
       for (const method of ["GET", "POST"]) {
-        expect(isPublicWebRoute(method, path)).toBe(false);
+        expect(isPublicWebRoute(method, path), `${method} ${path}`).toBe(path === "/ui/backend-login" ? method === "GET" : method === "POST");
         expect(GUEST_ROUTES.some(r => (r.methods as readonly string[]).includes(method) && r.pattern.test(path))).toBe(false);
       }
     }
-    const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+    const made = f.sessions.create({ tier: "read", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
     for (const [method, path] of [["GET", "/ui/backend-login"], ["POST", "/ui/backend-login/check"]] as const) {
       let status = 0;
       const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; }, end() {} };
       const req = Object.assign(new EventEmitter(), { method, url: path, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });
       bindGatewayRequest(req, { surface: "gateway", exposureId: "e".repeat(32), expectedOrigin: "https://x.trycloudflare.com", isCurrent: () => true });
       expect(handleWebRequest(req as never, res, new URL(`https://x.trycloudflare.com${path}`), f.ctx)).toBe(true);
-      expect(status).toBe(method === "GET" ? 404 : 403);
+      expect(status).toBe(403);
     }
   });
 
@@ -487,9 +487,9 @@ describe("AGEND-207: POST /ui/backend-login/cancel {backend} — who may end a s
     expect(f.lock.isHeld).toBe(false);
   });
 
-  it("the public link: a bound gateway request is refused even as an admin, and the sign-in keeps running", async () => {
+  it("the public link's read session is refused (M-3278: its admin may), and the sign-in keeps running", async () => {
     const { f } = await running();
-    const made = f.sessions.create({ tier: "admin", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
+    const made = f.sessions.create({ tier: "read", surface: "gateway", exposureId: "e".repeat(32), label: "gateway", tokenEpoch: tokenEpoch(f.token) });
     let status = 0;
     const res: any = { headersSent: false, setHeader() {}, writeHead(n: number) { status = n; this.headersSent = true; }, end() {} };
     const req = Object.assign(new EventEmitter(), { method: "POST", url: CANCEL, headers: { host: "x.trycloudflare.com", origin: "https://x.trycloudflare.com", cookie: `__Host-agend_session=${made.sessionId}`, "x-agend-csrf": csrfTokenFor(made.sessionId) }, destroy() {}, resume() {} });

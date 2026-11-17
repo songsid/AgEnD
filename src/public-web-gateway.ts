@@ -16,6 +16,7 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
   if (reads && isWebIconPath(path)) return true;
+  if (method === "GET" && path === "/ui/reply-preview") return true; // handler requires an admin session on every read
   if (reads && ["/", "/signin", "/signin/authenticator", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
   if (method === "GET" && path.startsWith("/assets/") && isServedAsset(path.slice("/assets/".length))) return true;
   // #1408: the app shell's pages, exactly as the classifier names them (a malformed one is answered 400 behind it).
@@ -99,12 +100,49 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && (path === "/ui/models/refresh" || path === "/ui/agent-export/build" || path === "/ui/agent-export/parse")) return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
+  if (isPublicPrivilegedRoute(method, path)) return true;
   // #1724: schedules are not created, edited or deleted over the public link (the handlers refuse it too).
   // #1689: teams are not created, edited or deleted over the public link (the handlers refuse it too).
   // Settings has an explicit method/subroute manifest (not an arbitrary /api prefix).
   return isPublicSettingsRoute(method, path);
 }
+/**
+ * M-3278 (decision 7933bf90, part 4): the privileged dashboard routes an admin session uses on the local dashboard — the
+ * app icon, AgEnD's own update, owner CSS, mods, sign-ins and accounts, installing and updating a CLI, an agent's Files &
+ * changes, Runtimes and the Windows CLI. Over the link each admits an admin session only and refuses guests and read
+ * sessions itself (owner CSS, update and mods by web-api's linkRestricted check; the header token never works over the
+ * link); the public link's admin session is answered as locally. Never `/ui/events`; Runtime's Windows package and
+ * installer pin answer 403 there (runtime-api).
+ */
+function isPublicPrivilegedRoute(method: string, path: string): boolean {
+  const reads = method === "GET" || method === "HEAD";
+  if ((reads || method === "PUT" || method === "DELETE") && path === "/ui/app-icon") return true;
+  if (method === "GET" && (path === "/ui/update" || path === "/ui/update/log")) return true;
+  if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start")) return true;
+  if (method === "GET" && (path === "/ui/owner-css.css" || path === "/ui/owner-css/state" || /^\/ui\/owner-css\/asset\/[0-9a-f]{32}$/.test(path))) return true;
+  if (method === "POST" && /^\/ui\/owner-css(?:\/(?:shown|keep|revert|restore|asset))?$/.test(path)) return true;
+  if (method === "GET" && /^\/ui\/mods(?:\/(?:staged|file)\/[0-9a-f]{32})?$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/mods\/(?:stage|abort|commit|uninstall|export|proposal\/stage|proposal\/dismiss)$/.test(path)) return true;
+  if ((method === "GET" || method === "POST") && path === "/ui/browser-backend-signins") return true;
+  if (method === "GET" && path === "/ui/backend-login") return true;
+  if (method === "POST" && /^\/ui\/backend-login\/(?:check|start|cancel)$/.test(path)) return true;
+  if ((method === "GET" || method === "POST") && (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update")) return true;
+  if (method === "GET" && (path === "/ui/accounts" || path === "/ui/workspace")) return true;
+  if (method === "POST" && (path === "/ui/accounts/keep-alive" || /^\/ui\/accounts\/[a-z][a-z0-9-]{0,31}(?:\/signout)?$/.test(path))) return true;
+  if (method === "DELETE" && /^\/ui\/accounts\/[a-z][a-z0-9-]{0,31}\/[^/]{1,200}$/.test(path)) return true;
+  // Runtimes, the Windows CLI and a Windows agent (nativeCliAuthorization: an admin, the header token, or the confirmed
+  // replay). The paired computers' own `/runtime/v1/*` protocol and the installer files stay off the link.
+  if (["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"].includes(method) && /^\/ui\/(?:runtimes|windows-cli)(?:\/[A-Za-z0-9_-]+)*$/.test(path)) return true;
+  if (reads && /^\/ui\/windows-agents\/[a-f0-9-]{36}$/i.test(path)) return true;
+  if ((method === "GET" || method === "POST") && /^\/ui\/instances\/[^/]+\/runtime$/.test(path)) return true;
+  if ((method === "GET" || method === "PATCH") && /^\/ui\/instances\/[^/]+$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/instances\/[^/]+\/(?:messages|cancel|recover|recover-pane|new-conversation)$/.test(path)) return true;
+  return false;
+}
 function isPublicSettingsRoute(method: string, path: string): boolean {
+  // M-3278 (decision 7933bf90, part 4): secrets and the fixed link's token, the Hub's settings and membership, Runtime's
+  // switches and General's location, for the link's admin session (each handler refuses anyone else over the link).
+  if (isPublicPrivilegedSettingsRoute(method, path)) return true;
   if (method === "GET" && /^\/api\/settings\/pending(?:\/[0-9a-f]{32})?$/.test(path)) return true;
   if (method === "DELETE" && /^\/api\/settings\/pending\/[0-9a-f]{32}$/.test(path)) return true;
   // M-3278 (decision 7933bf90, part 3): Access & security's Guests and Web authority, Look's limits, "Retry now" and the
@@ -126,6 +164,22 @@ function isPublicSettingsRoute(method: string, path: string): boolean {
   if (method === "PUT") return /^\/api\/settings\/(fleet\/(web|defaults|channels)|classic\/defaults)$/.test(path);
   if (method === "PATCH" && /^\/api\/settings\/classic\/channels\/[^/]+$/.test(path)) return true;
   return ["POST", "PATCH", "DELETE"].includes(method) && /^\/api\/settings\/fleet\/instances\/[^/]+$/.test(path);
+}
+
+function isPublicPrivilegedSettingsRoute(method: string, path: string): boolean {
+  if ((method === "GET" || method === "PUT") && /^\/api\/settings\/hub\/(?:update-consent|membership|pilot-trust|retention|run|preview)$/.test(path)) return true;
+  if (method === "GET" && /^\/api\/settings\/hub\/fleet-updates\/[0-9a-f-]{36}$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/settings\/hub\/fleet-updates\/[0-9a-f-]{36}\/cancel$/.test(path)) return true;
+  if (method === "GET" && path === "/api/settings/hub/browser-certificate") return true;
+  if (method === "POST" && /^\/api\/settings\/hub\/browser-certificate\/(?:prepare|apply)$/.test(path)) return true;
+  if (method === "GET" && /^\/api\/hub\/member\/(?:exposures|pairing|company-join(?:\/bridge)?)$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/hub\/member\/(?:contact-limit-notice|exposures|exposures\/[0-9a-f-]{36}\/withdraw|pairing\/(?:connect|confirm|disconnect|cancel)|company-join\/(?:start|resume|cancel|repair-trust|probe|reconnect|remove))$/.test(path)) return true;
+  if ((method === "GET" || method === "POST") && path === "/api/settings/general-location") return true;
+  if (method === "GET" && path === "/api/settings/runtimes") return true;
+  if (method === "PUT" && path === "/api/settings/fleet/runtimes") return true;
+  if (method === "GET" && /^\/api\/settings\/public-tunnel-token(?:\/apply\/[A-Za-z0-9_-]+)?$/.test(path)) return true;
+  if (method === "POST" && /^\/api\/settings\/public-tunnel-token\/(?:verify|apply)$/.test(path)) return true;
+  return false;
 }
 
 export interface PublicGateway {

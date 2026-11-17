@@ -5,6 +5,7 @@
 // a phone (390×844, touch, an iPhone's safe area), light/dark; and a desk. Pictured per phone case: 1-full (the icon),
 // 2-menu (自訂 open), 3-narrow-detailed, 4-narrow-compact. Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [PW_ENGINE=webkit] scripts/manual/smoke/run.sh smoke-phone-drawer-width-m3212.mts
+// ui-gate: {"name": "Phone drawer width choice (滿版 / 窄版)", "hp": 19665}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 import { clearDensity, density, faces, withFaces } from "../smoke-fixture/faces.mts";
 

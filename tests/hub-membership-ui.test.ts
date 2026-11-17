@@ -125,8 +125,8 @@ describe("off-default lazy Hub membership Settings", () => {
     write.resolve(response({ ok: true, enabled: true })); await settle(10);
     expect(f.calls).toHaveLength(2); expect(f.pg.root.textContent).toBe("");
   });
-  it("a public-link page loads no membership data or control", async () => {
+  it("M-3278: a public-link page (its admin session) loads the membership data and control as a local page does", async () => {
     const f = await fixture({ public: true, enabled: true, memberMark: true }); await settle(10);
-    expect(f.calls).toEqual([]); expect(f.pg.root.textContent).toBe(""); expect(f.pg.root.querySelector("#hubMemberEnabled")).toBeNull();
+    expect(f.calls.length).toBeGreaterThan(0); expect(f.pg.root.querySelector("#hubMemberEnabled")).not.toBeNull();
   });
 });

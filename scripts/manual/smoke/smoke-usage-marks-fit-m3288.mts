@@ -6,6 +6,7 @@
 // The real app on the shared fixture (in-process FleetManager, scratch home, loopback only, fake agents); /api/ai-usage
 // answered by a route. Headless. Run it on the base too (SMOKE_NAME=…-before): it FAILs there.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] [HP=…] npx tsx scripts/manual/smoke/smoke-usage-marks-fit-m3288.mts
+// ui-gate: {"name": "Usage row marks fit (stale + no agents)", "hp": 19705}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-usage-marks-fit-m3288";

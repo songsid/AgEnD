@@ -29,6 +29,16 @@ const loadAnnotate = () => import("./image-annotate.js");
 export const lightboxStore = createStore({ open: null });
 let seq = 0;
 
+/** The narrow admin-only file endpoint; no arbitrary external URL can enter the viewer. */
+export function openReplyPreviewImage(src, name, opener) {
+  try {
+    const u = new URL(src, "https://preview.invalid");
+    if (!src.startsWith("/ui/reply-preview?") || u.origin !== "https://preview.invalid" || u.pathname !== "/ui/reply-preview" || u.searchParams.get("op") !== "raw" || !u.searchParams.get("instance") || !u.searchParams.get("path")) return false;
+    lightboxStore.set({ open: { items: [{ src, name }], index: 0, opener, thumbs: [opener], annotate: null, seq: ++seq } });
+    return true;
+  } catch { return false; }
+}
+
 /**
  * The images of a message, from its thumbnails' links; `index` the one clicked. Anything that is not a chat file URL
  * is left out (and nothing opens if the clicked one is not).

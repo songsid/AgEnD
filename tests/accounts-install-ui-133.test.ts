@@ -174,9 +174,12 @@ describe("the Install button", () => {
     await mount();
     expect(text(installBtn("grok"))).toBe("安裝");
   });
-  it("the public link's page never offers Install", async () => {
+  it("M-3278: the public link's admin page offers Install too; a guest's page over the link never does", async () => {
     document.body.setAttribute("data-public-link", "1");
-    try { await mount(); expect(installBtn("grok")).toBeUndefined(); }
+    try { await mount(); expect(installBtn("grok")).toBeDefined(); }
     finally { document.body.removeAttribute("data-public-link"); }
+    document.body.setAttribute("data-public-link", "1"); document.body.setAttribute("data-tier", "guest");
+    try { await mount(); expect(installBtn("grok")).toBeUndefined(); }
+    finally { document.body.removeAttribute("data-public-link"); document.body.removeAttribute("data-tier"); }
   });
 });
