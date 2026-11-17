@@ -179,6 +179,20 @@ it("counts a late agent answer as unread even for its owner after reading the pe
   expect((await r!.call(w.admin, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(1);
 });
 
+it("M-3260: an answer moves past a read of its waiting row; read by its own id, the room is read", async () => {
+  const w = await world(); await send(w); await vi.waitFor(() => expect(asks()).toHaveLength(1));
+  const messages = async () => (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}/messages`)).json.messages as any[];
+  const waiting = (await messages()).at(-1);
+  expect(waiting.stage).not.toBe("answered");
+  await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/read`, { upTo: waiting.id });    // the open room, before the answer
+  const input = lastAsk(); await r!.http.receive(r!.frame("room.answer", { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text: "Late" }, w.link) as never, w.link);
+  const answered = (await messages()).at(-1);
+  expect([answered.id, answered.stage, answered.sequence > waiting.sequence]).toEqual([waiting.id, "answered", true]);
+  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(1);
+  await r!.call(w.admin, "POST", `/hub/v1/rooms/${w.id}/read`, { upTo: answered.id });   // what the open room now sends
+  expect((await r!.call(w.admin, "GET", "/hub/v1/rooms?v=2")).json.rooms[0].unread).toBe(0);
+});
+
 it("keeps a person's @ reminder separate from agent routing", async () => {
   const w = await world(), detail = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`)).json;
   const me = detail.me.id; await send(w, "For you", [me]);
