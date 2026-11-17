@@ -6,7 +6,15 @@
 // Browser-only: the picture is the chat's own same-origin file (/ui/file/<hex>), drawn and encoded here — no server
 // call, no other origin. No style attribute (#1300): classes only; the stylesheet is linked by this module (an older
 // app.css lacks it). Pointer events, so a mouse, a pen and a finger draw the same way.
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+//
+// M-3267 (the user, 11-17: 「引用給 agent 沒有辦法縮放圖再開始畫」): zoom and pan before (and between) marks. A desk: the
+// wheel (a trackpad pinch arrives as ctrl+wheel) zooms at the cursor; − / the level / + / Fit; Space held, the middle
+// button or the hand mode drags the picture. A phone: two fingers pinch and pan (a stroke the first finger began is
+// dropped, never kept), one finger draws — or pans in the hand mode. The picture is placed by a CSSOM transform (the
+// viewer's own math, image-zoom.js); every mark is kept in the picture's own pixels, so the quoted PNG is the same at any
+// zoom, and a stroke is at least 3 screen px wide at the zoom it was drawn.
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+import { clampPan, fitView, pinchView, stageToImage, zoomAt, STEP } from "./image-zoom.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 
@@ -20,6 +28,8 @@ register("annotate", {
     close: "Close without sending", loading: "Loading the picture…",
     failedLoad: "The picture could not be loaded for annotating.", failedSave: "The annotated picture could not be made.",
     canvas: "Picture to annotate. Choose a tool, then draw on it.",
+    zoom: "Zoom", zoomIn: "Zoom in (+)", zoomOut: "Zoom out (−)", zoomFit: "Fit the picture (0)", zoomLevel: "Zoom level: {0}% — fit the picture",
+    hand: "Move the picture (H, or hold Space). Two fingers zoom and move it too.",
   },
   "zh-TW": {
     title: "標註：{0}", titleNoName: "標註圖片", tools: "工具", colours: "顏色",
@@ -29,6 +39,8 @@ register("annotate", {
     close: "關閉，不送出", loading: "正在載入圖片…",
     failedLoad: "無法載入這張圖片來標註。", failedSave: "無法產生標註後的圖片。",
     canvas: "要標註的圖片。選一個工具，然後在上面畫。",
+    zoom: "縮放", zoomIn: "放大（+）", zoomOut: "縮小（−）", zoomFit: "整張圖（0）", zoomLevel: "縮放比例：{0}%，按一下看整張圖",
+    hand: "移動圖片（H，或按住空白鍵）。兩指也能縮放和移動。",
   },
 });
 
@@ -149,8 +161,16 @@ export function annotateCssReady(doc = typeof document !== "undefined" ? documen
  * is this chat's composer, a second the other pane's; quote() answers true when the file went in. `onClose`: ✕ / Esc
  * (the dialog's own cancel), and after a quote.
  */
+/** M-3267: the margin (CSS px) around the picture in the editor's stage. */
+export const STAGE_MARGIN = 12;
+
 export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
   const canvas = useRef(null), base = useRef(null), hist = useRef(history()), drag = useRef(null), textField = useRef(null);
+  // M-3267: the stage, the view ({ s, tx, ty }: the picture's scale and top-left on the stage), whether it is fitted
+  // (a resize keeps it fitted), the pointers down (stage points), the pan or pinch in progress, Space held.
+  const stage = useRef(null), view = useRef(null), fitted = useRef(true), pointers = useRef(new Map()), gesture = useRef(null), spaceHeld = useRef(false), overStage = useRef(false);
+  const [hand, setHand] = useState(false);
+  const [pct, setPct] = useState(null);
   const [size, setSize] = useState(null);           // { w, h, lw } once the picture has loaded
   const [failed, setFailed] = useState(false);
   const [tool, setTool] = useState("pen");
@@ -194,24 +214,89 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
   useEffect(() => { paint(); });
   /** Canvas pixels per screen pixel now (a phone shows a big picture small): a mark is at least 3 screen px wide, and
    *  text at least 20 screen px tall, whatever the picture's own size. */
-  const perScreenPx = () => { const c = canvas.current, r = c?.getBoundingClientRect(); return c && r && r.width > 0 ? c.width / r.width : 1; };
+  const perScreenPx = () => (view.current && view.current.s > 0 ? 1 / view.current.s : 1);
   const markWidth = () => Math.max(size.lw, Math.round(3 * perScreenPx()));
   const textSize = () => Math.max(size.lw * 6, Math.round(20 * perScreenPx()));
-  const point = (e) => {
-    const c = canvas.current, r = c.getBoundingClientRect();
-    return [((e.clientX - r.left) / Math.max(1, r.width)) * c.width, ((e.clientY - r.top) / Math.max(1, r.height)) * c.height];
+  /** M-3267: a pointer's stage point, and the picture pixel under it (the view's own mapping, at any zoom and pan). */
+  const stagePoint = (e) => { const r = stage.current.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+  const point = (e) => { const [x, y] = stagePoint(e); return stageToImage(view.current, x, y); };
+  const box = () => { const el = stage.current, m = STAGE_MARGIN;
+    return { x: m, y: m, w: Math.max(1, (el?.clientWidth || 0) - 2 * m), h: Math.max(1, (el?.clientHeight || 0) - 2 * m) }; };
+  const pic = () => ({ w: size.w, h: size.h });
+  const show = (z, fit = false) => {
+    view.current = z; fitted.current = fit;
+    const c = canvas.current;
+    if (c) c.style.transform = `translate(${z.tx}px, ${z.ty}px) scale(${z.s})`;   // CSSOM, never a style attribute (#1300)
+    setPct(Math.round(z.s * 100));
   };
+  const fit = () => { if (size && stage.current) show(fitView(box(), pic()), true); };
+  const zoomBy = (k) => { if (!view.current) return; const b = box(); show(zoomAt(view.current, view.current.s * k, b.x + b.w / 2, b.y + b.h / 2, b, pic())); };
+  // Fitted as soon as the canvas is there (before a paint), and kept fitted — or kept in view — when the stage resizes.
+  useLayoutEffect(() => { if (size) fit(); }, [size]);
+  useEffect(() => {
+    const el = stage.current;
+    if (!size || !el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => { if (!view.current) return; if (fitted.current) fit(); else show(clampPan(view.current, box(), pic())); });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [size]);
+  // The wheel zooms at the cursor; not passive, so the page behind never scrolls.
+  useEffect(() => {
+    const el = stage.current;
+    if (!size || !el) return;
+    const onWheel = (e) => {
+      if (!view.current) return;
+      e.preventDefault();
+      const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+      const [x, y] = stagePoint(e), b = box();
+      show(zoomAt(view.current, view.current.s * Math.exp(-(e.deltaY || 0) * unit * 0.002), x, y, b, pic()));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel, { passive: false });
+  }, [size]);
+  const panning = (e) => hand || spaceHeld.current || e.button === 1;
   const onDown = (e) => {
-    if (!size || (e.button ?? 0) !== 0) return;
+    if (!size || !view.current) return;
+    const at = stagePoint(e);
+    pointers.current.set(e.pointerId, at);
+    stage.current.setPointerCapture?.(e.pointerId);
+    if (pointers.current.size === 2 && e.pointerType === "touch") {
+      // A second finger: a pinch. The stroke the first finger began is dropped (never kept as a mark).
+      const [p0, p1] = [...pointers.current.values()];
+      drag.current = null; paint();
+      gesture.current = { kind: "pinch", start: view.current, p0, p1 };
+      e.preventDefault();
+      return;
+    }
+    if (pointers.current.size > 1 || gesture.current) return;
+    const button = e.button ?? 0;
+    if (button !== 0 && button !== 1) return;
     e.preventDefault();
+    if (panning(e)) { gesture.current = { kind: "pan", start: view.current, at }; stage.current.classList.add("an-grabbing"); return; }
+    if (button !== 0) return;
     const [x, y] = point(e);
+    if (x < 0 || y < 0 || x > size.w || y > size.h) return;          // outside the picture: nothing to mark
     if (tool === "text") { setTextAt([x, y]); textField.current?.focus(); return; }
-    canvas.current.setPointerCapture?.(e.pointerId);
     const lw = markWidth();
     drag.current = tool === "pen" ? { tool, colour, lw, points: [[x, y]] } : { tool, colour, lw, x0: x, y0: y, x1: x, y1: y };
     paint(drag.current);
   };
   const onMove = (e) => {
+    if (pointers.current.has(e.pointerId)) pointers.current.set(e.pointerId, stagePoint(e));
+    const g = gesture.current;
+    if (g && g.kind === "pinch") {
+      const [q0, q1] = [...pointers.current.values()];
+      if (q0 && q1) show(pinchView(g.start, g.p0, g.p1, q0, q1, box(), pic()));
+      e.preventDefault();
+      return;
+    }
+    if (g && g.kind === "pan") {
+      const [x, y] = stagePoint(e);
+      show(clampPan({ s: g.start.s, tx: g.start.tx + x - g.at[0], ty: g.start.ty + y - g.at[1] }, box(), pic()));
+      e.preventDefault();
+      return;
+    }
+    if (g) return;                                                     // a pinch's last finger: nothing until it lifts
     const d = drag.current;
     if (!d) return;
     e.preventDefault();
@@ -219,7 +304,14 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
     if (d.tool === "pen") d.points.push([x, y]); else { d.x1 = x; d.y1 = y; }
     paint(d);
   };
-  const onUp = () => {
+  const onUp = (e) => {
+    pointers.current.delete(e.pointerId);
+    if (gesture.current) {
+      // A pinch with one finger left waits for it to lift (it never starts a stroke); otherwise the gesture is over.
+      gesture.current = pointers.current.size ? { kind: "rest" } : null;
+      stage.current?.classList.remove("an-grabbing");
+      return;
+    }
     const d = drag.current;
     drag.current = null;
     if (!d) return;
@@ -260,13 +352,23 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
       if (mod && !e.altKey && (e.key === "z" || e.key === "Z")) { if (typing && !e.shiftKey && text) return; e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
       if (mod && !e.altKey && (e.key === "y" || e.key === "Y")) { e.preventDefault(); redo(); return; }
       if (typing || mod || e.altKey) return;
+      // M-3267: Space held pans; + − 0 zoom; H the hand mode.
+      // Space is "hold to move" while the pointer is over the picture's stage (a focused tool button keeps its Space
+      // press anywhere else).
+      if (e.key === " " && (overStage.current || !(e.target && e.target.tagName === "BUTTON"))) { e.preventDefault(); if (!spaceHeld.current) { spaceHeld.current = true; stage.current?.classList.add("an-space"); } return; }
+      if (e.key === "+" || e.key === "=") { e.preventDefault(); zoomBy(STEP); return; }
+      if (e.key === "-" || e.key === "_") { e.preventDefault(); zoomBy(1 / STEP); return; }
+      if (e.key === "0") { e.preventDefault(); fit(); return; }
+      if (e.key === "h" || e.key === "H") { e.preventDefault(); setHand((v) => !v); return; }
       const k = KEYS[e.key.toLowerCase()];
       if (k) { e.preventDefault(); setTool(k); if (k !== "text") setTextAt(null); return; }
       const n = Number(e.key);
       if (n >= 1 && n <= COLOURS.length) { e.preventDefault(); setColour(COLOURS[n - 1][1]); }
     };
+    const onKeyUp = (e) => { if (e.key === " " && spaceHeld.current) { spaceHeld.current = false; stage.current?.classList.remove("an-space"); } };
     document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
+    document.addEventListener("keyup", onKeyUp);
+    return () => { document.removeEventListener("keydown", onKey); document.removeEventListener("keyup", onKeyUp); };
   });
   const label = name ? t("annotate.title", name) : t("annotate.titleNoName");
   return html`<div class="an" data-trust="annotate" role="group" aria-label=${label} ref=${fillMissingTokens}>
@@ -280,6 +382,13 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
         ${COLOURS.map(([k, v], i) => html`<button type="button" role="radio" aria-checked=${colour === v ? "true" : "false"} class=${`an-colour${colour === v ? " on" : ""}`}
           title=${`${t(`annotate.${k}`)} (${i + 1})`} aria-label=${t(`annotate.${k}`)} onClick=${() => setColour(v)}><span class=${`an-dot an-colour-${k}`} aria-hidden="true"></span></button>`)}
       </span>
+      <span class="an-zoom" role="group" aria-label=${t("annotate.zoom")}>
+        <button type="button" class="btn btn-sm an-zoom-out" disabled=${!size} title=${t("annotate.zoomOut")} aria-label=${t("annotate.zoomOut")} onClick=${() => zoomBy(1 / STEP)}><${Icon} name="minus" size=${16} /></button>
+        <button type="button" class="btn btn-sm an-zoom-fit" disabled=${!size} title=${t("annotate.zoomFit")} aria-label=${t("annotate.zoomLevel", pct ?? 100)} onClick=${fit}>${pct === null ? "…" : `${pct}%`}</button>
+        <button type="button" class="btn btn-sm an-zoom-in" disabled=${!size} title=${t("annotate.zoomIn")} aria-label=${t("annotate.zoomIn")} onClick=${() => zoomBy(STEP)}><${Icon} name="plus" size=${16} /></button>
+        <button type="button" class=${`btn btn-sm an-hand${hand ? " on" : ""}`} aria-pressed=${hand ? "true" : "false"} title=${t("annotate.hand")} aria-label=${t("annotate.hand")}
+          onClick=${() => setHand((v) => !v)}><span class="an-glyph" aria-hidden="true">✋</span></button>
+      </span>
       <span class="an-history">
         <button type="button" class="btn btn-sm an-undo" disabled=${!hist.current.canUndo} title=${t("annotate.undo")} aria-label=${t("annotate.undo")} onClick=${undo}>↶</button>
         <button type="button" class="btn btn-sm an-redo" disabled=${!hist.current.canRedo} title=${t("annotate.redo")} aria-label=${t("annotate.redo")} onClick=${redo}>↷</button>
@@ -292,10 +401,10 @@ export function AnnotateEditor({ src, name, targets = [], onClose, onError }) {
         <input ref=${textField} type="text" maxlength="200" value=${text} placeholder=${t("annotate.textShort")} title=${t("annotate.textHint")} onInput=${(e) => setText(e.target.value)} /></label>
       <button type="submit" class="btn btn-sm" disabled=${!text.trim() || !textAt}>${t("annotate.textAdd")}</button>
     </form>` : null}
-    <div class="an-stage">
+    <div ref=${stage} class=${`an-stage${hand ? " an-panning" : ""}${size ? " an-zoomable" : ""}`} onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp}
+      onPointerEnter=${() => { overStage.current = true; }} onPointerLeave=${() => { overStage.current = false; }}>
       ${failed ? html`<p class="an-note" role="alert">${t("annotate.failedLoad")}</p>`
-        : size ? html`<canvas ref=${canvas} class=${`an-canvas an-cursor-${tool}`} width=${size.w} height=${size.h} role="img" aria-label=${t("annotate.canvas")}
-            onPointerDown=${onDown} onPointerMove=${onMove} onPointerUp=${onUp} onPointerCancel=${onUp} />`
+        : size ? html`<canvas ref=${canvas} class=${`an-canvas an-cursor-${tool}`} width=${size.w} height=${size.h} role="img" aria-label=${t("annotate.canvas")} />`
         : html`<p class="an-note" role="status">${t("annotate.loading")}</p>`}
     </div>
     <div class="an-actions">

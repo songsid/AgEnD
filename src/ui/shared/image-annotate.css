@@ -24,9 +24,18 @@
 .lb .an-text { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); background: var(--media-panel); }
 .lb .an-text-label { flex: 1; display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); }
 .lb .an-text input { flex: 1; min-width: 0; color: var(--media-ink); background: var(--media-btn); border: 1px solid var(--media-line); border-radius: 6px; padding: 6px 8px; font: inherit; }
-.lb .an-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--s-3); box-sizing: border-box; overflow: hidden; }
-/* The canvas keeps its own pixel size and is shown fitted; drawing maps the pointer back to canvas pixels. */
-.lb .an-canvas { max-width: 100%; max-height: 100%; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.lb .an-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: var(--s-3); box-sizing: border-box; overflow: hidden;
+  position: relative; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+/* M-3267: the canvas keeps its own pixel size; the editor places it (a CSSOM transform from its top-left: the view's
+   scale and offset), so it zooms and pans; drawing maps the pointer back to the picture's own pixels. */
+.lb .an-zoomable { display: block; padding: 0; }
+.lb .an-zoomable .an-canvas { position: absolute; left: 0; top: 0; max-width: none; max-height: none; }
+.lb .an-canvas { transform-origin: 0 0; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.lb .an-zoom { display: inline-flex; align-items: center; gap: 4px; }
+.lb .an .an-zoom-fit { min-width: 56px; font-variant-numeric: tabular-nums; }
+.lb .an .an-hand.on { background: var(--media-btn-on); border-color: var(--media-ink); }
+.lb .an-panning .an-canvas, .lb .an-space .an-canvas, .lb .an-panning, .lb .an-space { cursor: grab; }
+.lb .an-grabbing .an-canvas, .lb .an-grabbing { cursor: grabbing; }
 .lb .an-cursor-pen, .lb .an-cursor-box, .lb .an-cursor-arrow { cursor: crosshair; }
 .lb .an-cursor-text { cursor: text; }
 .lb .an-note { opacity: 0.85; }
@@ -38,6 +47,16 @@
   .lb .an-bar > :not(.an-name):not(.an-close) { order: 0; }
   .lb .an-tools { flex-basis: 100%; }
   .lb .an-actions .btn { flex: 1; }
+}
+/* M-3267: a phone pinches to zoom, so − and + give their room to the tools: the level (Fit) and ✋ sit beside the tools,
+   the colours and the history on the next row — three rows, not four. */
+@media (max-width: 480px) and (pointer: coarse) {
+  .lb .an .an-zoom-in, .lb .an .an-zoom-out { display: none; }
+  .lb .an-name { flex-basis: calc(100% - 64px); }
+  .lb .an .an-bar > .an-tools { flex-basis: auto; order: 1; }
+  .lb .an .an-bar > .an-zoom { order: 2; }
+  .lb .an .an-bar > .an-colours { order: 3; }
+  .lb .an .an-bar > .an-history { order: 4; }
 }
 @media (pointer: coarse) {
   .lb .an .btn, .lb .an .icon-btn { min-width: 44px; min-height: 44px; }

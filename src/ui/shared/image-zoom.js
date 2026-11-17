@@ -57,6 +57,28 @@ export function zoomAt(z, s, px, py, view, img) {
   return clampPan({ s: to, tx: px - (px - z.tx) * k, ty: py - (py - z.ty) * k }, view, img);
 }
 
+/** M-3267: the picture pixel under a stage point (the inverse of imageToStage), at any zoom and pan. */
+export function stageToImage(z, x, y) {
+  return [(x - z.tx) / z.s, (y - z.ty) / z.s];
+}
+/** M-3267: where a picture pixel is on the stage. */
+export function imageToStage(z, x, y) {
+  return [z.tx + x * z.s, z.ty + y * z.s];
+}
+/**
+ * M-3267: a two-finger pinch from `start` (the view when it began, fingers at p0 and p1) to fingers at q0 and q1: the
+ * scale grows as the fingers spread, and the picture point under their first midpoint follows their midpoint. Within
+ * the limits, and clamped like any pan.
+ */
+export function pinchView(start, p0, p1, q0, q1, view, img) {
+  const d0 = Math.hypot(p1[0] - p0[0], p1[1] - p0[1]), d1 = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]);
+  const { min, max } = scaleLimits(view, img);
+  const s = Math.min(max, Math.max(min, d0 > 1 && d1 > 1 ? start.s * (d1 / d0) : start.s));
+  const [ix, iy] = stageToImage(start, (p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2);
+  const mx = (q0[0] + q1[0]) / 2, my = (q0[1] + q1[1]) / 2;
+  return clampPan({ s, tx: mx - ix * s, ty: my - iy * s }, view, img);
+}
+
 /** Fit: the whole picture, centred. */
 export function fitView(view, img) {
   return clampPan({ s: fitScale(view, img), tx: 0, ty: 0 }, view, img);
