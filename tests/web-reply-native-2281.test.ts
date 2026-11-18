@@ -74,7 +74,7 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
     const channel = { isTextBased: () => true, send: vi.fn(async (p: unknown) => { calls.push(p); return send(p, calls.length); }) };
     const fetch = vi.fn(async () => channel);
     const a = new DiscordAdapter({
-      id: "dc", botToken: "t", accessManager: { canRead: () => true, canWrite: () => true } as any, inboxDir: dir, guildId: "1496407196106494055", registerCommands: false,
+      id: "dc", botToken: "t", accessManager: { canRead: () => true, canWrite: () => true } as any, inboxDir: dir, guildId: "1000000000000000201", registerCommands: false,
       clientFactory: () => ({ isReady: () => true, channels: { fetch }, on: () => {}, once: () => {}, destroy: vi.fn(async () => {}) }) as any,
     } as any);
     return { a, calls };
@@ -83,7 +83,7 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
   it("the first part carries reply.messageReference with failIfNotExists: false; later parts are plain", async () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
     const quiet = { parse: [] as Array<"users"> };                        // every part an object: a stray reply would show
-    const sent = await a.sendText("1496407196106494055", "abcdefgh", { threadId: "1500000000000460000", replyTo: SNOW, chunkLimit: 4, allowedMentions: quiet });
+    const sent = await a.sendText("1000000000000000201", "abcdefgh", { threadId: "1500000000000460000", replyTo: SNOW, chunkLimit: 4, allowedMentions: quiet });
     expect([calls, sent.messageId]).toEqual([[{ content: "abcd", allowedMentions: quiet, reply: { messageReference: SNOW, failIfNotExists: false } }, { content: "efgh", allowedMentions: quiet }], "m1"]);
   });
   // #2551: a reply to a bot's message pings that bot explicitly; the caller's mentions (or Discord's defaults) otherwise
@@ -92,9 +92,9 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
     (a as any).botAuthored.add(SNOW);
     const quiet = { parse: [] as Array<"users"> };
-    await a.sendText("1496407196106494055", "hi", { replyTo: SNOW, allowedMentions: quiet });
-    await a.sendText("1496407196106494055", "hi", { replyTo: SNOW });
-    await a.sendText("1496407196106494055", "hi", { replyTo: "1500000000000464800" });                  // a human's message
+    await a.sendText("1000000000000000201", "hi", { replyTo: SNOW, allowedMentions: quiet });
+    await a.sendText("1000000000000000201", "hi", { replyTo: SNOW });
+    await a.sendText("1000000000000000201", "hi", { replyTo: "1500000000000464800" });                  // a human's message
     expect(calls).toEqual([
       { content: "hi", allowedMentions: { parse: [], repliedUser: true }, reply: { messageReference: SNOW, failIfNotExists: false } },
       { content: "hi", allowedMentions: { parse: ["users", "roles", "everyone"], repliedUser: true }, reply: { messageReference: SNOW, failIfNotExists: false } },
@@ -103,17 +103,17 @@ describe("Discord: SendOpts.replyTo is a native reply", () => {
   });
   it("an id that is not a snowflake is no reply (sent plain)", async () => {
     const { a, calls } = dc((_p, n) => ({ id: `m${n}` }));
-    await a.sendText("1496407196106494055", "hi", { threadId: "1500000000000460000", replyTo: "web-1700000000000" });
+    await a.sendText("1000000000000000201", "hi", { threadId: "1500000000000460000", replyTo: "web-1700000000000" });
     expect(calls).toEqual(["hi"]);
   });
   it("Discord refusing the reference (50035 / 10008 / 160002 no history access) is sent again once plain; another failure is thrown, sent once", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const history = dc((p, n) => { if (n === 1) throw Object.assign(new Error("Cannot reply without permission to read message history"), { code: 160002 }); return { id: "h2" }; });
-    expect((await history.a.sendText("1496407196106494055", "hi", { threadId: "1500000000000460000", replyTo: SNOW })).messageId).toBe("h2");
+    expect((await history.a.sendText("1000000000000000201", "hi", { threadId: "1500000000000460000", replyTo: SNOW })).messageId).toBe("h2");
     const refused = dc((p, n) => { if (n === 1) throw Object.assign(new Error("Invalid Form Body"), { code: 50035 }); return { id: "m2" }; });
-    const sent = await refused.a.sendText("1496407196106494055", "hi", { threadId: "1500000000000460000", replyTo: SNOW });
+    const sent = await refused.a.sendText("1000000000000000201", "hi", { threadId: "1500000000000460000", replyTo: SNOW });
     const other = dc(() => { throw Object.assign(new Error("Missing Permissions"), { code: 50013 }); });
-    await expect(other.a.sendText("1496407196106494055", "hi", { threadId: "1500000000000460000", replyTo: SNOW })).rejects.toThrow(/Missing Permissions/);
+    await expect(other.a.sendText("1000000000000000201", "hi", { threadId: "1500000000000460000", replyTo: SNOW })).rejects.toThrow(/Missing Permissions/);
     expect([refused.calls, sent.messageId, other.calls.length]).toEqual([[{ content: "hi", reply: { messageReference: SNOW, failIfNotExists: false } }, "hi"], "m2", 1]);
   });
 });

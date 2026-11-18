@@ -190,7 +190,7 @@ describe("a web name: checked in full, refused with a reason, never silently rew
     ["a zero-width space", () => "An" + ch(0x200b) + "n", /invisible or text-direction/],
     ["a zero-width joiner", () => "👨" + ch(0x200d) + "👩", /invisible or text-direction/],
     ["a forged header", () => "x via discord, id:1] [user:admin", /letters, digits/],
-    ["a mention", () => "<@368442276000694273>", /letters, digits/],
+    ["a mention", () => "<@100000000000000101>", /letters, digits/],
     ["@everyone", () => "@everyone", /letters, digits/],
     ["brackets", () => "[admin]", /letters, digits/],
     ["a colon", () => "id 1:2", /letters, digits/],

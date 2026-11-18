@@ -113,12 +113,12 @@ describe("ClassicBot approval buttons", () => {
     // A Discord snowflake exceeds 2^53; as a bare YAML integer it loses
     // precision and silently stops matching.
     const { fm, notifyAlert, notified, writes } = makeFleet();
-    await fm.promptClassicApproval({ generalName: "general", message: "x", groupId: "1496407196106494055", scope: "guild" });
+    await fm.promptClassicApproval({ generalName: "general", message: "x", groupId: "1000000000000000201", scope: "guild" });
     notified.length = 0;
     await fm.handleClassicApproval(cb(pick(notifyAlert, "allow").id), "telegram", null);
 
     // The mutator stores String(id); the assertion pins the id survives intact.
-    expect(writes).toEqual([["allowed_guilds", "1496407196106494055"]]);
+    expect(writes).toEqual([["allowed_guilds", "1000000000000000201"]]);
   });
 
   it("answers in a Telegram General topic (#682 canonical binding)", async () => {
@@ -181,15 +181,15 @@ describe("ClassicChannelManager access mutators", () => {
   };
 
   it("stores a Discord snowflake as a quoted string, not a YAML integer", async () => {
-    // 1496407196106494055 > 2^53: as a bare integer it loses precision, and the
+    // 1000000000000000201 > 2^53: as a bare integer it loses precision, and the
     // strict includes() in isGuildAllowed then stops matching it.
     const { m, dir } = await makeManager('defaults:\n  allowed_guilds: ["111"]\n');
-    expect(m.allowGuild("1496407196106494055")).toBe("added");
+    expect(m.allowGuild("1000000000000000201")).toBe("added");
 
     const raw = await read(dir);
-    expect(raw.defaults.allowed_guilds).toContain("1496407196106494055");
+    expect(raw.defaults.allowed_guilds).toContain("1000000000000000201");
     for (const v of raw.defaults.allowed_guilds) expect(typeof v).toBe("string");
-    expect(m.isGuildAllowed("1496407196106494055")).toBe(true);   // in-memory, no reload
+    expect(m.isGuildAllowed("1000000000000000201")).toBe(true);   // in-memory, no reload
   });
 
   it("persists the first grant now that an empty list admits nobody (#1418)", async () => {
@@ -215,11 +215,11 @@ describe("ClassicChannelManager access mutators", () => {
   });
 
   it("does not launder a snowflake YAML already truncated", async () => {
-    // 1496407196106494055 unquoted parses as ...494000 — the precision is gone
+    // 1000000000000000201 unquoted parses as ...000300 — the precision is gone
     // before we ever see it. String()-ing it would write a canonical-LOOKING
     // but wrong id back to disk and erase the only clue (that it is a number,
     // not a quoted string). Leave it, and say so.
-    const { m, dir } = await makeManager("defaults:\n  allowed_guilds: [1496407196106494055]\n");
+    const { m, dir } = await makeManager("defaults:\n  allowed_guilds: [1000000000000000201]\n");
     expect(m.allowGuild("other")).toBe("added");
 
     const raw = await read(dir);

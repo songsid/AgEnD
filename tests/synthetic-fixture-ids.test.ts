@@ -13,6 +13,25 @@ export function isSynthetic19DigitId(digits: string): boolean {
   return false;
 }
 
+/** A completed `git grep`: 0 = matches, 1 = none. Launch failures, signals, null status, and fatals are not a scan. */
+export function isCompletedGitGrep(r: {
+  error?: Error;
+  status: number | null;
+  signal: NodeJS.Signals | number | null;
+}): boolean {
+  return r.error === undefined && r.signal == null && (r.status === 0 || r.status === 1);
+}
+
+export function unsyntheticT1Hits(stdout: string): string[] {
+  const bad: string[] = [];
+  for (const line of (stdout ?? "").split("\n").filter(Boolean)) {
+    for (const m of line.matchAll(/-t(1[0-9]{18})/g)) {
+      if (!isSynthetic19DigitId(m[1])) bad.push(line);
+    }
+  }
+  return bad;
+}
+
 describe("synthetic fixture ids", () => {
   it("allows repeated-digit and 1-then-zeros padded ids", () => {
     expect(isSynthetic19DigitId("1".repeat(19))).toBe(true);
@@ -23,19 +42,29 @@ describe("synthetic fixture ids", () => {
     expect(isSynthetic19DigitId("15" + "32671461406277715")).toBe(false);
   });
 
+  it("a launched fatal scan with empty stdout is not a completed no-match", () => {
+    const r = { status: 128 as number | null, signal: null, stdout: "", stderr: "fatal: not a git repository" };
+    expect(isCompletedGitGrep(r)).toBe(false);
+    expect(unsyntheticT1Hits(r.stdout)).toEqual([]);
+  });
+
+  it("a completed no-match scan (status 1, empty stdout) is success", () => {
+    const r = { status: 1 as number | null, signal: null, stdout: "" };
+    expect(isCompletedGitGrep(r)).toBe(true);
+    expect(unsyntheticT1Hits(r.stdout)).toEqual([]);
+  });
+
+  it("rejects a signal or a null status", () => {
+    expect(isCompletedGitGrep({ status: null, signal: "SIGTERM" })).toBe(false);
+    expect(isCompletedGitGrep({ status: null, signal: null })).toBe(false);
+  });
+
   it("git grep -t1 + 18 digits finds only synthetic ids", () => {
     const r = spawnSync("git", ["grep", "-nE", "--", "-t1[0-9]{18}"], {
       cwd: process.cwd(),
       encoding: "utf8",
     });
-    expect(r.error).toBeUndefined();
-    const lines = (r.stdout ?? "").split("\n").filter(Boolean);
-    const bad: string[] = [];
-    for (const line of lines) {
-      for (const m of line.matchAll(/-t(1[0-9]{18})/g)) {
-        if (!isSynthetic19DigitId(m[1])) bad.push(line);
-      }
-    }
-    expect(bad, bad.join("\n")).toEqual([]);
+    expect(isCompletedGitGrep(r), r.stderr?.trim() || `git grep status ${r.status} signal ${r.signal}`).toBe(true);
+    expect(unsyntheticT1Hits(r.stdout ?? "")).toEqual([]);
   });
 });
