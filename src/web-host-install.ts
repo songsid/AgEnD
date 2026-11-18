@@ -19,6 +19,9 @@
  *   No command, path or environment. An ended run is kept 10 minutes, then it is gone.
  */
 import { randomBytes } from "node:crypto";
+import { readdirSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { AUDITED_VERSION, auditedVersion, versionOf } from "./cli-audited.js";
 import { hostFacts } from "./cli-registry.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
@@ -34,7 +37,7 @@ const WEB_INSTALL_BYTES = 2_000;
 export type HostInstallPhase = "running" | "ok" | "failed" | "cancelled" | "timeout";
 
 /** Why a start was refused. Codes: the page words them in its own language. */
-export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable";
+export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable" | "cli_self_updating";
 /** What a run does: install a CLI that is not there, or take an installed one to AgEnD's audited release. */
 export type HostInstallMode = "install" | "update";
 export type HostInstallStart = { started: true } | { refused: HostInstallRefusal; message?: string };
@@ -152,6 +155,26 @@ export function hostUpdateAckError(backend: string, ack: unknown): "latest_ack_r
   if (exception && ack !== true) return "latest_ack_required";
   if (!exception && ack === true) return "latest_ack_mismatch";
   return null;
+}
+
+/** M-3302: how recent a file in Claude Code's staging folder must be to count as its own update still running. */
+export const CLAUDE_SELF_UPDATE_WINDOW_MS = 10 * 60_000;
+
+/**
+ * M-3302: is Claude Code downloading an update of its own right now? Its native installer writes the new release into
+ * `<XDG cache>/claude/staging` and moves it into `~/.local/share/claude/versions` when done, so the folder is empty between updates.
+ * A file there written in the last ten minutes is a self-update in progress (an older one is a leftover from an update that was
+ * stopped, and does not block). Running Claude's installer from the dashboard then would race it, so the dashboard says "try
+ * again in a few minutes" instead of starting. No folder, or one that cannot be read: false.
+ */
+export function claudeSelfUpdating(env: NodeJS.ProcessEnv = process.env, now: number = Date.now()): boolean {
+  const cache = env.XDG_CACHE_HOME?.trim() || join(env.HOME?.trim() || homedir(), ".cache");
+  const staging = join(cache, "claude", "staging");
+  let names: string[];
+  try { names = readdirSync(staging); } catch { return false; }
+  return names.some(name => {
+    try { const age = now - statSync(join(staging, name)).mtimeMs; return age >= -60_000 && age < CLAUDE_SELF_UPDATE_WINDOW_MS; } catch { return false; }
+  });
 }
 
 /** "CLI exited with code 3 — …" (login-manager.ts) → 3. */
