@@ -31,6 +31,8 @@ async function world() {
     dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) };
   await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [e] }, link) as never, link);
   const roomId = room.json.room.id as string;
+  // A manager may invite this agent because its owner already lets them find/ask it.
+  expect((await r.call(o, "POST", "/hub/v1/grants", { exposureId: e.id, exposureRevision: 1, login: "admin", days: 30 })).status).toBe(200);
   const invite = async () => {
     const result = await r!.call(admin, "POST", `/hub/v1/rooms/${roomId}/invitations`, { agents: [e.id] });
     expect(result.status).toBe(200); return result.json.invited[0];
