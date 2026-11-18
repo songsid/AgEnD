@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.169.0)
+     /audit/.worktrees/audit-main/.artifacts/codex-0170/matrix/run-01690/owned-model-first
+  permissions: YOLO mode
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  00000000-0000-7000-8000-000000000169 · Context 100% left · mock-model default · /audit/.worktrees/codex-0170-audit-
+  main/.artifacts/codex-0170/matrix/run-01690/owned-model-first · master
+  ← for agents · ? for shortcuts                                                                                            ⚠ 2 warnings · f2 to view

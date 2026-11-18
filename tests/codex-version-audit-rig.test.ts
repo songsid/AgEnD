@@ -17,7 +17,7 @@ const root = mkdtempSync(join(tmpdir(), "agend-cx-rig-"));
 afterAll(() => rmSync(root, { recursive: true, force: true }));
 
 describe("rig shell steps", () => {
-  it.each(["rig.sh", "pass1.sh", "pass2.sh"])("%s parses", (file) => {
+  it.each(["rig.sh", "pass1.sh", "pass2.sh", "status-layout.sh", "signin.sh", "rollback.sh"])("%s parses", (file) => {
     expect(() => execFileSync("bash", ["-n", join(RIG, file)])).not.toThrow();
   });
 });
@@ -118,6 +118,16 @@ exit 0
     for (const key of ["SOCK", "AH", "SH", "RUN"]) expect(a[key], key).not.toBe(b[key]);
     expect(a.AH!.startsWith(`${fakeHome}/.cxa01620`)).toBe(true);
     expect(paths(rootA)).toEqual(a);                         // stable for the same root
+  });
+
+  it("keeps scratch homes under an explicit audit-owned directory", () => {
+    const parent = join(sandbox, "owned-homes");
+    const result = rig(rootA, ["paths"], { AUDIT_HOME_PARENT: parent });
+    expect(result.status).toBe(0);
+    const owned = Object.fromEntries(result.stdout.trim().split(" ").map(kv => kv.split("=")));
+    expect(owned.AH.startsWith(`${parent}/.cxa01620`)).toBe(true);
+    expect(owned.SH.startsWith(`${parent}/.cxs01620`)).toBe(true);
+    expect(owned.SOCK).toBe(paths(rootA).SOCK);
   });
 
   it("stop only kills its own tmux server", () => {
