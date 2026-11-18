@@ -21,3 +21,5 @@ Run the browser harness with Linux `CHROME`, `PW_DIR` and `CJK_FONT` paths; then
 The additive request schema is registered in the normal Hub plan. A hard downgrade needs a full pre-upgrade Hub backup restored with the older binary. A compatible rollback build can remove the browser feature and public routes while keeping the schema and private provider that protects pending hints; no configuration switch is claimed. Historical role cutover markers keep their original bytes; new request-aware inventories use representation v2 without changing the outer v1 marker or the role migration registry.
 
 A4 findability is a later slice. A5 Fleet forwarding remains parked. No request-only notification transport is introduced.
+
+The final PM acceptance required only that the words **My agents** / **我的 Agent** form the hint link. That scoped correction passes 9 owner UI tests plus the focused no-eligible case. One phone zh-TW not-shared original was retaken (11 focused browser checks, `link-r1.json`); the other accepted views are unchanged. The optional gap is existing space reserved for the sharing selection bar.

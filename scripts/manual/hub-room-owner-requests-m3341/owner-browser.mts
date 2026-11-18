@@ -12,6 +12,7 @@ import { personKeyString } from "../../../src/hub/identity.js";
 import { createOwnedPki } from "../hub-connector-4c/rig.mjs";
 if (process.platform !== "linux" || !process.env.CHROME?.startsWith("/home/") || process.env.CHROME.includes("/mnt/")) throw Error("Use Linux headless Chromium only");
 if (!process.env.CJK_FONT || !process.env.PW_DIR) throw Error("Pin the browser package and a Traditional Chinese font");
+const focused = process.env.VIEW === "not-shared";
 const out = resolve(process.env.OUT || ".artifacts/m3341/owner-browser"); mkdirSync(out, { recursive: true });
 const scratch = mkdtempSync(join(out, "owned-")), home = join(scratch, "home");
 mkdirSync(join(home, ".local/share/fonts"), { recursive: true, mode: 0o700 });
@@ -54,7 +55,7 @@ try {
     check("real owner introduction saved", intro.status === 200);
   }
   browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox"] });
-  for (const device of ["desk", "phone"]) for (const lang of ["en", "zh-TW"]) {
+  for (const device of focused ? ["phone"] : ["desk", "phone"]) for (const lang of focused ? ["zh-TW"] : ["en", "zh-TW"]) {
     now += 86_400_000;
     r.db.prepare("UPDATE hub_exposures SET state='withdrawn'").run();
     r.db.prepare("UPDATE hub_exposures SET state='published' WHERE id=?").run(first.id);
@@ -75,6 +76,7 @@ try {
       if (response.status() === 200 && /\.(js|css)$/.test(path)) try { assets.set(path, createHash("sha256").update(await response.body()).digest("hex")); } catch {} });
     const card = page.locator("[data-owner-request-card]");
     const shot = async (name: string, target = card) => {
+      if (focused && name !== "not-shared") return;
       await target.scrollIntoViewIfNeeded(); await page.evaluate(() => document.fonts.ready);
       await page.screenshot({ path: join(out, tag + "-" + name + ".png") });
       check(tag + ": " + name + " no overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -96,6 +98,7 @@ try {
       await page.reload(); await card.locator('input[type="radio"]').first().waitFor();
       check(tag + ": no shared cannot add", await card.locator('input[type="radio"]:enabled').count() === 0 && await add.count() === 0);
       await shot("not-shared");
+      if (focused) continue;
       r.db.prepare("UPDATE hub_exposures SET state='published' WHERE id=?").run(first.id);
       await page.reload(); await card.locator('input[type="radio"]:checked').waitFor();
       if (lang === "en") {

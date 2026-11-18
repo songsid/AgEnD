@@ -102,6 +102,10 @@ export function OwnerAgentRequestRows({ client, roomId, page, onChanged, busy = 
 const validOwnerRequest = row => row && row.kind === "owner-request" && typeof row.id === "string"
   && typeof row.room?.name === "string" && typeof row.by?.name === "string";
 const choiceReason = row => hrq(({ "not-shared": "notShared", paused: "paused", "already-in-room": "inRoom" })[row.reason] || "unavailable");
+function myAgentsHint(text) {
+  const label = hrq("myAgents"), at = text.indexOf(label);
+  return at < 0 ? text : html`${text.slice(0, at)}<a href="/ui/hub/exposures">${label}</a>${text.slice(at + label.length)}`;
+}
 
 /** Feature-gated separately from legacy invitations, so cached readers keep their original API shape. */
 export function OwnerAgentRequestsList({ client, heading = true } = {}) {
@@ -186,13 +190,13 @@ function OwnerRequestCard({ client, scope, item, busy, onAnswer }) {
     <p class="hub-owner-request-title">${hrq("requestLead", request.by?.name || "", request.room.name)}</p>
     ${request.note ? html`<blockquote>${hrq("quotedNote", request.note)}</blockquote>` : null}
     <p class="note">${hrq(request.room.people === 1 ? "requestBodyOne" : "requestBody", Number(request.room.people) || 0)}</p>
-    ${view && !available.length ? html`<p class="note"><a href="/ui/hub/exposures">${hrq("noAgents")}</a></p>` : null}
+    ${view && !available.length ? html`<p class="note">${myAgentsHint(hrq("noAgents"))}</p>` : null}
     ${view ? html`<fieldset class="hub-owner-agent-choices" disabled=${busy}><legend>${hrq(available.length > 1 && !chosen ? "chooseAgent" : "which")}</legend>
       ${view.choices.length ? view.choices.map(row => html`<label class="check" key=${row.key}>
         <input type="radio" name=${"owner-request-" + item.id} value=${row.key} disabled=${!row.canAdd} checked=${selected === row.key} onChange=${() => setSelected(row.key)} />
         <span><strong>${row.name}</strong>${row.kind === "classic-room" ? html` <small class="tag">${hrq("classic")}</small>` : null}
           ${row.intro ? html`<small class="note">${row.intro}</small>` : null}
-          ${!row.canAdd ? html`<small class="note">${row.reason === "already-in-room" ? choiceReason(row) : html`<a href="/ui/hub/exposures">${choiceReason(row)}</a>`}</small>` : null}</span>
+          ${!row.canAdd ? html`<small class="note">${myAgentsHint(choiceReason(row))}</small>` : null}</span>
       </label>`) : null}
     </fieldset>` : null}
     ${error ? html`<p class="note" role="alert">${error} <button class="btn btn-link" onClick=${() => { void load(); }}>${hrq("retry")}</button></p>` : null}

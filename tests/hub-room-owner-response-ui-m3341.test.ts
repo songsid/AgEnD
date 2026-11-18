@@ -44,6 +44,7 @@ it.each(["en", "zh-TW"])("shows room-only disclosure and preselects one shared a
   const radios = p.root.querySelectorAll('input[type="radio"]');
   expect(radios[0].checked).toBe(true); expect(radios[1].disabled).toBe(true);
   expect(p.root.querySelector('a[href="/ui/hub/exposures"]')).toBeTruthy();
+  expect([...p.root.querySelectorAll('a[href="/ui/hub/exposures"]')].every(a => a.textContent === (lang === "en" ? "My agents" : "我的 Agent"))).toBe(true);
   expect(f.c.acceptOwnerAgentRequest).not.toHaveBeenCalled();
   fire(button(p, lang === "en" ? "Add to this room" : "加入這個房間"), "click");
   await vi.waitFor(() => expect(f.c.acceptOwnerAgentRequest).toHaveBeenCalledTimes(1));
@@ -69,6 +70,7 @@ it("allows private decline with no shared choice and never makes an add call", a
   const f = fixture(); f.c.ownerAgentRequest.mockResolvedValue({ ok: true, request, choices: [unshared] });
   const p = await render("en", f.c);
   expect(button(p, "Add to this room")).toBeUndefined();
+  expect([...p.root.querySelectorAll('a[href="/ui/hub/exposures"]')].every(a => a.textContent === "My agents")).toBe(true);
   fire(button(p, "Decline"), "click");
   await vi.waitFor(() => expect(f.c.declineOwnerAgentRequest).toHaveBeenCalledWith("scope", request.id));
   expect(f.c.acceptOwnerAgentRequest).not.toHaveBeenCalled();

@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "761144dc0fe2896adb4b5b415bad56c6e1a1d065ed5684c50160b399100adf2e"
+    "sha256": "9b9059c07ddf539dfef37064631f50a1020f24365e66fb2d7ab2391e503a3a86"
   },
   {
     "path": "browser.json",
@@ -10,6 +10,10 @@
   {
     "path": "controls.json",
     "sha256": "636bd204997d60d8ae52e57729b2bd2851672357f612c860e0509ffaf63295f6"
+  },
+  {
+    "path": "link-r1.json",
+    "sha256": "c96901877d71c4d3eda8265d4f462460a5471baf32c109cc4db66cc69cf7d8ab"
   },
   {
     "path": "pm-controls.json",
@@ -34,6 +38,14 @@
   {
     "path": "validation/a2-integration.log",
     "sha256": "4fdbcaf326b0856422ccef0fde8211634e8e2790edfb3f73387c0520622be4b5"
+  },
+  {
+    "path": "validation/a2-link-ui.log",
+    "sha256": "d44ea0ab49ebf5a1357d7491bbd93dec4d897e5de29040d17d7c3fe381639cc2"
+  },
+  {
+    "path": "validation/a2-no-agent-link.log",
+    "sha256": "47140ac5a95e8f77431cd975ce4152f87c426bcab3685c0e37f39dbd5588480d"
   },
   {
     "path": "validation/a2-pm-test-ts.log",
@@ -125,7 +137,7 @@
   },
   {
     "path": "views/phone-zh-TW-not-shared.png",
-    "sha256": "2a06e72575e30759897cf6982145cc499e508ae9207ecf9e7b5925c440f6751b"
+    "sha256": "5b935e3bcba60840158259ea610fcc0d1e8f2feae6c7eb167d7ec2ed17f12984"
   },
   {
     "path": "views/phone-zh-TW-setting.png",
