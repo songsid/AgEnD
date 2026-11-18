@@ -20,5 +20,12 @@
   "initialFailFirst": 3,
   "newTestsUseLiveVendor": false,
   "liveModelRuns": 0,
-  "livePaneOperations": 0
+  "livePaneOperations": 0,
+  "privateCallerRepair": {
+    "mainPassed": 32,
+    "devPassed": 34,
+    "filesPerBranch": 1,
+    "remainingOldNameCallers": 0,
+    "runtimeDelta": false
+  }
 }
