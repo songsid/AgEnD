@@ -33,6 +33,7 @@ import { api } from "./settings-confirm.js";
 import { InstanceBoardWork } from "./fleet-task-work.js";
 import { Icon } from "/assets/ui-icons.js";
 import { AgentCategoryNav, AgentPageHead, AgentSettingsPanels, agentKind, categoryFromSearch, useAgentSettings } from "./agent-details-settings.js";
+import { ContactPermissionsPanel } from "./contact-permissions.js";
 import "./agent-page-strings.js";
 import { pt } from "./agent-page-strings.js";
 
@@ -201,6 +202,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       <div class="s-section-layout" data-agent-category=${shownCat}>
         <div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-overview` : "ap-panel-overview"} hidden=${shownCat !== "overview"}>${overview}</div>
         ${opened ? html`<${AgentSettingsPanels} name=${name} kind=${kind} cat=${shownCat} sess=${sess} onDirty=${onDirty} />` : null}
+        ${shownCat === "permissions" ? html`<div class="ap-panel" id=${pane ? `pane-${pane.id}-ap-panel-permissions` : "ap-panel-permissions"}><${ContactPermissionsPanel} key=${name} name=${name} /></div>` : null}
       </div></div></div>
     ${sess.staged.size && Pending ? html`<${Pending} staged=${sess.staged} busy=${!!sess.op && ["writing", "posting", "watching"].includes(sess.op.phase)} onApply=${sess.apply} onDiscard=${sess.discard} section="agents" />` : null}
   </div>`;

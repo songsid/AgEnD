@@ -2,7 +2,7 @@
 // a test runs both over one list of cases). Pure: no DOM, no history.
 
 // #2347 §10: Config is gone from Fleet — each of its settings has one home in Settings (/ui/fleet/config leads there).
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage"];
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "authorizations"];
 // #2347: two groups — "You" changes only you or this browser; "Fleet" changes AgEnD for everyone.
 export const SETTINGS_GROUPS = Object.freeze([
   Object.freeze({ id: "you", sections: Object.freeze(["preferences", "look"]) }),

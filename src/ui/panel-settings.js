@@ -79,6 +79,7 @@ import { useRuntimeCatalog } from "./runtime-catalog.js";
 import { ShortcutsHelpRow } from "./settings-shortcuts.js";
 import { GeneralLocation } from "./general-location.js";
 import { SettingsConnector } from "./settings-connector.js";
+import { ca } from "./contact-auth-strings.js";
 
 const tn = (k, ...v) => k === "sec_notifications" ? quotaNoticeText().title : t(`settings.${k}`, ...v);
 /**
@@ -1208,6 +1209,8 @@ function General({ ctx, part = "all" }) {
   return html`<div class=${fleetPart ? "s-defaults-layout" : "s-classic-layout"}><div class=${`form s-general s-part-${part}`}>
     ${fleetPart ? html`<${SharedAgentSettings} ctx=${ctx} form=${{ f, set, base, errors, warnings, unset, fc, notes, replyNote: fleetReply }} />` : null}
     ${classicPart ? html`<section class="card s-classic-defaults-card"><h3>${tn("classicDefaultsTitle")}</h3>
+      ${/* M-3339 (the leader's A3 decision): what a new room's default means, before any room is set — said here, plainly. */ ""}
+      <p class="s-info contact-new-rooms"><span aria-hidden="true">ⓘ</span><span>${ca("newRoomsRestricted")}</span></p>
       <div class="grid2">
         <div class=${fc("field", "classicBackend")}>${L(tn("classicBackend"), "classic_defaults.backend", "g-cbe")}<${BackendSelect} id="g-cbe" value=${f.classicBackend} onChange=${set("classicBackend")} hostOnly />
           ${!c.backend && f.classicBackend === base.classicBackend ? html`<${Inherited} text=${valueText(f.classicBackend, "backend")} builtin=${!d.backend} from=${inAgentDefaults("#g-be")} />` : null}</div>

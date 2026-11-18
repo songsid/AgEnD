@@ -210,8 +210,10 @@ export function createThread(list, scroller, opts) {
     // A Hub sender's stateless badge is mounted as DOM below. Its escaped descriptor participates in keyed updates;
     // Fleet callers supply no senderBadge hook and retain their existing sender markup.
     const badge = opts.senderBadge && x.sourceBadge ? ` data-source-badge="${escAttr(JSON.stringify(x.sourceBadge))}"` : "";
+    // M-3339: a contact request's badge (聯絡申請 #R… / 已准轉交 #R…) — escaped HTML from the Fleet chat's hook; a Hub passes none.
+    const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}${contact}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
   }
   /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
   function reactText(k, ...a) {
@@ -349,7 +351,9 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" data-trust="thread-control" class="chip-btn st-action" data-act="statusAction" data-arg="${escAttr(x.action.arg)}">${escAttr(x.action.label)}</button>` : "";
     // A Hub mention-stop sentence must stay readable at phone width. Ordinary Fleet status rows still fold.
     const folded = x.wrap === true ? "" : ` folded${overflows ? " overflows" : ""}`;
-    return `<div class="msg status-line${folded}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
+    // M-3339: a ClassicBot room's held-request line carries its contact badge too (the Fleet chat's hook; a Hub passes none).
+    const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
+    return `<div class="msg status-line${folded}"><div class="meta">${time}${contact}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,

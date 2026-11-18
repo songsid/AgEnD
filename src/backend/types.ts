@@ -107,6 +107,8 @@ export interface BackendSessionProof {
 }
 
 export interface CliBackendConfig {
+  /** Server-owned Classic policy only; not a field accepted from tool arguments. */
+  classicRestriction?: import("../classic-cli-guard.js").ClassicRestrictedPlan;
   workingDirectory: string;
   instanceDir: string;
   instanceName: string;
@@ -828,6 +830,7 @@ export interface CliBackend {
 
   /** Build the shell command string to launch the CLI in a tmux window. */
   buildCommand(config: CliBackendConfig): string;
+  classicNativeGuard?(plan: import("../classic-cli-guard.js").ClassicRestrictedPlan): import("../contact-auth-types.js").ContactGuardStatus;
 
   /**
    * A warning the last buildCommand wants the operator to see (e.g. Codex's

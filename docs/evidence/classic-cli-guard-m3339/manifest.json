@@ -1,0 +1,215 @@
+{
+  "coverage": {
+    "platform": "linux",
+    "architecture": "x64",
+    "backend": "claude-code",
+    "versions": [
+      "2.1.295",
+      "2.1.327"
+    ],
+    "minimum": "2.1.295",
+    "uncovered": [
+      "other versions",
+      "Codex and other backends",
+      "CLI mode",
+      "other platforms and architectures",
+      "missing/unsupported selected MCP definitions"
+    ]
+  },
+  "observations": 41,
+  "liveAccounts": 0,
+  "vendorRequests": 0,
+  "publicDtoCommit": "4244a51e39dd7209972d39bd7c514a4b03d646fc",
+  "source": [
+    {
+      "path": "src/classic-cli-guard.ts",
+      "sha256": "492619a14eddd9216f951ccf4f942967778b98bce09073a3ffd590199314c52c"
+    },
+    {
+      "path": "src/backend/types.ts",
+      "sha256": "45ad9486c195208f83df589e40a479a8c73ccbe0a911925d8f59057eeb6ffcc3"
+    },
+    {
+      "path": "src/backend/claude-code.ts",
+      "sha256": "b7a232e489b1b62a24f2ed790fa23e1957271a75786eda09cab0fd63daad005c"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "b1fa8515774468542a370b6734a9f8b380811d11ccbe99aeb65e913b6ad61e27"
+    },
+    {
+      "path": "src/channel/mcp-server.ts",
+      "sha256": "1fee49df56995e53dc5bfefaa567fda32bfa866b00a94be237a1e35a4a03837a"
+    },
+    {
+      "path": "src/general-knowledge/skills/concepts/SKILL.md",
+      "sha256": "be47daf53539acecae5edc8ead5e97e47e5a9ff393ee4c71229ed80786c6d7a9"
+    },
+    {
+      "path": "docs/design/classic-cli-guard.md",
+      "sha256": "d4db194f1b32addc2cf5e6d1001b749bd7170c55ff32fc7da77423ee92a451f9"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/mcp.mjs",
+      "sha256": "957db608cfafc25e503ad68bdb92583a94b97a250fc5666a5d1cbf2eee4b4f24"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/rig.mts",
+      "sha256": "d4b1e9a1738a102b8c6c7a42dabea50ee518a47ceb572291597abd41fbe7fb77"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/run.sh",
+      "sha256": "6eb1c7092f0b403534a1b071dbd9ce4da532a03c03bdafb4ec624a77f2a764be"
+    },
+    {
+      "path": "tests/classic-cli-guard-daemon-m3339.test.ts",
+      "sha256": "5629c03332fa2b6ebf3bbb6b202141b720b62fe5e252a93d5d4296897bae5363"
+    },
+    {
+      "path": "tests/classic-cli-guard-fixtures-m3339.test.ts",
+      "sha256": "d0c82c683a04281f88b5829a192a59b0e7786891612d442923b955d985fd4729"
+    },
+    {
+      "path": "tests/classic-cli-guard-m3339.test.ts",
+      "sha256": "7be3ae7d3f0dae195794e9e64ac634f88f3347a3ee7b1c65b91d22c2a6130aa4"
+    },
+    {
+      "path": "tests/classic-cli-guard-mcp-m3339.test.ts",
+      "sha256": "0b6785d3f1893c51ab256a1821022510a6f6315025a62cf9b825a660d9d427d6"
+    },
+    {
+      "path": "docs/concepts.md",
+      "sha256": "7162b8eabb746e9f7ce8bb9698c34fc13322b5e69edf51e5a599cd683bf233d0"
+    },
+    {
+      "path": "docs/design/classic-contact-authorizations.md",
+      "sha256": "d6c898be4aa1d9aaeda520ee7b6b7f5f18565d5b1771ea893e6dda031b2b7d0f"
+    },
+    {
+      "path": "src/backend-availability.ts",
+      "sha256": "967e98cc89e94d62c9d886f9bcc4323be72a27ee9d087dd4abda63d3bbe4515a"
+    },
+    {
+      "path": "src/backend-version-static.ts",
+      "sha256": "89d9beb15756f10825130ab5e36cf2b6410e7c4a32449a0368ce98419cbd1eb8"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "tests/fixtures/classic-cli-guard-m3339/observations.json",
+      "sha256": "32ab2ec3799464b02cd2f78bc9898f9e772fd5cf3c2483b90797dc3bae3b6700"
+    },
+    {
+      "path": "docs/evidence/classic-cli-guard-m3339/README.md",
+      "sha256": "47263c89418777822b00acb93c02a8b771519019e213a225270fd67f87d1053c"
+    },
+    {
+      "path": "docs/evidence/classic-cli-guard-m3339/validation.md",
+      "sha256": "39d57d1dd67dba67843f62946594d5bb6fe778a359842700101223dba6ed933a"
+    }
+  ],
+  "binaries": [
+    {
+      "version": "2.1.294",
+      "sha256": "27122ca7b624f537546fbef35b80c66370d974ff258f3d9b10ac50bb8771f262"
+    },
+    {
+      "version": "2.1.295",
+      "sha256": "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358"
+    },
+    {
+      "version": "2.1.327",
+      "sha256": "343c744baa14bfd38286a7cb90871051f04379956da6c5b803a9e66019a76ac9"
+    }
+  ],
+  "followUps": [
+    {
+      "name": "explicit-WebFetch-target-admission",
+      "baseline": {
+        "path": "src/classic-cli-guard.ts",
+        "sha256": "a3c8544d2afc6c021a70c0391390f96a2958fefb49fa464f3a276a37129cf10a"
+      },
+      "baselineSelected": {
+        "failed": 1,
+        "unselected": 9
+      },
+      "currentFocused": {
+        "passed": 15,
+        "files": 4
+      },
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0,
+      "limits": [
+        "no DNS pinning",
+        "no redirect/connected-address enforcement",
+        "selected MCP access unchanged",
+        "prior transcript/memory preserved"
+      ]
+    },
+    {
+      "name": "A1-native-policy-revision-and-launch-admission",
+      "publicIntegrationCommit": "27b2e66f4407b96903d362d53301b1e1ce94948f",
+      "baseline": {
+        "path": "src/daemon.ts",
+        "sha256": "f658172d817bd623f7d29e0ea07fb18918466a714300604d01165c50a0d42cfe"
+      },
+      "baselineSelected": {
+        "failed": 2,
+        "unselected": 2
+      },
+      "currentFocused": {
+        "passed": 17,
+        "files": 4
+      },
+      "sourceTypeScriptExit": 0,
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0
+    },
+    {
+      "name": "review-R1-portable-fixture-and-concepts",
+      "runtimeSourceUnchangedFrom": "2f8b65d6cf1faa8078f3698df7ae7db1c2be1960",
+      "conceptsBaselineFailed": 1,
+      "hostDependencyEvidence": "isolated reviewer Docker; local empty-PATH probe still resolved host binary",
+      "selectedReversals": [
+        "fixture-binary-binding",
+        "cwd-check",
+        "failure-blocking-option"
+      ],
+      "eachSelectedFailed": 1,
+      "eachUnselected": 9,
+      "restoredFocused": {
+        "passed": 19,
+        "files": 5
+      },
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0
+    },
+    {
+      "name": "CI-R2-setup-isolation-and-legacy-admission",
+      "baseline": {
+        "failed": 3,
+        "passed": 44,
+        "files": 2
+      },
+      "final": {
+        "passed": 109,
+        "files": 10
+      },
+      "sourceTypeScriptExit": 0,
+      "testTypeScriptExit": 0,
+      "staticReaderMovedByteEqual": true,
+      "movedTextSha256": "f4be8d053d5ab0be0626f7e5dd8d4235ef890d40d5d16ca49139cb800d005ae8",
+      "originalSetupAndKiroTestsUnchanged": true,
+      "newRealCliObservations": 0
+    }
+  ],
+  "integration": {
+    "base": "4244a51e39dd7209972d39bd7c514a4b03d646fc",
+    "ownDiffPathsUnchanged": 18,
+    "completeBlobsUnchanged": 17,
+    "adjacentIncomingTextRetained": "src/general-knowledge/skills/concepts/SKILL.md",
+    "sourceTypeScriptExit": 0,
+    "testTypeScriptExit": 0,
+    "newRealCliObservations": 0
+  }
+}

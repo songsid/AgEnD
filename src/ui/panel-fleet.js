@@ -20,6 +20,7 @@ import { ClaudeAccountSelect, accountCli } from "./credential-profile-select.js"
 import { AccountSelect } from "./accounts-view.js";   // the same Account field as the agent dialog (a new module: never a stale named import)
 import { capsOf } from "./cli-caps.js";
 import { chatPath, fleetPath, FLEET_TABS, rememberFleetTab } from "/assets/app-route.js";
+import { ContactAuthorizations } from "./contact-authorizations.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -104,7 +105,7 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart" };
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -212,7 +213,7 @@ export function FleetPanel({ route, navKey }) {
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   useEffect(() => { rememberFleetTab(tab); }, [tab]);   // #2183: the sidebar's and the phone's Fleet reopen it
-  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab }[tab] || TaskBoardTab;
+  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, authorizations: ContactAuthorizations }[tab] || TaskBoardTab;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).

@@ -58,10 +58,10 @@ describe("Fleet overview → Docs", () => {
     const want = { href: EN, target: "_blank", rel: "noopener noreferrer", label: "Docs (opens in a new tab)", text: "Docs", current: null, active: false };
     expect(out).toEqual(["/ui/fleet/org", "/ui/fleet", "/ui/fleet/cache", "/ui/fleet/usage"].map(p => [p, order, want]));
   });
-  it("is not a Fleet tab: the tab row is the six tabs (#2122 added Usage; #2347 §10 moved Config to Settings), unchanged", async () => {
+  it("is not a Fleet tab: the tab row is the seven tabs (#2122 added Usage; #2347 §10 moved Config to Settings; M-3339 added Authorizations)", async () => {
     const { pg } = await shell("/ui/fleet/org");
     expect([row(pg).map(a => a.getAttribute("href")), pg.root.querySelectorAll(".p-fleet nav[data-trust='panel-navigation'] a[target]").length]).toEqual(
-      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"], 0]);
+      [["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage", "/ui/fleet/authorizations"], 0]);
   });
   it("follows the dashboard's language: zh-TW opens /zh-tw/docs, and back to English", async () => {
     const { pg } = await shell("/ui/fleet/org");
