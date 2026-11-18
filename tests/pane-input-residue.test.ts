@@ -84,7 +84,7 @@ const SUBMITTED_WITH_AGENT_OUTPUT = `
  ▸ Time: 9s
 32% λ !>
 [user:example via discord, id:400000000000000042] 繼續確認目前進度推進
-(message_id: 1547447698142138419)
+(message_id: 1000000000000000301)
 我會繼續確認目前的進度。
 Running tool: list_instances
 已取得 instance 清單，正在整理結果。
@@ -166,7 +166,7 @@ describe("pane-input-residue: did our paste get submitted?", () => {
   });
 
   it("does not mistake a submitted transcript followed by agent output for active input", () => {
-    const submitted = "[user:example via discord, id:400000000000000042] 繼續確認目前進度推進\n(message_id: 1547447698142138419)";
+    const submitted = "[user:example via discord, id:400000000000000042] 繼續確認目前進度推進\n(message_id: 1000000000000000301)";
     expect(pasteLeftInInput(SUBMITTED_WITH_AGENT_OUTPUT, PROMPT, submitted)).toBe(false);
   });
 

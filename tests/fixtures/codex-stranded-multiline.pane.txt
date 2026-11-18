@@ -17,7 +17,7 @@
 • You have 1 usage limit reset available. Run /usage to use one.
 
 
-› [from:agend-dev-claude-t1519896892392083558] 減法設計驗證用的投遞測試訊息，請
+› [from:core-dev-t1000000000000000001] 減法設計驗證用的投遞測試訊息，請
   忽略不要回覆。
   (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)
 

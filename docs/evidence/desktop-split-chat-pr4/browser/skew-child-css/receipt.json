@@ -744,7 +744,7 @@
       "value": {
         "scenario": "current",
         "retained": "child-css",
-        "childPath": "/ui/chat/agend-dev-claude-t1519896892392083558"
+        "childPath": "/ui/chat/core-dev-t1000000000000000001"
       }
     }
   ],
@@ -760,6 +760,6 @@
   "external": [],
   "scenario": "current",
   "finalPages": [
-    "/ui/chat/agend-leader-t1503382358143799511"
+    "/ui/chat/fleet-lead-t1000000000000000001"
   ]
 }
