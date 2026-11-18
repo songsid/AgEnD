@@ -129,7 +129,8 @@ function isPublicPrivilegedRoute(method: string, path: string): boolean {
   if ((method === "GET" || method === "POST") && path === "/ui/browser-backend-signins") return true;
   if (method === "GET" && path === "/ui/backend-login") return true;
   if (method === "POST" && /^\/ui\/backend-login\/(?:check|start|cancel)$/.test(path)) return true;
-  if ((method === "GET" || method === "POST") && (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update")) return true;
+  if ((method === "GET" || method === "POST") && (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update"
+    || path === "/ui/host-native-switch" || path === "/ui/host-npm-remove")) return true;
   if (method === "GET" && (path === "/ui/accounts" || path === "/ui/workspace")) return true;
   if (method === "POST" && (path === "/ui/accounts/keep-alive" || /^\/ui\/accounts\/[a-z][a-z0-9-]{0,31}(?:\/signout)?$/.test(path))) return true;
   if (method === "DELETE" && /^\/ui\/accounts\/[a-z][a-z0-9-]{0,31}\/[^/]{1,200}$/.test(path)) return true;

@@ -1505,7 +1505,8 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
  * after it). `GET` reads the current install; `POST` `{ backend }` starts one — the browser names a CLI, the server looks up the registry's command, nothing it sends
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
-const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, cli_self_updating: 409, busy: 409, shutting_down: 503, failed: 500 };
+const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, cli_self_updating: 409,
+  not_npm: 409, still_npm: 409, no_npm_copy: 409, busy: 409, shutting_down: 503, failed: 500 };
 function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -1552,7 +1553,9 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
       if (ackError) { json(res, 409, { error: ackError }); return; }
     }
     // AGEND-136: `POST /ui/host-update { backend }` is the same request for an update: the server picks the command and the audited release; the page sends only the CLI's id.
-    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req), path === "/ui/host-update" ? "update" : "install");
+    // M-3307: `/ui/host-native-switch` and `/ui/host-npm-remove` are the switch to Claude's native install and the npm copy's removal (web-host-install.ts modes).
+    const mode = path === "/ui/host-update" ? "update" : path === "/ui/host-native-switch" ? "native" : path === "/ui/host-npm-remove" ? "remove-npm" : "install";
+    const result = await installs.begin(now, parsed.data.backend, settingsRequestExecution(req), mode);
     if ("error" in result) json(res, HOST_INSTALL_STATUS[result.error] ?? 409, { error: result.error, ...(result.message ? { message: result.message } : {}) });
     else json(res, 200, result);
   })().catch(() => { try { json(res, 500, { error: "install_request_failed" }); } catch { /* response ended */ } });
@@ -3250,7 +3253,7 @@ export function handleWebRequest(
   // #2233: backend sign-in — absent from the public manifest and the guest table, and refused here too.
   if (path === "/ui/browser-backend-signins") return handleBrowserBackendSignIns(req, res, url, ctx);
   if (path === "/ui/backend-login" || path.startsWith("/ui/backend-login/")) return handleBackendLogin(req, res, url, ctx, path, method);
-  if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || path === "/ui/host-update") return handleHostInstall(req, res, url, ctx, path, method);
+  if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || HOST_CLI_PATHS.has(path)) return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);

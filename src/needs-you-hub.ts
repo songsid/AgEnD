@@ -87,6 +87,8 @@ export interface NeedsYouHubContext {
   /** Task board cards waiting for the person (#2246 step 3); none when the board is not open. */
   tasks?(): TaskInput[];
   backendSignIns?(): BackendSignInInput[];
+  /** M-3307: the host's Claude Code is an npm-global install (null: it is not, or not read). */
+  claudeNpmInstall?(): { path: string; since: number } | null;
   signInKeepAlive?(): import("./needs-you.js").SignInKeepAliveInput[];
   configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
@@ -272,7 +274,7 @@ export class NeedsYouHub {
     }
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], claudeNpm: (() => { try { return this.ctx.claudeNpmInstall?.() ?? null; } catch { return null; } })(), signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {

@@ -12,6 +12,7 @@
  * Read-only and admin-only (web-api.ts serves it to the fleet's local admin session). No credential, path or full
  * e-mail is in it: names, states, the masked identity and a host command for what the dashboard cannot sign in.
  */
+import type { ClaudeInstall } from "./claude-install-kind.js";
 import { lstatSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { hostFacts, hostIds, hostIdsByRank, runtimeFacts, runtimeIds } from "./cli-registry.js";
@@ -91,6 +92,11 @@ export interface AccountRow {
   version?: string;
   /** AGEND-136: where that version stands against AgEnD's audited release (cli-audited.ts), and whether the dashboard can update it (`button`). `via`: "dashboard", or "self" for a CLI that updates itself. */
   cliUpdate?: CliUpdateInfo;
+  /**
+   * M-3307 (#4146): the host's Claude Code is an npm-global install. The page offers "Switch to Claude's native install" (the audited release through
+   * claude.ai/install.sh), and afterwards a separate removal of this npm copy. `npmPackageDir` is what that removal deletes. Only on the host's default claude-code row.
+   */
+  nativeSwitch?: { npmPackageDir: string };
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   /**
    * Every pool and every window the account reports (see `accountUsage`), as the page draws them: it is the page's to lay out, not the server's to pick from. A page that predates this field
@@ -173,6 +179,8 @@ export interface AccountsInput {
   installShown?: string | null;
   /** AGEND-136: what the binary probe printed for each installed host CLI's `--version`, by backend (the availability snapshot's own reading). */
   versions?: ReadonlyMap<string, string | null>;
+  /** M-3307: the kind of the host's Claude Code install (claude-install-kind.ts), read from the real path of the `claude` the fleet resolves. Absent: not read. */
+  claudeInstall?: ClaudeInstall | null;
 }
 
 const key = (backend: string, profile: string | null) => `${backend}\0${profile ?? ""}`;
@@ -267,6 +275,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       ...(def?.identity ? { identity: def.identity } : {}), ...(def?.hostCommand ? { hostCommand: def.hostCommand } : {}),
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}), ...(def?.reconnect ? { reconnect: true as const } : {}),
       ...(installed && versionOf(printed) ? { version: versionOf(printed)! } : {}), ...(cliUpdate ? { cliUpdate } : {}),
+      ...(backend === "claude-code" && installed && input.claudeInstall?.kind === "npm-global" && input.claudeInstall.npmPackageDir ? { nativeSwitch: { npmPackageDir: input.claudeInstall.npmPackageDir } } : {}),
       usedBy: usedBy(null), ...usageOf(null), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {

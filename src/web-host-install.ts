@@ -21,7 +21,8 @@
 import { randomBytes } from "node:crypto";
 import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { CLAUDE_NPM_PACKAGE } from "./claude-install-kind.js";
 import { AUDITED_VERSION, auditedVersion, versionOf } from "./cli-audited.js";
 import { hostFacts } from "./cli-registry.js";
 import { dialogScreenText } from "./dialog-screen-text.js";
@@ -37,9 +38,20 @@ const WEB_INSTALL_BYTES = 2_000;
 export type HostInstallPhase = "running" | "ok" | "failed" | "cancelled" | "timeout";
 
 /** Why a start was refused. Codes: the page words them in its own language. */
-export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable" | "cli_self_updating";
-/** What a run does: install a CLI that is not there, or take an installed one to AgEnD's audited release. */
-export type HostInstallMode = "install" | "update";
+export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable" | "cli_self_updating"
+  | "not_npm" | "still_npm" | "no_npm_copy";
+/**
+ * What a run does: install a CLI that is not there, or take an installed one to AgEnD's audited release. M-3307 (#4146), Claude Code only: `native` installs the audited
+ * release with Claude's own installer over an npm-global install (the switch); `remove-npm` then removes the npm copy, a separate step the person asks for.
+ */
+export type HostInstallMode = "install" | "update" | "native" | "remove-npm";
+
+/** M-3307: what a `native` or `remove-npm` run found afterwards — where `claude` now resolves (a fresh login shell), its kind, and the npm copy if it is still there. */
+export interface ClaudeInstallAfter {
+  kind: "native" | "npm-global" | "other" | null;
+  path: string | null;
+  npmLeftover: string | null;
+}
 export type HostInstallStart = { started: true } | { refused: HostInstallRefusal; message?: string };
 
 /** What FleetManager reports while it drives the install window for a run. */
@@ -50,7 +62,7 @@ export interface HostInstallReporter {
    * The install ended. `ok`: the installer's own exit code was 0; `verified`: a fresh login shell (or the installer's own directories) then
    * found the binary; `version`: what the probe read from it (null: not read). A cancel or a timeout is a `detail` of "cancelled" / "timeout".
    */
-  done(result: { ok: boolean; detail: string; cleanupFailed?: boolean; verified: boolean; version: string | null; signIn: boolean }): void;
+  done(result: { ok: boolean; detail: string; cleanupFailed?: boolean; verified: boolean; version: string | null; signIn: boolean; claude?: ClaudeInstallAfter }): void;
   /** An update: the version the binary probe read before it started, and the audited release it goes to (null: not read). Told once, when the window is open. */
   update?(from: string | null, target: string | null): void;
 }
@@ -105,6 +117,8 @@ export interface HostInstallView {
   reached: boolean | null;
   /** The window could not be confirmed removed (the same warning `/login` gives). */
   cleanupFailed: boolean;
+  /** M-3307: a `native` or `remove-npm` run that ended `ok`: where `claude` resolves now, its kind, and the npm copy still left (null: not such a run, or not read). */
+  claude: ClaudeInstallAfter | null;
 }
 
 interface Run {
@@ -125,6 +139,7 @@ interface Run {
   signIn: boolean;
   cleanupFailed: boolean;
   reached: boolean | null;
+  claude: ClaudeInstallAfter | null;
 }
 
 /**
@@ -177,6 +192,16 @@ export function claudeSelfUpdating(env: NodeJS.ProcessEnv = process.env, now: nu
   });
 }
 
+/**
+ * M-3307: the command that removes the npm copy of Claude Code at `packageDir` (`<prefix>/lib/node_modules/@anthropic-ai/claude-code`): npm's own uninstall, aimed at that
+ * copy's prefix so it is the copy the switch found and not another npm's. The directory comes from the server's own reading of the install, quoted; never from the page.
+ */
+export function npmUninstallCommand(packageDir: string): string {
+  const scope = dirname(packageDir), modules = dirname(scope), lib = dirname(modules);
+  const prefix = basename(lib) === "lib" ? dirname(lib) : lib;
+  return `npm --prefix '${prefix.replace(/'/g, "'\\''")}' -g uninstall ${CLAUDE_NPM_PACKAGE}`;
+}
+
 /** "CLI exited with code 3 — …" (login-manager.ts) → 3. */
 export function exitCodeOf(detail: string): number | null {
   const m = /exited with code (\d{1,3})\b/.exec(detail);
@@ -204,10 +229,11 @@ export class WebHostInstalls {
   async begin(who: WebHostInstallRequester, backend: string, execution?: SettingsExecution, mode: HostInstallMode = "install"): Promise<{ install: HostInstallView } | { error: HostInstallRefusal | "not_allowed"; message?: string }> {
     execution?.assert();
     if (!this.deps.isLocalAdmin(who.handle)) return { error: "not_allowed" };
-    if (!(mode === "update" ? this.deps.updatable?.(backend) === true : this.deps.installable(backend))) return { error: "unsupported" };
+    const allowed = mode === "update" ? this.deps.updatable?.(backend) === true : mode === "install" ? this.deps.installable(backend) : backend === "claude-code" && this.deps.updatable?.(backend) === true;
+    if (!allowed) return { error: "unsupported" };
     const run: Run = {
       id: randomBytes(16).toString("hex"), backend, mode, fromVersion: null, targetVersion: null, latest: mode === "update" && hostFacts(backend, "update")?.release === "latest-unaudited", label: who.label, startedAt: this.now(), phase: "running", endedAt: null,
-      lines: [], exitCode: null, verified: null, version: null, signIn: false, cleanupFailed: false, reached: null,
+      lines: [], exitCode: null, verified: null, version: null, signIn: false, cleanupFailed: false, reached: null, claude: null,
     };
     // Published only once the start is accepted (a refused start leaves what was shown before exactly as it was). A fast installer's `done` may land before that: it
     // settles `run`, and the publication below then shows it already over.
@@ -222,7 +248,8 @@ export class WebHostInstalls {
         if (result.ok) {
           run.phase = "ok"; run.verified = result.verified; run.version = result.version; run.signIn = run.mode === "install" && result.verified && result.signIn;
           // An update that exited 0 is not a success until the binary probe says it reached the audited release: true/false once the version after is read, null when it was not.
-          if (run.mode === "update") run.reached = result.verified && run.targetVersion !== null && versionOf(result.version) !== null ? versionOf(result.version) === run.targetVersion : null;
+          if (run.mode === "update" || run.mode === "native") run.reached = result.verified && run.targetVersion !== null && versionOf(result.version) !== null ? versionOf(result.version) === run.targetVersion : null;
+          if (run.mode === "native" || run.mode === "remove-npm") run.claude = result.claude ?? null;
         }
         else {
           run.phase = result.detail === "cancelled" ? "cancelled" : result.detail === "timeout" ? "timeout" : "failed";
@@ -233,7 +260,7 @@ export class WebHostInstalls {
     };
     let started: HostInstallStart;
     // An install is asked of the fleet exactly as before (#3542: the CLI's id, a reporter, the confirmed change's execution); only an update says its mode.
-    try { started = mode === "update" ? await this.deps.start(backend, reporter, execution, mode) : execution ? await this.deps.start(backend, reporter, execution) : await this.deps.start(backend, reporter); }
+    try { started = mode !== "install" ? await this.deps.start(backend, reporter, execution, mode) : execution ? await this.deps.start(backend, reporter, execution) : await this.deps.start(backend, reporter); }
     catch (err) { started = { refused: "failed", message: (err as Error)?.message ?? String(err) }; }
     if (!("started" in started)) return { error: started.refused, ...(started.message ? { message: started.message } : {}) };
     this.run = run; published = true;
@@ -256,6 +283,7 @@ export class WebHostInstalls {
     return {
       id: run.id, backend: run.backend, mode: run.mode, fromVersion: run.fromVersion, targetVersion: run.targetVersion, latest: run.latest, phase: run.phase, startedOn: run.label, startedAt: run.startedAt, endedAt: run.endedAt,
       lines: [...run.lines], exitCode: run.exitCode, verified: run.verified, version: run.version, signIn: run.signIn, cleanupFailed: run.cleanupFailed, reached: run.reached,
+      claude: run.claude ? { ...run.claude } : null,
     };
   }
 

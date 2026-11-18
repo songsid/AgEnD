@@ -60,7 +60,7 @@ export interface SettingsEffectContext {
   hubPairing?(action: "connect" | "confirm" | "disconnect", input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation };
 }
 /** The dashboard's host CLI installs (web-host-install.ts): the change this gate holds is "install <CLI>" — only its id is ever in the request. */
-export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update"]);
+export const HOST_CLI_PATHS: ReadonlySet<string> = new Set(["/ui/host-install", "/ui/host-update", "/ui/host-native-switch", "/ui/host-npm-remove"]);
 /**
  * AGEND-148 (Prism R3 on #3539): installing — and so Updating — an AI CLI on a paired Windows computer from the dashboard (runtime-api.ts). The Update button reuses this route, and Install
  * had inherited it unguarded; both are held changes like the host's. Only the CLI's id is ever in the request; which version, folder and checks are the Runtime's (the pinned table).
@@ -144,6 +144,19 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     const input = { backend: b.backend, target: plan.target }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
     return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
       ...settingsSummary([plan.target === null ? translatedSummary("host_cli.update_latest", input.backend) : translatedSummary("host_cli.update", input.backend, plan.target)]), affectedConnections: [], authority: HUB_AUTHORITY } };
+  }
+  // M-3307 (#4146): switching an npm-global Claude Code to Claude's native install, and then (a separate held change) removing the npm copy. Claude Code only; the request is
+  // exactly `{ backend: "claude-code" }`. Which release (the audited one) and which npm copy are the server's; whether the install is npm-global (or native, for the removal) is
+  // checked again when it runs.
+  if (path === "/ui/host-native-switch" || path === "/ui/host-npm-remove") {
+    if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
+    const b = body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : null;
+    if (!b || b.backend !== "claude-code" || Object.keys(b).length !== 1) throw new SettingsConfirmationError(400, "install_args");
+    const plan = hostUpdatePlan("claude-code");
+    if (path === "/ui/host-native-switch" && (!plan || plan.target === null)) throw new SettingsConfirmationError(400, "unsupported");
+    const input = { backend: "claude-code", ...(path === "/ui/host-native-switch" ? { target: plan!.target } : {}) }, diff = settingsChangeDiff({}, {}, { operation, force: true })!;
+    return { diff: { ...diff, section: "access", fingerprint: settingsFingerprint([operation, input]),
+      ...settingsSummary([path === "/ui/host-native-switch" ? translatedSummary("host_cli.native_switch", plan!.target!) : translatedSummary("host_cli.npm_remove")]), affectedConnections: [], authority: HUB_AUTHORITY } };
   }
   if (isRuntimeCliInstallPath(path)) {
     if (method !== "POST") throw new SettingsConfirmationError(404, "unavailable");
