@@ -1,0 +1,726 @@
+{
+  "files": [
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/idle.pane.txt",
+      "sha256": "dec288ebd70566e6e4002b75b8f6d35a4d57909b0e4308d7270ad2dc34122677",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/01-launch/00004-756ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/turn-idle.pane.txt",
+      "sha256": "b8dcff344f792de341008e78cca994c89092f33092dd5766c15290f05ea7aaaf",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/02-turn-ok/00004-109ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/busy.pane.txt",
+      "sha256": "fb13bc1a8dc4cf4e34fef2a5eebf07fac76184b1b2b565d141645238d8f895b7",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/03-turn-slow/00001-9ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/near-suppressed.pane.txt",
+      "sha256": "0947657ed4737b84b93f9e803f97570209c34715952e205a017c1154311345ba",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/04-near-limit/00003-76ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/usage.pane.txt",
+      "sha256": "459486d0bd05f4cee244db64bc98cc45cf0069337d94fc38783c4367cd995af7",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/05-usage-limit/00002-39ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/ws-credits.pane.txt",
+      "sha256": "764047ce45f3ceb8f546dc739cfe1ac194dc23dbc60f063882e7b70feb1d730d",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/05b-ws-credits/00002-41ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/ws-credits-dismissed.pane.txt",
+      "sha256": "109cd500d54328d0471db8cf7e5fe35b81b25da06b40422d030d308ec6abc8a3",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/05b2-ws-credits-esc/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/ws-spend.pane.txt",
+      "sha256": "df78644dba5f1775a64b7aab60daf62948a7dc21bd5ea77f8ac737dbde7ac7c8",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/05c-ws-spend/00002-92ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/ws-spend-dismissed.pane.txt",
+      "sha256": "c6126be57c363c3adf03e94c8f22d07b8e3bb2c85bdbc13a051ca1063a54e333",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/05c2-ws-spend-esc/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/e401.pane.txt",
+      "sha256": "807c71ecf5a746ad99912198f568c9cedf97b16fa4939cf083c14314db1b521f",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/06-e401/00020-5878ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/e500.pane.txt",
+      "sha256": "1d795cb3d6d7f4d6e52416d2b3e89cfc80081a5c0798c87ca29959fb63fe755c",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/07-e500/00063-24151ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/capacity.pane.txt",
+      "sha256": "251fbcf5d93e3b8cb49c4debac2c79250f2a4a9a3e6a46a8127dfdc62fe99faa",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/08-capacity/00002-40ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-not-found.pane.txt",
+      "sha256": "12a1957ea4f9cdb30e5420f8cf95cbef8665785d32df263f4ff5930faf824475",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/08b-model-not-found/00002-39ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/compact.pane.txt",
+      "sha256": "50484d4a8e683ab5d1699c9300ccd1fe73b0a06f6c4a7eebb2b87cb7ee4516e2",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/09-compact-args/00003-77ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/resume-loading.pane.txt",
+      "sha256": "c6a31669e9daed595ae940e34cd45320dfe2335cdac7d09276ef2d64621103fc",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/11-resume/00001-364ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/resumed.pane.txt",
+      "sha256": "1c8d7b79623169c7eb25128b79feb7435d1abdf4874a9eb253c319c97866361a",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/11-resume/00004-704ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/resumed-turn.pane.txt",
+      "sha256": "3a0289cdffe8ca193544b9c9cd9fd9c2b5c73ce2ceb052d2cdb49d4e2709a7ea",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/12-turn-after-resume/00003-75ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/trust.pane.txt",
+      "sha256": "d2c818e03ca2106b0edc63efdfa0db2f68fbfa181c9cf61dcd3d0e2e5a803b65",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/30-trust-git/00003-1013ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/plain-dir.pane.txt",
+      "sha256": "d908404c76d1c7a1cecf6341c37fbdefaa9726a76ab81940c269b8f6c873b94d",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/31-trust-plain/00002-783ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/rate-picker.pane.txt",
+      "sha256": "2bb4f81230140dc3d8d70aea82762bae1eaa0d8991b4b2a88856ff3237e4927f",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/33-picker/00004-133ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/rate-dismissed.pane.txt",
+      "sha256": "83127e709b7e84da24b4502caa10e1bfab3200ce563501419dc4cc0a0fb11b6a",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/34-picker-escaped/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/rate-picker-80.pane.txt",
+      "sha256": "1bd65e53bc9bffdcc9d90a30f18cbe50f08969b6c81b9031ff7fcdb41c5e34cc",
+      "version": "0.169.0",
+      "kind": "baseline",
+      "source": "run-01690/cap/36-picker80/00004-125ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-main-110.pane.txt",
+      "sha256": "ea26e6fd97731845dafc8ad82283a9fc58fb83b47e71ed198cb797835c94dc91",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-main-110/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-main-150.pane.txt",
+      "sha256": "fc34127b5f7ef9adae5bad00a273ec1f34e47d83db4f42202c0eddd9af1ee11d",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-main-150/00004-854ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-main-95.pane.txt",
+      "sha256": "3ab7640a4091194a10f8f6b74c695c3800242d1956eeaf0af533bf15f9fbdef4",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-main-95/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-refocused-150.pane.txt",
+      "sha256": "e3c11073538b45869ea4849672b582958ee8073e343459cf9f3fdb2435ad8506",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-refocused-150/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-refocused-95.pane.txt",
+      "sha256": "3ab7640a4091194a10f8f6b74c695c3800242d1956eeaf0af533bf15f9fbdef4",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-refocused-95/00001-8ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-sidebar-only-95.pane.txt",
+      "sha256": "12fcfab9fa5f7e5f88cdbf0d797b6d1a1be507620076e42f225e58a1d6335250",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-sidebar-only-95/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-unfocused-110.pane.txt",
+      "sha256": "ef01f16169e5e8e6ad76ed4945fa5aacfe87bad00830deade2dd76e4012999d0",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-unfocused-110/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-unfocused-150.pane.txt",
+      "sha256": "9c1ced1432596dfda1dec605610c515e7fa626471df129ae8d1212f5ba1a3e35",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-owned-unfocused-150/00001-25ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-production-150.pane.txt",
+      "sha256": "14f7e58d12a5f68b5a432970b88c2914432b248ce35f2956f6819792adb74fa4",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-production-150/00003-947ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-production-50.pane.txt",
+      "sha256": "251d94602be644854f16fe8310823f12a6e9545ea49e802e3c062e39c51b24c3",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-production-50/00002-69ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-production-80.pane.txt",
+      "sha256": "6145a48c40400ac8510bce1e41d6e014a258bbe73343a9f3da40060a47c0680f",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-production-80/00001-40ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-workspace-production-flag.pane.txt",
+      "sha256": "cf3f47b0e3899c8b462c85fbb01cb30ff2c2933239d1fa22c9bdc9cc3c56c0af",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/context-first-workspace-production-flag/00004-867ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-main-110.pane.txt",
+      "sha256": "93a1ba8d99a52da1c77aa8c5569d98ca6f50b396d01f63a554f6458470d49408",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-main-110/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-main-150.pane.txt",
+      "sha256": "9a5a921ec22bec80ab9dc54915e58fec802dfadb040f56c7f9d200c950a74773",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-main-150/00003-658ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-main-95.pane.txt",
+      "sha256": "e70e5cde6226002f90c781917e7435a7ed2f68fef309709c2b1feb397154d98f",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-main-95/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-refocused-150.pane.txt",
+      "sha256": "c70118bb5d946bd54bcbc24cc93b14ac22bd80628b41222c547929a8bb4c5db7",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-refocused-150/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-refocused-95.pane.txt",
+      "sha256": "e70e5cde6226002f90c781917e7435a7ed2f68fef309709c2b1feb397154d98f",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-refocused-95/00001-8ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-sidebar-only-95.pane.txt",
+      "sha256": "12fcfab9fa5f7e5f88cdbf0d797b6d1a1be507620076e42f225e58a1d6335250",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-sidebar-only-95/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-unfocused-110.pane.txt",
+      "sha256": "40f0c8f8f8159598fb27ccaef3c17d0478b8734a8b5b751badf715c8152079d0",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-unfocused-110/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-unfocused-150.pane.txt",
+      "sha256": "b2b0d58641545392103d6fd51b21334707d7040d40ecb264773553dffb02ead3",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-owned-unfocused-150/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-production-150.pane.txt",
+      "sha256": "47ccdfba568d4b825acbaf3d04a9fd5ca9c474514a0d5b51ea632171df8e658e",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-production-150/00004-763ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-production-50.pane.txt",
+      "sha256": "881e772854c0af433e4d4f3cd7d5399408766a1396503079469642149f718197",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-production-50/00002-78ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-production-80.pane.txt",
+      "sha256": "a5f220686dfaae4a5ce308ce9c4dd424eb112c97a24af000a75a082b35ce1581",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-production-80/00002-75ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-workspace-production-flag.pane.txt",
+      "sha256": "cebf429974a3940270bdf5b16fe1b63bc41d0d9d5c84493b8c925b02ee3b5c46",
+      "version": "0.169.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01690/cap/model-first-workspace-production-flag/00003-739ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/signin-menu.pane.txt",
+      "sha256": "705802ca0e9afc2f8a2d37680497eaf22e0a54b48facb57010d940cb247e6d5a",
+      "version": "0.169.0",
+      "kind": "onboarding",
+      "source": "signin/run-01690/cap/40-signin-menu/00002-644ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/signin-other-selected.pane.txt",
+      "sha256": "27f878ddc9f9ede9472dd77bded5772cbca9c23eede1838d48d330bc75ad78be",
+      "version": "0.169.0",
+      "kind": "onboarding",
+      "source": "signin/run-01690/cap/40b-signin-other-selected/00001-4ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/signin-another-way.pane.txt",
+      "sha256": "7d53622852ceffe3dc5706ca5300605cdd46c6c9e79b1d2117d1e9e8c8b033f9",
+      "version": "0.169.0",
+      "kind": "onboarding",
+      "source": "signin/run-01690/cap/41-signin-another-way/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/context-first-owned-unfocused-150.ansi.txt",
+      "sha256": "c4490be1421d37355fa904e4bd08a264c87fa3dfa12f6d50675ee5499d7e6bd2",
+      "version": "0.169.0",
+      "kind": "ansi-reference",
+      "source": "matrix/run-01690/ansi/context-first-owned-unfocused-150.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/model-first-owned-sidebar-only-95.ansi.txt",
+      "sha256": "562098a0a0f1f5be76ad92ea32b6258916efdf71f1a8f77d022f62e76e3f7569",
+      "version": "0.169.0",
+      "kind": "ansi-reference",
+      "source": "matrix/run-01690/ansi/model-first-owned-sidebar-only-95.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/idle.pane.txt",
+      "sha256": "7439f39bbac917356f9aec68152ab586d55a97aea181faa5300fe63bf5db8333",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/01-launch/00003-927ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/turn-idle.pane.txt",
+      "sha256": "cb7a2415e42728d5ed83272def588e6b9e93fe68182d315a6c4c734cc64bb618",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/02-turn-ok/00004-109ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/busy.pane.txt",
+      "sha256": "b1a7adb796b2e9f7e6bd5db0c24b1a4e0da1b3a3dcc7c6199917da7cc069f075",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/03-turn-slow/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/near-suppressed.pane.txt",
+      "sha256": "4c6d461a6673c9ccd4592e56494742512e63f819d8ca377d2eac3e07ecb367ee",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/04-near-limit/00003-77ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/usage.pane.txt",
+      "sha256": "198e76c11c435cd1d02c3f6523daa486cb9e626ad3c188d566b3e97c8d866307",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/05-usage-limit/00002-40ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/ws-credits.pane.txt",
+      "sha256": "b7bab1447d49d3bdc24e7f54cabc4e4474b8d266edbb4307fa5cfd9c79a8e4ba",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/05b-ws-credits/00002-41ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/ws-credits-dismissed.pane.txt",
+      "sha256": "cccd12328c1cf2097b727d49043ae88b90a0c015f7779f035aa26e7e6db200c9",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/05b2-ws-credits-esc/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/ws-spend.pane.txt",
+      "sha256": "7eaaf150ecee17b69624046ba63b07d8b88801e61fd1a020ecd3745b66c7036d",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/05c-ws-spend/00002-46ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/ws-spend-dismissed.pane.txt",
+      "sha256": "fe81531ccd1febbb8daa92290e50cadd332953d4873c78ec3e7e368e7370fbeb",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/05c2-ws-spend-esc/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/e401.pane.txt",
+      "sha256": "0ba09c0038cb88c4e55e8e6a6fd0af06cbb7d928e19982194babc688574939e0",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/06-e401/00020-6378ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/e500.pane.txt",
+      "sha256": "66fdcb320e91963cc4cfc8b690199a0bd254a195fd4b1bb90849ea2d2b02ad81",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/07-e500/00063-24434ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/capacity.pane.txt",
+      "sha256": "6a8d11ded1749cf79ccdc50c0f661ec43cd297bfe4670bcf4456b17ffc0ce9f8",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/08-capacity/00002-48ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-not-found.pane.txt",
+      "sha256": "f7682b166ab9e3f3d4688c3d8ea1a90b13bec6ba37c070f956b0da8bc8b12c4a",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/08b-model-not-found/00002-44ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/compact.pane.txt",
+      "sha256": "2ed3571b6c27b52e5428e2c87660bcef2f1fc800894bd657469e4334bc9577ba",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/09-compact-args/00003-76ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/resume-loading.pane.txt",
+      "sha256": "3d0082d856ca9da816ea086c8fd979575d53961e44113db86625040702b338f4",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/11-resume/00001-444ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/resumed.pane.txt",
+      "sha256": "1b179cd6be3faabe4365154f843d47de91ba6179274b332a6fd4d215e9aaf261",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/11-resume/00003-987ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/resumed-turn.pane.txt",
+      "sha256": "53e84e816be9a97d9e2c4c6f4dcdb33eab1778f4af0f657c27668e716181463a",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/12-turn-after-resume/00002-72ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/trust.pane.txt",
+      "sha256": "9dc3655de1bf82de9b3a368d4b7c709dd2e796e30d34ad1fe47081635bb8c3e6",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/30-trust-git/00003-1375ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/plain-dir.pane.txt",
+      "sha256": "8f0a7a3ead273b255ab70b10649e6ca1b10cc7fa954c00535508d29831a62f4e",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/31-trust-plain/00002-613ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/rate-picker.pane.txt",
+      "sha256": "014f1929dc0120161e5b6553e3e85565ebefff3cedbde64547ab46f6207832aa",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/33-picker/00004-118ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/rate-dismissed.pane.txt",
+      "sha256": "89f451079517569d53971f646a1cc101c42838b87200499760cb47f573cb7a9c",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/34-picker-escaped/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/rate-picker-80.pane.txt",
+      "sha256": "b0064c2997904892dcabb8a022f6be1b0dec45e43c39fb5d0b76ef15bfff588f",
+      "version": "0.170.0",
+      "kind": "baseline",
+      "source": "run-01700/cap/36-picker80/00003-80ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-main-110.pane.txt",
+      "sha256": "9eb6ed7358ad2ef1ada018248666cb2f614238a2731376552a915c4dbbb801c2",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-main-110/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-main-150.pane.txt",
+      "sha256": "9019edae332da32adf18cde38ab63677acba021de64bbde2434d961c3f518f80",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-main-150/00004-712ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-main-95.pane.txt",
+      "sha256": "b5071bb3a1806a161eeb183ab585d10901bfee685d502d6e5a391037bc89c623",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-main-95/00001-10ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-refocused-150.pane.txt",
+      "sha256": "601f940c8607de156bf0becf5651a20dfbbbc7fbc2837b07f3455280850f53ab",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-refocused-150/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-refocused-95.pane.txt",
+      "sha256": "b5071bb3a1806a161eeb183ab585d10901bfee685d502d6e5a391037bc89c623",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-refocused-95/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-sidebar-only-95.pane.txt",
+      "sha256": "12fcfab9fa5f7e5f88cdbf0d797b6d1a1be507620076e42f225e58a1d6335250",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-sidebar-only-95/00001-15ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-unfocused-110.pane.txt",
+      "sha256": "b5ac9b5eaa51b9a1a989cd40a3d0d8b20ecab9153dd173e7d7cd75a26be5e2c7",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-unfocused-110/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-unfocused-150.pane.txt",
+      "sha256": "9123464d6032b773460cc33632f8e8a7087acada289080ca7901fb38ddbcfd0d",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-owned-unfocused-150/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-production-150.pane.txt",
+      "sha256": "b7635918f59cf7534efe975306ceb0327b37ec3049df4a290f3aa6275787ed9a",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-production-150/00003-1527ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-production-50.pane.txt",
+      "sha256": "c1e9cde0398754b6bbf9cb69cacdbb121098dcba299f6dbf754cecc2992c4e6d",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-production-50/00001-33ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-production-80.pane.txt",
+      "sha256": "2d9ccd3351b08a950f62cf4e390f89cb2c9c75e1e14c8d56c564ef1339b60004",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-production-80/00002-90ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-workspace-production-flag.pane.txt",
+      "sha256": "aebe9fdda9e811592aa94e3ce3bcd61827ab289ea6764aa5137e700c24c87fad",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/context-first-workspace-production-flag/00003-972ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-main-110.pane.txt",
+      "sha256": "cff5b203ef58c4e8c373216bb944d53de397032d96515057ab492c5629fcb007",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-main-110/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-main-150.pane.txt",
+      "sha256": "33e29f63f5d15523066245744171aeb61516de7c06874ff1a9595654cff80424",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-main-150/00005-704ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-main-95.pane.txt",
+      "sha256": "b12b8c78a2223991631353b02303f1974a00541b0e213752fd1b65c500af6f3a",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-main-95/00001-7ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-refocused-150.pane.txt",
+      "sha256": "e88ed4a0a2b5bde666f3c003689ef1487b0964d13b93ed27621b9aca7769205c",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-refocused-150/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-refocused-95.pane.txt",
+      "sha256": "b12b8c78a2223991631353b02303f1974a00541b0e213752fd1b65c500af6f3a",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-refocused-95/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-sidebar-only-95.pane.txt",
+      "sha256": "12fcfab9fa5f7e5f88cdbf0d797b6d1a1be507620076e42f225e58a1d6335250",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-sidebar-only-95/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-unfocused-110.pane.txt",
+      "sha256": "0bde40251833efb8a50ff6cbc02397bf476dfe80bc07fbaaaef31d64a67165d8",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-unfocused-110/00001-12ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-unfocused-150.pane.txt",
+      "sha256": "b0f0e49738d5fe58fde2ae861911e9259e5b568753ecdc263b8a797e9fe9683c",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-owned-unfocused-150/00001-9ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-production-150.pane.txt",
+      "sha256": "3dc45d6d09fe4194210f83d34825e1b1be705ecba7abb9d80207501bc4005f5f",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-production-150/00004-678ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-production-50.pane.txt",
+      "sha256": "d6a22bb4cfe37807a3d8b7fa0c4ed0993443ead371a9ccca8ab9992a64e5825a",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-production-50/00002-73ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-production-80.pane.txt",
+      "sha256": "96542666c680583f622caed120ec0650a0663e782860816182df5d7d90e35ac2",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-production-80/00002-78ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-workspace-production-flag.pane.txt",
+      "sha256": "21c1c4b7926f9654fbe207d1c619eb5ec849097c6204fc1bac968567aa8cfced",
+      "version": "0.170.0",
+      "kind": "status-layout",
+      "source": "matrix/run-01700/cap/model-first-workspace-production-flag/00003-679ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/signin-menu.pane.txt",
+      "sha256": "705802ca0e9afc2f8a2d37680497eaf22e0a54b48facb57010d940cb247e6d5a",
+      "version": "0.170.0",
+      "kind": "onboarding",
+      "source": "signin/run-01700/cap/40-signin-menu/00002-642ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/signin-other-selected.pane.txt",
+      "sha256": "27f878ddc9f9ede9472dd77bded5772cbca9c23eede1838d48d330bc75ad78be",
+      "version": "0.170.0",
+      "kind": "onboarding",
+      "source": "signin/run-01700/cap/40b-signin-other-selected/00001-5ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/signin-another-way.pane.txt",
+      "sha256": "7d53622852ceffe3dc5706ca5300605cdd46c6c9e79b1d2117d1e9e8c8b033f9",
+      "version": "0.170.0",
+      "kind": "onboarding",
+      "source": "signin/run-01700/cap/41-signin-another-way/00001-6ms.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/context-first-owned-unfocused-150.ansi.txt",
+      "sha256": "723ca051564b7193176efe3edaf7254f22bab92b200fc65aa081bebbe00b981d",
+      "version": "0.170.0",
+      "kind": "ansi-reference",
+      "source": "matrix/run-01700/ansi/context-first-owned-unfocused-150.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01700/model-first-owned-sidebar-only-95.ansi.txt",
+      "sha256": "562098a0a0f1f5be76ad92ea32b6258916efdf71f1a8f77d022f62e76e3f7569",
+      "version": "0.170.0",
+      "kind": "ansi-reference",
+      "source": "matrix/run-01700/ansi/model-first-owned-sidebar-only-95.txt"
+    },
+    {
+      "path": "tests/fixtures/codex-audit-0170/01690/rollback-from-01700.pane.txt",
+      "sha256": "666489d00088dbe5c1fd0c712559181e6dbe392e078472804fa7de6807cec066",
+      "version": "0.169.0",
+      "createdWithVersion": "0.170.0",
+      "kind": "rollback",
+      "source": "rollback/run-01700/old-resume-final.txt"
+    }
+  ]
+}

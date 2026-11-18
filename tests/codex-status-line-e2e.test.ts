@@ -9,12 +9,15 @@
  * copied.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { parse } from "smol-toml";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { codexE2eConfig, codexE2eRoot } from "./helpers/codex-e2e-profile.js";
+
+codexE2eConfig(); // Fail closed before any launch if the mock profile is incomplete.
 const AUTH = process.env.AGEND_CODEX_E2E_AUTH || join(homedir(), ".codex", "auth.json");
 function codexVersion(): string | null {
   try {
@@ -22,7 +25,7 @@ function codexVersion(): string | null {
   } catch { return null; }
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
-const enabled = !!version && /\b0\.(?:157|160|162|164|165)\.\d+\b/.test(version) && existsSync(AUTH);
+const enabled = !!version && /\b0\.(?:157|160|162|164|165|169|170)\.\d+\b/.test(version) && existsSync(AUTH);
 
 let root = "";
 let socket = "";
@@ -31,7 +34,7 @@ const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args]
 
 describe.skipIf(!enabled)("real codex 0.157: a quoted-key status_line without Context reads ready (#931)", () => {
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "agend-codex-e2e-931-"));
+    root = codexE2eRoot("931");
     socket = `agend-e2e-931-${process.pid}`;
     process.env.AGEND_HOME = join(root, "agend");
     process.env.CODEX_HOME = join(root, "shared-codex-home");
@@ -49,7 +52,7 @@ describe.skipIf(!enabled)("real codex 0.157: a quoted-key status_line without Co
 
   it("gets context-remaining prepended and its idle pane passes every readiness proof", async () => {
     const { CodexBackend } = await import("../src/backend/codex.js");
-    writeFileSync(join(process.env.CODEX_HOME!, "config.toml"), '"tui"."status_line" = ["model-with-reasoning"]\n');
+    writeFileSync(join(process.env.CODEX_HOME!, "config.toml"), codexE2eConfig('"tui"."status_line" = ["model-with-reasoning"]\n'));
     const wd = join(root, "work");
     mkdirSync(wd);
     const instanceDir = join(root, "agend", "instances", "worker");

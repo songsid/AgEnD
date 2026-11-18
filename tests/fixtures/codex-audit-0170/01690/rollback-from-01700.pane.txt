@@ -1,0 +1,20 @@
+
+  >_ OpenAI Codex (v0.169.0)
+     /audit/.worktrees/audit-main/.artifacts/codex-0170/rollback/run-01700/work
+  permissions: YOLO mode
+
+  Tip: Type / to open the command popup; Tab autocompletes slash commands.
+
+
+› audit rollback checkpoint
+
+
+• ok
+
+  Worked for <1s • 22:16
+
+
+› Ask Codex to do anything
+
+  00000000-0000-7000-8000-000000000169 · Context 100% left
+  ← for agents · ? for shortcuts                                                                                             ⚠ 1 warning · f2 to view
