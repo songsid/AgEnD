@@ -40,8 +40,8 @@ describe("allow-lists compare as strings", () => {
   });
 
   it("matches an unquoted allowed_users entry", () => {
-    const { m } = makeManager('defaults:\n  allowed_users: [951494522]\n');
-    expect(m.isUserAllowed("951494522")).toBe(true);
+    const { m } = makeManager('defaults:\n  allowed_users: [100000101]\n');
+    expect(m.isUserAllowed("100000101")).toBe(true);
   });
 
   it("still honours quoted ids and still denies everything else", () => {
@@ -58,12 +58,12 @@ describe("allow-lists compare as strings", () => {
   });
 
   it("does NOT invent a match for a snowflake YAML already truncated", () => {
-    // The honest limit of this fix. 1496407196106494055 unquoted parses as
-    // ...494000, so the last digits are gone before any comparison runs. No
+    // The honest limit of this fix. 1000000000000000201 unquoted parses as
+    // ...000300, so the last digits are gone before any comparison runs. No
     // string compare can recover them — the id must be re-entered in quotes.
-    const { m, logger } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    const { m, logger } = makeManager('defaults:\n  allowed_guilds: [1000000000000000201]\n');
 
-    expect(m.isGuildAllowed("1496407196106494055")).toBe(false);
+    expect(m.isGuildAllowed("1000000000000000201")).toBe(false);
     // ...but it is no longer SILENT, which is the actual failure being removed.
     expect(logger.error).toHaveBeenCalled();
     const logged = JSON.stringify(logger.error.mock.calls);
@@ -80,10 +80,10 @@ describe("allow-lists compare as strings", () => {
     // duplicate. Access starts working immediately via the new quoted entry;
     // the broken line stays until a human removes it, because nothing here
     // should silently discard something the operator wrote.
-    const { m } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
-    expect(m.allowGuild("1496407196106494055")).toBe("added");
+    const { m } = makeManager('defaults:\n  allowed_guilds: [1000000000000000201]\n');
+    expect(m.allowGuild("1000000000000000201")).toBe("added");
 
-    expect(m.isGuildAllowed("1496407196106494055")).toBe(true);   // works now
+    expect(m.isGuildAllowed("1000000000000000201")).toBe(true);   // works now
     expect(m.defaults.allowed_guilds).toHaveLength(2);            // broken one kept
     expect(m.defaults.allowed_guilds.some((v: unknown) => typeof v === "number")).toBe(true);
   });
@@ -91,7 +91,7 @@ describe("allow-lists compare as strings", () => {
   it("reports a bad id once at load, not on every write", () => {
     // One unquoted id used to emit an error on every save. The operator has
     // already been told and cannot fix it from this side.
-    const { m, logger } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    const { m, logger } = makeManager('defaults:\n  allowed_guilds: [1000000000000000201]\n');
     expect(logger.error).toHaveBeenCalledTimes(1);
 
     m.allowGuild("a"); m.allowGuild("b");

@@ -502,8 +502,8 @@ describe("FleetManager", () => {
      */
     it("does not seed a scheduled reply target that belongs to another channel world", async () => {
       const fm = new FleetManager(tmpDir);
-      const discordConfig = { id: "discord", type: "discord", group_id: "1496407196106494055" } as any;
-      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1003833855730" } as any;
+      const discordConfig = { id: "discord", type: "discord", group_id: "1000000000000000201" } as any;
+      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1000000000201" } as any;
       const discord = { id: "discord", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
       const telegram = { id: "telegram", type: "telegram", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
       fm.fleetConfig = {
@@ -523,7 +523,7 @@ describe("FleetManager", () => {
       await (fm as any).handleScheduleTrigger({
         id: "d399355e", cron: "0 9 * * *", at: null,
         message: "daily work log", source: "games-leader-t245", target: "games-leader",
-        reply_chat_id: "-1003833855730",   // Telegram group
+        reply_chat_id: "-1000000000201",   // Telegram group
         reply_thread_id: "245",            // Telegram forum topic
         label: "Dopo 每日工作日誌回報", enabled: true, timezone: "Asia/Taipei", silent: false,
         created_at: "2026-08-17T00:00:00.000Z", last_triggered_at: null, last_status: null,
@@ -540,8 +540,8 @@ describe("FleetManager", () => {
 
     it("still seeds a reply target that is in the target's own world", async () => {
       const fm = new FleetManager(tmpDir);
-      const discordConfig = { id: "discord", type: "discord", group_id: "1496407196106494055" } as any;
-      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1003833855730" } as any;
+      const discordConfig = { id: "discord", type: "discord", group_id: "1000000000000000201" } as any;
+      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1000000000201" } as any;
       const discord = { id: "discord", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
       fm.fleetConfig = {
         defaults: {},
@@ -559,14 +559,14 @@ describe("FleetManager", () => {
       await (fm as any).handleScheduleTrigger({
         id: "same-world", cron: "0 9 * * *", at: null,
         message: "daily work log", source: "games-leader", target: "games-leader",
-        reply_chat_id: "1496407196106494055",
+        reply_chat_id: "1000000000000000201",
         reply_thread_id: "1500000000000464899",
         label: "in-world", enabled: true, timezone: "Asia/Taipei", silent: false,
         created_at: "2026-08-17T00:00:00.000Z", last_triggered_at: null, last_status: null,
       });
 
       const meta = (deliver.mock.calls[0][1] as any).meta;
-      expect(meta.chat_id).toBe("1496407196106494055");
+      expect(meta.chat_id).toBe("1000000000000000201");
       expect(meta.thread_id).toBe("1500000000000464899");
     });
 
@@ -579,8 +579,8 @@ describe("FleetManager", () => {
      */
     it("still seeds a reply target that matches no configured group", async () => {
       const fm = new FleetManager(tmpDir);
-      const discordConfig = { id: "discord", type: "discord", group_id: "1496407196106494055" } as any;
-      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1003833855730" } as any;
+      const discordConfig = { id: "discord", type: "discord", group_id: "1000000000000000201" } as any;
+      const telegramConfig = { id: "telegram", type: "telegram", group_id: "-1000000000201" } as any;
       const discord = { id: "discord", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
       fm.fleetConfig = {
         defaults: {},
@@ -615,7 +615,7 @@ describe("FleetManager", () => {
      */
     it("seeds a persona instance whose guild is shared with the primary bot", async () => {
       const fm = new FleetManager(tmpDir);
-      const guild = "1496407196106494055";
+      const guild = "1000000000000000201";
       const primaryConfig = { id: "discord", type: "discord", group_id: guild } as any;
       const personaConfig = { id: "persona", type: "discord", group_id: guild } as any;
       const primary = { id: "discord", type: "discord", sendText: vi.fn().mockResolvedValue({ messageId: "m" }) } as any;
