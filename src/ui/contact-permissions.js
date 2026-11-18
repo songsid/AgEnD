@@ -21,6 +21,13 @@ const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTim
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
 const GUARD_REASONS = new Set(["legacy-mode", "unsupported-backend", "unsupported-platform", "unsupported-version", "cli-mode", "load-not-verified", "stale-policy",
   "stale-launch", "not-running", "invalid-policy", "missing-bound-mcp", "missing-selected-mcp", "guard-files-changed", "invalid-load-receipt", "guard-unavailable", "binary-changed"]);
+/**
+ * The leader's A3 decision (via Cairn): a restricted room whose AI tool, version, platform or mode the guard doesn't cover
+ * keeps running with that tool's normal permissions — only contact approval applies. Said plainly (never "ready", never only in
+ * a tooltip), and before the mode is set (the mode card, the switch's confirm, Needs you's suggestion). A missing selected MCP
+ * tool is partial coverage (the base guard runs): its own reason says which, not this.
+ */
+export const notCovered = (g) => !!g && g.state === "not-covered" && g.reason !== "missing-selected-mcp";
 const GUARD_TONE = { ready: "ok", "restart-required": "warn", "not-covered": "warn", failed: "bad" };
 /** The guard's state as said — anything the contract doesn't name is never shown as ready. */
 const guardState = (g) => (g && ["ready", "restart-required", "not-covered", "failed"].includes(g.state) ? g.state : "failed");
@@ -57,10 +64,11 @@ function WouldDisable({ tools, complete }) {
     : complete === false ? incomplete : html`<p class="note">${ca("wouldDisableNone")}</p>`;
 }
 /** The same, as the confirm's text (paragraphs). */
-export function wouldDisableText(roomTools) {
+export function wouldDisableText(roomTools, guard) {
   const would = roomTools?.wouldDisable || [];
   const parts = [would.length ? [ca("wouldDisableTitle"), ...would.map((n) => `• ${n}`)].join("\n") : roomTools?.impactComplete === false ? "" : ca("wouldDisableNone")];
   if (roomTools?.impactComplete === false) parts.push(ca("impactIncomplete"));
+  if (notCovered(guard)) parts.push(ca("notCoveredWarning"));
   return parts.filter(Boolean).join("\n\n");
 }
 
@@ -91,7 +99,7 @@ export function ContactPermissionsPanel({ name }) {
   const switchMode = async (mode) => {
     const toRestricted = mode === "restricted";
     const ok = await confirmDialog({ title: ca(toRestricted ? "confirmRestricted" : "confirmLegacy"), message: toRestricted
-      ? [ca("modeRestrictedNote"), wouldDisableText(p.roomTools)].join("\n\n")
+      ? [ca("modeRestrictedNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n")
       : ca("modeLegacyNote"), confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
     if (ok) await write({ mode });
   };
@@ -115,6 +123,7 @@ export function ContactPermissionsPanel({ name }) {
       <p class="contact-mode-line"><span class=${`contact-pill ${p.mode === "restricted" ? "ok" : "warn"}`}>${ca(p.mode === "restricted" ? "modeRestricted" : "modeLegacy")}</span></p>
       <p class="note">${ca(p.mode === "restricted" ? "modeRestrictedNote" : "modeLegacyNote")}</p>
       ${p.mode !== "restricted" ? html`<${WouldDisable} tools=${tools.wouldDisable} complete=${tools.impactComplete} />` : null}
+      ${notCovered(p.nativeGuard) ? html`<p class="feedback warning contact-not-covered" role="status">${ca("notCoveredWarning")}</p>` : null}
       ${canMode ? html`<div class="field-row"><button type="button" class=${`btn btn-sm${p.mode === "restricted" ? "" : " btn-primary"}`} disabled=${busy}
           onClick=${() => switchMode(p.mode === "restricted" ? "legacy" : "restricted")}>${ca(p.mode === "restricted" ? "switchLegacy" : "switchRestricted")}</button></div>` : null}
     </section>
@@ -122,6 +131,7 @@ export function ContactPermissionsPanel({ name }) {
       <h3>${ca("guardTitle")}</h3>
       <p><span class=${`contact-pill ${GUARD_TONE[g]}`}>${ca(`guard_${g}`)}</span>${p.nativeGuard?.backend ? html` <span class="muted">${ca("guardBackend", p.nativeGuard.version ? `${p.nativeGuard.backend} ${p.nativeGuard.version}` : p.nativeGuard.backend)}</span>` : null}</p>
       ${/* A3's reason is a code (Cairn): said in words; one this page doesn't know, generically — never the code itself. */ ""}
+      ${notCovered(p.nativeGuard) ? html`<p class="feedback warning contact-not-covered">${ca("notCoveredWarning")}</p>` : null}
       ${p.nativeGuard?.reason ? html`<p class="note contact-guard-reason">${GUARD_REASONS.has(p.nativeGuard.reason) ? ca(`guardReason_${p.nativeGuard.reason}`) : ca("guardReasonOther")}</p>` : null}
       <p class="note">${ca("guardNote")}</p>
     </section>

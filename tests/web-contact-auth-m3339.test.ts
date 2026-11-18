@@ -289,6 +289,42 @@ describe("Fleet → Authorizations", () => {
   });
 });
 
+describe("a tool the guard doesn't cover (the leader's A3 decision): said plainly, before the mode is set", () => {
+  const notCov = { state: "not-covered", backend: "codex", reason: "unsupported-version" };
+  it.each([["en", "This AI tool or version isn't covered by the guard: it runs with its normal permissions; only contact approval applies."],
+    ["zh-TW", "這個 AI 工具或版本不在防護範圍內：它會以原本的權限執行，只有聯絡申請需要核准。"]])("Permissions (%s): on the guard card and on the legacy room's mode card, never as ready; the switch's confirm says it too", async (lang, said) => {
+    api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ nativeGuard: notCov } as any) }) });
+    const i18n = await import("/assets/app-i18n.js") as any;
+    i18n.setLang(lang, { store: false });
+    try {
+      const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
+      const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
+      expect([...pg.root.querySelectorAll(".contact-not-covered")].map((x: any) => [x.closest(".card").classList.contains("contact-mode") ? "mode" : "guard", text(x)]))
+        .toEqual([["mode", said], ["guard", said]]);
+      expect(pg.root.querySelector(".contact-guard")?.getAttribute("data-guard")).toBe("not-covered");
+      fire(pg.root.querySelector(".contact-mode .btn") as any, "click"); await settle(4);
+      expect((await yes()).message).toContain(said);
+    } finally { i18n.setLang("en", { store: false }); }
+  });
+  it("a missing selected MCP tool is partial coverage: its own reason, not the not-covered warning", async () => {
+    api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ nativeGuard: { state: "not-covered", backend: "claude-code", reason: "missing-selected-mcp" } } as any) }) });
+    const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
+    const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
+    expect([pg.root.querySelector(".contact-not-covered"), text(pg.root.querySelector(".contact-guard-reason"))])
+      .toEqual([null, "A selected MCP tool isn't available to the guard, so it isn't covered. Public reading and AgEnD's own tools still work."]);
+  });
+  it("Needs you's suggestion reads the room's coverage and says it before the switch", async () => {
+    api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ nativeGuard: notCov } as any) }) });
+    const { ContactNeedsItem } = await import("/ui/js/contact-needs.js") as any;
+    const { pg } = await mountWith(ContactNeedsItem, { item: { id: "contact-suggest:classic-ops", type: "contact", reason: "contact_restricted_suggestion", instance: "classic-ops", since: 0, contactSuggestion: { instance: "classic-ops" } } });
+    expect(text(pg.root.querySelector(".contact-not-covered"))).toContain("runs with its normal permissions; only contact approval applies.");
+  });
+  it("ClassicBot defaults (the new-room default) say what restricted means where the guard doesn't cover the tool", () => {
+    const src = readFileSync(join(process.cwd(), "src/ui/panel-settings.js"), "utf8");
+    expect(src).toMatch(/s-classic-defaults-card"><h3>\$\{tn\("classicDefaultsTitle"\)\}<\/h3>[\s\S]{0,400}ca\("newRoomsRestricted"\)/);
+  });
+});
+
 describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)", () => {
   it("a ticket's reason code in words, with the /clear note while it waits; a code the page doesn't know says nothing", async () => {
     api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket({ reason: "earlier-non-admin" }), ticket({ id: "R13", reason: "something-else" as any, state: "declined", canDecide: false })], nextCursor: null } }) });
@@ -387,7 +423,8 @@ describe("Needs you: contact items (references only; the details from the scoped
       const q = await yes();
       expect(q.message).toContain("• Bash");
       fire(button(pg.root, "稍後"), "click"); await settle(6);
-      expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([["GET", "/ui/api/instances/classic-ops/contact-permissions", undefined],
+      expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([["GET", "/ui/api/instances/classic-ops/contact-permissions", undefined],   // the card's guard coverage
+        ["GET", "/ui/api/instances/classic-ops/contact-permissions", undefined],                                                              // the switch: its revision
         ["PUT", "/ui/api/instances/classic-ops/contact-permissions", { revision: 4, mode: "restricted" }], ["POST", "/ui/needs/ack", { id: "contact-suggest:classic-ops" }]]);
     } finally { i18n.setLang("en", { store: false }); }
   });

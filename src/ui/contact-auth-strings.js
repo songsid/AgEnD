@@ -29,6 +29,8 @@ register("contactAuth", {
     // Guard
     guardTitle: "Command-line guard", guard_ready: "Active", "guard_restart-required": "Restart needed", "guard_not-covered": "Not covered", guard_failed: "Failed",
     guardNote: "The guard limits what the backend's own tools can do in this room. It is a policy control, not a security boundary on this computer.",
+    notCoveredWarning: "This AI tool or version isn't covered by the guard: it runs with its normal permissions; only contact approval applies.",
+    newRoomsRestricted: "New ClassicBot rooms start in restricted mode: requests from people who aren't admins to other agents wait for approval. Where the guard doesn't cover a room's AI tool or version, that tool runs with its normal permissions; only contact approval applies.",
     guardBackend: "Backend: {0}", guardReasonOther: "The guard reported a state this page doesn't know.",
     "guardReason_legacy-mode": "This room isn't in restricted mode, so the guard isn't used.",
     "guardReason_unsupported-backend": "This backend isn't covered by the guard.",
@@ -104,6 +106,8 @@ register("contactAuth", {
     invalidApprover: "這個人無法擔任核准人。目前核准人必須是 Fleet 管理員。",
     guardTitle: "命令列防護", guard_ready: "已啟用", "guard_restart-required": "需要重新啟動", "guard_not-covered": "未涵蓋", guard_failed: "失敗",
     guardNote: "防護會限制後端內建工具在這個房間能做的事。這是政策控制，不是這台電腦上的安全邊界。",
+    notCoveredWarning: "這個 AI 工具或版本不在防護範圍內：它會以原本的權限執行，只有聯絡申請需要核准。",
+    newRoomsRestricted: "新的 ClassicBot 房間預設為受限模式：非管理員對其他 Agent 的請求要先經過核准。若防護不涵蓋房間的 AI 工具或版本，該工具會以原本的權限執行，只有聯絡申請需要核准。",
     guardBackend: "後端：{0}", guardReasonOther: "防護回報了這個頁面不認得的狀態。",
     "guardReason_legacy-mode": "這個房間不是受限模式，因此不使用防護。",
     "guardReason_unsupported-backend": "防護不支援這個後端。",
