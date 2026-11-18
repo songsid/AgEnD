@@ -8,6 +8,7 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { t } from "./locale.js";
 import type { QueueResumePolicy } from "./delivery-queue-evidence.js";
+import { ContactAuthStore } from "./contact-auth-store.js";
 import { validateRuntimeTranscriptReference, type RuntimeTranscriptReference } from "./runtime-pane-transcript-protocol.js";
 import { WorkingStateJournal, type WorkingStateSnapshot, type WorkingStateReference } from "./working-state-journal.js";
 import { initializeHumanReceipts, createHumanReceipt, getHumanReceipt, bindHumanReceipt, settleHumanReceipt, queryHumanReceipt, maxWebAuthorityEpoch, deliveredMessageHours, pruneMessageHours,
@@ -588,6 +589,22 @@ export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
   private workingStateJournal?: WorkingStateJournal;
   private recoveryStore?: WorkingRecoveryStore;
+  private contactAuthStore?: ContactAuthStore;
+  /** Shares the outbox transaction: approval cannot commit without its exact delivery. */
+  get contactAuthorizations(): ContactAuthStore { return this.contactAuthStore ??= new ContactAuthStore(this.db); }
+  /** A stale contact approval may drop only work whose input submission never began. */
+  cancelUnsubmittedContact(deliveryId: string, reason: string): boolean {
+    const changed = this.db.transaction(() => {
+      const active = this.db.prepare("SELECT 1 FROM delivery_attempts WHERE delivery_id=? AND state<>'aborted' LIMIT 1").get(deliveryId);
+      if (active) return false;
+      const now = new Date().toISOString();
+      return this.db.prepare("UPDATE deliveries SET state='cancelled',finished_at=?,updated_at=?,last_error=?,next_attempt_at=NULL "
+        + "WHERE delivery_id=? AND substr(source_key,1,8)='contact:' AND state IN ('queued','retry_wait','delivering')")
+        .run(now, now, reason, deliveryId).changes === 1;
+    })();
+    if (changed) this.emit("state", { deliveryId, state: "cancelled" });
+    return changed;
+  }
   get workingRecovery(): WorkingRecoveryStore { return this.recoveryStore ??= new WorkingRecoveryStore(this.db); }
 
   admitWorkingRecovery(episode: RecoveryEpisode, content: string, advisory = false): boolean {

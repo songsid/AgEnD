@@ -1,4 +1,9 @@
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
+import { ContactAuthService } from "./contact-auth-service.js";
+import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
+import { ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
+import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
+import type { ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -418,6 +423,7 @@ import { sharedRolloutIndex } from "./rollout-index.js";
 import { TASK_BOARD_ON_NOTICE, dashboardRefusalIn, taskBoardOffIn, taskBoardSwitchedOn } from "./dashboard-permissions.js";
 import {
   mayUseTool,
+  toolsFor,
   resolveToolSet,
   scheduleOpRefusal,
   toolForIpcType,
@@ -425,7 +431,7 @@ import {
   type ToolSetName,
   type ToolSink,
 } from "./tool-permissions.js";
-import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
+import { authorizeSession, decideWebGate, evaluateWebRequest, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade, type WebGateRequest } from "./web-auth.js";
 import { takeAssetVersion, warmAssetVersion } from "./web-asset-version.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
@@ -1700,7 +1706,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { NativePaneManager } = await import("./native-pane-manager.js");
     if (this.paneManager) return this.paneManager;
     const store = windowsAgentsFor(this, this.runtimeWindowsExecutor());
-    const allowed = (name: string, tool: string): boolean => nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
+    const allowed = (name: string, tool: string): boolean => (!this.classicContactRestricted(name) || CLASSIC_RESTRICTED_TOOLS.includes(tool))
+      && nativePaneToolAvailable(tool) && mayUseTool(resolveToolSet(this.fleetConfig?.instances[name], name), tool)
       && !dashboardRefusalIn(this.fleetConfig, name, tool);
     return this.paneManager = new NativePaneManager({
       home: this.dataDir, store, config: name => this.fleetConfig?.instances[name],
@@ -5295,6 +5302,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (event.deliveryId) {
         const row = outbox.get(event.deliveryId);
         if (row) for (const name of new Set([row.sourceInstance, row.targetInstance])) this.observeWorkingState(name, "obligations");
+        const badge = row?.payload.contactTicket as { id?: string } | undefined;
+        const ticket = badge?.id ? outbox.contactAuthorizations.get(badge.id) : undefined;
+        if (ticket && ticket.deliveryId === row?.deliveryId) {
+          const state = event.state === "delivered" ? "delivered" : ["failed", "uncertain", "cancelled", "reconciliation_pending"].includes(event.state ?? "") ? "unknown" : "approved";
+          for (const instance of new Set([ticket.source, ticket.target])) {
+            this.webChatHistory?.updateContactTicket(instance, ticket.id, state);
+            this.emitSseEvent("contact-auth", { instance, ticketId: ticket.id, revision: ticket.revision });
+          }
+        }
       }
       this.scheduleDeliveryOutboxPump();
       this.wakeCoordinator?.kick();
@@ -5390,6 +5406,266 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.trafficMemo.value;
   }
 
+  private contactRoom(name: string) { return this.classicChannels?.getAll?.().find(room => room.instanceName === name); }
+  classicContactRestricted(instance: string): boolean { return this.contactRoom(instance)?.restrictedMode === true; }
+  inheritContactOrigin(source: string, target: string): void {
+    const service = this.contactService();
+    if (service.host.legacyClassic?.(source)) return;
+    const origin = service.origin(source);
+    if (origin) service.host.store.inheritOrigin(target, { ...origin, chain: [...origin.chain, target] });
+  }
+  private contactAdapter(name: string): ChannelAdapter | null {
+    const id = this.contactRoom(name)?.adapterId ?? this.getInstanceAdapterId(name);
+    return id ? this.adapters.get(id) ?? this.worlds.get(id)?.adapter ?? null : null;
+  }
+  /** Called only with SDK input at the Classic ingress, never agent-supplied routing metadata. */
+  private recordClassicContactInput(instance: string, msg: Pick<InboundMessage, "chatId" | "threadId" | "isBotMessage" | "attachments"> & { adapterId?: string; transportThreadId?: string }, adapter: ChannelAdapter): void {
+    const room = this.contactRoom(instance);
+    if (room?.restrictedMode !== true || msg.isBotMessage || msg.chatId !== room.channelId
+      || (room.adapterId && room.adapterId !== adapter.id) || msg.adapterId !== adapter.id) return;
+    const nativeThread = msg.transportThreadId ?? msg.threadId;
+    const thread = nativeThread && nativeThread !== room.channelId && nativeThread.length <= 128
+      && !/[\r\n\x00]/.test(nativeThread) ? nativeThread : undefined;
+    const fileIds = (msg.attachments ?? []).map(file => file.fileId)
+      .filter(id => typeof id === "string" && id.length > 0 && id.length <= 4096).slice(0, 20);
+    this.contactService().host.store.recordRoomContext(instance, { ...(thread ? { threadId: thread } : {}), fileIds }, this.contactGeneration(instance));
+  }
+
+  restrictedClassicRouting(instance: string): { adapterId: string; chatId: string; threadId?: string } | undefined {
+    const room = this.contactRoom(instance);
+    if (room?.restrictedMode !== true) return undefined;
+    const adapter = this.contactAdapter(instance);
+    if (!adapter) throw Error("Restricted room adapter is unavailable");
+    const context = this.contactService().host.store.roomContext(instance, this.contactGeneration(instance));
+    return { adapterId: adapter.id, chatId: room.channelId, ...(context.threadId ? { threadId: context.threadId } : {}) };
+  }
+  async prepareContactFiles(instance: string, paths: readonly string[]): Promise<ContactFileLease | undefined> {
+    if (this.contactRoom(instance)?.restrictedMode !== true || paths.length === 0) return undefined;
+    const incarnation = this.contactGeneration(instance), home = realpathSync(getAgendHome());
+    const inbox = join(home, "workspaces", instance, "inbox");
+    const lease = await stageContactFiles(paths, home, inbox);
+    if (this.contactGeneration(instance) !== incarnation) { await lease.dispose(); throw Error("Room identity changed before attachment delivery"); }
+    return lease;
+  }
+  async downloadRoomAttachment(instance: string, fileId: string): Promise<string> {
+    const route = this.restrictedClassicRouting(instance);
+    if (!route) throw Error("This is not a restricted Classic room");
+    const incarnation = this.contactGeneration(instance), store = this.contactService().host.store;
+    if (!store.roomContext(instance, incarnation).fileIds.includes(fileId)) throw Error("This attachment was not received in this room");
+    const adapter = this.contactAdapter(instance);
+    if (!adapter) throw Error("Restricted room adapter is unavailable");
+    const file = await adapter.downloadAttachment(fileId);
+    const home = realpathSync(getAgendHome()), scratch = join(home, "workspaces", instance, "inbox", "room-scratch");
+    const copied = await snapshotReplyFile(file, scratch, randomBytes(16).toString("hex"), {
+      stateDir: home, allowedRoots: [join(home, "inbox")], maxFileBytes: 20 * 1024 * 1024, maxDirBytes: 400 * 1024 * 1024,
+    });
+    if (!copied.ok) throw Error("The room attachment could not be copied safely");
+    if (this.contactGeneration(instance) !== incarnation) {
+      try { unlinkSync(copied.path); } catch { /* our snapshot only */ }
+      throw Error("Room identity changed during attachment download");
+    }
+    return copied.path;
+  }
+
+  configureClassicRestriction(name: string, daemon: Daemon): void {
+    const room = this.contactRoom(name);
+    if (!room) return;
+    const guarded = daemon as Daemon & { setClassicRestriction?(plan: unknown): void };
+    if (room.restrictedMode !== true) {
+      guarded.setClassicRestriction?.({ mode: "legacy", roomTools: { publicRead: true, allowedMcpTools: [] } });
+      return;
+    }
+    const policy = this.contactService().host.store.policy(name, this.contactGeneration(name));
+    guarded.setClassicRestriction?.({ mode: room.restrictedMode === true ? "restricted" : "legacy",
+      roomTools: policy.roomTools, policyRevision: policy.revision });
+  }
+
+  private contactGeneration(name: string): string {
+    // Reuse the existing durable incarnation fence: replacement/retarget rotates it,
+    // while an ordinary pause or daemon restart must not strand an approved request.
+    const incarnation = this.hubAgentToken(name);
+    if (!incarnation) throw Error("unavailable");
+    return incarnation;
+  }
+
+  contactAdminOf(name: string, actor: ContactPerson): boolean {
+    if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
+    const adapter = this.contactAdapter(name);
+    if (!adapter || actor.adapterId !== adapter.id || actor.platform !== adapter.type) return false;
+    return this.isFleetAdmin(actor.userId, adapter.id)
+      || (!!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true);
+  }
+
+  private contactService(): ContactAuthService {
+    this.ensureDeliveryOutbox();
+    return new ContactAuthService({ store: this.deliveryOutbox!.contactAuthorizations,
+      restricted: name => this.contactRoom(name)?.restrictedMode === true,
+      legacyClassic: name => !!this.contactRoom(name) && this.contactRoom(name)?.restrictedMode !== true,
+      adminOf: (name, actor) => this.contactAdminOf(name, actor),
+      defaultApprovers: name => {
+        const adapter = this.contactAdapter(name);
+        if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
+        return (this.adminListOf(adapter.id) ?? []).map(userId => ({ platform: adapter.type as "discord" | "telegram", adapterId: adapter.id, userId, label: userId }));
+      },
+      generation: name => this.contactGeneration(name),
+      hubRestricted: name => this.hubContactRestricted(name),
+      delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
+      deliveryState: ticket => ticket.deliveryId ? this.deliveryOutbox!.get(ticket.deliveryId)?.state : undefined,
+      admit: (request, ticketId) => {
+        const payload = { ...request.payload, contactTicket: { id: ticketId, state: "delivered" } };
+        const admitted = this.deliveryOutbox!.admit({ operationId: request.operationId,
+          sourceKey: `contact:${ticketId}`, sourceInstance: request.source,
+          sourceDaemonBootId: this.getDaemonBootId(request.source) ?? request.sourceGeneration,
+          targetInstance: request.target, targetSession: String(request.payload.targetSession ?? request.target),
+          kind: String(request.payload.type ?? "fleet_inbound"), correlationId: request.correlationId,
+          payload, forwards: request.forwards });
+        this.scheduleDeliveryOutboxPump();
+        return admitted.delivery.deliveryId;
+      },
+      changed: (instance, ticketId) => {
+        const revision = this.deliveryOutbox!.contactAuthorizations.policy(instance).revision;
+        const ticket = ticketId ? this.deliveryOutbox!.contactAuthorizations.get(ticketId) : undefined;
+        if (ticket) {
+          this.emitSseEvent("message", { instance: ticket.source, role: "status", sender: "AgEnD", ts: new Date().toISOString(),
+            text: t(ticket.state === "pending" ? "contact.held" : ticket.state === "approved" ? "contact.approved" : "contact.updated"),
+            contactTicket: { id: ticket.id, state: ticket.state } });
+          if (ticket.state === "approved") this.emitSseEvent("message", { instance: ticket.target, role: "user",
+            sender: ticket.source, text: ticket.message, ts: new Date().toISOString(), contactTicket: { id: ticket.id, state: "approved" } });
+        }
+        this.emitSseEvent("contact-auth", { instance, ...(ticketId ? { ticketId } : {}), revision });
+        this.needsYou?.poke();
+        this.emitSseEvent("needs", { items: this.needsYouItems() });
+      },
+    });
+  }
+
+  private contactDeliveryCurrent(row: OutboxDelivery): boolean {
+    const badge = row.payload.contactTicket as { id?: unknown } | undefined;
+    if (!badge) return true;
+    if (typeof badge.id !== "string") return false;
+    const service = this.contactService(), ticket = service.host.store.get(badge.id);
+    return !!ticket && ticket.deliveryId === row.deliveryId && ticket.source === row.sourceInstance && ticket.target === row.targetInstance
+      && !!ticket.decidedBy && service.canManage(ticket.target, ticket.decidedBy)
+      && Date.parse(ticket.expiresAt) > Date.now()
+      && ticket.sourceGeneration === this.contactGeneration(ticket.source)
+      && ticket.targetGeneration === this.contactGeneration(ticket.target)
+      && !this.hubContactRestricted(ticket.source);
+  }
+
+  contactPermissions(name: string, actor: ContactPerson): ContactPermissions {
+    const service = this.contactService(), room = this.contactRoom(name);
+    const canManage = service.canManage(name, actor), canSetMode = !!room && this.contactAdminOf(name, actor);
+    if (!canManage && !canSetMode) throw Error("forbidden");
+    if (!this.webChatOwner(name)) throw Error("not-found");
+    const store = service.host.store, policy = store.policy(name, this.contactGeneration(name));
+    const daemon = this.daemons.get(name) as (Daemon & { classicNativeGuard?(): ContactGuardStatus }) | undefined;
+    const backend = room ? this.classicChannels!.getBackendByInstance(name, this.fleetConfig?.defaults?.backend) : this.fleetConfig?.instances[name]?.backend ?? "unknown";
+    const nativeGuard = daemon?.classicNativeGuard?.() ?? { state: "not-covered" as const, backend, reason: "Native guard is not loaded in this build", impactComplete: false };
+    const removedTools = room ? [...toolsFor(resolveToolSet(this.fleetConfig?.instances[name], name))]
+      .filter(tool => !CLASSIC_RESTRICTED_TOOLS.includes(tool)) : [];
+    return { instance: name, revision: policy.revision, classicRoom: !!room,
+      mode: room?.restrictedMode === true ? "restricted" : "legacy", approvers: service.approvers(name),
+      eligibleApprovers: service.host.defaultApprovers(name),
+      inheritedApprovers: policy.approvers === undefined,
+      nativeGuard,
+      canManage, canSetMode, suggestRestricted: !!room && room.restrictedMode !== true && !store.suggestionDismissed(name),
+      roomTools: { ...policy.roomTools, wouldDisable: [...new Set([...removedTools, ...(nativeGuard.wouldDisable ?? [])])] }, grants: policy.grants, history: store.histories(name, this.contactGeneration(name)),
+      ...(service.needsApplication(name) ? { originRestriction: { active: true as const,
+        reason: !service.origin(name) || service.origin(name)?.kind === "unknown" ? "unknown-origin" as const : "earlier-non-admin" as const, resetSupported: false as const } } : {}) };
+  }
+
+  contactActor(req: import("node:http").IncomingMessage, url: URL): ContactPerson | null {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, this.webToken, this.webSessions, { touch: false });
+    if (verdict.kind !== "allow" || verdict.via !== "session" || verdict.session.tier !== "admin") return null;
+    const result = this.webAuthority({ session: verdict.session, gateway: !!gatewayRequestContext(req),
+      peer: gatewayRequestContext(req) ? (gatewayRequestContext(req)?.named ? "named_link" : "quick_link") : classifyWebPeer(req) });
+    const actor = result.authority.kind === "web-verified" ? result.authority.actor : null;
+    if (!actor) return null;
+    if (actor.adapter_id === "host" && actor.user_id === "operator") return { platform: "host", adapterId: "host", userId: "operator", label: "Operator" };
+    const adapter = this.adapters.get(actor.adapter_id);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return null;
+    return { platform: adapter.type, adapterId: actor.adapter_id, userId: actor.user_id, label: actor.user_id };
+  }
+
+  writeContactPermissions(name: string, raw: ContactPermissionsWrite, actor: ContactPerson): ContactPermissions {
+    const parsed = ContactPermissionsSchema.safeParse(raw);
+    if (!parsed.success) throw Error("invalid-request");
+    const input = parsed.data, before = this.contactPermissions(name, actor), store = this.contactService().host.store;
+    if ((input.approvers || input.grants) && !before.canManage) throw Error("forbidden");
+    if (input.approvers?.some(person => !before.eligibleApprovers.some(allowed => sameContactPerson(person, allowed)))) throw Error("invalid-approver");
+    if ((input.mode || input.roomTools) && !before.canSetMode) throw Error("forbidden");
+    if (input.grants?.some(grant => grant.target !== name || !this.webChatOwner(grant.source)
+      || Date.parse(grant.expiresAt) <= Date.now())) throw Error("invalid-grant");
+    // Configuration does not prove an external MCP's account independence. Preserve a conservative warning.
+    if (input.roomTools) input.roomTools.allowedMcpTools = input.roomTools.allowedMcpTools.map(tool => ({ ...tool,
+      usesOwnerAccount: true, accountWarning: t("contact.mcpAccountWarning") }));
+    if (input.revision !== before.revision) throw Error("conflict");
+    // Mode persists in the existing Classic configuration; absent historical fields remain legacy.
+    if (input.mode) {
+      if (input.mode === "restricted") store.inheritOrigin(name, { kind: "unknown", people: [], receiptIds: [], chain: [name] });
+      this.classicChannels!.setRestrictedMode(name, input.mode === "restricted");
+    }
+    const policy = store.writePolicy(name, input, actor, instance => this.contactGeneration(instance));
+    const daemon = this.daemons.get(name) as (Daemon & { setClassicRestriction?(plan: unknown): void }) | undefined;
+    daemon?.setClassicRestriction?.({ mode: this.contactRoom(name)?.restrictedMode === true ? "restricted" : "legacy",
+      roomTools: policy.roomTools, policyRevision: policy.revision });
+    this.emitSseEvent("contact-auth", { instance: name, revision: policy.revision });
+    this.needsYou?.poke();
+    this.emitSseEvent("needs", { items: this.needsYouItems() });
+    return this.contactPermissions(name, actor);
+  }
+
+  contactAuthorization(id: string, actor: ContactPerson) {
+    const service = this.contactService(), ticket = service.host.store.get(id);
+    if (!ticket) throw Error("not-found");
+    return service.view(ticket, actor);
+  }
+  contactAuthorizations(actor: ContactPerson, filter: { agent?: string; status?: string; person?: string; cursor?: string }) {
+    const service = this.contactService(), page = service.host.store.list({ ...filter, status: undefined });
+    return { ...page, items: page.items.flatMap(ticket => {
+      try {
+        const view = service.view(ticket, actor);
+        if (filter.status && view.state !== filter.status) return [];
+        if (filter.person && !view.origin.people.some(person => JSON.stringify([person.platform, person.adapterId, person.userId]) === filter.person)) return [];
+        return [view];
+      } catch { return []; }
+    }) };
+  }
+  decideContactAuthorization(id: string, decision: ContactTicketDecision, actor: ContactPerson) {
+    return this.contactService().decide(id, decision, actor);
+  }
+  contactNeeds(actor: ContactPerson): WebNeedsItem[] {
+    const service = this.contactService();
+    const pending: WebNeedsItem[] = service.host.store.pending()
+      .filter(ticket => { try { return service.view(ticket, actor).canDecide; } catch { return false; } }).map(ticket => ({
+        id: `contact:${ticket.id}`, type: "contact", reason: "contact_request", instance: ticket.target,
+        since: Date.parse(ticket.createdAt), detail: "", contactTicket: { id: ticket.id, source: ticket.source, target: ticket.target },
+      }));
+    return [...pending, ...(this.classicChannels?.getAll() ?? []).filter(room => room.restrictedMode !== true
+      && !service.host.store.suggestionDismissed(room.instanceName) && this.contactAdminOf(room.instanceName, actor))
+      .map(room => ({ id: `contact-suggest:${room.instanceName}`, type: "contact" as const,
+        reason: "contact_restricted_suggestion" as const, instance: room.instanceName,
+        since: Date.parse(room.createdAt) || 0, detail: "", contactSuggestion: { instance: room.instanceName } }))];
+  }
+  private contactSuggestions(): WebNeedsItem[] {
+    const rooms = this.classicChannels?.getAll().filter(room => room.restrictedMode !== true) ?? [];
+    const store = this.contactService().host.store;
+    const pending: WebNeedsItem[] = store.pending().map(ticket => ({ id: `contact:${ticket.id}`, type: "contact",
+      reason: "contact_request", instance: ticket.target, owner: this.getAdapterForInstance(ticket.target)?.id,
+      since: Date.parse(ticket.createdAt), detail: "", contactTicket: { id: ticket.id, source: ticket.source, target: ticket.target } }));
+    return [...pending, ...rooms.filter(room => !store.suggestionDismissed(room.instanceName)).map(room => ({
+      id: `contact-suggest:${room.instanceName}`, type: "contact", reason: "contact_restricted_suggestion",
+      instance: room.instanceName, owner: this.getAdapterForInstance(room.instanceName)?.id,
+      since: Date.parse(room.createdAt) || 0, detail: t("contact.suggest"), contactSuggestion: { instance: room.instanceName },
+    } as WebNeedsItem))];
+  }
+  acknowledgeContactSuggestion(instance: string, actor: ContactPerson): void {
+    if (!this.contactAdminOf(instance, actor) || !this.contactRoom(instance)) throw Error("forbidden");
+    this.contactService().host.store.dismissSuggestion(instance);
+    this.emitSseEvent("needs", { items: this.needsYouItems() });
+    this.needsYou?.poke();
+  }
+
   /** Synchronous SQLite admission; the caller may acknowledge only after this returns. */
   admitDurableDelivery(input: {
     operationId: string;
@@ -5399,6 +5675,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     targetSession?: string;
     kind: string;
     correlationId: string;
+    correlationExplicit?: boolean;
     payload: Record<string, unknown>;
     forwards?: readonly string[];
     requestedKind?: string;
@@ -5412,6 +5689,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!currentSourceBootId || !sourceDaemonBootId || currentSourceBootId !== sourceDaemonBootId) {
       throw new Error("Source daemon generation is no longer current; outcome is unknown");
     }
+    const service = this.contactService();
+    const metadata = input.payload.meta as Record<string, unknown> | undefined;
+    const requestKind = metadata?.request_kind;
+    const authorizationDeliveryId = service.requireApplication({ operationId: input.operationId, source: input.sourceInstance, target: input.targetInstance,
+      verb: input.kind === "broadcast" ? "broadcast" : requestKind === "task" ? "delegate_task" : requestKind === "query" ? "request_information"
+        : requestKind === "report" ? "report_result" : "send_to_instance",
+      message: String(input.payload.content ?? ""), correlationId: input.correlationId,
+      correlationExplicit: input.correlationExplicit ?? true,
+      resultRecipient: input.sourceInstance, payload: input.payload, forwards: input.forwards });
+    if (authorizationDeliveryId) {
+      const delivery = outbox.get(authorizationDeliveryId);
+      if (!delivery) throw Error("Authorized delivery is unavailable");
+      return { deliveryId: delivery.deliveryId, state: delivery.state, duplicate: true, kind: delivery.kind };
+    }
+    const inheritedOrigin = service.origin(input.sourceInstance);
+    if (inheritedOrigin && !service.host.legacyClassic?.(input.sourceInstance)) service.host.store.inheritOrigin(input.targetInstance,
+      { ...inheritedOrigin, chain: [...inheritedOrigin.chain, input.targetInstance] });
     const sourceKey = `mcp:${input.sourceInstance}:${input.operationId}:${input.targetInstance}:${input.targetSession ?? ""}:${input.kind}`;
     const admitted = outbox.admit({ ...input, sourceDaemonBootId, sourceKey });
     if (admitted.inserted) this.publishTraffic(admitted.delivery);
@@ -5915,11 +6209,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         };
         sent = await this.deliverToInstance(target, payload, {
           isCrossInstance: true,
+          stillCurrent: () => this.contactDeliveryCurrent(claimed),
           waitForIdle: claimed.kind !== "steer",
           noInlineWake: this.deliveryWorkerMode(target) !== "off",
         });
       }
       if (!sent) {
+        if (payload.contactTicket && !this.contactDeliveryCurrent(claimed)) {
+          outbox.cancelUnsubmittedContact(claimed.deliveryId, "Contact approval became stale before input");
+        }
         const current = outbox.get(claimed.deliveryId);
         if (current?.state === "delivering") {
           outbox.retryBeforeBegin(claimed.deliveryId, claimed.targetDaemonBootId, claimed.attemptNo,
@@ -5957,8 +6255,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       }
       const meta=claimed.payload.meta && typeof claimed.payload.meta === "object" ? claimed.payload.meta as Record<string,unknown> : {};
       const task=await this.nativeInstanceRuntime().execute(target,{...claimed.payload,requestId:deliveryId,meta:{...meta,from_instance:claimed.sourceInstance,correlation_id:claimed.correlationId}}, {
-        stillCurrent:()=>!this.shuttingDown,
-        beforeStart:()=>{ if(outbox.begin(deliveryId,targetDaemonBootId,attemptNo)!=="begun") throw new Error("Windows delivery attempt is no longer current");begun=true; },
+        stillCurrent:()=>!this.shuttingDown && this.contactDeliveryCurrent(claimed),
+        beforeStart:()=>{ if(!this.contactDeliveryCurrent(claimed) || outbox.begin(deliveryId,targetDaemonBootId,attemptNo)!=="begun") throw new Error("Windows delivery attempt is no longer current");begun=true; },
       });
       const outcome=task.outcomeConfirmed === false ? "uncertain" : task.status === "completed" ? "delivered" : "failed";
       outbox.complete(deliveryId,targetDaemonBootId,attemptNo,outcome,task.error || task.status);
@@ -5973,6 +6271,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } catch(error) {
       const reason=error instanceof Error ? error.message : String(error);
       if (begun) outbox.complete(deliveryId,targetDaemonBootId,attemptNo,"uncertain",reason);
+      else if (claimed.payload.contactTicket && !this.contactDeliveryCurrent(claimed)) outbox.cancelUnsubmittedContact(deliveryId, "Contact approval became stale before input");
       else outbox.retryBeforeBegin(deliveryId,targetDaemonBootId,attemptNo,reason,5000);
       this.logger.warn({target,deliveryId,err:reason},"Windows durable delivery did not complete");
     }
@@ -8000,6 +8299,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!origin || !this.deliveryOutbox) return payload;
     const row = this.deliveryOutbox.createHumanReceipt({ targetInstance: instanceName, originalBody,
       origin: { ...origin }, inputKind: String(payload.type), managerBootId: this.managerBootId });
+    const contactStore = this.deliveryOutbox.contactAuthorizations;
+    if (this.contactRoom(instanceName)?.restrictedMode === true && !contactStore) throw Error("Contact origin storage unavailable");
+    if (contactStore && (this.contactRoom(instanceName)?.restrictedMode === true || contactStore.origin(instanceName))) {
+      const authority = origin.authority;
+      const actor = origin.platform === "web" ? (authority?.kind === "web-verified" ? authority.actor : null)
+        : { adapter_id: origin.adapter_id, user_id: origin.user_id };
+      const adapter = actor?.adapter_id ? this.adapters.get(actor.adapter_id) : undefined;
+      const platform = origin.platform === "web" ? adapter?.type : origin.platform;
+      const person: ContactPerson | undefined = actor?.adapter_id && actor.user_id
+        && (platform === "discord" || platform === "telegram" || (actor.adapter_id === "host" && actor.user_id === "operator"))
+        ? { platform: actor.adapter_id === "host" ? "host" : platform as "discord" | "telegram",
+          adapterId: actor.adapter_id, userId: actor.user_id, label: origin.username ?? actor.user_id } : undefined;
+      contactStore.inheritOrigin(instanceName, { kind: person ? "human" : "unknown", people: person ? [person] : [],
+        receiptIds: [row.message_id], chain: [instanceName] });
+      if (this.contactRoom(instanceName)?.restrictedMode === true && (!person || !this.contactAdminOf(instanceName, person))
+        && typeof payload.content === "string" && (payload.type === "fleet_inbound" || payload.type === "steer")) {
+        payload = { ...payload, content: `${t(person ? "contact.originNonAdmin" : "contact.originUnknown")}\n\n${payload.content}` };
+      }
+    }
     // #1939 §7: each ordinary verified web message, for the S1 beta to watch. No text, cookie or session id: the handle.
     const authority = origin.authority;
     if (authority?.kind === "web-verified" && authority.actor && authority.session) {
@@ -14563,6 +14881,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private checkToolPermission(sink: ToolSink, instanceName: string, tool: string): { allowed: boolean; message: string } {
+    if (this.classicChannels?.getAll?.().some(room => room.instanceName === instanceName && room.restrictedMode === true) && !CLASSIC_RESTRICTED_TOOLS.includes(tool)) {
+      return { allowed: false, message: "This Classic room is restricted. This tool is not in its room tool allowance." };
+    }
     if (isCanvasWorkerTool(tool)) return { allowed: false, message: CANVAS_WORKER_EXPERIMENTAL_MESSAGE };   // #2799: removed
     const profile: ToolSetName = resolveToolSet(this.fleetConfig?.instances[instanceName], instanceName);
     const allowed = mayUseTool(profile, tool);
@@ -14654,7 +14975,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
     // #2305: a reaction to a web chat message is the web chat's own (any fleet, web-only included): never an adapter's.
-    if (tool === "react" && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
+    if (tool === "react" && !this.classicChannels?.getAll?.().some(room => room.instanceName === instanceName && room.restrictedMode === true) && typeof args.message_id === "string" && isWebMessageId(args.message_id)) {
       // The socket's own instance, never a session name the caller wrote itself (as checkToolPermission: it was not
       // identified) — a channel tool's call from a daemon carries none anyway (#2310 review).
       const r = await this.reactToWebMessage(instanceName, args.message_id, args.emoji);
@@ -14673,9 +14994,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return;
     }
 
+    const restrictedRoute = this.restrictedClassicRouting(instanceName);
+    const restrictedIncarnation = restrictedRoute ? this.contactGeneration(instanceName) : undefined;
+    const restrictedBoot = restrictedRoute ? this.getDaemonBootId(instanceName) : undefined;
+    if (restrictedRoute && Array.isArray(args.previews) && args.previews.length) { respond(null, "File previews are not available in restricted rooms; use the room's own attachments"); return; }
+    let replyBookkeeping = Promise.resolve();
+    const restrictedExtras = restrictedRoute ? {
+      prepareFiles: (paths: readonly string[]) => this.prepareContactFiles(instanceName, paths),
+      replyFinished: () => replyBookkeeping,
+      downloadAttachment: (id: string) => this.downloadRoomAttachment(instanceName, id),
+      beforeSend: () => {
+        const current = this.restrictedClassicRouting(instanceName);
+        if (!current || current.adapterId !== restrictedRoute.adapterId || current.chatId !== restrictedRoute.chatId
+          || current.threadId !== restrictedRoute.threadId || this.contactGeneration(instanceName) !== restrictedIncarnation
+          || this.getDaemonBootId(instanceName) !== restrictedBoot) throw Error("Restricted room route changed before delivery");
+      },
+    } : {};
     // Resolve threadId: use sender's topic_id if sender is a known fleet instance,
     // fall back to general topic if sender is unknown, or IPC owner if no sender.
-    const senderInstanceName = senderSessionName && this.fleetConfig?.instances[senderSessionName]
+    const senderInstanceName = !restrictedRoute && senderSessionName && this.fleetConfig?.instances[senderSessionName]
       ? senderSessionName
       : null;
     const routingConfig = senderInstanceName
@@ -14688,9 +15025,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // ids are scoped to that bot/world; routing a secondary-world id through the
     // primary adapter produces a 404. Instance binding remains the compatibility
     // fallback for older daemons and calls without a live/persisted context.
-    const contextAdapterId = typeof msg.adapterId === "string" && msg.adapterId
+    const contextAdapterId = restrictedRoute?.adapterId ?? (typeof msg.adapterId === "string" && msg.adapterId
       ? msg.adapterId
-      : undefined;
+      : undefined);
     const contextWorld = contextAdapterId ? this.worlds.get(contextAdapterId) : undefined;
     if (contextAdapterId && !contextWorld) {
       respond(null, `Adapter world unavailable: ${contextAdapterId}`);
@@ -14720,6 +15057,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         delete args.thread_id;
         threadId = undefined;
       }
+    }
+    if (restrictedRoute) {
+      args.chat_id = restrictedRoute.chatId;
+      threadId = restrictedRoute.threadId;
+      if (threadId) args.thread_id = threadId; else delete args.thread_id;
     }
 
     // Reply dedup: retries land here when the agent was told a send failed
@@ -14826,7 +15168,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               inChannel = outAdapter !== WEB_ONLY_REPLY_SINK
                 && this.landedInOwnChannel(instanceName, replyAdapterId, result);
             } catch { /* not known: not the channel's (fail closed), and the bookkeeping below still runs */ }
-            void this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined, replyIdentity, result);
+            replyBookkeeping = this.afterReplyRouted(instanceName, args, senderSessionName, buttonsView, inChannel, replyAdapterId ? { adapterId: replyAdapterId, result } : undefined, replyIdentity, result)
+              .catch(err => { this.logger.warn({ err, instanceName }, "Reply bookkeeping failed after confirmed delivery"); });
           } catch (err) {
             this.logger.warn({ err, instanceName }, "Reply delivered but post-delivery bookkeeping failed");
           }
@@ -14839,7 +15182,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
         }
       };
-      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks, ...(replySet.poll ? { replyPoll: replySet.poll } : {}) } : {})) {
+      if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, { ...restrictedExtras, ...(replySet ? { replyButtons: replySet.callbacks, ...(replySet.poll ? { replyPoll: replySet.poll } : {}) } : {}) })) {
         return;
       }
       if (replySet) this.replyButtonsCtl?.discard(replySet.id);
@@ -14850,7 +15193,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     // Route standard channel tools (reply, react, edit_message, download_attachment)
-    if (routeToolCall(outAdapter, tool, args, threadId, respond)) {
+    if (routeToolCall(outAdapter, tool, args, threadId, respond, restrictedExtras)) {
       return;
     }
 
@@ -15616,6 +15959,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (op !== "list") {
       const profile = resolveToolSet(this.fleetConfig?.instances[caller], caller);
       const existing = op === "create" ? null : scheduler.get(args.id as string);
+      const effectiveTarget = requestedTarget?.trim() || existing?.target || caller;
+      if ((op === "create" || op === "update") && effectiveTarget !== caller && this.contactService().needsApplication(caller)) {
+        throw new ToolNotPermittedError("Scheduled peer contact needs approval. Use a contact application instead; this conversation's origin remains restricted.");
+      }
       const refusal = scheduleOpRefusal(profile, caller, op, { requestedTarget, existing });
       if (refusal) {
         this.logger.warn({ instance: caller, profile, op, target: requestedTarget ?? existing?.target, scheduleId: args.id },
@@ -19171,6 +19518,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return owner !== undefined && this.worlds.has(owner) ? owner : undefined;
     };
     this.needsYou = new NeedsYouHub({
+      contactSuggestions: () => this.contactSuggestions(),
       dataDir: this.dataDir,
       now: () => Date.now(),
       mono: () => performance.now(),
@@ -24151,7 +24499,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
@@ -24168,6 +24516,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         cards: m.cards,
         posts: m.posts,                                  // #2281: kept beside the row, never broadcast (not a row field)
         reserved: m.reserved,                            // #1774: an agent reply's place, taken when it was sent
+        contactTicket: m.contactTicket,
       });
       // A sending page's own id for its pending bubble rides on the live copy only: never recorded, never replayed.
       const clientId = typeof (data as { clientId?: unknown }).clientId === "string" ? (data as { clientId: string }).clientId : "";
@@ -25086,12 +25435,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string; humanOrigin?: HumanOrigin; humanOriginalBody?: string },
+    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string; humanOrigin?: HumanOrigin; humanOriginalBody?: string; isBotMessage?: boolean; attachments?: InboundMessage["attachments"] },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
     // #1085: a Telegram forum ClassicBot is keyed by chat id (threadId), but the
     // reply context must carry the topic the message was really asked in.
     const replyThreadId = msg.transportThreadId ?? msg.threadId;
+    const contactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter;
+    if (contactAdapter) this.recordClassicContactInput(instanceName, msg, contactAdapter);
     // Resolve the channel/adapter from the instance itself so per-channel context
     // config is correct even for a same-channel second bot.
     const ctxAdapterId = this.classicChannels?.getAdapterIdByInstance(instanceName);

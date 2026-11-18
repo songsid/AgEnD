@@ -1,4 +1,5 @@
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
+import { ContactHeldError } from "./contact-auth-service.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
 import { resolve as pathResolve, isAbsolute } from "node:path";
 import { homedir } from "node:os";
@@ -80,6 +81,10 @@ import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type Hub
 export interface OutboundContext {
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
+  classicContactRestricted?(instance: string): boolean;
+  prepareContactFiles?(instance: string, paths: readonly string[]): Promise<import("./contact-auth-files.js").ContactFileLease | undefined>;
+  restrictedClassicRouting?(instance: string): { adapterId: string; chatId: string; threadId?: string } | undefined;
+  downloadRoomAttachment?(instance: string, fileId: string): Promise<string>;
   readonly fleetConfig: FleetConfig | null;
   readonly adapter: ChannelAdapter | null;
   readonly adapters?: Map<string, ChannelAdapter>;
@@ -145,6 +150,7 @@ export interface OutboundContext {
     targetSession?: string;
     kind: string;
     correlationId: string;
+    correlationExplicit?: boolean;
     payload: Record<string, unknown>;
     forwards?: readonly string[];
     requestedKind?: string;
@@ -455,13 +461,20 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       return;
     }
     const callerCurrent = () => !ctx.getDaemonBootId || ctx.getDaemonBootId(meta.instanceName) === bootSent;
-    const claimed = ctx.hubReport({ correlationId: parsedCorrelationId, caller: meta.instanceName, text: message, callerCurrent, ...(meta.hubExtras ? { extras: meta.hubExtras } : {}) });
-    if (claimed) {
-      const outcome = await claimed;
-      if (outcome.ok) respond({ sent: true, target: HUB_REPORT_TARGET, correlation_id: parsedCorrelationId, message: outcome.message });
-      else respond(null, outcome.message);
-      return;
-    }
+    let lease: import("./contact-auth-files.js").ContactFileLease | undefined;
+    try { lease = meta.hubExtras?.files?.length ? await ctx.prepareContactFiles?.(meta.instanceName, meta.hubExtras.files) : undefined; }
+    catch { respond(null, "Restricted room answers may attach only files from this room's own inbox or scratch"); return; }
+    try {
+      if (!callerCurrent()) { respond(null, "Source daemon generation is no longer current; outcome is unknown"); return; }
+      const extras = lease ? { ...meta.hubExtras, files: lease.paths } : meta.hubExtras;
+      const claimed = ctx.hubReport({ correlationId: parsedCorrelationId, caller: meta.instanceName, text: message, callerCurrent, ...(extras ? { extras } : {}) });
+      if (claimed) {
+        const outcome = await claimed;
+        if (outcome.ok) respond({ sent: true, target: HUB_REPORT_TARGET, correlation_id: parsedCorrelationId, message: outcome.message });
+        else respond(null, outcome.message);
+        return;
+      }
+    } finally { try { await lease?.dispose(); } catch { /* confirmed Hub delivery must not become a retryable cleanup error */ } }
   }
   // Only a claimed Hub answer above is exempt, never an ordinary instance merely named agend-hub.
   if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
@@ -589,6 +602,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
         targetSession,
         kind: useSteer ? "steer" : "fleet_inbound",
         correlationId,
+        correlationExplicit: !!parsedCorrelationId,
         payload,
         forwards,
         requestedKind: steer === true ? "steer" : "fleet_inbound",
@@ -596,6 +610,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
       if (durableReceipt.kind) effectiveUseSteer = durableReceipt.kind === "steer";
       if (durableReceipt.duplicate && durableReceipt.kind !== undefined && durableReceipt.kind !== payload.type) steerFallbackWarning = undefined;
     } catch (err) {
+      if (err instanceof ContactHeldError) { respond(err.result); return; }
       ctx.logger.error({ err, source: meta.instanceName, target: targetInstanceName }, "Durable outbound admission failed closed");
       respond(null, t("delivery.admission_failed", sanitizeError(err, ctx, "durable delivery admission")));
       return;
@@ -1987,8 +2002,9 @@ const createInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   if (isGeneralInstance(ctx.fleetConfig, meta?.instanceName ?? "")) {
     // Out-of-band authenticated identity: raw passthrough fields cannot choose
     // the protected target. The lifecycle checks the final allocated name.
-    await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, meta.instanceName);
-  } else await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
+    await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, meta.instanceName, meta.instanceName);
+  } else if (meta?.instanceName) await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId, undefined, undefined, meta.instanceName);
+  else await ctx.lifecycle.handleCreate(v.data, respond, callerAdapterId);
 };
 
 const deleteInstance: Handler = async (ctx, rawArgs, respond, meta) => {
@@ -2074,6 +2090,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const deliveryIds: string[] = [];
   const sentMeta = new Map<string, Record<string, string>>();
   const failed: string[] = [];
+  const held: Array<{ target: string; authorization_id: string; authorization_state: string }> = [];
   for (const targetName of targetNames) {
     const hostInstance = ctx.instanceIpcClients.has(targetName) ? targetName : ctx.sessionRegistry.get(targetName);
     if (!hostInstance || !ctx.instanceIpcClients.has(hostInstance)) { failed.push(targetName); continue; }
@@ -2093,11 +2110,16 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
           targetSession: targetName,
           kind: "broadcast",
           correlationId,
+          correlationExplicit: false,
           payload,
         });
         duplicate = receipt.duplicate === true;
         deliveryIds.push(receipt.deliveryId);
       } catch (err) {
+        if (err instanceof ContactHeldError) {
+          held.push({ target: targetName, authorization_id: err.result.authorization_id, authorization_state: err.result.authorization_state });
+          continue;
+        }
         ctx.logger.error({ err, target: targetName, source: meta.instanceName }, "Durable broadcast admission failed closed");
         failed.push(targetName);
         continue;
@@ -2140,9 +2162,10 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
     failed,
     count: sentTo.length,
     queued: true,
+    ...(held.length ? { held } : {}),
     ...(operationId ? { operation_id: operationId } : {}),
     ...(ctx.admitDurableDelivery ? { durable: true, delivery_state: "queued" } : { durable: false }),
-  } : { sent: sentTo.length, queued: true, ...(deliveryIds.length ? { delivery_ids: deliveryIds } : {}), ...(failed.length ? { failed } : {}) });
+  } : { sent: sentTo.length, queued: sentTo.length > 0, ...(held.length ? { held } : {}), ...(deliveryIds.length ? { delivery_ids: deliveryIds } : {}), ...(failed.length ? { failed } : {}) });
 };
 
 // ── Teams ────────────────────────────────────────────────────────────────
@@ -2362,7 +2385,7 @@ const deployTemplate: Handler = async (ctx, rawArgs, respond, meta) => {
             const r = res as { name: string; status?: string };
             resolve({ success: true, name: r.name, status: r.status });
           }
-        }, callerAdapterId);
+        }, callerAdapterId, undefined, undefined, meta?.instanceName);
       });
 
       if (!result.success) {

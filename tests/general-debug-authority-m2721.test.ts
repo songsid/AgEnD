@@ -33,7 +33,7 @@ function rig() {
   const adapter = { type: "telegram" };
   const fm = {
     fleetConfig: config, dataDir: home, saveFleetConfig,
-    classicHubPrivateBlocked: () => false,
+    classicHubPrivateBlocked: () => false, restrictedClassicRouting: () => undefined,
     lifecycle: { handleCreate, has: () => false },
     classicChannels: { getAll: () => [], getChannelIdByInstance: () => undefined },
     worlds: new Map([["test", { adapter }]]), adapter,
@@ -77,7 +77,7 @@ describe("General debug and tool-set authority (36525f1b)", () => {
       if (tool === "update_instance_config") {
         expect(r.config.instances.worker!.tool_set).toBe(tool_set);
         expect((yaml.load(readFileSync(join(r.home, "fleet.yaml"), "utf8")) as FleetConfig).instances.worker!.tool_set).toBe(tool_set);
-      } else expect(r.handleCreate).toHaveBeenLastCalledWith(expect.objectContaining({ tool_set }), expect.any(Function), "test", undefined, "admin");
+      } else expect(r.handleCreate).toHaveBeenLastCalledWith(expect.objectContaining({ tool_set }), expect.any(Function), "test", undefined, "admin", "admin");
     }
     if (tool === "update_instance_config") expect(r.saveFleetConfig).toHaveBeenCalledTimes(5);
     else expect(r.handleCreate).toHaveBeenCalledTimes(5);

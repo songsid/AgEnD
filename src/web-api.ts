@@ -1,4 +1,5 @@
 import { pipeline } from "node:stream/promises";
+import { handleContactAuthorizationApi, type ContactApiHost } from "./contact-auth-api.js";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
 import { STRUCTURED_PROFILE_BACKENDS } from "./structured-signin-transport.js";
 import { hubModeOf, hubNameOf, type HubSwitches } from "./hub-mode.js";
@@ -253,6 +254,12 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
  */
 /** #1920 phase 1b: the open streams that are a guest's, and whose — each event is projected for them (guestFrameData). */
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
+const streamContactProjection = new WeakMap<ServerResponse, (event: string, data: unknown) => unknown>();
+function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
+  const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
+  const actor = ctx.contactActor?.(req, url);
+  return actor && ctx.contactNeeds ? [...ordinary, ...ctx.contactNeeds(actor)] : ordinary;
+}
 
 /**
  * The task board's rule over the public link: an instance kept out of sight (cross_instance_visibility: hidden) is not
@@ -356,7 +363,9 @@ export function broadcastSseEvent(
         if (shown !== undefined) client.write(sseFrame(event, shown));
         continue;
       }
-      client.write(payload);
+      const project = streamContactProjection.get(client);
+      const shown = project ? project(event, data) : data;
+      if (shown !== undefined) client.write(shown === data ? payload : sseFrame(event, shown, id));
     } catch (err) {
       dead.push(client);
       onError?.(err);
@@ -401,6 +410,14 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext {
+  contactPermissions?: ContactApiHost["contactPermissions"];
+  writeContactPermissions?: ContactApiHost["writeContactPermissions"];
+  contactAuthorization?: ContactApiHost["contactAuthorization"];
+  contactAuthorizations?: ContactApiHost["contactAuthorizations"];
+  decideContactAuthorization?: ContactApiHost["decideContactAuthorization"];
+  contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
+  contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
+  acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
@@ -2168,6 +2185,8 @@ export function handleWebRequest(
   }
 
   if (handleAgentRuntimeChange(req, res, url, ctx)) return true;
+  if (ctx.contactPermissions && ctx.writeContactPermissions && ctx.contactAuthorization && ctx.contactAuthorizations && ctx.decideContactAuthorization && ctx.contactActor
+    && handleContactAuthorizationApi(req, res, url, ctx as ContactApiHost)) return true;
   if (handleNativeInstanceRequest(req, res, url, ctx)) return true;
   if (handleWindowsCliRequest(req, res, url, ctx)) return true;
   if (handleRuntimeRequest(req, res, url, ctx)) return true;
@@ -2413,7 +2432,7 @@ export function handleWebRequest(
       prompts: ctx.listWebPrompts?.() ?? [],
       // #1386: "Needs you" rides the passive channels only — no endpoint of its own to poll. Over the public link,
       // without the task board's hidden cards (#2306 review).
-      needs: visibleNeeds(ctx, linkRestricted(req, url, ctx), ctx.needsYouItems?.() ?? []),
+      needs: visibleNeeds(ctx, linkRestricted(req, url, ctx), contactNeedsFor(req, url, ctx, ctx.needsYouItems?.() ?? [])),
       // #1577: the newest message this answer accounts for — after a restart, the last restored one until this process
       // records its own (`<boot>-0` would be after(0): the whole restored history again on every poll).
       cursor: history ? history.pollCursor() : null,
@@ -2447,6 +2466,22 @@ export function handleWebRequest(
     // (§5.2), then only what guestFrameData lets through — no prompts or Needs you.
     const guest = guestRequestOf(req);
     if (guest) { streamGuests.set(res, guest); guest.streamOpened?.(); }
+    if (!guest && ctx.contactActor) streamContactProjection.set(res, (event, value) => {
+      if (event === "needs") return { items: contactNeedsFor(req, url, ctx,
+        (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) ? (value as { items: unknown[] }).items : []) };
+      if (event === "contact-auth") {
+        const actor = ctx.contactActor?.(req, url);
+        if (!actor || !value || typeof value !== "object") return undefined;
+        const change = value as { instance?: string; ticketId?: string };
+        try {
+          if (change.ticketId) ctx.contactAuthorization?.(change.ticketId, actor);
+          else if (change.instance) ctx.contactPermissions?.(change.instance, actor);
+          else return undefined;
+          return value;
+        } catch { return undefined; }
+      }
+      return value;
+    });
     const statusFrame = () => `event: status\ndata: ${JSON.stringify(guest ? guestStatus(ctx.getUiStatus(), guest.scope()) : ctx.getUiStatus())}\n\n`;
     res.write(`${statusFrame()}${sseClock()}`);
     // An EventSource that reconnects says what it last saw: send what it missed, before anything new.
@@ -2469,7 +2504,7 @@ export function handleWebRequest(
     // The same for the fleet prompts (C4): one posted, answered or expired during a gap is caught up here.
     if (!guest && ctx.listWebPrompts) res.write(`event: prompts\ndata: ${JSON.stringify(ctx.listWebPrompts())}\n\n`);
     // #1386: and "Needs you" as it is now; changes follow as `needs` events.
-    if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: ctx.needsYouItems() })}\n\n`);
+    if (!guest && ctx.needsYouItems) res.write(`event: needs\ndata: ${JSON.stringify({ items: contactNeedsFor(req, url, ctx, ctx.needsYouItems()) })}\n\n`);
     ctx.sseClients.add(res);
     // #1956: the heartbeat's status comes from the one build every open stream shares each tick (statusTick), with
     // this stream's own projection; this stream's checks stay its own.
@@ -3484,6 +3519,13 @@ export function handleWebRequest(
       if (!permitWebContinuation(req, res, ctx)) return;
       const id = body && typeof body === "object" ? body.id : undefined;
       if (typeof id !== "string") { json(res, 400, { error: "id required" }); return; }
+      if (id.startsWith("contact-suggest:")) {
+        const actor = ctx.contactActor?.(req, url);
+        if (!actor || !ctx.acknowledgeContactSuggestion) { json(res, 403, { error: "forbidden" }); return; }
+        try { ctx.acknowledgeContactSuggestion(id.slice("contact-suggest:".length), actor); json(res, 200, { acknowledged: true }); }
+        catch { json(res, 403, { error: "forbidden" }); }
+        return;
+      }
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
       if (verdict.kind !== "allow") { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
       const principal = verdict.via === "session" && verdict.session ? `web:${verdict.session.handle}` : "cli";

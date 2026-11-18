@@ -20,6 +20,14 @@ import { replyPreviews, type ReplyPreviewSpec } from "./reply-preview-spec.js";
  * after it.
  */
 import { randomBytes } from "node:crypto";
+import type { ContactBadge } from "./contact-auth-types.js";
+function contactBadge(value: unknown): ContactBadge | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const row = value as ContactBadge;
+  return typeof row.id === "string" && /^R[a-f0-9-]{36}$/.test(row.id)
+    && ["pending", "approved", "delivered", "declined", "expired", "unknown"].includes(row.state)
+    ? { id: row.id, state: row.state } : undefined;
+}
 import { webTextLinks, type TextLink } from "./topic-link.js";
 import { WEB_REACTIONS_MAX, webReactionsOf } from "./web-reactions.js";
 import { join } from "node:path";
@@ -100,6 +108,7 @@ function webChatButtons(raw: unknown): WebChatButtons | undefined {
 }
 
 export interface WebChatMessage {
+  contactTicket?: ContactBadge;
   /** Files shown with the message (absent when none); a restored one that cannot be served again is `gone` (#1565). */
   attachments?: Array<WebChatAttachment | WebChatGoneAttachment>;
   /** #1266: an agent reply's buttons (agent messages only). */
@@ -295,6 +304,7 @@ export interface WebChatHistoryOptions {
 
 /** #1565: a message as it is kept on disk — what was said, never the interactive state; files with their paths. */
 export interface StoredWebChatMessage {
+  contactTicket?: ContactBadge;
   previews?: ReplyPreviewSpec[];
   boot: string;
   id: number;
@@ -416,6 +426,13 @@ export class WebChatHistory {
     if (!this.store) return;
     this.store.schedule(instance, () => (this.byInstance.get(instance)?.messages ?? []).map((m) => this.stored(m)));
   }
+  updateContactTicket(instance: string, id: string, state: ContactBadge["state"]): void {
+    let changed = false;
+    for (const message of this.byInstance.get(instance)?.messages ?? []) if (message.contactTicket?.id === id && message.contactTicket.state !== state) {
+      message.contactTicket = { id, state }; changed = true;
+    }
+    if (changed) this.persist(instance);
+  }
 
   /** #1565: what was said, with no interactive state or web delivery ids; native turn identity is durable. */
   private stored(m: WebChatMessage): StoredWebChatMessage {
@@ -423,6 +440,7 @@ export class WebChatHistory {
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}), ...(m.role === "agent" && m.previews?.length ? { previews: m.previews } : {}) };
     if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
+    if (m.contactTicket) row.contactTicket = { ...m.contactTicket };
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
     if (m.attachments?.length) {
@@ -528,7 +546,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; contactTicket?: unknown; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -561,6 +579,8 @@ export class WebChatHistory {
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
     const previews = entry.role === "agent" ? replyPreviews(msg.previews) : null;
+    const badge = contactBadge(msg.contactTicket);
+    if (badge) entry.contactTicket = badge;
     if (previews?.length) entry.previews = previews;
     const click = entry.role === "user" ? webChatClick(msg.click) : undefined;
     if (click) entry.click = click;
@@ -1019,6 +1039,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
   const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  const badge = contactBadge(r.contactTicket);
+  if (badge) message.contactTicket = badge;
   const previews = role === "agent" ? replyPreviews(r.previews) : null;
   if (previews?.length) message.previews = previews;
   if (nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;

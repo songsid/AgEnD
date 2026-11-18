@@ -17,6 +17,7 @@ import { replyPreviews } from "./reply-preview-spec.js";
  * for the resolved identity; they are not a sandbox for mutually untrusted agents.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { CLASSIC_RESTRICTED_TOOLS } from "./contact-auth-types.js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID, timingSafeEqual } from "node:crypto";
@@ -374,6 +375,9 @@ export async function dispatchAgentOperation(
   // here; this does not isolate hostile shell processes sharing that identity.
   const requestedTool = toolForAgentOp(op);
   if (requestedTool) {
+    if (ctx.classicContactRestricted?.(instance) && !CLASSIC_RESTRICTED_TOOLS.includes(requestedTool)) {
+      throw new ToolNotPermittedError("This Classic room is restricted. This tool is not in its room tool allowance.");
+    }
     if (isCanvasWorkerTool(requestedTool)) {                                    // #2799: removed
       throw new ToolNotPermittedError(CANVAS_WORKER_EXPERIMENTAL_MESSAGE);
     }
@@ -487,7 +491,7 @@ export async function dispatchAgentOperation(
   if (channelTools.has(tool)) {
     // #2305: a reaction to a web chat message is the web chat's own (as on the MCP path): never an adapter's.
     const reactId = tool === "react" ? (args as Record<string, unknown>).message_id : undefined;
-    if (typeof reactId === "string" && isWebMessageId(reactId)) {
+    if (!ctx.classicContactRestricted?.(instance) && typeof reactId === "string" && isWebMessageId(reactId)) {
       return (async (): Promise<unknown> => {
         if (!ctx.reactToWebMessage) return { error: "react: the web chat is not available" };
         const r = await ctx.reactToWebMessage(instance, reactId, (args as Record<string, unknown>).emoji);
@@ -496,6 +500,18 @@ export async function dispatchAgentOperation(
     }
     return (async (): Promise<unknown> => {
       if (tool === "reply" && !replyPreviews((args as Record<string, unknown>).previews)) return { error: "reply: invalid previews" };
+      const restricted = ctx.restrictedClassicRouting?.(instance);
+      const boot = restricted ? ctx.getDaemonBootId?.(instance) : undefined;
+      if (restricted && Array.isArray(args.previews) && args.previews.length) return { error: "File previews are not available in restricted rooms" };
+      const restrictedExtras = restricted ? {
+        prepareFiles: (paths: readonly string[]) => ctx.prepareContactFiles?.(instance, paths) ?? Promise.reject(Error("Restricted file broker is unavailable")),
+        downloadAttachment: (id: string) => ctx.downloadRoomAttachment?.(instance, id) ?? Promise.reject(Error("Restricted attachment broker is unavailable")),
+        beforeSend: () => {
+          const current = ctx.restrictedClassicRouting?.(instance);
+          if (!current || current.adapterId !== restricted.adapterId || current.chatId !== restricted.chatId || current.threadId !== restricted.threadId
+            || ctx.getDaemonBootId?.(instance) !== boot) throw Error("Restricted room route changed before delivery");
+        },
+      } : {};
       const previewDelivered = tool === "reply" ? ctx.captureReplyPreview?.(instance, args as Record<string, unknown>) : undefined;
       const persisted = readPersistedReplyContext(ctx.dataDir, instance);
       const configuredThreadId = ctx.fleetConfig?.instances[instance]?.topic_id != null
@@ -505,14 +521,16 @@ export async function dispatchAgentOperation(
         ? String(ctx.fleetConfig.channel.group_id)
         : "");
       const classicChannelId = ctx.classicChannels?.getChannelIdByInstance?.(instance);
-      const chatId = classicChannelId ?? persisted?.chatId ?? configuredChatId;
-      const threadId = classicChannelId ? undefined : (persisted?.threadId ?? configuredThreadId);
+      const chatId = restricted?.chatId ?? classicChannelId ?? persisted?.chatId ?? configuredChatId;
+      const threadId = restricted ? restricted.threadId : classicChannelId ? undefined : (persisted?.threadId ?? configuredThreadId);
       if (tool !== "download_attachment" && !chatId) {
         return { error: "No active chat context — awaiting inbound message" };
       }
       const fullArgs = { ...args, chat_id: chatId, ...(threadId ? { thread_id: threadId } : {}) };
-      const adapter = (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined)
-        ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
+      if (restricted && !threadId) delete (fullArgs as Record<string, unknown>).thread_id;
+      const adapter = restricted ? ctx.adapters?.get(restricted.adapterId) ?? ctx.getAdapterForInstance?.(instance)
+        : (persisted?.adapterId ? ctx.adapters?.get(persisted.adapterId) : undefined) ?? ctx.getAdapterForInstance?.(instance) ?? ctx.adapter!;
+      if (!adapter || restricted && adapter.id !== restricted.adapterId) return { error: "Restricted room adapter is unavailable" };
 
       // #1266: this path has no clickable buttons — they are checked as on the MCP path, then offered as text.
       if (tool === "reply") {
@@ -555,7 +573,7 @@ export async function dispatchAgentOperation(
           // that path, so without this their cancel button would never clear.
           if (!error && tool === "reply") { ctx.clearCancelButton?.(instance); previewDelivered?.(result); }
           resolve(error ? { error } : tool==="reply"?withHubRoomReplyWarning(result,()=>ctx.hubRoomReplyWarning?.(instance)):result);
-        });
+        }, restrictedExtras);
         if (!handled) {
           if (ticket && !ticket.duplicate) ticket.complete(null, "unhandled");
           resolve({ error: `Unhandled channel tool: ${tool}` });
