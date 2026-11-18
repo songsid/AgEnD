@@ -1,0 +1,81 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-groups-mount-s89.test.ts (20 tests | 3 failed) 500ms
+     × without the control: no group-policy mark, and every group route is 404 34ms
+     × the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row) 1ms
+     × with it: the mark on both the sign-in answer and the session read 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-groups-mount-s89.test.ts > the group routes on the real Hub HTTP > without the control: no group-policy mark, and every group route is 404
+AssertionError: expected [ 'agent-intro-defaults-v1', …(10) ] to deeply equal [ 'agent-intro-defaults-v1', …(9) ]
+
+- Expected
++ Received
+
+@@ -5,8 +5,9 @@
+    "admin-dashboard-v1",
+    "rooms-v1",
+    "room-purpose-v1",
+    "room-pins-v1",
+    "person-prefs-v1",
++   "room-agent-discovery-v1",
+    "sharing-pause-v1",
+    "mcp-apps-v1",
+  ]
+
+ ❯ tests/hub-groups-mount-s89.test.ts:169:29
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-groups-mount-s89.test.ts > the group routes on the real Hub HTTP > the Hub HTTP reports group permissions only when composed with them (what marks the host fleet's Settings row)
+AssertionError: expected [ 'agent-intro-defaults-v1', …(15) ] to deeply equal [ 'agent-intro-defaults-v1', …(14) ]
+
+- Expected
++ Received
+
+@@ -11,7 +11,8 @@
+    "room-context-v1",
+    "room-brief-v1",
+    "room-members-v2",
+    "room-answer-status-v1",
+    "person-prefs-v1",
++   "room-agent-discovery-v1",
+    "sharing-pause-v1",
+  ]
+
+ ❯ tests/hub-groups-mount-s89.test.ts:175:34
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-groups-mount-s89.test.ts > the group routes on the real Hub HTTP > with it: the mark on both the sign-in answer and the session read
+AssertionError: expected [ 'agent-intro-defaults-v1', …(11) ] to deeply equal [ 'agent-intro-defaults-v1', …(10) ]
+
+- Expected
++ Received
+
+@@ -5,9 +5,10 @@
+    "admin-dashboard-v1",
+    "rooms-v1",
+    "room-purpose-v1",
+    "room-pins-v1",
+    "person-prefs-v1",
++   "room-agent-discovery-v1",
+    "sharing-pause-v1",
+    "group-policy-v1",
+    "mcp-apps-v1",
+  ]
+
+ ❯ tests/hub-groups-mount-s89.test.ts:179:33
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed | 5 passed (6)
+      Tests  3 failed | 127 passed (130)
+   Start at  03:37:23
+   Duration  23.74s (transform 13.44s, setup 443ms, import 23.91s, tests 16.57s, environment 1ms)

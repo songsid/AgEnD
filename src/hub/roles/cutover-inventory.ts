@@ -15,6 +15,7 @@ export const PERSONAL_ROLE_AUTHORITY_TABLES=Object.freeze([
 export const ROOM_REQUEST_ROLE_AUTHORITY_TABLES=Object.freeze([
  "hub_room_agent_requests","hub_room_agent_request_settings","hub_room_agent_request_days",
 ]as const);
+export const ROOM_DISCOVERY_ROLE_AUTHORITY_TABLES=Object.freeze(["hub_room_agent_discovery"]as const);
 export interface RoleCutoverInventory {readonly v?:2;readonly digest:string;readonly tables:readonly {readonly name:string;readonly rows:number;readonly digest:string}[]}
 const sha=(s:string)=>createHash("sha256").update(s).digest("hex");
 /** Caller binds the exact policy/epoch and takes another snapshot in its owning immediate transaction. */
@@ -30,7 +31,13 @@ export function captureRoleCutoverInventory(db:Database.Database,transport:Pick<
   ?db.prepare("SELECT version FROM hub_schema WHERE component='s3-room-agent-requests'").get()as{version:number}|undefined:undefined;
  if(registered?registered.version!==1||requests.length!==ROOM_REQUEST_ROLE_AUTHORITY_TABLES.length:requests.length!==0)
   throw new HubStateError("hub-state-mismatch","room request authority inventory is incomplete or unsupported");
- for(const name of [...ROLE_CUTOVER_TABLES,...personal,...requests]){
+ const discovery=ROOM_DISCOVERY_ROLE_AUTHORITY_TABLES.filter(name=>!!db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?").get(name));
+ const discoveryRegistered=db.prepare("SELECT 1 FROM sqlite_schema WHERE type='table' AND name='hub_schema'").get()
+  ?db.prepare("SELECT version FROM hub_schema WHERE component='s3-room-agent-discovery'").get()as{version:number}|undefined:undefined;
+ if(discoveryRegistered?discoveryRegistered.version!==1||discovery.length!==ROOM_DISCOVERY_ROLE_AUTHORITY_TABLES.length:discovery.length!==0)
+  throw new HubStateError("hub-state-mismatch","room discovery authority inventory is incomplete or unsupported");
+ const versioned=!!registered||!!discoveryRegistered;
+ for(const name of [...ROLE_CUTOVER_TABLES,...personal,...requests,...discovery]){
   guard();const columns=db.prepare(`PRAGMA table_info(${quote(name)})`).all()as{name:string;type:string;pk:number}[];
   const keys=columns.filter(c=>c.pk>0).sort((a,b)=>a.pk-b.pk);
   if(!columns.length||!keys.length)throw new HubStateError("hub-state-mismatch","authority inventory table is missing or unkeyed");
@@ -44,5 +51,5 @@ export function captureRoleCutoverInventory(db:Database.Database,transport:Pick<
   tables.push({name,rows,digest:digest.digest("hex")});
  }
  guard();if(JSON.stringify(transport.read())!==JSON.stringify(first))throw new HubStateError("hub-state-mismatch","transport changed during authority inventory");
- return Object.freeze({...(registered?{v:2 as const}:{}),digest:sha(JSON.stringify(registered?{v:2,tables}:tables)),tables:Object.freeze(tables.map(t=>Object.freeze(t)))});
+ return Object.freeze({...(versioned?{v:2 as const}:{}),digest:sha(JSON.stringify(versioned?{v:2,tables}:tables)),tables:Object.freeze(tables.map(t=>Object.freeze(t)))});
 }

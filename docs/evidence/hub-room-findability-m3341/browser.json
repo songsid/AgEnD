@@ -1,0 +1,881 @@
+{
+  "source": "5b326b7bfb155d4d05693de98c2710a0f9f3261a",
+  "diffSha256": "c74e7776096e687d3883b42309fbf34210cd527dc6046be983136d968850c7fa",
+  "checks": [
+    {
+      "key": "real published introduction",
+      "ok": true
+    },
+    {
+      "key": "real published introduction",
+      "ok": true
+    },
+    {
+      "key": "ordinary ask grant",
+      "ok": true
+    },
+    {
+      "key": "desk-en: reset explicit owner choice",
+      "ok": true
+    },
+    {
+      "key": "desk-en: real room",
+      "ok": true
+    },
+    {
+      "key": "desk-en: off by default",
+      "ok": true
+    },
+    {
+      "key": "desk-en: shared-off no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: owner enabled through real API",
+      "ok": true
+    },
+    {
+      "key": "desk-en: shared-on no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: paused keeps saved choice",
+      "ok": true
+    },
+    {
+      "key": "desk-en: paused no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: unshared cannot change discovery",
+      "ok": true
+    },
+    {
+      "key": "desk-en: not-shared no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: owner opt-out wins",
+      "ok": true
+    },
+    {
+      "key": "desk-en: owner-disabled no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: askable and findable side by side",
+      "ok": true
+    },
+    {
+      "key": "desk-en: picker no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: existing waiting row names owner",
+      "ok": true
+    },
+    {
+      "key": "desk-en: invited no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-en: no discovery grant",
+      "ok": true
+    },
+    {
+      "key": "desk-en: waiting until owner consent",
+      "ok": true
+    },
+    {
+      "key": "desk-en: no load alerts",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: reset explicit owner choice",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: real room",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: off by default",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: shared-off no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: owner enabled through real API",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: shared-on no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: paused keeps saved choice",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: paused no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: unshared cannot change discovery",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: not-shared no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: owner opt-out wins",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: owner-disabled no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: askable and findable side by side",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: picker no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: existing waiting row names owner",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: invited no overflow",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: no discovery grant",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: waiting until owner consent",
+      "ok": true
+    },
+    {
+      "key": "desk-zh-TW: no load alerts",
+      "ok": true
+    },
+    {
+      "key": "phone-en: reset explicit owner choice",
+      "ok": true
+    },
+    {
+      "key": "phone-en: real room",
+      "ok": true
+    },
+    {
+      "key": "phone-en: off by default",
+      "ok": true
+    },
+    {
+      "key": "phone-en: shared-off no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: owner enabled through real API",
+      "ok": true
+    },
+    {
+      "key": "phone-en: shared-on no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: paused keeps saved choice",
+      "ok": true
+    },
+    {
+      "key": "phone-en: paused no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: unshared cannot change discovery",
+      "ok": true
+    },
+    {
+      "key": "phone-en: not-shared no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: owner opt-out wins",
+      "ok": true
+    },
+    {
+      "key": "phone-en: owner-disabled no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: askable and findable side by side",
+      "ok": true
+    },
+    {
+      "key": "phone-en: picker no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: existing waiting row names owner",
+      "ok": true
+    },
+    {
+      "key": "phone-en: invited no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-en: no discovery grant",
+      "ok": true
+    },
+    {
+      "key": "phone-en: waiting until owner consent",
+      "ok": true
+    },
+    {
+      "key": "phone-en: no load alerts",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: reset explicit owner choice",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: real room",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: off by default",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: shared-off no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: owner enabled through real API",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: shared-on no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: paused keeps saved choice",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: paused no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: unshared cannot change discovery",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: not-shared no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: owner opt-out wins",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: owner-disabled no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: askable and findable side by side",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: picker no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: existing waiting row names owner",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: invited no overflow",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: no discovery grant",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: waiting until owner consent",
+      "ok": true
+    },
+    {
+      "key": "phone-zh-TW: no load alerts",
+      "ok": true
+    },
+    {
+      "key": "no page errors",
+      "ok": true
+    },
+    {
+      "key": "no foreign requests",
+      "ok": true
+    }
+  ],
+  "servedAssets": [
+    {
+      "path": "/assets/theme.js",
+      "sha256": "f88297999de8073c95bc104d8ac2b06c0a365c70e6b361656bc66eb2e97ca860"
+    },
+    {
+      "path": "/assets/tokens.css",
+      "sha256": "41ba246b185ec32312748cd78dcba621e80b06ecefc8b0b247cf0cb1a6d7dc28"
+    },
+    {
+      "path": "/assets/app.css",
+      "sha256": "a5db5ea6d4ae126b8525d7861f861828dcaa498b964f37ab52ef895d312f8ff2"
+    },
+    {
+      "path": "/assets/app.js",
+      "sha256": "b600b013231a7be0e16362ca17798692f107ed0cf5e6f724cd4e7926310627be"
+    },
+    {
+      "path": "/assets/loading.css",
+      "sha256": "ce2756c19eb6c7e114e43e0fa031b13a7476f6c33376b5d51461eda037535699"
+    },
+    {
+      "path": "/assets/app-html.js",
+      "sha256": "8949e374c68b9252d5ee3ee788ec1b0340d12c4a6999ef8b734fe89562266bd9"
+    },
+    {
+      "path": "/assets/app-prefs.js",
+      "sha256": "11a19a85aba6cd57ffe474bf226315c52254c64a4efb7ef25d89741a75ec8bbd"
+    },
+    {
+      "path": "/assets/app-swipe.js",
+      "sha256": "2b5e7154b853394cb9e823281c2bae19d97260183d525d478a2e5f8efd207986"
+    },
+    {
+      "path": "/assets/app-route.js",
+      "sha256": "1e7022c60bc3c9fc14ede10f4b3aa66e341da27714af5fb9a066f8289b560198"
+    },
+    {
+      "path": "/assets/app-shell.js",
+      "sha256": "834fc80e20c00241998911614f76d406b95f691b9e75d2bd4fd8dd8e99044532"
+    },
+    {
+      "path": "/assets/app-store.js",
+      "sha256": "ee22617828ff1a1f602c2aebc1cb18733517c3f99f11392a7a41a3d36e24789f"
+    },
+    {
+      "path": "/assets/ui-toast.js",
+      "sha256": "993b0c3b9e1b21d5f3ec419a23f6e0b1c95df61d16d81cffd30578587143e964"
+    },
+    {
+      "path": "/assets/app-needs.js",
+      "sha256": "47fdfcbd3dd53d6d2ef90943ce3cdd2aabb5178454f01a6c90968497a805c8c2"
+    },
+    {
+      "path": "/assets/app-stream.js",
+      "sha256": "a5dd560f4a8a53fa0a0de0469d0a44775dbf4a23ff644789d7fa0f24c7748c7c"
+    },
+    {
+      "path": "/assets/header-tools.js",
+      "sha256": "fa17fa458645e5f9b747163854449c1a5cb0c45d51379fea86ff601dc03e682d"
+    },
+    {
+      "path": "/assets/owner-css.js",
+      "sha256": "faa019b08c2dad62fc1e2c49c748ae069d9d4cb3c699f624411cf416b34a3bb7"
+    },
+    {
+      "path": "/assets/module-warm.js",
+      "sha256": "cd4aef9e67a34b044df108a035b2e1f72ae3dc96a4c1e96f50945d073f42674c"
+    },
+    {
+      "path": "/assets/app-nav.js",
+      "sha256": "339642557680e95b818587035aa25cde0bb626bf2354bf0a5da28ce013e4d89c"
+    },
+    {
+      "path": "/assets/text-undo.js",
+      "sha256": "3c59e5ba9039ad05e18be88b71270c232f6d73bac2dc681cdec70c1825f7027a"
+    },
+    {
+      "path": "/assets/app-i18n.js",
+      "sha256": "ab7bc6f04dabb390649eda077767648717fa9d500634a9e2b0ac2d37dd95776f"
+    },
+    {
+      "path": "/assets/app-themes.js",
+      "sha256": "585aa0abfffde88d440a141c2c1a2fd8cddfca756751685f89c99aea0b1d5cf8"
+    },
+    {
+      "path": "/assets/preact.module.js",
+      "sha256": "c30e721ebfdc6e2ad4c18c14d2dfb82667829c8aec27de1207774e3fc16858a8"
+    },
+    {
+      "path": "/assets/htm.module.js",
+      "sha256": "ab33dd3f38059b9be4d5f5350128eefb2356639c4e0bbe9d9e8b3ba75847e9e4"
+    },
+    {
+      "path": "/assets/preact-hooks.module.js",
+      "sha256": "f3555e7a8dba84175c94f17148ba6670e4b3716888fe06b3330a485637296a38"
+    },
+    {
+      "path": "/assets/identity-color.js",
+      "sha256": "e3e03f14648322ac8c159ebc16de5c44ad02be82bd83d79478e71fae91e52c5a"
+    },
+    {
+      "path": "/assets/ui-confirm.js",
+      "sha256": "c1fe9587644da4bb37524c6dcd1a64c95b6acd9cff4ad5b78eca9844c6f16c5b"
+    },
+    {
+      "path": "/assets/stale-tab.js",
+      "sha256": "c951cb7122e5c3f7c76f3e01ab072f0a5d0ac7433ad1088a9a9e1cffc3fcf657"
+    },
+    {
+      "path": "/assets/app-session.js",
+      "sha256": "c11951d8a88020d5628ab31f77a9fcd32469f8d5099f9a422528a340b1bba9ec"
+    },
+    {
+      "path": "/assets/ui-states.js",
+      "sha256": "bb3d5160742d10dc7fde64431b18227d73c2e099bbd52c6e8527cca9f7c4ea7a"
+    },
+    {
+      "path": "/assets/ui-icons.js",
+      "sha256": "0016aa6dca8622ae2aae2c584b5bdaea5cc95dcaaf03782c6582564ae39ed277"
+    },
+    {
+      "path": "/assets/side-panel.js",
+      "sha256": "aefbba84067328f2bb16c86bdbe7328cf125f63f40795ee88b3b87e09c27f946"
+    },
+    {
+      "path": "/assets/ui-dialog.js",
+      "sha256": "25c22c87ff575b89b52ef1ab58ff921d02aaf2744122e064d824a1fa2fd95ff6"
+    },
+    {
+      "path": "/assets/app-update.js",
+      "sha256": "ee14762e47b71769f428e637825dee0fbd4c6e6dae5db8cbdb1566104880f47c"
+    },
+    {
+      "path": "/assets/instance-nav.js",
+      "sha256": "2a6324e6f517b1af125c9ea931c12691f9d845499f489f9b73e40b6d04a4d50b"
+    },
+    {
+      "path": "/assets/app-ctx.js",
+      "sha256": "f20813f7fa32b98ada2353b04273eedbe192046e0ef03334098d0e8c2a7eced6"
+    },
+    {
+      "path": "/assets/model-observation.js",
+      "sha256": "97a150ad0798f61a0976de36f9c9f179f87fca9833e3fa72beacaa19488524ef"
+    },
+    {
+      "path": "/assets/settings-width.js",
+      "sha256": "46dc2cb17194565a8ed15d5c3477954c98323bfd4874cdbf6ee69df4b34939e1"
+    },
+    {
+      "path": "/assets/agent-widget.js",
+      "sha256": "acb1d6107adb005be5f07867da951228113ae1bb2976261928ff8c9c20cf6486"
+    },
+    {
+      "path": "/assets/side-rail.js",
+      "sha256": "80827afbb28969692e1575339c9e4b54a372812653ede0221a361a2c6a14ad56"
+    },
+    {
+      "path": "/assets/usage-dialog.js",
+      "sha256": "869570ff75e0ae994729ea1e23622472efaf123fac9e1fb86257d8aec1115e5d"
+    },
+    {
+      "path": "/assets/web-authorize.js",
+      "sha256": "e3bb1bb3002dbba21f4cc7e2f4c8de8dd9e6be341745408d9eceac1139f718f1"
+    },
+    {
+      "path": "/assets/device-roles.js",
+      "sha256": "ca93209e235040a5ff9ee7f73a39b98fc9412c9a12e46d812a961d6eec95578d"
+    },
+    {
+      "path": "/assets/asset-url.js",
+      "sha256": "09192b8e8ca4417d8322e1d9c8667db7c9e970a3f970d7cfa81fa95099bb2378"
+    },
+    {
+      "path": "/assets/view-roster-store.js",
+      "sha256": "f73502bef7f44e8fe028b1bf9f4ee304af6d6318be61523006e316e38638b4d8"
+    },
+    {
+      "path": "/assets/ui-menu.js",
+      "sha256": "69c6c870fbe6bbffa3fd5c8ba2edc5e972002cdad900ba087ff222a080e2bb48"
+    },
+    {
+      "path": "/assets/machine-name.js",
+      "sha256": "9897ad69ca4983e96ede71578f6b53a47b6f2a6bcb53832aba5d8e1bcc1542ae"
+    },
+    {
+      "path": "/assets/view-strings.js",
+      "sha256": "02005971785a1da312668b413dcf59e3e072d5af62e67c22ea3ed4bac55c5aea"
+    },
+    {
+      "path": "/assets/read-stream.js",
+      "sha256": "01e6cd78752e902232b60c87fdb5281947dbdc11ae9b1a09b17e9e0241d48c41"
+    },
+    {
+      "path": "/assets/usage-meter.js",
+      "sha256": "2766db3d5d230dd18fdacdf44719c49ba9e25eff02ffb500c6345dcfee090200"
+    },
+    {
+      "path": "/ui/js/panel-hub.js",
+      "sha256": "d5b67dd32f2f3f07bcd95c7cb48261e51ca04827c031f58e94020b7a6bd7bc36"
+    },
+    {
+      "path": "/ui/js/hub-intro-notice.js",
+      "sha256": "be3c64164908328f5ab8312d8f5bbb8c11f858f26d891e35defabad776b3116b"
+    },
+    {
+      "path": "/ui/js/hub-owner-strings.js",
+      "sha256": "2ba1a5de51a8b443798304e5cc62fa6c6efc30b7c7a08b1d2d8c6824f17dbecc"
+    },
+    {
+      "path": "/ui/js/hub-personal-agent-strings.js",
+      "sha256": "5803fcfdc1f484c1d81e8061394c9bd128f0849efb7d7558c819af59f7a30ee1"
+    },
+    {
+      "path": "/ui/js/hub-agent-intro.js",
+      "sha256": "8f202c21b90da0f8c03f31520231f8998e17ef43c4b4c76f7830c3a13814536f"
+    },
+    {
+      "path": "/ui/js/hub-joincode-flow-strings.js",
+      "sha256": "4c48aed807c6249f2f7695be97cf773ddabb8e4c99a47ce496ad2c3d0d0383e3"
+    },
+    {
+      "path": "/ui/js/hub-join-approval.js",
+      "sha256": "abfdaf90a367c11b1c229e6b5d8e00b75ead6b1b799fcfdfcb7d28414616c2e1"
+    },
+    {
+      "path": "/ui/js/hub-company-join-strings.js",
+      "sha256": "e11e7cd022cb23c758726f1cd7f07d530608ab38f1907085ae86a8926ac29676"
+    },
+    {
+      "path": "/ui/js/hub-company-join.js",
+      "sha256": "7840122cfb793af9b9ae44e9081252064c8993274d3fc0a9e485c908259b9f58"
+    },
+    {
+      "path": "/ui/js/hub-quick-pairing.js",
+      "sha256": "1cd193a5d4c6ae6a7fafb412d24ac16007c205bc7a3ed8184ba6caa8b691fc59"
+    },
+    {
+      "path": "/ui/js/hub-directory-notice-strings.js",
+      "sha256": "90f089c96321bdf5a45be4921fb6133f9203f0aa4826e796c02f1dc9dcb8896e"
+    },
+    {
+      "path": "/ui/js/hub-role-notices.js",
+      "sha256": "b066ed86d7e9cc20314fead2fd3c50119056001533b7f912f85a6204d59272c6"
+    },
+    {
+      "path": "/ui/js/hub-directory-notices.js",
+      "sha256": "c4d0a6cf1b12d7fde9bb1e30ab005da1ca9c7916b693cc86e9bf0d28f5a8f9eb"
+    },
+    {
+      "path": "/assets/preview-panel.js",
+      "sha256": "83e4a03a24170d096768fe0e0bcf786be70bfe5be0d395e8e1fbb242a19ec2e1"
+    },
+    {
+      "path": "/assets/chat-thread.js",
+      "sha256": "c5415e516b84ed56ceec30a2068151c54d0b0c32d34ac7898a1807aa0eeac2b8"
+    },
+    {
+      "path": "/assets/chat-msg-actions.js",
+      "sha256": "ee6269e6fe94fafb13845cdd5974dcea7389a8d3a5910fe10b54bf8da5e91073"
+    },
+    {
+      "path": "/ui/js/hub-fleet-versions.js",
+      "sha256": "fc6c93dc0da5d483cf252bb21127371d8d63029957e7690825832555b039423b"
+    },
+    {
+      "path": "/assets/chat-composer.js",
+      "sha256": "c9b00a990057b3edcdd9f218fbe313843f5e11ef0fbcd81b6fb129e3158f4b24"
+    },
+    {
+      "path": "/ui/js/hub-strings.js",
+      "sha256": "75a7aad4182ef03b7922254d9c0f60ac88f826cb179f945a1d03609b9a161381"
+    },
+    {
+      "path": "/assets/chat-strings.js",
+      "sha256": "aa6d27b7fcddadf2615550dc3c242524040845779bb3f414d2c525929999deec"
+    },
+    {
+      "path": "/ui/js/hub-chat-strings.js",
+      "sha256": "807df7af2e64132f0748e5f9e076aa2cec58524173cbd0c8249cc7ecd9798438"
+    },
+    {
+      "path": "/ui/js/hub-room-list.js",
+      "sha256": "c8cf52c06f7f537d11602fae5c0c90e9226de4405c20db636f62fe7b9a306200"
+    },
+    {
+      "path": "/ui/js/hub-client.js",
+      "sha256": "0d0df7f4b565d5374bbe197448b90e4218d0118e535c77ceeb3b5ca331c35ecc"
+    },
+    {
+      "path": "/ui/js/hub-room-favorites.js",
+      "sha256": "588bce06acfd85b37ddc48c1c0b7449cc41dd029f30d8164789a4e1283ae508f"
+    },
+    {
+      "path": "/ui/js/hub-room-thread.js",
+      "sha256": "822845cc79e5396070adfa1a3f2ba9674c25090b25a8b9569fb1db551ce5ebd4"
+    },
+    {
+      "path": "/ui/js/hub-room-notify.js",
+      "sha256": "e48e417dd25f82c7ae3eb17024956cd3205d8ecb4a01d5a90be1a3d7d86c3ba9"
+    },
+    {
+      "path": "/ui/js/hub-room-strings.js",
+      "sha256": "d9efb32cfc368cd75682a3c702fd7e3ed81019a7b2d051be0df13ce61fe53351"
+    },
+    {
+      "path": "/ui/js/hub-read-strings.js",
+      "sha256": "1be8bee71352ed41e8b71592b6acc404829f574327f3ab2aab433c64ace4a046"
+    },
+    {
+      "path": "/ui/js/hub-teams-strings.js",
+      "sha256": "0872c2d5030206e6783dbe67b32fe42180f9f2d84d197fa36a24afc34918f603"
+    },
+    {
+      "path": "/ui/js/hub-grant-strings.js",
+      "sha256": "63d4e7dffad21cb5262d4feb959ed9d04d1c79b68b94dc83a54e9ae2088433c4"
+    },
+    {
+      "path": "/ui/js/hub-ai-apps-strings.js",
+      "sha256": "e07ebf330c2eedcd2c237f1a81c36fb762ee355bc171e21fd2f9926b8cf71ae2"
+    },
+    {
+      "path": "/ui/js/hub-chat-store.js",
+      "sha256": "f75ed0aaf89169e60885b0e127167122ffddb174f9412d335914004d73c2d01b"
+    },
+    {
+      "path": "/ui/js/hub-quota.js",
+      "sha256": "014b4758b906e79e573ec3ae0ebc67a0b2ef1df76e7186cabeebe3fab3681f96"
+    },
+    {
+      "path": "/assets/page-head.js",
+      "sha256": "52e2fb81b5fbb1acabdd6b5e02ea89b6125494d6be6d722d963c4ec053a81707"
+    },
+    {
+      "path": "/ui/js/hub-preview.js",
+      "sha256": "b653dd4b49b92b91c1db71d6e652a08da06cc8164db5dfad4bdb46fe6ef711d5"
+    },
+    {
+      "path": "/assets/chat-quote.js",
+      "sha256": "96fab0875460eaabfb5d0ea245b40b078a5c0fa395a9a076db167865be0948da"
+    },
+    {
+      "path": "/ui/js/hub-attachments.js",
+      "sha256": "cbb5e95b43c7e288388241016473c1d4bbd87dff73bb1e6c5d9f48469589607e"
+    },
+    {
+      "path": "/ui/js/hub-enrolment-code-strings.js",
+      "sha256": "1ae6496f5838934df8008c782b0f249404a3d3dfdff96769c39879f24a2b6324"
+    },
+    {
+      "path": "/ui/js/hub-join-queue.js",
+      "sha256": "179924257dc1da1c8b752c46c0c413417c2e8787a69c625430953b793e094764"
+    },
+    {
+      "path": "/ui/js/hub-quick-strings.js",
+      "sha256": "0a6b59ad416fe04765c9ec8fcb06aea0d75f1c22cededf746415377fe19c4c35"
+    },
+    {
+      "path": "/ui/js/hub-join-steps.js",
+      "sha256": "ed9bdfaf827670df4da489e54ddde2dfb4be5ab4fe9dda5b6e6ad3258c05b987"
+    },
+    {
+      "path": "/assets/chat-table-select.js",
+      "sha256": "750208d9e70157e74f227faed858275ba0d5180f6267607f7ade82edb4bf63cd"
+    },
+    {
+      "path": "/ui/js/hub-roles-strings.js",
+      "sha256": "aab949c7b09b56733010ea43170c3da0ecf68099337046655a01670e9dacd4e6"
+    },
+    {
+      "path": "/assets/preview-panel-actions.js",
+      "sha256": "95da3f86c47afc846e21d94b402b20cdc5068a610c0d486d8d6cff6edc94b07b"
+    },
+    {
+      "path": "/assets/chat-time.js",
+      "sha256": "ca3dacd41ddf8284ce6542f529cdacb9fc333722f41d1ce2beb6fb019e4b8538"
+    },
+    {
+      "path": "/assets/html-attachment.js",
+      "sha256": "45ce6f2b941c6f0d8e154c51e7d6977cea9241a6ddfc03c6bf8b848323448643"
+    },
+    {
+      "path": "/assets/preview.js",
+      "sha256": "d179862fd1d2535bf1c06776cb20cce601d874d5fa42e47eca0fbd7835023ff1"
+    },
+    {
+      "path": "/assets/chat-render.js",
+      "sha256": "fd65d839aa7800272b784cb590963a9fb588e1bc85e5c565a36c3609fe541104"
+    },
+    {
+      "path": "/ui/js/hub-room-purpose.js",
+      "sha256": "3878560fd371c9baf527f87c86f0fdffc9a2fc1c1dafb255db5afccd5e8a853e"
+    },
+    {
+      "path": "/assets/chat-md-strings.js",
+      "sha256": "31a90eea31b3f957965ffce28897cf6fb1571698ecc4a320dd95d310c4c37d3b"
+    },
+    {
+      "path": "/ui/js/hub-room-presence.js",
+      "sha256": "d5f729b2f878f46cfb40c4e8f6b0e668061a0f420d39378f8fc7effde4c8e011"
+    },
+    {
+      "path": "/assets/preview-pages.js",
+      "sha256": "6a1fd446d3200fa3ebebafec1f814c95b365315d1e7553924a2bf587a9553925"
+    },
+    {
+      "path": "/ui/js/hub-room-agent-strings.js",
+      "sha256": "6b582bc8220c2fefe549277bb3441dd8d317834f18a36e86202d26f0f41cd521"
+    },
+    {
+      "path": "/assets/preview-versions.js",
+      "sha256": "0583433c1027b8ca25410392c623e4f83f92dd1db6f62f46e40be23b71431814"
+    },
+    {
+      "path": "/ui/js/hub-room-composer.js",
+      "sha256": "982932601dd3e4aa71f61cd24eaaa9dbdc5d420c2210e528c31716f798a33976"
+    },
+    {
+      "path": "/ui/js/hub-room-pins.js",
+      "sha256": "7e453f0663f1782e30ac6d470b922b398e1b98c9158c6ef3d2b6e8e76ea59a5a"
+    },
+    {
+      "path": "/ui/js/hub-button-actions.js",
+      "sha256": "0ed438dca5c96bedafd603761e786287a8465a9fc7c6bda1aca1fb6affb65063"
+    },
+    {
+      "path": "/ui/js/hub-room-new-strings.js",
+      "sha256": "efb000eb23300e126111eb6b8cdd4af9c3f7022479890ac768b37903b27c8559"
+    },
+    {
+      "path": "/ui/js/hub-room-working.js",
+      "sha256": "d7c0cc5473d0170b0852080ea8b4ab7ac8c1ba308bf94b2daf3c82c20cb06eee"
+    },
+    {
+      "path": "/ui/js/hub-room-source.js",
+      "sha256": "6d90533e66fa68be21ba61c41b0820e101734a9fff2fc0f1b38dde46781bbda3"
+    },
+    {
+      "path": "/assets/image-lightbox.js",
+      "sha256": "6d9b28e3806a8008baf91e8041c76cbc766dac24a6d680e6b461d9d7aa78d8e5"
+    },
+    {
+      "path": "/ui/js/hub-room-unread.js",
+      "sha256": "0d3cb93701525bcdbfb44bb8b6ef285493b53fff928e096fa595c3ddc85c3e1b"
+    },
+    {
+      "path": "/ui/js/hub-policy-subjects.js",
+      "sha256": "79fbc881a9ad1ad85fc308fd7d043a07338dd016d6925db7b1a0766ef856f097"
+    },
+    {
+      "path": "/ui/js/hub-subject-picker.js",
+      "sha256": "af350a23e6208a1a17c337c9ed17b66650f6b40871fe077194f75f94947a7ed7"
+    },
+    {
+      "path": "/ui/js/hub-room-source-strings.js",
+      "sha256": "ce9835cbe83444d00c8dc6645f040fd43d2a8cafac050291f64bd119ed864902"
+    },
+    {
+      "path": "/assets/image-zoom.js",
+      "sha256": "acabf42a7aa0a5cd29eb24fc179dfc8bd01acf061650c39184afb6100b8932a5"
+    },
+    {
+      "path": "/ui/js/hub-group-search.js",
+      "sha256": "b2dbde89981e82b69cc258f7b932ad875a175af25274574463fda7bff89faf2a"
+    },
+    {
+      "path": "/assets/hub-rooms-u2.css",
+      "sha256": "a3460d77130bcb508c06298a361830ceba6845ead668f961cfe7cebb8b5f08fa"
+    },
+    {
+      "path": "/assets/hub-quota.css",
+      "sha256": "dbb490b50f06f45d538259cad57f5d130ed29c17f4295d8d3c4c848b037190fb"
+    },
+    {
+      "path": "/assets/hub.css",
+      "sha256": "8fbb588874a8baf2b0a8134c9f150bb0fa396ae8d60a38e42964efef50797241"
+    },
+    {
+      "path": "/assets/hub-owner.css",
+      "sha256": "bd0b7a27ba06546a1d603abf4e045c2ab1c2a20ca3ad1299aa1741187a720d59"
+    },
+    {
+      "path": "/assets/hub-chat.css",
+      "sha256": "97693ef5a714ba60c2e2a82478e7fa0abfc24822af65c2daa0dbc5f03d72fcac"
+    },
+    {
+      "path": "/assets/hub-signin.css",
+      "sha256": "ea16dd295195de1bc5d3ce3e03f4b0d00cc85e61c3cecd6273d2dfb7723ade13"
+    },
+    {
+      "path": "/ui/js/hub-invitations.js",
+      "sha256": "28122fd094b71d85c5bd07f7ebffd2380f9ce93e9ae03694fba0e42d3da1d55d"
+    },
+    {
+      "path": "/ui/js/hub-my-agents.js",
+      "sha256": "c0a280ec580cc1fb7b52cb89c5408ad45651b0c907c5c6734b328fcfd4b269c4"
+    },
+    {
+      "path": "/assets/hub-sharing.css",
+      "sha256": "ba7a0ede1d290286ff5c2fec717719e7f21df412a19c8ac09906e07dafd77e51"
+    },
+    {
+      "path": "/ui/js/hub-invitations-strings.js",
+      "sha256": "ab8162ab1193cfd7ddd0c1e6873e82cb6771f2b8693143e00b3933217dd0e5be"
+    },
+    {
+      "path": "/ui/js/hub-my-agents-strings.js",
+      "sha256": "1068f06829f889e0481272b7d0df8fd80d11b90d26b94636a6f4595887768f33"
+    },
+    {
+      "path": "/ui/js/hub-room-owner-requests.js",
+      "sha256": "29d3d511367a196084fce1d9da09add4b697fe3ecef9ce9658290e461c61d35f"
+    },
+    {
+      "path": "/ui/js/hub-my-agents-model.js",
+      "sha256": "856ecd1a921b208a78a700fd331c42045b139f294f9657bc957306cd09919d27"
+    },
+    {
+      "path": "/ui/js/hub-grant-picker.js",
+      "sha256": "6b2cf23e8b98742967a0693c436a9a3f962d9093eec5c1bb3c51e170de3c4c49"
+    },
+    {
+      "path": "/ui/js/hub-room-new.js",
+      "sha256": "8c55b6248bb991ee1b24b32421756629e7744ac4a23c3125fafadda1dca6ee10"
+    },
+    {
+      "path": "/ui/js/hub-room-owner-requests-strings.js",
+      "sha256": "0238f026133de7e8e17342e68ee7f6bd64e9d836a0ff6e38da987a3dc911d5f5"
+    },
+    {
+      "path": "/assets/hub-my-agents.css",
+      "sha256": "4234a92cb4e5f3e619cd6c9d890a6ed03dfd234e4bf4bf412974230871996df6"
+    },
+    {
+      "path": "/ui/js/hub-room-members.js",
+      "sha256": "d3761f23d1defff6e3df4c0143444bde45851199ed65f01f9488890e39f23180"
+    },
+    {
+      "path": "/ui/js/hub-room-members-strings.js",
+      "sha256": "666e1ddbbcb6cca4d400a318dd81573edae8c864364799ac84746d9efe40fc79"
+    },
+    {
+      "path": "/ui/js/hub-room-settings.js",
+      "sha256": "d34731d2692f2d920b934b778348e9a05cff19f1100ff0eff48aa1cf13916595"
+    },
+    {
+      "path": "/ui/js/hub-room-settings-strings.js",
+      "sha256": "fdb452e79c6b9fd59282d1a94d5cb71b7744e4e3ad796604f0dc621dab61a072"
+    }
+  ],
+  "scope": "Owned HTTPS/SQLite/audit and shipped UI; inert directory and synthetic publication/Fleet metadata. Unshared disabled view uses a retained frozen exposure. No live account, CLI, model, Fleet process, Windows, operator trust change or external network."
+}

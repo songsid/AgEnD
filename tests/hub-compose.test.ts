@@ -657,6 +657,7 @@ describe.skipIf(process.platform === "win32")("Hub retention composition", () =>
       await service.start(); expect(http.retainedContentRefs).toBeTypeOf("function");
       const browser = await directoryBrowser(hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
       expect(browser.json.features).toContain("room-owner-requests-v1");
+      expect(browser.json.features).toContain("room-agent-discovery-v1");
       const headers = { "X-AgEnD-Hub-CSRF": browser.json.csrf };
       const room = await directoryBrowser(hub, browser.cookie, { name: "Example project" }, "/hub/v1/rooms", { headers });
       const made = await directoryBrowser(hub, browser.cookie, { owner: personKeyString(NOTICE_READER.key), note: "Protected request hint", idempotencyKey: randomUUID() }, `/hub/v1/rooms/${room.json.room.id}/agent-requests`, { headers });
