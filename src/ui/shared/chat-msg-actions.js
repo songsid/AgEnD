@@ -108,7 +108,9 @@ export function installMessageActions(list, deps) {
     // M-3127: a Hub room's messages take a reaction (deps.react: the thread's quick picker under that message); the Fleet passes none.
     if (typeof deps.react === "function" && deps.canReact?.(row) !== false) items.push(["react", deps.reactLabel || "React", () => deps.react(row)]);
     items.push(["copyText", deps.t("chat.copyText"), async () => { const ok = await deps.copyText(String(row.click?.label ?? row.text ?? "")); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);
-    if (typeof deps.linkOf === "function") items.push(["copyLink", deps.t("chat.copyLink"), async () => { const ok = await deps.copyText(deps.linkOf(row)); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);
+    // M-3311 (#4159 review): Copy link only for a message that has an address (linkOf → null: none, e.g. one still sending).
+    const link = typeof deps.linkOf === "function" ? deps.linkOf(row) : null;
+    if (link) items.push(["copyLink", deps.t("chat.copyLink"), async () => { const ok = await deps.copyText(link); deps.notice(deps.t(ok ? "chat.copied" : "chat.copyFailed"), ok); }]);
     menu = doc.createElement("div");
     menu.className = "msg-menu";
     menu.setAttribute("role", "menu");

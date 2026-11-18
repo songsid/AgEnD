@@ -192,3 +192,14 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 }
 .composer-row.hub-hints { flex-direction: column; align-items: flex-start; gap: 0; }
 .composer-row.hub-hints > .hint { flex-shrink: 0; max-width: 100%; }
+
+/* M-3311 (4): a phone's room header is one row, as the Fleet chat's — back, the room (its name, then one line of counts), the
+   members and ⋯. The purpose is in the members sheet there (hub-room-members.js), and text size and Notify are in ⋯; the name
+   no longer sits on the top edge (the header has room above and below), and the counts are no longer cut to "2 人 · 0 個 …". */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .hub-room-page .hub-chat-head { padding-block: var(--s-1); }
+  .hub-room-page .hub-chat-head .hub-chat-title .hub-room-purpose-trigger { display: none; }
+  .hub-room-page .hub-chat-head .hub-head-tools { display: none; }
+  /* …and its members and ⋯ are full tap targets, as its back is (S-150). */
+  .hub-room-page .hub-chat-head .hub-room-menu > .icon-btn, .hub-room-page .hub-chat-head .hub-room-rail-toggle { min-width: var(--tap); min-height: var(--tap); }
+}

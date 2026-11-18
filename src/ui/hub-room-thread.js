@@ -25,7 +25,9 @@ import { firstCharacter } from "/assets/instance-nav.js";
 import { hroom } from "./hub-room-strings.js";
 import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
-import { TextSizeButton } from "/assets/header-tools.js";
+import { TextSizeButton, TEXT_SIZES, setTextSize, textSizeStore } from "/assets/header-tools.js";
+import { useStore } from "/assets/app-store.js";
+import { notifyStore, notifySupport, setNotify } from "/assets/app-needs.js";
 import { HubNotifyToggle } from "./hub-room-notify.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
@@ -491,14 +493,21 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // M-3311 (2): 「引用」 on a selected passage goes into this room's box (read at selection time).
     quote: { field: () => input.current, can: () => !store.closed() },
     // M-3311 (3): the Fleet chat's Copy link — a room message's address (opening it shows that message).
-    linkOf: (x) => messageLink(roomId, x && x.roomMessage),
+    linkOf: (x) => (x && x.roomMessage ? messageLink(roomId, x.roomMessage) : null),
   };
   // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
   const [fullWidth, setFullWidth] = useState(hubChatWide);
+  const textSize = useStore(textSizeStore), notify = useStore(notifyStore);
   const menuItems = [
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
     !narrowScreen() && detail?.me ? { key: "fullWidth", checkbox: true, checked: fullWidth, label: t("chat.fullWidth"), onSelect: () => { setHubChatWide(!fullWidth); setFullWidth(!fullWidth); } } : null,
+    // M-3311 (4): a phone's header is one row (back, the room, members, ⋯) as the Fleet chat's — its text size and Notify
+    // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
+    ...(narrowScreen() ? [
+      { key: "textSize", label: t("app.textSize", t(`app.textSize_${textSize.size}`)), icon: "type", onSelect: () => setTextSize(TEXT_SIZES[(TEXT_SIZES.indexOf(textSize.size) + 1) % TEXT_SIZES.length]) },
+      ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
+    ] : []),
   ].filter(Boolean);
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");
