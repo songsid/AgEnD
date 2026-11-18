@@ -168,3 +168,15 @@ it("learns room threads and file identifiers only at the bound native SDK ingres
   (manager as any).recordClassicContactInput("room", { ...native, isBotMessage: true, threadId: "peer-topic" }, adapter);
   expect(manager.restrictedClassicRouting("room")?.threadId).toBe("fake-topic");
 });
+
+it("does not require an incarnation token to launch or send from a legacy room", async () => {
+  const { manager, outbox } = rig();
+  (manager.classicChannels!.getAll()[0] as any).restrictedMode = false;
+  const token = vi.fn(() => null), setClassicRestriction = vi.fn();
+  (manager as any).hubAgentToken = token;
+  manager.configureClassicRestriction("room", { setClassicRestriction } as any);
+  expect(setClassicRestriction).toHaveBeenCalledWith({ mode: "legacy", roomTools: { publicRead: true, allowedMcpTools: [] } });
+  expect((await call(manager, "send_to_instance", { instance_name: "worker", message: "Legacy contact" })).mock.calls[0]?.[0]).toMatchObject({ sent: true });
+  expect(outbox.listPending()).toHaveLength(1);
+  expect(token).not.toHaveBeenCalled();
+});

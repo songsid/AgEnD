@@ -5471,6 +5471,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const room = this.contactRoom(name);
     if (!room) return;
     const guarded = daemon as Daemon & { setClassicRestriction?(plan: unknown): void };
+    if (room.restrictedMode !== true) {
+      guarded.setClassicRestriction?.({ mode: "legacy", roomTools: { publicRead: true, allowedMcpTools: [] } });
+      return;
+    }
     const policy = this.contactService().host.store.policy(name, this.contactGeneration(name));
     guarded.setClassicRestriction?.({ mode: room.restrictedMode === true ? "restricted" : "legacy",
       roomTools: policy.roomTools, policyRevision: policy.revision });

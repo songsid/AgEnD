@@ -43,7 +43,7 @@ npm run typecheck -- --pretty false
 npm run typecheck:tests -- --pretty false
 ```
 
-New focused tests: 32/32. The final focused family passes 323/323 across 20 files.
+New focused tests: 33/33. The initial focused family passed 323/323 across 20 files.
 Source and test typechecks pass. The existing Hub contact,
 Hub/Classic privacy, channel reply files, chat persistence, permission sinks,
 Classic behavior, Needs you and outbound delivery neighbors were also checked.
@@ -82,3 +82,7 @@ full, together with the four new suites: 339/339 across 13 files.
 - Concepts and its built-in skill are synchronized; the create-handler test pins
   the new internal origin argument, and the reply bookkeeping stub returns its
   promised asynchronous result.
+
+The legacy launch adapter also returns before looking up an incarnation or contact
+policy. A dedicated regression sets the incarnation probe to null and verifies
+both legacy launch setup and ordinary sending still succeed without invoking it.
