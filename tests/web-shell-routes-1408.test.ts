@@ -224,14 +224,16 @@ describe("served: one page for every route", () => {
       const unknown = await raw(h.port, "GET", "/ui/chat/nobody-here", { cookie: h.cookie, accept: "text/html" });
       expect(known.status).toBe(200);
       expect(String(known.headers["content-type"])).toContain("text/html");
-      expect(known.body).toContain('<script type="module" src="/assets/app.js"></script>');
+      expect(known.body).toMatch(/<script type="module" src="\/assets\/v-[0-9a-f]{12}\/app\.js"><\/script>/)  // M-3314: under its version;
       expect(known.body).toMatch(/<body data-mode="full" /);
       expect(maskNonce(unknown.body)).toBe(maskNonce(known.body));
       expect(maskNonce(String(unknown.headers["content-security-policy"]))).toBe(maskNonce(String(known.headers["content-security-policy"])));
       for (const p of ["/ui", "/ui/fleet", "/ui/fleet/config", "/ui/chat/%E4%B8%AD", "/settings", "/settings/general", "/settings/advanced"]) {
         const r = await raw(h.port, "GET", p, { cookie: h.cookie, accept: "text/html" });
         expect(r.status, p).toBe(200);
-        expect(maskNonce(r.body), p).toBe(maskNonce(known.body));
+        // M-3314: the modules preloaded follow the route's panel (the page is otherwise the same shell).
+        const noPreload = (b: string) => maskNonce(b).replace(/<link rel="modulepreload" href="[^"]+">\n/g, "");
+        expect(noPreload(r.body), p).toBe(noPreload(known.body));
       }
       // The CSP is the panels' policy: nothing inline beyond this response's nonce, no 'unsafe-*'.
       const csp = String(known.headers["content-security-policy"]);

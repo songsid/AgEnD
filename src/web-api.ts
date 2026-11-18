@@ -53,7 +53,9 @@ import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-g
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream, createWriteStream, readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
+import { servedAssets } from "./auth-api.js";
+import { assetIntact, assetsUnchanged, assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -2183,9 +2185,19 @@ export function handleWebRequest(
       json(res, 400, { error: "Invalid file name" });
       return true;
     }
+    // M-3314: /ui/js/v-<V>/… (rewritten to this path before the gate): this process's <V> is kept for good, privately; an
+    // older tab's gets the stale-tab answer — once the gate above let the session through, as the plain path.
+    const mark = assetVersionMark(req);
+    if (mark && !mark.current) {
+      if (!existsSync(join(__dirname, "ui", fileName))) { json(res, 404, { error: "File not found" }); return true; }
+      answerStaleAsset(res, path); return true;
+    }
     try {
       const js = readFileSync(join(__dirname, "ui", fileName), "utf-8");
+      // A file rewritten under this running process is not what <V> named (an update or a rollback before its restart).
+      if (mark && !assetIntact(fileName, js)) { answerStaleAsset(res, path); return true; }
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
+      if (mark) res.setHeader("Cache-Control", IMMUTABLE_PRIVATE);
       // #2182: the route worker's own, narrower-reaching policy (ROUTE_WORKER_CSP); every other file keeps the page's.
       if (path === ROUTE_WORKER_PATH) res.setHeader("Content-Security-Policy", ROUTE_WORKER_CSP);
       res.writeHead(200);
@@ -5110,6 +5122,40 @@ export function serveHubWorkspaceShell(res: ServerResponse, hub: { name: string;
  * The app shell page. `opts.hubWorkspace`: the page is a Hub's own workspace (slice 1's Hub listener only — the fleet's
  * listener never passes it), so it is drawn as the Hub shell.
  */
+let moduleGraphMemo: ModuleGraph | null = null;
+/** M-3314: the served modules' static imports, read once per process (its files do not change under it). */
+export function appModuleGraph(): ModuleGraph { return moduleGraphMemo ??= buildModuleGraph(join(__dirname, "ui"), servedAssets()); }
+
+/** M-3314: the module each panel's route loads (app.js's own dynamic imports). */
+export const PANEL_MODULES: Readonly<Record<string, string>> = {
+  chat: "/ui/js/panel-chat.js", fleet: "/ui/js/panel-fleet.js", settings: "/ui/js/panel-settings.js", needs: "/ui/js/panel-needs.js",
+  details: "/ui/js/panel-details.js", log: "/ui/js/panel-log.js", notices: "/ui/js/panel-notices.js", "windows-agent": "/ui/js/panel-windows-agent.js",
+  view: "/assets/panel-view.js",
+};
+
+/**
+ * M-3314: what this load of the shell imports, statically or as app.js boots it, so it can be asked for in one wave:
+ * app.js; for a signed-in page the chat (always booted) and the panel of the route; for an admin's page also what
+ * app.js loads for every admin (backend sign-in, agent proposals) and, with the chat workspace, its modules. Nothing a
+ * page of that kind would not load anyway — a guest's or a reader's page preloads only what it imports itself.
+ */
+export function shellPreload(mode: AppShellMode, guest: boolean, path: string, workspace: boolean): string[] {
+  const graph = appModuleGraph();
+  const entries = ["/assets/app.js"];
+  const route = shellRoute("GET", path);
+  const panel = route?.kind === "shell" ? route.route.panel : null;
+  if (panel === "view") entries.push(PANEL_MODULES.view);
+  if (mode === "full") {
+    entries.push(PANEL_MODULES.chat);
+    if (!guest) {
+      if (panel && panel !== "chat" && panel !== "view" && PANEL_MODULES[panel]) entries.push(PANEL_MODULES[panel]);
+      entries.push("/ui/js/backend-signin.js", "/ui/js/agent-proposals.js");
+      if (workspace) entries.push("/ui/js/chat-workspace.js", PANEL_MODULES.details, PANEL_MODULES.log, PANEL_MODULES.view);
+    }
+  }
+  return staticClosure(graph, entries);
+}
+
 export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: AppShellContext, mode: AppShellMode, opts: { hubWorkspace?: { name: string } } = {}): void {
   // A Hub workspace is drawn from nothing of this fleet's: no fleet cookie, session, preference or preview is read.
   if (opts.hubWorkspace) { serveHubWorkspaceShell(res, opts.hubWorkspace); return; }
@@ -5133,7 +5179,16 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     const fileViewer = own ? evaluateWebRequest(req as unknown as WebGateRequest, new URL(req.url ?? "/", "http://localhost"), ctx.webToken ?? null, ctx.webSessions, { touch: false }) : null;
     const fileFrame = own && fileViewer?.kind === "allow" && fileViewer.via === "session" && fileViewer.session.tier === "admin" ? `${own}/ui/reply-preview` : null;
     const frameSrc = [previewFrames, fileFrame].filter(Boolean).join(" ");
-    sendPanelHtml(res, withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", shellBodyTag(req, ctx, mode, viewer)), 200, {}, { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
+    const bodyTag = shellBodyTag(req, ctx, mode, viewer);
+    const page = withAppIconLinks(html).replace('<html lang="en">', shellHtmlTag(ctx, mode, viewer)).replace("<body>", bodyTag);
+    // M-3314: the shell's files under this version, and the modules this load will import preloaded at once.
+    const guest = mode === "full" && !!viewer?.guest;
+    const preload = shellPreload(mode, guest, new URL(req.url ?? "/", "http://localhost").pathname, bodyTag.includes('data-chat-workspace="1"'));
+    // Only while the files are still the ones <V> names: between an update's install and its restart the shell is the
+    // plain one (no-store files, as before this change), never one that names <V> over files it does not describe.
+    const shell = assetsUnchanged() ? versionShell(page, assetVersion(), preload, mode === "full" && !guest ? appModuleGraph() : undefined) : page;
+    sendPanelHtml(res, shell, 200, {},
+      { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });
   }

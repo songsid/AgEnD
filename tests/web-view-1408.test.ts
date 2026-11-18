@@ -64,7 +64,7 @@ describe("served (#1408 step 2)", () => {
       for (const p of ["/view", "/view/web-dev", "/view/%E4%B8%AD", "/view/nobody"]) {
         const r = await raw(h.port, "GET", p, { accept: "text/html" });
         expect(r.status, p).toBe(200);
-        expect(r.body, p).toContain('<script type="module" src="/assets/app.js"></script>');
+        expect(r.body, p).toMatch(/<script type="module" src="\/assets\/v-[0-9a-f]{12}\/app\.js"><\/script>/)  // M-3314: under its version;
         const tag = bodyTag(r.body);
         expect(tag, p).toContain('data-mode="view-only"');
         expect(tag, p).toContain('data-preview-origin=""');
