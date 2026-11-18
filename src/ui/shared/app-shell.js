@@ -1317,7 +1317,22 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     let composedAt = -Infinity, pendH = 0, pendTop = 0;
     const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
     const frame = typeof requestAnimationFrame === "function" ? requestAnimationFrame : null;
-    const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } };
+    // M-3327 (the user's iPhone recording, beta.11): the shell no longer chases the browser's pan with translateY(offsetTop).
+    // iOS animates its pan (to show the box) and takes it back once the shell is the view's height; the transform followed
+    // the readings, not the pan on screen, so the header dropped to mid-screen over a black band, the box was pushed under
+    // the keyboard (which panned again: a runaway), then everything snapped back. The shell stays at the top, the view's
+    // height, and a pan is undone (scrollTo 0) — the box is in view without one.
+    const unpan = (top) => { if (top > 0 && typeof window.scrollTo === "function") { try { window.scrollTo(0, 0); } catch { /* not scrollable */ } } };
+    // M-3327: the keyboard going away (the field left for something that is not a text field): iOS reports the taller view
+    // only once the keyboard has gone (~350 ms), so following the view held the box mid-air over the page's background, then
+    // dropped it in one frame. Now the shell takes its full height (the tallest view at this width) at the focusout, easing
+    // down (data-kb-closing: app.css) while the keyboard slides away over it (the keyboard state is down already: no field).
+    // The ease lasts its own time once started (CLOSE_MS ≥ app.css's 0.26 s), whenever iOS's late reading comes: taking the
+    // attribute away mid-way would cut the transition short (a snap) — so the result never depends on the event order.
+    const CLOSE_MS = 320;
+    let leaving = false, closingUntil = 0;
+    const closing = (el, on) => { if (el?.setAttribute) { if (on) el.setAttribute("data-kb-closing", ""); else el.removeAttribute("data-kb-closing"); } };
+    const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } closing(el, false); closingUntil = 0; };
     const fit = () => {
       const el = root.current;
       if (!el?.style) return;
@@ -1335,16 +1350,15 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const h = composingNow && fitH && w === fitW && seen > fitH ? fitH : seen;
       const settled = fitH && typingNow && w === fitW && now() >= followUntil;
       if (settled && Math.abs(h - fitH) <= NUDGE_PX && Math.abs(top - fitTop) <= NUDGE_PX) { moveSince = 0; return; }   // a nudge
-      if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX)) {
+      // M-3327: a pan of a keyboard's height is the keyboard coming up (a tap on a box that already had the focus: no focus
+      // event, so no follow window), never a key's nudge — undone at once, like the keyboard's own height.
+      if (settled && (h !== fitH || top !== fitTop) && !(fitH - h > KEYBOARD_MIN_PX) && !(top - fitTop > KEYBOARD_MIN_PX)) {
         if (!moveSince || Math.abs(h - pendH) > NUDGE_PX || Math.abs(top - pendTop) > NUDGE_PX) { moveSince = now(); pendH = h; pendTop = top; }
         const held = DOWN_HOLD_MS - (now() - moveSince);
         const growWait = h > fitH && h - fitH <= KEYBOARD_MIN_PX ? composedAt + IME_GROW_HOLD_MS - now() : 0;
         if (held > 0 || growWait > 0) {                                // not held yet: the shell stays as it is
           // Held, but a grow after a composition still waits: the place (a pan) is followed now, the height later.
-          if (held <= 0 && Math.abs(top - fitTop) > NUDGE_PX) {
-            fitTop = top;
-            if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
-          }
+          if (held <= 0 && Math.abs(top - fitTop) > NUDGE_PX) { fitTop = top; unpan(top); }
           const left = held > 0 ? held : growWait;
           if (!moveTimer && typeof setTimeout === "function") moveTimer = setTimeout(() => { moveTimer = 0; fit(); }, left + 20);
           return;
@@ -1354,10 +1368,19 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       // A reading that says "down" while the field keeps focus is on hold (below): until it holds, the shell keeps the height
       // it had, so the box does not drop under a keyboard that is still there.
       const pending = downSince && now() - downSince < DOWN_HOLD_MS && fitH;
-      fitH = pending ? fitH : h;
+      // Leaving the field: the full height at once (not the view, which is still the keyboard's for a while).
+      // Leaving the field: the full height whatever the view says. Eased only while the view still says keyboard (iOS's
+      // reading comes once it has gone: then the keyboard is still on screen, sliding away over the shell); a view already
+      // grown (its reading came first) means the keyboard has gone — at once.
+      const left = leaving && !typingNow && !composingNow;
+      const gone = left && tallest > h;
+      if (gone && !(now() < closingUntil) && tallest - fitH > KEYBOARD_MIN_PX) closingUntil = now() + CLOSE_MS;
+      fitH = gone ? tallest : left ? h : pending ? fitH : h;
       fitTop = top; fitW = w;
+      closing(el, now() < closingUntil);
       el.style.setProperty("height", `${fitH}px`);
-      if (top) el.style.setProperty("transform", `translateY(${top}px)`); else el.style.removeProperty("transform");
+      el.style.removeProperty("transform");
+      unpan(top);
     };
     const follow = () => {
       if (!frame || !coarse()) return;
@@ -1394,7 +1417,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       if (up !== was) shellStore.set({ keyboard: up });
       fit();
     };
-    const focusChanged = () => { check(); follow(); };
+    // M-3327: a focusout whose focus goes to another text field is not the keyboard going away (it stays up).
+    const focusChanged = (e) => { leaving = e?.type === "focusout" && !isTextEntry(e.relatedTarget); check(); follow(); };
     const start = (e) => { composing = (e && e.target) || document.activeElement || null; };
     const end = () => { composing = null; composedAt = now(); check(); };
     check();
