@@ -4,7 +4,7 @@
  * instances and the install command, and saying they start by themselves once it is back (#4149's hold). The line comes
  * from FleetManager.missingBinarySummary, built from the same holds Needs you shows.
  */
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -41,6 +41,30 @@ describe("M-3302: the completion names a missing AI CLI", () => {
     fm.missingBinaryHolds.set("b", { backend: "claude-code", binary: "claude", since: 2 });
     expect(fm.missingBinarySummary(["a", "b", "c"])).toEqual({ missingBinaries: [{ binary: "claude", fix: INSTALL, names: ["a", "b"] }] });
     expect(fm.missingBinarySummary(["c"])).toEqual({});
+  });
+
+  it("completionSummary: what both completions post — the base, plus the line's groups when a failed instance is held; byte-identical when none is", () => {
+    const dir = mkdtempSync(join(tmpdir(), "agend-3302-cs-")); dirs.push(dir);
+    const fm = new FleetManager(dir) as any;
+    const base = { running: 1, total: 3, version: "2.4.0", pausedNames: [], failedNames: ["a", "c"], backgroundWorkEndedNames: [] };
+    expect(fm.completionSummary(base)).toEqual(base);
+    fm.missingBinaryHolds.set("a", { backend: "claude-code", binary: "claude", since: 1 });
+    expect(fm.completionSummary(base)).toEqual({ ...base, missingBinaries: [{ binary: "claude", fix: INSTALL, names: ["a"] }] });
+    expect(formatRestartProgressCompletion("update", fm.completionSummary(base), Date.now())).toContain("`claude` is not installed — 1 cannot start (a)");
+  });
+
+  it("Fable on #4161: both completions build their summary through completionSummary — the startup batch (update/restart) and the in-process restart", () => {
+    const src = readFileSync(join(import.meta.dirname, "..", "src", "fleet-manager.ts"), "utf8");
+    // Every RestartProgress.finish(...) in the fleet takes the helper's result, never a bare literal.
+    const finishes = [...src.matchAll(/\b(\w+)\.finish\(([^)]{0,40})/g)].filter(m => /Progress$/.test(m[1]!));
+    expect(finishes.map(m => `${m[1]}.finish(${m[2]!.trim().slice(0, "this.completionSummary(".length)}`).sort()).toEqual(["restartProgress.finish(this.completionSummary(", "startupProgress.finish(completionSummary"]);
+    expect(src).toContain("const completionSummary: RestartProgressSummary = this.completionSummary({");
+  });
+
+  it("no install command known: the clause is left out, no empty backticks (Fable's nit)", () => {
+    const text = formatRestartProgressCompletion("restart", { running: 0, total: 1, version: "2.4.0", pausedNames: [], failedNames: ["a"], missingBinaries: [{ binary: "x", fix: "", names: ["a"] }] }, 0, 1_000);
+    expect(text).toContain(t("restart.progress.missing_binary_nofix", "x", 1, "a"));
+    expect(text).not.toContain("``");
   });
 
   it("zh-TW", () => {

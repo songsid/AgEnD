@@ -119,7 +119,8 @@ export function formatRestartProgressCompletion(
     lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
   }
   for (const m of summary.missingBinaries ?? []) {
-    if (m.names.length) lines.push(t("restart.progress.missing_binary", m.binary, m.names.length, m.names.join(", "), m.fix));
+    if (m.names.length) lines.push(m.fix ? t("restart.progress.missing_binary", m.binary, m.names.length, m.names.join(", "), m.fix)
+      : t("restart.progress.missing_binary_nofix", m.binary, m.names.length, m.names.join(", ")));
   }
   if (summary.backgroundWorkEndedNames?.length) {
     lines.push(formatBackgroundWorkEndedLine(summary.backgroundWorkEndedNames));
