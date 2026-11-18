@@ -16776,6 +16776,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try {
       if (execution) await this.lifecycle.remove(name, authorization, execution, transition);
       else await this.lifecycle.remove(name, authorization);
+      // M-3302: a removed instance is no longer held for its missing binary (the watch would only skip it).
+      if (this.missingBinaryHolds?.delete(name)) { this.needsYou?.poke(); this.stopMissingBinaryWatchIfIdle(); }
       // #1490 row 27: its hang/exit offers were for the instance now gone (stopInstance clears them; removal stops
       // through the lifecycle directly). The offers' own lifecycle pins refuse them too.
       this.clearNoncePromptsForInstance(name);

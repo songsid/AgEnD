@@ -1965,6 +1965,9 @@ export class InstanceLifecycle {
     published?: (daemon: Daemon) => void,
   ): Promise<void> {
     const epoch = this.epochOf(name);
+    // M-3302 (Fable F1 on #4149): only THIS start's own binary check is evidence. An earlier start's record must never turn a
+    // failure before this start's check (General binding, mkdir, instance dir, imports) into "binary missing".
+    this.missingBinaries.delete(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     // AGEND-251 (#3771 review round 2, P2-6): what this start LAUNCHES as, read from the configuration it was handed (inherited defaults included) BEFORE the first await. Reconciliation, the spawn and the
     // readiness wait all yield, and a Settings save in that window changes the fleet configuration the incident handlers would read later; the cap of a running agent belongs to the launch, not to the save.
@@ -2546,6 +2549,7 @@ export class InstanceLifecycle {
   async remove(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution, transition?: TransitionHandle): Promise<void> {
     // Automatic topology reconciliation must never reach the destructive path.
     assertExplicitInstanceRemoval(authorization);
+    this.missingBinaries.delete(name);
     const config = this.ctx.fleetConfig?.instances[name];
     if (!config) return;
     const check = (): void => { execution?.assert(); if (this.ctx.fleetConfig?.instances[name] !== config) throw new Error("instance removal superseded"); };

@@ -57,6 +57,10 @@ describe("M-3302: a missing backend binary", () => {
       expect(fm.pendingStartupRetry("a")).toBeNull();
       expect(fm.pendingStartupRetry("b")).toBeNull();
       expect(fm.missingBinaryHold("a")).toMatchObject({ backend: "claude-code", binary: "claude", fix: INSTALL });
+      // Fable (b) on #4149: a held instance counts as waiting for its start, so messages to it are held, not failed.
+      expect((fm as any).inStartRetryBackoff("a")).toBe(true);
+      (fm as any).missingBinaryHolds.delete("a");
+      expect((fm as any).inStartRetryBackoff("a")).toBe(false);
       await vi.advanceTimersByTimeAsync(FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
       expect(notifyFleetError).toHaveBeenCalledTimes(1);
       expect(notifyFleetError).toHaveBeenCalledWith(t("fleet.backend_binary_missing", 2, "a, b", "claude", INSTALL));
@@ -125,7 +129,7 @@ describe("M-3302: a missing backend binary", () => {
 });
 
 describe("M-3302: InstanceLifecycle remembers what its pre-check found (#1490's harness)", () => {
-  function lifecycle() {
+  function lifecycle(over: Record<string, unknown> = {}) {
     vi.useRealTimers();
     noteResolvedBinary("codex", null);
     const root = mkdtempSync(join(tmpdir(), "agend-3302-lc-")); dirs.push(root);
@@ -140,10 +144,10 @@ describe("M-3302: InstanceLifecycle remembers what its pre-check found (#1490's 
       getInstanceDir: (n: string) => join(root, "instances", n), isPlannedRestart: () => false, notifyInstanceTopic: () => true,
       webhookEmit: () => {}, clearCancelButton: () => {}, instanceIpcClients: new Map(),
       spawnGate: { run: (_task: unknown, operation: () => Promise<unknown>) => operation() },
-      stormWindow: null, backendOutage: null, agentCredentials: undefined,
+      stormWindow: null, backendOutage: null, agentCredentials: undefined, assertGeneralBindingStart: () => {}, ...over,
     };
     const ctx = new Proxy(base, { get: (t, k) => (k in t ? t[k as string] : () => Promise.resolve(undefined)) }) as unknown as LifecycleContext;
-    return { lc: new InstanceLifecycle(ctx), root };
+    return { lc: new InstanceLifecycle(ctx), root, base };
   }
   afterEach(() => noteResolvedBinary("codex", null));
 
@@ -160,6 +164,51 @@ describe("M-3302: InstanceLifecycle remembers what its pre-check found (#1490's 
     const { lc, root } = lifecycle();
     const err = await lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false).then(() => null, e => e);
     expect(err).toBeInstanceOf(Error);
+    expect(lc.missingBinaryAt("worker", err)).toBeNull();
+  });
+});
+
+describe("M-3302 (Fable F1 on #4149): only the failing start's own check is evidence", () => {
+  function lifecycle() {
+    vi.useRealTimers();
+    noteResolvedBinary("codex", null);
+    const root = mkdtempSync(join(tmpdir(), "agend-3302-f1-")); dirs.push(root);
+    vi.spyOn(Daemon.prototype, "start").mockRejectedValue(new Error("tmux: codex: command not found"));
+    vi.spyOn(Daemon.prototype, "stop").mockResolvedValue();
+    vi.spyOn(Daemon.prototype, "abortStartup").mockResolvedValue();
+    vi.spyOn(IpcServer.prototype, "listen").mockResolvedValue();
+    const logger: any = { info() {}, warn() {}, debug() {}, error() {}, child() { return logger; } };
+    let refuseBinding = false;
+    const base: Record<string, unknown> = {
+      fleetConfig: { defaults: {}, instances: { worker: { backend: "codex" } } },
+      logger, eventLog: null, deliveryOutbox: null, controlClient: null, dataDir: root,
+      getInstanceDir: (n: string) => join(root, "instances", n), isPlannedRestart: () => false, notifyInstanceTopic: () => true,
+      webhookEmit: () => {}, clearCancelButton: () => {}, instanceIpcClients: new Map(),
+      spawnGate: { run: (_task: unknown, operation: () => Promise<unknown>) => operation() },
+      stormWindow: null, backendOutage: null, agentCredentials: undefined,
+      assertGeneralBindingStart: () => { if (refuseBinding) throw new Error("General binding refused"); },
+    };
+    const ctx = new Proxy(base, { get: (t, k) => (k in t ? t[k as string] : () => Promise.resolve(undefined)) }) as unknown as LifecycleContext;
+    return { lc: new InstanceLifecycle(ctx), root, refuse: () => { refuseBinding = true; } };
+  }
+  afterEach(() => noteResolvedBinary("codex", null));
+  const start = (lc: InstanceLifecycle, root: string) => lc.start("worker", { working_directory: join(root, "w"), backend: "codex" } as never, false).then(() => null, e => e);
+
+  it("missing once, then a start whose check finds the binary and fails for another reason: a plain failure", async () => {
+    const resolve = vi.spyOn(availability, "resolveBackendBinary").mockResolvedValue(null);
+    const { lc, root } = lifecycle();
+    expect(lc.missingBinaryAt("worker", await start(lc, root))).not.toBeNull();
+    resolve.mockResolvedValue("/usr/local/bin/codex");
+    expect(lc.missingBinaryAt("worker", await start(lc, root))).toBeNull();
+  });
+
+  it("missing once, then a start that fails BEFORE its check (General binding): a plain failure, not 'not installed'", async () => {
+    vi.spyOn(availability, "resolveBackendBinary").mockResolvedValue(null);
+    const { lc, root, refuse } = lifecycle();
+    expect(lc.missingBinaryAt("worker", await start(lc, root))).not.toBeNull();
+    refuse();
+    const err = await start(lc, root);
+    expect(String(err)).toMatch(/General binding refused/);
     expect(lc.missingBinaryAt("worker", err)).toBeNull();
   });
 });
