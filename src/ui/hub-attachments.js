@@ -67,7 +67,8 @@ export async function uploadChosen(client, roomId, fileList, { current, set, ali
   const room = Math.max(0, MAX_FILES - current().length);
   if (chosen.length > room) refusals.push(hf("tooMany", MAX_FILES));
   const admitted = chosen.slice(0, room).map((file) => ({ file, key: `${Date.now()}-${Math.random().toString(36).slice(2)}` }));
-  if (admitted.length) set([...current(), ...admitted.map(({ file, key }) => ({ key, name: file.name, size: file.size, state: "uploading" }))]);
+  // M-3311 (3): a long paste's chip keeps its text, for the Fleet chat's 「改為文字」 (PendingFiles' onAsText).
+  if (admitted.length) set([...current(), ...admitted.map(({ file, key }) => ({ key, name: file.name, size: file.size, state: "uploading", ...(pastedTexts.has(file) ? { text: pastedTexts.get(file) } : {}) }))]);
   for (const { file, key } of admitted) {
     if (!alive()) break;
     if (!current().some((f) => f.key === key)) continue;
@@ -113,6 +114,7 @@ export function pasteToAttach(e, attach) {
   if (typeof attach.left === "function" && attach.left() < 1) { attach.notice?.(t("chat.pasteKeptAsText")); return; }
   e.preventDefault();
   const file = new File([text], `pasted-${stamp()}.txt`, { type: "text/plain" });
+  pastedTexts.set(file, text);
   Promise.resolve(attach.onFiles([file])).then((refused) => { if (!refused || !refused.length) attach.notice?.(t("chat.pasteAttached", text.length.toLocaleString())); });
 }
 /**
@@ -139,14 +141,28 @@ export function useFileDrop(ref, attach) {
     return () => { el.classList.remove("dragging"); el.removeEventListener("dragenter", enter); el.removeEventListener("dragover", over); el.removeEventListener("dragleave", leave); el.removeEventListener("drop", drop); };
   }, [ref.current, on]);
 }
+/** M-3311 (3): what a long paste became a file of — its chip can put it back as text (the Fleet chat's 「改為文字」). */
+const pastedTexts = new WeakMap();
+/**
+ * M-3311 (3): a long paste's text back into the box — after what is there, on a new line (the Fleet chat's fileBackAsText) —
+ * through the box's own typing path (its value setter and an input event: the composer's draft takes it).
+ */
+export function putBackText(field, text) {
+  if (!field || typeof text !== "string") return;
+  const value = field.value || "", next = value ? `${value}\n${text}` : text;
+  const set = typeof HTMLTextAreaElement === "function" ? Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set : null;
+  if (set) set.call(field, next); else field.value = next;
+  field.dispatchEvent(new Event("input", { bubbles: true }));
+}
 /** Where a dragged file goes: the Fleet chat's drop card (shown by `.dragging` on the conversation). */
 export const DropOverlay = () => html`<div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>`;
 
 /** The files waiting under the composer. */
-export function PendingFiles({ files, onRemove, formatSize = (n) => `${n} B` }) {
+export function PendingFiles({ files, onRemove, onAsText = null, formatSize = (n) => `${n} B` }) {
   if (!files.length) return null;
   return html`<div class="pending-files hub-pending-files">${files.map((f) => html`<span key=${f.key} class="file-chip" data-state=${f.state}>
     <span class="ic"><${Icon} name="file" size=${16} /></span><span class="nm">${f.name}</span>
     <span class="sz">${f.state === "uploading" ? hf("uploading") : formatSize(f.size)}</span>
+    ${typeof f.text === "string" && onAsText ? html`<button type="button" class="as-text" onClick=${() => onAsText(f.key)}>${t("chat.asText")}</button>` : null}
     <button type="button" class="chip-x" title=${hf("remove", f.name)} aria-label=${hf("remove", f.name)} onClick=${() => onRemove(f.key)}><${Icon} name="close" size=${14} /></button></span>`)}</div>`;
 }

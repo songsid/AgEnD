@@ -158,5 +158,6 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
       send=${{ hidden: false, disabled: (!value.trim() && !canSendEmpty) || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
   </div>
   ${msg ? html`<p class="err" role="alert">${msg.text}${msg.retry ? html` <button type="button" class="btn btn-sm" onClick=${send}>${hroom("retrySend")}</button>` : null}</p>` : null}
-  ${group ? html`<div class="composer-row"><span class="hint hub-room-hint">${hroom("composerHint")}</span></div>` : null}`;
+  ${/* M-3311 (3): the Fleet chat's line under the box — Enter sends, Shift+Enter a new line — and a group room's @agent hint after it. */ ""}
+  <div class=${`composer-row${group ? " hub-hints" : ""}`}><span class="hint hub-enter-hint">${t(touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span>${group ? html`<span class="hint hub-room-hint">${hroom("composerHint")}</span>` : null}</div>`;
 }

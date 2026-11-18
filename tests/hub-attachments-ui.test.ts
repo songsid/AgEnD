@@ -190,6 +190,20 @@ describe("Hub chat attachments (D2)", () => {
     fire(main, "drop", { dataTransfer: { types: ["Files"], files: [new File(["# plan"], "plan.md", { type: "text/markdown" })] } }); await settle(20);
     expect(calls.filter(c => c.method === "POST" && c.path.endsWith("/files")).map(c => c.headers["X-File-Name"])).toEqual(["image.png", "plan.md"]);
   });
+  it("M-3311 (3): a long paste's chip has the Fleet chat's As text — the text back in the box, the chip gone; the Enter hint under the box", async () => {
+    hubApi(["attachments-v1"], () => fileReply(uuidOf(1), "pasted.txt"));
+    const pg = await openRoom();
+    const box = pg.root.querySelector("#msgIn") as any;
+    box.value = "My answer"; fire(box, "input"); await settle(5);
+    fire(box, "paste", { clipboardData: { files: [], getData: () => "z".repeat(4500) } });
+    await until(() => pg.root.querySelector(".hub-pending-files .file-chip[data-state=ready] .as-text"));
+    const btn = pg.root.querySelector(".hub-pending-files .as-text") as any;
+    expect(btn.textContent).toBe("As text");
+    fire(btn, "click"); await settle(10);
+    expect([pg.root.querySelector(".hub-pending-files"), box.value]).toEqual([null, `My answer\n${"z".repeat(4500)}`]);
+    expect((pg.root.querySelector("#sendBtn") as any).disabled, "the composer's own draft took it").toBe(false);
+    expect([...pg.root.querySelectorAll(".composer-row .hint")].map((h: any) => h.textContent)[0]).toBe("Enter to send · Shift+Enter for a new line");
+  });
   // M-3311 (2): the Fleet chat's 「引用」 — a passage selected in an answer goes into this question's box as a quote.
   it.each(["en", "zh-TW"])("M-3311: a passage selected in an answer shows Quote (%s); its click puts it in the box as a quote", async (lang) => {
     hubApi(["attachments-v1"], undefined, [{ messageId: "m1", sequence: 1, askedAt: 1, receipt: { stage: "answered", at: 2 }, question: "Q?", answer: "Ship it on Friday, after the rehearsal." }]);

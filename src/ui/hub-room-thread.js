@@ -32,12 +32,23 @@ import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { roomSource, mountSourceAuthor } from "./hub-room-source.js";
 import { countsLine } from "./hub-room-list.js";
-import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
+import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
+/**
+ * M-3311 (3): the Fleet chat's 「全寬」 for a Hub conversation — this device's choice (as the Fleet keeps its own), its own key:
+ * a Hub page has no Fleet module to share it with.
+ */
+const WIDE_KEY = "agend_hub_chat_wide";
+export function hubChatWide() { try { return localStorage.getItem(WIDE_KEY) === "on"; } catch { return false; } }
+function setHubChatWide(on) { try { if (on) localStorage.setItem(WIDE_KEY, "on"); else localStorage.removeItem(WIDE_KEY); } catch { /* this tab only */ } }
+/** The Fleet chat's narrow screen (panel-chat.js narrowScreen): no 「全寬」 there — the column is the screen's already. */
+const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
+/** M-3311 (3): a room message's address — what Copy link copies; opening it shows that message (jumpParam). */
+export const messageLink = (roomId, messageId) => `${location.origin}/ui/hub?room=${encodeURIComponent(roomId)}${messageId ? `&m=${encodeURIComponent(messageId)}` : ""}`;
 /** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
 export const jumpParam = () => { try { const v = new URLSearchParams(location.search).get("m"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
@@ -398,7 +409,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // M-3311 (1): a file dragged onto the conversation is attached, as in the Fleet chat.
   const mainRef = useRef(null);
   useFileDrop(mainRef, attach);
-  const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
+  // M-3311 (3): a long paste's chip — 「改為文字」 puts its text back into the box (the Fleet chat's), and the chip goes.
+  const asText = (key) => { const f = filesRef.current.find((x) => x.key === key); if (!f) return; setFiles(filesRef.current.filter((x) => x.key !== key)); putBackText(input.current, f.text); input.current?.focus(); };
+  const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onAsText=${asText} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
     formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />${fileMsg ? html`<p class="note" role="alert">${fileMsg}</p>` : null}` : null;
   // The composer sends through the store; this one adds the ready files, waits for uploads, and clears only what was sent.
   const annotateRef = useRef(null);
@@ -477,7 +490,16 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     openImage: (links, img) => openLightbox(links, img, annotateRef.current(img)),
     // M-3311 (2): 「引用」 on a selected passage goes into this room's box (read at selection time).
     quote: { field: () => input.current, can: () => !store.closed() },
+    // M-3311 (3): the Fleet chat's Copy link — a room message's address (opening it shows that message).
+    linkOf: (x) => messageLink(roomId, x && x.roomMessage),
   };
+  // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
+  const [fullWidth, setFullWidth] = useState(hubChatWide);
+  const menuItems = [
+    group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
+    group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
+    !narrowScreen() && detail?.me ? { key: "fullWidth", checkbox: true, checked: fullWidth, label: t("chat.fullWidth"), onSelect: () => { setHubChatWide(!fullWidth); setFullWidth(!fullWidth); } } : null,
+  ].filter(Boolean);
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");
   const showRail = wide && rail && Panel && group && detail;
@@ -488,7 +510,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onMention=${(m) => { setSheet(false); insert.current?.(`@${m.name}`); }}
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
-  return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
+  return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined}>
     <${LightboxHost} />
     <section class="hub-chat-main" ref=${mainRef}>
       ${attach ? html`<${DropOverlay} />` : null}
@@ -501,10 +523,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
-        ${group && detail?.me ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${[
-          detail.me.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
-          { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } },
-        ].filter(Boolean)} />` : null}
+        ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       ${room.closureReason === "owner-stopped-sharing" ? html`<p class="note" role="status">${hroom("noAnswerStopped", room.ownerName || room.agent?.owner?.name || "")}</p>` : null}
