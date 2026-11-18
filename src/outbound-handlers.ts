@@ -314,6 +314,7 @@ function recipientWarning(
       : type === "auth_error" ? "delivery.seen_auth"
         : "delivery.seen_error");
   const warning = t(paused ? "delivery.target_paused_after" : "delivery.target_detected", targetName, seen);
+  if (type === "stale_auth") return `${warning} ${t("inst.codex_stale_auth")}`;
   return type === "auth_error" ? `${warning} ${t("delivery.check_credentials")}` : warning;
 }
 

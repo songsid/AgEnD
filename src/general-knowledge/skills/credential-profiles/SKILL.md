@@ -308,3 +308,10 @@ percentage or available capacity from the seat login. AWS calls the quota
 10,000 agentic inference requests per month (IDE and CLI combined); a chat may
 make multiple requests. No local chat count is a vendor balance.
 Source: https://docs.aws.amazon.com/general/latest/gr/amazonqdev.html
+
+### Codex asks to sign in again after an account switch
+
+A running Codex agent can keep the previous sign-in in memory even though the current login file is valid.
+If **Needs you** says **Codex needs a restart**, open that agent and restart it to load the current sign-in.
+Only sign in again if Codex asks after restarting. AgEnD blocks further delivery and reports the affected agent;
+this warning does not mean every agent using that account is signed out. It is separate from **Keep sign-in alive**.

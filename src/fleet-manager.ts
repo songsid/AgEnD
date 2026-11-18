@@ -15855,6 +15855,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         backendMissing: this.missingBinaryHold(name),
         pauseReason, pausedAt,
+        staleAuth: this.daemons.get(name)?.staleAuthIssue?.() ?? null,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         modelSwitch: this.modelObservationForInstance(name)?.active ?? null,

@@ -100,7 +100,7 @@ it("a busy pane is never killed for the minimum-version repair", async () => {
 it("failed replacement readiness blocks delivery without granting another automatic attempt", async () => {
   const w = world(); w.d.trySpawnInsideGate.mockImplementation(async () => { w.d.launchAttempt++; return false; });
   await w.fire(); await w.fire(); expect(w.d.trySpawnInsideGate).toHaveBeenCalledOnce(); expect(w.warnings).toHaveLength(1);
-  expect(w.d.modelMinimumBlocked).toBe(true); expect(w.d.healthCheckPaused).toBe(true); expect(w.d.refuseFatalStartupDelivery({ reached: false })).toBe(true);
+  expect(w.d.modelMinimumBlocked).toBe(true); expect(w.d.healthCheckPaused).toBe(true); expect(w.d.refuseBlockedDelivery({ reached: false })).toBe(true);
   expect(readFileSync(join(w.root, "session-id"), "utf8")).toBe(sid);
 });
 it("queued delivery remains held while the final version read is in flight", async () => {

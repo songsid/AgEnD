@@ -376,6 +376,7 @@ export function peerWorkingDirectories(fleetConfig: FleetConfig | null, name: st
 
 /** What attachIncidentHandlers needs from a Daemon — the real one satisfies it. */
 export interface IncidentEventSource {
+  staleAuthIssue?(): { since: number } | null;
   on(event: string, handler: (...args: any[]) => void): unknown;
   requestPauseWhenIdle(opts?: { reconfirmAuth?: boolean; reason?: PauseReason }): void;
   /** Re-checks that a Codex pane is live after an async quota probe. */
@@ -1143,6 +1144,7 @@ export class InstanceLifecycle {
     }, this.ctx.logger, `daemon.muse_relay_exhausted[${name}]`));
 
     daemon.on("mcp_died", safeHandler(async (data: { name: string; pid: number; autoRestart?: boolean; authSuspected?: boolean; neverConnected?: boolean }) => {
+      if (daemon.staleAuthIssue?.()) return; // The instance-specific restart notice already covers this symptom.
       const stormAtDetection = this.ctx.stormWindow?.isActive() === true;
       const incident = this.mcpIncident(name);
       const generation = ++incident.gen;
@@ -1158,7 +1160,7 @@ export class InstanceLifecycle {
       // ask the cached token-free probe. Only a CONFIRMED invalid swaps the
       // message — valid or uncertain keeps the accurate MCP report below.
       const verdict = data.authSuspected ? "invalid" : await this.verifyAuthError(name);
-      if (incident.gen !== generation) {
+      if (incident.gen !== generation || daemon.staleAuthIssue?.()) {
         // The server recovered (or a newer death superseded this one) while the
         // probe ran. Anything we would say now is stale — say nothing.
         this.ctx.logger.info({ name, pid: data.pid }, "MCP death report superseded during the auth probe — nothing sent");
@@ -1406,6 +1408,7 @@ export class InstanceLifecycle {
       inProgress?: boolean;
       pattern?: RegExp;
     }) => {
+      if (data.type === "stale_auth" && this.daemons.get(name) !== daemon) return;
       this.ctx.eventLog?.insert(name, "pty_error", { type: data.type, action: data.action });
       this.ctx.logger.warn({ name, errorType: data.type, action: data.action }, `PTY error: ${data.message}`);
 
@@ -1651,7 +1654,7 @@ export class InstanceLifecycle {
         } else {
           // The marker must say auth (2b never auto-wakes a login failure); any
           // other pause-action error is an error pause, not an operator one.
-          const reason: PauseReason = data.type === "auth_error" ? "auth" : "error";
+          const reason: PauseReason = data.type === "stale_auth" ? "stale_auth" : data.type === "auth_error" ? "auth" : "error";
           void this.pause(name, reason)
             .catch(err => this.ctx.logger.warn({ err, name }, "auth-error pause failed"))
             .finally(() => { if (!this.isPaused(name)) daemon.requestPauseWhenIdle({ reason }); });
