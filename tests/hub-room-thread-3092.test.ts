@@ -28,7 +28,7 @@ beforeAll(async () => {
 const realES = g.EventSource;
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); g.EventSource = realES; });
 
-async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean, opts: { matchNarrow?: boolean } = {}) {
+async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean, opts: { matchNarrow?: boolean; matchMedia?: (q: string) => any; before?: () => void } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch;
   if(personalAnswerOnly!==undefined){
     fx.rooms.find(r=>r.id===roomId)!.messages=[];
@@ -43,6 +43,10 @@ async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolea
   g.fetch = (url: string, init?: any) => fx.fetch(url, init); g.EventSource = fx.EventSource;
   const pg = page({ url: `http://127.0.0.1:19280/ui/hub?room=${roomId}`, storage: { agend_tour_done: "1" }, ...(opts.matchNarrow ? { matchNarrow: true } : {}) });
   pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub"); mounted.push(pg);
+  // A test's own matchMedia (one whose answer changes: a window resized) or other globals, set before the page draws —
+  // pg.restore() puts matchMedia and isSecureContext back.
+  if (opts.matchMedia) Object.defineProperty(g, "matchMedia", { value: opts.matchMedia, configurable: true, writable: true });
+  opts.before?.();
   i18n.setLang(lang, { store: false });
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
@@ -614,6 +618,45 @@ describe("a room on the page", () => {
       expect(header.textSizeStore.get().size).not.toBe(before);
       header.setTextSize(before);
     } finally { restore(); }
+  });
+  it("M-3311 (#4162 review): a phone's ⋯ has Notify where the browser can notify; its click turns it on", async () => {
+    const needs = await import("/assets/app-needs.js") as any, strings = await import("/ui/js/hub-room-strings.js") as any;
+    const { pg, restore } = await roomPage("room-weekly", "en", undefined, { matchNarrow: true, before: () => {
+      g.Notification = Object.assign(function Notification() {}, { permission: "granted", requestPermission: async () => "granted" });
+      Object.defineProperty(g, "isSecureContext", { value: true, configurable: true, writable: true });
+    } });
+    try {
+      expect(needs.notifySupport()).toBe("ok");
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
+      const item = () => [...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].find((b: any) => (b.textContent || "").trim() === strings.hroom("notifyTitle")) as any;
+      expect(item()?.getAttribute("role")).toBe("menuitemcheckbox");
+      expect(item()?.getAttribute("aria-checked")).toBe("false");
+      fire(item(), "click"); await settle(6);
+      expect(needs.notifyStore.get().state).toBe("on");
+      expect(item()?.getAttribute("aria-checked")).toBe("true");
+    } finally { await needs.setNotify(false); delete g.Notification; restore(); }
+  });
+  it("M-3311 (#4162 review): a desk window narrowed to a phone's width with ⋯ open — it gains text size and drops Full width at once (and back)", async () => {
+    let narrow = false; const heard = new Set<() => void>();
+    const mq = (q: string) => ({ get matches() { return narrow && /max-width/.test(q); }, addEventListener: (_t: string, f: () => void) => { heard.add(f); }, removeEventListener: (_t: string, f: () => void) => { heard.delete(f); } });
+    const { pg, restore } = await roomPage("room-weekly", "en", undefined, { matchMedia: mq });
+    try {
+      const items = () => [...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].map((b: any) => (b.textContent || "").trim());
+      const toggle = async () => { fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4); };
+      const resize = async (on: boolean) => { narrow = on; for (const f of [...heard]) f(); await settle(4); };
+      const seen = () => [items().some((x) => /Text size/.test(x)), items().includes("Full width")];
+      // Opening ⋯ draws the page again (it read the width then); a resize while it is open is the case that needs the listener.
+      await toggle(); expect(seen()).toEqual([false, true]);
+      await resize(true); expect(seen()).toEqual([true, false]);
+      await resize(false); expect(seen()).toEqual([false, true]);
+    } finally { restore(); }
+  });
+  it("M-3311 (#4159 review): a room row's Copy link — only a message with an address (its room message id); none otherwise", () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub?room=room-weekly" }), linkOf = thread.roomLinkOf("room-weekly");
+    try {
+      expect(linkOf({ id: 7, role: "user", roomMessage: "m-1" })).toBe("http://127.0.0.1:19280/ui/hub?room=room-weekly&m=m-1");
+      expect([linkOf({ id: 8, role: "user", text: "sending…" }), linkOf({ id: 9, role: "status", text: "" }), linkOf(null)]).toEqual([null, null, null]);
+    } finally { pg.restore(); }
   });
   it("M-3311 (4): a desk keeps its header's text size and Notify buttons; its ⋯ has no text size item", async () => {
     const { pg, restore } = await roomPage("room-weekly");
