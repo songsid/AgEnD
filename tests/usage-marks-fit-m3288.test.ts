@@ -5,12 +5,14 @@
  * The layout itself is measured in a real browser: scripts/manual/smoke/smoke-usage-marks-fit-m3288.mts (the UI gate).
  */
 import { readFileSync } from "node:fs";
-import { afterEach, beforeAll, expect, it } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
 
+// This layout fixture means "today"; a real midnight would correctly add yesterday's date.
+const NOW = new Date(2026, 0, 15, 12, 0, 0).getTime();
 const H = 3_600_000;
-const pct = (label: string, used: number) => ({ type: "percent", label, used, windowMs: 168 * H, resetsAt: new Date(Date.now() + 45 * H).toISOString() });
-const CACHED = new Date(Date.now() - 40 * 60_000).toISOString();
+const pct = (label: string, used: number) => ({ type: "percent", label, used, windowMs: 168 * H, resetsAt: new Date(NOW + 45 * H).toISOString() });
+const CACHED = new Date(NOW - 40 * 60_000).toISOString();
 const PROVIDERS = [
   { id: "codex", name: "Codex", status: "ok", metrics: [pct("Weekly", 91)] },
   { id: "codex:alpha", name: "Codex (alpha)", profile: "alpha", status: "ok", metrics: [pct("Weekly", 22)] },
@@ -28,11 +30,13 @@ beforeAll(async () => {
   htm = await import("/assets/app-html.js");
   p0.restore();
 });
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(NOW); });
 afterEach(async () => {
   if (pg) { await pg.unmount(); pg.restore(); pg = null; }
   usage?.setGroupMode("Codex", "expanded");
   usage?.usageViewStore.set({ compact: false });
   i18n?.setLang("en");
+  vi.useRealTimers();
 });
 async function mount(lang: "en" | "zh-TW", mode: "expanded" | "compact") {
   pg = page({ storage: { agend_tour_done: "1" } });

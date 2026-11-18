@@ -21,3 +21,8 @@ Normal EN/zh blocks compare byte-for-byte with fixtures recorded before the chan
 ## Limits and rollback
 
 The existing structured brief's 4 KiB purpose field and overall frame limits stay unchanged, preserving strict older peers. Very large stored grapheme sequences that cannot enter that existing wire shape retain its existing refusal; this change bounds successfully received first blocks rather than widening the protocol. H5's 8 KiB response/backpressure rule is unchanged. This follow-up itself is code-only and can be reverted without a schema or journal conversion; the parent H6's member-state rollback note still applies when reverting that feature too.
+
+
+## CI midnight fixture correction
+
+Run `44203140518`, shard 2, failed three untouched usage-layout assertions: its real-clock cached timestamp crossed midnight and the UI correctly included the previous date. The same three failures reproduced locally under UTC. The layout fixture now uses fixed local noon with Date-only fake timers; every original assertion remains. It passes **4/4** under both UTC and Asia/Taipei, and test typecheck passes. Product date rendering and the source-cleared brief formatter are unchanged.
