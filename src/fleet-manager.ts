@@ -9148,7 +9148,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   private holdMissingBinary(name: string, failure: unknown): boolean {
     if (failure instanceof SupersededStartError) return false;
-    const err = this.lifecycle.missingBinaryAt?.(name, failure) ?? null;
+    const err = this.lifecycle?.missingBinaryAt?.(name, failure) ?? null;
     if (!err) return false;
     const pending = this.startupRetries.get(name);
     if (pending) { clearTimeout(pending.timer); this.startupRetries.delete(name); }
@@ -27579,8 +27579,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
     this.startupRetries.clear();
     if (this.missingBinaryWatch) { clearInterval(this.missingBinaryWatch); this.missingBinaryWatch = null; }
-    for (const pending of this.missingBinaryNotices.values()) clearTimeout(pending.timer);
-    this.missingBinaryNotices.clear();
+    for (const pending of this.missingBinaryNotices?.values() ?? []) clearTimeout(pending.timer);
+    this.missingBinaryNotices?.clear();
     for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);
     this.startupRetryNotices.clear();
     if (this.stormOpenNotifyTimer) {
