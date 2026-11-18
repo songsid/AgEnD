@@ -23,9 +23,9 @@ function makeManager(yaml: string) {
 
 describe("getUnrecoverableIds", () => {
   it("reports a truncated id with the field it came from", () => {
-    const { m } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    const { m } = makeManager('defaults:\n  allowed_guilds: [1000000000000000201]\n');
     expect(m.getUnrecoverableIds()).toEqual([
-      { field: "allowed_guilds", value: 1496407196106494000 },
+      { field: "allowed_guilds", value: 1000000000000000300 },
     ]);
   });
 
@@ -37,7 +37,7 @@ describe("getUnrecoverableIds", () => {
 
   it("scans all four lists", () => {
     const { m } = makeManager(
-      'defaults:\n  allowed_guilds: [1496407196106494055]\n  admin_users: [1496407196106494066]\n',
+      'defaults:\n  allowed_guilds: [1000000000000000201]\n  admin_users: [1000000000000000301]\n',
     );
     expect(m.getUnrecoverableIds().map((e: any) => e.field).sort())
       .toEqual(["admin_users", "allowed_guilds"]);
@@ -46,10 +46,10 @@ describe("getUnrecoverableIds", () => {
   it("clears once the operator fixes the file", () => {
     // Recomputed per load, so a corrected config stops reporting rather than
     // nagging until restart.
-    const { m, dir } = makeManager('defaults:\n  allowed_guilds: [1496407196106494055]\n');
+    const { m, dir } = makeManager('defaults:\n  allowed_guilds: [1000000000000000201]\n');
     expect(m.getUnrecoverableIds()).toHaveLength(1);
 
-    writeFileSync(join(dir, "classicBot.yaml"), 'defaults:\n  allowed_guilds: ["1496407196106494055"]\n');
+    writeFileSync(join(dir, "classicBot.yaml"), 'defaults:\n  allowed_guilds: ["1000000000000000201"]\n');
     m.reloadFromDisk();
     expect(m.getUnrecoverableIds()).toEqual([]);
   });
@@ -74,18 +74,18 @@ describe("surfacing to the operator", () => {
   }
 
   it("notifies once, naming the field and value", () => {
-    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1496407196106494000 }]);
+    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1000000000000000300 }]);
     fm.reportClassicUnrecoverableIds();
 
     expect(notices).toHaveLength(1);
     expect(notices[0]).toContain("allowed_guilds");
-    expect(notices[0]).toContain("1496407196106494000");
+    expect(notices[0]).toContain("1000000000000000300");
   });
 
   it("tells the operator NOT to copy the id from the file", () => {
     // save() re-dumps the truncated number, so quoting what is on disk would
     // enshrine the wrong id and look like a fix.
-    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1496407196106494000 }]);
+    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1000000000000000300 }]);
     fm.reportClassicUnrecoverableIds();
     expect(notices[0]).toMatch(/do not copy|不要從檔案複製/i);
   });
@@ -100,7 +100,7 @@ describe("surfacing to the operator", () => {
     // The 30s reload poll calls this repeatedly; suppression is notifyFleetError's
     // job (10 min, keyed by text), so this must not add a second mechanism that
     // could permanently swallow a still-broken config.
-    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1496407196106494000 }]);
+    const { fm, notices } = makeFleet([{ field: "allowed_guilds", value: 1000000000000000300 }]);
     fm.reportClassicUnrecoverableIds();
     fm.reportClassicUnrecoverableIds();
     expect(notices).toHaveLength(2);   // both reach notifyFleetError, which throttles
@@ -130,7 +130,7 @@ describe("the report must survive having no adapter yet", () => {
     fm.classicChannels = { getUnrecoverableIds: () => bad };
     return fm;
   }
-  const BAD = [{ field: "allowed_guilds", value: 1496407196106494000 }];
+  const BAD = [{ field: "allowed_guilds", value: 1000000000000000300 }];
 
   it("does not spend the throttle key when there is nowhere to deliver", () => {
     const fm = makeFleet(BAD);
