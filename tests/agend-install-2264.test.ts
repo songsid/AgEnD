@@ -213,7 +213,8 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", v2], npmEnv(s.root, s.home, { foreignNpm: true }));
     expect(run.status).toBe(1);
     expect(run.stdout).toMatch(/another npm is running on this host, so what an earlier install left .* was not touched/);
-    expect(run.stdout).toMatch(/another npm is changing packages on this host \(pid 999999: npm install something-else\).*before installing AgEnD/);
+    expect(run.stdout).toMatch(/another npm is changing packages on this host \(pid 999999: npm install\).*before installing AgEnD/);
+    expect(run.stdout).not.toContain("something-else");
     expect(run.stdout).toMatch(/the other npm is still running after 0 min .*going on/);
     expect(existsSync(sibling), "left exactly where npm put it").toBe(true);
   });
@@ -904,7 +905,8 @@ describe("M-3302 (#4146): the installer waits, bounded, while another npm change
     expect(installer.main(spec(), r.deps)).toBe(0);
     expect(order.slice(0, 4)).toEqual(["ps:busy", "ps:busy", "ps:idle", "npm install"]);
     const waiting = r.log.find(l => l.includes("another npm is changing packages"));
-    expect(waiting).toMatch(/pid 7777: npm install -g @anthropic-ai\/claude-code.*before installing AgEnD/);
+    expect(waiting).toMatch(/pid 7777: npm install\).*before installing AgEnD/);
+    expect(waiting).not.toContain("@anthropic-ai");                    // only the command word, never the argv
     expect(r.log).toContain("  ✓ the other npm finished");
   });
 
@@ -927,6 +929,23 @@ describe("M-3302 (#4146): the installer waits, bounded, while another npm change
     expect(at).toBeGreaterThan(0);
     expect(order.slice(order.indexOf("npm install") + 1, at)).toEqual(["ps:busy", "ps:busy", "ps:idle"]);
     expect(r.log.some(l => /before restarting the fleet/.test(l))).toBe(true);
+  });
+
+  it("an argv with a credential in it is never printed — only the pid and npm's command word", () => {
+    const { r } = rig(poll => poll === 1);
+    const run = r.deps.run;
+    r.deps.run = ((cmd: string, args: string[]) => cmd === "ps" ? { status: 0, stdout: "4242 1 node agend-install.cjs\n7777 1 npm install -g x --registry https://user:s3cret@registry.example.invalid/\n", stderr: "" } : run(cmd, args)) as typeof r.deps.run;
+    (r.deps as Record<string, unknown>).otherNpmWaitMs = 0;
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(r.log.join("\n")).not.toMatch(/s3cret|registry\.example/);
+    expect(r.log.some(l => l.includes("pid 7777: npm install"))).toBe(true);
+  });
+
+  it("AGEND_INSTALL_OTHER_NPM_WAIT_MS can only shorten the bound: a larger value still stops at 3 min", () => {
+    const { r, order } = rig(() => true);
+    (r.deps as Record<string, unknown>).env = { ...(r.deps.env as Record<string, string>), AGEND_INSTALL_OTHER_NPM_WAIT_MS: String(60 * 60_000) };
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(order.filter(o => o === "ps:busy").length).toBe(1 + (installer as unknown as { OTHER_NPM_WAIT_MS: number }).OTHER_NPM_WAIT_MS / 2000);
   });
 
   it("control: no other npm — no wait, no line", () => {
