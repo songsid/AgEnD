@@ -29,6 +29,9 @@ describe("synthetic fixture ids", () => {
       encoding: "utf8",
     });
     expect(r.error).toBeUndefined();
+    // 0 = matches, 1 = none. Other statuses (e.g. 128: not a git repo) must
+    // fail so a broken git cannot leave this guard green.
+    expect([0, 1], r.stderr?.trim() || `git grep status ${r.status}`).toContain(r.status);
     const lines = (r.stdout ?? "").split("\n").filter(Boolean);
     const bad: string[] = [];
     for (const line of lines) {
