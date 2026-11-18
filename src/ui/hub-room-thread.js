@@ -48,9 +48,21 @@ const WIDE_KEY = "agend_hub_chat_wide";
 export function hubChatWide() { try { return localStorage.getItem(WIDE_KEY) === "on"; } catch { return false; } }
 function setHubChatWide(on) { try { if (on) localStorage.setItem(WIDE_KEY, "on"); else localStorage.removeItem(WIDE_KEY); } catch { /* this tab only */ } }
 /** The Fleet chat's narrow screen (panel-chat.js narrowScreen): no 「全寬」 there — the column is the screen's already. */
-const narrowScreen = () => typeof matchMedia === "function" && matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches;
+const NARROW_QUERY = "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
+/**
+ * M-3311 (#4162 review): the narrow screen, kept current as the window is resized — hub-chat.css hides the header's text size
+ * and Notify at this same width, so ⋯ gains (or drops) them at once, not at the next render.
+ */
+function useNarrowScreen() {
+  const q = (() => { try { return typeof matchMedia === "function" ? matchMedia(NARROW_QUERY) : null; } catch { return null; } })();
+  const [narrow, setNarrow] = useState(() => !!q?.matches);
+  useEffect(() => { if (!q) return undefined; const on = () => setNarrow(!!q.matches); on(); q.addEventListener?.("change", on); return () => q.removeEventListener?.("change", on); }, []);
+  return narrow;
+}
 /** M-3311 (3): a room message's address — what Copy link copies; opening it shows that message (jumpParam). */
 export const messageLink = (roomId, messageId) => `${location.origin}/ui/hub?room=${encodeURIComponent(roomId)}${messageId ? `&m=${encodeURIComponent(messageId)}` : ""}`;
+/** M-3311 (#4159 review): a room row's Copy link — only a message with an address (a room message's id); otherwise none. */
+export const roomLinkOf = (roomId) => (x) => (x && x.roomMessage ? messageLink(roomId, x.roomMessage) : null);
 /** M-3127 C: the message a search hit opens (`?room=…&m=<id>`), or null. */
 export const jumpParam = () => { try { const v = new URLSearchParams(location.search).get("m"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const iso = (ms) => (Number.isFinite(ms) && ms > 0 ? new Date(ms).toISOString() : undefined);
@@ -493,18 +505,18 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // M-3311 (2): 「引用」 on a selected passage goes into this room's box (read at selection time).
     quote: { field: () => input.current, can: () => !store.closed() },
     // M-3311 (3): the Fleet chat's Copy link — a room message's address (opening it shows that message).
-    linkOf: (x) => (x && x.roomMessage ? messageLink(roomId, x.roomMessage) : null),
+    linkOf: roomLinkOf(roomId),
   };
   // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
   const [fullWidth, setFullWidth] = useState(hubChatWide);
-  const textSize = useStore(textSizeStore), notify = useStore(notifyStore);
+  const textSize = useStore(textSizeStore), notify = useStore(notifyStore), narrow = useNarrowScreen();
   const menuItems = [
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
-    !narrowScreen() && detail?.me ? { key: "fullWidth", checkbox: true, checked: fullWidth, label: t("chat.fullWidth"), onSelect: () => { setHubChatWide(!fullWidth); setFullWidth(!fullWidth); } } : null,
+    !narrow && detail?.me ? { key: "fullWidth", checkbox: true, checked: fullWidth, label: t("chat.fullWidth"), onSelect: () => { setHubChatWide(!fullWidth); setFullWidth(!fullWidth); } } : null,
     // M-3311 (4): a phone's header is one row (back, the room, members, ⋯) as the Fleet chat's — its text size and Notify
     // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
-    ...(narrowScreen() ? [
+    ...(narrow ? [
       { key: "textSize", label: t("app.textSize", t(`app.textSize_${textSize.size}`)), icon: "type", onSelect: () => setTextSize(TEXT_SIZES[(TEXT_SIZES.indexOf(textSize.size) + 1) % TEXT_SIZES.length]) },
       ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
     ] : []),
