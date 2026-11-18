@@ -65,11 +65,13 @@ export function cellText(cell) {
 /**
  * A cell as a spreadsheet takes it. M-3326 (#4172 review; the leader's call): a cell that starts with = or @ would be a live
  * formula once pasted (a Hub room carries other people's words: =IMPORTXML(…)), so it gets a leading ' (kept as text).
- * + and - are left alone: "-5" and "+1" stay numbers.
+ * #4175 review (the leader's call): + or - starts a formula too (+HYPERLINK(…), -1+IMPORTXML(…)) unless the rest is a plain
+ * number — "-5", "+1", "-3.5", "+12%", "-1,234", "-.5" stay numbers; a lone "-" (a table's "none") stays as it is.
  */
+const FORMULA = /^(?:[=@]|[+-](?!(?:\.?\d[\d.,]*%?)?$))/;
 export function tsvCell(cell) {
   const text = cellText(cell);
-  return /^[=@]/.test(text) ? `'${text}` : text;
+  return FORMULA.test(text) ? `'${text}` : text;
 }
 
 /** Rows of cells as TSV: cells by tabs, rows by line breaks. */

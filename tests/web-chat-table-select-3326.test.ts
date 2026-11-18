@@ -113,6 +113,15 @@ describe("hand-offs and edges", () => {
     t.down(t.cell(1, 1)); t.move(t.cell(3, 2)); t.up(t.cell(3, 2));
     expect(t.copy().data["text/plain"]).toBe("'=IMPORTXML(\"x\",\"//a\")\t+1\n'@sum\ta=b\n-5\t'=trimmed");
   });
+  it.each([
+    ["-5", "-5"], ["+1", "+1"], ["-3.5", "-3.5"], ["+12%", "+12%"], ["-1,234", "-1,234"], ["-.5", "-.5"], ["-", "-"], ["a-b", "a-b"],
+    ["+HYPERLINK(\"http://x\",\"y\")", "'+HYPERLINK(\"http://x\",\"y\")"], ["-1+IMPORTXML(\"x\",\"//a\")", "'-1+IMPORTXML(\"x\",\"//a\")"],
+    ["-5 apples", "'-5 apples"], ["=1", "'=1"], ["@x", "'@x"],
+  ])("+ and - (#4175 review): %s → %s — a plain number stays a number; anything else after the sign pastes as text", async (cellValue, tsv) => {
+    const t = await setup();
+    t.cell(1, 1).textContent = cellValue;
+    expect(t.mod.tsvCell(t.cell(1, 1))).toBe(tsv);
+  });
   it("a text selection made since (Ctrl+A, Shift+arrows): Ctrl/Cmd+C copies that text, not the cells", async () => {
     const t = await setup();
     t.down(t.cell(1, 0)); t.move(t.cell(3, 0)); t.up(t.cell(3, 0));
