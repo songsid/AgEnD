@@ -13,23 +13,23 @@
   },
   {
     "path": "validation/a2-before.log",
-    "sha256": "a79db1d36f21165325dd701a2f661490fc7a77e7518d1173c21089c4e0cdb6a2"
+    "sha256": "685ec686a2796222f3a6f1803e4efe56c6bbec5e58f2b4f3a900a8a6821e14eb"
   },
   {
     "path": "validation/a2-client-ui.log",
-    "sha256": "c195ff570a959c097b582ca0d7afcf7049dd6cb8294c012f483f5014d6936ce2"
+    "sha256": "145b94ee380ef93e8132c2902758a547b2ec4ac8a2149e640e6df3adabd69e85"
   },
   {
     "path": "validation/a2-factory-retention.log",
-    "sha256": "e5cffe57db7cffc36edbdc2f8d0cd3da73d006551b8bb4f75539c72e6e73e025"
+    "sha256": "b8959fade7d1d6dbf9eab72575327a6a4b696a3764bbcbd3dfb5600852e38477"
   },
   {
     "path": "validation/a2-final-focused.log",
-    "sha256": "8ee0874edd6f4aa09596eee81908df81039ed40e530f88646660e9d1adeb02e5"
+    "sha256": "00be3a572b178173dd5811c90cc1b3ee75418bcd6470469656e66997866a82c6"
   },
   {
     "path": "validation/a2-integration.log",
-    "sha256": "e84bca92db78d7269df52fcfb1e955f6119eb3508d53ae6cae68a65a5c8e95d2"
+    "sha256": "4fdbcaf326b0856422ccef0fde8211634e8e2790edfb3f73387c0520622be4b5"
   },
   {
     "path": "validation/a2-source-ts.log",
@@ -41,7 +41,7 @@
   },
   {
     "path": "validation/a2-ui-final.log",
-    "sha256": "ddb2b0836f69036ed26228f3513c9a3dd88eea0f11b17f38eb21de9212c133e3"
+    "sha256": "848cd7fcce8214da8ef4b6dd6edf56a050d8dfa56f8d46f60db855cf02ed7666"
   },
   {
     "path": "views/desk-en-multiple.png",
