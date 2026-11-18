@@ -37,6 +37,9 @@ async function typing() {
   (globalThis as any).matchMedia = (q: string) => ({ matches: /max-width/.test(q) || /pointer:\s*coarse/.test(q), addEventListener() {}, removeEventListener() {} });
   const vv = fakeViewport(390, 844);
   pg.window.visualViewport = vv; pg.window.innerHeight = 844;
+  // M-3327: a pan is undone (scrollTo 0) — logged as a change; the browser then reports the view unpanned.
+  const scrolled: string[] = [];
+  pg.window.scrollTo = (x: number, y: number) => { scrolled.push(`scrollTo=${x},${y}`); if (vv.offsetTop) { vv.offsetTop = 0; vv.emit("scroll"); } };
   (globalThis as any).fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
@@ -57,7 +60,7 @@ async function typing() {
   box.focus(); fire(box, "focusin"); await settle();
   vv.height = 480; vv.emit("resize"); await settle();
   await wait(900);                                                        // past the focus follow window: the keyboard settled
-  const changes = () => log.splice(0);
+  const changes = () => { log.push(...scrolled.splice(0)); return log.splice(0); };
   changes();
   const read = (height: number, top = 0) => { const resized = vv.height !== height, panned = vv.offsetTop !== top; vv.height = height; vv.offsetTop = top; if (resized) vv.emit("resize"); if (panned) vv.emit("scroll"); };
   /** One 注音 character: its composition with the candidate bar (436), three keys 150 ms apart, chosen, the bar gone, then `pause` ms. */
@@ -137,7 +140,7 @@ describe("M-3265: typing on a phone moves nothing per keystroke, with or without
     await t.keys("pan");
     t.changes();
     await wait(1600);                                                      // typing stopped: back to the view, in one move
-    expect(t.changes()).toEqual(["height=480px", "transform=∅"]);
+    expect(t.changes()).toEqual(["height=480px"]);
     await t.keys("pan");
     const again = t.changes();                                             // the bar again from the full view: one move, nothing after
     expect([again.filter((c) => c.startsWith("height")), again.filter((c) => c.startsWith("transform")).length <= 1],
@@ -175,7 +178,7 @@ describe("M-3265: typing on a phone moves nothing per keystroke, with or without
     await t.character(0);
     t.changes();
     t.read(480, 30); await wait(400);
-    expect(t.changes(), "the pan; the height still waits for the next character").toEqual(["transform=translateY(30px)"]);
+    expect(t.changes(), "the pan, undone (M-3327); the height still waits for the next character").toEqual(["scrollTo=0,0"]);
     await wait(1900);
     expect(t.changes(), "typing stopped: the height too").toEqual(["height=480px"]);
   });
