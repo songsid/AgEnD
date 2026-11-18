@@ -354,7 +354,7 @@ import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } 
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
-import { WebHostInstalls, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
+import { WebHostInstalls, claudeSelfUpdating, hostUpdatePlan, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
 import { cliUpdateView, versionOf } from "./cli-audited.js";
 import { runBeforeDeadline } from "./deadline.js";
 import { LoginWindowLock } from "./login-window-lock.js";
@@ -23603,6 +23603,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
     const claim = this.loginWindow.tryClaim("install", backend);
     if (!claim) return { refused: this.loginWindow.isClosed ? "shutting_down" : "busy" };
+    // M-3302: Claude Code downloading an update of its own right now — its installer, started from here, would race it. Asked to try again in a few minutes.
+    if (backend === "claude-code" && claudeSelfUpdating()) { this.loginWindow.release(claim); return { refused: "cli_self_updating" }; }
     // #3542 / AGEND-144 (Prism on #3539): the claim is a lock, not the asker's authority. The confirmed change's own execution (its session, role, confirmation and the settings it was held
     // against) is asked again after each wait (the binary check, the version refresh), and its admission ends at the tmux command that starts the installer (openInstallWindow → `launch`).
     const asker = (): boolean => { try { return !execution || execution.current(); } catch { return false; } };
