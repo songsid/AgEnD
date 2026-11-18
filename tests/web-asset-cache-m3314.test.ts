@@ -20,8 +20,9 @@ import vm from "node:vm";
 import { FleetManager } from "../src/fleet-manager.js";
 import { tokenEpoch } from "../src/web-session.js";
 import { WEB_SESSION_COOKIE } from "../src/web-auth.js";
-import { isPublicWebRoute } from "../src/public-web-gateway.js";
-import { assetVersion, computeAssetVersion, loadWaves, staticClosure, STALE_MODULE_BODY, takeAssetVersion, assetVersionMark } from "../src/web-asset-version.js";
+import { createPublicWebGateway, isPublicWebRoute } from "../src/public-web-gateway.js";
+import { WEB_SESSION_COOKIE_SECURE } from "../src/web-auth.js";
+import { assetSnapshotForTests, assetVersionTaken, resetAssetVersion, assetVersion, computeAssetVersion, loadWaves, staticClosure, STALE_MODULE_BODY, takeAssetVersion, assetVersionMark } from "../src/web-asset-version.js";
 import { appModuleGraph, shellPreload, PANEL_MODULES } from "../src/web-api.js";
 import { createWarmer } from "../src/ui/shared/module-warm.js";
 
@@ -113,6 +114,65 @@ describe("versioned files", () => {
     }
     const c = req(`/assets/v-${OLD}/app.js`); takeAssetVersion(c, () => OLD);
     expect(assetVersionMark(c)).toEqual({ current: true, version: OLD });
+  });
+});
+
+describe("files rewritten under the running process (an update or a rollback before its restart; Fable #4160 F1)", () => {
+  afterEach(() => resetAssetVersion());
+  it("a versioned file whose bytes are not what <V> named is the stale answer (no-store), never cached for good; the shell goes plain", async () => {
+    const h = await listener();
+    try {
+      const V = assetVersion();
+      const files = assetSnapshotForTests();
+      files.set("shared/app.js", "0".repeat(64));          // app.js on disk is not the one <V> was taken from any more
+      files.set("panel-chat.js", "0".repeat(64));
+      const a = await get(h.port, `/assets/v-${V}/app.js`);
+      expect([a.status, a.body, a.headers["cache-control"]]).toEqual([200, STALE_MODULE_BODY, "no-store"]);
+      const u = await get(h.port, `/ui/js/v-${V}/panel-chat.js`, h.cookie);
+      expect([u.body, u.headers["cache-control"]]).toEqual([STALE_MODULE_BODY, "no-store"]);
+      expect((await get(h.port, `/assets/v-${V}/app-html.js`)).headers["cache-control"]).toBe("public, max-age=31536000, immutable");   // untouched files still are
+      const page = await get(h.port, "/ui", h.cookie);
+      expect(page.body).toContain('<script type="module" src="/assets/app.js"></script>');   // the plain shell: no-store files, as before
+      expect(page.body).not.toContain("importmap");
+      expect(page.body).not.toContain("modulepreload");
+    } finally { await h.stop(); }
+  });
+  it("the listener takes <V> when it starts, before any page", async () => {
+    resetAssetVersion();
+    expect(assetVersionTaken()).toBe(false);
+    const h = await listener();
+    try { expect(assetVersionTaken()).toBe(true); } finally { await h.stop(); }
+  });
+});
+
+describe("through the public link's gateway (Fable #4160 T1)", () => {
+  it("a versioned path is admitted and answered as its plain one: /ui/js refused without a session, served with one, stale for another <V>", async () => {
+    const h = await listener();
+    const HOST = "sample.trycloudflare.com", EXPOSURE = "e".repeat(32);
+    const g = createPublicWebGateway({ exposureId: EXPOSURE, isCurrent: () => true, isOpen: () => true,
+      dispatch: (req, res) => (h.fm as any).dispatchWebHttp(req, res, h.port) });
+    const at = await g.listen(); g.setHost(HOST);
+    const gp = Number(at.port);
+    const sid = (h.fm as any).webSessions.create({ tier: "admin", surface: "gateway", exposureId: EXPOSURE, label: "link", tokenEpoch: tokenEpoch(h.fm.getDashboardAccess().token!) }).sessionId;
+    const link = { host: HOST }, signed = { host: HOST, cookie: `${WEB_SESSION_COOKIE_SECURE}=${sid}` };
+    try {
+      const V = assetVersion();
+      const plainAsset = await get(gp, "/assets/app.js", link), vAsset = await get(gp, `/assets/v-${V}/app.js`, link);
+      expect([plainAsset.status, vAsset.status]).toEqual([200, 200]);
+      expect(vAsset.body).toBe(plainAsset.body);
+      expect(vAsset.headers["cache-control"]).toBe("public, max-age=31536000, immutable");
+      expect(vAsset.headers.vary).toBeUndefined();
+      expect((await get(gp, `/assets/v-${OLD}/app.js`, link)).body).toBe(STALE_MODULE_BODY);
+      expect((await get(gp, `/assets/v-${V}/nope.js`, link)).status).toBe((await get(gp, "/assets/nope.js", link)).status);
+      const plainJs = await get(gp, "/ui/js/panel-chat.js", link), vJs = await get(gp, `/ui/js/v-${V}/panel-chat.js`, link);
+      expect(vJs.status).toBe(plainJs.status);
+      expect(vJs.status).toBeGreaterThanOrEqual(401);
+      const sJs = await get(gp, `/ui/js/v-${V}/panel-chat.js`, signed);
+      expect([sJs.status, sJs.headers["cache-control"]]).toEqual([200, "private, max-age=31536000, immutable"]);
+      expect(sJs.body).toBe((await get(gp, "/ui/js/panel-chat.js", signed)).body);
+      expect((await get(gp, `/ui/js/v-${OLD}/panel-chat.js`, signed)).body).toBe(STALE_MODULE_BODY);
+      expect((await get(gp, `/ui/js/v-${OLD}/panel-chat.js`, link)).status).toBe(plainJs.status);
+    } finally { g.close(); await h.stop(); }
   });
 });
 

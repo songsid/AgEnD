@@ -45,21 +45,60 @@ function filesUnder(dir: string, rel = ""): string[] {
   return out;
 }
 
-/** <V>: the first 12 hex of a SHA-256 over every file of `uiDir` (its path and bytes), in a fixed order. */
-export function computeAssetVersion(uiDir: string = UI_DIR): string {
+/** Every file of `uiDir` (its path under it) and the SHA-256 of its bytes, in a fixed order. */
+function snapshotOf(uiDir: string): Map<string, string> {
+  const files = new Map<string, string>();
+  for (const f of filesUnder(uiDir).sort()) files.set(f, createHash("sha256").update(readFileSync(join(uiDir, f))).digest("hex"));
+  return files;
+}
+const versionOf = (files: ReadonlyMap<string, string>): string => {
   const h = createHash("sha256");
-  for (const f of filesUnder(uiDir).sort()) { h.update(f); h.update("\0"); h.update(readFileSync(join(uiDir, f))); h.update("\0"); }
+  for (const [f, sum] of files) { h.update(f); h.update("\0"); h.update(sum); h.update("\0"); }
   return h.digest("hex").slice(0, 12);
-}
+};
 
-let memo: { dir: string; v: string } | null = null;
-/** This process's <V>, computed once (an update restarts the process, and with it the version). */
-export function assetVersion(uiDir: string = UI_DIR): string {
-  if (!memo || memo.dir !== uiDir) memo = { dir: uiDir, v: computeAssetVersion(uiDir) };
-  return memo.v;
+/** <V>: the first 12 hex of a SHA-256 over every file of `uiDir` (its path and its bytes' hash), in a fixed order. */
+export function computeAssetVersion(uiDir: string = UI_DIR): string { return versionOf(snapshotOf(uiDir)); }
+
+/**
+ * This process's <V> and the files it describes, taken once — eagerly when the listener starts (warmAssetVersion), so
+ * it describes the files this process started with. An update or a rollback rewrites the files under a still-running
+ * process (npm replaces the package, then the fleet restarts — minutes later, #4148): what is served under <V> must be
+ * exactly what <V> named, so a versioned file is checked against this snapshot on every request (assetIntact), and the
+ * shell is versioned only while the whole directory still matches (assetsUnchanged).
+ */
+let memo: { dir: string; v: string; files: Map<string, string> } | null = null;
+function snapshot(uiDir: string = UI_DIR): { v: string; files: Map<string, string> } {
+  if (!memo || memo.dir !== uiDir) { const files = snapshotOf(uiDir); memo = { dir: uiDir, v: versionOf(files), files }; }
+  return memo;
 }
-/** Tests and smokes: forget the computed version, or pin it (what an update looks like to an open tab). */
-export function resetAssetVersion(pin?: string): void { memo = pin ? { dir: UI_DIR, v: pin } : null; }
+/** This process's <V>. */
+export function assetVersion(uiDir: string = UI_DIR): string { return snapshot(uiDir).v; }
+/** Take the snapshot now (the listener's start), not at the first page, which may come after an update rewrote the files. */
+export function warmAssetVersion(): void { try { snapshot(); } catch { /* no ui directory: nothing is versioned */ } }
+/** Whether `bytes`, served as the ui file `rel`, are exactly what <V> describes (a file changed or added since: no). */
+export function assetIntact(rel: string, bytes: Buffer | string): boolean {
+  const want = snapshot().files.get(rel.split("\\").join("/"));
+  return want !== undefined && want === createHash("sha256").update(bytes).digest("hex");
+}
+let unchangedAt = { t: -Infinity, ok: true };
+/** Whether the ui directory is still the one <V> describes (re-read at most once a second): a shell is versioned only then. */
+export function assetsUnchanged(now: number = performance.now()): boolean {
+  if (now - unchangedAt.t < 1000) return unchangedAt.ok;
+  let ok: boolean;
+  try { ok = versionOf(snapshotOf(UI_DIR)) === versionOf(snapshot().files); } catch { ok = false; }
+  unchangedAt = { t: now, ok };
+  return ok;
+}
+/** Tests: whether the snapshot was taken already (without taking it). */
+export function assetVersionTaken(): boolean { return memo !== null; }
+/** Tests: the snapshot's file hashes, to change as if the files on disk had been rewritten since (forces a re-check). */
+export function assetSnapshotForTests(): Map<string, string> { unchangedAt = { t: -Infinity, ok: true }; return snapshot().files; }
+/** Tests and smokes: forget the snapshot, or pin <V> over the files as they are (what an update looks like to an open tab). */
+export function resetAssetVersion(pin?: string): void {
+  memo = null; unchangedAt = { t: -Infinity, ok: true };
+  if (pin) memo = { dir: UI_DIR, v: pin, files: snapshotOf(UI_DIR) };
+}
 
 const marks = new WeakMap<IncomingMessage, { current: boolean; version: string }>();
 

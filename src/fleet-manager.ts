@@ -424,7 +424,7 @@ import {
   type ToolSink,
 } from "./tool-permissions.js";
 import { authorizeSession, decideWebGate, loadOrCreateWebToken, readSessionCookies, readWebToken, sessionCookieUpgrade } from "./web-auth.js";
-import { takeAssetVersion } from "./web-asset-version.js";
+import { takeAssetVersion, warmAssetVersion } from "./web-asset-version.js";
 import { bypassesWebGate, handleAuthRequest, serveGuestRefusedPage, serveSigninPage, type AuthApiContext, type TotpSignInResult } from "./auth-api.js";
 import { isWebPageNavigation } from "./web-shell-routes.js";
 import { guestSessionPolicy, localSessionPolicy, publicLinkSessionPolicy, sessionVia, tokenEpoch, WebSessionStore, type SessionRecord, type WebDeviceRow } from "./web-session.js";
@@ -30457,6 +30457,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private startHealthServer(port: number): Promise<void> {
+    // M-3314: <V> describes the files this process started with, taken now — not at the first page, which may come after
+    // an update rewrote them.
+    warmAssetVersion();
     let settled!: () => void;
     const listening = new Promise<void>(resolve => { settled = resolve; });
     this.startedAt = Date.now();

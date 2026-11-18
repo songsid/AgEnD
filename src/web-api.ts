@@ -55,7 +55,7 @@ import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
 import { servedAssets } from "./auth-api.js";
-import { assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
+import { assetIntact, assetsUnchanged, assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash, createHmac, randomUUID } from "node:crypto";
@@ -2194,6 +2194,8 @@ export function handleWebRequest(
     }
     try {
       const js = readFileSync(join(__dirname, "ui", fileName), "utf-8");
+      // A file rewritten under this running process is not what <V> named (an update or a rollback before its restart).
+      if (mark && !assetIntact(fileName, js)) { answerStaleAsset(res, path); return true; }
       res.setHeader("Content-Type", "application/javascript; charset=utf-8");
       if (mark) res.setHeader("Cache-Control", IMMUTABLE_PRIVATE);
       // #2182: the route worker's own, narrower-reaching policy (ROUTE_WORKER_CSP); every other file keeps the page's.
@@ -5182,7 +5184,10 @@ export function serveAppShell(req: IncomingMessage, res: ServerResponse, ctx: Ap
     // M-3314: the shell's files under this version, and the modules this load will import preloaded at once.
     const guest = mode === "full" && !!viewer?.guest;
     const preload = shellPreload(mode, guest, new URL(req.url ?? "/", "http://localhost").pathname, bodyTag.includes('data-chat-workspace="1"'));
-    sendPanelHtml(res, versionShell(page, assetVersion(), preload, mode === "full" && !guest ? appModuleGraph() : undefined), 200, {},
+    // Only while the files are still the ones <V> names: between an update's install and its restart the shell is the
+    // plain one (no-store files, as before this change), never one that names <V> over files it does not describe.
+    const shell = assetsUnchanged() ? versionShell(page, assetVersion(), preload, mode === "full" && !guest ? appModuleGraph() : undefined) : page;
+    sendPanelHtml(res, shell, 200, {},
       { ...(frameSrc ? { frameSrc } : {}), mediaSrc });
   } catch {
     json(res, 500, { error: "app.html not found" });

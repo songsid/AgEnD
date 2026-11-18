@@ -32,7 +32,7 @@ import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-contex
  * See `docs/design/web-unification-secure-login.zh-TW.md` §3.
  */
 import { sendPanelHtml } from "./web-host-guard.js";
-import { assetVersionMark, answerStaleAsset, versionCss, IMMUTABLE_PUBLIC } from "./web-asset-version.js";
+import { assetIntact, assetVersionMark, answerStaleAsset, versionCss, IMMUTABLE_PUBLIC } from "./web-asset-version.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -441,6 +441,9 @@ export function handleAuthRequest(
     if (mark && !mark.current) { answerStaleAsset(res, path); return true; }
     try {
       const raw = readFileSync(join(__dirname, "ui", asset.file));
+      // A file rewritten under this running process (an update or a rollback before its restart) is not what <V> named:
+      // never cached for good under it.
+      if (mark && !assetIntact(asset.file, raw)) { answerStaleAsset(res, path); return true; }
       const body = mark && asset.type.startsWith("text/css") ? versionCss(raw.toString("utf-8"), mark.version) : raw;
       // A versioned file is the same for everyone (it is served without a session): the public link's `Vary: Cookie` would
       // only make a browser fetch it again once signing in sets the cookie.
