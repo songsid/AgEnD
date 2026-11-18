@@ -179,6 +179,29 @@ describe("FleetManager: a pasted token in General never reaches the logs", () =>
     expect(String(r.dm.sendDirect.mock.calls.at(-1)![1])).toContain(TOKENS[1]);
   });
 
+  it("the receipt body (the human receipt's copy) is hidden too when the adapter's text differs from it (Fable #4152)", async () => {
+    const r = await rig();
+    const core = vi.spyOn(r.fm as any, "handleInboundMessageCore");
+    const receipt = vi.spyOn(r.fm, "deliverHumanToInstance");
+    const original = `<@123> ${PASTE}`;                                                       // what the person typed; text has the mention resolved
+    await (r.fm as any).handleInboundMessage({ ...pasted("main", "body-1"), text: `@han ${PASTE}`, humanOriginalBody: original });
+    const seen = core.mock.calls[0][0] as { text: string; humanOriginalBody: string };
+    expect(seen.text).toBe(`@han ${PASTE}`.replace(TOKENS[0], PASTED_TOKEN_MASK));
+    expect(seen.humanOriginalBody).toBe(original.replace(TOKENS[0], PASTED_TOKEN_MASK));
+    expect(receipt).toHaveBeenCalledTimes(1);
+    expect(receipt.mock.calls[0][3]).toBe(original.replace(TOKENS[0], PASTED_TOKEN_MASK));   // the receipt's original body
+    expect(JSON.stringify([core.mock.calls, receipt.mock.calls])).not.toMatch(new RegExp(`${TOKENS[0]}|${TOKENS[1]}`, "i"));
+  });
+
+  it("a bot's post with the live token is hidden and the token taken back, but no reply is posted to a bot", async () => {
+    const r = await rig();
+    const core = vi.spyOn(r.fm as any, "handleInboundMessageCore");
+    await (r.fm as any).handleInboundMessage({ ...pasted("main", "bot-1"), userId: "other-bot", username: "SomeBot", isBotMessage: true });
+    expect(JSON.stringify(core.mock.calls)).not.toContain(TOKENS[0]);
+    expect(r.login.sessions[0].peekAccessToken()).toBe(TOKENS[1]);
+    expect([...r.main.sendText.mock.calls, ...r.sib.sendText.mock.calls].some(c => String(c[1]).includes("🔒"))).toBe(false);
+  });
+
   it("an ordinary message, or one with no sign-in running, is left exactly as it was", async () => {
     const r = await rig();
     await (r.fm as any).handleInboundMessage({ ...pasted("main", "plain-1"), text: "hello there" });
