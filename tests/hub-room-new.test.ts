@@ -72,7 +72,7 @@ describe("Hub New room dialog (section 6)", () => {
     expect(calls.filter(c => c.path.startsWith("/hub/v1/rooms/candidates/group/")).map(c => c.path)).toEqual(["/hub/v1/rooms/candidates/group/group-tm1"]);
     await search(pg, "hubRoomAgents", "my-"); expect(results(pg, "hubRoomAgents")).toEqual(["my-notes 王經理"]);
     await pick(pg, "hubRoomAgents", "my-notes");
-    await search(pg, "hubRoomAgents", "spec"); expect(results(pg, "hubRoomAgents")).toEqual(["spec-writer 陳主任 邀請 · 等擁有者同意"]);
+    await search(pg, "hubRoomAgents", "spec"); expect(results(pg, "hubRoomAgents")).toEqual(["spec-writer 陳主任 請 陳主任 加入"]);
     await pick(pg, "hubRoomAgents", "spec-writer");
     await search(pg, "hubRoomAgents", "研發"); await pick(pg, "hubRoomAgents", "「研發」所有人的 Agent");
     expect(tags(pg, "hubRoomAgents")).toEqual(["my-notes", "spec-writer · 邀請 · 等擁有者同意", "「研發」所有人的 Agent · 邀請 · 等擁有者同意"]);

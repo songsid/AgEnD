@@ -11,7 +11,10 @@ import { createHubRoomAgentRequests } from "../../../src/hub/room-agent-requests
 import { createOwnedPki } from "../hub-connector-4c/rig.mjs";
 if (process.platform !== "linux" || !process.env.CHROME?.startsWith("/home/") || process.env.CHROME.includes("/mnt/")) throw Error("Pin Linux headless Chromium only");
 if (!process.env.CJK_FONT || !process.env.PW_DIR) throw Error("Pin the browser package and Traditional Chinese font");
-const pickerOnly = process.env.VIEW === "picker", pmOnly = process.env.VIEW === "pm-r1";
+const copyOnly = process.env.VIEW === "action-copy", pickerOnly = process.env.VIEW === "picker" || copyOnly, pmOnly = process.env.VIEW === "pm-r1";
+const stage = process.env.STAGE || "after", baseline = process.env.BASELINE_REF;
+if (copyOnly && (!["before", "after"].includes(stage) || stage === "before" && !baseline)) throw Error("Action-copy before needs a baseline ref");
+const beforeRenderer = copyOnly && stage === "before" ? execFileSync("git", ["show", `${baseline}:src/ui/hub-room-new.js`], { encoding: "utf8" }) : null;
 const out = resolve(process.env.OUT || ".artifacts/m3341/discovery-browser"); mkdirSync(out, { recursive: true });
 const scratch = mkdtempSync(join(out, "owned-")), home = join(scratch, "home");
 mkdirSync(join(home, ".local/share/fonts"), { recursive: true, mode: 0o700 }); copyFileSync(process.env.CJK_FONT, join(home, ".local/share/fonts/NotoSansCJKtc-Regular.otf"));
@@ -55,12 +58,17 @@ try {
     const context = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1366, height: 900 }, isMobile: phone, hasTouch: phone,
       locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: phone ? "dark" : "light", ignoreHTTPSErrors: true });
     await context.addInitScript({ content: `window.__name=fn=>fn;localStorage.setItem('agend_lang',${JSON.stringify(lang)});localStorage.setItem('agend_theme',${JSON.stringify(phone ? "dark" : "light")});localStorage.setItem('agend_tour_done','1');` });
-    await context.route("**/*", (route: any) => { if (new URL(route.request().url()).origin !== origin) { foreign.push("blocked"); return route.abort(); } return route.continue(); });
+    await context.route("**/*", (route: any) => {
+      const url = new URL(route.request().url());
+      if (url.origin !== origin) { foreign.push("blocked"); return route.abort(); }
+      if (beforeRenderer && url.pathname === "/ui/js/hub-room-new.js") return route.fulfill({ status: 200, contentType: "text/javascript", body: beforeRenderer });
+      return route.continue();
+    });
     const page = await context.newPage(); page.setDefaultTimeout(15_000); page.on("pageerror", (e: Error) => errors.push(e.message));
     page.on("response", async (response: any) => { const path = new URL(response.url()).pathname;
       if (response.status() === 200 && /\.(js|css)$/.test(path)) try { assets.set(path, createHash("sha256").update(await response.body()).digest("hex")); } catch {} });
     const shot = async (name: string, target: any) => {
-      if (pickerOnly && name !== "picker" || pmOnly && !["shared-off", "not-shared", "picker"].includes(name)) return;
+      if (copyOnly ? stage === "before" && name !== "picker" : pickerOnly && name !== "picker" || pmOnly && !["shared-off", "not-shared", "picker"].includes(name)) return;
       await target.scrollIntoViewIfNeeded(); await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: join(out, tag + "-" + name + ".png") });
       check(tag + ": " + name + " no overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     };
@@ -100,6 +108,13 @@ try {
       await page.locator(".hub-room-settings-link").click(); await page.locator("#hubRoomAddAgents").fill("Example");
       const action = page.getByRole("option", { name: lang === "en" ? "Ask Example owner to add Example release helper to this room" : "請 Example owner 把 Example release helper 加入這個房間", exact: true });
       await action.waitFor(); check(tag + ": askable and findable side by side", await page.locator('.hub-room-results [role="option"]').count() === 2);
+      if (copyOnly) {
+        const labels = await page.locator('.hub-room-agent-action').allTextContents();
+        check(tag + ": initial action copy", stage === "before"
+          ? labels.includes(lang === "en" ? "Invite · waiting for the owner" : "邀請 · 等擁有者同意")
+          : labels.every((label: string) => label === (lang === "en" ? "Ask Example owner" : "請 Example owner 加入")));
+        check(tag + ": no invitation before pressing", await page.locator('[data-invitation]').count() === 0);
+      }
       if (pmOnly) for (const row of await page.locator('.hub-room-result-agent').all()) {
         const layout = await row.evaluate((el: HTMLElement) => {
           const title = el.querySelector('.hub-room-agent-title')!, intro = el.querySelector('.hub-room-agent-intro')!, action = el.querySelector('.hub-room-agent-action')!;
@@ -113,15 +128,24 @@ try {
         check(tag + ": visible action with one press target", layout.border > 0 && layout.targets === 0);
         if (phone) check(tag + ": action follows the introduction on phone", layout.actionTop >= layout.introBottom - 1);
       }
-      await shot("picker", page.locator(".hub-room-results")); await action.click();
-      const waiting = page.locator("[data-invitation]"); await waiting.waitFor(); check(tag + ": existing waiting row names owner", (await waiting.textContent()).includes("Example owner")); await shot("invited", waiting);
+      await shot("picker", page.locator(".hub-room-results"));
+      if (copyOnly && stage === "before") continue;
+      await action.click();
+      const waiting = page.locator("[data-invitation]"); await waiting.first().waitFor();
+      if (copyOnly) {
+        await page.locator("#hubRoomAddAgents").fill("Example");
+        await page.getByRole("option", { name: lang === "en" ? "Ask Example owner to add Example docs helper to this room" : "請 Example owner 把 Example docs helper 加入這個房間", exact: true }).click();
+        await page.waitForFunction(() => document.querySelectorAll('[data-invitation]').length === 2);
+        check(tag + ": both invitations waiting after pressing", (await waiting.allTextContents()).every((text: string) => text.includes(lang === "en" ? "waiting" : "等") && text.includes("Example owner")));
+      }
+      check(tag + ": existing waiting row names owner", (await waiting.first().textContent()).includes("Example owner")); await shot("invited", waiting.first());
       check(tag + ": no discovery grant", (r.db.prepare("SELECT COUNT(*) n FROM hub_grants WHERE exposure_id=?").get(findable.id) as any).n === 0);
       check(tag + ": waiting until owner consent", (r.db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE kind='agent' AND subject=?").get(findable.id) as any).n === 0);
       check(tag + ": no load alerts", await page.locator('[role="alert"]').count() === 0);
     } finally { await context.close(); }
   }
   check("no page errors", errors.length === 0); check("no foreign requests", foreign.length === 0);
-  writeFileSync(join(out, "receipt.json"), JSON.stringify({ source: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), diffSha256: createHash("sha256").update(execFileSync("git", ["diff", "HEAD"])).digest("hex"), checks,
+  writeFileSync(join(out, "receipt.json"), JSON.stringify({ view: process.env.VIEW || "full", stage, ...(beforeRenderer ? { baseline } : {}), source: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(), diffSha256: createHash("sha256").update(execFileSync("git", ["diff", "HEAD"])).digest("hex"), checks,
     servedAssets: [...assets].map(([path, sha256]) => ({ path, sha256 })), scope: "Owned HTTPS/SQLite/audit and shipped UI; inert directory and synthetic publication/Fleet metadata. Unshared disabled view uses a retained frozen exposure. No live account, CLI, model, Fleet process, Windows, operator trust change or external network." }, null, 2) + "\n");
   console.log(JSON.stringify({ passed: checks.length }));
 } finally {
