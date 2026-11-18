@@ -23,7 +23,7 @@ function adapter() {
     botToken: "t",
     accessManager: { canRead: () => true, canWrite: () => true } as any,
     inboxDir: mkdtempSync(join(tmpdir(), "agend-discord-foreign-")),
-    guildId: "1496407196106494055",
+    guildId: "1000000000000000201",
     registerCommands: false,
     clientFactory: () => ({ isReady: () => true, channels: { fetch }, on: () => {}, once: () => {}, destroy: vi.fn(async () => {}) }) as any,
   } as any);
@@ -39,14 +39,14 @@ describe("Discord adapter rejects another world's chat id", () => {
 
   it("names a Telegram group id (negative)", async () => {
     const { a, fetch } = adapter();
-    await expect(a.sendText("-1003833855730", "hi")).rejects.toThrow(/Telegram group id/);
+    await expect(a.sendText("-1000000000201", "hi")).rejects.toThrow(/Telegram group id/);
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("catches it on the thread id too, which is what actually failed live", async () => {
     const { a, fetch } = adapter();
     // The live shape: a real guild id paired with a Telegram topic as thread.
-    await expect(a.sendText("1496407196106494055", "hi", { threadId: "245" } as any))
+    await expect(a.sendText("1000000000000000201", "hi", { threadId: "245" } as any))
       .rejects.toThrow(/245/);
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -95,20 +95,20 @@ describe("daemon keeps chat context and its adapter paired", () => {
 
   it("drops a stale adapter when a new chat arrives without one", () => {
     const d = withPane(daemon());
-    d.pushChannelMessage("first", { chat_id: "-1003833855730", thread_id: "245", adapter_id: "telegram", user: "u" });
+    d.pushChannelMessage("first", { chat_id: "-1000000000201", thread_id: "245", adapter_id: "telegram", user: "u" });
     expect(d.lastAdapterId).toBe("telegram");
 
     // A different chat, no adapter named: the telegram binding is not evidence
     // about this one.
-    d.pushChannelMessage("second", { chat_id: "1496407196106494055", thread_id: "1500000000000464899", user: "u" });
-    expect(d.lastChatId).toBe("1496407196106494055");
+    d.pushChannelMessage("second", { chat_id: "1000000000000000201", thread_id: "1500000000000464899", user: "u" });
+    expect(d.lastChatId).toBe("1000000000000000201");
     expect(d.lastAdapterId, "an unproven pairing must not be carried over").toBeUndefined();
   });
 
   it("keeps the adapter when the same chat speaks again without naming one", () => {
     const d = withPane(daemon());
-    d.pushChannelMessage("first", { chat_id: "1496407196106494055", adapter_id: "discord", user: "u" });
-    d.pushChannelMessage("again", { chat_id: "1496407196106494055", user: "u" });
+    d.pushChannelMessage("first", { chat_id: "1000000000000000201", adapter_id: "discord", user: "u" });
+    d.pushChannelMessage("again", { chat_id: "1000000000000000201", user: "u" });
     expect(d.lastAdapterId, "same chat — the binding still holds").toBe("discord");
   });
 
