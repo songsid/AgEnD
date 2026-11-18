@@ -9,7 +9,8 @@
 //   2-worker-permissions a worker's Permissions: approvers (Fleet admins only, the eligible picker), allowed contacts, history
 //   3-authorizations     Fleet → Authorizations: the tab, waiting requests, Approve once → POST, "also allow" fields
 //   4-needs              Needs you: a request (its details from the scoped route) and the suggestion's three buttons
-//   5-chat-badges        the chat: 聯絡申請 #R12 on a held request, 已准轉交 #R12 on the forwarded copy (the real stream)
+//   5-chat-badges        the chat: 聯絡申請 #R12a4c8e0 on a held request, 已准轉交 #R12a4c8e0 on the forwarded copy (the real
+//                         stream, through the server's history record: its ids are R + a UUID, read short)
 // No page error, no CSP report.
 //   PW_DIR=<playwright-core dir> REPO=<checkout> OUT=<dir> [MATRIX=…] npx tsx scripts/manual/smoke/smoke-contact-auth-m3339.mts
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -36,9 +37,11 @@ const roomPerm = (o: any = {}) => ({ instance: ROOM, revision: 4, classicRoom: t
 const workerPerm = { instance: WORKER, revision: 9, classicRoom: false, mode: "legacy", approvers: [OWNER], inheritedApprovers: false, eligibleApprovers: [OWNER, KIM],
   nativeGuard: { state: "not-covered", backend: "codex" }, roomTools: { publicRead: false, allowedMcpTools: [], wouldDisable: [] }, canManage: true, canSetMode: false, suggestRestricted: false,
   grants: [{ id: "g1", person: ALEX, source: ROOM, target: WORKER, verbs: ["send_to_instance", "request_information"], expiresAt: "2026-12-01T00:00:00Z", remainingUses: 3, createdBy: OWNER, createdAt: "2026-11-18T00:00:00Z" }],
-  history: [{ id: "h1", at: "2026-11-18T08:00:00Z", actor: OWNER, action: "approve", ticketId: "R12", summary: `${ROOM} → ${WORKER}` },
+  history: [{ id: "h1", at: "2026-11-18T08:00:00Z", actor: OWNER, action: "approve", ticketId: R12, summary: `${ROOM} → ${WORKER}` },
     { id: "h2", at: "2026-11-18T08:05:00Z", actor: OWNER, action: "grant-add", summary: "Alex" }] };
-const ticket = (o: any = {}) => ({ id: "R12", revision: 2, scope: "peer.dispatch", state: "pending", source: ROOM, target: WORKER, sourceGeneration: "s1", targetGeneration: "t1",
+// The server's ticket ids: R + a UUID (contact-auth-api.ts, web-chat-history.ts contactBadge); the page reads them short (R + 8 hex).
+const R12 = "R12a4c8e0-5b1d-4f6a-9c3e-0d2b7f8a1c12", R11 = "R11b5d9f1-6c2e-4a7b-8d4f-1e3c8a9b2d11";
+const ticket = (o: any = {}) => ({ id: R12, revision: 2, scope: "peer.dispatch", state: "pending", source: ROOM, target: WORKER, sourceGeneration: "s1", targetGeneration: "t1",
   verb: "send_to_instance", origin: { kind: "human", people: [ALEX], receiptIds: ["hmsg-1"], chain: [ROOM] }, message: "Please rerun the nightly report and post the summary here.",
   requestHash: "h", correlationId: "c", resultRecipient: ROOM, createdAt: "2026-11-18T08:00:00Z", expiresAt: "2026-11-19T08:00:00Z", canDecide: true, ...o });
 
@@ -52,9 +55,9 @@ async function contactApi(ctx: any, calls: Array<[string, string, unknown]>) {
     const json = (b: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(b) });
     if (u.pathname === `/ui/api/instances/${ROOM}/contact-permissions`) { if (m === "PUT") room = roomPerm({ revision: room.revision + 1, mode: body.mode ?? room.mode, suggestRestricted: false }); return json(room); }
     if (u.pathname === `/ui/api/instances/${WORKER}/contact-permissions`) return json(workerPerm);
-    if (u.pathname === "/ui/api/contact-authorizations") return json({ items: [r12, ticket({ id: "R11", revision: 1, verb: "delegate_task", state: "pending", canDecide: false, origin: { kind: "mixed", people: [ALEX, KIM], receiptIds: [], chain: [ROOM] }, message: "Open a task for the release notes." })], nextCursor: null });
-    if (u.pathname === "/ui/api/contact-authorizations/R12/decision") { r12 = ticket({ revision: 3, state: "delivered", canDecide: false, decidedAt: "2026-11-18T08:10:00Z", decidedBy: OWNER }); return json(r12); }
-    if (u.pathname === "/ui/api/contact-authorizations/R12") return json(r12);
+    if (u.pathname === "/ui/api/contact-authorizations") return json({ items: [r12, ticket({ id: R11, revision: 1, verb: "delegate_task", state: "pending", canDecide: false, origin: { kind: "mixed", people: [ALEX, KIM], receiptIds: [], chain: [ROOM] }, message: "Open a task for the release notes." })], nextCursor: null });
+    if (u.pathname === `/ui/api/contact-authorizations/${R12}/decision`) { r12 = ticket({ revision: 3, state: "delivered", canDecide: false, decidedAt: "2026-11-18T08:10:00Z", decidedBy: OWNER }); return json(r12); }
+    if (u.pathname === `/ui/api/contact-authorizations/${R12}`) return json(r12);
     return json({ code: "missing" }, 404);
   });
 }
@@ -64,8 +67,8 @@ const started = Date.now();
 // The badges' messages come over the live stream once each chat is open (history is A1's to carry: the field rides
 // on its message records there).
 let seq = 0;
-const held = () => fx.fm.emitSseEvent("message", { instance: ROOM, sender: ROOM, role: "status", text: `Held for approval: ${WORKER} (${++seq})`, ts: new Date().toISOString(), contactTicket: { id: "R12", state: "pending" } });
-const forwarded = () => fx.fm.emitSseEvent("message", { instance: WORKER, sender: ROOM, role: "agent", text: `Please rerun the nightly report and post the summary here. (${++seq})`, ts: new Date().toISOString(), contactTicket: { id: "R12", state: "delivered" } });
+const held = () => fx.fm.emitSseEvent("message", { instance: ROOM, sender: ROOM, role: "status", text: `Held for approval: ${WORKER} (${++seq})`, ts: new Date().toISOString(), contactTicket: { id: R12, state: "pending" } });
+const forwarded = () => fx.fm.emitSseEvent("message", { instance: WORKER, sender: ROOM, role: "agent", text: `Please rerun the nightly report and post the summary here. (${++seq})`, ts: new Date().toISOString(), contactTicket: { id: R12, state: "delivered" } });
 try {
   for (const c of CASES) {
     const cn = caseName(c), zh = c.lang === "zh-TW";
@@ -99,22 +102,22 @@ try {
     await page.goto(`${fx.base}/ui/fleet/authorizations`);
     await page.waitForSelector(".contact-ticket", { timeout: 20000 }); await page.waitForTimeout(400);
     const tabs = await page.locator('a[href="/ui/fleet/authorizations"]').count();
-    await page.locator('.contact-ticket[data-ticket="R12"] input[type=checkbox]').check(); await page.waitForTimeout(200);
+    await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).check(); await page.waitForTimeout(200);
     await page.screenshot({ path: shotPath(SMOKE, cn, "3-authorizations") });
-    await page.locator('.contact-ticket[data-ticket="R12"] input[type=checkbox]').uncheck();
-    await page.locator('.contact-ticket[data-ticket="R12"] .btn-primary').click(); await page.waitForTimeout(500);
-    check(`${cn}:authorizations`, tabs >= 1 && calls.some(([m, p, b]: any) => m === "POST" && p === "/ui/api/contact-authorizations/R12/decision" && b?.decision === "approve-once" && b?.revision === 2 && !b?.grant)
-      && (await page.locator('.contact-ticket[data-ticket="R12"]').getAttribute("data-state")) === "delivered"
-      && (await page.locator('.contact-ticket[data-ticket="R11"] .btn-primary').count()) === 0, calls);
+    await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).uncheck();
+    await page.locator(`.contact-ticket[data-ticket="${R12}"] .btn-primary`).click(); await page.waitForTimeout(500);
+    check(`${cn}:authorizations`, tabs >= 1 && calls.some(([m, p, b]: any) => m === "POST" && p === `/ui/api/contact-authorizations/${R12}/decision` && b?.decision === "approve-once" && b?.revision === 2 && !b?.grant)
+      && (await page.locator(`.contact-ticket[data-ticket="${R12}"]`).getAttribute("data-state")) === "delivered"
+      && (await page.locator(`.contact-ticket[data-ticket="${R11}"] .btn-primary`).count()) === 0, calls);
     await page.screenshot({ path: shotPath(SMOKE, cn, "3b-authorizations-decided") });
     // 4: Needs you (the server's needs list, as the stream would deliver it).
     await page.goto(`${fx.base}/ui/needs`); await page.waitForTimeout(800);
-    await page.evaluate(async ([room, worker]: [string, string]) => {
+    await page.evaluate(async ([room, worker, r12]: [string, string, string]) => {
       const m: any = await import("/assets/app-store.js");
       m.appStore.set({ needs: [
-        { id: "contact:R12", type: "contact", reason: "contact_request", instance: worker, since: Date.now() - 120000, contactTicket: { id: "R12", source: room, target: worker } },
+        { id: `contact:${r12}`, type: "contact", reason: "contact_request", instance: worker, since: Date.now() - 120000, contactTicket: { id: r12, source: room, target: worker } },
         { id: `contact-suggest:${room}`, type: "contact", reason: "contact_restricted_suggestion", instance: room, since: Date.now() - 60000, contactSuggestion: { instance: room } }] });
-    }, [ROOM, WORKER]);
+    }, [ROOM, WORKER, R12]);
     await page.waitForSelector(".contact-need", { timeout: 10000 }); await page.waitForTimeout(500);
     const t4 = await body();
     await page.screenshot({ path: shotPath(SMOKE, cn, "4-needs"), fullPage: c.device === "desk" });
@@ -129,7 +132,7 @@ try {
     await page.waitForSelector(".msg .contact-badge", { timeout: 15000 }).catch(() => {});
     const b2 = await page.locator(".msg .contact-badge").allInnerTexts();
     await page.screenshot({ path: shotPath(SMOKE, cn, "5-chat-badge-worker") });
-    check(`${cn}:badges`, b1.includes(zh ? "聯絡申請 #R12" : "Contact request #R12") && b2.includes(zh ? "已准轉交 #R12" : "Forwarded (approved) #R12"), { b1, b2 });
+    check(`${cn}:badges`, b1.includes(zh ? "聯絡申請 #R12a4c8e0" : "Contact request #R12a4c8e0") && b2.includes(zh ? "已准轉交 #R12a4c8e0" : "Forwarded (approved) #R12a4c8e0"), { b1, b2 });
     check(`${cn}:no-errors`, errs.length === 0 && (await csp()).length === 0, { errs, csp: await csp() });
     await ctx.close();
   }

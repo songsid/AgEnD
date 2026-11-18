@@ -13,7 +13,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState, Empty } from "/assets/ui-states.js";
 import { ca } from "./contact-auth-strings.js";
-import { decideTicket, getTicket, listTickets, personKey } from "./contact-auth-client.js";
+import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
 
 // The Fleet tab's own label (panel-fleet.js reads fleet.<tab>).
 register("fleet", { en: { authorizations: "Authorizations" }, "zh-TW": { authorizations: "授權" } });
@@ -53,7 +53,7 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
   const people = tk.origin?.people || [];
   const originText = tk.origin?.kind === "unknown" ? ca("origin_unknown") : tk.origin?.kind === "mixed" ? ca("origin_mixed") : "";
   return html`<article class=${`card contact-ticket${focus ? " focus" : ""}`} data-ticket=${tk.id} data-state=${st}>
-    <div class="contact-ticket-head"><strong>${ca("ticket", tk.id)}</strong><span class=${`contact-pill ${TONE[st]}`}>${ca(`state_${st}`)}</span>
+    <div class="contact-ticket-head"><strong title=${tk.id}>${ca("ticket", shortTicketId(tk.id))}</strong><span class=${`contact-pill ${TONE[st]}`}>${ca(`state_${st}`)}</span>
       <span class="muted">${ca(`verb_${tk.verb}`)}</span></div>
     <p class="contact-ticket-route">${ca("from", tk.source)} → ${ca("to", tk.target)}</p>
     <p class="contact-ticket-origin">${people.map((p, i) => html`${i ? ", " : ""}<button type="button" class="link-btn" title=${ca("filterPerson", label(p))}

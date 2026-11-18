@@ -14,7 +14,7 @@ import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
-import { getPermissions, putPermissions } from "./contact-auth-client.js";
+import { getPermissions, putPermissions, shortTicketId } from "./contact-auth-client.js";
 import { REASONS } from "./contact-authorizations.js";
 
 const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
@@ -175,7 +175,7 @@ export function ContactPermissionsPanel({ name }) {
       <h3>${ca("historyTitle")}</h3>
       ${p.history.length ? html`<ul class="contact-list contact-history-list">${p.history.map((h) => html`<li key=${h.id}>
           <span class="mono muted">${when(h.at)}</span> <strong>${ca(`action_${h.action}`)}</strong> <span>${personLabel(h.actor)}</span>
-          ${h.ticketId ? html` <a href=${`/ui/fleet/authorizations?ticket=${encodeURIComponent(h.ticketId)}`}>#${h.ticketId}</a>` : null}
+          ${h.ticketId ? html` <a href=${`/ui/fleet/authorizations?ticket=${encodeURIComponent(h.ticketId)}`} title=${h.ticketId}>#${shortTicketId(h.ticketId)}</a>` : null}
           ${h.summary ? html`<div class="muted">${h.summary}</div>` : null}</li>`)}</ul>` : html`<p class="note">${ca("historyNone")}</p>`}
     </section>
   </div>`;

@@ -7,7 +7,7 @@
 // HTML text for chat-thread.js's opts.contactBadge hook (the Fleet chat's only; a Hub room passes none): every value escaped.
 import { appStore } from "/assets/app-store.js";
 import { ca } from "./contact-auth-strings.js";
-import { getTicket } from "./contact-auth-client.js";
+import { getTicket, shortTicketId } from "./contact-auth-client.js";
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
@@ -17,8 +17,8 @@ const fresh = new Map();
 /** Requests a badge has shown on this page (the only ones a contact-auth frame reads again). */
 const shown = new Set();
 
-const badgeText = (id, state) => (state === "delivered" ? `${ca("forwarded")} #${id}`
-  : state === "pending" || !STATES.has(state) ? ca("ticket", id) : `${ca("ticket", id)} · ${ca(`state_${state}`)}`);
+const badgeText = (full, state) => { const id = shortTicketId(full); return state === "delivered" ? `${ca("forwarded")} #${id}`
+  : state === "pending" || !STATES.has(state) ? ca("ticket", id) : `${ca("ticket", id)} · ${ca(`state_${state}`)}`; };
 
 export function contactBadgeHtml(x) {
   const tk = x && x.contactTicket;

@@ -323,6 +323,14 @@ describe("the chat badge (message.contactTicket { id, state })", () => {
       expect([contactBadgeHtml({ contactTicket: { id: '"><img src=x>', state: "pending" } }), contactBadgeHtml({}), contactBadgeHtml({ contactTicket: { id: 5 } })]).toEqual(["", "", ""]);
     } finally { i18n.setLang("en", { store: false }); pg.restore(); }
   });
+  it("a server id (R + a UUID) is read short — R + its first 8 hex digits — while the link keeps it whole", async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui" });
+    try {
+      const { contactBadgeHtml } = await import("/ui/js/contact-ticket-badge.js") as any;
+      const id = "R1a2b3c4d-1234-4321-abcd-123456789012";
+      expect(contactBadgeHtml({ contactTicket: { id, state: "delivered" } })).toBe(`<a class="contact-badge ok" data-contact-ticket="${id}" href="/ui/fleet/authorizations?ticket=${id}">Forwarded (approved) #R1a2b3c4d</a>`);
+    } finally { pg.restore(); }
+  });
   it("kept current: a contact-auth frame naming a request on screen reads it again (scoped) and changes its badges in place; others aren't read", async () => {
     let state: ContactTicket["state"] = "pending";
     const calls = api({ "GET /ui/api/contact-authorizations/R30": () => ({ body: ticket({ id: "R30", state }) }) });
