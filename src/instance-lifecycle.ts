@@ -332,6 +332,18 @@ export interface TransitionHandle {
   readonly token: symbol;
 }
 
+/**
+ * M-3302 (#4146): the backend's CLI is not installed — not on the fleet's PATH and in none of its installer's directories (a definite
+ * answer, never an unknown probe). Starting would only fail later with a generic error; the fleet holds the instance instead, says
+ * which binary is missing and how to put it back, and starts it the moment the binary is there again (FleetManager.holdMissingBinary).
+ */
+export class BackendBinaryMissingError extends Error {
+  constructor(readonly instance: string, readonly backend: string, readonly binary: string) {
+    super(`Backend binary "${binary}" (${backend}) not found in PATH or its install directories`);
+    this.name = "BackendBinaryMissingError";
+  }
+}
+
 /** Thrown by a start whose generation was invalidated (stop/restart) before it could publish. */
 export class SupersededStartError extends Error {
   constructor(name: string) {
@@ -556,6 +568,14 @@ export async function verifyClaudeQuotaStatus(
 export class InstanceLifecycle {
   /** Active daemon processes: instanceName → Daemon */
   readonly daemons = new Map<string, Daemon>();
+  /** M-3302 (#4146): the instances whose last start found their backend's CLI definitely not installed. */
+  private readonly missingBinaries = new Map<string, { backend: string; binary: string }>();
+  /** M-3302: a start of `name` failed with `err`; when that start had found its binary missing, the failure is that (else null). */
+  missingBinaryAt(name: string, err: unknown): BackendBinaryMissingError | null {
+    if (err instanceof BackendBinaryMissingError) return err;
+    const missing = this.missingBinaries.get(name);
+    return missing ? new BackendBinaryMissingError(name, missing.backend, missing.binary) : null;
+  }
   /**
    * Phase 2a: one transition (start / stop / wake / restart) at a time per
    * instance. A call that passes the current transition's handle runs inline;
@@ -1812,6 +1832,9 @@ export class InstanceLifecycle {
     published?: (daemon: Daemon) => void,
   ): Promise<void> {
     const epoch = this.epochOf(name);
+    // M-3302 (Fable F1 on #4149): only THIS start's own binary check is evidence. An earlier start's record must never turn a
+    // failure before this start's check (General binding, mkdir, instance dir, imports) into "binary missing".
+    this.missingBinaries.delete(name);
     const check = (): void => { execution?.assert(); if (this.epochOf(name) !== epoch) throw new SupersededStartError(name); };
     check();
     assertNoSessionOomStop(this.ctx.getInstanceDir(name));
@@ -1849,7 +1872,8 @@ export class InstanceLifecycle {
 
     // Verify backend binary is in PATH before spawning. Off-loop resolve pins a
     // hint so createBackend's resolveBinary does not run synchronous `which`
-    // (#1490 row 67). Missing still only logs; start continues.
+    // (#1490 row 67). Missing still only logs; start continues. M-3302 (#4146): a definite "not installed" (null) is also
+    // remembered for this instance, so a start that then fails is told apart as BackendBinaryMissingError (missingBinaryAt).
     const installation = BACKEND_INSTALLATION_INFO[backendName];
     if (installation) {
       const { resolveBackendBinary } = await import("./backend-availability.js");
@@ -1862,6 +1886,8 @@ export class InstanceLifecycle {
           `Backend binary "${installation.binary}" not found in PATH`,
         );
       }
+      if (path === null) this.missingBinaries.set(name, { backend: backendName, binary: installation.binary });
+      else this.missingBinaries.delete(name);
     }
 
     // claude-code refuses --dangerously-skip-permissions as root — fail fast
@@ -2308,6 +2334,7 @@ export class InstanceLifecycle {
   async remove(name: string, authorization: ExplicitInstanceRemoval, execution?: SettingsExecution, transition?: TransitionHandle): Promise<void> {
     // Automatic topology reconciliation must never reach the destructive path.
     assertExplicitInstanceRemoval(authorization);
+    this.missingBinaries.delete(name);
     const config = this.ctx.fleetConfig?.instances[name];
     if (!config) return;
     const check = (): void => { execution?.assert(); if (this.ctx.fleetConfig?.instances[name] !== config) throw new Error("instance removal superseded"); };
