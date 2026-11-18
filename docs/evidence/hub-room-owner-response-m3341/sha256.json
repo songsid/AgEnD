@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "9b9059c07ddf539dfef37064631f50a1020f24365e66fb2d7ab2391e503a3a86"
+    "sha256": "5d29184399c0d37011d4a5c113d86903a8149e906abf722bcefa824b2a1cb2c7"
   },
   {
     "path": "browser.json",
@@ -18,6 +18,10 @@
   {
     "path": "pm-controls.json",
     "sha256": "ecff9f267fa9612ae928cfa605ef8f54ebbe238a9e58e607c0c2bbb77e758ada"
+  },
+  {
+    "path": "review-r1-controls.json",
+    "sha256": "96a388aa7a2775483cfcf723e4c4a514e2522cc2f0b9047e8925d071f90b9cb2"
   },
   {
     "path": "validation/a2-before.log",
@@ -66,6 +70,14 @@
   {
     "path": "validation/a2-ui-final.log",
     "sha256": "848cd7fcce8214da8ef4b6dd6edf56a050d8dfa56f8d46f60db855cf02ed7666"
+  },
+  {
+    "path": "validation/review-r1-ts.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "validation/review-r1.log",
+    "sha256": "259277fd5c699d3ff3bf0d3b8a92cee636cff9e6acecc086bcf7cfa006bcb845"
   },
   {
     "path": "views/desk-en-multiple.png",
