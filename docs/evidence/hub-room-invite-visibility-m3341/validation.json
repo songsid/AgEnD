@@ -1,0 +1,43 @@
+{
+  "slice": "M-3341 A3",
+  "base": "504d9f82912569da667cfc4610c980a3f2fa95c4",
+  "failFirst": {
+    "assertion": "hidden ID returned 200; expected 404",
+    "failed": 1,
+    "passed": 2
+  },
+  "targeted": {
+    "files": 8,
+    "passed": 135,
+    "failed": 0
+  },
+  "restored": {
+    "files": 1,
+    "passed": 7,
+    "failed": 0
+  },
+  "sourceTypeErrors": 0,
+  "testTypeErrors": 0,
+  "controls": [
+    {
+      "guard": "explicit-hidden-id",
+      "passed": 5,
+      "failed": 2,
+      "caught": true
+    },
+    {
+      "guard": "team-hidden-filter",
+      "passed": 5,
+      "failed": 2,
+      "caught": true
+    },
+    {
+      "guard": "grant-proof-through-commit",
+      "passed": 6,
+      "failed": 1,
+      "caught": true
+    }
+  ],
+  "scope": "Scratch HTTP/SQLite and inert directory only; no live account, model, native runtime or browser campaign.",
+  "schemaChange": false
+}
