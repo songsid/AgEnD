@@ -26,6 +26,8 @@ const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? 
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48339), instances: 6 });
 const ROOM = fx.instances[1]!.name, WORKER = fx.instances[2]!.name;
+// The server's ticket ids: R + a UUID (contact-auth-api.ts, web-chat-history.ts contactBadge); the page reads them short (R + 8 hex).
+const R12 = "R12a4c8e0-5b1d-4f6a-9c3e-0d2b7f8a1c12", R11 = "R11b5d9f1-6c2e-4a7b-8d4f-1e3c8a9b2d11";
 const ALEX = { platform: "discord", adapterId: "dc-main", userId: "1001", label: "Alex" };
 const OWNER = { platform: "host", adapterId: "host", userId: "operator", label: "Owner" };
 const KIM = { platform: "telegram", adapterId: "tg-main", userId: "7", label: "Kim" };
@@ -39,8 +41,6 @@ const workerPerm = { instance: WORKER, revision: 9, classicRoom: false, mode: "l
   grants: [{ id: "g1", person: ALEX, source: ROOM, target: WORKER, verbs: ["send_to_instance", "request_information"], expiresAt: "2026-12-01T00:00:00Z", remainingUses: 3, createdBy: OWNER, createdAt: "2026-11-18T00:00:00Z" }],
   history: [{ id: "h1", at: "2026-11-18T08:00:00Z", actor: OWNER, action: "approve", ticketId: R12, summary: `${ROOM} → ${WORKER}` },
     { id: "h2", at: "2026-11-18T08:05:00Z", actor: OWNER, action: "grant-add", summary: "Alex" }] };
-// The server's ticket ids: R + a UUID (contact-auth-api.ts, web-chat-history.ts contactBadge); the page reads them short (R + 8 hex).
-const R12 = "R12a4c8e0-5b1d-4f6a-9c3e-0d2b7f8a1c12", R11 = "R11b5d9f1-6c2e-4a7b-8d4f-1e3c8a9b2d11";
 const ticket = (o: any = {}) => ({ id: R12, revision: 2, scope: "peer.dispatch", state: "pending", source: ROOM, target: WORKER, sourceGeneration: "s1", targetGeneration: "t1",
   verb: "send_to_instance", origin: { kind: "human", people: [ALEX], receiptIds: ["hmsg-1"], chain: [ROOM] }, message: "Please rerun the nightly report and post the summary here.",
   requestHash: "h", correlationId: "c", resultRecipient: ROOM, createdAt: "2026-11-18T08:00:00Z", expiresAt: "2026-11-19T08:00:00Z", canDecide: true, ...o });
