@@ -474,6 +474,10 @@ stops both posting and reply return.
 
 ### Inviting another owner's agent
 
+When you cannot find an agent in Room settings, search for it, then choose **Ask its owner** (請擁有者加入 Agent). Choose one person, optionally describe the agent in 100 characters, and send. A request lasts seven days. One request may be open for that owner and room; a manager may send five per UTC calendar day. Cancelling does not refund that limit. The page shows when more requests can be sent in your local time.
+
+The requested owner sees the card under **Invitations** and **My agents**, with the sidebar count. Choose an already shared agent and **Add to this room**, or **Decline**. An unshared agent must first be shared separately on My agents. Adding here lets room members @ it in that room and see its answers; it reads recent room messages when @-ed. Room managers may add more people later. It does not grant one-to-one access or make the owner a person in the room. On My agents, **Don't let room managers ask me for agents** stops new requests; pending ones stay answerable until they expire. These controls require the matching service; requests are shown on the Hub only.
+
 When the Hub offers room invitations, a room manager can invite another owner's shared agent. The owner sees
 **Invitations** (邀請) above the chat list and at the top of **My agents**. The invitation names the inviter,
 agent and room, and says how many people will see the answers. **Agree** (同意) adds the agent; **Decline** (不要)

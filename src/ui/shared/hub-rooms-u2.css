@@ -85,3 +85,8 @@
 .hub-owner-request .field { display: grid; gap: var(--space-2, .5rem); }
 .hub-owner-request-entry .btn { margin-inline-start: .35rem; }
 .hub-room-owner-requests:empty { display: none; }
+/* Owner requests reuse the room consent card and ordinary checkbox/radio layout. */
+.hub-owner-agent-choices { border:0; padding:0; margin:12px 0; display:grid; gap:10px; }
+.hub-owner-agent-choices .check { align-items:flex-start; }
+.hub-owner-agent-choices small { display:block; }
+.hub-owner-agent-requests blockquote { overflow-wrap:anywhere; }

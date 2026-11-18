@@ -8,7 +8,7 @@ import {fileURLToPath} from "node:url";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {afterEach,describe,expect,it,vi} from "vitest";
-import {applyHubMigrations,assertHubMigrationsCurrent,bindHubInstance,openHubDatabase} from "../src/hub/db.js";
+import {applyHubMigrations,assertHubMigrationsCurrent,bindHubInstance,openHubDatabase,createHubUnitOfWork} from "../src/hub/db.js";
 import {createHubAudit} from "../src/hub/audit/index.js";
 import {HubTransportStore} from "../src/hub/store.js";
 import {HubFileVersionFloor} from "../src/hub/version-floor.js";
@@ -31,6 +31,8 @@ import type {HubRequestContext} from "../src/hub/types.js";
 import {parseRolePolicy} from "../src/hub/roles/model.js";
 import {roleCutoverLegacyPlan} from "./support/hub-role-cutover-plan.js";
 import type {PersonKey} from "../src/hub/types.js";
+import {HUB_ROOM_AGENT_REQUESTS_MIGRATION} from "../src/hub/room-agent-requests.js";
+import {HUB_ROLE_MIGRATIONS} from "../src/hub/roles/migrations.js";
 const cleanup:(()=>void)[]=[];afterEach(()=>{for(const f of cleanup.splice(0).reverse())f();vi.restoreAllMocks();});
 const person=():PersonKey=>({realm:"corp",objectId:randomUUID()});
 function fixture(state:HubGroupPolicy["state"]="enabled",disk=false){
@@ -50,6 +52,54 @@ function fixture(state:HubGroupPolicy["state"]="enabled",disk=false){
  return{home,db,hubId,root,owner,policy,oldRaw,codes,code,audit,auditKey,append,transport,fileFloor,raise,floor,refresh,options,cutover,raw,time:(n:number)=>{time+=n;},elapsed:(n:number)=>{elapsed+=n;},stop:()=>{live=false;}};
 }
 describe("inactive atomic roles cutover",()=>{
+ it("versions room request authority metadata without hashing private hint references, digests or ciphertext",()=>{
+  const w=fixture(),legacy=captureRoleCutoverInventory(w.db,w.transport,()=>{});
+  expect(legacy.v).toBeUndefined();
+  applyHubMigrations(w.db,[...w.options.migrations,HUB_ROOM_AGENT_REQUESTS_MIGRATION]);
+  const room=randomUUID(),id=randomUUID(),owner=`${w.owner.realm}/${w.owner.objectId}`,manager=`${w.root.realm}/${w.root.objectId}`;
+  w.db.prepare("INSERT INTO hub_group_rooms(id,name,created_by,created_at) VALUES(?,'Example room',?,0)").run(room,manager);
+  w.db.prepare("INSERT INTO hub_room_agent_requests(id,room_id,owner,owner_name,by_person,by_name,note_ref,idempotency_key,digest,created_at,expires_at,state) VALUES(?, ?, ?, 'Example owner', ?, 'Example manager', ?, ?, ?, 0, 999, 'pending')")
+   .run(id,room,owner,manager,"a".repeat(32),randomUUID(),"b".repeat(64));
+  const capture=()=>captureRoleCutoverInventory(w.db,w.transport,()=>{}),first=capture();
+  expect(first.v).toBe(2);expect(first.tables.map(t=>t.name)).toContain("hub_room_agent_requests");
+  w.db.prepare("UPDATE hub_room_agent_requests SET note_ref=?,digest=? WHERE id=?").run("c".repeat(32),"d".repeat(64),id);
+  createHubUnitOfWork(w.db).atomic(tx=>w.audit.content.put(tx,{question:"Private hint"}));
+  expect(capture()).toEqual(first);expect(first.tables.map(t=>t.name)).not.toContain("hub_audit_content");
+  w.db.prepare("UPDATE hub_room_agent_requests SET state='cancelled' WHERE id=?").run(id);
+  const state=capture();expect(state.digest).not.toBe(first.digest);
+  w.db.prepare("INSERT INTO hub_room_agent_request_settings VALUES(?,0,1)").run(owner);
+  const preference=capture();expect(preference.digest).not.toBe(state.digest);
+  w.db.prepare("INSERT INTO hub_room_agent_request_days VALUES(?,0,1)").run(manager);
+  expect(capture().digest).not.toBe(preference.digest);
+ });
+ it.each(["unregistered","partial","missing","future"])("refuses %s room request authority inventory",state=>{
+  const w=fixture();
+  if(state==="unregistered")HUB_ROOM_AGENT_REQUESTS_MIGRATION.up(w.db);
+  else{
+   applyHubMigrations(w.db,[...w.options.migrations,HUB_ROOM_AGENT_REQUESTS_MIGRATION]);
+   if(state==="partial")w.db.exec("DROP TABLE hub_room_agent_request_settings");
+   if(state==="missing")w.db.exec("DROP TABLE hub_room_agent_requests; DROP TABLE hub_room_agent_request_settings; DROP TABLE hub_room_agent_request_days");
+   if(state==="future")w.db.prepare("UPDATE hub_schema SET version=2 WHERE component='s3-room-agent-requests'").run();
+  }
+  expect(()=>captureRoleCutoverInventory(w.db,w.transport,()=>{})).toThrow(expect.objectContaining({code:"hub-state-mismatch"}));
+ });
+ it("keeps a historical marker byte-identical after room request registration without repeating cutover",()=>{
+  const w=fixture();w.cutover.migrate();
+  const before=(w.db.prepare("SELECT body FROM hub_role_cutover").get()as{body:string}).body;
+  const migrations=[...w.options.migrations,HUB_ROOM_AGENT_REQUESTS_MIGRATION];applyHubMigrations(w.db,[...migrations,...HUB_ROLE_MIGRATIONS]);
+  expect(createHubRoleCutover({...w.options,migrations}).migrate()).toMatchObject({ok:true,changed:false,epoch:1});
+  expect((w.db.prepare("SELECT body FROM hub_role_cutover").get()as{body:string}).body).toBe(before);
+  expect(JSON.parse(before).inventory.v).toBeUndefined();
+  expect(w.refresh).toHaveBeenCalledTimes(2); // A new mount republishes the same epoch; it does not convert again.
+  expect(w.db.prepare("SELECT COUNT(*) n FROM hub_audit WHERE action='role.migrated'").get()).toEqual({n:1});
+ });
+ it("creates and replays a request-aware inventory marker without changing the role schema version",()=>{
+  const w=fixture(),migrations=[...w.options.migrations,HUB_ROOM_AGENT_REQUESTS_MIGRATION];applyHubMigrations(w.db,migrations);
+  const cutover=createHubRoleCutover({...w.options,migrations});expect(cutover.migrate()).toMatchObject({ok:true,changed:true,epoch:1});
+  const marker=JSON.parse((w.db.prepare("SELECT body FROM hub_role_cutover").get()as{body:string}).body);
+  expect(marker.v).toBe(1);expect(marker.inventory.v).toBe(2);
+  expect(cutover.migrate()).toMatchObject({ok:true,changed:false,epoch:1});expect(w.refresh).toHaveBeenCalledOnce();
+ });
  it("binds every optional personal authority table, with no job or content inventory",()=>{
   const w=fixture(),before=captureRoleCutoverInventory(w.db,w.transport,()=>{});
   expect(before.tables.some(t=>t.name.startsWith("hub_personal_"))).toBe(false);

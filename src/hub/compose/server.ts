@@ -50,6 +50,7 @@ import { HUB_GROUP_RESOURCES_MIGRATION } from "../group-policy/resources.js";
 import { createHubGroupAuthorization, type HubGroupAuthorization } from "../group-policy/authorization.js";
 import { HUB_ENROLMENT_CODE_MIGRATION } from "../enrolment-code.js";
 import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../invitations.js";
+import { createHubRoomAgentRequests, HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../room-agent-requests.js";
 import { createHubTeams, HUB_TEAM_MANAGEMENT_MIGRATION, HUB_TEAMS_MIGRATION, HUB_TEAM_GRANTS_MIGRATION } from "../teams/index.js";
 import { HubPairingNotices, HUB_PAIRING_NOTICES_MIGRATION } from "../pairing-notices.js";
 import { createHubGroupAdminControl } from "../group-policy/admin-control.js";
@@ -103,6 +104,7 @@ export interface HubHttpDeps {
   personalInstaller?: import("../http/deps.js").HubHttpDeps["personalInstaller"];
   log?: import("../http/deps.js").HubHttpDeps["log"];
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
+  roomAgentRequests?: import("../http/deps.js").HubHttpDeps["roomAgentRequests"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
@@ -144,6 +146,7 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  retainedContentRefs?(): readonly string[];
   memberClosed?(fleetId: string): void;
   memberConnected?(link: HubLinkContext): void;
   memberReady?(link: HubLinkContext): void;
@@ -545,6 +548,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         ...(migrations.some(m => m.component === HUB_TEAMS_MIGRATION.component) ? { teams: core => createHubTeams(core, { allowedListUsesTeam: hubAllowedListUsesTeam }) } : {}),
         log: (level, message, meta) => options.log(level, message, meta),
         roomInvitations: createHubRoomInvitations,
+        ...(migrations.some(m => m.component === HUB_ROOM_AGENT_REQUESTS_MIGRATION.component) ? { roomAgentRequests: createHubRoomAgentRequests } : {}),
         ...(roomAssistant ? { roomAssistant, assistantAdmin: roomAssistant } : {}),
         uow,
         audit,
@@ -580,6 +584,13 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
         transport: () => (live() && memberServer ? (memberServer as unknown as Pick<HubServerTransport, "send">) : null),
       });
       teardown.add("the Hub web service (S3)", () => http.close());
+      const retainedContentRefs = http.retainedContentRefs;
+      if (migrations.some(m => m.component === HUB_ROOM_AGENT_REQUESTS_MIGRATION.component) && typeof retainedContentRefs !== "function")
+        throw new Error("Hub room requests require protected content retention");
+      const retainedContent = retainedContentRefs ? { protectedContentRefs: () => {
+        if (!live() || http.retainedContentRefs !== retainedContentRefs) throw new Error("Hub retention root provider was retired");
+        return retainedContentRefs.call(http);
+      } } : undefined;
       memberServer = new HubServer({
         home: options.home,
         displayName: settings.name,
@@ -680,7 +691,7 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
               if (!live()) return;
               try {
                 const policy = retention.read();
-                audit.purge(policy);
+                audit.purge(policy, undefined, retainedContent);
                 // Files follow the content policy; expired uploads and unfinished transfers go too.
                 db.transaction(() => attachments.purge(db, now() - policy.contentDays * 86_400_000)).immediate();
               } catch (err) {

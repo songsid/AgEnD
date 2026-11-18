@@ -109,6 +109,8 @@ export interface HubHttp {
   handle(req: IncomingMessage, res: ServerResponse): boolean;
   receive(frame: Exclude<HubMemberFrame, { type: "hello" }>, link: HubLinkContext): Promise<HubServerFrame | void>;
   close(): Promise<void>;
+  /** Private retention root port; never a browser route or an authority source. */
+  retainedContentRefs?(): readonly string[];
   memberClosed?(fleetId: string): void;
   memberConnected?(link: HubLinkContext): void;
   memberReady?(link: HubLinkContext): void;
@@ -658,6 +660,16 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if ([...query.keys()].some(key => key !== "after")) throw new HubProtocolError("invalid");
       signedIn(); return send(res, 200, await guard(() => roomAgentRequests.pending(ctx, query.get("after") ?? undefined)));
     }
+    if ((r = m(/^\/hub\/v1\/agent-requests\/([^/]+)(?:\/(accept|decline))?$/))) {
+      if (!roomAgentRequests) throw new HttpError(404, "not-found");
+      if (query.size) throw new HubProtocolError("invalid");
+      const id = uuid(r[1]), action = r[2];
+      if (method === "GET" && !action) { signedIn(); return send(res, 200, await guard(() => roomAgentRequests.choices(ctx, id, () => agentCatalogs.view(ctx)))); }
+      if (method !== "POST" || !action) throw new HttpError(405, "method");
+      csrf(); const input = await body();
+      if (action === "decline" && Object.keys(input).length) throw new HubProtocolError("invalid");
+      return send(res, 200, await guard(() => action === "accept" ? roomAgentRequests.accept(ctx, id, input) : roomAgentRequests.decline(ctx, id)));
+    }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/agent-requests(?:\/([^/]+))?$/))) {
       if (!roomAgentRequests) throw new HttpError(404, "not-found");
       const roomId = uuid(r[1]);
@@ -770,7 +782,8 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (query.get("v") !== "2") return send(res, 200, { rooms: view.rooms.map(room => ({ ...room, ...intros.projection(room.exposureId), ...quota.roomProjection(room, view.grantProof) })) });
         const groups = await guard(() => groupRooms.list(ctx));
         const pending = invitations ? await guard(() => invitations.pending(ctx)) : null;
-        return send(res, 200, { ...groups, invitations: pending?.invitations.length ?? 0, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
+        const ownerRequests = roomAgentRequests && query.get("ownerRequests") === "1" ? await guard(() => roomAgentRequests.pendingCount(ctx)) : 0;
+        return send(res, 200, { ...groups, invitations: (pending?.invitations.length ?? 0) + ownerRequests, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
         if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
@@ -1181,6 +1194,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   personal?.turns.start({direct:rooms.personalQuestions(id=>directChanged(id,true)),room:groupRooms.agents.personalQuestions()});
   rooms.buttons.start(); groupRooms.agents.wake(); groupRooms.assistant.start();
   return {
+    ...(roomAgentRequests ? { retainedContentRefs: () => roomAgentRequests.retainedNoteRefs() } : {}),
     directorySessions: Object.freeze({
       recentAuthentication: (actor, permit) => sessions.recentAuthentication(actor, permit),
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),

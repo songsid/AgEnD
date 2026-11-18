@@ -1,0 +1,110 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "8a15287c9f5692d656fb91704dc3521bd012e90ce3f49b04107deb7e7adafd63"
+  },
+  {
+    "path": "browser.json",
+    "sha256": "ef76b40136f94fa72d486b5ba3bb1ff5586f35d9fe08f4fa7c284ff88608964a"
+  },
+  {
+    "path": "controls.json",
+    "sha256": "636bd204997d60d8ae52e57729b2bd2851672357f612c860e0509ffaf63295f6"
+  },
+  {
+    "path": "validation/a2-before.log",
+    "sha256": "a79db1d36f21165325dd701a2f661490fc7a77e7518d1173c21089c4e0cdb6a2"
+  },
+  {
+    "path": "validation/a2-client-ui.log",
+    "sha256": "c195ff570a959c097b582ca0d7afcf7049dd6cb8294c012f483f5014d6936ce2"
+  },
+  {
+    "path": "validation/a2-factory-retention.log",
+    "sha256": "e5cffe57db7cffc36edbdc2f8d0cd3da73d006551b8bb4f75539c72e6e73e025"
+  },
+  {
+    "path": "validation/a2-final-focused.log",
+    "sha256": "8ee0874edd6f4aa09596eee81908df81039ed40e530f88646660e9d1adeb02e5"
+  },
+  {
+    "path": "validation/a2-integration.log",
+    "sha256": "e84bca92db78d7269df52fcfb1e955f6119eb3508d53ae6cae68a65a5c8e95d2"
+  },
+  {
+    "path": "validation/a2-source-ts.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "validation/a2-test-ts.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "validation/a2-ui-final.log",
+    "sha256": "ddb2b0836f69036ed26228f3513c9a3dd88eea0f11b17f38eb21de9212c133e3"
+  },
+  {
+    "path": "views/desk-en-multiple.png",
+    "sha256": "03948c9e373d9ce87a3009869cd16169bc78cc610bfbab208a1248704522e323"
+  },
+  {
+    "path": "views/desk-en-not-shared.png",
+    "sha256": "30d9aa79f8f8c5ed816ee05098e031cdd6bf1f7327e808f670cf03dc1a085755"
+  },
+  {
+    "path": "views/desk-en-setting.png",
+    "sha256": "f3e9a007946be9504427d1ab9b35662680eef92b51dd0dba07e2659293078d70"
+  },
+  {
+    "path": "views/desk-en-single.png",
+    "sha256": "eed34e0a9d1dadfa90f9f406246b6b0a1b794bd6c54d449174f20df3d904437c"
+  },
+  {
+    "path": "views/desk-zh-TW-multiple.png",
+    "sha256": "3719762e0e59bb4d2d387c0003745c6b555043c0eac04f57a7326c7f68ddbe1c"
+  },
+  {
+    "path": "views/desk-zh-TW-not-shared.png",
+    "sha256": "f7b428833a96f482b87342a1dbd03b39adb70444333a3195ffe11760fef2c549"
+  },
+  {
+    "path": "views/desk-zh-TW-setting.png",
+    "sha256": "0c0ba7c8621154f320e4e9b1ab01940565cf89c6dc588200e36cd029d8c6d3fc"
+  },
+  {
+    "path": "views/desk-zh-TW-single.png",
+    "sha256": "8c760393bc2a76c034cc9e33bc2f57fe17cce020e9c15f5fb17b3a3ff6aa0e85"
+  },
+  {
+    "path": "views/phone-en-multiple.png",
+    "sha256": "b507e9a75188bd8a933e6832c8c019d232a1c5f6ba99bf856a4fa330a7be8828"
+  },
+  {
+    "path": "views/phone-en-not-shared.png",
+    "sha256": "05af1ca6aeb85611cb99897d3d18b4696f48046a5d804db7096c2efdc57316e1"
+  },
+  {
+    "path": "views/phone-en-setting.png",
+    "sha256": "f12e1ae1fad0d3be0079533ada7e7c4d71be0775a85e2ce28e80766c0984d49e"
+  },
+  {
+    "path": "views/phone-en-single.png",
+    "sha256": "a108df91775939a0f12d0e8b81d1b32646ccaf3d0f45bc2a6100eb9f2d80d121"
+  },
+  {
+    "path": "views/phone-zh-TW-multiple.png",
+    "sha256": "937602cf0e692825fccf09414ce36d3dd6dfdafd557394d57961d7d4ed3f2fd3"
+  },
+  {
+    "path": "views/phone-zh-TW-not-shared.png",
+    "sha256": "89b043ef1301043b794b95bd21180768fe6f050f52139420f72300eb7dd2ed22"
+  },
+  {
+    "path": "views/phone-zh-TW-setting.png",
+    "sha256": "cead2c2a95992a3704ba10f3b48c1af4011fd60d0da7c0dbbdb4af99a20eda33"
+  },
+  {
+    "path": "views/phone-zh-TW-single.png",
+    "sha256": "962b41374a7584eddb3b6b493077b93942dbd13e8d78226a5d862cb6bfdfe276"
+  }
+]

@@ -165,7 +165,8 @@ export interface HubAuditStore extends HubAuditSink {
    * Apply retention: content older than contentDays; a contiguous prefix of events older than eventDays, stopping at
    * the first one `retained` keeps (unresolved dedup/revocation evidence).
    */
-  purge(retention: { contentDays: number; eventDays: number }, retained?: (record: HubAuditRecord) => boolean): { content: number; events: number };
+  purge(retention: { contentDays: number; eventDays: number }, retained?: (record: HubAuditRecord) => boolean,
+    roots?: { protectedContentRefs(): readonly string[] }): { content: number; events: number };
 }
 
 export interface HubAuditOptions {
@@ -394,18 +395,42 @@ export function createHubAudit(options: HubAuditOptions): HubAuditStore {
       write({ id: randomUUID(), sequence: 0, at: now(), requestId, actor: by, action: assigned ? "audit.auditor-assigned" : "audit.auditor-removed", result: "completed", policyVersion: 0, ownerAtEvent: person } as HubAuditRecord);
     },
 
-    purge(retention, retained) {
+    purge(retention, retained, roots) {
       for (const days of [retention.contentDays, retention.eventDays]) {
         if (!Number.isSafeInteger(days) || days < 1) throw new Error("Hub retention must be whole days (no default)");
       }
       const t = now();
       return db.transaction(() => {
+        const anchors = new Set<string>(), protectedRefs = new Set<string>();
+        if (roots) {
+          const refs: unknown = roots.protectedContentRefs();
+          if (refs && typeof (refs as { then?: unknown }).then === "function") {
+            void Promise.resolve(refs).catch(() => {}); throw new Error("Hub retention roots must be synchronous");
+          }
+          if (!Array.isArray(refs)) throw new Error("Hub retention roots must be an array");
+          const binding = db.prepare(`SELECT c.record_id,a.content_ref FROM hub_audit_content c
+            LEFT JOIN hub_audit a ON a.id=c.record_id WHERE c.ref=?`);
+          for (const ref of refs) {
+            if (typeof ref !== "string" || !/^[a-f0-9]{32}$/.test(ref)) throw new Error("Invalid Hub retention root");
+            const bound = binding.get(ref) as { record_id: string | null; content_ref: string | null } | undefined;
+            if (!bound?.record_id || bound.content_ref !== ref) throw new Error("Hub retention root has no matching audit anchor");
+            protectedRefs.add(ref); anchors.add(bound.record_id);
+          }
+        }
         const contentCut = t - retention.contentDays * DAY_MS;
-        const removedContent = db.prepare("DELETE FROM hub_audit_content WHERE created_at < ?").run(contentCut).changes;
+        let removedContent: number;
+        if (protectedRefs.size) {
+          db.exec("CREATE TEMP TABLE IF NOT EXISTS hub_retention_protected_content(ref TEXT PRIMARY KEY)");
+          db.prepare("DELETE FROM hub_retention_protected_content").run();
+          const insert = db.prepare("INSERT INTO hub_retention_protected_content(ref) VALUES(?)");
+          for (const ref of protectedRefs) insert.run(ref);
+          removedContent = db.prepare("DELETE FROM hub_audit_content WHERE created_at < ? AND ref NOT IN (SELECT ref FROM hub_retention_protected_content)").run(contentCut).changes;
+          db.prepare("DELETE FROM hub_retention_protected_content").run();
+        } else removedContent = db.prepare("DELETE FROM hub_audit_content WHERE created_at < ?").run(contentCut).changes;
         const eventCut = t - retention.eventDays * DAY_MS;
         let last: AuditRow | undefined;
         for (const row of db.prepare("SELECT * FROM hub_audit WHERE at < ? ORDER BY sequence").iterate(eventCut) as IterableIterator<AuditRow>) {
-          if (retained?.(toRecord(row))) break;
+          if (anchors.has(row.id) || retained?.(toRecord(row))) break;
           last = row;
         }
         let removedEvents = 0;

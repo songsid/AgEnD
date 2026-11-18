@@ -5,11 +5,15 @@ import { sha256 } from "../identity.js";
 import { parseGroupPolicy } from "../group-policy/model.js";
 import { convertGroupPolicy } from "./convert.js";
 const part = z.strictObject({ name: identifier, rows: epoch, digest: hash });
+const inventory = z.union([
+  z.strictObject({ digest: hash, tables: z.array(part).max(64) }),
+  z.strictObject({ v: z.literal(2), digest: hash, tables: z.array(part).max(64) }),
+]);
 export const hubRoleCutoverMarkerSchema = z.strictObject({
   v: z.literal(1), hubId: uuid, realm: person.shape.realm, generation: identifier, root: person, at: epoch,
   oldRaw: z.string().max(256 * 1024), oldDigest: hash, roleDigest: hash, fromRevision: epoch,
   transportRevision: epoch, authorizationVersion: epoch,
-  inventory: z.strictObject({ digest: hash, tables: z.array(part).max(64) }), auditId: uuid,
+  inventory, auditId: uuid,
 });
 export function parseHubRoleCutoverMarker(raw: string, hubId: string) {
   const marker = validated(hubRoleCutoverMarkerSchema, parseStrictJson(raw, 512 * 1024));
@@ -18,7 +22,7 @@ export function parseHubRoleCutoverMarker(raw: string, hubId: string) {
   if (marker.hubId !== hubId || marker.root.realm !== marker.realm || old.realm !== marker.realm
     || old.generation !== marker.generation || old.revision !== marker.fromRevision
     || marker.oldDigest !== sha256(marker.oldRaw) || marker.roleDigest !== sha256(JSON.stringify(converted))
-    || marker.inventory.digest !== sha256(JSON.stringify(marker.inventory.tables))
+    || marker.inventory.digest !== sha256(JSON.stringify("v" in marker.inventory ? { v: marker.inventory.v, tables: marker.inventory.tables } : marker.inventory.tables))
     || marker.transportRevision < 1 || marker.authorizationVersion < 1) throw new HubProtocolError("unavailable");
   return { raw, marker };
 }
