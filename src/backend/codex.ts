@@ -1989,6 +1989,20 @@ export class CodexBackend implements CliBackend {
         message: "OpenAI rate limit reached",
       },
       {
+        // #4147: the running process cannot reload a changed login. A file-level status check can still pass.
+        // Require the exact decorated live error immediately above the last composer, including hard wraps.
+        pattern: new RegExp(
+          String.raw`^■[ \t]+Your\s+access\s+token\s+could\s+not\s+be\s+refreshed\s+because\s+you\s+have\s+since\s+logged\s+out\s+or\s+signed\s+in\s+to\s+another\s+account\.\s+Please\s+sign\s+in\s+again\.[ \t]*\r?$`
+          + String.raw`(?=\n(?:[ \t]*\n)*[›>][^\n]*(?:\n(?![•■⚠›>])[^\n]*)*(?![\s\S]))`,
+          "mu",
+        ),
+        type: "stale_auth",
+        action: "pause",
+        historyUntilLiveComposer: true,
+        message: "Codex cannot refresh the running process's sign-in — restart this agent",
+        notice: () => t("inst.codex_stale_auth"),
+      },
+      {
         // Same false-positive boundary as rate limits: `authentication` is a
         // normal English/code word. Require a structured 401/code or a
         // decorated CLI error line before pausing every instance on the shared

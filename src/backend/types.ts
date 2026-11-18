@@ -157,7 +157,7 @@ export interface CliBackendConfig {
 export type ErrorActionType = "notify" | "failover" | "restart" | "pause" | "backoff_restart" | "nudge_continue";
 
 /** Categorizes detected errors for logging and response. */
-export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error" | "outdated_cli";
+export type ErrorType = "rate_limit" | "auth_error" | "crash" | "network" | "quota" | "timeout" | "model_error" | "config_error" | "outdated_cli" | "stale_auth";
 
 export interface ErrorPattern {
   /** Optional low-usage reminder; delivered once per account by the usage evaluator instead. */

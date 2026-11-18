@@ -80,7 +80,7 @@ export function judgeAssignee(f: AssigneeFacts, card: CardTimes, s: LivenessSett
   const reason = f.paused?.reason ?? null;
   if (reason === "auth") return { kind: "auth", since: f.paused?.at ?? now, detail: "" };
   if (f.usageHold) return { kind: "usage", since: f.usageHold.since, detail: f.usageHold.model };
-  if (reason === "error") return { kind: "error", since: f.paused?.at ?? now, detail: "" };
+  if (reason === "error" || reason === "stale_auth") return { kind: "error", since: f.paused?.at ?? now, detail: "" };
   if (f.process === "stopped") return null;                          // stopped by a person (or a fleet stop): they know
   if (f.execution?.state === "stuck") return { kind: "hung", since: f.execution.since, detail: "" };
   if (f.prompt && now - f.prompt.since >= s.promptMs) return { kind: "prompt", since: f.prompt.since, detail: "" };
@@ -105,7 +105,7 @@ export function stillStopped(ep: { kind: StopKind; since: number }, f: AssigneeF
     case "crashed": return f.process === "crashed";
     case "auth": return f.paused?.reason === "auth";
     case "usage": return !!f.usageHold;
-    case "error": return f.paused?.reason === "error";
+    case "error": return f.paused?.reason === "error" || f.paused?.reason === "stale_auth";
     case "hung": return f.execution?.state === "stuck";
     case "prompt": return !!f.prompt;
     case "quiet": {

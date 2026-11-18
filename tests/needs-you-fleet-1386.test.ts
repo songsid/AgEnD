@@ -221,3 +221,14 @@ describe("the outbox's own events recompute at once", () => {
     fm.deliveryOutbox.close();
   });
 });
+
+it("collects a running General's stale-login hold and withdraws it after relaunch", async () => {
+  const { fm } = fleet();
+  let hold: { since: number } | null = { since: 1_000 };
+  fm.lifecycle.daemons.set("gen", { getProcessStatus: () => "running", isPaused: false, getInteractionSnapshot: () => null,
+    getInstanceState: () => "working", staleAuthIssue: () => hold });
+  fm.startNeedsYou(); await flush(); fm.needsYou.recompute();
+  expect(fm.needsYouItems().filter((i: any) => i.reason === "stale_auth")).toMatchObject([{ instance: "gen", since: 1_000 }]);
+  hold = null; fm.needsYou.recompute();
+  expect(fm.needsYouItems().some((i: any) => i.reason === "stale_auth")).toBe(false);
+});
