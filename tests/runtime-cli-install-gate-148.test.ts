@@ -53,7 +53,7 @@ function harness(o: { enrolled?: boolean; strict?: boolean } = {}) {
   stores.push(store); fleets.push({ fm });
   // The paired computer, as the Runtime handler sees it: what `cli.install` was asked and with whom as the actor; its answer is that computer's owner's own switch.
   const calls: Array<{ operation: string; payload: any }> = [];
-  let answer: () => Promise<unknown> = async () => ({ version: "0.169.0" });
+  let answer: () => Promise<unknown> = async () => ({ version: "0.170.0" });
   // AGEND-153: what the computer already has (its last inventory) — the route sends `cli.update` for the named exception's CLI when it is there.
   let inventory: unknown;
   const hub = {

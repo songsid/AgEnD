@@ -1,0 +1,12 @@
+
+  >_ OpenAI Codex (v0.169.0)
+     /audit/.worktrees/audit-main/.artifacts/codex-0170/matrix/run-01690/layout-model-first
+  permissions: YOLO mode
+
+  Tip: Maximize usage with GPT-6.1 Sol. Try it on complex work for near-Astra performance at a lower cost.
+
+
+› Ask Codex to do anything
+
+  00000000-0000-7000-8000-000000000169 · Context 100% left · mock-model default · /audit/.worktrees/audit-main/.a…
+  ← for agents · ? for shortcuts                                                                                             ⚠ 1 warning · f2 to view
