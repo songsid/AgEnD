@@ -11,6 +11,9 @@ export type ContactTicketState = "pending" | "approved" | "delivered" | "decline
 export interface ContactGuardStatus {
   state: "ready" | "restart-required" | "not-covered" | "failed";
   backend: string;
+  version?: string;
+  wouldDisable?: string[];
+  impactComplete?: boolean;
   reason?: string;
 }
 export interface ContactRoomTool {
@@ -88,11 +91,14 @@ export interface ContactPermissions {
   classicRoom: boolean;
   mode: "legacy" | "restricted";
   approvers: ContactPerson[];
+  /** Slice 1: only the target adapter's Fleet admins (or verified host operator). */
+  eligibleApprovers: ContactPerson[];
   /** True when approvers are inherited from the target's owning adapter. */
   inheritedApprovers: boolean;
   nativeGuard: ContactGuardStatus;
   roomTools: ContactRoomTools;
   canManage: boolean;
+  canSetMode: boolean;
   suggestRestricted: boolean;
   grants: ContactGrant[];
   history: ContactHistoryRow[];
@@ -119,6 +125,9 @@ export interface ContactHeldResult {
   authorization_state: ContactTicketState;
   message: string;
 }
+export interface ContactBadge { id: string; state: ContactTicketState }
+/** SSE `contact-auth`: clients refresh their scoped list and affected detail. */
+export interface ContactAuthEvent { instance: string; ticketId?: string; revision: number }
 
 /** AgEnD tool ceiling, separate from room-configured public-read and MCP tools. */
 export const CLASSIC_RESTRICTED_TOOLS: readonly string[] = Object.freeze([

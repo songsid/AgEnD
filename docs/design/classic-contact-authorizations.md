@@ -26,6 +26,10 @@ Writes require the observed revision; stale writes return 409. Refused identitie
 return 403, unavailable stores 503. Each list is bounded to 50 rows.
 The person filter is an exact server-issued identity key, never a fuzzy name search.
 The UI may display server labels but must preserve the whole returned identity.
+In slice 1 an approver must be a Fleet admin for the target's adapter. The
+verified host operator may also approve. The picker uses `eligibleApprovers`,
+never arbitrary names or message-supplied identities. Non-admin approvers are
+deferred; they do not receive global administrator rights through this feature.
 
 An approved application binds its exact arguments, origin, source and target
 generation, expiry and result recipient. Approval creates at most one durable
