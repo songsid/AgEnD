@@ -78,6 +78,22 @@ export function mentionsIn(text, detail) {
   return [...new Set(out)];
 }
 
+/** M-3308: past this many characters a paste goes as a text file (the Fleet chat's LONG_PASTE_CHARS, chat-render.js). */
+export const LONG_PASTE_CHARS = 4000;
+const isLongPaste = (text) => (globalThis.AgendChatRender?.isLongPaste ? globalThis.AgendChatRender.isLongPaste(text) : typeof text === "string" && text.length > LONG_PASTE_CHARS);
+const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+const IMAGE_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+/**
+ * M-3308: a pasted file as the room uploads it. A clipboard picture (a screen capture) may come with no name — the Hub refuses
+ * an upload without one — so it is named `screenshot-<time>.<png|jpg|…>` by its type; a named one (Chrome's "image.png", a copied
+ * file) keeps its own.
+ */
+export function pastedFile(file) {
+  if (!file || (file.name && file.name.trim())) return file;
+  const ext = IMAGE_EXT[file.type] || (String(file.type).startsWith("text/") ? "txt" : "bin");
+  return new File([file], `${String(file.type).startsWith("image/") ? "screenshot" : "pasted"}-${stamp()}.${ext}`, { type: file.type, lastModified: file.lastModified });
+}
+
 /** Above the box when @所有 Agent is in it: how many answer now, how many after they come back (spec §4). */
 export function allBar(detail) {
   const agents = agentsOf(detail), online = agents.filter((a) => ONLINE.has(a.presence)).length;
@@ -132,6 +148,16 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); void send(); }
   };
   const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
+  // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste (panel-chat.js onPaste) —
+  // files in a paste are attached, through the room's own Attach and its file rules (hub-attachments.js); a clipboard picture
+  // with no name gets one; a very long text paste goes as a text file. A room that takes no files keeps the text (as before).
+  const onPaste = (e) => {
+    if (!attach || closed) return;
+    const list = e.clipboardData && e.clipboardData.files ? [...e.clipboardData.files] : [];
+    const text = e.clipboardData ? e.clipboardData.getData("text") : "";
+    if (list.length) { void attach.onFiles(list.map(pastedFile)); if (!text) e.preventDefault(); return; }
+    if (isLongPaste(text)) { e.preventDefault(); void attach.onFiles([new File([text], `pasted-${stamp()}.txt`, { type: "text/plain" })]); }
+  };
   const paletteId = `hubMention-${room.id || "room"}`, optId = (o) => `${paletteId}-${o.key}`;
   // M-3117: as the Fleet chat's dock has it — the box, then a failed send, then the line under it (its .composer-row).
   if (closed) return html`<p class="hub-banner warn" role="status">${hroom(detail?.room?.archived ? "errArchived" : "errNotMember")}</p>`;
@@ -145,7 +171,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     ${group && value.includes(hroom("mentionAll")) ? html`<p class="note hub-room-allbar" role="status">${allBar(detail)}</p>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status"><span class="reply-text">${reply.sender ? `${reply.sender} · ` : ""}${String(reply.text || "").slice(0, 80)}</span>
       <button type="button" class="icon-btn reply-cancel" title=${hroom("cancel")} aria-label=${hroom("cancel")} onClick=${() => { onReply(null); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button></div>` : null}
-    <${ComposerInput} inputRef=${input} value=${value} attach=${attach} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
+    <${ComposerInput} inputRef=${input} value=${value} attach=${attach} onPaste=${onPaste} placeholder=${room.assistant ? hroom("composerAssistant") : group ? (short ? hroom("composerShort") : hroom("composer", room.name || "")) : hroom("composerDirect", room.name || "")} onValue=${track} onKeyDown=${onKeyDown}
       controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${chosen ? optId(chosen) : undefined}
       stop=${{ hidden: true, disabled: true, title: t("chat.stopReply"), label: t("chat.stopReply"), onClick: () => {} }}
       send=${{ hidden: false, disabled: (!value.trim() && !canSendEmpty) || busy, label: t("chat.send"), onClick: () => { void send(); } }} />
