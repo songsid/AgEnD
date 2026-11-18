@@ -70,12 +70,17 @@ async function openCanvas(p: FreshPage) {
   const direct = p.page.locator('a[href^="/ui/fleet"]');
   let clicked = false;
   for (let i = 0; i < await direct.count() && !clicked; i++) if (await direct.nth(i).isVisible()) { await direct.nth(i).click(); clicked = true; }
-  if (!clicked) {   // a phone: Fleet is a tab, or in the drawer
-    await p.page.locator('nav.tabs a[href^="/ui/fleet"]').first().click();
+  if (!clicked) {   // M-3166: a phone has no bottom tab bar — Fleet is a row of the ☰ drawer
+    const menu = p.page.locator('button[aria-controls="sidebar"]');
+    for (let i = 0; i < await menu.count() && !clicked; i++) if (await menu.nth(i).isVisible()) { await menu.nth(i).click(); clicked = true; }
+    await p.page.waitForSelector(".shell.sb-open", { timeout: 5000 });
+    await p.page.locator('#sidebar a[href^="/ui/fleet"]').first().click();
   }
   await p.page.waitForURL(/\/ui\/fleet/, { timeout: 10000 });
   if (!/\/ui\/fleet\/org$/.test(new URL(p.page.url()).pathname)) await p.page.locator('.p-fleet a.seg-item[href="/ui/fleet/org"]').first().click();
   await p.page.waitForURL("**/ui/fleet/org", { timeout: 10000 });
+  // M-3166: a phone's org page opens on its list; the canvas is the first choice of its view switch (Canvas | List | Office).
+  if (!(await p.page.locator(".oc-svg").count())) await p.page.locator('.oc-bar .seg-inline button').first().click();
   await p.page.waitForSelector(".oc-svg .oc-node", { timeout: 15000 });
   await p.page.waitForTimeout(500);
 }

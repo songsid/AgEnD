@@ -219,13 +219,26 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
       const ctx = await freshContext(fx.browser, c, popts.reducedMotion === true);
       // Stubbed transport: https://HOST/* → the gateway's local port, with that Host (the gateway pins it), as the tunnel
       // would carry it. The public link has no live stream (the page polls); one asked for anyway is refused.
+      // M-3329: at most TUNNEL_STREAMS requests at a time, as a tunnel reuses a few connections to the gateway. Each
+      // route.fetch is a connection of its own, and since #4160 a page asks for its ~150 modules at once: past the
+      // gateway's 32 connections it resets them (ECONNRESET), and the page hung on a request nobody answered.
+      const TUNNEL_STREAMS = 8;
+      let inFlight = 0;
+      const queue: Array<() => void> = [];
+      const slot = () => new Promise<void>(go => { if (inFlight < TUNNEL_STREAMS) { inFlight++; go(); } else queue.push(() => { inFlight++; go(); }); });
+      const free = () => { inFlight--; queue.shift()?.(); };
       await ctx.route(`https://${HOST}/**`, async (route: any) => {
         const req = route.request(), u = new URL(req.url());
+        if (/text\/event-stream/.test(req.headers().accept ?? "")) { await route.abort().catch(() => {}); return; }
+        await slot();
         try {
-          if (/text\/event-stream/.test(req.headers().accept ?? "")) { await route.abort(); return; }
           const response = await route.fetch({ url: `http://127.0.0.1:${gatewayPort}${u.pathname}${u.search}`, headers: { ...req.headers(), host: HOST } });
           await route.fulfill({ response });
-        } catch { /* the page or its context closed while a poll was in flight: nothing is waiting for it */ }
+        } catch {
+          // The page or its context closed while a poll was in flight — or the transport failed: answer it as failed,
+          // never leave the page waiting on it (M-3329).
+          await route.abort("failed").catch(() => {});
+        } finally { free(); }
       });
       const page = await ctx.newPage();
       const seen = collectErrors(page);
