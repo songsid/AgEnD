@@ -6,7 +6,7 @@ component rendered that name alone. Identical names were indistinguishable.
 
 The existing endpoint now adds one optional presentation field, `detail`:
 department when present, otherwise account; duplicate names in the same
-department include the account after a middle dot. With neither value, no second
+department put the account first, before a middle dot. With neither value, no second
 line is shown. The duplicate comparison covers the returned page. Raw department
 and account fields are not forwarded separately. Local cached candidates have
 only the account fallback; no department is invented or persisted.
@@ -32,8 +32,8 @@ test TypeScript both exit 0. These are offline and owned HTTP/SQLite fixture
 checks, without an operator account or live directory.
 
 The merged-owner compatibility run adds 17 passing tests across two files
-(five overlap the earlier stage), including the incoming owner-request UI.
-There are 61 distinct tests across stages; merged source and test TypeScript
+(four overlap the earlier stage), including the incoming owner-request UI.
+There are 62 distinct tests across those stages; merged source and test TypeScript
 both exit 0. The sync preserves the search-help footer and single-owner chip.
 
 The actual owned Hub HTTPS/SQLite/audit browser rig passes 39 before and 59
@@ -71,3 +71,25 @@ Risk: directory display labels may be stale or absent. Selection continues to
 use the immutable opaque ID, and absence never creates a placeholder identity.
 Rollback removes the optional presentation field and two-line person renderer;
 no database migration or persistent preference is involved.
+
+## Account-first refinement
+
+The product review accepted the layout and changed duplicate-name ordering to
+`account · department`: the account must remain visible when a long department
+is ellipsized. The current preferred phone proof is
+[zh-TW long-department duplicates](r1/phone-zh-TW-long-duplicates.png). Both
+accounts fit before the ellipsis, each secondary line stays on one line, and
+the background member results are closed. One new capture passes 18 checks;
+unchanged views were not rerun. The earlier image sets retain their original
+layout-stage ordering and provenance.
+
+The picker now closes results when focus moves to a known element outside the
+field and fences any delayed search reply. In-field and null-target pointer
+transitions preserve selection. Two new controls are red before the refinement;
+36 tests across the picker, owner request, room creation and admin suites pass
+afterward. Source and test TypeScript exit 0. The admin CI assertion now expects
+the existing account fallback, preserving all permission/removal assertions.
+
+Count correction: the earlier 49 and 17 stages overlap by four tests, not five;
+their union is 62. With the two new controls and six admin tests, the staged
+union is 70 distinct tests. This corrects the initial aggregate report.

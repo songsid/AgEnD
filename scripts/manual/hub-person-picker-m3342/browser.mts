@@ -15,6 +15,8 @@ if (process.platform !== "linux" || !process.env.CHROME?.startsWith("/home/") ||
 if (!process.env.CJK_FONT) throw Error("Supply a Traditional Chinese font for readable zh-TW captures");
 const out = resolve(process.env.OUT || ".artifacts/person-picker-m3342/browser"), stage = process.env.STAGE || "after";
 if (!["before", "after"].includes(stage)) throw Error("Unknown stage");
+const longDuplicates = process.env.CAPTURE_CASE === "long-duplicates";
+if (longDuplicates && stage !== "after") throw Error("Focused duplicate capture is after only");
 mkdirSync(out, { recursive: true });
 const baseline = process.env.BASELINE_REF;
 if (stage === "before" && !baseline) throw Error("Before captures need the reviewed baseline renderer ref");
@@ -39,7 +41,11 @@ try {
   await new Promise<void>((yes, no) => { server.once("error", no); server.listen(0, "127.0.0.1", yes); });
   const origin = `https://127.0.0.1:${(server.address() as { port: number }).port}`;
   r = await s3bRig({ webOrigin: origin, realAudit: true });
-  const samples = [
+  const longDepartment = "A very long synthetic department for project coordination across several regions";
+  const samples: Array<{login: string; name: string; department?: string; empty?: boolean}> = longDuplicates ? [
+    { login: "sample-five", name: "Taylor Sample", department: longDepartment },
+    { login: "sample-six", name: "Taylor Sample", department: longDepartment },
+  ] : [
     { login: "sample-one", name: "Alex Sample", department: "Project support" },
     { login: "sample-two", name: "Alex Sample", department: "Project support" },
     { login: "sample-three", name: "Casey Sample" },
@@ -58,7 +64,7 @@ try {
   await r.restartHttp();
   const manager = await r.signIn("admin");
   browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox"] });
-  for (const device of ["desk", "phone"]) for (const lang of ["en", "zh-TW"]) {
+  for (const device of (longDuplicates ? ["phone"] : ["desk", "phone"])) for (const lang of (longDuplicates ? ["zh-TW"] : ["en", "zh-TW"])) {
     const phone = device === "phone", tag = device + "-" + lang;
     const made = await r.call(manager, "POST", "/hub/v1/rooms", { name: lang === "en" ? "Example project" : "範例專案" });
     check(tag + ": real room created", made.status === 200);
@@ -82,14 +88,14 @@ try {
     };
     const verify = async (box: any) => {
       await box.locator(".hub-room-result").first().waitFor();
-      check(tag + ": five person matches", await box.locator(".hub-room-result").count() === 5);
+      check(tag + ": person matches", await box.locator(".hub-room-result").count() === samples.length);
       if (stage === "before") { check(tag + ": old renderer has no second line", await box.locator(".hub-room-person-detail").count() === 0); return; }
       const detail = await box.locator(".hub-room-person-detail").allTextContents();
-      check(tag + ": server detail rules", JSON.stringify(detail) === JSON.stringify(["Project support · sample-one", "Project support · sample-two", "sample-three", samples[4].department]));
+      check(tag + ": server detail rules", JSON.stringify(detail) === JSON.stringify(longDuplicates ? ["sample-five · " + longDepartment, "sample-six · " + longDepartment] : ["sample-one · Project support", "sample-two · Project support", "sample-three", samples[4].department]));
       check(tag + ": each visible line fits", await box.locator(".hub-room-person-label").evaluateAll((nodes: Element[]) => nodes.every(n => Array.from(n.children).every(child => {
         const style = getComputedStyle(child); return style.whiteSpace === "nowrap" && style.textOverflow === "ellipsis" && child.getBoundingClientRect().width <= n.getBoundingClientRect().width + 1;
       }))));
-      check(tag + ": titles keep full labels", await box.locator(".hub-room-person-detail").last().getAttribute("title") === samples[4].department);
+      check(tag + ": titles keep full labels", await box.locator(".hub-room-person-detail").last().getAttribute("title") === (longDuplicates ? "sample-six · " + longDepartment : samples[4].department));
     };
     try {
       await page.goto(origin + "/ui/hub?room=" + made.json.room.id);
@@ -99,22 +105,29 @@ try {
       await page.locator(".hub-room-settings-link").click();
       await page.locator("#hubRoomAddPeople").fill("Sample");
       const members = page.locator("#hubRoomAddPeople").locator(".."); await verify(members);
-      await members.scrollIntoViewIfNeeded(); await shot("add-members");
+      await members.scrollIntoViewIfNeeded(); if (!longDuplicates) await shot("add-members");
       await page.locator("#hubRoomAddAgents").fill("Missing");
       await page.locator(".hub-owner-request-entry button").click();
       await page.locator("#hubRequestOwner").fill("Sample");
-      const owner = page.locator(".hub-owner-request"); await verify(owner); await shot("ask-owner");
+      const owner = page.locator(".hub-owner-request"); await verify(owner);
+      if (stage === "after") check(tag + ": background picker collapsed", await members.locator(".hub-room-results").count() === 0);
+      await shot(longDuplicates ? "long-duplicates" : "ask-owner");
       if (phone && stage === "after") {
-        await owner.locator(".hub-room-result").last().scrollIntoViewIfNeeded(); await shot("long-department");
+        if (!longDuplicates) { await owner.locator(".hub-room-result").last().scrollIntoViewIfNeeded(); await shot("long-department"); }
         check(tag + ": long department ellipsized", await owner.locator(".hub-room-person-detail").last().evaluate((node: HTMLElement) => node.scrollWidth > node.clientWidth));
+        if (longDuplicates) check(tag + ": both distinct accounts fit before ellipsis", await owner.locator(".hub-room-person-detail").evaluateAll((nodes: HTMLElement[]) => nodes.every(node => {
+          const account = (node.textContent || "").split(" · ")[0], range = document.createRange();
+          range.setStart(node.firstChild!, 0); range.setEnd(node.firstChild!, account.length);
+          return range.getBoundingClientRect().right <= node.getBoundingClientRect().right + 1;
+        })));
       }
       await owner.locator(".hub-room-result").nth(1).click();
-      check(tag + ": selected chip name-only", (await owner.locator(".hub-room-tags").textContent()).replace("×", "").replace(/\s+/g, " ").trim() === "Alex Sample");
+      check(tag + ": selected chip name-only", (await owner.locator(".hub-room-tags").textContent()).replace("×", "").replace(/\s+/g, " ").trim() === (longDuplicates ? "Taylor Sample" : "Alex Sample"));
       check(tag + ": no load error", await page.locator('[role="alert"]').count() === 0);
     } finally { await context.close(); }
   }
   check("no browser errors", errors.length === 0); check("no external requests", foreign.length === 0); check("no Fleet delivery", r.sent.length === 0);
-  writeFileSync(join(out, "receipt.json"), JSON.stringify({ stage, source: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+  writeFileSync(join(out, "receipt.json"), JSON.stringify({ stage, captureCase: longDuplicates ? "long-duplicates" : "full", source: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     diffSha256: createHash("sha256").update(execFileSync("git", ["diff", "HEAD"])).digest("hex"), beforeRendererRef: baseline ?? null, checks,
     servedAssets: [...assets].map(([path, sha256]) => ({ path, sha256 })),
     scope: "Actual owned Hub HTTPS/SQLite/audit and shipped UI; synthetic directory; headless Linux. Before uses baseline renderer/CSS with the same candidate backend. No live Hub/Fleet, model or account, desktop window or host trust-store change." }, null, 2) + "\n");

@@ -5,8 +5,8 @@ import { RoomDirectoryCandidates, roomPersonLabels } from "../src/hub/rooms/dire
 
 const person = { realm: "sample", objectId: "11111111-2222-4333-8444-555555555555" };
 const people = [
-  { kind: "person", id: "first", name: "Alex Sample", detail: "Project support · alex.one" },
-  { kind: "person", id: "second", name: "Alex Sample", detail: "Project support · alex.two" },
+  { kind: "person", id: "first", name: "Alex Sample", detail: "alex.one · Project support" },
+  { kind: "person", id: "second", name: "Alex Sample", detail: "alex.two · Project support" },
   { kind: "person", id: "account", name: "Casey Sample", detail: "casey.sample" },
   { kind: "person", id: "empty", name: "Morgan Sample" },
   { kind: "person", id: "long", name: "Taylor Sample", detail: "A very long synthetic department for project coordination across several regions" },
@@ -26,7 +26,7 @@ it.each(["en", "zh-TW"])("distinguishes people in result rows and keeps picked c
   await new Promise(resolve => setTimeout(resolve, 250)); await settle(10);
   const rows = [...pg.root.querySelectorAll(".hub-room-result")];
   expect(rows.map((row: any) => row.querySelector(".hub-room-person-detail")?.textContent ?? "")).toEqual([
-    "Project support · alex.one", "Project support · alex.two", "casey.sample", "", people[4]!.detail, "",
+    "alex.one · Project support", "alex.two · Project support", "casey.sample", "", people[4]!.detail, "",
   ]);
   expect(rows[0].querySelector(".hub-room-person-name").getAttribute("title")).toBe("Alex Sample");
   expect(rows[4].querySelector(".hub-room-person-detail").getAttribute("title")).toBe(people[4]!.detail);
@@ -46,8 +46,8 @@ it("sends accounts only when needed and omits an absent second line", () => {
     { id: "four", name: "Casey Sample", department: " ", account: "casey.sample" },
     { id: "five", name: "Morgan Sample" },
   ])).toEqual([
-    { kind: "person", id: "one", name: "Alex Sample", detail: "Support · alex.one" },
-    { kind: "person", id: "two", name: "Alex Sample", detail: "Support · alex.two" },
+    { kind: "person", id: "one", name: "Alex Sample", detail: "alex.one · Support" },
+    { kind: "person", id: "two", name: "Alex Sample", detail: "alex.two · Support" },
     { kind: "person", id: "three", name: "Alex Sample", detail: "Planning" },
     { kind: "person", id: "four", name: "Casey Sample", detail: "casey.sample" },
     { kind: "person", id: "five", name: "Morgan Sample" },
@@ -65,4 +65,34 @@ it("requests bounded room-only presentation fields without weakening directory/s
   await expect(candidates.search(ctx, "sample/aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "Al", "person", allowed)).rejects.toMatchObject({ code: "denied" });
   search.mockResolvedValueOnce({ ok: true, truncated: false, people: [{ person, login: "alex.sample", displayName: "Alex Sample", department: "x".repeat(257) }] });
   await expect(candidates.search(ctx, me, "Al", "person", allowed)).rejects.toBeDefined();
+});
+
+it("keeps duplicate accounts first when the shared department is long", () => {
+  const department = "A long synthetic department ".repeat(6);
+  const result = roomPersonLabels([
+    { id: "one", name: "Taylor Sample", department, account: "sample-one" },
+    { id: "two", name: "Taylor Sample", department, account: "sample-two" },
+  ]);
+  expect(result.map(row => row.detail)).toEqual([`sample-one · ${department.trim()}`, `sample-two · ${department.trim()}`]);
+});
+
+it("closes results after focus leaves the picker and fences a delayed search", async () => {
+  const pg = page(); pages.push(pg);
+  const change = vi.fn(), client = { roomCandidates: vi.fn(async () => ({ ok: true, candidates: [people[0]] })) };
+  await pg.mount(h(picker.RoomPicker, { client, id: "people", kinds: ["person"], picked: [], onChange: change, label: "People" }));
+  const input = pg.root.querySelector("#people"), field = pg.root.querySelector(".hub-room-picker");
+  const search = async () => { input.value = "Sa"; fire(input, "input"); await new Promise(resolve => setTimeout(resolve, 250)); await settle(10); };
+  await search(); const result = pg.root.querySelector(".hub-room-result");
+  fire(field, "focusout", { relatedTarget: result }); await settle();
+  expect(pg.root.querySelector(".hub-room-result")).not.toBeNull();
+  fire(field, "focusout", { relatedTarget: null }); await settle();
+  expect(pg.root.querySelector(".hub-room-result")).not.toBeNull();
+  fire(result, "click"); await settle(); expect(change).toHaveBeenCalledWith([people[0]]);
+  await search(); fire(field, "focusout", { relatedTarget: pg.document.body }); await settle();
+  expect(pg.root.querySelector(".hub-room-results")).toBeNull();
+  let deliver!: (value: any) => void;
+  client.roomCandidates.mockImplementationOnce(() => new Promise(resolve => { deliver = resolve; }));
+  await search(); fire(field, "focusout", { relatedTarget: pg.document.body });
+  deliver({ ok: true, candidates: [people[0]] }); await settle(10);
+  expect(pg.root.querySelector(".hub-room-results")).toBeNull();
 });

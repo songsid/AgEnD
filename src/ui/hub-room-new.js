@@ -39,6 +39,11 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
   latest.current = picked;
   const agents = kinds.includes("agent");
   useEffect(() => { live.current = true; return () => { live.current = false; clearTimeout(timer.current); }; }, []);
+  const leave = (event) => {
+    // Null is ambiguous on touch/Safari; retain in-field pointer selection.
+    if (!event.relatedTarget || event.currentTarget.contains(event.relatedTarget)) return;
+    clearTimeout(timer.current); ++asked.current; setResults(null);
+  };
   const search = (text) => {
     setQ(text); clearTimeout(timer.current);
     const mine = ++asked.current;
@@ -63,7 +68,7 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
     if (!r?.ok) { setGroupNote(hn("groupUnavailable", item.name)); return; }
     onChange([...latest.current, { ...item, ...(typeof r.name === "string" && r.name ? { name: r.name } : {}), ...(Number.isSafeInteger(r.people) ? { people: r.people } : {}) }]);
   };
-  return html`<div class="field hub-room-picker">
+  return html`<div class="field hub-room-picker" onFocusOut=${leave}>
     <label for=${id}><span>${label}</span></label>
     <ul class="hub-room-tags">
       ${fixed}

@@ -16,7 +16,7 @@ export function roomPersonLabels(rows: readonly { id: string; name: string; acco
   return rows.map(row => {
     const department = row.department?.trim(), account = row.account?.trim();
     const duplicate = department && rows.some(other => other !== row && other.name.trim() === row.name.trim() && other.department?.trim() === department);
-    const detail = department ? duplicate && account ? `${department} · ${account}` : department : account;
+    const detail = department ? duplicate && account ? `${account} · ${department}` : department : account;
     return { kind: "person" as const, id: row.id, name: row.name, ...(detail ? { detail } : {}) };
   });
 }

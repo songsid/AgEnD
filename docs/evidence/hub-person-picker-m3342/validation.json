@@ -11,9 +11,9 @@
   "mergedOwnerCompatibility": {
     "passed": 17,
     "files": 2,
-    "overlapsInitial": 5
+    "overlapsInitial": 4
   },
-  "distinctTestsAcrossStages": 61,
+  "distinctTestsAcrossStages": 62,
   "mergedSourceTypeScriptExit": 0,
   "mergedTestTypeScriptExit": 0,
   "browser": {
@@ -40,5 +40,18 @@
       "Chips and team/group behavior covered by tests/browser assertions, not these screenshots.",
       "Long name/account truncation not pictured."
     ]
+  },
+  "r1": {
+    "baselineFailed": 2,
+    "unselected": 4,
+    "focusedPassed": 36,
+    "files": 4,
+    "sourceTypeScriptExit": 0,
+    "testTypeScriptExit": 0,
+    "browserPassed": 18,
+    "newOriginals": 1,
+    "distinctTestsAcrossAllStages": 70,
+    "visualInspection": "one new original opened, clear",
+    "previousCountCorrection": "initial overlap is four, not five"
   }
 }
