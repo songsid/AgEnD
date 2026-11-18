@@ -39,7 +39,7 @@ describe("M-3302: a delivered notice is logged", () => {
     const info = vi.spyOn(fm.logger, "info");
     expect(fm.notifyFleetError("❌ Gave up automatic startup retries for 1 instance(s): a")).toBe(true);
     await flush();
-    expect(info.mock.calls.some(c => c[1] === "Notice delivered" && c[0].instanceName === "gen")).toBe(true);
+    expect(info.mock.calls.some(c => c[1] === "Notice delivered" && (c[0] as { instanceName?: string }).instanceName === "gen")).toBe(true);
   });
 
   it("the fallback channel (no General): 'Fleet notice delivered'", async () => {
