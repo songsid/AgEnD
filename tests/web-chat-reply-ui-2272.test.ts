@@ -169,6 +169,14 @@ describe("the gestures", () => {
     g.body.dispatchEvent(ev("contextmenu")); g.doc.dispatchEvent(ev("keydown", { key: "Escape" }));
     expect(g.menu()).toBeNull();
   });
+  it("M-3311 (#4159 review): Copy link only for a message with an address — linkOf → null (a Hub message still sending): no item", async () => {
+    const copyText = vi.fn(async () => true);
+    const { doc, list, thread, t } = await threadWith([row(), row({ id: 2, role: "user", sender: "Ops", text: "mine" })]);
+    const { installMessageActions } = await import("/ui/js/chat-msg-actions.js") as any;
+    offs.push(installMessageActions(list, { t, messageOf: thread.messageOf, reply: vi.fn(), copyText, notice: vi.fn(), linkOf: (x: any) => (x.id === 1 ? `L:${x.id}` : null) }));
+    const items = (key: string) => { list.querySelector(`[data-key="${key}"] .body`).dispatchEvent(ev("contextmenu")); const m = doc.body.querySelector(".msg-menu"); const r = m.querySelectorAll("button").map((b: any) => b.dataset.item); doc.dispatchEvent(ev("keydown", { key: "Escape" })); return r; };
+    expect([items("ab12-1"), items("ab12-2")]).toEqual([["reply", "copyText", "copyLink"], ["reply", "copyText"]]);
+  });
   it("R on a focused message replies; not with a modifier, not from inside it", async () => {
     const g = await gestures();
     g.msg.dispatchEvent(ev("keydown", { key: "r" }));

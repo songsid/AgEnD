@@ -28,7 +28,7 @@ beforeAll(async () => {
 const realES = g.EventSource;
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); g.EventSource = realES; });
 
-async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean) {
+async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean, opts: { matchNarrow?: boolean } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch;
   if(personalAnswerOnly!==undefined){
     fx.rooms.find(r=>r.id===roomId)!.messages=[];
@@ -41,7 +41,7 @@ async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolea
     };
   }
   g.fetch = (url: string, init?: any) => fx.fetch(url, init); g.EventSource = fx.EventSource;
-  const pg = page({ url: `http://127.0.0.1:19280/ui/hub?room=${roomId}`, storage: { agend_tour_done: "1" } });
+  const pg = page({ url: `http://127.0.0.1:19280/ui/hub?room=${roomId}`, storage: { agend_tour_done: "1" }, ...(opts.matchNarrow ? { matchNarrow: true } : {}) });
   pg.document.body.setAttribute("data-hub", "hub"); pg.document.body.setAttribute("data-hub-name", "Team Hub"); mounted.push(pg);
   i18n.setLang(lang, { store: false });
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
@@ -598,6 +598,29 @@ describe("a room on the page", () => {
     try {
       const hints = [...pg.root.querySelectorAll(".hub-room-page .composer-row .hint")].map((h: any) => h.textContent);
       expect(hints).toEqual([hint, (await import("/ui/js/hub-room-strings.js") as any).hroom("composerHint")]);
+    } finally { restore(); }
+  });
+  it.each(["en", "zh-TW"])("M-3311 (4): a phone's room header is one row — text size and Notify move into ⋯ (%s); no Full width there", async (lang) => {
+    const { pg, restore } = await roomPage("room-weekly", lang, undefined, { matchNarrow: true });
+    try {
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
+      const items = () => [...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].map((b: any) => (b.textContent || "").trim()).filter(Boolean);
+      const sizeLabel = (k: string) => i18n.t("app.textSize", i18n.t(`app.textSize_${k}`));
+      const header = await import("/assets/header-tools.js") as any, before = header.textSizeStore.get().size;
+      expect(items()).toContain(sizeLabel(before));
+      expect(items().some((x: string) => x.includes(lang === "en" ? "Full width" : "全寬")), "Full width is a desk's").toBe(false);
+      const item = [...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].find((b: any) => (b.textContent || "").trim() === sizeLabel(before)) as any;
+      fire(item, "click"); await settle(4);
+      expect(header.textSizeStore.get().size).not.toBe(before);
+      header.setTextSize(before);
+    } finally { restore(); }
+  });
+  it("M-3311 (4): a desk keeps its header's text size and Notify buttons; its ⋯ has no text size item", async () => {
+    const { pg, restore } = await roomPage("room-weekly");
+    try {
+      expect(pg.root.querySelector(".hub-room-page .hub-head-tools .hd-text")).toBeTruthy();
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
+      expect([...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].some((b: any) => /Text size/.test(b.textContent || ""))).toBe(false);
     } finally { restore(); }
   });
   it("an archived room: the dock says so (a banner, as a closed chat's), nothing to send", async () => {
