@@ -1,0 +1,1198 @@
+[
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "reply",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "public-search",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "Web search results for query: \"public fixture\"\n\nPUBLIC_SEARCH_OK\n\n\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks."
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "selected",
+    "controlOnly": false,
+    "tool": "mcp__selected__lookup",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "selected",
+        "tool": "lookup"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "other-selected-tool",
+    "controlOnly": false,
+    "tool": "mcp__selected__write",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__selected__write hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "agend-admin",
+    "controlOnly": false,
+    "tool": "mcp__agend__create_instance",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__create_instance hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "bash",
+    "controlOnly": false,
+    "tool": "Bash",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Bash. Bash is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "read",
+    "controlOnly": false,
+    "tool": "Read",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Read. Read is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "write",
+    "controlOnly": false,
+    "tool": "Write",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "agent",
+    "controlOnly": false,
+    "tool": "Agent",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Agent. Agent is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "missing-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: failed; blocking because onFailure is \"block\"\nnode:internal/modules/cjs/loader:1386\n  throw err;\n  ^\n\nError: Cannot find module '<rig-file>'\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n    at node:internal/main/run_main_module:36:49 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v22.22.2"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "crashing-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: failed; blocking because onFailure is \"block\"\nNo stderr output"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "timed-out-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: timed out; blocking because onFailure is \"block\""
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "reply",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "public-search",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "Web search results for query: \"public fixture\"\n\nPUBLIC_SEARCH_OK\n\n\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks."
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "selected",
+    "controlOnly": false,
+    "tool": "mcp__selected__lookup",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "selected",
+        "tool": "lookup"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "other-selected-tool",
+    "controlOnly": false,
+    "tool": "mcp__selected__write",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__selected__write hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "agend-admin",
+    "controlOnly": false,
+    "tool": "mcp__agend__create_instance",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__create_instance hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "bash",
+    "controlOnly": false,
+    "tool": "Bash",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Bash. Bash is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "read",
+    "controlOnly": false,
+    "tool": "Read",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Read. Read is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "write",
+    "controlOnly": false,
+    "tool": "Write",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Write. Write is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "agent",
+    "controlOnly": false,
+    "tool": "Agent",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: Agent. Agent is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "missing-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: failed; blocking because onFailure is \"block\"\nnode:internal/modules/cjs/loader:1386\n  throw err;\n  ^\n\nError: Cannot find module '<rig-file>'\n    at Function._resolveFilename (node:internal/modules/cjs/loader:1383:15)\n    at defaultResolveImpl (node:internal/modules/cjs/loader:1025:19)\n    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1030:22)\n    at Function._load (node:internal/modules/cjs/loader:1192:37)\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24)\n    at Function.executeUserEntryPoint [as runMain] (node:internal/modules/run_main:171:5)\n    at node:internal/main/run_main_module:36:49 {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: []\n}\n\nNode.js v22.22.2"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "crashing-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: failed; blocking because onFailure is \"block\"\nNo stderr output"
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "timed-out-hook",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: timed out; blocking because onFailure is \"block\""
+      }
+    ],
+    "stage": "rig-v1"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "public-fetch",
+    "controlOnly": false,
+    "tool": "WebFetch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "PUBLIC_FETCH_OK"
+      }
+    ],
+    "stage": "fetch-v3"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "public-fetch",
+    "controlOnly": false,
+    "tool": "WebFetch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "PUBLIC_FETCH_OK"
+      }
+    ],
+    "stage": "fetch-v3"
+  },
+  {
+    "version": "2.1.294",
+    "reportedVersion": "2.1.294",
+    "case": "missing-hook",
+    "controlOnly": true,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "minimum-control"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "missing-start",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 0,
+    "firstCatalog": [],
+    "results": [],
+    "stage": "missing-start"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "missing-start",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "failed",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 0,
+    "firstCatalog": [],
+    "results": [],
+    "stage": "missing-start"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "stale-policy",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "restart-required",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "stale-policy"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "stale-policy",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "restart-required",
+    "calls": [],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "PreToolUse:mcp__agend__reply hook error: ['/audit-node' '<rig-file>' '<rig-file>']: Restricted room: tool or launch policy refused.\n"
+      }
+    ],
+    "stage": "stale-policy"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "backend-reply",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "backend-reply"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "backend-reply",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "backend-reply"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "inheritance",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [
+      {
+        "server": "selected"
+      },
+      {
+        "server": "agend"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "inheritance-v3"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "inheritance",
+    "controlOnly": false,
+    "tool": "mcp__agend__reply",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "agend",
+        "tool": "reply"
+      }
+    ],
+    "starts": [
+      {
+        "server": "agend"
+      },
+      {
+        "server": "selected"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "inheritance-v3"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "public-off",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [
+      {
+        "server": "agend"
+      },
+      {
+        "server": "selected"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: WebSearch. WebSearch is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "public-off"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "public-off",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "ready",
+    "calls": [],
+    "starts": [
+      {
+        "server": "selected"
+      },
+      {
+        "server": "agend"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "DeferredToolPlaceholder",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": true,
+        "text": "<tool_use_error>Error: No such tool available: WebSearch. WebSearch is disabled for this session, in subagents as well as here.</tool_use_error>"
+      }
+    ],
+    "stage": "public-off"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "owner-selected",
+    "controlOnly": false,
+    "tool": "mcp__selected__lookup",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "selected",
+        "tool": "lookup"
+      }
+    ],
+    "starts": [
+      {
+        "server": "agend"
+      },
+      {
+        "server": "selected"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "owner-selected-v4"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "owner-selected",
+    "controlOnly": false,
+    "tool": "mcp__selected__lookup",
+    "exit": 0,
+    "state": "ready",
+    "calls": [
+      {
+        "server": "selected",
+        "tool": "lookup"
+      }
+    ],
+    "starts": [
+      {
+        "server": "agend"
+      },
+      {
+        "server": "selected"
+      }
+    ],
+    "modelRequests": 2,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply",
+      "mcp__selected__lookup",
+      "mcp__selected__write"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "[{'type': 'text', 'text': 'ROOM_TOOL_OK'}]"
+      }
+    ],
+    "stage": "owner-selected-v4"
+  },
+  {
+    "version": "2.1.295",
+    "reportedVersion": "2.1.295",
+    "case": "owner-missing",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "not-covered",
+    "calls": [],
+    "starts": [
+      {
+        "server": "agend"
+      }
+    ],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "Web search results for query: \"public fixture\"\n\nPUBLIC_SEARCH_OK\n\n\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks."
+      }
+    ],
+    "stage": "owner-missing-v3"
+  },
+  {
+    "version": "2.1.327",
+    "reportedVersion": "2.1.327",
+    "case": "owner-missing",
+    "controlOnly": false,
+    "tool": "WebSearch",
+    "exit": 0,
+    "state": "not-covered",
+    "calls": [],
+    "starts": [
+      {
+        "server": "agend"
+      }
+    ],
+    "modelRequests": 3,
+    "firstCatalog": [
+      "WebFetch",
+      "WebSearch",
+      "mcp__agend__create_instance",
+      "mcp__agend__reply"
+    ],
+    "results": [
+      {
+        "error": false,
+        "text": "Web search results for query: \"public fixture\"\n\nPUBLIC_SEARCH_OK\n\n\nREMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks."
+      }
+    ],
+    "stage": "owner-missing-v3"
+  }
+]

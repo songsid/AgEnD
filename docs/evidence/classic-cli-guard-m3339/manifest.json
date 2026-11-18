@@ -1,0 +1,162 @@
+{
+  "coverage": {
+    "platform": "linux",
+    "architecture": "x64",
+    "backend": "claude-code",
+    "versions": [
+      "2.1.295",
+      "2.1.327"
+    ],
+    "minimum": "2.1.295",
+    "uncovered": [
+      "other versions",
+      "Codex and other backends",
+      "CLI mode",
+      "other platforms and architectures",
+      "missing/unsupported selected MCP definitions"
+    ]
+  },
+  "observations": 41,
+  "liveAccounts": 0,
+  "vendorRequests": 0,
+  "publicDtoCommit": "4244a51e39dd7209972d39bd7c514a4b03d646fc",
+  "source": [
+    {
+      "path": "src/classic-cli-guard.ts",
+      "sha256": "492619a14eddd9216f951ccf4f942967778b98bce09073a3ffd590199314c52c"
+    },
+    {
+      "path": "src/backend/types.ts",
+      "sha256": "45ad9486c195208f83df589e40a479a8c73ccbe0a911925d8f59057eeb6ffcc3"
+    },
+    {
+      "path": "src/backend/claude-code.ts",
+      "sha256": "7f80ae4524459b2aa9419edfcc046fafbb39f994b88a4c3bb2cd35e50be6edec"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "682b822790b50f83a80dd70d5632de36355a035e9b791c1429d23cc30e9fd3fb"
+    },
+    {
+      "path": "src/channel/mcp-server.ts",
+      "sha256": "1fee49df56995e53dc5bfefaa567fda32bfa866b00a94be237a1e35a4a03837a"
+    },
+    {
+      "path": "src/general-knowledge/skills/concepts/SKILL.md",
+      "sha256": "299b9c10212ffcc0f98e5dac7f5eb50f0dc53588b5adef45b51cd4dbcd9c7da5"
+    },
+    {
+      "path": "docs/design/classic-cli-guard.md",
+      "sha256": "a8c45ab78608da095b9e55d4de2048e51e3dce6e850829b6c33b9d715a87d968"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/mcp.mjs",
+      "sha256": "957db608cfafc25e503ad68bdb92583a94b97a250fc5666a5d1cbf2eee4b4f24"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/rig.mts",
+      "sha256": "d4b1e9a1738a102b8c6c7a42dabea50ee518a47ceb572291597abd41fbe7fb77"
+    },
+    {
+      "path": "scripts/manual/classic-cli-guard/run.sh",
+      "sha256": "6eb1c7092f0b403534a1b071dbd9ce4da532a03c03bdafb4ec624a77f2a764be"
+    },
+    {
+      "path": "tests/classic-cli-guard-daemon-m3339.test.ts",
+      "sha256": "58b8474c293dcb7684a887a684631ec8fd26c702a208c6c7e3f4402c5c83dae3"
+    },
+    {
+      "path": "tests/classic-cli-guard-fixtures-m3339.test.ts",
+      "sha256": "d0c82c683a04281f88b5829a192a59b0e7786891612d442923b955d985fd4729"
+    },
+    {
+      "path": "tests/classic-cli-guard-m3339.test.ts",
+      "sha256": "c6099c226864575fe21c8400f0e06fb3db9054ab193b52ef932ddeb917606353"
+    },
+    {
+      "path": "tests/classic-cli-guard-mcp-m3339.test.ts",
+      "sha256": "0b6785d3f1893c51ab256a1821022510a6f6315025a62cf9b825a660d9d427d6"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "tests/fixtures/classic-cli-guard-m3339/observations.json",
+      "sha256": "32ab2ec3799464b02cd2f78bc9898f9e772fd5cf3c2483b90797dc3bae3b6700"
+    },
+    {
+      "path": "docs/evidence/classic-cli-guard-m3339/README.md",
+      "sha256": "d041f67f5d99c5095d05e98bdd0f3039b0088dfedd7d6aeca10f9656702bed6e"
+    },
+    {
+      "path": "docs/evidence/classic-cli-guard-m3339/validation.md",
+      "sha256": "841ce4c16ee5ef56e383b8663bec2fbab9781f072add83ba01d16b7b745491af"
+    }
+  ],
+  "binaries": [
+    {
+      "version": "2.1.294",
+      "sha256": "27122ca7b624f537546fbef35b80c66370d974ff258f3d9b10ac50bb8771f262"
+    },
+    {
+      "version": "2.1.295",
+      "sha256": "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358"
+    },
+    {
+      "version": "2.1.327",
+      "sha256": "343c744baa14bfd38286a7cb90871051f04379956da6c5b803a9e66019a76ac9"
+    }
+  ],
+  "followUps": [
+    {
+      "name": "explicit-WebFetch-target-admission",
+      "baseline": {
+        "path": "src/classic-cli-guard.ts",
+        "sha256": "a3c8544d2afc6c021a70c0391390f96a2958fefb49fa464f3a276a37129cf10a"
+      },
+      "baselineSelected": {
+        "failed": 1,
+        "unselected": 9
+      },
+      "currentFocused": {
+        "passed": 15,
+        "files": 4
+      },
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0,
+      "limits": [
+        "no DNS pinning",
+        "no redirect/connected-address enforcement",
+        "selected MCP access unchanged",
+        "prior transcript/memory preserved"
+      ]
+    },
+    {
+      "name": "A1-native-policy-revision-and-launch-admission",
+      "publicIntegrationCommit": "27b2e66f4407b96903d362d53301b1e1ce94948f",
+      "baseline": {
+        "path": "src/daemon.ts",
+        "sha256": "f658172d817bd623f7d29e0ea07fb18918466a714300604d01165c50a0d42cfe"
+      },
+      "baselineSelected": {
+        "failed": 2,
+        "unselected": 2
+      },
+      "currentFocused": {
+        "passed": 17,
+        "files": 4
+      },
+      "sourceTypeScriptExit": 0,
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0
+    }
+  ],
+  "integration": {
+    "base": "4244a51e39dd7209972d39bd7c514a4b03d646fc",
+    "ownDiffPathsUnchanged": 18,
+    "completeBlobsUnchanged": 17,
+    "adjacentIncomingTextRetained": "src/general-knowledge/skills/concepts/SKILL.md",
+    "sourceTypeScriptExit": 0,
+    "testTypeScriptExit": 0,
+    "newRealCliObservations": 0
+  }
+}

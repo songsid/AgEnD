@@ -1,0 +1,18 @@
+# Validation and scope
+
+- Fail first: the new backend-launch test fails on the old permission-bypass command (expected strict MCP configuration).
+- Affected suite stage: `vitest run tests/classic-cli-guard-m3339.test.ts tests/classic-cli-guard-mcp-m3339.test.ts tests/classic-cli-guard-daemon-m3339.test.ts tests/mcp-tool-list-startup-m3183.test.ts tests/claude-prompt-cache-ttl-2010.test.ts tests/classic-identity-tools.test.ts tests/classic-room-profile-tool-3715.test.ts --maxWorkers=1` — 48/48 at that stage.
+- Final guard controls: the four `tests/classic-cli-guard*-m3339.test.ts` files — 14/14 at the owner/binary stage, 15/15 after the explicit WebFetch target follow-up, then 17/17 after the A1 revision/launch integration correction. The staged affected total is 55 distinct tests, not a claim of one combined run. Child-stdio/source scan separately passes 14/14 (69 distinct staged controls including it).
+- Guard reversal: removing the exact-tool check makes the public-reading/room-tool test red (Bash unexpectedly allowed).
+- Generation reversal: replacing the current-launch read with the frozen launch makes the load/current test red (stale tool unexpectedly allowed).
+- Each reversal selected one test, left six unselected and restored the exact source; the restored guard suite passed 7/7 at that stage. Subsequent resolver and binary tests are additional controls.
+- WebFetch follow-up: one selected test is semantically red before target checks (9 unselected), then the current four guard files pass 15/15. File/other schemes, userinfo, explicit local/private/special-use IPs and internal-name forms refuse; ordinary public DNS/IP URLs still admit. This is offline hook execution only; DNS/redirect/MCP-network and retained-memory limits are documented.
+- A1 port integration: two selected tests fail before the fix (two unselected): a contact-only revision invalidates the current launch, and a restricted-to-legacy change reports legacy before restart. After the fix, 17/17 guard tests pass. The admission check also rejects a captured launch plan after a native policy change. This is a daemon policy-port test with no Fleet lifecycle or new real CLI run.
+- Real CLI observations: 41 retained rows, with the exact versions reported by the real init records where present. Coverage rows are 20 each for Linux x64 Claude 2.1.295/2.1.327, plus one deliberately failing-open 2.1.294 upstream control.
+- No live account, model provider, Fleet lifecycle, real conversation, Windows session or browser was used. Printed CLI token/cost figures come from the local mock.
+
+The fixtures and ordinary-profile controls were staged as the implementation grew. The source manifest distinguishes this evidence from a packaged install or a live Fleet acceptance. A1's contact origin/ticket gate and A2's UI are separate slices. Initial guard validation used the exact public A1 DTO. The standalone change now sits on the actual A1 squash merge 4244a51e: all own additions/deletions across 18 paths match the staged checkpoint; 17 complete blobs match, and the concepts skill also retains A1’s adjacent text. Source and test TypeScript both exit 0 against the merged interface. No guard or real-CLI campaign was repeated for this sync.
+
+Risks: same-user external processes are outside this policy boundary; missing native tool inventory is explicitly incomplete. Owner-level stdio MCP definitions can act with the owner's account and require its warning. Unsupported MCP transports remain unavailable while the protected base tools continue to work.
+
+Rollback: remove the optional Classic launch plan, restart its CLI and report not-covered. Do not preserve a ready claim for an unguarded or stopped launch.

@@ -135,6 +135,17 @@ A private chat or group where ClassicBot runs a single agent, managed by
 - Can: `/start` an agent in the room and chat with it.
 - Can't: use fleet-topic commands or see the fleet; an unregistered chat stays
   silent unless `/start` is allowed.
+Restricted rooms have a separate CLI-guard status. **Ready** means this launch's
+guard was loaded and its current room policy verified; **restart-required**,
+**not-covered** and **failed** do not promise native-tool protection. Initial
+coverage is local Linux x64 Claude Code 2.1.295 and 2.1.327 in MCP mode. Public search
+and fetch remain available by default, while native shell, file and subagent tools are
+refused. Additional MCP tools require the room administrator's exact selection;
+an owner-account tool can spend that account's quota or act with its identity.
+CLI mode, other backends and unproved versions/platforms report not covered.
+The guard and AgEnD tool ceiling are policy controls, not OS process isolation.
+WebFetch refuses explicit non-public URL forms. DNS and redirects are not pinned,
+selected MCP tools keep their own access, and old conversation memory is not erased.
 When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
 
 New rooms start in restricted mode. Non-admin peer relays are held for a target's Fleet administrator to approve; existing rooms stay legacy until an administrator switches them. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately.
