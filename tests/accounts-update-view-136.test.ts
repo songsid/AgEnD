@@ -28,7 +28,7 @@ describe("the version of an installed CLI against the audited release", () => {
     expect(hostRow(view, "kiro-cli")).toMatchObject({ cliUpdate: { state: "current", button: false } });
   });
   it("newer than anything audited: newer (not verified by AgEnD yet), never a button", () => {
-    expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.88", installed: "1.0.99", button: false } });
+    expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.89", installed: "1.0.99", button: false } });
   });
   it("a CLI that updates itself with no exception shows the versions and who updates it, and no button even when behind", () => {
     expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.23-R8977.1", button: false, via: "self", latest: false } });

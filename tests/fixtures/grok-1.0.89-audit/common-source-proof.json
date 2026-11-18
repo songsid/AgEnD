@@ -1,0 +1,23 @@
+{
+  "mainHead": "eeb76515a0b25ca612c00471e5803d0a99168452",
+  "mainMerge": "dee098f778004119d3335650a69a983a3f8320fb",
+  "devBase": "a59da703c4df87be56ed6f2de71a6a1ab37611a3",
+  "checks": [
+    {
+      "path": "src/backend/grok.ts",
+      "method": "getErrorPatterns",
+      "byteEqual": true
+    },
+    {
+      "path": "src/daemon.ts",
+      "method": "prepareQuotaReplayHistory",
+      "byteEqual": true
+    },
+    {
+      "path": "src/daemon.ts",
+      "method": "takeQuotaReplayBaseline",
+      "commonCoreByteEqual": true,
+      "preservedDevNativePreamble": true
+    }
+  ]
+}

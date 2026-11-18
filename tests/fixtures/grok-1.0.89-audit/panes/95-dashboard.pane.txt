@@ -1,0 +1,42 @@
+  + New Agent                                                                 Resume Session /resume │ Enable Worktree
+
+
+  No agents yet, type a prompt to start one.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭────────────────────────────────────────────────────────────────────────────────── /r/work/dashboard-120 · Ctrl+l ╮
+  │ ❯                                                                                                                │
+  ╰───────────────────────────────────────────────────────────────────────────────────────── grok-mock · auto-review ╯
+
+  Enter:create  │  Tab:list  │  Shift+Tab:mode  │  ?:shortcuts

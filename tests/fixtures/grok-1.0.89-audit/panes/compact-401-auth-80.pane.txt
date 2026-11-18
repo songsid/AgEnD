@@ -1,0 +1,42 @@
+  master /r/work/compact-401-auth-80                   13 / 256k │ [Dashboard]
+
+
+     ❯ brief ordinary turn                                           1:09 PM
+
+
+     mock reply r6                                                   1:09 PM
+
+     Worked for 0.3s
+
+     Compacting conversation…
+
+  ┃  Compaction failed: Unauthorized (401) from
+  ┃  http://127.0.0.1:18080/v1/chat/completions: authentication_error:
+  ┃  Invalid authentication token
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰─────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

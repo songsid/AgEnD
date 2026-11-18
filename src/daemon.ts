@@ -2192,7 +2192,20 @@ export class Daemon extends EventEmitter {
       this.startupAdmission?.();
       if (!current()) return;
       const patterns = this.paneQuotaPatterns();
-      const messages = oldPane.split(/\r?\n/).filter(row => patterns.some(ep => ep.pattern.test(row)));
+      // A quota frame can span several wrapped rows. Keep the complete rows
+      // each actual match covered, rather than testing the rows independently.
+      // Exact spans dedupe overlapping rules without collapsing repeated hits.
+      const spans = new Map<string, string>();
+      for (const ep of patterns) {
+        const flags = ep.pattern.flags.includes("g") ? ep.pattern.flags : ep.pattern.flags + "g";
+        for (const match of oldPane.matchAll(new RegExp(ep.pattern.source, flags))) {
+          const start = oldPane.lastIndexOf("\n", match.index) + 1;
+          const newline = oldPane.indexOf("\n", match.index + match[0].length);
+          const end = newline < 0 ? oldPane.length : newline;
+          spans.set(`${start}:${end}`, oldPane.slice(start, end));
+        }
+      }
+      const messages = [...spans.values()];
       this.quotaReplay = { messages, current: () => true, spawn, fence, attempt };
     }
   }
@@ -2206,7 +2219,13 @@ export class Daemon extends EventEmitter {
     if (!history) return;
     this.quotaReplay = null;
     if (history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch || history.attempt !== this.launchAttempt || !history.current()) return;
-    for (const ep of this.paneQuotaPatterns()) {
+    const patterns = this.paneQuotaPatterns();
+    // Grok's old quota frame can also contain a 401. That same proven frame
+    // must not arm the auth gate after its quota was absorbed as history.
+    if (this.backend?.binaryName === "grok") {
+      patterns.push(...(this.backend.getErrorPatterns?.() ?? []).filter(ep => ep.type === "auth_error"));
+    }
+    for (const ep of patterns) {
       const count = Math.min(Daemon.countOccurrences(ep.pattern, pane), quotaHistoryCount(pane, ep.pattern, history.messages));
       if (!count) continue;
       const key = Daemon.errorPatternKey(ep);

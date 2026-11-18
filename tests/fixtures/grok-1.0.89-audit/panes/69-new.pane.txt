@@ -1,0 +1,42 @@
+  master /r/work/commands-120                                                                1.3k / 256k │ [Dashboard]
+
+     Session 01a1eecc-cf77-7253-b3cc-5dbef5313a3d, use /dashboard to switch between sessions
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

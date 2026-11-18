@@ -1,0 +1,53 @@
+precheck grok (manifest scripts/manual/cli-upstream-precheck/sources.json, 32 literals)
+  old: retained-download/1.0.88 — 1 file, 207.6 MB
+  new: retained-download/1.0.89 — 1 file, 207.9 MB
+
+literals in the old artifact: 18 of 32 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 3
+  [onboarding] 87 -> 88  "Grok Build"   (src/backend/grok.ts:212 grokSignInDialog.isActive)
+  [error] 78 -> 76  "rate_limit"   (src/backend/grok.ts:630 GrokBackend.getErrorPatterns.type)
+  [onboarding] 2 -> 3  "Do you trust the contents"   (src/backend/grok.ts:688 GrokBackend.getStartupDialogs.pattern)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 5
+  [onboarding] "Yes, proceedNo, cancel╭╮╰╯Do you trust the contents of this dire"   near "Grok Build"; "Do you trust the contents"   hint: the old release has "Yes, proceed"… (only a neighbouring string changed?)
+  [onboarding] "press t to turn memory on or off and s for status.Rewind to a previous"   near "Grok Build"   hint: the old release has "press t to turn memory on or off and s f"… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstClipboardPa"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstfailed to w"   near "rate limit"   hint: the old release has "rate limit exceeded; sleeping."… (only a neighbouring string changed?)
+  [error] "usage limit reachedstatus 401unauthorizedinvalid_request_errordetailCompaction failed: Compa"   near "out of credits"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 7
+  "Press Esc to closefwdclear searchkeep filtersearchcommentdeletefullscreen"
+  "Resume the paused goal<objective> | status | pause | resume (active)groknightgrokdaytokyoni"
+  "press Enter to insert a newline.install mosh 1.4.0 or later on this host, s"   hint: the old release has "press Enter to insert a newline."… (only a neighbouring string changed?)
+  "press Enter to save, Esc to discardevent crates/codegen/xai-grok-pager/src/"
+  "press Tab to focus the scrollback, then → on the blockNo active session"   hint: the old release has "press Tab to focus the scrollback, then "… (only a neighbouring string changed?)
+  "resume this subagentStartYes, start this subagentRunauto-reviewalways-approveRendering diagr"   hint: the old release has "resume this subagent"… (only a neighbouring string changed?)
+  "usage limit as JSON"
+
+POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 0
+
+PROMPT-LIKE STRINGS gone in the new artifact: 12
+  "No, cancel╭╮╰╯y n activeAll agentsExecutescancelledfailedfaile"
+  "Press Esc to closefwdsclear searchkeep filtersearchcommentdeletefullscree"
+  "Press h to show all.▲▼./../~/Searching Can"
+  "Resume the paused goal<objective> | status | pause | resumeExport the current conversation"
+  "press Enter to insert a newline.control-modebyobu-screenunsupported-emulato"
+  "press Enter to save, Esc to discard,unsetevent crates/codegen/xai-grok-page"
+  "press Tab to focus the scrollback, then → on the blockexpand/expandExpo"
+  "press t to turn memory on or off and s for status.HistoryTreeNodenodeId"
+  "rate limit exceeded; sleeping.service not ready; poll_ready must be called firstBrowse comm"
+  "resume this subagentStartYes, start this subagentRunaskauto-reviewalways-approveevent crates"
+  "usage limit as JSONSearchExecuteThinkFetchSwitchModeCheckOpenedPreContextPrevChunkNextChunkI"
+  "usage limit reachedstatus 401unauthorizedinvalid_request_errorevent crates/codegen/xai-grok-"
+
+REASON: 5 new prompt-like string(s) on a known surface: [onboarding] "Yes, proceedNo, cancel╭╮╰╯Do you trust the contents of this "; [onboarding] "press t to turn memory on or off and s for status.Rewind to "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "rate limit exceeded; sleeping.service not ready; poll_ready "; [error] "usage limit reachedstatus 401unauthorizedinvalid_request_err"
+REASON: 3 literal count(s) changed
+REASON: 7 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 1, hinted new prompts 4
+BASIS: hard=1; hinted=4
+PRECHECK: MAJOR
