@@ -14364,6 +14364,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if (blocker) { await msgAdapter?.sendText(chatId, blocker); return; }
           const channelName = msg.username || chatId;
           if (requestedBackend) {
+            // Advisory before the new-room policy is persisted, including direct /start BACKEND.
+            await msgAdapter?.sendText(chatId, this.getClassicStartWarning(requestedBackend));
             // handleClassicStart binds the instance to this adapter authoritatively.
             const reply = await this.handleClassicStart(chatId, channelName, msg.userId, undefined, msg.adapterId, requestedBackend);
             await msgAdapter?.sendText(chatId, reply);
@@ -27713,6 +27715,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return t("classic.backend_not_installed", backend, installation.binary, installation.install);
   }
 
+  /** Coverage is not proven before launch; disclose the fallback without blocking an unsupported CLI. */
+  private getClassicStartWarning(backend: string | undefined): string {
+    return [t("classic.restricted_start_notice"), this.getMissingBackendWarning(backend)].filter(Boolean).join("\n\n");
+  }
+
   /** Handle Discord's required static slash choice, warning before a likely startup failure. */
   private async handleClassicStartSlash(data: ClassicStartSlashData, adapterId: string): Promise<void> {
     return withSpawnHoldReply(text => data.respond(text), () => this.handleClassicStartSlashCore(data, adapterId));
@@ -27732,7 +27739,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     const blocker = this.validateClassicStart(data.channelId, data.userId, data.guildId, adapterId);
     if (blocker) { await data.respond(blocker); return; }
-    const warning = this.getMissingBackendWarning(requestedBackend);
+    const warning = this.getClassicStartWarning(requestedBackend);
     // Keep the deferred ephemeral response useful even if daemon startup later
     // fails because the executable is absent. This is advisory, not a gate.
     if (warning) await data.respond(warning);
@@ -27795,8 +27802,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
     try {
       pending.messageId = data.respondChoices
-        ? await data.respondChoices(t("classic.choose_backend"), choices)
-        : await adapter.promptUser(data.channelId, t("classic.choose_backend"), choices);
+        ? await data.respondChoices(`${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices)
+        : await adapter.promptUser(data.channelId, `${t("classic.choose_backend")}\n\n${t("classic.restricted_start_notice")}`, choices);
     } catch (err) {
       // A menu transport failure should not make /start unusable: consume the
       // pending request and immediately use the configured default.
@@ -27834,7 +27841,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       ?? this.classicChannels?.getDefaults().backend
       ?? this.fleetConfig?.defaults?.backend
       ?? "claude-code";
-    const warning = this.getMissingBackendWarning(effectiveBackend);
+    const warning = this.getClassicStartWarning(effectiveBackend);
     // Show the warning before starting so it survives a missing-binary startup
     // failure. The selected backend is still attempted as requested.
     if (warning) await pending.complete(warning, pending.messageId);
