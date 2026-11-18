@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { discover } from "../scripts/ci/ui-gate-smokes.mjs";
+import { discover, shardOf } from "../scripts/ci/ui-gate-smokes.mjs";
 
 const RUNNER = resolve("scripts/ci/ui-gate-smokes.mjs");
 // The 21 smokes ci.yml listed step by step before M-3287, each on the port its step gave it.
@@ -49,12 +49,26 @@ describe("the repo's smokes", () => {
   const steps: any[] = ci.jobs["ui-gate"].steps;
   it("ci.yml: one step runs them — after the fonts, even after a failed gate, before the cache is saved", () => {
     const i = steps.findIndex((s) => s.name === "UI gate smokes"), step = steps[i];
-    expect(step.run).toBe('PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" node scripts/ci/ui-gate-smokes.mjs');
+    expect(step.run).toBe('PW_DIR="$GITHUB_WORKSPACE" REPO="$GITHUB_WORKSPACE" node scripts/ci/ui-gate-smokes.mjs --shard ${{ matrix.shard }}/3');
     expect(step.if).toBe("(success() || failure()) && needs.detect-changes.outputs.text-only != 'true'");
     expect(step.env).toEqual({ OUT: "${{ runner.temp }}/ui-gate", FONTCONFIG_FILE: "${{ steps.cjk-fonts.outputs.fontconfig }}" });
     expect(i).toBeGreaterThan(steps.findIndex((s) => s.id === "cjk-fonts"));
     expect(i).toBeLessThan(steps.findIndex((s) => String(s.uses).startsWith("actions/cache/save")));
-    expect(ci.jobs["ui-gate"]["timeout-minutes"]).toBe(25);
+    expect(ci.jobs["ui-gate"]["timeout-minutes"]).toBe(15);
+  });
+  it("M-3332: three legs in parallel, every found smoke in exactly one; the fixed gates on leg 1 only; one result for build", () => {
+    const job = ci.jobs["ui-gate"];
+    expect(job.strategy).toEqual({ "fail-fast": false, matrix: { shard: [1, 2, 3] } });
+    const legs = job.strategy.matrix.shard.map((k: number) => shardOf(found, `${k}/3`).map((s: any) => s.file));
+    const all = legs.flat();
+    expect(all.length).toBe(found.length);
+    expect(new Set(all)).toEqual(new Set(found.map((s: any) => s.file)));
+    for (const name of ["Run the UI gate", "Run the UI gate on the Hub pages", "Run the Hub shell gate", "Composer width (no layout shift on a state flip)"]) {
+      expect(String(steps.find((s) => s.name === name)?.if), name).toContain("matrix.shard == 1");
+    }
+    expect(steps.find((s) => String(s.uses).startsWith("actions/upload-artifact"))?.with.name).toBe("ui-gate-${{ matrix.shard }}");
+    expect(ci.jobs.build.needs).toContain("ui-gate");
+    expect(String(ci.jobs.build.steps[0].run)).toContain("ui-gate:$UI_GATE");
   });
   it("ci.yml: no step also runs a found smoke by hand, and no step's own port is a found smoke's", () => {
     const names = found.map((s: any) => s.file.split("/").pop());
@@ -115,6 +129,18 @@ describe("the runner", () => {
     expect([o.status, o.stdout.includes("ran A"), o.stdout.includes("ran B")]).toEqual([0, false, true]);
     expect(run(d, ["--only", "smoke-x.mts"]).status).toBe(2);
     expect(run(d, ["--bogus"]).status).toBe(2);
+  });
+  it("--shard k/n: the k-th of every n by port — the shards split the list exactly; a bad spec is refused", () => {
+    const d = root({ "s1.mts": smoke("One", 20001, 0), "s2.mts": smoke("Two", 20003, 0), "s3.mts": smoke("Three", 20005, 0), "s4.mts": smoke("Four", 20007, 0), "s5.mts": smoke("Five", 20009, 0) });
+    const ran = (k: number) => [...run(d, ["--shard", `${k}/2`]).stdout.matchAll(/ran (\w+) HP/g)].map((m) => m[1]);
+    expect([ran(1), ran(2)]).toEqual([["One", "Three", "Five"], ["Two", "Four"]]);
+    const sum = join(d, "summary.md");
+    expect(run(d, ["--shard", "2/2"], { GITHUB_STEP_SUMMARY: sum }).stdout).toContain("ui-gate smokes (shard 2/2): 2/2 passed");
+    expect(readFileSync(sum, "utf8")).toContain("### UI gate smokes (shard 2/2): 2/2 passed");
+    for (const bad of ["0/2", "3/2", "1/0", "a/b", "1/17"]) expect(run(d, ["--shard", bad]).status, bad).toBe(2);
+    expect(run(d, ["--shard"]).status).toBe(2);
+    const many = Array.from({ length: 10 }, (_, i) => ({ file: `f${i}`, hp: 20000 + i }));
+    expect([1, 2, 3].flatMap((k) => shardOf(many, `${k}/3`).map((s: any) => s.file)).sort()).toEqual(many.map((s) => s.file).sort());
   });
   it("a bad marker: exit 2 before anything runs, with an annotation", () => {
     const d = root({ "smoke-a.mts": smoke("A", 20001, 0), "smoke-b.mts": mark({ name: "B" }) });
