@@ -11,5 +11,11 @@
   "headlessChecks": 39,
   "productionMounted": false,
   "liveModelRuns": 0,
-  "windowsProcesses": 0
+  "windowsProcesses": 0,
+  "mergedIntegration": {
+    "files": 5,
+    "passed": 57,
+    "sourceTypecheck": 0,
+    "base": "659584782"
+  }
 }

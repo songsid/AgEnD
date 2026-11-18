@@ -8,6 +8,7 @@ This is an **unmounted foundation**. Standard server composition has no request 
 
 - Source and test TypeScript checks: exit 0.
 - Ten focused and regression files: **243/243 passed**, including HTTP composition, legacy consent, invitation visibility, room settings/new-room/client, and the three new request files (**31 new cases**).
+- After syncing the personal-pins alpha change, five integration files passed **57/57**, including personal pins and the new request suites; source TypeScript was rechecked (exit 0). Both features are preserved.
 - Five negative controls were caught: removing the daily limit, owner opt-out, private hint binding, duplicate-submit guard or late-session response guard makes its matching assertion fail. All changes were restored before the green regression batch. Results: [controls.json](controls.json).
 - Changelog assembly check: exit 0 after correcting the fragment front matter.
 - Real-app headless walk: **39 checks**, EN and zh-TW at 1366×900 and 390×844, through actual Hub HTTPS, SQLite, encrypted audit and shipped UI modules. The only directory is synthetic; no agents or Fleets exist. All four requests and cancellations persist through their real routes. No external request, page error, agent publication or member delivery occurred.
