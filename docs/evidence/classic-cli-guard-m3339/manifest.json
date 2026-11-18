@@ -80,6 +80,10 @@
     {
       "path": "docs/concepts.md",
       "sha256": "7162b8eabb746e9f7ce8bb9698c34fc13322b5e69edf51e5a599cd683bf233d0"
+    },
+    {
+      "path": "docs/design/classic-contact-authorizations.md",
+      "sha256": "d6c898be4aa1d9aaeda520ee7b6b7f5f18565d5b1771ea893e6dda031b2b7d0f"
     }
   ],
   "evidence": [
