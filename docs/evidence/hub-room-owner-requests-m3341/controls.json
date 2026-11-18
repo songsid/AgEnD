@@ -1,0 +1,22 @@
+[
+  {
+    "guard": "quota",
+    "caught": true
+  },
+  {
+    "guard": "opt-out",
+    "caught": true
+  },
+  {
+    "guard": "note-binding",
+    "caught": true
+  },
+  {
+    "guard": "double-submit",
+    "caught": true
+  },
+  {
+    "guard": "late-session",
+    "caught": true
+  }
+]

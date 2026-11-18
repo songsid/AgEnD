@@ -17,6 +17,8 @@ import { hroom } from "./hub-room-strings.js";
 import { hs } from "./hub-room-settings-strings.js";
 import {ha} from "./hub-ai-apps-strings.js";
 import { RoomPicker } from "./hub-room-new.js";
+import { OwnerAgentRequestDialog, OwnerAgentRequestRows } from "./hub-room-owner-requests.js";
+import { hrq } from "./hub-room-owner-requests-strings.js";
 import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 
 linkRoomsU2Css();
@@ -42,6 +44,8 @@ export function invitedLabel(row) {
 export function RoomSettings({ client = hubClient(), roomId, detail, onClose, onChanged, assistant } = {}) {
   const room = detail?.room ?? {}, settings = detail?.settings ?? {}, members = Array.isArray(detail?.members) ? detail.members : [];
   const invited = Array.isArray(detail?.invited) ? detail.invited : [];
+  const [askOwner, setAskOwner] = useState(false);
+  const ownerRequestsLive = settings.ownerAgentRequests === true && typeof client.requestRoomAgent === "function";
   const [purpose,setPurpose]=useState(room.purpose??"");
   useEffect(()=>setPurpose(room.purpose??""),[roomId,room.purpose]);
   const purposeSupported=client.roomPurposeV1===true&&typeof room.purpose==="string"&&detail?.me?.role==="manager";
@@ -138,12 +142,17 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
           ? html`<button type="button" class="btn btn-link" disabled=${busy} onClick=${() => { void act(async () => { const r = await client.inviteToRoom(roomId, { agents: [row.exposureId] }); if (r?.ok) await client.cancelRoomInvitation(roomId, row.id); return r; }); }}>${hs("inviteAgain")}</button>`
           : html`<button type="button" class="btn btn-link" disabled=${busy} onClick=${() => { void act(() => client.cancelRoomInvitation(roomId, row.id)); }}>${hroom("cancelInvite")}</button>`}</li>`)}</ul>` : null}
       <${RoomPicker} client=${client} id="hubRoomAddAgents" kinds=${["agent", "team"]} label=${hroom("addOrInviteAgents")} placeholder=${hroom("addAgents")}
-        picked=${addAgents} exclude=${taken} onChange=${(next) => { void add(next, setAddAgents); }} />
+        picked=${addAgents} exclude=${taken} onChange=${(next) => { void add(next, setAddAgents); }}
+        searchHelp=${ownerRequestsLive ? html`<p class="note hub-owner-request-entry">${hrq("missing")}
+          <button type="button" class="btn btn-link" disabled=${busy} onClick=${() => setAskOwner(true)}>${hrq("ask")}</button></p>` : null} />
+      ${ownerRequestsLive ? html`<${OwnerAgentRequestRows} client=${client} roomId=${roomId} page=${detail.agentRequests} onChanged=${onChanged} busy=${busy} />` : null}
       ${offered || hasAssistant ? html`<label class="check"><input id="hubRoomSettingsAssistant" class="s-ui-toggle" type="checkbox" role="switch" checked=${hasAssistant} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked, id = members.find(m => m.kind === "assistant")?.id; void act(() => v ? client.addRoomMember(roomId, { kind: "assistant" }) : client.removeRoomMember(roomId, id)); }} /><span>${hs("assistantSwitch")}</span></label>` : null}
     </section>
     <section class="form"><h4>${hroom("other")}</h4>
       <button type="button" class="btn btn-danger" disabled=${busy || room.archived === true} onClick=${() => { void archive(); }}>${hroom("archiveRoom")}</button>
     </section>
-  </${Dialog}>`;
+  </${Dialog}>
+  ${askOwner && ownerRequestsLive ? html`<${OwnerAgentRequestDialog} key=${roomId} client=${client} roomId=${roomId} roomName=${room.name}
+    onClose=${() => setAskOwner(false)} onSent=${() => onChanged?.()} />` : null}`;
 }

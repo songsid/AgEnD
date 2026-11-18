@@ -1,0 +1,48 @@
+{
+  "tests": {
+    "files": 10,
+    "passed": 243,
+    "newCases": 31
+  },
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "changelogCheck": 0,
+  "negativeControls": 5,
+  "headlessChecks": 45,
+  "productionMounted": false,
+  "liveModelRuns": 0,
+  "windowsProcesses": 0,
+  "mergedIntegration": {
+    "files": 5,
+    "passed": 57,
+    "sourceTypecheck": 0,
+    "base": "659584782"
+  },
+  "pmRevision": {
+    "uiAndRegressionFiles": 3,
+    "passed": 29,
+    "restoredUiCases": 10,
+    "testTypecheck": 0,
+    "additionalControls": 2,
+    "pictures": 17,
+    "backendChanged": false
+  },
+  "pagingCorrection": {
+    "beforeFailed": 3,
+    "afterPassed": 27,
+    "files": 3,
+    "reversalFailed": 3,
+    "restoredUiPassed": 13,
+    "testTypecheck": 0,
+    "backendChanged": false,
+    "markupChanged": false,
+    "browserRepeated": false
+  },
+  "moduleListRepair": {
+    "failedRun": 44356495851,
+    "failedTestFile": "tests/hub-shared-modules-a.test.ts",
+    "passed": 11,
+    "files": 1,
+    "runtimeChanged": false
+  }
+}
