@@ -143,7 +143,7 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
           : html`<button type="button" class="btn btn-link" disabled=${busy} onClick=${() => { void act(() => client.cancelRoomInvitation(roomId, row.id)); }}>${hroom("cancelInvite")}</button>`}</li>`)}</ul>` : null}
       <${RoomPicker} client=${client} id="hubRoomAddAgents" kinds=${["agent", "team"]} label=${hroom("addOrInviteAgents")} placeholder=${hroom("addAgents")}
         picked=${addAgents} exclude=${taken} onChange=${(next) => { void add(next, setAddAgents); }}
-        empty=${ownerRequestsLive ? html`<p class="note hub-owner-request-entry">${hrq("missing")}
+        searchHelp=${ownerRequestsLive ? html`<p class="note hub-owner-request-entry">${hrq("missing")}
           <button type="button" class="btn btn-link" disabled=${busy} onClick=${() => setAskOwner(true)}>${hrq("ask")}</button></p>` : null} />
       ${ownerRequestsLive ? html`<${OwnerAgentRequestRows} client=${client} roomId=${roomId} page=${detail.agentRequests} onChanged=${onChanged} busy=${busy} />` : null}
       ${offered || hasAssistant ? html`<label class="check"><input id="hubRoomSettingsAssistant" class="s-ui-toggle" type="checkbox" role="switch" checked=${hasAssistant} disabled=${busy}

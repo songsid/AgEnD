@@ -1,6 +1,6 @@
 # Asking an owner for an agent — A1
 
-The manager can search for a person after an empty agent search, send a private optional hint, see a waiting row and cancel it. Selecting a person reveals no agent inventory and adds neither a person nor an agent to the room.
+The manager can search for a person after typing an agent search, send a private optional hint, see a waiting row and cancel it. Selecting a person reveals no agent inventory and adds neither a person nor an agent to the room.
 
 This is an **unmounted foundation**. Standard server composition has no request schema, routes or feature offer. The optional test composition exercises the complete manager path; owner responses, production registration, protected-note retention and role inventory integration belong to A2. See the [API and mounting requirements](../../design/hub-room-owner-requests-api.md).
 
@@ -11,9 +11,15 @@ This is an **unmounted foundation**. Standard server composition has no request 
 - After syncing the personal-pins alpha change, five integration files passed **57/57**, including personal pins and the new request suites; source TypeScript was rechecked (exit 0). Both features are preserved.
 - Five negative controls were caught: removing the daily limit, owner opt-out, private hint binding, duplicate-submit guard or late-session response guard makes its matching assertion fail. All changes were restored before the green regression batch. Results: [controls.json](controls.json).
 - Changelog assembly check: exit 0 after correcting the fragment front matter.
-- Real-app headless walk: **39 checks**, EN and zh-TW at 1366×900 and 390×844, through actual Hub HTTPS, SQLite, encrypted audit and shipped UI modules. The only directory is synthetic; no agents or Fleets exist. All four requests and cancellations persist through their real routes. No external request, page error, agent publication or member delivery occurred.
+- Real-app headless walk: **45 checks**, EN and zh-TW at 1366×900 and 390×844, through actual Hub HTTPS, SQLite, encrypted audit and shipped UI modules. The directory is synthetic. One in-process owned exposure is used only for the additional matching-result view; there is no live Fleet or model. All four requests and cancellations persist through their real routes. Waiting rows also survive closing/reopening settings with an empty search. No external request, page error, agent publication or member delivery occurred.
 
 The first capture attempt lacked a Chinese font and did not frame the empty-search entry. Those images were replaced after adding a Traditional Chinese font to the disposable browser home and scrolling the entry into view. Product source did not change for that correction.
+
+## Copy and interaction revision
+
+The owner dialog now uses separate title/field labels; after choosing a person it shows one Owner chip, and removing that chip restores the search. Chinese spacing and request terminology follow the rendered-copy feedback. The owner-request entry also appears beneath nonempty results whenever search text is present. Add-members and owner pickers retain their existing name-only person rows.
+
+The changed UI and two existing room suites pass **29/29**; the test typecheck passes. Two additional controls are caught: restoring the second search input, and hiding the entry under other matching results. The restored request UI suite passes **10/10**. Backend source is unchanged. Results: [pm-r1-controls.json](pm-r1-controls.json).
 
 ## Rendered views
 
@@ -29,6 +35,7 @@ Each set contains empty agent search, person selection, the request dialog and t
 | zh-TW person selection | [PNG](browser/desk-zh-TW-choose-person.png) | [PNG](browser/phone-zh-TW-choose-person.png) |
 | zh-TW request | [PNG](browser/desk-zh-TW-request.png) | [PNG](browser/phone-zh-TW-request.png) |
 | zh-TW waiting | [PNG](browser/desk-zh-TW-waiting.png) | [PNG](browser/phone-zh-TW-waiting.png) |
+| zh-TW other matches | — | [PNG](browser/phone-zh-TW-other-matches.png) |
 
 The [browser receipt](browser/receipt.json) records assertions and served asset hashes. The source revision is the pre-commit base; its diff hash records tracked working changes at capture time. Served asset hashes identify the actual UI bytes, including new modules.
 

@@ -8,7 +8,7 @@
   "testTypecheck": 0,
   "changelogCheck": 0,
   "negativeControls": 5,
-  "headlessChecks": 39,
+  "headlessChecks": 45,
   "productionMounted": false,
   "liveModelRuns": 0,
   "windowsProcesses": 0,
@@ -17,5 +17,14 @@
     "passed": 57,
     "sourceTypecheck": 0,
     "base": "659584782"
+  },
+  "pmRevision": {
+    "uiAndRegressionFiles": 3,
+    "passed": 29,
+    "restoredUiCases": 10,
+    "testTypecheck": 0,
+    "additionalControls": 2,
+    "pictures": 17,
+    "backendChanged": false
   }
 }

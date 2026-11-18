@@ -66,6 +66,18 @@ it("suppresses repeated submit while the first request is pending", async () => 
   await vi.waitFor(() => expect(sent).toHaveBeenCalledTimes(1));
 });
 
+it("shows one owner chip instead of a second search, and restores search when removed", async () => {
+  const { p } = await render("en", client());
+  expect(p.root.textContent).toContain("Ask an agent's owner");
+  expect(p.root.querySelector('label[for="hubRequestOwner"]')?.textContent).toBe("Who owns it?");
+  await choose(p);
+  expect(p.root.querySelector("#hubRequestOwner")).toBeNull();
+  expect(p.root.querySelector("#hubRequestOwnerLabel")?.textContent).toBe("Owner");
+  fire(p.root.querySelector(".hub-room-tags .chip-btn"), "click");
+  await vi.waitFor(() => expect(p.root.querySelector("#hubRequestOwner")).toBeTruthy());
+  expect(p.root.querySelector("#hubOwnerAgentNote")).toBeNull();
+});
+
 it("keeps the hint after a refusal and reuses its operation key on an unchanged retry", async () => {
   const c = client();
   c.requestRoomAgent.mockResolvedValueOnce({ ok: false, code: "owner-not-taking-requests" } as any);
@@ -94,8 +106,10 @@ it.each([false, true])("offers Ask its owner only with the composed capability a
     detail: { room: { id: "example-room", name: "Example room", purpose: "" }, me: { id: "example-manager", role: "manager" },
       members: [{ id: "example-manager", kind: "person", name: "Example manager", role: "manager" }], invited: [],
       settings: { allMention: true, historyForNew: "since-join", ...(offered ? { ownerAgentRequests: true } : {}) },
-      agentRequests: { requests: [], next: null } } }));
+      agentRequests: { requests: [{ id: "request-one", owner: { name: "Example owner" }, state: "pending" }], next: null } } }));
   expect(button(p, "Ask its owner")).toBeUndefined();
+  expect(!!button(p, "Cancel request")).toBe(offered);
+  expect(p.root.querySelector("#hubRoomAddAgents").value).toBe("");
   const input = p.root.querySelector("#hubRoomAddAgents"); input.value = "Missing"; fire(input, "input");
   await vi.waitFor(() => expect(p.root.textContent).toContain("Nothing matches."));
   expect(!!button(p, "Ask its owner")).toBe(offered);
@@ -111,4 +125,20 @@ it("renders waiting/terminal owner rows without exposing a supplied agent or hin
   fire(button(p, "Cancel request"), "click");
   await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
   expect(c.cancelRoomAgentRequest).toHaveBeenCalledWith("scope", "example-room", "request-one");
+});
+
+it("keeps Ask its owner available below other matches, but not with a blank search", async () => {
+  const c = client(), p = page(); pages.push(p); i18n.setLang("en", { store: false });
+  c.roomCandidates.mockImplementation(async (_q: string, kind: string) => ({ ok: true, candidates: kind === "agent"
+    ? [{ kind: "agent", id: "example-agent", name: "Release helper", mine: true } as any] : [] }));
+  await p.mount(h(settings.RoomSettings, { client: c, roomId: "example-room", assistant: false,
+    detail: { room: { id: "example-room", name: "Example room", purpose: "" }, me: { id: "example-manager", role: "manager" },
+      members: [{ id: "example-manager", kind: "person", name: "Example manager", role: "manager" }], invited: [],
+      settings: { allMention: true, historyForNew: "since-join", ownerAgentRequests: true }, agentRequests: { requests: [], next: null } } }));
+  expect(button(p, "Ask its owner")).toBeUndefined();
+  const input = p.root.querySelector("#hubRoomAddAgents"); input.value = "Release"; fire(input, "input");
+  await vi.waitFor(() => expect(p.root.querySelector(".hub-room-result")?.textContent).toContain("Release helper"));
+  expect(button(p, "Ask its owner")).toBeTruthy();
+  input.value = ""; fire(input, "input");
+  await vi.waitFor(() => expect(button(p, "Ask its owner")).toBeUndefined());
 });

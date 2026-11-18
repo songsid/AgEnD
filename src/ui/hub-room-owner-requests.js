@@ -2,6 +2,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { RoomPicker } from "./hub-room-new.js";
 import { hrq } from "./hub-room-owner-requests-strings.js";
+import { hn } from "./hub-room-new-strings.js";
 
 export function ownerRequestError(result, owner) {
   if (result?.code === "owner-not-taking-requests") return hrq("ownerOff", owner);
@@ -38,12 +39,16 @@ export function OwnerAgentRequestDialog({ client, roomId, roomName, onClose, onS
   const actions = html`
     <button type="button" class="btn btn-ghost" disabled=${busy} onClick=${onClose}>${hrq("cancel")}</button>
     ${owner ? html`<button type="submit" form="hubOwnerAgentRequestForm" class="btn btn-primary" disabled=${busy}>${hrq("send")}</button>` : null}`;
-  return html`<${Dialog} cls="hub-owner-request" title=${owner ? hrq("title", owner.name, roomName) : hrq("choose")}
+  return html`<${Dialog} cls="hub-owner-request" title=${owner ? hrq("title", owner.name, roomName) : hrq("chooseTitle")}
       onClose=${onClose} busy=${busy} actions=${actions}>
     <form id="hubOwnerAgentRequestForm" class="form" onSubmit=${send}>
       <fieldset disabled=${busy}>
-        <${RoomPicker} client=${client} id="hubRequestOwner" kinds=${["person"]} label=${hrq("choose")} placeholder=${hrq("search")}
-          picked=${picked} onChange=${next => { setPicked(next.slice(-1)); setError(""); }} />
+        ${owner ? html`<div class="field"><span id="hubRequestOwnerLabel">${hrq("owner")}</span>
+          <ul class="hub-room-tags" aria-labelledby="hubRequestOwnerLabel"><li class="tag">${owner.name}
+            <button type="button" class="chip-btn" aria-label=${hn("remove", owner.name)} onClick=${() => { setPicked([]); setError(""); }}>×</button>
+          </li></ul></div>`
+          : html`<${RoomPicker} client=${client} id="hubRequestOwner" kinds=${["person"]} label=${hrq("choose")} placeholder=${hrq("search")}
+            picked=${picked} onChange=${next => { setPicked(next.slice(-1)); setError(""); }} />`}
         ${owner ? html`<p class="note">${hrq("lead", owner.name)}</p>
           <label class="field" for="hubOwnerAgentNote"><span>${hrq("note")}</span>
             <input id="hubOwnerAgentNote" type="text" maxlength="100" value=${note} onInput=${event => setNote(event.target.value.slice(0, 100))} />

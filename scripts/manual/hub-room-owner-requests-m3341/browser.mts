@@ -4,7 +4,7 @@ import { createRequire } from "node:module";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, copyFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { s3bRig } from "../../../tests/helpers/hub-s3b-rig.js";
 import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../../../src/hub/invitations.js";
 import { createHubRoomAgentRequests, HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../../../src/hub/room-agent-requests.js";
@@ -97,17 +97,32 @@ try {
       await shot("request");
       await page.locator('button[form="hubOwnerAgentRequestForm"]').click();
       await page.locator(".hub-owner-request").waitFor({ state: "detached" });
-      await page.locator("[data-owner-request]").waitFor(); await page.locator("[data-owner-request]").scrollIntoViewIfNeeded();
+      await page.locator("[data-owner-request]").waitFor();
+      await page.keyboard.press("Escape");
+      if (!await page.locator(".hub-room-settings-link").isVisible()) await page.locator(".hub-room-rail-toggle").click();
+      await page.locator(".hub-room-settings-link").click();
+      check(tag + ": pending survives reopen without a search", await page.locator("#hubRoomAddAgents").inputValue() === "");
+      await page.locator("[data-owner-request]").scrollIntoViewIfNeeded();
       await shot("waiting");
       check(tag + ": one persisted request", (r.db.prepare("SELECT COUNT(*) n FROM hub_room_agent_requests WHERE room_id=?").get(room.id) as { n: number }).n === 1);
       check(tag + ": private hint absent from manager detail", !JSON.stringify((await r.call(manager, "GET", "/hub/v1/rooms/" + room.id)).json).includes("explains release"));
       await page.locator("[data-owner-request] button").click(); await page.locator("[data-owner-request]").waitFor({ state: "detached" });
       check(tag + ": real cancel persisted", (r.db.prepare("SELECT state FROM hub_room_agent_requests WHERE room_id=?").get(room.id) as { state: string }).state === "cancelled");
       check(tag + ": no content-load error", !await page.locator('[role="alert"]').count());
+      if (device === "phone" && lang === "zh-TW") {
+        const link = r.link(randomUUID(), r.admin);
+        const exposure = { id: randomUUID(), fleetId: link.fleetId, owner: r.admin, displayName: "Release helper", revision: 1,
+          state: "published" as const, dataViewId: "example", allowedTools: [], policyDigest: "c".repeat(64) };
+        await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [exposure] }, link) as never, link);
+        await page.locator("#hubRoomAddAgents").fill("Release");
+        await page.locator("#hubRoomAddAgents").locator("..").locator(".hub-room-result").waitFor();
+        check(tag + ": entry remains below other matches", await page.locator(".hub-owner-request-entry").isVisible());
+        await page.locator(".hub-owner-request-entry").scrollIntoViewIfNeeded(); await shot("other-matches");
+      }
     } finally { await context.close(); }
   }
   check("no browser errors", errors.length === 0); check("no external requests", foreign.length === 0);
-  check("no agent publication or member delivery", r.sent.length === 0 && (r.db.prepare("SELECT COUNT(*) n FROM hub_exposures").get() as { n: number }).n === 0);
+  check("no agent membership or member delivery", r.sent.length === 0 && (r.db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE kind='agent'").get() as { n: number }).n === 0);
   writeFileSync(join(out, "receipt.json"), JSON.stringify({ stage, source: execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
     diffSha256: createHash("sha256").update(execFileSync("git", ["diff", "HEAD"])).digest("hex"), checks,
     servedAssets: [...assets].map(([path, sha256]) => ({ path, sha256 })),
