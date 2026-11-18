@@ -26,6 +26,8 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "325-menu": { v: "325", width: 160, flags: { tengu_gleaming_fair: true } },
   "326-menu": { v: "326", width: 160, flags: { tengu_gleaming_fair: true } },
   "326-menu-80": { v: "326", width: 80, flags: { tengu_gleaming_fair: true } },
+  "327-menu": { v: "327", width: 160, flags: { tengu_gleaming_fair: true } },
+  "327-menu-80": { v: "327", width: 80, flags: { tengu_gleaming_fair: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 

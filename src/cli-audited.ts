@@ -16,7 +16,8 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   // The maintainer-confirmed ledger of 2026-11-15 (Taipei): Claude 2.1.325, Codex 0.169.0, Kiro 3.3.0, Grok 1.0.77, Antigravity 1.5.9, OpenCode 1.19.5 are
   // the newest audited release of each; Muse 1.4.23-R8977.1 and Grok 1.0.88 are added with their audit evidence (M-3290 / M-3291, 2026-11-17). (Maintaining this shipped ledger is part of our audit PRs: when a version is marked audited, the maintainer who audits it adds it here.)
   // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048). 2.1.319: live-captured (tests/claude-cold-resume-2.1.319.test.ts). 2.1.325: upstream watch audit (tests/fixtures/claude-2.1.325-*).
-  "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325"]),
+  // 2.1.326: upstream watch audit (#4122 / #4124, tests/claude-2.1.326-*). 2.1.327: no detector change (M-3336, tests/claude-2.1.327-screens.test.ts).
+  "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327"]),
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts. 0.169.0: tests/codex-0169-audit.test.ts (#3830).
   codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0"]),
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.

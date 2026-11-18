@@ -73,10 +73,10 @@ export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS = Object.freeze({
   "claude-code": {
-    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.325",
+    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.327",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-OUxCb0sx734zJh9zGTP9oF01gZ44DCGFaw7hgD4byepjRRGyvHzgUOwC7dlCgVIljV6CiEVDjq+anY3GUvKFQw==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-AGuh2ImOYbdsKCq8J0jaamvquCddB9HC70u+Ik8OYQ28xkGPH+xF4oEAr8GKZCgT1mbuoDl1qinI/AXErwLyuw==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-QToNtikIupqVMsxRUdDHUP0nS/uv3Wc43vcbT8YNRo7FtQOE9MvYLqPLQPoVhJ2DQQVPOFMB5PkaBNJbnNYeVg==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-iOg2eIuMxvTiqIjS0rl//2iWU4ziZ6hyFzzvr/1cxNTTUH9miYNehzZaAni8chj3tB2RnQp81B1NZW3CnveuSQ==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
@@ -88,7 +88,7 @@ export const INSTALLABLE_CLIS = Object.freeze({
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
-  // M-3176: Claude 2.1.325 and Codex 0.169.0 (their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // M-3176: Claude 2.1.325 (now 2.1.327, M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.169.0 (their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
   // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.9: the windows_amd64
   // manifest read 2026-11-15 (version 1.5.9, this url, this sha512); the file downloaded is 231726744 bytes with that sha512.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
