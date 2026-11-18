@@ -41,6 +41,17 @@ approved work reuses only its authorized return path, not a correlation string a
 The topmost human origin is carried by server-owned work records across relays,
 later turns, schedules, retries and restart. Mixed or unavailable origins do not
 become administrator work merely because the latest message is from an admin.
+The first slice conservatively keeps the union for the conversation: “This
+conversation earlier handled a non-admin request.” Approval allows the retained
+request once; it does not clear the union. Idle and compaction never clear it.
+Turning a Classic room back to legacy restores that room's outgoing behavior,
+but does not remove origins from work already handed to a worker.
+An observed, proven context erasure could clear the union. Today's `/clear`
+acknowledgement proves handoff only, and the existing conversation-generation
+counter also rotates on retained resumes. Neither is used as erasure proof here;
+`resetSupported:false` states this gap explicitly. Automatic recovery at a work-item
+boundary is later work and requires a verifiable work-item close, never a guessed
+correlation string or the most recent speaker.
 The Hub contact-window refusal remains prior to this gate; its approved answer
 path is unchanged and no application can waive the Hub limit.
 
@@ -65,3 +76,30 @@ this contract for Permissions, Authorizations, badges and notices. A3 consumes
 module and launch hooks, and returns `ContactGuardStatus`. Unknown coverage must
 never be shown as ready. All shipped paths enforce the same tool ceiling at call
 time, independently of what a model's cached tool menu shows.
+
+## Server boundaries and limitations
+
+Standing grants bind both instance incarnations, not only their display names.
+A removed, replaced or retargeted instance cannot inherit a previous grant. A target
+replacement starts with a fresh policy revision, rejecting a stale open editor.
+Old application content is visible only through a still-current source or target
+identity. Routine daemon restarts preserve an incarnation and never resend input.
+
+The contact table is managed by the target adapter's Fleet administrators, while
+its configured approvers decide applications. The verified host operator is an
+explicit override. A contact grant conveys only dispatch rights. A recipient's
+action rights, credentials and shell are not granted or contained by this ticket.
+
+Restricted room replies, reactions and edits use the registered adapter and room;
+caller-provided adapter, chat and thread overrides do not change their destination.
+Attachments are snapshotted before posting and restricted to that room's own
+`workspaces/<instance>/inbox/`, including its `room-scratch/` child. Owner files,
+other rooms, symlinks and hard links are refused, including Hub-answer attachments.
+Attachment downloads require a file identifier actually received in that room and
+copy into its own scratch. At most 20 files of 20 MiB each are brokered per reply.
+This call-time fence applies even when a native CLI is reported as not covered.
+
+Native guard readiness is separate from contact admission. A1 alone reports
+not-covered until the launch guard is present. Prior transcript memory and trusted
+selected MCP servers remain outside this file broker. The CLI guard is not an OS
+sandbox and must report its own backend/version and network-control limitations.

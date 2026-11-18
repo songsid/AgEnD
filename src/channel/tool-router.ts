@@ -56,9 +56,15 @@ export function routeToolCall(
   threadId: string | undefined,
   respond: (result: unknown, error?: string) => void,
   /** #1266: a reply's buttons, prepared by the fleet (never read from the agent's arguments). */
-  extra: { replyButtons?: Array<{ id: string; label: string }>; replyPoll?: PollRender } = {},
+  extra: { replyButtons?: Array<{ id: string; label: string }>; replyPoll?: PollRender;
+    prepareFiles?(paths: readonly string[]): Promise<import("../contact-auth-files.js").ContactFileLease | undefined>;
+    replyFinished?(): Promise<void>;
+    downloadAttachment?(fileId: string): Promise<string>;
+    beforeSend?(): void;
+  } = {},
 ): boolean {
   const chatId = args.chat_id as string ?? "";
+  try { extra.beforeSend?.(); } catch (error) { respond(null, error instanceof Error ? error.message : "Room route changed"); return true; }
 
   switch (tool) {
     case "reply": {
@@ -87,24 +93,33 @@ export function routeToolCall(
         return true;
       }
       const sendOpts = { threadId: replyThreadId, replyTo: args.reply_to as string, format, ...(extra.replyButtons?.length ? { replyButtons: extra.replyButtons } : {}), ...(extra.replyPoll ? { replyPoll: extra.replyPoll } : {}) };
-      const sending = stickers.length
-        ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text })
-        : adapter.sendText(chatId, text, sendOpts);
-      sending.then(async (sent) => {
+      void (async () => {
+        const lease = extra.prepareFiles ? await extra.prepareFiles(files) : undefined;
+        if (lease) args.files = lease.paths;
+        try {
+        extra.beforeSend?.();
+        const sent = await (stickers.length
+          ? adapter.sendStickers!(chatId, stickers, { ...sendOpts, text })
+          : adapter.sendText(chatId, text, sendOpts));
         // Text and attachments are separate platform messages, so `messageId`
         // — the text's — is not the one carrying the image. A caller that GETs
         // it to confirm delivery or to read the CDN url finds `attachments: []`
         // and cannot tell that from a dropped attachment. The ids already come
         // back from sendFile; they were being thrown away.
         const attachmentMessageIds: string[] = [];
-        for (const filePath of files) {
+        for (const filePath of lease?.paths ?? files) {
           const file = await adapter.sendFile(chatId, filePath, { threadId: replyThreadId });
           if (file?.messageId) attachmentMessageIds.push(file.messageId);
         }
         // Omitted entirely for a reply with no files, so the ordinary result
         // shape does not grow an empty array the model has to read past.
         respond(attachmentMessageIds.length ? { ...sent, attachment_message_ids: attachmentMessageIds } : sent);
-      }).catch(e => respond(null, e.message));
+        } finally {
+          // A confirmed platform send never becomes a retryable error because secondary bookkeeping/cleanup failed.
+          try { await extra.replyFinished?.(); } catch { /* the caller owns its bookkeeping log */ }
+          try { await lease?.dispose(); } catch { /* an orphaned room snapshot is safer than a duplicate send */ }
+        }
+      })().catch(e => respond(null, e.message));
       return true;
     }
     case "react":
@@ -125,7 +140,7 @@ export function routeToolCall(
       return true;
     }
     case "download_attachment":
-      adapter.downloadAttachment(args.file_id as string ?? "")
+      (extra.downloadAttachment ?? (id => adapter.downloadAttachment(id)))(args.file_id as string ?? "")
         .then(path => respond(path))
         .catch(e => respond(null, e.message));
       return true;

@@ -10,7 +10,7 @@ import type { ModelSwitch } from "./claude-model-observation.js";
 
 import type { ConfigIssue } from "./config-history.js";
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub" | "runtime";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub" | "runtime" | "contact";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -49,6 +49,8 @@ export interface NeedsYouItem {
    */
   lane?: string;
   configIssue?: ConfigIssue;
+  contactTicket?: { id: string; source: string; target: string };
+  contactSuggestion?: { instance: string };
   generalLocation?: true;
   /** Keep reason=dialog for tabs loaded before this compatibility hold existed. */
   kiroChoice?: true;
@@ -64,6 +66,7 @@ export interface NeedsYouItem {
 }
 
 export type NeedsYouReason =
+  | "contact_request" | "contact_restricted_suggestion"
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"

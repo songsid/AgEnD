@@ -19,7 +19,7 @@ function rig(type:"discord"|"telegram"="discord",legacyAdmission=false,existingR
  vi.spyOn(fm as any,"touchActivity").mockImplementation(()=>{});vi.spyOn(fm as any,"setTopicIcon").mockImplementation(()=>{});vi.spyOn(fm as any,"afterReplyRouted").mockImplementation(()=>{});
  vi.spyOn(fm as any,"waitForInstanceIdle").mockResolvedValue(true);
  const inbound:any[]=[];vi.spyOn(fm,"deliverToInstance").mockImplementation(async(_agent,payload,options)=>{if(options?.beforeInput&&!await options.beforeInput())return false;inbound.push(payload);return true;});
- const send=async(tool:string,args:any)=>{responses.length=0;await (fm as any).handleOutboundFromInstance("roomAgent",{tool,args,fleetRequestId:"fixture-rpc",adapterId:adapter.id});return responses.at(-1);};
+ const send=async(tool:string,args:any)=>{responses.length=0;await (fm as any).handleOutboundFromInstance("roomAgent",{tool,args,fleetRequestId:"fixture-rpc",adapterId:adapter.id});await vi.waitFor(()=>expect(responses.length).toBeGreaterThan(0));return responses.at(-1);};
  const ask=async(contactLimit=true)=>await (fm as any).deliverHubQuestion({agent:"roomAgent",correlationId:"hub-fixture-question",text:"PRIVATE_HUB_QUESTION",contactLimit,beforeInput:async()=>true,stillCurrent:()=>true});
  return {fm,classic,adapter,inbound,send,ask,root};
 }

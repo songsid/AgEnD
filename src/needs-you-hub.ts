@@ -49,6 +49,7 @@ export interface NeedsYouWorld {
 }
 
 export interface NeedsYouHubContext {
+  contactSuggestions?(): NeedsYouItem[];
   dataDir: string;
   /** Wall clock, for item ages and the outbox window. */
   now(): number;
@@ -273,6 +274,8 @@ export class NeedsYouHub {
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
     this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    try { this.items.push(...(this.ctx.contactSuggestions?.() ?? [])); }
+    catch (error) { this.ctx.log("warn", "Could not read Classic contact suggestions", { reason: error instanceof Error ? error.message : "unavailable" }); }
 
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {

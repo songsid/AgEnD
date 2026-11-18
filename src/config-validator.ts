@@ -794,6 +794,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       if (channel.web_echo !== undefined && typeof channel.web_echo !== "boolean") {
         err(`channels.${key}.web_echo`, "must be a boolean");
       }
+      if (channel.restricted_mode !== undefined && typeof channel.restricted_mode !== "boolean") {
+        err(`channels.${key}.restricted_mode`, "must be a boolean");
+      }
     }
   }
 

@@ -44,6 +44,8 @@ export interface ContactGrant {
   person: ContactPerson;
   source: string;
   target: string;
+  sourceGeneration?: string;
+  targetGeneration?: string;
   verbs: ContactVerb[];
   expiresAt: string;
   /** null means reusable until expiry, otherwise a remaining dispatch count. */
@@ -72,6 +74,7 @@ export interface ContactTicket {
   decidedAt?: string;
   decidedBy?: ContactPerson;
   grantId?: string;
+  grantIds?: string[];
   deliveryId?: string;
   /** Contact delivery, never a claim that the target completed its task. */
   reason?: string;
@@ -81,9 +84,18 @@ export interface ContactHistoryRow {
   id: string;
   at: string;
   actor: ContactPerson;
-  action: "policy" | "approve" | "decline" | "grant-add" | "grant-remove";
+  action: "policy" | "approve" | "decline" | "grant-add" | "grant-remove" | "grant-use";
   ticketId?: string;
   summary: string;
+  source?: string;
+  target?: string;
+  generation?: string;
+  policyChange?: {
+    approvers?: { before: ContactPerson[] | null; after: ContactPerson[] | null };
+    grants?: { before: ContactGrant[]; after: ContactGrant[] };
+    roomTools?: { before: ContactRoomTools; after: ContactRoomTools };
+    modeRequested?: "legacy" | "restricted";
+  };
 }
 export interface ContactPermissions {
   instance: string;
@@ -102,6 +114,7 @@ export interface ContactPermissions {
   suggestRestricted: boolean;
   grants: ContactGrant[];
   history: ContactHistoryRow[];
+  originRestriction?: { active: true; reason: "earlier-non-admin" | "unknown-origin"; resetSupported: false };
 }
 export interface ContactPermissionsWrite {
   revision: number;

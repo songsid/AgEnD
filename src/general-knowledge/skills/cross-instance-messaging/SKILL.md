@@ -91,3 +91,22 @@ never use `reply`, `react` or `edit_message` to send that question or answer int
 copied to the Hub. The room agent still has one conversation and may use what it learned on either side; sharing does
 not isolate its memory. The private channel-output fence survives an answer acknowledgement, contact expiry or restart;
 normal room output resumes after a new room-person input and a fresh idle check.
+
+## Restricted Classic room contacts
+
+A restricted Classic room may answer in its bound room and use its allowed public
+read tools. A non-admin or unknown-origin peer contact is held as an application:
+`sent:false`, `held:true`, with `authorization_id` and its state. Nothing has reached
+the target. Do not resend or work around it with another contact tool, a schedule,
+or a new instance. The target's Fleet administrator decides the retained request.
+Approval delivers it once; decline or expiry delivers nothing. A standing narrow
+contact grant can admit matching requests without another card.
+
+The server keeps the originating human across relays, later turns and compaction.
+An earlier non-admin request can therefore require approval after an admin speaks.
+Approval does not clear that history or authorize the worker's data access or
+changes. A matching `report_result` return is allowed only for proven approved work,
+not an arbitrary correlation string. The Hub contact limit always takes precedence.
+Restricted attachment paths are limited to the room's own inbox/scratch; reply,
+react and edit cannot choose another room. Native tool coverage is separate: an
+uncovered backend is not protected by a claimed CLI sandbox.

@@ -54,7 +54,7 @@ export type SnapshotResult =
  * following one, and what is copied is that open file — a regular file within maxFileBytes, the same file (device +
  * inode) its real path names, and not a state file. Written to a temp name and renamed, so a snapshot is never partial.
  */
-export async function snapshotReplyFile(src: string, dir: string, id: string, opts: { stateDir: string; maxFileBytes?: number; maxDirBytes?: number }): Promise<SnapshotResult> {
+export async function snapshotReplyFile(src: string, dir: string, id: string, opts: { stateDir: string; maxFileBytes?: number; maxDirBytes?: number; allowedRoots?: readonly string[] }): Promise<SnapshotResult> {
   const maxFile = opts.maxFileBytes ?? MAX_SERVED_BYTES;
   const refused = (reason: string): SnapshotResult => ({ ok: false, refused: true, reason });
   let fh: FileHandle | null = null;
@@ -73,6 +73,8 @@ export async function snapshotReplyFile(src: string, dir: string, id: string, op
       const real = await realpath(src);
       const named = await stat(real);
       if (named.dev !== st.dev || named.ino !== st.ino) return refused("replaced while it was opened");
+      if (opts.allowedRoots && (st.nlink !== 1 || !opts.allowedRoots.some(root => real.startsWith(resolve(root) + sep))))
+        return refused("outside this room's own inbox or scratch");
       if (isStateFile(real, opts.stateDir)) return refused("inside the AgEnD state directory");
       ({ size, mtimeMs } = st);
     } catch {

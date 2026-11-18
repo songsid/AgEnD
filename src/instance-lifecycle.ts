@@ -335,6 +335,8 @@ export interface LifecycleContext {
   resolveParkedNotice?(name: string): void;
   /** Called after a replacement Daemon object is live, for generation fencing and post-resume notices. */
   onDaemonReady?(name: string, daemonBootId: string): void;
+  configureClassicRestriction?(name: string, daemon: Daemon): void;
+  inheritContactOrigin?(source: string, target: string): void;
   /** Test/integration seam for the non-LLM Codex quota second opinion. */
   verifyCodexQuota?(): Promise<CodexQuotaVerdict>;
   /** Test/integration seam for the non-LLM Claude quota second opinion. */
@@ -2079,6 +2081,7 @@ export class InstanceLifecycle {
       this.ctx.backendOutage,
     );
     launched = daemon;
+    this.ctx.configureClassicRestriction?.(name, daemon);
     if (native) { daemon.setNativePaneLifecycle(native); native.bindDaemon?.(daemon); }
     // Register before start: a pre-launch refusal has no published daemon or later incident handlers.
     daemon.on("kiro_compatibility_hold", (message: string | null) => {
@@ -2685,6 +2688,7 @@ export class InstanceLifecycle {
     adapterId?: string,
     execution?: SettingsExecution,
     toolSetCaller?: string,
+    originCaller?: string,
   ): Promise<void> {
     const check = (): void => execution?.assert(); check();
     if (args.runtime !== undefined && args.runtime !== "wsl" && args.runtime !== "windows") { respond(null,"Unknown instance runtime"); return; }
@@ -2996,6 +3000,7 @@ export class InstanceLifecycle {
         finally { createUndo = settingsUndo((this.ctx.getSettingsConfigPath?.() ?? join(this.ctx.dataDir, "fleet.yaml")), beforeCreate, this.ctx.fleetConfig, [["instances", newInstanceName!]]); }
       };
       if (execution) execution.mutate(persist); else persist();
+      if (originCaller) this.ctx.inheritContactOrigin?.(originCaller, newInstanceName);
       if (execution) await this.start(newInstanceName, instanceConfig, true, undefined, undefined, execution);
       else await this.start(newInstanceName, instanceConfig, true);
       createdDaemon = this.daemons.get(newInstanceName); check();

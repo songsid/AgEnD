@@ -99,6 +99,8 @@ export interface ClassicChannel {
   backendOptions?: BackendOptions;
   createdAt: string;
   createdBy: string;
+  /** Missing on existing rooms means legacy; only explicit admin action changes it. */
+  restrictedMode?: boolean;
 }
 
 interface ClassicDefaults {
@@ -141,6 +143,7 @@ interface ClassicBotYaml {
     pre_task_command?: string;
     createdBy?: string;
     createdAt?: string;
+    restricted_mode?: boolean;
   }>;
 }
 
@@ -366,6 +369,7 @@ export class ClassicChannelManager {
               backendOptions: this.readBackendOptions(val.backend_options, key),
               createdAt: val.createdAt ?? "",
               createdBy: val.createdBy ?? "",
+              ...(val.restricted_mode !== undefined ? { restrictedMode: val.restricted_mode !== false } : {}),
             },
           });
         }
@@ -487,6 +491,7 @@ export class ClassicChannelManager {
       if (ch.replyTriggers !== undefined) entry.reply_triggers = ch.replyTriggers;
       if (ch.collab) entry.collab = ch.collab;
       if (ch.preTaskCommand) entry.pre_task_command = ch.preTaskCommand;
+      if (ch.restrictedMode !== undefined) entry.restricted_mode = ch.restrictedMode;
       obj.channels![this.compositeKey(ch.channelId, ch.adapterId)] = entry as any;
     }
     return obj;
@@ -928,12 +933,21 @@ export class ClassicChannelManager {
       ...(backend ? { backend } : {}),
       createdAt: new Date().toISOString(),
       createdBy: userId,
+      restrictedMode: true,
     };
     this.channels.set(this.compositeKey(channelId, adapterId), ch);
     this.rebuildChannelIds();
     this.save();
     this.logger.info({ channelId, adapterId, instanceName }, "Registered classic channel");
     return ch;
+  }
+
+  setRestrictedMode(instanceName: string, restricted: boolean): void {
+    const channel = this.getAll().find(value => value.instanceName === instanceName);
+    if (!channel) throw Error("Classic room not found");
+    const previous = channel.restrictedMode;
+    channel.restrictedMode = restricted;
+    try { this.save(); } catch (error) { channel.restrictedMode = previous; throw error; }
   }
 
   unregister(channelId: string, adapterId?: string): ClassicChannel | undefined {
