@@ -26,5 +26,16 @@
     "additionalControls": 2,
     "pictures": 17,
     "backendChanged": false
+  },
+  "pagingCorrection": {
+    "beforeFailed": 3,
+    "afterPassed": 27,
+    "files": 3,
+    "reversalFailed": 3,
+    "restoredUiPassed": 13,
+    "testTypecheck": 0,
+    "backendChanged": false,
+    "markupChanged": false,
+    "browserRepeated": false
   }
 }

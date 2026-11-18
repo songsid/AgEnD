@@ -21,6 +21,10 @@ The owner dialog now uses separate title/field labels; after choosing a person i
 
 The changed UI and two existing room suites pass **29/29**; the test typecheck passes. Two additional controls are caught: restoring the second search input, and hiding the entry under other matching results. The restored request UI suite passes **10/10**. Backend source is unchanged. Results: [pm-r1-controls.json](pm-r1-controls.json).
 
+## Paging correction
+
+A superseded Load more response is fenced by its page/room generation. Three mounted held-response cases fail before the fix; the affected regression set passes 27/27 afterward, and dropping the generation guard makes all three red. Restored UI 13/13 and test typecheck pass. See [the interleavings and limits](paging.md). Copy, markup, backend and accepted PNGs are unchanged.
+
 ## Rendered views
 
 Each set contains empty agent search, person selection, the request dialog and the waiting row:

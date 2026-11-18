@@ -1,4 +1,4 @@
-import { html, useEffect, useRef, useState } from "/assets/app-html.js";
+import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { RoomPicker } from "./hub-room-new.js";
 import { hrq } from "./hub-room-owner-requests-strings.js";
@@ -66,17 +66,23 @@ export function OwnerAgentRequestRows({ client, roomId, page, onChanged, busy = 
   const [scope] = useState(() => client.roomAgentRequestScope?.());
   const [extra, setExtra] = useState([]), [next, setNext] = useState(page?.next ?? null), [error, setError] = useState(""), [working, setWorking] = useState(false);
   const live = useRef(true), pending = useRef(false);
+  const view = useRef({ page, roomId });
+  // Retire old responses at render, before the reset effect or a later operation can run.
+  if (view.current.page !== page || view.current.roomId !== roomId) view.current = { page, roomId };
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
-  useEffect(() => { setExtra([]); setNext(page?.next ?? null); }, [page]);
+  useLayoutEffect(() => {
+    setExtra([]); setNext(page?.next ?? null); setError(""); setWorking(false); pending.current = false;
+  }, [page, roomId]);
   useEffect(() => client.subscribeRooms?.({ "invitation.changed": () => onChanged?.() }) ?? (() => {}), [client, roomId, onChanged]);
   const rows = [...(Array.isArray(page?.requests) ? page.requests : []), ...extra].filter(valid);
   const act = async (id, more = false) => {
     if (pending.current) return;
+    const mine = view.current;
     pending.current = true; setWorking(true); setError("");
     let result;
     try { result = await (more ? client.roomAgentRequests(scope, roomId, next) : client.cancelRoomAgentRequest(scope, roomId, id)); }
     catch { result = null; }
-    if (!live.current) return;
+    if (!live.current || mine !== view.current) return;
     pending.current = false; setWorking(false);
     if (result?.ok) {
       if (more) { setExtra(old => [...old, ...(Array.isArray(result.requests) ? result.requests : [])]); setNext(result.next ?? null); }

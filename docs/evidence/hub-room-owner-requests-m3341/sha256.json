@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "10cbb9f118b4da33c98faf18c57efdb4926aa811cd1e05cd939e7822ede3376b"
+    "sha256": "02b502229a93ebe534b4977dfc8f331617a97b7f12af92267d0c4c796f965166"
   },
   {
     "path": "browser/desk-en-choose-person.png",
@@ -80,11 +80,19 @@
     "sha256": "ecb638f1a2a9d6e8bee559227af20c8d393c0c8b7c9d37028f9805f550e540ad"
   },
   {
+    "path": "paging-control.json",
+    "sha256": "4e93f9e42d3e0fe27cbeb124510041be820bf155c7a21c6ebe4485021e3e6ccc"
+  },
+  {
+    "path": "paging.md",
+    "sha256": "a549281bd4f8bcd58f5c5ec3dd5fa946ca206e7ca81580f79c63af5bb8635628"
+  },
+  {
     "path": "pm-r1-controls.json",
     "sha256": "c7411752a7e1c6fac70581f40bb073a4a2661319ecb5d981443d97cbe99e9d62"
   },
   {
     "path": "validation.json",
-    "sha256": "f0cc24ed951da9d58074d5ba40e36078b61c046e5bace8d257db9e41150937da"
+    "sha256": "25d3073c2f61814ad8791e7e4b9f66060c8f0658eda2c03d140e7b50baaf8d90"
   }
 ]

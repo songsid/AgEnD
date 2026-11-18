@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, expect, it, vi } from "vitest";
-import { page, h, type AppPage } from "./helpers/app-harness.js";
+import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
 let ui: any, settings: any, i18n: any;
@@ -141,4 +141,54 @@ it("keeps Ask its owner available below other matches, but not with a blank sear
   expect(button(p, "Ask its owner")).toBeTruthy();
   input.value = ""; fire(input, "input");
   await vi.waitFor(() => expect(button(p, "Ask its owner")).toBeUndefined());
+});
+
+it("drops a cancelled pending row and old cursor from a held response after refresh", async () => {
+  const c = client(), p = page(); pages.push(p); i18n.setLang("en", { store: false });
+  let release!: (value: unknown) => void;
+  const more = vi.fn().mockImplementationOnce(() => new Promise(resolve => { release = resolve; }))
+    .mockResolvedValueOnce({ ok: true, requests: [{ id: "current-more", owner: { name: "Current owner" }, state: "pending" }], next: null });
+  const api = { ...c, roomAgentRequests: more };
+  const mount = (page: unknown) => p.mount(h(ui.OwnerAgentRequestRows, { client: api, roomId: "example-room", page }));
+  await mount({ requests: [], next: "old-cursor" });
+  fire(button(p, "Load more"), "click");
+  await vi.waitFor(() => expect(more).toHaveBeenCalledTimes(1));
+  await mount({ requests: [], next: "fresh-cursor" });
+  release({ ok: true, requests: [{ id: "cancelled", owner: { name: "Cancelled owner" }, state: "pending" }], next: "stale-cursor" });
+  await settle();
+  expect(p.root.querySelector('[data-owner-request="cancelled"]')).toBeNull();
+  fire(button(p, "Load more"), "click");
+  await vi.waitFor(() => expect(p.root.querySelector('[data-owner-request="current-more"]')).toBeTruthy());
+  expect(more).toHaveBeenLastCalledWith("scope", "example-room", "fresh-cursor");
+  expect(button(p, "Load more")).toBeUndefined();
+});
+
+it.each(["page", "room"])("retires held paging on a new %s without clearing a current operation", async changed => {
+  const c = client(), p = page(); pages.push(p); i18n.setLang("en", { store: false });
+  const row = (id: string, name: string) => ({ id, owner: { name }, state: "pending" });
+  const first = { requests: [row("first", "First owner")], next: "first-cursor" };
+  const fresh = changed === "page" ? { requests: [row("fresh", "Fresh owner")], next: "fresh-cursor" } : first;
+  const room = changed === "room" ? "another-room" : "example-room";
+  let releaseOld!: (value: unknown) => void, releaseCurrent!: (value: unknown) => void;
+  const more = vi.fn()
+    .mockImplementationOnce(() => new Promise(resolve => { releaseOld = resolve; }))
+    .mockImplementationOnce(() => new Promise(resolve => { releaseCurrent = resolve; }));
+  const api = { ...c, roomAgentRequests: more };
+  const mount = (roomId: string, page: unknown) => p.mount(h(ui.OwnerAgentRequestRows, { client: api, roomId, page }));
+  await mount("example-room", first);
+  fire(button(p, "Load more"), "click");
+  await vi.waitFor(() => expect(more).toHaveBeenCalledTimes(1));
+  await mount(room, fresh);
+  expect(button(p, "Load more").disabled).toBe(false);
+  fire(button(p, "Load more"), "click");
+  await vi.waitFor(() => expect(more).toHaveBeenCalledTimes(2));
+  expect(more).toHaveBeenLastCalledWith("scope", room, fresh.next);
+  releaseOld({ ok: true, requests: [row("cancelled", "Cancelled owner")], next: "stale-cursor" });
+  await settle();
+  expect(p.root.querySelector('[data-owner-request="cancelled"]')).toBeNull();
+  expect(button(p, "Load more").disabled).toBe(true);
+  releaseCurrent({ ok: true, requests: [row("current-more", "Current owner")], next: null });
+  await vi.waitFor(() => expect(p.root.querySelector('[data-owner-request="current-more"]')).toBeTruthy());
+  expect(button(p, "Load more")).toBeUndefined();
+  expect(p.root.querySelector('[data-owner-request="cancelled"]')).toBeNull();
 });
