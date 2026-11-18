@@ -83,3 +83,11 @@ migration; the upstream state migration set is identical. Mark the release audit
 The mock-profile guard controls are load-bearing: removing the explicit inert-auth requirement fails its dedicated
 case, and enabling provider auth fails the positive profile check (six cases collected in each control). These are
 string/config tests; neither control launches a CLI or uses a login.
+
+## Alpha release pin
+
+The dev twin appends 0.170.0 to the shipped audited ledger and moves the Windows Runtime installer pin with it.
+`alpha-install-pin.json` records the root and Windows x64 npm tarballs: each downloaded SHA-512 matches the registry,
+and the native package contains the expected PE executable path. This is a static package check, not Windows execution
+or a new Authenticode acceptance. The existing installer still verifies the publisher before switching the install.
+The ledger test failed first because the new audit was ahead of the shipped target, then passed after the paired update.

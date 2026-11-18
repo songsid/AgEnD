@@ -1,0 +1,22 @@
+{
+  "method": "static npm package verification; no Windows execution",
+  "registry": "https://registry.npmjs.org/",
+  "packages": [
+    {
+      "version": "0.170.0",
+      "bytes": 4992,
+      "integrity": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
+      "registryMatched": true
+    },
+    {
+      "version": "0.170.0-win32-x64",
+      "bytes": 188506732,
+      "integrity": "sha512-eNlCGvSTKMegqo1R0PPfAf0jOQp8OGfWH8WX2UyTtRN6E/YOecJnz4n1X9lIb02O8Zda/Lv6/WST7+8mufTVSw==",
+      "registryMatched": true,
+      "nativePath": "package/vendor/x86_64-pc-windows-msvc/bin/codex.exe",
+      "peHeader": true,
+      "executed": false
+    }
+  ],
+  "guards": "Native path and Authenticode publisher checks are unchanged; runtime verifies the signature before switching an install."
+}
