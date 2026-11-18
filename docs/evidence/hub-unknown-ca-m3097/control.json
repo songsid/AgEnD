@@ -1,0 +1,7 @@
+{
+  "control": "remove inspectPilotCertificate self-signed guard",
+  "exitCode": 1,
+  "assertionFailures": 3,
+  "sourceRestored": true,
+  "sourceSha256": "cb0a5717d967c034bf0cf91c2d6ae5fb86f8fa06ece3b0a1a34bb1a7c5bc457d"
+}
