@@ -176,6 +176,36 @@ describe("Hub chat attachments (D2)", () => {
     expect(asks(calls)[0]!.body).toEqual({ idempotencyKey: expect.any(String), text: "See the chart" });
   });
 
+  // M-3311 (Fable on #4154): the 1:1 question's own wiring — a paste and a drop reach its Attach (its onPaste was empty before).
+  it("M-3311: a screenshot pasted into the question's box, and a file dropped onto the conversation, are attached", async () => {
+    const { calls } = hubApi(["attachments-v1"]);
+    const pg = await openRoom();
+    const box = pg.root.querySelector("#msgIn") as any;
+    const pasted = fire(box, "paste", { clipboardData: { files: [new File([new Uint8Array([1])], "image.png", { type: "image/png" })], getData: () => "" } });
+    await until(() => pg.root.querySelector(".hub-pending-files .file-chip[data-state=ready]"));
+    expect([pasted.defaultPrevented, calls.filter(c => c.method === "POST" && c.path.endsWith("/files")).map(c => c.headers["X-File-Name"])]).toEqual([true, ["image.png"]]);
+    const main = pg.root.querySelector(".hub-chat-main") as any;
+    fire(main, "dragenter", { dataTransfer: { types: ["Files"], files: [] } });
+    expect(main.classList.contains("dragging")).toBe(true);
+    fire(main, "drop", { dataTransfer: { types: ["Files"], files: [new File(["# plan"], "plan.md", { type: "text/markdown" })] } }); await settle(20);
+    expect(calls.filter(c => c.method === "POST" && c.path.endsWith("/files")).map(c => c.headers["X-File-Name"])).toEqual(["image.png", "plan.md"]);
+  });
+  // M-3311 (2): the Fleet chat's 「引用」 — a passage selected in an answer goes into this question's box as a quote.
+  it.each(["en", "zh-TW"])("M-3311: a passage selected in an answer shows Quote (%s); its click puts it in the box as a quote", async (lang) => {
+    hubApi(["attachments-v1"], undefined, [{ messageId: "m1", sequence: 1, askedAt: 1, receipt: { stage: "answered", at: 2 }, question: "Q?", answer: "Ship it on Friday, after the rehearsal." }]);
+    const pg = await openRoom(lang);
+    await until(() => pg.root.querySelector(".msg.agent .md"));
+    const md = pg.root.querySelector(".msg.agent .md") as any, words = md.firstChild?.nodeType === 3 ? md.firstChild : md.querySelector("p")?.firstChild;
+    const doc = pg.document as any, removed = { n: 0 };
+    doc.getSelection = () => ({ isCollapsed: false, rangeCount: 1, toString: () => "after the rehearsal",
+      getRangeAt: () => ({ startContainer: words, endContainer: words, getClientRects: () => [{ left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 }] }),
+      removeAllRanges: () => { removed.n++; } });
+    fire(doc, "selectionchange"); await new Promise((r) => setTimeout(r, 200)); await settle(5);
+    const pill = doc.querySelector(".quote-pop button") as any;
+    expect(pill?.textContent).toBe(lang === "en" ? "Quote" : "引用");
+    pill.click(); await settle(10);
+    expect([(pg.root.querySelector("#msgIn") as any).value, removed.n]).toEqual(["> after the rehearsal\n", 1]);
+  });
   it("a sent question clears only its own files: one chosen while it was on its way stays; a refused send keeps them all", async () => {
     let n = 0; const answers: ReturnType<typeof held<[number, unknown]>>[] = [];
     const { calls } = hubApi(["attachments-v1"], () => { n++; return fileReply(uuidOf(n), n === 1 ? "first.txt" : "second.txt"); }, [],

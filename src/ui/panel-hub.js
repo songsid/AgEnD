@@ -57,6 +57,7 @@ import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quo
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
+import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "/assets/chat-quote.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
   "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
@@ -787,6 +788,9 @@ function HubRoomView({ room: given }) {
     } } : null;
   const mainRef = useRef(null);
   useFileDrop(mainRef, attach);
+  // M-3311 (2): 「引用」 on a selected passage goes into this question's box (the thread reads it at selection time; the box is
+  // there only while the conversation is open).
+  const askExtra = useMemo(() => ({ quote: { field: () => input.current } }), []);
   const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
   const toggleInfo = () => {
     if (!wide) { setSheet(true); return; }
@@ -809,7 +813,7 @@ function HubRoomView({ room: given }) {
         <button type="button" class="icon-btn" aria-pressed=${wide ? String(showRail) : undefined} aria-label=${hc("showInfo")} title=${hc("showInfo")} onClick=${toggleInfo}><${Icon} name="info" /></button>
         <span class="hub-head-tools"><${TextSizeButton} /></span>
       </header>
-      <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} />
+      <${HubThread} store=${store} name=${name} panelKey=${panelKey} threadRef=${threadRef} extra=${askExtra} />
       <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
         ${closed ? html`<p class="hub-banner danger" role="status">${hc("closed")}</p>` : null}
         ${frozen ? html`<p class="hub-banner warn" role="status">${paused ? t("hubSharing.pausedChat", name) : hc("frozen", name)}</p>` : null}
@@ -902,8 +906,34 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
       // React opens the thread's picker for that message (extra.react is the thread's own add/remove call, with an emoji).
       ...(typeof ex.react === "function" ? { react: (x) => thread.pickReaction?.(msgKey(x)), canReact: (x) => !!x.roomMessage && ex.canReact?.(x) !== false, reactLabel: ex.reactLabel } : {}),
     });
+    // M-3311 (2): the Fleet chat's 「引用」 — a passage selected in one message goes into this conversation's composer as a quote
+    // at the caret (chat-quote.js; panel-chat.js's own install), through the box's typing path. `extra.quote.field()`: the box.
+    const q = ex.quote;
+    const phone = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+    const offQuote = q ? installQuoteSelection(list, {
+      field: () => q.field(), canQuote: () => !!q.field() && q.can?.() !== false, phone,
+      composerBox: () => q.field()?.closest?.(".composer-box") || null, threadBox: () => sc,
+      insert: (text) => {
+        const field = q.field(); if (!field) return;
+        const value = field.value || "";
+        // The caret where the person left it in the box (kept when it lost the focus); never touched: the end.
+        const caret = field.dataset.touched === "1" ? composerCaret(field, value) : value.length;
+        const r = insertQuote(value, caret, text); if (!r) return;
+        const set = typeof HTMLTextAreaElement === "function" ? Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set : null;
+        if (set) set.call(field, r.value); else field.value = r.value;
+        field.dispatchEvent(new Event("input", { bubbles: true }));
+        // After the box redraws: the caret after the quote, in view. A phone keeps its keyboard down.
+        setTimeout(() => {
+          if (q.field() !== field) return;
+          field.dataset.touched = "1";
+          try { field.setSelectionRange(r.caret, r.caret); } catch { /* not a text field */ }
+          if (!phone()) field.focus();
+          showCaret(field, r.caret);
+        }, 0);
+      },
+    }) : () => {};
     return () => {
-      offActions();
+      offActions(); offQuote();
       paging = false;
       off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;

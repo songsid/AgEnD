@@ -34,7 +34,7 @@ describe("where the shared chat modules are served (#3226 PR A)", () => {
     for (const f of NEW) expect(existsSync(ui(f)), `${f} has no old path`).toBe(false);
   });
   it("the old path and /assets are one module (one instance)", async () => {
-    const pairs = [["chat-thread.js", "createThread"], ["chat-time.js", "chatTime"], ["html-attachment.js", "loadHtmlAttachment"], ["chat-msg-actions.js", "installMessageActions"]] as const;
+    const pairs = [["chat-thread.js", "createThread"], ["chat-time.js", "chatTime"], ["html-attachment.js", "loadHtmlAttachment"], ["chat-msg-actions.js", "installMessageActions"], ["chat-quote.js", "installQuoteSelection"]] as const;
     for (const [f, name] of pairs) {
       const old = await import(/* @vite-ignore */ `/ui/js/${f}`), shared = await import(/* @vite-ignore */ `/assets/${f}`);
       expect(old[name], f).toBe(shared[name]);
