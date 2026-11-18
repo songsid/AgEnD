@@ -40,7 +40,7 @@ try {
   for (const [i, c] of cases.entries()) {
     const tag = `${c.device}-${c.theme}-${c.lang}`, row: any = { tag, steps: {} }; receipt.cases.push(row);
     const la = "alex" + i, lb = "bob" + i, alex = rig.addPerson(la, "Alex"), bob = rig.addPerson(lb, "Bob");
-    await rig.signIn(la); await rig.signIn(lb);
+    await rig.signIn(la); const bobApi = await rig.signIn(lb);
     const room = (await rig.call(admin, "POST", "/hub/v1/rooms", { name: `Pins ${tag}`, people: [personKeyString(alex), personKeyString(bob)] })).json.room.id as string;
     for (const text of ["Morning, all.", PINNED, "Rehearsal at 3pm."]) await rig.call(admin, "POST", `/hub/v1/rooms/${room}/messages`, { text, mentions: [], idempotencyKey: randomUUID() });
     const open = async (login: string) => {
@@ -53,7 +53,10 @@ try {
       await p.goto(origin + "/ui/hub"); await p.fill("#hubLogin", login); await p.fill("#hubPassword", "pw-" + login);
       await p.locator(".hub-signin button[type=submit]").click(); await p.locator(".hub-session-row").first().waitFor({ state: "attached" });
       await p.goto(`${origin}/ui/hub?room=${room}`); await p.getByText(PINNED).first().waitFor(); await p.waitForTimeout(600);
-      return { ctx, p };
+      // Whose page this is, from the page's own session (on a phone nothing on screen says who is signed in).
+      const login2 = await p.evaluate(async () => (await (await fetch("/hub/v1/session", { credentials: "same-origin" })).json()).login);
+      check(login2 === login, `the page is ${login}'s (session says ${login2})`);
+      return { ctx, p, login: login2 };
     };
     const menuOn = async (p: any) => {
       const body = p.locator(".msg .body").filter({ hasText: PINNED }).first();
@@ -63,6 +66,7 @@ try {
       return p.evaluate(() => [...document.querySelectorAll(".msg-menu button")].map((b) => (b.textContent || "").trim()));
     };
     const a = await open(la);
+    row.steps.alexLogin = a.login;
     try {
       const items = await menuOn(a.p);
       row.steps.menu = items; await shot(a.p, `${tag}-1-menu`);
@@ -89,9 +93,18 @@ try {
     // Bob, in the same room: nothing of Alex's.
     const b = await open(lb);
     try {
-      row.steps.bob = { btn: await b.p.locator(".hub-room-pins-btn").count(), menu: await menuOn(b.p) };
+      // Bob's own page (its session says so), his message menu, and the room's ⋯ — where Alex's says "Pinned messages · 1"
+      // and his must not: the capture is of that menu, so it can't be taken for one of Alex's frames.
+      const bobMenu = await menuOn(b.p);
+      await b.p.keyboard.press("Escape"); await b.p.waitForTimeout(200);
+      await b.p.locator(".hub-room-menu > button").click(); await b.p.waitForTimeout(300);
+      const bobRoomMenu = await b.p.evaluate(() => [...document.querySelectorAll(".menu-list [role^=menuitem]")].map((x) => (x.textContent || "").trim()));
+      const bobApiPins = (await rig.call(bobApi, "GET", `/hub/v1/rooms/${room}/pins`)).json.pins;
+      row.steps.bob = { login: b.login, btn: await b.p.locator(".hub-room-pins-btn").count(), menu: bobMenu, roomMenu: bobRoomMenu, apiPins: bobApiPins };
       await shot(b.p, `${tag}-6-bob`);
-      check(row.steps.bob.btn === 0 && row.steps.bob.menu.includes(W[c.lang].pin) && !row.steps.bob.menu.includes(W[c.lang].unpin), `Bob sees none of Alex's pins (${JSON.stringify(row.steps.bob)})`);
+      check(b.login === lb && row.steps.bob.btn === 0 && bobMenu.includes(W[c.lang].pin) && !bobMenu.includes(W[c.lang].unpin)
+        && !bobRoomMenu.some((x: string) => x.startsWith(W[c.lang].title)) && Array.isArray(bobApiPins) && bobApiPins.length === 0,
+        `Bob sees none of Alex's pins (${JSON.stringify(row.steps.bob)})`);
       row.status = "PASS";
     } catch (e: any) { row.status = "FAIL"; row.error = String(e?.stack || e).slice(0, 800); await shot(b.p, `${tag}-FAIL`).catch(() => {}); }
     finally { await b.ctx.close(); }
