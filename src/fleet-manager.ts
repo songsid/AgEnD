@@ -1239,13 +1239,13 @@ export type GuestAuditEntry =
   | { kind: "grant"; at: number; account: string; name: string; via: "direct" | "confirmed"; added: string[]; removed: string[]; endedSessions: number; level?: "chat" | "trusted" }
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
-/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
 /** M-3302: what a delivery log line says of a notice — its first line, places as plain text, at most 100 characters. */
 export function noticePreview(text: string): string {
   const first = stripPlaceRefs(text).split("\n").find(l => l.trim() !== "")?.trim() ?? "";
   return first.length > 100 ? `${first.slice(0, 99)}…` : first;
 }
 
+/** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
 export class RestartSupersededError extends Error {
   /** `shown`: the instance as the chat list names it (shownInstanceName). */
   constructor(shown: string) {
@@ -9176,6 +9176,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return BACKEND_INSTALLATION_INFO[backend]?.install ?? "";
   }
 
+  /**
+   * M-3302: the summary a restart/update completion posts — `base` plus the "why" of its failed instances (missingBinarySummary). The one place both completions
+   * (the startup batch after an update or restart, and the in-process restart) build it, so neither can drop the line (Fable on #4161).
+   */
+  completionSummary(base: RestartProgressSummary): RestartProgressSummary {
+    return { ...base, ...this.missingBinarySummary(base.failedNames ?? []) };
+  }
+
+  /** M-3302: the restart/update completion's "why" for the failed instances held on a missing binary, grouped by binary ({} when none). */
+  missingBinarySummary(failedNames: readonly string[]): { missingBinaries?: Array<{ binary: string; fix: string; names: string[] }> } {
+    const groups = new Map<string, { binary: string; fix: string; names: string[] }>();
+    for (const name of failedNames) {
+      const hold = this.missingBinaryHold(name);
+      if (!hold) continue;
+      const group = groups.get(hold.binary) ?? { binary: hold.binary, fix: hold.fix, names: [] };
+      group.names.push(name);
+      groups.set(hold.binary, group);
+    }
+    return groups.size ? { missingBinaries: [...groups.values()] } : {};
+  }
+
   /** M-3302: a missing binary's hold, for Needs you (null: none). */
   missingBinaryHold(name: string): { backend: string; binary: string; since: number; fix: string } | null {
     const hold = this.missingBinaryHolds?.get(name);
@@ -12021,7 +12042,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // version it aimed for, the one running, and the one repair), never just "updated".
       const aimedAt = pendingProgressOperation === "update" ? pendingUpdateProgress?.progress.version : undefined;
       const notLanded = aimedAt && agendVersion !== "unknown" && aimedAt !== agendVersion ? t("update.not_landed", aimedAt, agendVersion) : null;
-      const completionSummary: RestartProgressSummary = {
+      const completionSummary: RestartProgressSummary = this.completionSummary({
         running: started,
         total,
         version: agendVersion,
@@ -12031,7 +12052,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(cleanupOutcome && "render" in cleanupOutcome
           ? { warningText: cleanupOutcome.render.warning, warningCommand: cleanupOutcome.render.cleanupCommand }
           : notLanded ? { warningText: notLanded } : {}),
-      };
+      });
       const progressCompleted = await startupProgress.finish(completionSummary);
       // Armed only after the completion posted: an append racing ahead of it would be overwritten by it.
       if (cleanupOutcome && "watch" in cleanupOutcome) this.armCleanupWatch(cleanupOutcome.watch, completionSummary);
@@ -29680,13 +29701,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const { createRequire } = await import("node:module");
     const _require2 = createRequire(import.meta.url);
     const agendVersion2 = _require2("../package.json").version ?? "unknown";
-    const progressCompleted = await restartProgress.finish({
+    const progressCompleted = await restartProgress.finish(this.completionSummary({
       running: started,
       total,
       version: agendVersion2,
       pausedNames: pausedNames2,
       failedNames,
-    });
+    }));
     if (groupId && this.adapter) {
       let restartText: string;
       if (failedNames.length === 0 && pausedNames2.length === 0) {
