@@ -74,7 +74,7 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
     ${failed ? html`<p class="note" role="alert">${hn("searchFailed")}</p>` : null}
     ${groupNote || note ? html`<p class="note hub-room-picker-note" role="alert">${groupNote || note}</p>` : null}
     ${results && !failed ? offer.length ? html`<ul class="hub-room-results" role="listbox" aria-label=${label}>${offer.map(c => html`<li key=${keyOf(c)}>
-        <button type="button" role="option" class="hub-room-result" onClick=${() => { void pick(c); }}>${pickLabel(c)}${c.intro?html` <small class="note">${c.intro}</small>`:null}${c.owner?.name && c.kind === "agent" ? html` <small class="note">${c.owner.name}</small>` : null}${c.kind === "agent" && !c.mine ? html` <small class="note">${hroom("invitePending")}</small>` : null}</button></li>`)}</ul>`
+        <button type="button" role="option" class="hub-room-result" aria-label=${c.kind === "person" ? `${c.name}${c.detail ? `, ${c.detail}` : ""}` : undefined} onClick=${() => { void pick(c); }}>${c.kind === "person" ? html`<span class="hub-room-person-label"><span class="hub-room-person-name" title=${c.name}>${c.name}</span>${c.detail ? html`<small class="note hub-room-person-detail" title=${c.detail}>${c.detail}</small>` : null}</span>` : pickLabel(c)}${c.intro?html` <small class="note">${c.intro}</small>`:null}${c.owner?.name && c.kind === "agent" ? html` <small class="note">${c.owner.name}</small>` : null}${c.kind === "agent" && !c.mine ? html` <small class="note">${hroom("invitePending")}</small>` : null}</button></li>`)}</ul>`
       : html`<p class="note">${hn("noMatch")}</p>` : null}
     ${q.trim() ? searchHelp : null}
   </div>`;

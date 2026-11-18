@@ -18,7 +18,7 @@ async function world() {
 it("finds a directory person before first Hub sign-in without creating a session or granting anything", async () => {
   const w = await world(), key = personKeyString(w.unseen), before = r!.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get();
   const found = await r!.call(w.admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Ne");
-  expect(found.json.candidates).toEqual([{ kind: "person", id: key, name: "New Person" }]); expect(w.entered()).toBeGreaterThan(0);
+  expect(found.json.candidates).toEqual([{ kind: "person", id: key, name: "New Person", detail: "new-person" }]); expect(w.entered()).toBeGreaterThan(0);
   expect(r!.db.prepare("SELECT * FROM hub_people WHERE person=?").get(key)).toBeUndefined();
   expect(r!.db.prepare("SELECT COUNT(*) n FROM hub_sessions").get()).toEqual(before);
   const made = await r!.call(w.admin, "POST", "/hub/v1/rooms", { name: "Fresh selection", people: [key] }); expect(made.status).toBe(200);

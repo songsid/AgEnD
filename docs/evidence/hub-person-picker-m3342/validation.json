@@ -1,0 +1,44 @@
+{
+  "baseline": {
+    "selectedFailed": 4,
+    "unselected": 6,
+    "note": "Corrected LDAP transport fixture before the retained semantic baseline."
+  },
+  "initialAffected": {
+    "passed": 49,
+    "files": 6
+  },
+  "mergedOwnerCompatibility": {
+    "passed": 17,
+    "files": 2,
+    "overlapsInitial": 5
+  },
+  "distinctTestsAcrossStages": 61,
+  "mergedSourceTypeScriptExit": 0,
+  "mergedTestTypeScriptExit": 0,
+  "browser": {
+    "beforeChecks": 39,
+    "afterChecks": 59,
+    "beforePng": 8,
+    "afterPng": 10,
+    "externalRequests": 0,
+    "browserErrors": 0,
+    "liveAccounts": 0,
+    "liveFleetOrHub": false
+  },
+  "visualInspection": {
+    "afterOriginalsOpened": 10,
+    "beforeOriginalsOpened": [
+      "desk-en-add-members.png",
+      "phone-en-ask-owner.png",
+      "desk-zh-TW-ask-owner.png",
+      "phone-zh-TW-add-members.png"
+    ],
+    "findings": [],
+    "limits": [
+      "Chinese interface glyphs checked; metadata fixtures are English.",
+      "Chips and team/group behavior covered by tests/browser assertions, not these screenshots.",
+      "Long name/account truncation not pictured."
+    ]
+  }
+}

@@ -10,7 +10,16 @@ import type { PolicyGroupSearch } from "../directory/groups.js";
 import { HubProtocolError, person, uuid, validated } from "../validation.js";
 const text = z.string().min(1).max(256).regex(/^[^\u0000-\u001f\u007f]+$/);
 const group = z.strictObject({ objectId: uuid, cn: text, dn: z.string().max(1024) });
-const candidate = z.strictObject({ person, login: text, displayName: text });
+const candidate = z.strictObject({ person, login: text, displayName: text, department: text.optional() });
+/** Only the disambiguation needed by this result page leaves the server. */
+export function roomPersonLabels(rows: readonly { id: string; name: string; account?: string; department?: string }[]) {
+  return rows.map(row => {
+    const department = row.department?.trim(), account = row.account?.trim();
+    const duplicate = department && rows.some(other => other !== row && other.name.trim() === row.name.trim() && other.department?.trim() === department);
+    const detail = department ? duplicate && account ? `${department} · ${account}` : department : account;
+    return { kind: "person" as const, id: row.id, name: row.name, ...(detail ? { detail } : {}) };
+  });
+}
 export class RoomDirectoryCandidates {
   private buckets = new Map<string, { at: number; count: number }>();
   constructor(private readonly core: HubCore) {}
@@ -44,14 +53,14 @@ export class RoomDirectoryCandidates {
     if (b ? b.count >= 30 : this.buckets.size >= 1024) throw new HubProtocolError("backpressure");
     this.buckets.set(key, { at: b?.at ?? at, count: (b?.count ?? 0) + 1 });
     let found;
-    try { found = await this.core.readDirectory<GrantPersonSearch | PolicyGroupSearch>(actor.person, this.core.groupContext(ctx), () => kind === "person" ? people!.call(directory, q) : groups!.call(directory, q)); }
+    try { found = await this.core.readDirectory<GrantPersonSearch | PolicyGroupSearch>(actor.person, this.core.groupContext(ctx), () => kind === "person" ? people!.call(directory, q, { includeDepartment: true }) : groups!.call(directory, q)); }
     catch (error) { assert(); if (error instanceof HubProtocolError) throw error; throw new HubProtocolError("unavailable"); }
     assert();
     if (!found.ok || typeof found.truncated !== "boolean") throw new HubProtocolError("unavailable");
     if (kind === "person" && "people" in found) {
       const rows = validated(z.array(candidate).max(20), found.people);
       if (rows.some(row => row.person.realm !== directory.realm) || new Set(rows.map(row => personKeyString(row.person))).size !== rows.length) throw new HubProtocolError("unavailable");
-      return rows.map(row => ({ kind: "person" as const, id: personKeyString(row.person), name: row.displayName }));
+      return roomPersonLabels(rows.map(row => ({ id: personKeyString(row.person), name: row.displayName, account: row.login, department: row.department })));
     }
     if (kind === "group" && "groups" in found) {
       const rows = validated(z.array(group).max(20), found.groups);
