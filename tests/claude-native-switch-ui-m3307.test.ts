@@ -120,6 +120,20 @@ describe("M-3307: switch an npm-global Claude Code to the native install", () =>
     expect(post()).toEqual([{ method: "POST", url: "/ui/host-npm-remove", body: { backend: "claude-code" } }]);
   });
 
+  it("M-3318: a removal refused because another npm runs says so, and that nothing was removed", async () => {
+    view = { clis: [{ ...CLAUDE_NPM, rows: [{ ...CLAUDE_NPM.rows[0], nativeSwitch: undefined, npmLeftover: { dir: "~/x" } }] }] };
+    await mount();
+    postAnswer = () => ({ status: 409, body: { error: "npm_busy", message: "pid 7777: npm install" } });
+    fire(btn(/^Remove the npm copy$/), "click"); await settle(8);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-npm-remove", body: { backend: "claude-code" } }]);
+    // The refusal's words (the page shows the code's text, as for every install refusal), in both languages.
+    expect(HI.hostInstallText("err_npm_busy")).toContain("Nothing was removed");
+    i18n.setLang("zh-TW", { store: false });
+    expect(HI.hostInstallText("err_npm_busy")).toContain("沒有移除任何東西");
+    i18n.setLang("en", { store: false });
+    expect(HI.hostInstallStore.get().starting).toBeNull();
+  });
+
   it("zh-TW: the offer and the buttons in Chinese, no raw key", async () => {
     i18n.setLang("zh-TW", { store: false });
     run = NRUN({ claude: { kind: "native", path: "/p", npmLeftover: NPM } });

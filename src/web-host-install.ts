@@ -39,7 +39,7 @@ export type HostInstallPhase = "running" | "ok" | "failed" | "cancelled" | "time
 
 /** Why a start was refused. Codes: the page words them in its own language. */
 export type HostInstallRefusal = "unsupported" | "already" | "busy" | "shutting_down" | "failed" | "not_allowed" | "not_installed" | "up_to_date" | "version_unreadable" | "cli_self_updating"
-  | "not_npm" | "still_npm" | "no_npm_copy";
+  | "not_npm" | "still_npm" | "no_npm_copy" | "npm_busy";
 /**
  * What a run does: install a CLI that is not there, or take an installed one to AgEnD's audited release. M-3307 (#4146), Claude Code only: `native` installs the audited
  * release with Claude's own installer over an npm-global install (the switch); `remove-npm` then removes the npm copy, a separate step the person asks for.

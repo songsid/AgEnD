@@ -23834,6 +23834,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (mode === "remove-npm") this.claudeNpmCopyCache = null;
     const npmCopy = mode === "remove-npm" ? await this.findClaudeNpmCopy().catch(() => null) : null;
     if (mode === "remove-npm" && (!npmCopy || !existsSync(npmCopy))) return { refused: "no_npm_copy" };
+    // M-3318 (#4146's shape): never run npm's uninstall while another npm is changing packages on this computer — e.g. an agent's Claude Code updating itself with
+    // `npm install -g` in that same prefix. The same judgement as the AgEnD installer's wait (#4148, launcher/agend-install.cjs); here it is refused with what runs, never queued.
+    if (mode === "remove-npm") {
+      const busy = await this.otherNpmChanging().catch(() => null);
+      if (busy && busy.length) return { refused: "npm_busy", message: busy.map(row => `pid ${row.pid}: npm ${row.command}`).join("; ") };
+    }
     const info = plan ? { install: plan.command } : npmCopy ? { install: npmUninstallCommand(npmCopy) } : base;
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
     const claim = this.loginWindow.tryClaim("install", backend);
@@ -23911,6 +23917,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** M-3307: the npm copy of Claude Code the last switch found (its package directory), the one `remove-npm` removes. */
   private claudeNpmCopy: string | null = null;
+
+  /**
+   * M-3318: the other npm processes on this computer that may be changing packages (pid and npm's command word only — never the argv, which can carry
+   * a registry credential), judged as the AgEnD installer judges them (#4148). Null when the process list cannot be read.
+   */
+  private async otherNpmChanging(): Promise<Array<{ pid: number; command: string }> | null> {
+    const [{ createRequire }, { promisify }, { execFile }] = await Promise.all([import("node:module"), import("node:util"), import("./child-process.js")]);
+    const judge = createRequire(import.meta.url)("../launcher/agend-install.cjs") as {
+      npmChangingFromProcessList(output: string, ownPid: number): Array<{ pid: number; args: string }> | null;
+      npmCommands(args: string): string[] | null;
+    };
+    const { stdout } = await promisify(execFile)("ps", ["-A", "-o", "pid=,ppid=,args="], { timeout: 5_000, maxBuffer: 4 * 1024 * 1024 });
+    const rows = judge.npmChangingFromProcessList(String(stdout), process.pid);
+    return rows ? rows.map(row => ({ pid: row.pid, command: (judge.npmCommands(row.args) ?? ["?"])[0] ?? "?" })) : null;
+  }
 
   /** M-3307: Claude's native install is there: `~/.local/bin/claude` leads into its versions folder. */
   private async nativeClaudePresent(): Promise<boolean> {

@@ -130,6 +130,7 @@ register("hostinstall", {
     err_not_npm: "Claude Code here is not an npm install, so there is nothing to switch.",
     err_still_npm: "There is no native install of Claude Code yet: switch to it first, then remove the npm copy.",
     err_no_npm_copy: "There is no npm copy of Claude Code to remove.",
+    err_npm_busy: "Another npm is installing or updating packages on this computer right now (an agent's Claude Code may be updating itself). Nothing was removed: try again in a few minutes.",
   },
   "zh-TW": {
     nativeOffer: "Claude Code 是用 npm 安裝的（{0}）。AgEnD 重啟時可能打斷 npm 自己的更新，讓 `claude` 只裝了一半。改用 Claude 的原生安裝就不會這樣：切換會用 claude.ai/install.sh 安裝 {1}，也就是 AgEnD 稽核過的版本。",
@@ -148,6 +149,7 @@ register("hostinstall", {
     err_not_npm: "這裡的 Claude Code 不是用 npm 安裝的，不需要切換。",
     err_still_npm: "還沒有 Claude Code 的原生安裝：請先改用原生安裝，再移除 npm 那份。",
     err_no_npm_copy: "沒有 npm 安裝的 Claude Code 可以移除。",
+    err_npm_busy: "這台電腦上有另一個 npm 正在安裝或更新套件（可能是 agent 的 Claude Code 在自行更新）。沒有移除任何東西，請過幾分鐘再試。",
   },
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
