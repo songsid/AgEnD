@@ -1,0 +1,103 @@
+RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-company-pilot-trust.test.ts (15 tests | 3 failed | 12 skipped) 426ms
+     × offers no pilot trust for a correctly named leaf issued by an unknown CA 163ms
+     × refuses a forged explicit choice for a CA-issued leaf before HTTP, pins or join state 138ms
+     × refuses a forged saved pin for a CA-issued leaf before HTTP, pins or join state 123ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-company-pilot-trust.test.ts > Fleet pilot trust consent and persistence > offers no pilot trust for a correctly named leaf issued by an unknown CA
+AssertionError: expected { ok: false, …(3) } to deeply equal { ok: false, reason: 'certificate' }
+
+- Expected
++ Received
+
+  {
+    "ok": false,
+    "reason": "certificate",
++   "selfSigned": true,
++   "trust": {
++     "expiresAt": 1795207062000,
++     "fingerprint": "<generated fingerprint>",
++     "previous": null,
++   },
+  }
+
+ ❯ tests/hub-company-pilot-trust.test.ts:94:58
+     92|     const ca = new X509Certificate(r.ca!);
+     93|     expect(leaf.subject).not.toBe(leaf.issuer); expect(leaf.verify(ca.…
+     94|     expect(await f.controller.probe(f.input, f.session)).toEqual({ ok:…
+       |                                                          ^
+     95|     expect(r.requests).toEqual([]); expect(f.command).not.toHaveBeenCa…
+     96|     expect(existsSync(join(f.home, "hub-member"))).toBe(false);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/hub-company-pilot-trust.test.ts > Fleet pilot trust consent and persistence > refuses a forged explicit choice for a CA-issued leaf before HTTP, pins or join state
+AssertionError: promise resolved "{ …(10) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "expiresAt": 1795034862281,
++   "fleetId": null,
++   "handoffId": "00000000-0000-4000-8000-000000000000",
++   "hubOrigin": "https://hub.example.test:37963",
++   "issued": false,
++   "operationId": "00000000-0000-4000-8000-000000000000",
++   "outcomeKnown": true,
++   "reason": null,
++   "state": "awaiting-sign-in",
++   "waiting": null,
+  }
+
+ ❯ tests/hub-company-pilot-trust.test.ts:108:24
+    106|     const start = mode === "explicit choice" ? f.start() : f.controlle…
+    107|       { session: f.session, confirmedCurrent: () => true });
+    108|     await expect(start).rejects.toThrow();
+       |                        ^
+    109|     expect(r.requests).toEqual([]); expect(f.command).not.toHaveBeenCa…
+    110|     for (const path of ["company-joins", "company-trust", "state.json"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/hub-company-pilot-trust.test.ts > Fleet pilot trust consent and persistence > refuses a forged saved pin for a CA-issued leaf before HTTP, pins or join state
+AssertionError: promise resolved "{ …(10) }" instead of rejecting
+
+- Expected
++ Received
+
+- Error {
+-   "message": "rejected promise",
++ {
++   "expiresAt": 1795034862416,
++   "fleetId": null,
++   "handoffId": "00000000-0000-4000-8000-000000000000",
++   "hubOrigin": "https://hub.example.test:45015",
++   "issued": false,
++   "operationId": "00000000-0000-4000-8000-000000000000",
++   "outcomeKnown": true,
++   "reason": null,
++   "state": "awaiting-sign-in",
++   "waiting": null,
+  }
+
+ ❯ tests/hub-company-pilot-trust.test.ts:108:24
+    106|     const start = mode === "explicit choice" ? f.start() : f.controlle…
+    107|       { session: f.session, confirmedCurrent: () => true });
+    108|     await expect(start).rejects.toThrow();
+       |                        ^
+    109|     expect(r.requests).toEqual([]); expect(f.command).not.toHaveBeenCa…
+    110|     for (const path of ["company-joins", "company-trust", "state.json"…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 12 skipped (15)
+   Start at  04:37:41
+   Duration  1.17s (transform 443ms, setup 75ms, import 550ms, tests 426ms, environment 0ms)

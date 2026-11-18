@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { X509Certificate } from "node:crypto";
+import type { LookupFunction } from "node:net";
+import { makeTestCerts } from "./support/hub-init-fixtures.js";
 import { inspectPilotCertificate } from "../src/hub/join/certificate.js";
 import { CompanyJoinController } from "../src/hub/join/local.js";
 import { CompanyCertificateTrust } from "../src/hub/join/certificate-trust.js";
@@ -15,21 +17,29 @@ import { companyIdentityDigest } from "../src/hub/join/protocol.js";
 import { sha256 } from "../src/hub/identity.js";
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => { for (const done of cleanup.splice(0).reverse()) await done(); });
-async function loopbackHub() {
+async function loopbackHub({ caIssued = false } = {}) {
   const home = mkdtempSync(join(tmpdir(), "agend-pilot-trust-")); cleanup.push(() => rmSync(home, { recursive: true, force: true }));
   const identity = await provisionHubIdentity({ home, memberOrigin: "https://127.0.0.1:9443" });
-  const certificatePem = readFileSync(join(home, "hub/keys/tls-cert.pem"), "utf8");
+  const memberCertificatePem = readFileSync(join(home, "hub/keys/tls-cert.pem"), "utf8");
+  const issued = caIssued ? makeTestCerts() : null;
+  if (issued) cleanup.push(() => rmSync(issued.dir, { recursive: true, force: true }));
+  const certificatePem = issued ? readFileSync(issued.cert, "utf8") : memberCertificatePem;
+  const lookup: LookupFunction | undefined = issued ? (_host, options, callback) => {
+    if (options.all) callback(null, [{ address: "127.0.0.1", family: 4 }]);
+    else callback(null, "127.0.0.1", 4);
+  } : undefined;
   let metadata: unknown; const requests: string[] = [];
-  const server: Server = createServer({ cert: certificatePem, key: readFileSync(join(home, "hub/keys/tls-key.pem")) }, (req, res) => {
+  const server: Server = createServer({ cert: certificatePem, key: readFileSync(issued?.key ?? join(home, "hub/keys/tls-key.pem")) }, (req, res) => {
     requests.push(req.url ?? ""); res.writeHead(200, { "Content-Type": "application/json" }); res.end(JSON.stringify(metadata));
   });
   cleanup.push(async () => { server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); });
   await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
   const address = server.address(); if (!address || typeof address === "string") throw Error("owned listener");
-  const origin = `https://127.0.0.1:${address.port}`, hub = { ...identity, webOrigin: origin, memberOrigin: "https://127.0.0.1:9443" };
+  const origin = `https://${issued ? "hub.example.test" : "127.0.0.1"}:${address.port}`, hub = { ...identity, webOrigin: origin, memberOrigin: "https://127.0.0.1:9443" };
   const { issuerKeyId: _issuerKeyId, ...joinHub } = hub;
-  metadata = { v: 1, hub: joinHub, identityDigest: companyIdentityDigest(joinHub), certificatePem, features: ["company-join-v1", "enrolment-code-v1"] };
-  return { home, origin, certificatePem, fingerprint: sha256(new X509Certificate(certificatePem).raw), requests };
+  metadata = { v: 1, hub: joinHub, identityDigest: companyIdentityDigest(joinHub), certificatePem: memberCertificatePem, features: ["company-join-v1", "enrolment-code-v1"] };
+  return { home, origin, certificatePem, lookup, ca: issued ? readFileSync(issued.caCert, "utf8") : undefined,
+    fingerprint: sha256(new X509Certificate(certificatePem).raw), requests };
 }
 function discoverPinned(client: CompanyJoinClient, origin: string, certificateFingerprint: string) {
   // Structural options keep the fail-first input native-compiling before the new optional field is implemented.
@@ -63,7 +73,7 @@ describe("pilot company join certificate transport", () => {
 async function fleet(r: Awaited<ReturnType<typeof loopbackHub>>, allowed = true) {
   const home = mkdtempSync(join(tmpdir(), "agend-pilot-fleet-")); cleanup.push(() => rmSync(home, { recursive: true, force: true }));
   let enabled = allowed;
-  const transport = new CompanyJoinClient(), command = vi.fn<CompanyJoinClient["command"]>(async (binding, purpose) => {
+  const transport = new CompanyJoinClient({ lookup: r.lookup }), command = vi.fn<CompanyJoinClient["command"]>(async (binding, purpose) => {
     if (purpose !== "push") throw Error("Only push expected");
     return { requestId: binding.requestId, expiresAt: Date.now() + 600_000, browserAction: r.origin + "/hub/join/open" };
   });
@@ -77,6 +87,29 @@ async function fleet(r: Awaited<ReturnType<typeof loopbackHub>>, allowed = true)
     start: (fingerprint = r.fingerprint, previous: string | null = null) => controller.start({ ...input, label: "Pilot Fleet", code: "ABCD2345", trust: { fingerprint, previous } }, { session, confirmedCurrent: () => true }) };
 }
 describe("Fleet pilot trust consent and persistence", () => {
+  it("offers no pilot trust for a correctly named leaf issued by an unknown CA", async () => {
+    const r = await loopbackHub({ caIssued: true }), f = await fleet(r), leaf = new X509Certificate(r.certificatePem);
+    const ca = new X509Certificate(r.ca!);
+    expect(leaf.subject).not.toBe(leaf.issuer); expect(leaf.verify(ca.publicKey)).toBe(true);
+    expect(await f.controller.probe(f.input, f.session)).toEqual({ ok: false, reason: "certificate" });
+    expect(r.requests).toEqual([]); expect(f.command).not.toHaveBeenCalled();
+    expect(existsSync(join(f.home, "hub-member"))).toBe(false);
+    // The same listener succeeds through ordinary CA validation: hostname, dates and metadata are valid.
+    await expect(new CompanyJoinClient({ lookup: r.lookup, ca: r.ca }).discover(r.origin, () => true))
+      .resolves.toMatchObject({ hub: { webOrigin: r.origin } });
+    expect(r.requests).toEqual(["/hub/v1/join/metadata"]);
+  });
+  it.each(["explicit choice", "saved pin"])("refuses a forged %s for a CA-issued leaf before HTTP, pins or join state", async mode => {
+    const r = await loopbackHub({ caIssued: true }), f = await fleet(r), pins = new CompanyCertificateTrust(f.home);
+    if (mode === "saved pin") pins.save(r.origin, { fingerprint: r.fingerprint, previous: null }, () => true);
+    const previous = pins.read(r.origin);
+    const start = mode === "explicit choice" ? f.start() : f.controller.start({ ...f.input, label: "Pilot Fleet", code: "ABCD2345" },
+      { session: f.session, confirmedCurrent: () => true });
+    await expect(start).rejects.toThrow();
+    expect(r.requests).toEqual([]); expect(f.command).not.toHaveBeenCalled(); expect(pins.read(r.origin)).toBe(previous);
+    for (const path of ["company-joins", "company-trust", "state.json"])
+      expect(existsSync(join(f.home, "hub-member", path))).toBe(false);
+  });
   it("probes without saving, then trusts and starts the code join in one press", async () => {
     const r = await loopbackHub(), f = await fleet(r);
     expect(await f.controller.probe(f.input, f.session)).toMatchObject({ ok: false, reason: "certificate", selfSigned: true, trust: { fingerprint: r.fingerprint, previous: null } });
