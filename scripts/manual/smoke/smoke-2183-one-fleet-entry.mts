@@ -1,15 +1,15 @@
 // #2183 from defaults (fleet decision a78ebdc5): one Fleet entry. A fresh profile with nothing seeded signs in through the
 // visible /signin (a phone opens the drawer with ☰). Per case:
 //   - the sidebar's rows are Fleet ("Fleet 概覽" in zh-TW), Needs you and New agent — no Fleet (Details) or View row — and
-//     Fleet is on screen, at the top;
-//   - a phone's tabs are Chat · Needs you · Fleet · Settings, all on screen; Chat is current on an agent's chat and View
-//     and goes to its chat; the agent's View, Log and Details are the switch under its header;
-//   - Fleet opens the Org chart the first time; after a visit to Cache it opens Cache — from the sidebar (desk) or the tab
-//     (phone), also after a reload;
+//     Fleet is on screen, at the top (M-3330: Notices, #2910, and Search, between them, are rows of their own since);
+//   - a phone has no bottom tab bar (M-3166): it moves around by its ☰ drawer, which holds the same rows; the agent's
+//     View, Log and Details are the switch under its header;
+//   - Fleet opens the Org chart the first time; after a visit to Cache it opens Cache — from the sidebar (on a phone, the
+//     drawer's), also after a reload;
 //   - the temporary public link: the same (its own origin, so its own remembered tab);
 //   - no page error (WebKit's own lines only; the opening navigation's stream/poll/session cancels by position).
-// And the anonymous /view reader, unchanged: under web.view_access: open (the default) its sidebar is View, its tabs View
-// and Sign in, no Fleet; refused (401) under web.view_access: session.
+// And the anonymous /view reader, unchanged: under web.view_access: open (the default) its sidebar (a phone's drawer) is
+// View with Sign in at its foot, no Fleet; refused (401) under web.view_access: session.
 // Cases: desk light (English), phone dark (zh-TW, reduced motion, a LAN origin in Chromium), the public link (desk light,
 // reduced motion), signed-out /view (phone light, English). PW_DIR=… REPO=… OUT=… [PW_ENGINE=webkit] npx --prefix <checkout>
 // tsx scripts/manual/smoke/smoke-2183-one-fleet-entry.mts
@@ -38,12 +38,13 @@ async function openDrawer(p: FreshPage) {
 /** What a person sees: the sidebar's rows (text, href, on screen) and the phone's tabs (text, href, current, on screen). */
 const READ = `(() => {
   const on = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth; };
-  const rows = [...document.querySelectorAll("#sidebar .side-nav .side-row")].map((a) => [a.textContent.trim(), a.getAttribute("href"), on(a)]);
+  const rows = [...document.querySelectorAll("#sidebar .side-nav .side-row")].map((a) => [a.textContent.trim(), a.getAttribute("href"), on(a), a.className]);
+  const signIn = [...document.querySelectorAll("#sidebar .side-foot a.side-row")].filter((a) => (a.getAttribute("href") || "").startsWith("/signin")).map((a) => on(a));
   const tabs = [...document.querySelectorAll("nav.tabs a.tab")].filter((a) => getComputedStyle(a.parentElement).display !== "none")
     .map((a) => [a.textContent.trim(), a.getAttribute("href"), a.getAttribute("aria-current") === "page", on(a)]);
   const sw = [...document.querySelectorAll(".inst-switch a.seg-item")].map((a) => a.getAttribute("href"));
   const fleetTab = document.querySelector(".p-fleet .seg-item.active");
-  return { rows, tabs, sw, path: location.pathname, fleetTab: fleetTab ? fleetTab.getAttribute("href") : null };
+  return { rows, tabs, sw, signIn, path: location.pathname, fleetTab: fleetTab ? fleetTab.getAttribute("href") : null };
 })()`;
 const results: any[] = [];
 function done(name: string, chk: Record<string, boolean>, info: unknown, errors: string[]) {
@@ -57,7 +58,7 @@ const ownErrors = (p: FreshPage, navEnd: number) => p.errors.filter((e, i) => { 
 async function runCase(name: string, open: () => Promise<FreshPage>, lang: "en" | "zh-TW") {
   const p = await open();
   const phone = p.page.viewportSize().width < 760;
-  const L = lang === "en" ? { fleet: "Fleet", needs: "Needs you", newAgent: "New agent", tabs: ["Chat", "Needs you", "Fleet", "Settings"] } : { fleet: "Fleet 概覽", needs: "等你處理", newAgent: "新增 Agent", tabs: ["聊天", "待處理", "Fleet", "設定"] };
+  const L = lang === "en" ? { fleet: "Fleet", needs: "Needs you", newAgent: "New agent" } : { fleet: "Fleet 概覽", needs: "等你處理", newAgent: "新增 Agent" };
   await p.page.goto(`${p.base}/ui/chat/${encodeURIComponent(AGENT)}`);
   await mounted(p.page, 30000);
   await p.page.waitForTimeout(800);
@@ -65,15 +66,15 @@ async function runCase(name: string, open: () => Promise<FreshPage>, lang: "en" 
   const read = async () => p.page.evaluate(READ) as Promise<any>;
   const chk: Record<string, boolean> = {};
   const a = await read();
-  if (phone) {
-    chk.fourTabs = JSON.stringify(a.tabs.map((t: any) => t[0])) === JSON.stringify(L.tabs) && a.tabs.every((t: any) => t[3]);
-    chk.chatCurrentOnChat = a.tabs[0][2] && a.tabs[0][1] === `/ui/chat/${AGENT}`;
-    await openDrawer(p);
-  }
+  // M-3166: a phone has no bottom tab bar; the drawer is its way around (and every width has no tabs shown).
+  chk.noTabBar = a.tabs.length === 0;
+  if (phone) await openDrawer(p);
   const b = await read();
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "1-sidebar") });
   // The two links, then the owner's New agent button (no href).
-  chk.twoRows = JSON.stringify(b.rows.map((r: any) => r.slice(0, 2))) === JSON.stringify([[L.fleet, "/ui/fleet/org"], [L.needs, "/ui/needs"], [L.newAgent, null]]) && b.rows[0][2];
+  // M-3330: Notices (#2910: a web-only fleet, as the fixture's) and Search are rows of their own since; set aside here.
+  const entry = b.rows.filter((r: any) => r[1] !== "/ui/notices" && !/\bside-search\b/.test(r[3] ?? ""));
+  chk.twoRows = JSON.stringify(entry.map((r: any) => r.slice(0, 2))) === JSON.stringify([[L.fleet, "/ui/fleet/org"], [L.needs, "/ui/needs"], [L.newAgent, null]]) && b.rows[0][2];
   chk.noDetailsOrViewRow = !b.rows.some((r: any) => /^\/view|^\/ui\/fleet\/agent\//.test(r[1] ?? ""));
   // Fleet → the Org chart (the first time), then Cache.
   await p.page.locator("#sidebar a.side-overview").click();
@@ -90,22 +91,21 @@ async function runCase(name: string, open: () => Promise<FreshPage>, lang: "en" 
   await p.page.waitForSelector(".inst-switch a.seg-item", { timeout: 15000 }).catch(() => null);
   const d = await read();
   chk.switchUnderHeader = ["/ui/chat/", "/view/", "/ui/log/", "/ui/fleet/agent/"].every((pre) => d.sw.includes(pre + AGENT));
-  if (phone) chk.chatCurrentOnView = d.tabs[0][2] && d.tabs[0][1] === `/ui/chat/${AGENT}` && !d.tabs[2][2];
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "2-agent-view") });
-  // After a reload, Fleet opens Cache: the tab (phone) or the sidebar (desk).
+  // After a reload, Fleet opens Cache: the sidebar's Fleet row (on a phone, in the drawer).
   await p.page.reload();
   await mounted(p.page, 30000);
   await p.page.waitForTimeout(500);
+  if (phone) await openDrawer(p);
   const e = await read();
-  chk.rememberedHref = (phone ? e.tabs[2][1] : e.rows[0][1]) === "/ui/fleet/cache";
-  if (phone) await p.page.locator('nav.tabs a.tab[href="/ui/fleet/cache"]').click();
-  else await p.page.locator("#sidebar a.side-overview").click();
+  chk.rememberedHref = e.rows[0][1] === "/ui/fleet/cache";
+  await p.page.locator("#sidebar a.side-overview").click();
   await p.page.waitForURL(/\/ui\/fleet\/cache$/, { timeout: 10000 }).catch(() => null);
   await p.page.waitForSelector(".p-fleet .seg-item.active", { timeout: 10000 }).catch(() => null);
   const f = await read();
-  chk.reopensCache = f.path === "/ui/fleet/cache" && f.fleetTab === "/ui/fleet/cache" && (!phone || f.tabs[2][2]);
+  chk.reopensCache = f.path === "/ui/fleet/cache" && f.fleetTab === "/ui/fleet/cache";
   await p.page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-${name}`, "3-fleet-cache") });
-  done(name, chk, { a: a.tabs, b: b.rows, c, d, e: phone ? e.tabs : e.rows, f: f.path }, ownErrors(p, navEnd));
+  done(name, chk, { a: a.tabs, b: b.rows, c, d, e: e.rows, f: f.path }, ownErrors(p, navEnd));
   await p.ctx.close();
 }
 
@@ -132,12 +132,13 @@ await link.close();
   await page.waitForTimeout(800);
   const v = await page.evaluate(READ) as any;
   await page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-signed-out-view-phone-light-en`, "1-tabs") });
-  chk.viewTabs = JSON.stringify(v.tabs.map((t: any) => t[0])) === JSON.stringify(["View", "Sign in"]) && v.tabs[0][1] === `/view/${AGENT}` && /^\/signin\?/.test(v.tabs[1][1]) && v.tabs.every((t: any) => t[3]);
+  chk.noTabBar = v.tabs.length === 0;                                                            // M-3166: the drawer instead
   await openDrawer({ page } as FreshPage);
   await page.waitForTimeout(400);
   const w = await page.evaluate(READ) as any;
   await page.screenshot({ path: shotPath(SMOKE, `${ENGINE}-signed-out-view-phone-light-en`, "2-drawer") });
   chk.viewSidebar = JSON.stringify(w.rows.map((r: any) => r.slice(0, 2))) === JSON.stringify([["View", "/view"]]) && w.rows[0][2] && !(await page.locator("#sidebar a.side-overview").count());
+  chk.signInInDrawer = w.signIn.length === 1 && w.signIn[0];
   const atSession = errors.length;
   fm.fleetConfig.web.view_access = "session";
   const refused = await page.goto(`${fx.base}/view/${encodeURIComponent(AGENT)}`);
