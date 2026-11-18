@@ -166,6 +166,7 @@ import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.j
 import { installMessageActions } from "/assets/chat-msg-actions.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "./chat-quote.js";
 import { installTableSelection } from "/assets/chat-table-select.js";
+import { contactBadgeHtml, installBadgeRefresh } from "./contact-ticket-badge.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
@@ -759,6 +760,7 @@ function threadEntry(name, doc) {
     onEmpty: (v) => e.sink?.setEmpty(v && store.allHidden(name) ? "hidden" : v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    contactBadge: (x) => { installBadgeRefresh(); return contactBadgeHtml(x); },   // M-3339: 聯絡申請 #R… / 已准轉交 #R… (kept current)
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
     putBackOutgoing: (clientId) => { recordEdit(composerField(name)); store.putBackOutgoing(name, clientId); },   // undoable, as typing
