@@ -1,0 +1,7 @@
+ace7a96f66e391cb81eef774168f9b9cfd76d8e257f7d04e085d6d5f310373a5  src/hub/member/room-ask.ts
+b32b1a371f8c9f27751f01c755f6a8f7ff8d1d8d3220b814681728f59309c6ee  src/hub/room-brief-model.ts
+0a5f406beeac9fe09d0bb30d4d4b9ca5ee52881c19e956962237406849c9256c  tests/fixtures/hub-room-brief-budget/SOURCES.md
+5bf597a6d37255f5ccf23ea602b6881c063add70db51c76fa416a8788a3e13c1  tests/fixtures/hub-room-brief-budget/first-en.txt
+776c1ef78a6c892da3d7821653f18144213809137278df30be0b78bf0d980f13  tests/fixtures/hub-room-brief-budget/first-zh-TW.txt
+0bb4c1cc5332b5e88e19afb4111d97d973dd799c3f9b42eb41e7c1354ae00657  tests/hub-room-brief-budget-m3300.test.ts
+c970d7b580a9969b3900bb7b8d6d9b8e7395e2e7653d18c620876642b90a4190  tests/usage-marks-fit-m3288.test.ts
