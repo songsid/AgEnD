@@ -95,3 +95,10 @@ have a selected semantic reversal; all originals are restored. Five focused
 files pass 19/19. Unsupported guard coverage intentionally keeps ordinary native
 permissions with a not-covered warning; this is not a fail-closed claim for
 those unsupported launches. The covered CLI matrix remains unchanged.
+
+The CI follow-up also keeps setup isolated: disk-only version parsing is moved
+unchanged to a leaf module, with existing availability exports preserved. A
+legacy adapter call on a default-kind runtime leaves it unchanged; restricted
+input still refuses a non-Classic identity. The original setup/Kiro tests are
+red before and green afterward. Ten affected files pass 109/109, with source
+and test TypeScript both clean. These checks add no real CLI observation.

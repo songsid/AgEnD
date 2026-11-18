@@ -27,6 +27,10 @@ contact admission still uses the current server policy. A native policy change
 cancels an in-progress launch before stale configuration or commands can be
 applied. Switching a running room to legacy invalidates its old guard and shows
 restart-required until a new launch applies that mode.
+The optional adapter leaves a legacy request on a non-Classic/default-kind
+runtime unchanged. A restricted plan still refuses that identity. Disk version
+metadata lives in a leaf module, keeping setup and quickstart independent of
+the Fleet lifecycle and daemon.
 
 Local Linux x64 Claude in MCP mode is the initial covered path. Versions are added
 only with real-binary isolated evidence. The documented failure-blocking minimum

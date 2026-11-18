@@ -1,3 +1,4 @@
+import { staticBackendVersion } from "../backend-version-static.js";
 import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES, parseClaudeEffortCapability } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
@@ -1583,7 +1584,6 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     this.classicPreparedBinaryStamp = null;
     const before = this.classicBinaryStamp();
     // Static metadata only: a guard probe must never start a CLI or contact an account.
-    const { staticBackendVersion } = await import("../backend-availability.js");
     const version = await staticBackendVersion("claude-code", this.binaryPath);
     if (before && before === this.classicBinaryStamp()) { this.classicVersion = version; this.classicPreparedBinaryStamp = before; }
   }

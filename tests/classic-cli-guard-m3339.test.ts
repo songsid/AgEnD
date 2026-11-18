@@ -9,7 +9,7 @@ import { classicGuardStatus, classicOwnerMcpServers, classicPlanDigest, invalida
 import { CLASSIC_RESTRICTED_TOOLS } from "../src/contact-auth-types.js";
 
 const versionReader = vi.hoisted(() => vi.fn(async () => "2.1.327"));
-vi.mock("../src/backend-availability.js", () => ({ staticBackendVersion: versionReader }));
+vi.mock("../src/backend-version-static.js", async original => ({ ...await original<typeof import("../src/backend-version-static.js")>(), staticBackendVersion: versionReader }));
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 

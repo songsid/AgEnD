@@ -31,11 +31,11 @@
     },
     {
       "path": "src/backend/claude-code.ts",
-      "sha256": "7f80ae4524459b2aa9419edfcc046fafbb39f994b88a4c3bb2cd35e50be6edec"
+      "sha256": "b7a232e489b1b62a24f2ed790fa23e1957271a75786eda09cab0fd63daad005c"
     },
     {
       "path": "src/daemon.ts",
-      "sha256": "682b822790b50f83a80dd70d5632de36355a035e9b791c1429d23cc30e9fd3fb"
+      "sha256": "b1fa8515774468542a370b6734a9f8b380811d11ccbe99aeb65e913b6ad61e27"
     },
     {
       "path": "src/channel/mcp-server.ts",
@@ -47,7 +47,7 @@
     },
     {
       "path": "docs/design/classic-cli-guard.md",
-      "sha256": "3301edb57eaab69204574caaaac61e115a560992ba9bbf3d2ce6da420ac65d37"
+      "sha256": "d4db194f1b32addc2cf5e6d1001b749bd7170c55ff32fc7da77423ee92a451f9"
     },
     {
       "path": "scripts/manual/classic-cli-guard/mcp.mjs",
@@ -63,7 +63,7 @@
     },
     {
       "path": "tests/classic-cli-guard-daemon-m3339.test.ts",
-      "sha256": "58b8474c293dcb7684a887a684631ec8fd26c702a208c6c7e3f4402c5c83dae3"
+      "sha256": "5629c03332fa2b6ebf3bbb6b202141b720b62fe5e252a93d5d4296897bae5363"
     },
     {
       "path": "tests/classic-cli-guard-fixtures-m3339.test.ts",
@@ -71,7 +71,7 @@
     },
     {
       "path": "tests/classic-cli-guard-m3339.test.ts",
-      "sha256": "4541f820a9db8c2ed69afdf0dc85a4108edfabbaa7b9363bc09ccd2f64a6ca1d"
+      "sha256": "7be3ae7d3f0dae195794e9e64ac634f88f3347a3ee7b1c65b91d22c2a6130aa4"
     },
     {
       "path": "tests/classic-cli-guard-mcp-m3339.test.ts",
@@ -84,6 +84,14 @@
     {
       "path": "docs/design/classic-contact-authorizations.md",
       "sha256": "d6c898be4aa1d9aaeda520ee7b6b7f5f18565d5b1771ea893e6dda031b2b7d0f"
+    },
+    {
+      "path": "src/backend-availability.ts",
+      "sha256": "967e98cc89e94d62c9d886f9bcc4323be72a27ee9d087dd4abda63d3bbe4515a"
+    },
+    {
+      "path": "src/backend-version-static.ts",
+      "sha256": "89d9beb15756f10825130ab5e36cf2b6410e7c4a32449a0368ce98419cbd1eb8"
     }
   ],
   "evidence": [
@@ -93,11 +101,11 @@
     },
     {
       "path": "docs/evidence/classic-cli-guard-m3339/README.md",
-      "sha256": "58f3177b0520cd89c992e8a580f2463d87ab904b4b427127df38eb1bcb04cb36"
+      "sha256": "47263c89418777822b00acb93c02a8b771519019e213a225270fd67f87d1053c"
     },
     {
       "path": "docs/evidence/classic-cli-guard-m3339/validation.md",
-      "sha256": "1a5cf6bde025b60a28161065d9a4bdf6cebf42e9043cdd4d706c79d684f4f276"
+      "sha256": "39d57d1dd67dba67843f62946594d5bb6fe778a359842700101223dba6ed933a"
     }
   ],
   "binaries": [
@@ -174,6 +182,24 @@
         "files": 5
       },
       "testTypeScriptExit": 0,
+      "newRealCliObservations": 0
+    },
+    {
+      "name": "CI-R2-setup-isolation-and-legacy-admission",
+      "baseline": {
+        "failed": 3,
+        "passed": 44,
+        "files": 2
+      },
+      "final": {
+        "passed": 109,
+        "files": 10
+      },
+      "sourceTypeScriptExit": 0,
+      "testTypeScriptExit": 0,
+      "staticReaderMovedByteEqual": true,
+      "movedTextSha256": "f4be8d053d5ab0be0626f7e5dd8d4235ef890d40d5d16ca49139cb800d005ae8",
+      "originalSetupAndKiroTestsUnchanged": true,
       "newRealCliObservations": 0
     }
   ],

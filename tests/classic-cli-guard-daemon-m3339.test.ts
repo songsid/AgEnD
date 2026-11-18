@@ -15,6 +15,14 @@ function owner(backend = "codex") {
     runtimeIdentity: { kind: "classic" }, processStatus: "running" });
   return { d, root };
 }
+it("keeps default-kind legacy starts unchanged while refusing a misbound restricted plan", () => {
+  const { d, root } = owner("kiro-cli"); d.runtimeIdentity = { kind: "fleet-topic" };
+  const roomTools = { publicRead: true, allowedMcpTools: [] };
+  expect(() => d.setClassicRestriction({ mode: "legacy", roomTools })).not.toThrow();
+  expect(d.classicRestriction).toBeUndefined();
+  expect(() => readFileSync(join(root, "classic-cli-guard/current.json"))).toThrow();
+  expect(() => d.setClassicRestriction({ mode: "restricted", roomTools })).toThrow("Classic restriction requires a Classic room");
+});
 it("never reports unproved backends/native panes as restricted ready", () => {
   for (const backend of ["codex", "grok", "kiro-cli", "muse", "opencode", "antigravity"]) {
     const { d } = owner(backend);

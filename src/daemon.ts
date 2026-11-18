@@ -2548,7 +2548,10 @@ export class Daemon extends EventEmitter {
   private classicRestrictionFailed = false;
   private classicRestrictionNeedsRestart = false;
   setClassicRestriction(input: ClassicRestrictionInput): void {
-    if (this.runtimeIdentity?.kind !== "classic") throw Error("Classic restriction requires a Classic room");
+    if (this.runtimeIdentity?.kind !== "classic") {
+      if (input?.mode === "legacy") return; // The optional adapter also sees existing/default-kind starts.
+      throw Error("Classic restriction requires a Classic room");
+    }
     try {
       if (!input || !["legacy", "restricted"].includes(input.mode)) throw Error("invalid-policy");
       const next = input.mode === "restricted" ? { roomKey: this.name, policyRevision: input.policyRevision ?? 0,
