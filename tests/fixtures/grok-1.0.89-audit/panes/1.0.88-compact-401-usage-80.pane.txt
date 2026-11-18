@@ -1,0 +1,42 @@
+  master /r/work/compact-401-usage-80                  13 / 256k │ [Dashboard]
+
+
+     ❯ brief ordinary turn                                           1:14 PM
+
+
+     mock reply r4                                                   1:14 PM
+
+     Worked for 0.1s
+
+     Compacting conversation…
+
+  ┃  Compaction failed: Unauthorized (401) from
+  ┃  http://127.0.0.1:18080/v1/chat/completions: invalid_request_error:
+  ┃  usage limit reached
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰─────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

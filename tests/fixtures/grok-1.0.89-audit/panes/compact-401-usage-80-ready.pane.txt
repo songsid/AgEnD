@@ -1,0 +1,42 @@
+  /r/work/compact-401-usage-80                       ⠹ MCP (0/1) │ [Dashboard]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    ⠹ Starting session… 0.2s
+
+  ╭──────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                        │
+  ╰─────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

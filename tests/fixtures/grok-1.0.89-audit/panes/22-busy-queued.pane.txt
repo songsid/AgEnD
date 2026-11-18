@@ -1,0 +1,42 @@
+  master /r/work/core-120                                                                    1.5k / 256k │ [Dashboard]
+
+
+     ❯ [agend-delivery-id:bbbbbbbb-1111-4111-8111-bbbbbbbbbbbb]                                              1:15 PM
+       [from:Audit peer (audit-peer)] please stall a
+       inert audit line 0 …
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #1 [agend-delivery-id:cccccccc-1111-4111-8111-cccccccccccc] (+2 lines)
+
+    ⠙ Waiting for response… 1.0s                                                                    1.0s ⇣1.48k [stop]
+
+                                                                                           Queued · Enter to send now
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Enter:send now  │  Shift+Tab:mode  │  Ctrl+c:cancel  │  Ctrl+y:queue  │  Ctrl+x:shortcuts

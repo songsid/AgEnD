@@ -182,6 +182,20 @@ describe("quota history at the actual resume admission boundary", () => {
     await f.admit(); f.scan(); expect(f.quota()).toEqual([]);
     f.scan(GROK + "\n┃ out of credits (new call)\n│ ❯ │"); expect(f.quota()).toHaveLength(1);
   });
+  it.each([
+    "compact-401-usage-120", "compact-401-credits-120", "compact-401-usage-80", "compact-401-credits-80",
+    "1.0.88-compact-401-usage-80",
+  ])("Grok preserves the multiline quota history before wake: %s", async name => {
+    // Omit only the cosmetic header: the rig folder itself contains "401",
+    // which the historical broad auth rule also matches, outside this frame.
+    const pane = fixture(`grok-1.0.89-audit/panes/${name}.pane.txt`).split("\n").slice(1).join("\n");
+    const f = setup("grok", pane); writeFileSync(join(f.instance, "session-id"), ID);
+    await f.spawn(true); await f.admit(); f.scan();
+    expect(f.quota()).toEqual([]);
+    expect(f.logger.debug.mock.calls.some(c => c[0]?.evidence === "before-resume")).toBe(true);
+    f.scan(pane + "\n│ ❯ a new call │\n" + pane);
+    expect(f.quota()).toHaveLength(1);
+  });
   it("Grok has no history exemption without a resumed, readable preserved pane", async () => {
     const f = setup("grok", GROK); await f.spawn(true); await f.admit(); f.scan();
     expect(f.quota()).toHaveLength(1);
@@ -265,8 +279,19 @@ describe("pre-input observation is committed only for this input's owner", () =>
     const f = setup("grok", GROK);
     f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "next-request", unique: false }));
     const after = "│ ❯ next-request │\n┃ out of credits\n│ ❯ │";
-    const ep = f.backend.getErrorPatterns!().find(ep => ep.type === "quota")!;
+    const ep = f.backend.getErrorPatterns!().find(ep => ep.type === "quota" && ep.pattern.test("┃ out of credits"))!;
     expect((Daemon as any).countOccurrences(ep.pattern, GROK)).toBe(1); expect((Daemon as any).countOccurrences(ep.pattern, after)).toBe(1);
+    f.scan(after); f.scan(after); expect(f.quota()).toHaveLength(1);
+  });
+  it.each(["usage-120", "credits-120", "usage-80", "credits-80"])("Grok counts a new multiline compaction quota after input: %s", async kind => {
+    const pane = fixture(`grok-1.0.89-audit/panes/compact-401-${kind}.pane.txt`);
+    const f = setup("grok", pane);
+    f.d.commitPreInputQuotaHistory(await f.d.capturePaneEvidence({ value: "next-request", unique: false }));
+    const ep = f.backend.getErrorPatterns!().find(ep => ep.type === "quota" && ep.pattern.test(pane))!;
+    const frame = ep.pattern.exec(pane)![0];
+    const after = `│ ❯ next-request │\n${frame}\n│ ❯ │`;
+    expect((Daemon as any).countOccurrences(ep.pattern, pane)).toBe(1);
+    expect((Daemon as any).countOccurrences(ep.pattern, after)).toBe(1);
     f.scan(after); f.scan(after); expect(f.quota()).toHaveLength(1);
   });
 

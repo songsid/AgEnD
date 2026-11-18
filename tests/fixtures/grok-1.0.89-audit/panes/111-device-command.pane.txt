@@ -1,0 +1,45 @@
+Error: error sending request for url (https://auth.x.ai/oauth2/device/code): client error (Connect): dns error: failed t
+o lookup address information: Try again
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Pane is dead (status 1, Wed Nov 18 13:13:30 2026)

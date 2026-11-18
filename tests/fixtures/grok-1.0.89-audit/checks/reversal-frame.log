@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/grok-1.0.89-audit.test.ts (11 tests | 1 failed) 11ms
+     × does not reinterpret unrelated quota prose: Compaction failed: Unauthorized (401): usage limit reached 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/grok-1.0.89-audit.test.ts > Grok 1.0.89 real compaction errors > does not reinterpret unrelated quota prose: Compaction failed: Unauthorized (401): usage limit reached
+AssertionError: expected 'quota' not to be 'quota' // Object.is equality
+ ❯ tests/grok-1.0.89-audit.test.ts:36:35
+     34|     '  ┃  Compaction failed: Unauthorized (401)\n  ┃  detail\n  ┃  det…
+     35|   ])('does not reinterpret unrelated quota prose: %s', text => {
+     36|     expect(error(text)?.type).not.toBe('quota');
+       |                                   ^
+     37|   });
+     38| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 10 passed (11)
+   Start at  21:15:42
+   Duration  1.43s (transform 953ms, setup 85ms, import 1.18s, tests 11ms, environment 0ms)
