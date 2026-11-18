@@ -120,7 +120,8 @@ Which agent
   room shows the existing system line that the agent left.
 - **A manager removes it**: as today.
 - **The owner stops sharing the agent**: it leaves every room (as today).
-- **Limits**: one open request per owner per room; a manager can send at most 5 requests a day. An owner can
+- **Limits**: one open request per owner per room; a manager can send at most 5 requests per UTC calendar day
+  (a cancelled request counts, a refused one does not; the page shows when more can be sent, in local time). An owner can
   turn requests off: "Don't let room managers ask me for agents" on My agents.
 
 ## 5. Copy
@@ -145,7 +146,10 @@ Which agent
 | Owner's switch, per agent | Room managers can find this agent | 房間管理員可以找到這個 Agent |
 | Its hint | When on, anyone who manages a room sees this agent's name, your name and its introduction, and can ask you to add it. | 開啟後，任何房間管理員都會看到這個 Agent 的名稱、你的名字和它的自我介紹，並可以請你把它加入房間。 |
 | A findable agent in the picker | {agent} · {owner} · Ask {owner} | {agent} · {owner} · 請 {owner} 加入 |
-| Owner's opt-out | Don't let room managers ask me for agents | 不要讓房間管理員向我要求加入 Agent |
+| Owner's opt-out | Don't let room managers ask me for agents | 不要讓房間管理員請我加入 Agent |
+| Owner has opted out | {owner} isn't taking requests for agents. | {owner} 目前不接受加入 Agent 的請求。 |
+| One already open | A request to {owner} is already open for this room. | 這個房間已經向 {owner} 送出請求，仍在等待回應。 |
+| Daily limit | You have sent 5 requests today. You can send more after {time}. | 你今天已送出 5 個請求，{time} 之後可以再送。 |
 
 ## 6. Cards
 
@@ -167,7 +171,7 @@ A1 and A2 together fix the pain point. A3 can go first; it is independent.
 | Q2 | May the owner add an agent that is not shared yet from the card? | **No.** Sharing stays a separate, deliberate step on My agents; the card links there. |
 | Q3 | Tell the owner when the room later gains members? | **Not now.** The card says managers can add more. Revisit if owners ask. |
 | Q4 | "Add my agents to rooms I'm in without asking me" | **Later**, as an owner's setting, off by default. |
-| Q5 | Request lifetime and limits | **7 days; one open request per owner per room; 5 a day per manager; an owner can switch requests off.** |
+| Q5 | Request lifetime and limits | **7 days; one open request per owner per room; 5 per UTC calendar day per manager; an owner can switch requests off.** |
 
 ## 8. 給擁有者的摘要（zh-TW）
 
