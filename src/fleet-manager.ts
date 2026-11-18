@@ -5418,6 +5418,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const id = this.contactRoom(name)?.adapterId ?? this.getInstanceAdapterId(name);
     return id ? this.adapters.get(id) ?? this.worlds.get(id)?.adapter ?? null : null;
   }
+  /** Called only with SDK input at the Classic ingress, never agent-supplied routing metadata. */
+  private recordClassicContactInput(instance: string, msg: Pick<InboundMessage, "chatId" | "threadId" | "isBotMessage" | "attachments"> & { adapterId?: string; transportThreadId?: string }, adapter: ChannelAdapter): void {
+    const room = this.contactRoom(instance);
+    if (room?.restrictedMode !== true || msg.isBotMessage || msg.chatId !== room.channelId
+      || (room.adapterId && room.adapterId !== adapter.id) || msg.adapterId !== adapter.id) return;
+    const nativeThread = msg.transportThreadId ?? msg.threadId;
+    const thread = nativeThread && nativeThread !== room.channelId && nativeThread.length <= 128
+      && !/[\r\n\x00]/.test(nativeThread) ? nativeThread : undefined;
+    const fileIds = (msg.attachments ?? []).map(file => file.fileId)
+      .filter(id => typeof id === "string" && id.length > 0 && id.length <= 4096).slice(0, 20);
+    this.contactService().host.store.recordRoomContext(instance, { ...(thread ? { threadId: thread } : {}), fileIds }, this.contactGeneration(instance));
+  }
+
   restrictedClassicRouting(instance: string): { adapterId: string; chatId: string; threadId?: string } | undefined {
     const room = this.contactRoom(instance);
     if (room?.restrictedMode !== true) return undefined;
@@ -8296,18 +8309,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           adapterId: actor.adapter_id, userId: actor.user_id, label: origin.username ?? actor.user_id } : undefined;
       contactStore.inheritOrigin(instanceName, { kind: person ? "human" : "unknown", people: person ? [person] : [],
         receiptIds: [row.message_id], chain: [instanceName] });
-      const room = this.contactRoom(instanceName), roomAdapter = room ? this.contactAdapter(instanceName) : null;
-      if (room?.restrictedMode === true && roomAdapter && origin.platform !== "web" && origin.adapter_id === roomAdapter.id
-        && given?.chat_id === room.channelId && origin.platform_message_id === given.message_id) {
-        let fileIds: string[] = [];
-        try {
-          const ids: unknown = JSON.parse(typeof given.contact_attachment_ids === "string" ? given.contact_attachment_ids : "[]");
-          if (Array.isArray(ids)) fileIds = ids.filter((id): id is string => typeof id === "string" && id.length > 0 && id.length <= 4096).slice(0, 20);
-        } catch { /* no attachment capability comes from malformed metadata */ }
-        const thread = typeof given.thread_id === "string" && given.thread_id.length <= 128 && !/[\r\n\x00]/.test(given.thread_id)
-          && given.thread_id !== room.channelId ? given.thread_id : undefined;
-        contactStore.recordRoomContext(instanceName, { ...(thread ? { threadId: thread } : {}), fileIds }, this.contactGeneration(instanceName));
-      }
       if (this.contactRoom(instanceName)?.restrictedMode === true && (!person || !this.contactAdminOf(instanceName, person))
         && typeof payload.content === "string" && (payload.type === "fleet_inbound" || payload.type === "steer")) {
         payload = { ...payload, content: `${t(person ? "contact.originNonAdmin" : "contact.originUnknown")}\n\n${payload.content}` };
@@ -25430,12 +25431,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async forwardToClassicInstance(
     instanceName: string,
     text: string,
-    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string; humanOrigin?: HumanOrigin; humanOriginalBody?: string },
+    msg: { chatId: string; threadId?: string; transportThreadId?: string; messageId: string; userId: string; username: string; source: string; timestamp: Date; replyToText?: string; adapterId?: string; humanOrigin?: HumanOrigin; humanOriginalBody?: string; isBotMessage?: boolean; attachments?: InboundMessage["attachments"] },
     extraMeta?: Record<string, string>,
   ): Promise<void> {
     // #1085: a Telegram forum ClassicBot is keyed by chat id (threadId), but the
     // reply context must carry the topic the message was really asked in.
     const replyThreadId = msg.transportThreadId ?? msg.threadId;
+    const contactAdapter = this.worlds.get(msg.adapterId ?? "")?.adapter;
+    if (contactAdapter) this.recordClassicContactInput(instanceName, msg, contactAdapter);
     // Resolve the channel/adapter from the instance itself so per-channel context
     // config is correct even for a same-channel second bot.
     const ctxAdapterId = this.classicChannels?.getAdapterIdByInstance(instanceName);

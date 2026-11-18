@@ -137,6 +137,8 @@ A private chat or group where ClassicBot runs a single agent, managed by
   silent unless `/start` is allowed.
 When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
 
+New rooms start in restricted mode. Non-admin peer relays are held for a target's Fleet administrator to approve; existing rooms stay legacy until an administrator switches them. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately.
+
 - Code: `src/classic-channel-manager.ts`.
 - Refs: `docs/permissions.md`.
 

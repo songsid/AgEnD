@@ -38,6 +38,8 @@ function harness() {
   ctx.admitDurableDelivery = FleetManager.prototype.admitDurableDelivery.bind(ctx);
   ctx.getDaemonBootId = FleetManager.prototype.getDaemonBootId.bind(ctx);
   ctx.queryDurableDeliveryStatus = FleetManager.prototype.queryDurableDeliveryStatus.bind(ctx);
+  ctx.contactRoom = () => undefined;
+  ctx.contactService = (FleetManager.prototype as any).contactService.bind(ctx);
   return { ctx, outbox };
 }
 

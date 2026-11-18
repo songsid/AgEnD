@@ -41,6 +41,7 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
     const channels = new ClassicChannelManager(root, fm.logger);
     channels.setPrimaryAdapterId("owner");
     channels.register("room", "owner", "classic", "test room", "user", "claude-code");
+    channels.setRestrictedMode("classic", false); // This matrix pins existing legacy routing, not the new-room default.
     fm.classicChannels = channels;
   }
   vi.spyOn(fm as never as { touchActivity(): void }, "touchActivity").mockImplementation(() => {});

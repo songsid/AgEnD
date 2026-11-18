@@ -155,3 +155,16 @@ it("requires both a real admin web session and the existing verified authority r
   (manager as any).webAuthority.mockReturnValue({ authority: { kind: "none" } });
   expect(manager.contactActor(req, url)).toBeNull();
 });
+
+it("learns room threads and file identifiers only at the bound native SDK ingress", () => {
+  const { manager, outbox } = rig();
+  const adapter = { id: "fake-adapter", type: "discord" };
+  const native = { adapterId: adapter.id, chatId: "fake-room", threadId: "fake-topic", isBotMessage: false,
+    attachments: [{ fileId: "fake-received-file", kind: "document" }] };
+  (manager as any).recordClassicContactInput("room", { ...native, adapterId: "other-adapter" }, adapter);
+  expect(outbox.contactAuthorizations.roomContext("room").fileIds).toEqual([]);
+  (manager as any).recordClassicContactInput("room", native, adapter);
+  expect(outbox.contactAuthorizations.roomContext("room", "room-incarnation")).toMatchObject({ threadId: "fake-topic", fileIds: ["fake-received-file"] });
+  (manager as any).recordClassicContactInput("room", { ...native, isBotMessage: true, threadId: "peer-topic" }, adapter);
+  expect(manager.restrictedClassicRouting("room")?.threadId).toBe("fake-topic");
+});

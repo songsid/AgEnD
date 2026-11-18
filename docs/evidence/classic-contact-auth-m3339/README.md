@@ -43,7 +43,7 @@ npm run typecheck -- --pretty false
 npm run typecheck:tests -- --pretty false
 ```
 
-New focused tests: 31/31. The final focused family passes 323/323 across 20 files.
+New focused tests: 32/32. The final focused family passes 323/323 across 20 files.
 Source and test typechecks pass. The existing Hub contact,
 Hub/Classic privacy, channel reply files, chat persistence, permission sinks,
 Classic behavior, Needs you and outbound delivery neighbors were also checked.
@@ -62,3 +62,23 @@ Storage is additive on the existing private outbox connection. Older builds igno
 the new tables and Classic field, so a code rollback removes these controls rather
 than preserving restricted behavior. Keep the private database for audit and stop
 restricted-room traffic before reverting to a build without this admission gate.
+
+## First CI delta
+
+The first full CI run exposed outdated fixtures outside the initial focused set
+and a real Telegram forum regression. The nine failing suites were all rerun in
+full, together with the four new suites: 339/339 across 13 files.
+
+- The old Classic address matrix explicitly selects legacy mode. It continues
+  to assert the pre-existing routing contract; new-room defaults are pinned in
+  the separate restricted tests.
+- Borrowed FleetManager methods now have their real contact-service seam, and
+  the synthetic native outbox has the corresponding origin read. Ordinary
+  non-Classic forwarding and native generation checks remain covered.
+- No attachment ID metadata is added to general agent input. Restricted Classic
+  thread and attachment identity are captured privately at the shared native
+  forwarding ingress. The Telegram topic test caught the missing command path;
+  that path now retains its transport topic without accepting caller overrides.
+- Concepts and its built-in skill are synchronized; the create-handler test pins
+  the new internal origin argument, and the reply bookkeeping stub returns its
+  promised asynchronous result.

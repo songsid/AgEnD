@@ -21,8 +21,6 @@ export async function processAttachments(
 ): Promise<AttachmentResult> {
   let text = msg.text;
   const extraMeta: Record<string, string> = {};
-  // Server SDK attachment identities, never parsed from message text. Restricted room brokers use them at call time.
-  if (msg.attachments?.length) extraMeta.contact_attachment_ids = JSON.stringify(msg.attachments.slice(0, 20).map(file => file.fileId));
 
   // Auto-download photos so Claude can Read them directly
   const photoAttachments = msg.attachments?.filter(a => a.kind === "photo") ?? [];

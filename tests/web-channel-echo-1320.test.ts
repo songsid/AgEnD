@@ -93,7 +93,7 @@ async function harness(type: "telegram" | "discord", botId = "777") {
   s.lifecycle.isPaused = vi.fn(() => false);
   s.getInstanceIdle = () => true; s.clearCancelButton = () => {}; s.reactDone = () => {};
   s.sendCancelButton = vi.fn(async () => {}); s.setTopicIcon = vi.fn(); s.reactMessageStatus = vi.fn();
-  s.warnIfRateLimited = vi.fn(); s.afterReplyRouted = vi.fn();
+  s.warnIfRateLimited = vi.fn(); s.afterReplyRouted = vi.fn().mockResolvedValue(undefined);
   s.topicCommands.handleInstanceCommand = vi.fn(async () => false); s.topicCommands.handleGeneralCommand = vi.fn(async () => false);
   s.logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
   s.emitSseEvent = vi.fn();
