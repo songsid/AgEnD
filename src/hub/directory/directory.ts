@@ -504,7 +504,7 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
     lookupForGrant(login: string): Promise<DirectoryLookupResult> {
       return lookup(login, "grant-recipient-lookup");
     },
-    async searchGrantPeople(q: string) {
+    async searchGrantPeople(q: string, options) {
       if (closed || typeof q !== "string" || q.length < 2 || q.length > 64 || /[\u0000-\u001f\u007f]/.test(q)) return { ok: false as const, reason: "unknown" as const };
       let service: Session | undefined, expired = false;
       const deadline = setTimeout(() => { expired = true; service?.abort(); }, 5000); deadline.unref();
@@ -514,14 +514,16 @@ export function createHubDirectory(config: unknown, secrets: HubDirectorySecrets
         });
         const entries = await service.personPrefix(q, attributes, [shape.idAttribute]);
         if (closed || expired || entries.length > 20) return { ok: false as const, reason: "unknown" as const };
-        const people: Array<{ person: PersonKey; login: string; displayName: string }> = [], seen = new Set<string>();
+        const people: Array<{ person: PersonKey; login: string; displayName: string; department?: string }> = [], seen = new Set<string>();
         for (const entry of entries) {
           const objectId = readObjectId(cfg.profile, entry);
           if (!objectId || seen.has(objectId) || !withinGroupBase(entry.dn, cfg.baseDn)) return { ok: false as const, reason: "unknown" as const };
           seen.add(objectId); if (isDisabled(cfg.profile, entry, now())) continue;
           const p = toPerson(entry, objectId), displayName = p.displayName || p.login;
           if (!p.login || p.login.length > 256 || displayName.length > 256 || /[\u0000-\u001f\u007f]/.test(p.login + displayName)) return { ok: false as const, reason: "unknown" as const };
-          people.push({ person: { ...p.key }, login: p.login, displayName });
+          const department = options?.includeDepartment === true ? p.department?.trim() : undefined;
+          if (department && (department.length > 256 || /[\u0000-\u001f\u007f]/.test(department))) return { ok: false as const, reason: "unknown" as const };
+          people.push({ person: { ...p.key }, login: p.login, displayName, ...(department ? { department } : {}) });
         }
         return { ok: true as const, people, truncated: entries.length === 20 };
       } catch { report("person-search", "unavailable", "directory lookup failed"); return { ok: false as const, reason: "unknown" as const }; }

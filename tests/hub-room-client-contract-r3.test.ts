@@ -8,7 +8,7 @@ afterEach(async () => { await r?.close(); r = undefined; });
 
 it("wraps picker candidates in the object consumed by the shared client", async () => {
   r = await s3bRig(); const key = r.addPerson("alex", "Alex"), admin = await r.signIn("admin"); await r.signIn("alex");
-  expect((await r.call(admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json).toEqual({ candidates: [{ kind: "person", id: personKeyString(key), name: "Alex" }] });
+  expect((await r.call(admin, "GET", "/hub/v1/rooms/candidates?kind=person&q=Al")).json).toEqual({ candidates: [{ kind: "person", id: personKeyString(key), name: "Alex", detail: "alex" }] });
 });
 it("returns selected creator names on GET while preserving ID-only writes", async () => {
   r = await s3bRig(); const key = r.addPerson("alex", "Alex"), admin = await r.signIn("admin"); await r.signIn("alex");
