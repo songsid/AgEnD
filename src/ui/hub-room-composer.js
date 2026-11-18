@@ -13,6 +13,7 @@ import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { hroom } from "./hub-room-strings.js";
 import { presenceDot } from "./hub-room-presence.js";
+import { pasteToAttach } from "./hub-attachments.js";
 
 const ONLINE = new Set(["online", "idle", "working"]);
 const agentsOf = (detail) => (detail?.members || []).filter((m) => m.kind === "agent" || m.kind === "later");
@@ -78,21 +79,8 @@ export function mentionsIn(text, detail) {
   return [...new Set(out)];
 }
 
-/** M-3308: past this many characters a paste goes as a text file (the Fleet chat's LONG_PASTE_CHARS, chat-render.js). */
-export const LONG_PASTE_CHARS = 4000;
-const isLongPaste = (text) => (globalThis.AgendChatRender?.isLongPaste ? globalThis.AgendChatRender.isLongPaste(text) : typeof text === "string" && text.length > LONG_PASTE_CHARS);
-const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
-const IMAGE_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
-/**
- * M-3308: a pasted file as the room uploads it. A clipboard picture (a screen capture) may come with no name — the Hub refuses
- * an upload without one — so it is named `screenshot-<time>.<png|jpg|…>` by its type; a named one (Chrome's "image.png", a copied
- * file) keeps its own.
- */
-export function pastedFile(file) {
-  if (!file || (file.name && file.name.trim())) return file;
-  const ext = IMAGE_EXT[file.type] || (String(file.type).startsWith("text/") ? "txt" : "bin");
-  return new File([file], `${String(file.type).startsWith("image/") ? "screenshot" : "pasted"}-${stamp()}.${ext}`, { type: file.type, lastModified: file.lastModified });
-}
+// M-3308: the paste helpers live with the Hub's files (hub-attachments.js), shared with the 1:1 question's composer (M-3311).
+export { LONG_PASTE_CHARS, pastedFile } from "./hub-attachments.js";
 
 /** Above the box when @所有 Agent is in it: how many answer now, how many after they come back (spec §4). */
 export function allBar(detail) {
@@ -148,16 +136,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); void send(); }
   };
   const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
-  // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste (panel-chat.js onPaste) —
-  // files in a paste are attached, through the room's own Attach and its file rules (hub-attachments.js); a clipboard picture
-  // with no name gets one; a very long text paste goes as a text file. A room that takes no files keeps the text (as before).
-  const onPaste = (e) => {
-    if (!attach || closed) return;
-    const list = e.clipboardData && e.clipboardData.files ? [...e.clipboardData.files] : [];
-    const text = e.clipboardData ? e.clipboardData.getData("text") : "";
-    if (list.length) { void attach.onFiles(list.map(pastedFile)); if (!text) e.preventDefault(); return; }
-    if (isLongPaste(text)) { e.preventDefault(); void attach.onFiles([new File([text], `pasted-${stamp()}.txt`, { type: "text/plain" })]); }
-  };
+  // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste, through the room's own
+  // Attach and its file rules (hub-attachments.js pasteToAttach). A room that takes no files keeps the text (as before).
+  const onPaste = (e) => { if (!closed) pasteToAttach(e, attach); };
   const paletteId = `hubMention-${room.id || "room"}`, optId = (o) => `${paletteId}-${o.key}`;
   // M-3117: as the Fleet chat's dock has it — the box, then a failed send, then the line under it (its .composer-row).
   if (closed) return html`<p class="hub-banner warn" role="status">${hroom(detail?.room?.archived ? "errArchived" : "errNotMember")}</p>`;

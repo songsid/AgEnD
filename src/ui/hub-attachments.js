@@ -3,7 +3,7 @@
 // stylesheet has had since the fleet chat's own attachments (.pending-files, .file-chip, .chip-x).
 // The server decides everything: a room offers Attach only while its fleet link negotiated attachments-v1 (room.features);
 // each file is uploaded on choice (typed by name, images by their bytes, within the limits), and Send names the ids.
-import { html } from "/assets/app-html.js";
+import { html, useEffect, useRef } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 
@@ -79,6 +79,68 @@ export async function uploadChosen(client, roomId, fileList, { current, set, ali
   }
   return refusals;
 }
+
+// ── M-3308 / M-3311: the Fleet chat's paste and drop (panel-chat.js onPaste, its drag-and-drop), for a Hub conversation — a
+// room and a 1:1 question alike, through their own Attach (`attach`: { onFiles(list) → refusals, left?() → files that still
+// fit, notice?(text) }) and so the Hub's file rules (uploadChosen above). Words: the Fleet chat's own (chat.*).
+
+/** Past this many characters a text paste goes as a text file (the Fleet chat's LONG_PASTE_CHARS, chat-render.js). */
+export const LONG_PASTE_CHARS = 4000;
+const isLongPaste = (text) => (globalThis.AgendChatRender?.isLongPaste ? globalThis.AgendChatRender.isLongPaste(text) : typeof text === "string" && text.length > LONG_PASTE_CHARS);
+const stamp = () => new Date().toISOString().slice(0, 19).replace(/[-:T]/g, "");
+const IMAGE_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp" };
+/**
+ * A pasted file as the Hub uploads it. A clipboard picture (a screen capture) may come with no name — the Hub refuses an
+ * upload without one — so it is named `screenshot-<time>.<png|jpg|…>` by its type; a named one (Chrome's "image.png", a
+ * copied file) keeps its own.
+ */
+export function pastedFile(file) {
+  if (!file || (file.name && file.name.trim())) return file;
+  const ext = IMAGE_EXT[file.type] || (String(file.type).startsWith("text/") ? "txt" : "bin");
+  return new File([file], `${String(file.type).startsWith("image/") ? "screenshot" : "pasted"}-${stamp()}.${ext}`, { type: file.type, lastModified: file.lastModified });
+}
+/**
+ * A paste into a Hub composer: its files are attached (the paste stops there unless text came with them); a text past
+ * LONG_PASTE_CHARS goes as `pasted-<time>.txt` — only when there is room for it (#4151 review: as the Fleet chat keeps it in the
+ * box when nothing more fits), and once attached it says so (the Fleet chat's notice). No `attach`: the box takes it, as ever.
+ */
+export function pasteToAttach(e, attach) {
+  if (!attach) return;
+  const list = e.clipboardData && e.clipboardData.files ? [...e.clipboardData.files] : [];
+  const text = e.clipboardData ? e.clipboardData.getData("text") : "";
+  if (list.length) { void attach.onFiles(list.map(pastedFile)); if (!text) e.preventDefault(); return; }
+  if (!isLongPaste(text)) return;
+  if (typeof attach.left === "function" && attach.left() < 1) { attach.notice?.(t("chat.pasteKeptAsText")); return; }
+  e.preventDefault();
+  const file = new File([text], `pasted-${stamp()}.txt`, { type: "text/plain" });
+  Promise.resolve(attach.onFiles([file])).then((refused) => { if (!refused || !refused.length) attach.notice?.(t("chat.pasteAttached", text.length.toLocaleString())); });
+}
+/**
+ * M-3311 (1): files dragged over a Hub conversation (the `.hub-chat-main` at `ref`) show where they go; a drop attaches them —
+ * the Fleet chat's own (counted, so moving over messages does not flicker). Nothing while the conversation takes no files.
+ */
+export function useFileDrop(ref, attach) {
+  const on = !!attach, latest = useRef(attach);
+  latest.current = attach;                       // the latest Attach (it closes over the conversation's current list), read at the drop
+  useEffect(() => {
+    const el = ref.current; if (!el || !on) return undefined;
+    let depth = 0;
+    const hasFiles = (e) => !!(e.dataTransfer && [...(e.dataTransfer.types || [])].includes("Files"));
+    const enter = (e) => { if (hasFiles(e)) { depth++; el.classList.add("dragging"); } };
+    const over = (e) => { if (hasFiles(e)) e.preventDefault(); };
+    const leave = (e) => { if (hasFiles(e) && --depth <= 0) { depth = 0; el.classList.remove("dragging"); } };
+    const drop = (e) => {
+      depth = 0; el.classList.remove("dragging");
+      const files = e.dataTransfer && e.dataTransfer.files ? [...e.dataTransfer.files] : [];
+      if (!files.length) return;
+      e.preventDefault(); void latest.current?.onFiles(files.map(pastedFile));
+    };
+    el.addEventListener("dragenter", enter); el.addEventListener("dragover", over); el.addEventListener("dragleave", leave); el.addEventListener("drop", drop);
+    return () => { el.classList.remove("dragging"); el.removeEventListener("dragenter", enter); el.removeEventListener("dragover", over); el.removeEventListener("dragleave", leave); el.removeEventListener("drop", drop); };
+  }, [ref.current, on]);
+}
+/** Where a dragged file goes: the Fleet chat's drop card (shown by `.dragging` on the conversation). */
+export const DropOverlay = () => html`<div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>`;
 
 /** The files waiting under the composer. */
 export function PendingFiles({ files, onRemove, formatSize = (n) => `${n} B` }) {

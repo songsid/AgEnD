@@ -32,7 +32,7 @@ import { linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { workingLine } from "./hub-room-working.js";
 import { roomSource, mountSourceAuthor } from "./hub-room-source.js";
 import { countsLine } from "./hub-room-list.js";
-import { PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
@@ -387,11 +387,17 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(roomId, id); }, [detail && detail.me && detail.me.id]);
   // M-3125: Attach only where this page and this room carry files and the room is open; chosen files ride the next send.
   const takesFiles = pageCarriesFiles(client, store) && roomTakesFiles(room) && !store.closed();
-  const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
-    setFileMsg("");
-    const refused = await uploadChosen(client, room.id || roomId, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
-    if (alive.current && refused.length) setFileMsg(refused.join(" "));
-  } } : null;
+  // M-3311: `left` (what still fits) and `notice` serve a paste and a drop as the Fleet chat's (hub-attachments.js pasteToAttach).
+  const attach = takesFiles ? { title: hf("attach"), left: () => MAX_FILES - filesRef.current.length, notice: (text) => { if (alive.current) toast(text); },
+    onFiles: async (list) => {
+      setFileMsg("");
+      const refused = await uploadChosen(client, room.id || roomId, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
+      if (alive.current && refused.length) setFileMsg(refused.join(" "));
+      return refused;
+    } } : null;
+  // M-3311 (1): a file dragged onto the conversation is attached, as in the Fleet chat.
+  const mainRef = useRef(null);
+  useFileDrop(mainRef, attach);
   const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
     formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />${fileMsg ? html`<p class="note" role="alert">${fileMsg}</p>` : null}` : null;
   // The composer sends through the store; this one adds the ready files, waits for uploads, and clears only what was sent.
@@ -482,7 +488,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId}>
     <${LightboxHost} />
-    <section class="hub-chat-main">
+    <section class="hub-chat-main" ref=${mainRef}>
+      ${attach ? html`<${DropOverlay} />` : null}
       <header class=${`hub-chat-head${room.agent?.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
         <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
