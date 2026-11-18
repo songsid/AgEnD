@@ -83,6 +83,9 @@ describe("M-3167: one composer between a phone and a wide desk", () => {
   it("the short name", () => {
     expect(["Opus 5.5 (claude-opus-5-5)", "claude-opus-5-5", "claude-sonnet-5-5[1m]", "claude-haiku-5", "Opus", "gpt-6.1-sol", ""].map(chat.shortModelName))
       .toEqual(["Opus 5.5", "Opus 5.5", "Sonnet 5.5", "Haiku 5", "Opus", "gpt-6.1-sol", ""]);
+    // M-3304: a dated id's date is not a minor version; an unknown family is shown as it is (no AgEnD change needed for it).
+    expect(["claude-sonnet-6-20270101", "claude-sonnet-4-20250514 — Claude Sonnet 4", "claude-opus-5-5-20261201", "claude-haiku-4-5-20251001", "claude-fable-5-2", "claude-nova-6 — Claude Nova 6"].map(chat.shortModelName))
+      .toEqual(["Sonnet 6", "Sonnet 4", "Opus 5.5", "Haiku 4.5", "Fable 5.2", "claude-nova-6 — Claude Nova 6"]);
   });
 
   it("the CSS: the ring and the picker are styled outside any media query; the header's chips give way at the composer's width", () => {
