@@ -351,7 +351,9 @@ export function createThread(list, scroller, opts) {
       ? `<button type="button" data-trust="thread-control" class="chip-btn st-action" data-act="statusAction" data-arg="${escAttr(x.action.arg)}">${escAttr(x.action.label)}</button>` : "";
     // A Hub mention-stop sentence must stay readable at phone width. Ordinary Fleet status rows still fold.
     const folded = x.wrap === true ? "" : ` folded${overflows ? " overflows" : ""}`;
-    return `<div class="msg status-line${folded}"><div class="meta">${time}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
+    // M-3339: a ClassicBot room's held-request line carries its contact badge too (the Fleet chat's hook; a Hub passes none).
+    const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
+    return `<div class="msg status-line${folded}"><div class="meta">${time}${contact}</div><div class="body"><div class="st-text">${body}</div>${x.wrap === true ? "" : more}${action}</div>${x.bare === true ? "" : tools}</div>`;
   }
   /**
    * #1266: an agent reply's buttons. Labels are text (escaped, never Markdown); the click names the set and the index,

@@ -351,6 +351,7 @@ describe("the chat badge (message.contactTicket { id, state })", () => {
     const src = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
     expect(src("src/ui/panel-chat.js")).toMatch(/contactBadge: \(x\) => \{ installBadgeRefresh\(\); return contactBadgeHtml\(x\); \},/);
     expect(src("src/ui/shared/chat-thread.js")).toMatch(/\$\{time\}\$\{ticks\}\$\{contact\}/);
+    expect(src("src/ui/shared/chat-thread.js"), "a status line (the room's held request) too").toMatch(/<div class="msg status-line\$\{folded\}"><div class="meta">\$\{time\}\$\{contact\}<\/div>/);
     expect(src("src/ui/hub-room-thread.js")).not.toMatch(/contactBadge/);
   });
 });
