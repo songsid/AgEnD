@@ -14,13 +14,16 @@
  * one. Resuming a thread does not call the model.
  */
 import { execFileSync } from "node:child_process";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
-import { homedir, tmpdir } from "node:os";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { codexE2eConfig, codexE2eRoot } from "./helpers/codex-e2e-profile.js";
+
+const MOCK_CONFIG = codexE2eConfig();
 const AUTH = process.env.AGEND_CODEX_E2E_AUTH || join(homedir(), ".codex", "auth.json");
 
 function codexVersion(): string | null {
@@ -30,7 +33,7 @@ function codexVersion(): string | null {
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
 /** Codex versions this real-CLI test is run against before AgEnD claims support (0.161 was never run; 0.160.0 and 0.162.0 verified 2026-10-09; 0.164.0 and 0.165.0 verified 2026-10-28). */
-const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159|160|162|164|165)\.\d+\b/;
+const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159|160|162|164|165|169|170)\.\d+\b/;
 const enabled = !!version && SUPPORTED_CODEX.test(version) && existsSync(AUTH);
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");
@@ -96,12 +99,13 @@ const tmux = (...args: string[]) => execFileSync("tmux", ["-L", socket, ...args]
 
 describe.skipIf(!enabled)("real codex 0.157: an instance in a git worktree resumes its own session (#984)", () => {
   beforeAll(() => {
-    root = mkdtempSync(join(tmpdir(), "agend-codex-e2e-984-"));
+    root = codexE2eRoot("984");
     socket = `agend-e2e-984-${process.pid}`;
     process.env.AGEND_HOME = join(root, "agend");
     process.env.CODEX_HOME = join(root, "shared-codex-home");
     mkdirSync(process.env.CODEX_HOME, { recursive: true });
     symlinkSync(AUTH, join(process.env.CODEX_HOME, "auth.json"));
+    if (MOCK_CONFIG) writeFileSync(join(process.env.CODEX_HOME, "config.toml"), MOCK_CONFIG);
   });
   afterAll(() => {
     try { tmux("kill-server"); } catch { /* not started */ }
@@ -179,14 +183,14 @@ describe.skipIf(!enabled)("real codex: private app-server runtime directories (#
   let privateHome = "";
 
   beforeEach(() => {
-    runtimeRoot = mkdtempSync(join(tmpdir(), "agend-1034-e2e-"));
+    runtimeRoot = codexE2eRoot("1034");
     privateHome = "";
     socket = `agend-e2e-1034-${process.pid}`;
     process.env.AGEND_HOME = join(runtimeRoot, "agend");
     process.env.CODEX_HOME = join(runtimeRoot, "shared");
     mkdirSync(process.env.CODEX_HOME, { recursive: true });
     symlinkSync(AUTH, join(process.env.CODEX_HOME, "auth.json"));
-    writeFileSync(join(process.env.CODEX_HOME, "config.toml"), "[features]\ndaemon_auto_start = true\n");
+    writeFileSync(join(process.env.CODEX_HOME, "config.toml"), codexE2eConfig("[features]\ndaemon_auto_start = true\n"));
     for (const name of runtimeDirs) {
       mkdirSync(join(process.env.CODEX_HOME, name), { mode: 0o700 });
       writeFileSync(join(process.env.CODEX_HOME, name, "source-marker"), name);

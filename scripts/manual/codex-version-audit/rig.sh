@@ -5,7 +5,8 @@
 #               | raw <name> <inst> <workdir-name> <codex args…> | cap <scenario> <secs>
 #               | send <text> | key <tmux-key> | mode <ok|slow|near|usage|wscredits|wsspend|e401|e500|notfound|capacity> | kill | stop
 #               | paths (prints SOCK AH SH RUN for this run)
-# Env: AUDIT (scratch root, required), PORT (default 18762), WIN (tmux window target, default "a").
+# Env: AUDIT (scratch root, required), AUDIT_HOME_PARENT (short owned home root, default HOME),
+#      PORT (default 18762), WIN (tmux window target, default "a").
 # Every name is owned by ONE run — the version AND the audit root (a short hash of its real path): the private tmux
 # socket cx<version-digits>-<ns>, the homes $HOME/.cxa<ver><ns> / .cxs<ver><ns> (short, under $HOME: codex refuses
 # helper binaries under /tmp and its socket path must fit SUN_LEN). kill/stop/launch touch only that run's names, so
@@ -17,7 +18,8 @@ V="${1:?version}"; STEP="${2:?step}"; shift 2
 mkdir -p "$AUDIT"
 NS="$(printf '%s' "$(cd "$AUDIT" && pwd -P)" | sha256sum | cut -c1-6)"
 TAG="${V//./}"; PORT="${PORT:-18762}"; SOCK="cx${TAG}-${NS}"; WIN="${WIN:-a}"
-AH="$HOME/.cxa$TAG$NS"; SH="$HOME/.cxs$TAG$NS"; RUN="$AUDIT/run-$TAG"; BIN="$AUDIT/codex-$V/node_modules/.bin"
+HOME_PARENT="${AUDIT_HOME_PARENT:-$HOME}"
+AH="$HOME_PARENT/.cxa$TAG$NS"; SH="$HOME_PARENT/.cxs$TAG$NS"; RUN="$AUDIT/run-$TAG"; BIN="$AUDIT/codex-$V/node_modules/.bin"
 HERE="$(cd "$(dirname "$0")" && pwd)"; REPO="$(cd "$HERE/../../.." && pwd)"
 mkdir -p "$RUN/cap"
 T() { tmux -L "$SOCK" "$@"; }

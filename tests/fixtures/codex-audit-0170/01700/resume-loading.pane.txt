@@ -1,0 +1,8 @@
+
+  >_ OpenAI Codex (v0.170.0)
+     /audit/.worktrees/audit-main/.artifacts/codex-0170/run-01700/work
+  Resuming session…
+
+› Ask Codex to do anything
+
+  ? for shortcuts

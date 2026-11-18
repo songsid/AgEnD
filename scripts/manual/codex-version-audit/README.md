@@ -15,6 +15,8 @@ empty home.
   version never share a server, a session, a home or a mock. `mock` refuses to go on if another run holds its port.
   Homes sit under `$HOME`, because codex refuses helper binaries under /tmp and its socket path must fit SUN_LEN.
   Delete them when done. The sign-in screen used a separate empty home that was set up by hand.
+- `AUDIT_HOME_PARENT` may select a short, audit-owned directory for those two homes instead of `$HOME`.
+  Keep the full instance socket path short enough for `SUN_LEN`; the host home and its login stay untouched.
 
 ## Steps
 
@@ -37,6 +39,17 @@ dirs), and the rate-limit picker with AgEnD's nudge flag removed, at 150x45 and 
 
 `classify.ts summary <dirs…>` (or `each <dirs…>`) runs the production CodexBackend predicates over the frames: ready,
 busy, deliverable, stable-idle, the resume-loading transient, runtime and startup dialogs, and error patterns.
+
+`status-layout.sh <VERSION>` captures two multi-item status orders at 150, 80 and 50 columns with production flags,
+then a labelled workspace lab at 150, 110 and 95 columns (F6 focuses its sidebar, F7 returns to the main composer).
+The lab alone removes `--no-alt-screen`: production disables the owned transcript and therefore workspace focus.
+Use its own `AUDIT` root, inside the same loopback-only isolation; it stores plain frames and a final ANSI frame per
+state. It sends no model question. `AUDIT_HOME_PARENT` can keep its short homes inside the audit's owned directory.
+
+The opt-in `AGEND_CODEX_E2E=1` suite can use a mock too: set `AGEND_CODEX_E2E_MOCK_PORT` to its loopback port and
+`AGEND_CODEX_E2E_AUTH` to an audit-owned inert auth fixture. Mock mode refuses to fall back to the operator's login.
+`AGEND_CODEX_E2E_ROOT` selects a short owned parent for its temporary homes. Run this inside the loopback-only namespace,
+with the exact scratch binary on `PATH`; the ordinary real-account mode retains its existing opt-in requirements.
 
 ## Codex 0.164.0
 
@@ -121,3 +134,8 @@ versions under `unshare -rn`, and captured the sign-in screens from an empty hom
 0.167's startup folder-trust screen pairs `2. Back to Agent Command Center` with `esc back`, and AgEnD's auto-trust now
 accepts that pair too. A rig note: the passes do not stop when `gen-cmd.ts` fails, for example in a checkout without
 `node_modules`. Check that `cap/` holds the scenarios before reading `classify.ts`.
+
+`signin.sh <VERSION>` captures only the empty-profile method menus, with a positive target check before opening
+“Sign in another way”; it never chooses an account login. `rollback.sh <NEW> <OLD>` writes one mock turn with NEW,
+then uses the production exact-session resume command and the same owned home with OLD. Run both inside the
+loopback-only namespace, with separate AUDIT roots and no imported account.

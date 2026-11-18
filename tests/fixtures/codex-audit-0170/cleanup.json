@@ -1,0 +1,116 @@
+{
+  "profiles": [
+    {
+      "profile": "baseline/0.169.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "baseline/0.169.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "baseline/0.170.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "baseline/0.170.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "matrix/0.169.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "matrix/0.169.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "matrix/0.170.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "matrix/0.170.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "signin/0.169.0/AH",
+      "created": false,
+      "removed": false,
+      "absent": true
+    },
+    {
+      "profile": "signin/0.169.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "signin/0.170.0/AH",
+      "created": false,
+      "removed": false,
+      "absent": true
+    },
+    {
+      "profile": "signin/0.170.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "models/0.169.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "models/0.169.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "models/0.170.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "models/0.170.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "rollback/0.170.0/AH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    },
+    {
+      "profile": "rollback/0.170.0/SH",
+      "created": true,
+      "removed": true,
+      "absent": true
+    }
+  ],
+  "privateTmuxServersStopped": 9,
+  "e2eRootsAbsent": true,
+  "inertAuthRemoved": true,
+  "packagesRetainedPrivatelyForReview": true
+}

@@ -1,0 +1,14 @@
+
+  Folder access
+  /audit/.worktrees/audit-main/.artifacts/codex-0170/run-01690/trustplain
+
+  Note: You’re in a subdirectory of a Git project. Trusting will apply to the repository root:
+  /audit-home/Projects/AgEnD
+
+  Trust this folder? Codex can read, edit, and run files here, subject to your permission settings. Folder settings can run code automatically, even
+  without a model request. Continue only if you trust these files. Your trust decision will be saved.
+
+› 1. Trust and continue
+  2. Back to Agent Command Center
+
+  enter continue · esc back

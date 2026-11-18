@@ -1,0 +1,45 @@
+                                                                                                   [2m│[0m                                              [1;7m + [0m
+  >_ [1mOpenAI Codex[0;2m (v0.169.0)[0m                                                                       [2m│[0m
+     [2m/audit/.worktrees/…/codex-0170/matrix/run-01690/owned-context-first[0m  [2m│[0m [1mOpen in sidebar                                [0m
+[2m  permissions: [0;1mYOLO mode[0m                                                                           [2m│[0m
+                                                                                                   [2m│[0m [2mYou can start a side chat after your first     [0m
+                                                                                                   [2m│[0m [2mmessage in the main chat.                      [0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+                                                                                                   [2m│[0m
+[2m                                                                                                   │[0m
+[2m›                                                                                                  │[0m
+[2m                                                                                                   │[0m
+  [2m00000000-0000-7000-8000-000000000169 · Context 100% left · mock-model default · /audit/AgEnD…│[0m
+                                                                                                   [2m│[0m [1mesc[0m back · [1m^x -[0m hide pane
