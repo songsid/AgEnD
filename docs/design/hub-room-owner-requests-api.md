@@ -56,6 +56,6 @@ Role cutover inventories all three request authority tables only with registered
 
 ## Upgrade and rollback
 
-The additive `s3-room-agent-requests` v1 migration runs on every upgraded Hub. Take a full Hub backup before upgrading. A hard downgrade to a binary with an older migration registry requires restoring that pre-upgrade backup. Do not delete migration rows or fabricate compatibility rows. Functional rollback uses a compatible binary with the optional service omitted; its feature and routes are absent. Preserve protected retention while any requests remain pending.
+The additive `s3-room-agent-requests` v1 migration runs on every upgraded Hub. Take a full Hub backup before upgrading. A hard downgrade to a binary with an older migration registry requires restoring that pre-upgrade backup. Do not delete migration rows or fabricate compatibility rows. To stop new use without restoring the database, a compatible rollback build must omit the browser feature and public request routes while retaining the registered schema and private retention provider. There is no new configuration switch for this. Preserve protection while any requests remain pending.
 
 A4 findability is separate. A5 remains parked until general notification forwarding is approved; this slice sends no request-only Fleet notification.

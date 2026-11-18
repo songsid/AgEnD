@@ -18,6 +18,6 @@ Run the browser harness with Linux `CHROME`, `PW_DIR` and `CJK_FONT` paths; then
 
 ## Upgrade and rollback
 
-The additive request schema is registered in the normal Hub plan. A hard downgrade needs a full pre-upgrade Hub backup restored with the older binary. A functional rollback uses a compatible binary with the service omitted, while maintaining protection for pending hints. Historical role cutover markers keep their original bytes; new request-aware inventories use representation v2 without changing the outer v1 marker or the role migration registry.
+The additive request schema is registered in the normal Hub plan. A hard downgrade needs a full pre-upgrade Hub backup restored with the older binary. A compatible rollback build can remove the browser feature and public routes while keeping the schema and private provider that protects pending hints; no configuration switch is claimed. Historical role cutover markers keep their original bytes; new request-aware inventories use representation v2 without changing the outer v1 marker or the role migration registry.
 
 A4 findability is a later slice. A5 Fleet forwarding remains parked. No request-only notification transport is introduced.
