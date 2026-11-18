@@ -4,8 +4,9 @@
 // answered by the page's own route handler with the wire contract's shapes (src/contact-auth-types.ts) until A1's server
 // is on this branch; everything else — the agent page, Fleet, Needs you, the chat and its stream — is the real app.
 // Per case (desk/phone × light/dark × en/zh-TW):
-//   1-room-permissions   a ClassicBot room's Permissions: legacy with the suggestion, what would stop, the guard (restart
-//                         needed), public read and an MCP tool with its owner-account warning; Switch confirms → PUT
+//   1-room-permissions   a ClassicBot room's Permissions: legacy with the suggestion, what would stop, the guard (not covered:
+//                         an unsupported version — "runs with its normal permissions; only contact approval applies", before
+//                         the switch too), public read and an MCP tool with its owner-account warning; Switch confirms → PUT
 //   2-worker-permissions a worker's Permissions: approvers (Fleet admins only, the eligible picker), allowed contacts, history
 //   3-authorizations     Fleet → Authorizations: the tab, waiting requests, Approve once → POST, "also allow" fields
 //   4-needs              Needs you: a request (its details from the scoped route) and the suggestion's three buttons
@@ -32,7 +33,7 @@ const ALEX = { platform: "discord", adapterId: "dc-main", userId: "1001", label:
 const OWNER = { platform: "host", adapterId: "host", userId: "operator", label: "Owner" };
 const KIM = { platform: "telegram", adapterId: "tg-main", userId: "7", label: "Kim" };
 const roomPerm = (o: any = {}) => ({ instance: ROOM, revision: 4, classicRoom: true, mode: "legacy", approvers: [], inheritedApprovers: true, eligibleApprovers: [],
-  nativeGuard: { state: "restart-required", backend: "claude-code", version: "2.1.327" },
+  nativeGuard: { state: "not-covered", backend: "codex", version: "0.170.0", reason: "unsupported-version" },
   roomTools: { publicRead: true, allowedMcpTools: [{ name: "mcp__drive__search", kind: "mcp", usesOwnerAccount: true }], wouldDisable: ["Bash", "mcp__drive__write"] },
   canManage: false, canSetMode: true, suggestRestricted: true, grants: [],
   history: [{ id: "h0", at: "2026-11-18T07:00:00Z", actor: OWNER, action: "policy", summary: "Public read on" }], ...o });
@@ -85,7 +86,9 @@ try {
     const t1 = await body();
     await page.screenshot({ path: shotPath(SMOKE, cn, "1-room-permissions"), fullPage: false });
     check(`${cn}:room`, t1.includes(zh ? "建議將這個房間切換為受限模式。" : "We suggest switching this room to restricted mode.") && t1.includes("mcp__drive__write")
-      && t1.includes(zh ? "需要重新啟動" : "Restart needed") && t1.includes(zh ? "使用擁有者的帳號" : "Uses the owner's account"), t1.slice(0, 600));
+      && t1.includes(zh ? "未涵蓋" : "Not covered") && t1.includes(zh ? "使用擁有者的帳號" : "Uses the owner's account")
+      // The leader's A3 decision: a tool the guard doesn't cover runs with its normal permissions — said plainly, before the switch.
+      && t1.includes(zh ? "這個 AI 工具或版本不在防護範圍內：它會以原本的權限執行，只有聯絡申請需要核准。" : "This AI tool or version isn't covered by the guard: it runs with its normal permissions; only contact approval applies."), t1.slice(0, 900));
     await page.locator(".contact-mode button").click(); await page.waitForTimeout(300);
     await page.screenshot({ path: shotPath(SMOKE, cn, "1b-room-confirm") });
     await page.locator("[data-confirm=yes]").click(); await page.waitForTimeout(500);
