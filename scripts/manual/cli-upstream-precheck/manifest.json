@@ -2213,7 +2213,7 @@
      "kind": "regex",
      "surface": "exit",
      "file": "src/daemon.ts",
-     "line": 5345,
+     "line": 5364,
      "symbol": "Daemon.isCodexResumeScreen"
     },
     {
@@ -2369,7 +2369,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13648,
+     "line": 13667,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2377,7 +2377,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2385,7 +2385,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2393,7 +2393,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2401,7 +2401,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2409,7 +2409,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2417,7 +2417,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13649,
+     "line": 13668,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2425,7 +2425,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13650,
+     "line": 13669,
      "symbol": "Daemon.dismissDialogsUntilReady.startupDialogs.pattern"
     },
     {
@@ -2433,7 +2433,7 @@
      "kind": "string",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13752,
+     "line": 13771,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2441,7 +2441,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13878,
+     "line": 13897,
      "symbol": "Daemon.dismissDialogsUntilReady"
     },
     {
@@ -2449,7 +2449,7 @@
      "kind": "regex",
      "surface": "dialog",
      "file": "src/daemon.ts",
-     "line": 13878,
+     "line": 13897,
      "symbol": "Daemon.dismissDialogsUntilReady"
     }
    ]
@@ -4198,27 +4198,11 @@
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
-     "text": "auth_error",
-     "kind": "string",
-     "surface": "error",
-     "file": "src/backend/grok.ts",
-     "line": 637,
-     "symbol": "GrokBackend.getErrorPatterns.type"
-    },
-    {
-     "text": "insufficient credits",
+     "text": "Compaction failed",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 641,
-     "symbol": "GrokBackend.getErrorPatterns.pattern"
-    },
-    {
-     "text": "out of credits",
-     "kind": "regex",
-     "surface": "error",
-     "file": "src/backend/grok.ts",
-     "line": 641,
+     "line": 639,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -4226,15 +4210,39 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 641,
+     "line": 643,
      "symbol": "GrokBackend.getErrorPatterns.notice"
+    },
+    {
+     "text": "auth_error",
+     "kind": "string",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 648,
+     "symbol": "GrokBackend.getErrorPatterns.type"
+    },
+    {
+     "text": "insufficient credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 652,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
+    },
+    {
+     "text": "out of credits",
+     "kind": "regex",
+     "surface": "error",
+     "file": "src/backend/grok.ts",
+     "line": 652,
+     "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
      "text": "Request failed (426",
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 650,
+     "line": 661,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -4242,7 +4250,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 650,
+     "line": 661,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -4250,7 +4258,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 650,
+     "line": 661,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -4258,7 +4266,7 @@
      "kind": "regex",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 650,
+     "line": 661,
      "symbol": "GrokBackend.getErrorPatterns.pattern"
     },
     {
@@ -4266,7 +4274,7 @@
      "kind": "string",
      "surface": "error",
      "file": "src/backend/grok.ts",
-     "line": 651,
+     "line": 662,
      "symbol": "GrokBackend.getErrorPatterns.type"
     },
     {
@@ -4274,7 +4282,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 688,
+     "line": 699,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -4282,7 +4290,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 694,
+     "line": 705,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {
@@ -4290,7 +4298,7 @@
      "kind": "regex",
      "surface": "onboarding",
      "file": "src/backend/grok.ts",
-     "line": 694,
+     "line": 705,
      "symbol": "GrokBackend.getStartupDialogs.pattern"
     },
     {

@@ -1,0 +1,42 @@
+  master /r/work/compact-401-credits-120                                                       13 / 256k │ [Dashboard]
+
+
+     ❯ brief ordinary turn                                                                                   1:09 PM
+
+
+     mock reply r2                                                                                           1:09 PM
+
+     Worked for 0.6s
+
+     Compacting conversation…
+
+  ┃  Compaction failed: Unauthorized (401) from http://127.0.0.1:18080/v1/chat/completions: insufficient_quota: out
+  ┃  of credits
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

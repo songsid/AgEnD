@@ -1,0 +1,42 @@
+  master /r/work/error-429-text-120                                                          1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn h                                                                                          1:15 PM
+
+
+  ┃  Retry failed: rate_limit_error: rate limit exceeded; too many requests
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

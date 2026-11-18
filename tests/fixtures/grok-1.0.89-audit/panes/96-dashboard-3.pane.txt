@@ -1,0 +1,42 @@
+  + New Agent                                                                 Resume Session /resume │ Enable Worktree
+
+
+  No agents yet, type a ┌─ Change directory ───────────────────────────────────────────── [✗] ─┐
+                        │                                                                      │
+                        │   type a path                                        [worktree:off]  │
+                        │  ──────────────────────────────────────────────────────────────────  │
+                        │  ◆ dashboard-120                     /r/w/dashboard-120  (current)   │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+                        │                                                                      │
+  ╭─────────────────────│       ↑/↓ nav  |  Tab complete  |  Enter select  |  Esc close        │shboard-120 · Ctrl+l ╮
+  │ ❯                   └──────────────────────────────────────────────────────────────────────┘                     │
+  ╰───────────────────────────────────────────────────────────────────────────────────────── grok-mock · auto-review ╯
+
+  Enter:create  │  ?:shortcuts

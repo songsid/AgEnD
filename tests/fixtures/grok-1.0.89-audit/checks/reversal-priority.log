@@ -1,0 +1,39 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/grok-1.0.89-audit.test.ts (11 tests | 2 failed) 21ms
+     × classifies usage-limit and credit 401s as quota at 120 columns 12ms
+     × classifies usage-limit and credit 401s as quota at 80 columns 3ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/grok-1.0.89-audit.test.ts > Grok 1.0.89 real compaction errors > classifies usage-limit and credit 401s as quota at 120 columns
+ FAIL  tests/grok-1.0.89-audit.test.ts > Grok 1.0.89 real compaction errors > classifies usage-limit and credit 401s as quota at 80 columns
+AssertionError: expected { …(4) } to match object { type: 'quota', action: 'notify' }
+(2 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "action": "notify",
+-   "type": "quota",
++   "action": "pause",
++   "type": "auth_error",
+  }
+
+ ❯ tests/grok-1.0.89-audit.test.ts:13:62
+     11|   it.each([120, 80])('classifies usage-limit and credit 401s as quota …
+     12|     for (const kind of ['usage', 'credits']) {
+     13|       expect(error(fixture(`compact-401-${kind}-${width}`))).toMatchOb…
+       |                                                              ^
+     14|     }
+     15|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 passed (11)
+   Start at  21:15:30
+   Duration  2.27s (transform 1.69s, setup 93ms, import 2.01s, tests 21ms, environment 0ms)

@@ -1,0 +1,49 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/pane-quota-history-3188.test.ts (71 tests | 5 failed) 7047ms
+     × Grok preserves the multiline quota history before wake: compact-401-usage-120 27ms
+     × Grok preserves the multiline quota history before wake: compact-401-credits-120 26ms
+     × Grok preserves the multiline quota history before wake: compact-401-usage-80 27ms
+     × Grok preserves the multiline quota history before wake: compact-401-credits-80 30ms
+     × Grok preserves the multiline quota history before wake: 1.0.88-compact-401-usage-80 21ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-usage-120
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-credits-120
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-usage-80
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-credits-80
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: 1.0.88-compact-401-usage-80
+AssertionError: expected [ { name: 'quota-fixture', …(5) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "action": "notify",
++     "message": "Grok quota/credits exhausted",
++     "name": "quota-fixture",
++     "notice": "⚠️ Grok quota/credits used up",
++     "pattern": /^[ \t]*┃[ \t]+Compaction failed:[^\r\n]*(?:\r?\n[ \t]*┃[ \t][^\r\n]*){0,4}?(?:usage(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)limit(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)reached|out(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)of(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)credits)/im,
++     "type": "quota",
++   },
++ ]
+
+ ❯ tests/pane-quota-history-3188.test.ts:192:23
+    190|     const f = setup("grok", pane); writeFileSync(join(f.instance, "ses…
+    191|     await f.spawn(true); await f.admit(); f.scan();
+    192|     expect(f.quota()).toEqual([]);
+       |                       ^
+    193|     expect(f.logger.debug.mock.calls.some(c => c[0]?.evidence === "bef…
+    194|   });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 66 passed (71)
+   Start at  21:27:18
+   Duration  9.92s (transform 2.02s, setup 123ms, import 2.59s, tests 7.05s, environment 0ms)

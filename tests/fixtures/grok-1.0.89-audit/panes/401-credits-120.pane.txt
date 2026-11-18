@@ -1,0 +1,42 @@
+  master /r/work/401-credits-120                                                             1.3k / 256k │ [Dashboard]
+
+
+     ❯ error turn j                                                                                          1:08 PM
+
+
+  ┃  Authentication required: your session has expired or your credentials were rejected. Run /login to re-
+  ┃  authenticate, then resend your message.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯                                                                                                                │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Shift+Tab:mode  │  Ctrl+x:shortcuts

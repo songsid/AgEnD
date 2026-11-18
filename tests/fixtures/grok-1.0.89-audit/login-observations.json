@@ -1,0 +1,15 @@
+[
+  {
+    "command": [
+      "login"
+    ],
+    "screen": "unreached: empty after ten seconds offline"
+  },
+  {
+    "command": [
+      "login",
+      "--device-auth"
+    ],
+    "screen": "captured"
+  }
+]

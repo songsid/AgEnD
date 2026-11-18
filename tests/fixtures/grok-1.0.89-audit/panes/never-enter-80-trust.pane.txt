@@ -1,0 +1,42 @@
+  /r/work/never-enter-80
+
+
+
+
+
+                                 ⠀⠀⠀⠀⠀⠀⣀⣀⡀⠀⠀⠀⢀⠄
+                                 ⠀⠀⠀⣠⣾⠿⠛⠛⠛⠛⢀⡴⠁⠀
+                                 ⠀⠀⣼⡟⠁⠀⠀⠀⢀⡴⠻⣿⡀⠀
+                                 ⠀⠀⣿⡇⠀⠀⠀⠔⠁⠀⠀⣿⡇⠀
+                                 ⠀⠀⢹⣷⠀⠀⠀⠀⠀⢀⣴⡿⠀⠀
+                                 ⠀⢀⠞⠁⠠⢶⣶⣶⣶⠿⠋⠀⠀⠀
+                                 ⠐⠁⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀
+
+
+                  Do you trust the contents of this directory?
+                            /rig/work/never-enter-80
+
+            Grok Build may run or modify contents in this directory,
+                             posing security risks.
+
+                         Yes, proceed                 y
+                         No, quit                     n
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                            Grok Build  1.0.89

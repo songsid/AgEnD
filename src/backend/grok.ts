@@ -631,6 +631,17 @@ export class GrokBackend implements CliBackend {
         action: "failover",
         message: "Grok rate limit reached",
       },
+      // Compaction can report a quota denial as Unauthorized (401). The framed
+      // error's payload takes precedence over that status; a plain auth failure
+      // stays below. Bound the continuation to four adjacent box rows, including
+      // the 80-column "out of" / "credits" wrap captured on 1.0.89.
+      {
+        pattern: /^[ \t]*┃[ \t]+Compaction failed:[^\r\n]*(?:\r?\n[ \t]*┃[ \t][^\r\n]*){0,4}?(?:usage(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)limit(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)reached|out(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)of(?:[ \t]+|\r?\n[ \t]*┃[ \t]+)credits)/im,
+        type: "quota",
+        action: "notify",
+        message: "Grok quota/credits exhausted",
+        notice: () => quotaLine("Grok", "quota_credits"),
+      },
       // 401: intentionally broad backstop; the primary gate is LOGIN_FLOWS.grok.authCheck.
       // The 1.0.52 audit pinned this screen as idle (no auth error raised), so this
       // pattern fires only if future CLI versions show a status code (#1792 follow-up).
