@@ -10,6 +10,12 @@
 .hub-room-result:hover, .hub-room-result:focus-visible { background: var(--surface-2); }
 .hub-room-person-label { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
 .hub-room-person-label > :is(.hub-room-person-name, .hub-room-person-detail) { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-room-result-agent { align-items: flex-start; flex-wrap: wrap; justify-content: space-between; }
+.hub-room-agent-label { display: flex; flex: 1 1 18rem; flex-direction: column; min-width: 0; gap: var(--s-1); }
+.hub-room-agent-title { overflow-wrap: anywhere; }
+.hub-room-agent-title > small { margin-inline-start: var(--s-1); }
+.hub-room-agent-intro { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-room-agent-action { flex: 0 1 auto; max-width: 100%; white-space: normal; pointer-events: none; }
 .hub-room-new .form, .hub-room-settings section.form { display: flex; flex-direction: column; gap: var(--s-3); }
 .hub-room-settings section + section { margin-top: var(--s-4); }
 /* Room settings → Name: the label above, then the input and 儲存 on one line, the input taking the rest of it. */

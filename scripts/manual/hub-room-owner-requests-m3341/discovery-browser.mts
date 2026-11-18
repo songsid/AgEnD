@@ -11,7 +11,7 @@ import { createHubRoomAgentRequests } from "../../../src/hub/room-agent-requests
 import { createOwnedPki } from "../hub-connector-4c/rig.mjs";
 if (process.platform !== "linux" || !process.env.CHROME?.startsWith("/home/") || process.env.CHROME.includes("/mnt/")) throw Error("Pin Linux headless Chromium only");
 if (!process.env.CJK_FONT || !process.env.PW_DIR) throw Error("Pin the browser package and Traditional Chinese font");
-const pickerOnly = process.env.VIEW === "picker";
+const pickerOnly = process.env.VIEW === "picker", pmOnly = process.env.VIEW === "pm-r1";
 const out = resolve(process.env.OUT || ".artifacts/m3341/discovery-browser"); mkdirSync(out, { recursive: true });
 const scratch = mkdtempSync(join(out, "owned-")), home = join(scratch, "home");
 mkdirSync(join(home, ".local/share/fonts"), { recursive: true, mode: 0o700 }); copyFileSync(process.env.CJK_FONT, join(home, ".local/share/fonts/NotoSansCJKtc-Regular.otf"));
@@ -60,7 +60,7 @@ try {
     page.on("response", async (response: any) => { const path = new URL(response.url()).pathname;
       if (response.status() === 200 && /\.(js|css)$/.test(path)) try { assets.set(path, createHash("sha256").update(await response.body()).digest("hex")); } catch {} });
     const shot = async (name: string, target: any) => {
-      if (pickerOnly && name !== "picker") return;
+      if (pickerOnly && name !== "picker" || pmOnly && !["shared-off", "not-shared", "picker"].includes(name)) return;
       await target.scrollIntoViewIfNeeded(); await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: join(out, tag + "-" + name + ".png") });
       check(tag + ": " + name + " no overflow", await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
     };
@@ -72,21 +72,25 @@ try {
     try {
       if (!pickerOnly) {
       await signIn("example-owner", `/ui/hub/exposures?agent=${findable.id}`);
-      await control.locator('input:enabled').waitFor(); check(tag + ": off by default", !await checkbox.isChecked()); await shot("shared-off", control);
+      await control.locator('input:enabled').waitFor(); check(tag + ": off by default", !await checkbox.isChecked()); await shot("shared-off", pmOnly ? control.locator("xpath=preceding-sibling::section[1]") : control);
       await checkbox.click(); await page.waitForFunction(() => { const input = document.querySelector('.hub-room-discovery-setting input') as HTMLInputElement | null; return input?.checked && !input.disabled; });
       check(tag + ": owner enabled through real API", (await r.call(signedOwner, "GET", discoveryPath)).json.findable === true); await shot("shared-on", control);
+      if (!pmOnly) {
       r.db.prepare("UPDATE hub_exposures SET sharing_paused=1,sharing_epoch=sharing_epoch+1 WHERE id=?").run(findable.id);
       await page.reload(); await control.getByText(lang === "en" ? "Hidden while sharing is paused." : "暫停分享期間不會顯示。", { exact: true }).waitFor();
       check(tag + ": paused keeps saved choice", await checkbox.isChecked() && await checkbox.isDisabled()); await shot("paused", control);
+      }
       // A retained frozen publication is unshared but still has an owner access page. No freeze operation is claimed.
       r.db.prepare("UPDATE hub_exposures SET state='frozen',sharing_paused=0 WHERE id=?").run(findable.id);
       await page.reload(); await control.getByText(lang === "en" ? "Share this agent first." : "請先分享這個 Agent。", { exact: true }).waitFor();
-      check(tag + ": unshared cannot change discovery", await checkbox.isDisabled()); await shot("not-shared", control);
+      check(tag + ": unshared clears the displayed choice", !await checkbox.isChecked() && await checkbox.isDisabled()); await shot("not-shared", control);
       r.db.prepare("UPDATE hub_exposures SET state='published',sharing_epoch=sharing_epoch+1 WHERE id=?").run(findable.id);
+      if (!pmOnly) {
       await r.call(signedOwner, "PUT", "/hub/v1/me/agent-request-settings", { accepting: false });
       await page.reload(); await control.getByText(lang === "en" ? 'Off while "Don\'t let room managers ask me for agents" is on.' : "已開啟「不要讓房間管理員請我加入 Agent」，所以目前無法使用。", { exact: true }).waitFor();
       check(tag + ": owner opt-out wins", await checkbox.isChecked() && await checkbox.isDisabled()); await shot("owner-disabled", control);
       await r.call(signedOwner, "PUT", "/hub/v1/me/agent-request-settings", { accepting: true });
+      }
       } else {
         const current = await r.call(signedOwner, "GET", discoveryPath);
         check(tag + ": prepare owner opt-in", (await r.call(signedOwner, "PUT", discoveryPath, { findable: true, ifRevision: current.json.revision, exposureRevision: 1 })).status === 200);
@@ -96,6 +100,19 @@ try {
       await page.locator(".hub-room-settings-link").click(); await page.locator("#hubRoomAddAgents").fill("Example");
       const action = page.getByRole("option", { name: lang === "en" ? "Ask Example owner to add Example release helper to this room" : "請 Example owner 把 Example release helper 加入這個房間", exact: true });
       await action.waitFor(); check(tag + ": askable and findable side by side", await page.locator('.hub-room-results [role="option"]').count() === 2);
+      if (pmOnly) for (const row of await page.locator('.hub-room-result-agent').all()) {
+        const layout = await row.evaluate((el: HTMLElement) => {
+          const title = el.querySelector('.hub-room-agent-title')!, intro = el.querySelector('.hub-room-agent-intro')!, action = el.querySelector('.hub-room-agent-action')!;
+          const textStyle = getComputedStyle(intro), buttonStyle = getComputedStyle(action);
+          return { introTop: intro.getBoundingClientRect().top, introBottom: intro.getBoundingClientRect().bottom, titleBottom: title.getBoundingClientRect().bottom,
+            actionTop: action.getBoundingClientRect().top, ellipsis: textStyle.textOverflow, nowrap: textStyle.whiteSpace,
+            border: parseFloat(buttonStyle.borderTopWidth), targets: el.querySelectorAll('button').length };
+        });
+        check(tag + ": introduction follows name and owner", layout.introTop >= layout.titleBottom - 1);
+        check(tag + ": introduction is one ellipsized line", layout.ellipsis === "ellipsis" && layout.nowrap === "nowrap");
+        check(tag + ": visible action with one press target", layout.border > 0 && layout.targets === 0);
+        if (phone) check(tag + ": action follows the introduction on phone", layout.actionTop >= layout.introBottom - 1);
+      }
       await shot("picker", page.locator(".hub-room-results")); await action.click();
       const waiting = page.locator("[data-invitation]"); await waiting.waitFor(); check(tag + ": existing waiting row names owner", (await waiting.textContent()).includes("Example owner")); await shot("invited", waiting);
       check(tag + ": no discovery grant", (r.db.prepare("SELECT COUNT(*) n FROM hub_grants WHERE exposure_id=?").get(findable.id) as any).n === 0);

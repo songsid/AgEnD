@@ -20,6 +20,10 @@ The rig uses actual owned HTTPS, SQLite, encrypted audit, shipped UI and ordinar
 
 `browser.json` and `picker-retake.json` record the source base, changed-source digest and served asset hashes. After the full matrix, an asynchronous owner-setting read/write generation fence and reload after refusal were strengthened; rendered markup/copy did not change. The focused picker retake includes current module assets. This is UI/HTTP/storage proof; no live Fleet delivery is claimed.
 
+The layout correction passed 85 focused headless checks and replaces twelve originals (picker, stopped sharing and access-page order, in each size/language). Six principal originals were inspected: name/owner and introduction are grouped together, action labels have a button appearance and move below the introduction on phones, the stopped-sharing choice is unticked and disabled, and “Who may ask” precedes findability. The fixtures’ introductions fit; the browser checks the single-line ellipsis style rather than claiming a visibly truncated long introduction. `pm-r1.json` records the current assets. The ordinary askable invitation label is unchanged from the base.
+
+The stopped-state assertion failed before its correction; the mounted card-order assertion also failed before moving the card (see `a4-pm-order-before.log`). The correction’s backend/UI/shell file run passes 43/43, and the existing room-dialog/person-picker compatibility run passes 17/17. Test TypeScript is clean. These are separate delta runs, not added distinct totals.
+
 Run `tsx scripts/manual/hub-room-owner-requests-m3341/discovery-browser.mts` with owned Linux `CHROME`, `PW_DIR` and `CJK_FONT`. `VIEW=picker` focuses retakes on the result rows. Public logs replace local paths with `<worktree>`; all visible names/IDs are fake. Manifest entries use `path` and `sha256`.
 
 ## Rollback and deferred work

@@ -96,9 +96,11 @@ it("hides paused or unshared agents, restores on resume and resets on a new publ
   expect((await w.candidates()).json.candidates).toEqual([]);
   w.r.db.prepare("UPDATE hub_exposures SET sharing_paused=0,sharing_epoch=sharing_epoch+1 WHERE id=?").run(w.exposure.id);
   expect((await w.candidates()).json.candidates).toHaveLength(1);
-  w.r.db.prepare("UPDATE hub_exposures SET state='withdrawn' WHERE id=?").run(w.exposure.id);
-  expect((await w.settings()).json).toMatchObject({ available: false, reason: "not-shared" });
-  expect((await w.candidates()).json.candidates).toEqual([]);
+  for (const state of ["frozen", "withdrawn"]) {
+    w.r.db.prepare("UPDATE hub_exposures SET state=? WHERE id=?").run(state, w.exposure.id);
+    expect((await w.settings()).json).toMatchObject({ findable: false, available: false, reason: "not-shared" });
+    expect((await w.candidates()).json.candidates).toEqual([]);
+  }
   w.r.db.prepare("UPDATE hub_exposures SET state='published',revision=2 WHERE id=?").run(w.exposure.id);
   expect((await w.settings()).json).toMatchObject({ findable: false, exposureRevision: 2, revision: 1 });
   expect((await w.candidates()).json.candidates).toEqual([]);

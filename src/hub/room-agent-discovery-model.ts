@@ -23,7 +23,7 @@ export function roomDiscoverySnapshot(db: Database.Database, e: HubExposure) {
 }
 export function roomDiscoveryView(db: Database.Database, e: HubExposure) {
   const { preference: p, accepting } = roomDiscoverySnapshot(db, e);
-  const findable = p?.owner === personKeyString(e.owner) && p.exposure_revision === e.revision && p.findable === 1;
+  const findable = (e.state === "published" || e.state === "paused") && p?.owner === personKeyString(e.owner) && p.exposure_revision === e.revision && p.findable === 1;
   const reason = accepting.accepting !== 1 ? "owner-disabled" : e.state === "paused" ? "paused" : e.state !== "published" ? "not-shared" : null;
   return { findable, available: reason === null, ...(reason ? { reason } : {}), revision: p?.revision ?? 0, exposureRevision: e.revision };
 }

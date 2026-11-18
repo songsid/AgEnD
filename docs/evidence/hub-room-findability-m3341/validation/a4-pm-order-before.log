@@ -1,0 +1,26 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-shell-parity.test.ts (19 tests | 1 failed | 18 skipped) 860ms
+     × keeps room findability after the main who-may-ask setting on the access page 86ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-shell-parity.test.ts > the Hub's sidebar is the dashboard's (cid-hub-shell-parity) > keeps room findability after the main who-may-ask setting on the access page
+AssertionError: expected 0 to be greater than 1
+ ❯ tests/hub-shell-parity.test.ts:76:67
+     74|     const cards = [...discovery.parentElement.children];
+     75|     const access = cards.find((card: any) => card.querySelector("h3")?…
+     76|     expect(access).toBeTruthy(); expect(cards.indexOf(discovery)).toBe…
+       |                                                                   ^
+     77|   });
+     78|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  04:04:18
+   Duration  1.17s (transform 743ms, setup 74ms, import 108ms, tests 860ms, environment 0ms)
+

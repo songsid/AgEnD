@@ -23,13 +23,13 @@ it.each(["en", "zh-TW"])("shows the explicit disclosure and saves a revision-bou
   await vi.waitFor(() => expect(input.checked).toBe(true));
 });
 it.each([
-  ["paused", "Hidden while sharing is paused."], ["not-shared", "Share this agent first."],
-  ["owner-disabled", 'Off while "Don\'t let room managers ask me for agents" is on.'],
-])("keeps the saved choice disabled with its %s reason", async (reason, text) => {
-  const c = fixture({ findable: true, available: false, reason }), p = page(); pages.push(p);
+  ["paused", "Hidden while sharing is paused.", true], ["not-shared", "Share this agent first.", false],
+  ["owner-disabled", 'Off while "Don\'t let room managers ask me for agents" is on.', true],
+])("shows the current disabled choice with its %s reason", async (reason, text, findable) => {
+  const c = fixture({ findable, available: false, reason }), p = page(); pages.push(p);
   await p.mount(h(ui.OwnerAgentDiscoverySetting, { client: c, scope: "scope", exposure }));
   await vi.waitFor(() => expect(p.root.textContent).toContain(text));
-  const input = p.root.querySelector('input[type="checkbox"]'); expect(input.disabled).toBe(true); expect(input.checked).toBe(true);
+  const input = p.root.querySelector('input[type="checkbox"]'); expect(input.disabled).toBe(true); expect(input.checked).toBe(findable);
   input.checked = false; fire(input, "change"); await settle(); expect(c.agentRoomDiscovery).toHaveBeenCalledTimes(1);
 });
 it("retains person-picker behavior while giving discovered agents a distinct invitation action", async () => {
@@ -41,6 +41,12 @@ it("retains person-picker behavior while giving discovered agents a distinct inv
   const input = p.root.querySelector("input"); input.value = "Example"; fire(input, "input");
   await vi.waitFor(() => expect(p.root.querySelectorAll('[role="option"]').length).toBe(2));
   const buttons = p.root.querySelectorAll('[role="option"]');
+  for (const button of buttons) {
+    expect(button.querySelector(".hub-room-agent-title").textContent).toContain("Example owner");
+    expect(button.querySelector(".hub-room-agent-intro")).toBeTruthy();
+    expect(button.querySelector(".hub-room-agent-action.btn")).toBeTruthy();
+    expect(button.querySelectorAll("button")).toHaveLength(0);
+  }
   expect(buttons[0].textContent).toContain("Invite · waiting for the owner");
   expect(buttons[1].getAttribute("aria-label")).toBe("Ask Example owner to add Example discovered helper to this room");
   expect(buttons[1].textContent).toContain("Tracks releases"); expect(buttons[1].textContent).toContain("Ask Example owner");

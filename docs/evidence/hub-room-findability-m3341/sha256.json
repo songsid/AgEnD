@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "9cccb8c642f18d1aaa447f7deda8606c24f7269559167d5f263eb22b5349c1d4"
+    "sha256": "83446c6d8f3d81962c6f746fd91a1c9b4f2dac2010b89ed4c55b72c38bf8acd4"
   },
   {
     "path": "browser.json",
@@ -14,6 +14,10 @@
   {
     "path": "picker-retake.json",
     "sha256": "7798eb375c1aa397d3782e7e5defa456352f7d61909debba4eda34aa03965f30"
+  },
+  {
+    "path": "pm-r1.json",
+    "sha256": "8209d8f56064af683d170131682c1866ad0a0c80303e418eddaee0059b76df4d"
   },
   {
     "path": "validation/a4-askable-before.log",
@@ -52,6 +56,22 @@
     "sha256": "c954c53432de6563827fd545edb76dcf9d8e6c66f5cdad95ec371d6b32b3bd99"
   },
   {
+    "path": "validation/a4-pm-final.log",
+    "sha256": "d4a1432f5950aaa635626ac519a4c35d9ec7a4651929bd349fea614dcfdea0f4"
+  },
+  {
+    "path": "validation/a4-pm-order-before.log",
+    "sha256": "4777654174c6cab94e103107c93f59dffa4e0b1627cb21b8caa32783f59ac2b2"
+  },
+  {
+    "path": "validation/a4-pm-picker-compat.log",
+    "sha256": "6566a2ddefe4ee2731866edac8e8508f8b252c69ddff3cf3f4c51624b42bf2db"
+  },
+  {
+    "path": "validation/a4-pm-test-ts.log",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  },
+  {
     "path": "validation/a4-source-ts.log",
     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
@@ -65,7 +85,7 @@
   },
   {
     "path": "views/desk-en-not-shared.png",
-    "sha256": "2d03faab72216249c495f46db0d3976d5fe536e8a3a92bddb20d58557840d0a3"
+    "sha256": "183c0ef6a08a75c71c8dd801f748a62fa3d5983e26a7d246002dff5a20d1870c"
   },
   {
     "path": "views/desk-en-owner-disabled.png",
@@ -77,11 +97,11 @@
   },
   {
     "path": "views/desk-en-picker.png",
-    "sha256": "50afa372859b6e51b89e23ba47510393ef304158f6b3d17b01ea55fb8b0585db"
+    "sha256": "e2e29a439954c764fd5cec7b781a8688a293fb55474f61c2590580326407ca42"
   },
   {
     "path": "views/desk-en-shared-off.png",
-    "sha256": "5f3396a1f3434f2a38082d45534ec902f49a1f81e51bcf2525fd62ff240a1b05"
+    "sha256": "1948f2366b766e87c6724a06de03c32159045250d63ff593c2cfcab42460cf3d"
   },
   {
     "path": "views/desk-en-shared-on.png",
@@ -93,7 +113,7 @@
   },
   {
     "path": "views/desk-zh-TW-not-shared.png",
-    "sha256": "41f0b54e36a7a7e62f648cd07246f054998a7490af26a001866cb7f18f0467b8"
+    "sha256": "235438709a54061d324c7eb70144c209cb2e32ba6d329a9045c4ebda3eaf45a9"
   },
   {
     "path": "views/desk-zh-TW-owner-disabled.png",
@@ -105,11 +125,11 @@
   },
   {
     "path": "views/desk-zh-TW-picker.png",
-    "sha256": "c4a2cecda442b1265131a9a83745912b41b998ee45b7678bd45e4e41ef634c79"
+    "sha256": "b7b0785649381b29416a13ffe71ade4d453cb43656fd62d40bffe93c7ec4ecdf"
   },
   {
     "path": "views/desk-zh-TW-shared-off.png",
-    "sha256": "139a5ecef1e3a3553de37587d469500bfe465e6f3b65e362a571141ada0464fe"
+    "sha256": "5698690033be0524d42574689a5e7542241edab18d31f6c058de563e7969b042"
   },
   {
     "path": "views/desk-zh-TW-shared-on.png",
@@ -121,7 +141,7 @@
   },
   {
     "path": "views/phone-en-not-shared.png",
-    "sha256": "260e2dacf8a210c9ac37e3dbecb3eadb33ac252ebab35f38dfd29bfe026fe390"
+    "sha256": "aeecd4c195681e01c2a12fffb50c445e7fbb588ccff260fd40dcaed805b10c52"
   },
   {
     "path": "views/phone-en-owner-disabled.png",
@@ -133,11 +153,11 @@
   },
   {
     "path": "views/phone-en-picker.png",
-    "sha256": "c90afa977b7f0053363f01688ff9b3585d36fb11eafdf22a044137344195e4dd"
+    "sha256": "f66028131ebe98a32112a8456d75830c5537086c6a4190f48d76cc7b1ad91b50"
   },
   {
     "path": "views/phone-en-shared-off.png",
-    "sha256": "2f4f90cdf39737ac0ab7d0288cbac77ee3ac20965e9717bdbe1ef258e7c2349c"
+    "sha256": "709c2735b6da5e03a78bcb4412f9886852c96e5902c54a03d12a8b1f5882591e"
   },
   {
     "path": "views/phone-en-shared-on.png",
@@ -149,7 +169,7 @@
   },
   {
     "path": "views/phone-zh-TW-not-shared.png",
-    "sha256": "08b625b3377d6b91862a20c0c74275fe4370b6f20f6826ea43a6aee1025f65da"
+    "sha256": "78c229e051fc325163345ae8d6c25deecc3eaf5356cedad6f50fcaa48cdeef7c"
   },
   {
     "path": "views/phone-zh-TW-owner-disabled.png",
@@ -161,11 +181,11 @@
   },
   {
     "path": "views/phone-zh-TW-picker.png",
-    "sha256": "fe9f9c3e10af7ed91b3e9ed426cdefeed5b8ea2175b75998b28ed2d1d1d5df60"
+    "sha256": "5be0466d56a5422704a35105dea3af9b47fb098d3781e9b9676ced1d6822b80c"
   },
   {
     "path": "views/phone-zh-TW-shared-off.png",
-    "sha256": "c4cbfa26525e0df145f5e8d594a5b3b08af32ee106d02686bf2ad20a37dbe722"
+    "sha256": "9e16ae65e5835f27b6d4bd7a25c6d9bbb42c47aa3fa401a23568ad34da89216b"
   },
   {
     "path": "views/phone-zh-TW-shared-on.png",

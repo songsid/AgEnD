@@ -1096,7 +1096,6 @@ function HubAgentPage({ x, act, msg }) {
     <div class="s-section-layout">
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${session?.features?.includes("agent-intros-v1") && client.agentIntrosV1 ? html`<${AgentIntroEditor} exposure=${x} client=${client} onSaved=${()=>act(async()=>({ok:true}))} />` : null}
-      ${session?.features?.includes("room-agent-discovery-v1") && typeof client.agentRoomDiscovery === "function" ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentDiscoverySetting" props=${{ client, scope: session.csrf, exposure: x }} />` : null}
       <section class="card"><div class="hub-card-head"><h3>${ho("whoMayAsk")}</h3>${shared ? html`<button type="button" class="btn btn-sm" onClick=${() => setAllowing(true)}><${Icon} name="plus" size=${14} />${ho("allow")}</button>` : null}</div>
         ${grants.length ? html`<div class="hub-rows">${grants.map((g) => html`<div key=${g.id} class="s-row hub-row">
           <${Avatar} name=${g.subjectName || g.subjectLogin} size="sm" />
@@ -1105,6 +1104,7 @@ function HubAgentPage({ x, act, msg }) {
         </div>`)}</div>` : html`<p class="note">${roomCount > 0 ? hroom("agentNoOneToOne") : hw("noGrants")}</p>`}
         ${roomCount > 0 ? html`<p class="note hub-rooms-can-ask">${hroom("roomsCanAskIt")}</p>` : null}
       </section>
+      ${session?.features?.includes("room-agent-discovery-v1") && typeof client.agentRoomDiscovery === "function" ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentDiscoverySetting" props=${{ client, scope: session.csrf, exposure: x }} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="AgentRoomsSection" props=${{ client: hubClient(), exposureId: x.id, onRooms: setRoomCount }} />` : null}
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
       <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>
