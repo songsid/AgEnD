@@ -13609,9 +13609,42 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private async handleInboundMessage(msg: InboundMessage): Promise<void> {
     msg = { ...msg, humanOriginalBody: msg.humanOriginalBody ?? msg.text, humanOrigin: msg.isBotMessage ? undefined : msg.humanOrigin && { ...msg.humanOrigin } };
+    // #4145: this fleet's sign-in access token pasted into a chat is hidden before anything logs, indexes, keeps or
+    // delivers the message — then taken back and replaced, and the chat told where it goes.
+    const pasted = this.screenPastedLoginToken(msg);
+    if (pasted) {
+      msg = pasted.msg;
+      if (pasted.live) await this.takeBackPastedLoginToken(msg);
+    }
     if (msg.isBotMessage) return withSpawnHoldReply(undefined, () => this.handleInboundMessageCore(msg));
     return withSpawnHoldReply(text => this.inboundNoticeAdapter(msg)?.sendText(msg.chatId, text, { threadId: msg.threadId }) ?? Promise.resolve(),
       () => this.handleInboundMessageCore(msg));
+  }
+
+  /** #4145 (the web chat's /ui/send too): `text` with this fleet's sign-in access token hidden; null when there is none in it. */
+  screenLoginToken(text: string): { text: string; live: boolean } | null { return this.loginController?.screenToken(text) ?? null; }
+  /** #4145: take a pasted access token back (a new one goes the way the first went); the line for the chat it was pasted in, or null. */
+  loginTokenPasted(): Promise<string | null> { return this.loginController?.tokenPasted() ?? Promise.resolve(null); }
+
+  /** #4145: the message with the live (or a just-taken-back) sign-in access token hidden in its text and its receipt body; null when neither has one. */
+  private screenPastedLoginToken(msg: InboundMessage): { msg: InboundMessage; live: boolean } | null {
+    const text = this.screenLoginToken(msg.text ?? "");
+    const body = msg.humanOriginalBody === undefined || msg.humanOriginalBody === msg.text ? text : this.screenLoginToken(msg.humanOriginalBody);
+    if (!text && !body) return null;
+    return { msg: { ...msg, ...(text ? { text: text.text } : {}), ...(body ? { humanOriginalBody: body.text } : {}) }, live: !!(text?.live || body?.live) };
+  }
+
+  /** #4145: take the pasted token back (a new one goes privately) and say so once, where it was pasted. Never the token in a log line. */
+  private async takeBackPastedLoginToken(msg: InboundMessage): Promise<void> {
+    this.logger.warn({ source: msg.source, adapterId: msg.adapterId, chatId: msg.chatId, threadId: msg.threadId, userId: msg.userId },
+      "A sign-in access token was pasted into a chat: hidden, taken back and replaced");
+    const notice = await this.loginTokenPasted().catch((err: unknown) => {
+      this.logger.warn({ err: (err as Error).message }, "Taking back a pasted sign-in token failed");
+      return null;
+    });
+    if (!notice || msg.isBotMessage) return;
+    await this.inboundNoticeAdapter(msg)?.sendText(msg.chatId, notice, { threadId: msg.threadId || undefined })
+      .catch((err: unknown) => this.logger.warn({ err: (err as Error).message }, "Pasted sign-in token notice failed"));
   }
 
   /**

@@ -164,6 +164,21 @@ describe("start", () => {
 });
 
 describe("token gate", () => {
+  it("#4145: rotateAccessToken — a pasted token stops working at once, the new one opens; nothing to rotate once redeemed or ended", async () => {
+    const { session, audits } = make();
+    expect(session.rotateAccessToken()).toBe(false);                     // not running yet
+    await session.start();
+    const old = session.peekAccessToken()!;
+    expect(session.rotateAccessToken()).toBe(true);
+    const fresh = session.peekAccessToken()!;
+    expect(fresh).toMatch(/^[A-Z2-7]{20}$/);
+    expect(fresh).not.toBe(old);
+    expect(session.redeemToken(old)).toEqual({ result: "bad", remaining: 2 });
+    expect(audits.some(a => a[0] === "web_terminal_token_rotated" && !JSON.stringify(a[1]).includes(old))).toBe(true);
+    expect(session.redeemToken(fresh).result).toBe("ok");
+    expect(session.rotateAccessToken()).toBe(false);                     // redeemed: the terminal is open, nothing to take back
+    expect(session.peekAccessToken()).toBeNull();
+  });
   it("wrong token → bad with remaining count; third failure → locked, session destroyed, tmux killed", async () => {
     const { session, backend, done, audits } = make();
     await session.start();
