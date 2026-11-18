@@ -36,6 +36,7 @@ import { roomSource, mountSourceAuthor } from "./hub-room-source.js";
 import { countsLine } from "./hub-room-list.js";
 import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
+import { ROOM_PINS_MAX, RoomPinsButton, RoomPinsDialog } from "./hub-room-pins.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
@@ -220,9 +221,10 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
  * `send(text, { mentions, replyTo })` → the client's answer (a refusal's code is the caller's to word; a soft warning is
  * stored and drawn), `older()`, `findQuoted(key)`, `markRead()`, `refresh()`, `stop()`. M-3127 B: `clickButton` / `vote` / `busy` / `mine` are the direct chat's button actions (hub-button-actions.js), on group rooms only.
  */
-export function createRoomStore(roomId, { client, meId = "" } = {}) {
+export function createRoomStore(roomId, { client, meId = "", pinsOn = false } = {}) {
   const subs = new Set(), ids = new Map(), expanded = new Set();
-  const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [] };
+  // M-3340: `pins` — my own pins in this group room (null: this Hub offers none, or not read yet); nobody else's, ever.
+  const st = { live: true, detail: null, messages: [], loaded: false, error: null, removed: false, more: false, view: [], pins: null };
   let loadingOlder = false;
   // The room's committed order (Ridge: `sequence`, from the stored row): a waiting answer replaced in place, or an event that
   // arrives out of order, is drawn where the room has it. Rows without it (a direct chat, an older Hub) keep arrival order.
@@ -245,6 +247,14 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     if (page.ok) { for (const m of page.messages || []) upsert(m); st.more = page.more === true; st.loaded = true; if (d.ok) st.error = null; }
     else st.error = page.code || "failed";
     changed();
+    void readPins();
+  }
+  /** M-3340: my pins, read again (opening the room; my other tab or device changed them: pins.changed). A group room only. */
+  async function readPins() {
+    if (!pinsOn || typeof client.roomPins !== "function" || st.detail?.room?.kind !== "group") return;
+    const r = await client.roomPins(roomId);
+    if (!st.live) return;
+    if (r?.ok && Array.isArray(r.pins)) { st.pins = r.pins.filter((p) => p && typeof p.messageId === "string"); changed(); }
   }
   const on = (fn) => (data) => { if (st.live && data && data.roomId === roomId) { fn(data); changed(); } };
   // M-3127 B: an answer's buttons and polls — the direct chat's own actions (one key per intent, my vote kept in this tab),
@@ -260,6 +270,7 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
     "presence.changed": on((d) => { const m = st.detail?.members?.find((x) => x.id === d.memberId); if (m) { m.presence = d.presence;
       for (const k of ["presenceNote", "presenceReason"]) { if (d[k]) m[k] = d[k]; else delete m[k]; } } }),
     "member.changed": on(() => { void readDetail().then(changed); }),
+    "pins.changed": on(() => { void readPins(); }),
     "room.changed": on((d) => { if (d.removed) st.removed = true; else if (d.room && st.detail) st.detail = { ...st.detail, room: { ...st.detail.room, ...d.room } }; }),
   }) : () => {};
   /** One page older than what is held (the server's `before=`). False when there was nothing to fetch. */
@@ -349,6 +360,17 @@ export function createRoomStore(roomId, { client, meId = "" } = {}) {
       if (st.live && r?.ok && m && Array.isArray(r.reactions)) { if (r.reactions.length) m.reactions = r.reactions; else delete m.reactions; changed(); }
       return r;
     },
+    /** M-3340: my pins (newest first: { messageId, pinnedAt, message }); offered when this Hub keeps them for me. */
+    pins: () => st.pins || [],
+    pinsOffered: () => Array.isArray(st.pins),
+    isPinned: (messageId) => (st.pins || []).some((p) => p.messageId === messageId),
+    /** Pin (on) or unpin a message for me only; the Hub answers with my pins → the client's answer (pins-full past 50). */
+    async setPin(messageId, on) {
+      if (!Array.isArray(st.pins) || typeof client.pinRoomMessage !== "function") return { ok: false, code: "unavailable" };
+      const r = await client.pinRoomMessage(roomId, messageId, on);
+      if (st.live && r?.ok && Array.isArray(r.pins)) { st.pins = r.pins.filter((p) => p && typeof p.messageId === "string"); changed(); }
+      return r;
+    },
     markRead() { const last = st.messages.at(-1); return last ? client.markRoomRead(roomId, last.id) : Promise.resolve({ ok: true }); },
     refresh, clickButton: actions.clickButton, vote: actions.vote, busy: actions.busy, mine: actions.mine,
     stop() { st.live = false; subs.clear(); unsubscribe(); actions.stop(); },
@@ -378,8 +400,9 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {} }) {
-  const store = useMemo(() => createRoomStore(roomId, { client, meId }), [roomId]);
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {}, pinsOn = false }) {
+  const store = useMemo(() => createRoomStore(roomId, { client, meId, pinsOn }), [roomId]);
+  const [pinsOpen, setPinsOpen] = useState(false);
   useEffect(() => () => store.stop(), [store]);
   const [, tick] = useState(0);
   // The first read may land before this subscribes: read once more on subscribing.
@@ -506,13 +529,31 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     quote: { field: () => input.current, can: () => !store.closed() },
     // M-3311 (3): the Fleet chat's Copy link — a room message's address (opening it shows that message).
     linkOf: roomLinkOf(roomId),
+    // M-3340: the Fleet chat's Pin / Unpin — mine only (read when the menu opens: the pins arrive after the first render).
+    pin: (x) => { void togglePin(x.roomMessage); },
+    pinned: (x) => store.isPinned(x.roomMessage),
+    canPin: (x) => store.pinsOffered() && !!x.roomMessage && x.role !== "status",
   };
+  // M-3340: pin or unpin a message for me; said in a toast either way (as the Fleet chat says it).
+  async function togglePin(messageId) {
+    const on = !store.isPinned(messageId), r = await store.setPin(messageId, on);
+    if (r?.ok) toast(t(on ? "chat.pinned" : "chat.unpinned"));
+    else toast(r?.code === "pins-full" ? hroom("pinsFull", String(ROOM_PINS_MAX)) : t("chat.pinFailed"), false);
+  }
+  const pinCount = store.pinsOffered() ? store.pins().length : 0;
+  // M-3340: a pin's message in the room — loaded back to it, scrolled to and flashed (the search hit's way); gone: said.
+  async function showPin(pin) {
+    setPinsOpen(false);
+    const key = await store.find(pin.messageId);
+    if (key) setTimeout(() => threadRef.current?.reveal(key), 60); else toast(hroom("jumpMissing"), false);
+  }
   // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
   const [fullWidth, setFullWidth] = useState(hubChatWide);
   const textSize = useStore(textSizeStore), notify = useStore(notifyStore), narrow = useNarrowScreen();
   const menuItems = [
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
+    pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: () => setPinsOpen(true) } : null,
     !narrow && detail?.me ? { key: "fullWidth", checkbox: true, checked: fullWidth, label: t("chat.fullWidth"), onSelect: () => { setHubChatWide(!fullWidth); setFullWidth(!fullWidth); } } : null,
     // M-3311 (4): a phone's header is one row (back, the room, members, ⋯) as the Fleet chat's — its text size and Notify
     // move into ⋯ there (hub-chat.css hides the two buttons at the same width).
@@ -533,6 +574,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined}>
     <${LightboxHost} />
+    ${pinsOpen ? html`<${RoomPinsDialog} pins=${store.pins()} onClose=${() => setPinsOpen(false)} onJump=${(p) => void showPin(p)} onUnpin=${(p) => void togglePin(p.messageId)} />` : null}
     <section class="hub-chat-main" ref=${mainRef}>
       ${attach ? html`<${DropOverlay} />` : null}
       <header class=${`hub-chat-head${room.agent?.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">
@@ -541,7 +583,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
         <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
         <span class="hub-chat-title"><strong>${title}</strong>${group&&typeof room.purpose==="string"?html`<${RoomPurposeHeader} purpose=${room.purpose} onEdit=${detail?.me?.role==="manager"&&client.roomPurposeV1===true?openSettings:undefined} />`:null}<span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
-        <span class="hub-head-tools"><${TextSizeButton} /><${HubNotifyToggle} /></span>
+        <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}

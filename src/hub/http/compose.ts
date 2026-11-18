@@ -90,6 +90,8 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent
   "hub-room-list.js", "hub-room-thread.js", "hub-room-agent-strings.js", "hub-room-composer.js", "hub-assistant-admin.js", "hub-assistant-admin-strings.js",
   // M-3092 S-145: the list's favourites (the Fleet sidebar's #1664 rules; synced per person by the Hub).
   "hub-room-favorites.js",
+  // M-3340: personal pins in a room (its list and 📌; the store keeps them in hub-room-thread.js).
+  "hub-room-pins.js",
   // S-148: the working bar's words (#3857), shared by the room thread.
   "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-role-view.js", "hub-role-forms.js", "hub-role-audit.js", "hub-role-notices.js", "hub-room-search.js",
   // M-3137: Fleet versions (Connected fleets' columns and summary, the older-Fleet banner) with its own words.
@@ -297,7 +299,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       signedIn(); return send(res, 200, await guard(() => agentCatalogs.view(ctx)));
     }
     // Composed routes, not enrollment authority or the administrator's on/off switch. Older Hubs omit unsupported cards.
-    const offered = ["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "rooms-v1", "room-purpose-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    const offered = ["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "rooms-v1", "room-purpose-v1", "room-pins-v1", "person-prefs-v1", ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     offered.push("mcp-apps-v1");
@@ -691,6 +693,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
               if (event.audiencePerson) {
                 if (event.type === "invitation.changed") {
                   data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? {} : null;
+                } else if (event.type === "pins.changed") {
+                  // M-3340: the person's own pins changed (another tab or device): which room only; the page reads them again.
+                  data = personKeyString(await ctx.requirePerson()) === event.audiencePerson ? { roomId: event.roomId } : null;
                 } else {
                   const view = await rooms.view(ctx, event.roomId);
                   if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
@@ -779,6 +784,20 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (groupRooms.has(roomId)) return send(res, 200, await guard(() => groupRooms.markRead(ctx, roomId, b.upTo)));
       const room = await guard(() => rooms.view(ctx, roomId)); markDirectRead(core, roomId, str(b.upTo));
       groupRooms.publish({ type: "unread.changed", roomId, data: { roomId }, audiencePerson: personKeyString(room.asker) }); return send(res, 200, { ok: true });
+    }
+    // M-3340: personal pins in a group room — the signed-in person's own (GET), pin (PUT) or unpin (DELETE) one message.
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/pins$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      if ([...query.keys()].length) throw new HubProtocolError("invalid");
+      signedIn(); const roomId = uuid(r[1]);
+      if (!groupRooms.has(roomId)) throw new HttpError(404, "not-found");
+      return send(res, 200, await guard(() => groupRooms.pins(ctx, roomId)));
+    }
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/pins\/([^/]+)$/))) {
+      if (method !== "PUT" && method !== "DELETE") throw new HttpError(405, "method");
+      csrf(); const roomId = uuid(r[1]);
+      if (!groupRooms.has(roomId)) throw new HttpError(404, "not-found");
+      return send(res, 200, await guard(() => groupRooms.pin(ctx, roomId, r![2], method === "PUT")));
     }
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/messages\/([^/]+)\/reactions$/))) {
       if (method !== "POST") throw new HttpError(405, "method");

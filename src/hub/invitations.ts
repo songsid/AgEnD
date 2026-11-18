@@ -1,5 +1,6 @@
 /** Track C seam 3: explicit owner consent. Importing this module mounts no routes or storage. */
 import { randomUUID } from "node:crypto";
+import { HubCatalogService } from "./catalog.js";
 import type Database from "better-sqlite3";
 import type { HubRequestContext, HubTx, PersonId, PersonKey } from "./types.js";
 import type { HubCore } from "./http/core.js";
@@ -138,21 +139,28 @@ class RoomInvitations implements HubRoomInvitations {
   async invite(ctx: HubRequestContext, roomId: string, input: { agents: readonly string[] } | { team: string }) {
     validated(uuid, roomId); const actor = await this.who(ctx);
     if (!input || typeof input !== "object" || Object.keys(input).length !== 1) throw new HubProtocolError("invalid");
+    const selected: { team: string } | { agents: string[] } = "team" in input ? { team: validated(uuid, input.team) } : {
+      agents: Array.isArray(input.agents) && input.agents.length <= 64 ? input.agents.map(id => validated(uuid, id))
+        : (() => { throw new HubProtocolError("invalid"); })(),
+    };
     this.expire(ctx, actor.id, undefined, roomId);
-    const out = this.core.atomic((db, tx) => {
+    const out = await new HubCatalogService(this.core).withVisible(ctx, view => this.core.atomic((db, tx) => {
+      const visible = new Set([...view.mine.map(e => e.id), ...view.askable.map(row => row.exposure.id)]);
       const room = this.host.managerRoom(db, roomId, actor.id), now = this.now();
       if (!Number.isSafeInteger(now + ROOM_INVITATION_TTL)) throw new HubProtocolError("invalid");
       let agents: string[], teamImage: unknown = null;
       const teams = this.core.deps.roomTeams;
-      if ("team" in input) {
-        const team = validated(uuid, input.team); if (!teams) throw new HubProtocolError("unavailable");
+      if ("team" in selected) {
+        const team = selected.team; if (!teams) throw new HubProtocolError("unavailable");
         const expanded = teams.expand(db, [team]); if (expanded.missing.length) throw new HubProtocolError("not-found");
         teamImage = { id: team, expanded };
         agents = expanded.people.flatMap(owner => (db.prepare("SELECT id FROM hub_exposures WHERE owner=? AND state='published' AND sharing_paused=0 ORDER BY id")
           .all(owner) as { id: string }[]).map(row => row.id));
+        // A team request reveals only the same agents its manager can find in the picker.
+        agents = agents.filter(id => visible.has(id));
       } else {
-        if (!Array.isArray(input.agents) || input.agents.length > 64) throw new HubProtocolError("invalid");
-        agents = input.agents.map(id => validated(uuid, id));
+        agents = selected.agents;
+        if (agents.some(id => !visible.has(id))) throw new HubProtocolError("not-found");
       }
       const result: InvitationRow[] = [], changes: RoomInvitationChange[] = [], exposures: RoomInvitationExposure[] = [];
       for (const id of new Set(agents)) {
@@ -187,7 +195,7 @@ class RoomInvitations implements HubRoomInvitations {
         if (this.core.deps.roomTeams !== teams || !equal(teams!.expand(db, [selected.id]), selected.expanded)) throw new HubProtocolError("conflict");
       }
       return { invited: result.map(invited), changes };
-    }, this.fence(ctx));
+    }, this.fence(ctx)));
     this.publish(out.changes); return { invited: out.invited };
   }
   async pending(ctx: HubRequestContext) {

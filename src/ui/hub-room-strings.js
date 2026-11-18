@@ -27,6 +27,8 @@ register("hubRoom", {
     // M-3127 reactions: who reacted ("Alex, Bob and 3 others reacted with 👍"), the add button, the picker
     reactAdd: "Add reaction", reactPick: "Reactions", reactedWith: "{0} reacted with {1}", reactMore: "{0} and {1} others",
     reactYou: "You", listSep: ", ", reactFailed: "Couldn't add the reaction. Try again.",
+    // M-3340: personal pins (the Fleet chat's words for the rest: chat.pin…)
+    pinsOnlyYou: "Only you see your pins.", pinsFull: "You already have {0} pinned messages in this room — unpin one first.",
     // M-3127 B: an agent's buttons (its asker's) and polls (everyone's)
     onlyAsker: "Only {0} can answer", sysPollClosed: "{0}'s poll closed", buttonFailed: "That didn't go through. Try again.",
     buttonNotAsker: "Only the person who asked can answer these buttons.", buttonExpired: "These buttons are no longer open.",
@@ -163,6 +165,7 @@ register("hubRoom", {
     allAnswered: "{0} 個都回答了", expandRest: "展開其餘 {0} 則",
     reactAdd: "加上表情", reactPick: "表情回應", reactedWith: "{0} 回應了 {1}", reactMore: "{0} 和其他 {1} 人",
     reactYou: "你", listSep: "、", reactFailed: "表情沒加上，請再試一次。",
+    pinsOnlyYou: "只有你看得到你的釘選。", pinsFull: "你在這個房間已有 {0} 則釘選訊息——請先取消一則。",
     onlyAsker: "只有 {0} 能回答", sysPollClosed: "{0} 的投票已結束", buttonFailed: "沒有送出，請再試一次。",
     buttonNotAsker: "只有提問的人能按這些按鈕。", buttonExpired: "這些按鈕已經關閉。",
     searchLabel: "搜尋", searchPlaceholder: "搜尋房間、聊天與訊息…", searchClose: "關閉",
