@@ -56,7 +56,7 @@ import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
-import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
+import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "/assets/chat-quote.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
@@ -823,12 +823,13 @@ function HubRoomView({ room: given }) {
         ${!closed && !frozen && !denied && !takesFiles ? html`<p class="note hub-files-off" role="status">${hf(pageFiles ? "off" : "reload")}</p>` : null}
         ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
         ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
+          onAsText=${(key) => { const f = filesRef.current.find((x) => x.key === key); if (!f) return; setFiles(filesRef.current.filter((x) => x.key !== key)); putBackText(input.current, f.text); input.current?.focus(); }}
           formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
           <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
           onKeyDown=${onKeyDown} onPaste=${(e) => { if (!frozen && !denied) pasteToAttach(e, attach); }} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
           send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || denied || uploading, label: hc("send"), onClick: send }} /></div>`}
-        ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
+        ${closed ? null : html`<div class="composer-row hub-hints"><span class="hint hub-enter-hint">${t(touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span><span class="hint hub-identity">${hw("roomNote")}</span></div>`}
       </div></div>
     </section>
     <${PreviewPanel} name=${panelKey} split=${split} msgs=${() => store.messages()} subscribe=${(fn) => store.subscribe(() => fn(panelKey, "msgs"))}
@@ -905,6 +906,8 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
       reply: (x) => ex.startReply?.(x),
       // React opens the thread's picker for that message (extra.react is the thread's own add/remove call, with an emoji).
       ...(typeof ex.react === "function" ? { react: (x) => thread.pickReaction?.(msgKey(x)), canReact: (x) => !!x.roomMessage && ex.canReact?.(x) !== false, reactLabel: ex.reactLabel } : {}),
+      // M-3311 (3): Copy link where the page gives a message an address (a room: extra.linkOf).
+      ...(typeof ex.linkOf === "function" ? { linkOf: (x) => ex.linkOf(x) } : {}),
     });
     // M-3311 (2): the Fleet chat's 「引用」 — a passage selected in one message goes into this conversation's composer as a quote
     // at the caret (chat-quote.js; panel-chat.js's own install), through the box's typing path. `extra.quote.field()`: the box.

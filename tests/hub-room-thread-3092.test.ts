@@ -551,21 +551,53 @@ describe("a room on the page", () => {
     expect(css).toContain(".hub-dock .composer .btn-send { width: var(--tap); min-width: var(--tap); min-height: var(--tap); }");
     expect(css).toContain(".hub-room-page .composer-row .hub-room-hint { display: inline; white-space: normal; }");
   });
-  it("S-152: a message's menu, as the Fleet chat's — right-click (a phone's long press): Reply, Add reaction (M-3127), Copy text; no Copy link; Reply opens the reply bar", async () => {
+  it("S-152: a message's menu, as the Fleet chat's — right-click (a phone's long press): Reply, Add reaction (M-3127), Copy text, Copy link (M-3311); Reply opens the reply bar", async () => {
     const { pg, restore } = await roomPage("room-weekly");
     try {
       const msg = msgs(pg).filter((m) => !m.classList.contains("status-line")).at(-1);
       fire(msg.querySelector(".body"), "contextmenu"); await settle(3);
       const menu = pg.document.querySelector(".msg-menu") as any;
       // M-3127: a room message also takes a reaction — the menu's React opens the quick picker under it (a phone's way).
-      expect([...menu.querySelectorAll("button")].map((b: any) => b.textContent)).toEqual(["Reply", "Add reaction", "Copy text"]);
-      fire(menu.querySelector('[data-item="react"]'), "click"); await settle(4);
+      expect([...menu.querySelectorAll("button")].map((b: any) => b.textContent)).toEqual(["Reply", "Add reaction", "Copy text", "Copy link"]);
+      // M-3311 (3): Copy link copies the message's address (the room, and the message a search hit opens: `&m=`).
+      const copied: string[] = [], nav = (globalThis as any).navigator, was = Object.getOwnPropertyDescriptor(nav, "clipboard");
+      Object.defineProperty(nav, "clipboard", { value: { writeText: async (v: string) => { copied.push(v); } }, configurable: true });
+      try {
+        fire(menu.querySelector('[data-item="copyLink"]'), "click"); await settle(6);
+        expect(copied.at(-1) ?? "").toMatch(/\/ui\/hub\?room=room-weekly&m=[A-Za-z0-9-]+$/);
+      } finally { if (was) Object.defineProperty(nav, "clipboard", was); else delete nav.clipboard; }
+      fire(msg.querySelector(".body"), "contextmenu"); await settle(3);
+      fire(pg.document.querySelector('.msg-menu [data-item="react"]') as any, "click"); await settle(4);
       expect(pg.document.querySelector(".msg-menu")).toBeNull();
       expect(msg.querySelector(".react-pick .react-opt")).toBeTruthy();
       fire(msg.querySelector(".body"), "contextmenu"); await settle(3);
       fire(pg.document.querySelector('.msg-menu [data-item="reply"]') as any, "click"); await settle(4);
       expect(pg.document.querySelector(".msg-menu")).toBeNull();
       expect(pg.root.querySelector(".hub-room-page .reply-bar")).toBeTruthy();
+    } finally { restore(); }
+  });
+  it.each(["en", "zh-TW"])("M-3311 (3): the room menu's Full width (%s, a desk) widens the conversation and is kept on this device", async (lang) => {
+    const { pg, restore } = await roomPage("room-weekly", lang);
+    try {
+      const page = pg.root.querySelector(".hub-room-page") as any;
+      expect(page.getAttribute("data-width")).toBeNull();
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
+      const items = () => [...pg.document.querySelectorAll(".menu-list [role^=menuitem]")] as any[];
+      const full = items().find((b) => (b.textContent || "").includes(lang === "en" ? "Full width" : "全寬"));
+      expect(full?.getAttribute("role")).toBe("menuitemcheckbox");
+      expect(full?.getAttribute("aria-checked")).toBe("false");
+      fire(full, "click"); await settle(6);
+      expect([page.getAttribute("data-width"), (globalThis as any).localStorage.getItem("agend_hub_chat_wide")]).toEqual(["full", "on"]);
+      // A checkbox item keeps the menu open (the Fleet's): toggled again from it.
+      fire(items().find((b) => (b.textContent || "").includes(lang === "en" ? "Full width" : "全寬")), "click"); await settle(6);
+      expect([page.getAttribute("data-width"), (globalThis as any).localStorage.getItem("agend_hub_chat_wide")]).toEqual([null, null]);
+    } finally { restore(); }
+  });
+  it.each([["en", "Enter to send · Shift+Enter for a new line"], ["zh-TW", "Enter 送出 · Shift+Enter 換行"]])("M-3311 (3): under the box, the Fleet chat's Enter hint (%s), then the room's @agent hint", async (lang, hint) => {
+    const { pg, restore } = await roomPage("room-weekly", lang);
+    try {
+      const hints = [...pg.root.querySelectorAll(".hub-room-page .composer-row .hint")].map((h: any) => h.textContent);
+      expect(hints).toEqual([hint, (await import("/ui/js/hub-room-strings.js") as any).hroom("composerHint")]);
     } finally { restore(); }
   });
   it("an archived room: the dock says so (a banner, as a closed chat's), nothing to send", async () => {
