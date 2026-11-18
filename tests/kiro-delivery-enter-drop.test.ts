@@ -29,7 +29,7 @@ const MESSAGE = "[user:example via discord, id:400000000000000042] MSG-1 pasted 
 const STRANDED = ` ▸ Time: 15s\n2% !> ${MESSAGE.split("\n")[0]}`;
 const STRANDED_WITH_ID = ` ▸ Time: 15s\n2% !> ${MESSAGE.replace(/\n/g, " ")}`;
 const GENERATING = `2% !> ${MESSAGE.split("\n")[0]}\n⠇ Thinking...`;
-const OLD_STRANDED = " ▸ Time: 9s\n7% !> [from:agend-leader-t1500000000000799511] an earlier message whose Enter was dropped";
+const OLD_STRANDED = " ▸ Time: 9s\n7% !> [from:fleet-lead] an earlier message whose Enter was dropped";
 const SUBMITTED_WITHOUT_SPINNER = [
   " ▸ Time: 9s",
   "32% λ !>",
@@ -556,7 +556,7 @@ describe("kiro delivery: stranded message from an earlier delivery (F3)", () => 
       captures++;
       return captures <= 2 ? OLD_STRANDED : h.state.pane;
     });
-    h.state.pane = "2% !> [from:agend-leader-t1500000000000799511] an earlier message whose Enter was dropped\n⠇ Thinking...";
+    h.state.pane = "2% !> [from:fleet-lead] an earlier message whose Enter was dropped\n⠇ Thinking...";
     const enters: string[] = [];
     h.enter.mockImplementation(async () => { enters.push("enter"); h.state.pane = GENERATING; return true; });
     h.paste.mockImplementation(async () => { enters.push("paste"); h.state.pane = STRANDED; return true; });
