@@ -1042,7 +1042,6 @@ function HubMine() {
       ${groupPolicyOn(session, hubClient()) ? html`<${LazyGroups} pick=${(m) => m.MyFleetsCard || (() => null)} props=${{ quick: session.features.includes("quick-pairing-v1"), admin: session.admin === true, features: session.features, compact: modernSharing }} />` : null}
       ${session?.features?.includes("personal-agents-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-personal-agent.js")} name="HubPersonalAgent" props=${{client:hubClient(),scope:session.csrf,isAdmin:session.admin===true,onSaved:reload}} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="InvitationsList" props=${{ client: hubClient(), heading: true }} />` : null}
-      ${session?.features?.includes("room-owner-requests-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentRequestSetting" props=${{ client: hubClient(), scope: session.csrf }} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${!pairings ? html`<${Skeleton} lines=${2} />` : pairings.error ? html`<${ErrorState} message=${pairings.error} onRetry=${reloadPairings} />` : null}
       ${pend.length ? html`<section class="card hub-pairings"><h3>${ho("pendingPairings")}</h3><p class="note">${ho("pendingLead")}</p>
@@ -1058,6 +1057,7 @@ function HubMine() {
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong>${e.intro?html`<small class="note">${e.intro}</small>`:null}<small class="note">${grantSummary(e.grants)}</small></span>
           ${stateTag(e.state, e.kind === "personal")}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
+      ${mine.length > 0 && session?.features?.includes("room-owner-requests-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentRequestSetting" props=${{ client: hubClient(), scope: session.csrf }} />` : null}
     </div>${allowTarget ? html`<${AllowDialog} x=${allowTarget} act=${act} onClose=${() => setAllowTarget(null)} />` : null}</div>`;
 }
 

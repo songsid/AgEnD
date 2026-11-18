@@ -1,15 +1,19 @@
 [
   {
     "path": "README.md",
-    "sha256": "8cb7bff2e99f6ab6bd9876c2d400a449a2e6b5e4a17a9b1571ba8f9d2ef2a221"
+    "sha256": "761144dc0fe2896adb4b5b415bad56c6e1a1d065ed5684c50160b399100adf2e"
   },
   {
     "path": "browser.json",
-    "sha256": "ef76b40136f94fa72d486b5ba3bb1ff5586f35d9fe08f4fa7c284ff88608964a"
+    "sha256": "3b3ed36cc81a2012c850e15e22fdd4fa1ae9dbb603d35b35f87a753d6ad817df"
   },
   {
     "path": "controls.json",
     "sha256": "636bd204997d60d8ae52e57729b2bd2851672357f612c860e0509ffaf63295f6"
+  },
+  {
+    "path": "pm-controls.json",
+    "sha256": "ecff9f267fa9612ae928cfa605ef8f54ebbe238a9e58e607c0c2bbb77e758ada"
   },
   {
     "path": "validation/a2-before.log",
@@ -32,6 +36,14 @@
     "sha256": "4fdbcaf326b0856422ccef0fde8211634e8e2790edfb3f73387c0520622be4b5"
   },
   {
+    "path": "validation/a2-pm-test-ts.log",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "validation/a2-pm-ui.log",
+    "sha256": "f9f71938876c6d6e3bbb2ced12459c5f2e0e5c446594809970c944349a0b108b"
+  },
+  {
     "path": "validation/a2-source-ts.log",
     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
   },
@@ -45,66 +57,82 @@
   },
   {
     "path": "views/desk-en-multiple.png",
-    "sha256": "03948c9e373d9ce87a3009869cd16169bc78cc610bfbab208a1248704522e323"
+    "sha256": "6681c8e5b588123e86c0b16e2acdde3be526817420c82e0830c67c1680e5cfcd"
+  },
+  {
+    "path": "views/desk-en-no-agent.png",
+    "sha256": "92c92f97c783aa09391ebdecb7a7dcfb00832858f6e3a6aaffb26a24c35eb014"
   },
   {
     "path": "views/desk-en-not-shared.png",
-    "sha256": "30d9aa79f8f8c5ed816ee05098e031cdd6bf1f7327e808f670cf03dc1a085755"
+    "sha256": "e4ddd4451c180bf5cff291b27746fea0da4d04c8ece4d356101c0ba24f9b098c"
   },
   {
     "path": "views/desk-en-setting.png",
-    "sha256": "f3e9a007946be9504427d1ab9b35662680eef92b51dd0dba07e2659293078d70"
+    "sha256": "fa7fb3e9a7d85577fa85984ec35fdd9df6051732187e33e46d09bb0109bb313c"
   },
   {
     "path": "views/desk-en-single.png",
-    "sha256": "eed34e0a9d1dadfa90f9f406246b6b0a1b794bd6c54d449174f20df3d904437c"
+    "sha256": "c8f1e8dff1e333856674379d56aaefaff28c9dd92318d5e9e4d31576459d89e7"
   },
   {
     "path": "views/desk-zh-TW-multiple.png",
-    "sha256": "3719762e0e59bb4d2d387c0003745c6b555043c0eac04f57a7326c7f68ddbe1c"
+    "sha256": "b47b5584ee7a92244cc2d2c2f68ffadca7ada3a51ba3709b1d159feffba8b790"
+  },
+  {
+    "path": "views/desk-zh-TW-no-agent.png",
+    "sha256": "deb6e67eee84ac25987b695e1ae706edf4694f5413518bfb53aebb7f429a7b9f"
   },
   {
     "path": "views/desk-zh-TW-not-shared.png",
-    "sha256": "f7b428833a96f482b87342a1dbd03b39adb70444333a3195ffe11760fef2c549"
+    "sha256": "146b2f7a62cf7731b12ad5534c567258eeca48b4d346608f2c10399b4421c2db"
   },
   {
     "path": "views/desk-zh-TW-setting.png",
-    "sha256": "0c0ba7c8621154f320e4e9b1ab01940565cf89c6dc588200e36cd029d8c6d3fc"
+    "sha256": "58aa32e40b29981746c42eb52d05beb5019fc1f8fe9af2f98a33066f063725c3"
   },
   {
     "path": "views/desk-zh-TW-single.png",
-    "sha256": "8c760393bc2a76c034cc9e33bc2f57fe17cce020e9c15f5fb17b3a3ff6aa0e85"
+    "sha256": "970c6a5e55bae27dd31596c9a2871d2188b469be322a2e6c8fa1af8c228d8877"
   },
   {
     "path": "views/phone-en-multiple.png",
-    "sha256": "b507e9a75188bd8a933e6832c8c019d232a1c5f6ba99bf856a4fa330a7be8828"
+    "sha256": "bc4d13a9e230cd8f0139329c5b11b668737abbecaca897336aa8f3fe93d69ad8"
+  },
+  {
+    "path": "views/phone-en-no-agent.png",
+    "sha256": "b8b8afca1b0c1a373aa779403c9f3ed08cfe3280a8ff99675d01a2febe1c1ee8"
   },
   {
     "path": "views/phone-en-not-shared.png",
-    "sha256": "05af1ca6aeb85611cb99897d3d18b4696f48046a5d804db7096c2efdc57316e1"
+    "sha256": "719b9a8fa0afb1c925d143de804f1c868a7aa9af864e109fe4939b92c097f817"
   },
   {
     "path": "views/phone-en-setting.png",
-    "sha256": "f12e1ae1fad0d3be0079533ada7e7c4d71be0775a85e2ce28e80766c0984d49e"
+    "sha256": "950979030b63e5fa3634bb655fcc0f7865a0693393d0f56b4a747cb6975a5104"
   },
   {
     "path": "views/phone-en-single.png",
-    "sha256": "a108df91775939a0f12d0e8b81d1b32646ccaf3d0f45bc2a6100eb9f2d80d121"
+    "sha256": "357823622570fa554fdd94ab6050bad933240a83ea93033abb7aaca8b8255054"
   },
   {
     "path": "views/phone-zh-TW-multiple.png",
-    "sha256": "937602cf0e692825fccf09414ce36d3dd6dfdafd557394d57961d7d4ed3f2fd3"
+    "sha256": "bec30fdac98c93051c8209c0b57d6a6bed5b8fbe21a27df34713ffc073217f30"
+  },
+  {
+    "path": "views/phone-zh-TW-no-agent.png",
+    "sha256": "54a18b41e1a49f8674b561c4a59faff201e85ddec94663beb37b0c11042bea14"
   },
   {
     "path": "views/phone-zh-TW-not-shared.png",
-    "sha256": "89b043ef1301043b794b95bd21180768fe6f050f52139420f72300eb7dd2ed22"
+    "sha256": "2a06e72575e30759897cf6982145cc499e508ae9207ecf9e7b5925c440f6751b"
   },
   {
     "path": "views/phone-zh-TW-setting.png",
-    "sha256": "cead2c2a95992a3704ba10f3b48c1af4011fd60d0da7c0dbbdb4af99a20eda33"
+    "sha256": "729ce8bc6152d706d94df404bbf6ac1bcea1c5a8f78789b1b2e628b04aa956c5"
   },
   {
     "path": "views/phone-zh-TW-single.png",
-    "sha256": "962b41374a7584eddb3b6b493077b93942dbd13e8d78226a5d862cb6bfdfe276"
+    "sha256": "5df8958da95fd839103c45cc4207fa9494a646229efb95cf2f4324a51a6cc817"
   }
 ]

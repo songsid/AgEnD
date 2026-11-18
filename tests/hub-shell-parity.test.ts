@@ -40,6 +40,7 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
     calls.push(key);
     const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
       : key === "GET /hub/v1/exposures" ? { mine: o.mine ?? [], askable: [] }
+      : key === "GET /hub/v1/me/agent-request-settings" ? { accepting: true }
       : key === "GET /hub/v1/admin/overview" ? { fleets: [], pairings: [], permissions: o.management ?? (o.admin ? ["fleets.manage", "join.manage"] : []) }
       : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
@@ -61,6 +62,21 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
 const rows = (pg: AppPage) => [...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent);
 
 describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
+  it("places request opt-out after an owned agent list and hides it after the loaded empty state", async () => {
+    const options = { path: "/ui/hub/exposures", features: ["rooms-v1", "room-owner-requests-v1"] };
+    const empty = await hub(options);
+    await import("/ui/js/hub-room-owner-requests.js");
+    await until(() => empty.root.querySelector(".hub-empty")); await settle();
+    expect(empty.root.querySelector(".hub-owner-request-setting")).toBeNull();
+    expect(calls).not.toContain("GET /hub/v1/me/agent-request-settings");
+    await empty.unmount(); mounted.splice(mounted.indexOf(empty), 1); empty.restore();
+    const owner = await hub({ ...options, mine: [{ id: "example-owned-agent", displayName: "Example helper", state: "published", grants: [] }] });
+    await until(() => owner.root.querySelector(".hub-owner-request-setting"));
+    const layout = owner.root.querySelector(".s-section-layout"), children = [...layout.children];
+    expect(children.indexOf(owner.root.querySelector(".hub-owner-request-setting"))).toBeGreaterThan(children.indexOf(owner.root.querySelector(".hub-shared")));
+    expect(calls).toContain("GET /hub/v1/me/agent-request-settings");
+  });
+
   it("keeps personal-agent administration out of a Fleet manager's page while mounting it for administrators", async () => {
     const options = { path: "/ui/hub/admin", features: ["personal-agents-v1", "role-settings-v1"] };
     const limited = await hub({ ...options, management: ["fleets.manage"] });

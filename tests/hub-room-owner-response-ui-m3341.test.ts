@@ -35,8 +35,12 @@ async function render(lang: string, c: any) {
 }
 
 it.each(["en", "zh-TW"])("shows room-only disclosure and preselects one shared agent without sharing the disabled draft (%s)", async lang => {
-  const f = fixture(), p = await render(lang, f.c);
+  const f = fixture(); f.c.ownerAgentRequest.mockResolvedValue({ ok: true, request, choices: [unshared, shared] });
+  const p = await render(lang, f.c);
   expect(p.root.textContent).toContain(lang === "en" ? "They cannot ask it one-to-one." : "他們不能一對一問它。");
+  expect(p.root.querySelector("blockquote").textContent).toBe(lang === "en" ? '"' + request.note + '"' : "「" + request.note + "」");
+  expect(p.root.querySelector(".hub-owner-agent-choices strong").textContent).toBe(shared.name);
+  expect(p.root.querySelector(".hub-owner-agent-choices small").textContent).toBe(shared.intro);
   const radios = p.root.querySelectorAll('input[type="radio"]');
   expect(radios[0].checked).toBe(true); expect(radios[1].disabled).toBe(true);
   expect(p.root.querySelector('a[href="/ui/hub/exposures"]')).toBeTruthy();
@@ -53,6 +57,7 @@ it("requires an explicit choice when more than one shared agent is available", a
   f.c.ownerAgentRequest.mockResolvedValue({ ok: true, request, choices: [shared, { ...shared, key: "second", exposureId: "00000000-0000-4000-8000-000000000043", name: "Docs helper" }] });
   const p = await render("en", f.c);
   expect(button(p, "Add to this room").disabled).toBe(true);
+  expect(p.root.querySelector("legend").textContent).toBe("Choose an agent");
   const second = p.root.querySelectorAll('input[type="radio"]')[1]; second.checked = true; fire(second, "change");
   await vi.waitFor(() => expect(button(p, "Add to this room").disabled).toBe(false));
   fire(button(p, "Add to this room"), "click");
@@ -63,7 +68,7 @@ it("requires an explicit choice when more than one shared agent is available", a
 it("allows private decline with no shared choice and never makes an add call", async () => {
   const f = fixture(); f.c.ownerAgentRequest.mockResolvedValue({ ok: true, request, choices: [unshared] });
   const p = await render("en", f.c);
-  expect(button(p, "Add to this room").disabled).toBe(true);
+  expect(button(p, "Add to this room")).toBeUndefined();
   fire(button(p, "Decline"), "click");
   await vi.waitFor(() => expect(f.c.declineOwnerAgentRequest).toHaveBeenCalledWith("scope", request.id));
   expect(f.c.acceptOwnerAgentRequest).not.toHaveBeenCalled();

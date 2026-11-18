@@ -32,17 +32,27 @@ try {
   const origin = `https://127.0.0.1:${(server.address() as { port: number }).port}`;
   r = await s3bRig({ webOrigin: origin, realAudit: true, now: () => now });
   const owner = r.addPerson("example-owner", "Example owner");
+  r.addPerson("example-empty", "Example colleague");
   HUB_ROOM_INVITATIONS_MIGRATION.up(r.db);
   r.httpDeps.roomInvitations = (core, host) => createHubRoomInvitations(core, host);
   r.httpDeps.roomAgentRequests = (core, host) => createHubRoomAgentRequests(core, host);
   await r.restartHttp();
   const publish = async (name: string) => {
-    const link = r!.link(randomUUID(), owner), exposure = { id: randomUUID(), fleetId: link.fleetId, owner,
+    const id = randomUUID();
+    r!.store.mutate({ requestId: randomUUID(), at: now, actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
+      state.fleets.push({ id, owner, generation: 1, credentialHash: "a".repeat(64), status: "active", label: name });
+    });
+    const link = r!.link(id, owner), exposure = { id: randomUUID(), fleetId: link.fleetId, owner,
       displayName: name, revision: 1, state: "published" as const, dataViewId: "example", allowedTools: [], policyDigest: "c".repeat(64) };
     await r!.http.receive(r!.frame("exposure.snapshot", { revision: 1, exposures: [exposure] }, link) as never, link);
     return exposure;
   };
   const first = await publish("Release helper"), second = await publish("Docs helper"), draft = await publish("Scratch helper");
+  const ownerSession = await r.signIn("example-owner");
+  for (const [agent, text] of [[first, "Explains release notes"], [second, "Knows the product documents"]] as const) {
+    const intro = await r.call(ownerSession, "PUT", `/hub/v1/exposures/${agent.id}/intro`, { revision: 1, text });
+    check("real owner introduction saved", intro.status === 200);
+  }
   browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox"] });
   for (const device of ["desk", "phone"]) for (const lang of ["en", "zh-TW"]) {
     now += 86_400_000;
@@ -84,7 +94,7 @@ try {
       await shot("multiple");
       r.db.prepare("UPDATE hub_exposures SET state='withdrawn'").run();
       await page.reload(); await card.locator('input[type="radio"]').first().waitFor();
-      check(tag + ": no shared cannot add", await card.locator('input[type="radio"]:enabled').count() === 0);
+      check(tag + ": no shared cannot add", await card.locator('input[type="radio"]:enabled').count() === 0 && await add.count() === 0);
       await shot("not-shared");
       r.db.prepare("UPDATE hub_exposures SET state='published' WHERE id=?").run(first.id);
       await page.reload(); await card.locator('input[type="radio"]:checked').waitFor();
@@ -94,7 +104,7 @@ try {
         check(tag + ": accepted once", (r.db.prepare("SELECT state FROM hub_room_agent_requests WHERE id=?").get(requestId) as any).state === "accepted");
         check(tag + ": room member only", (r.db.prepare("SELECT COUNT(*) n FROM hub_room_members WHERE room_id=? AND kind='agent'").get(roomId) as any).n === 1);
       } else {
-        await card.getByRole("button", { name: "不要", exact: true }).click();
+        await card.getByRole("button", { name: "不加入", exact: true }).click();
         await card.waitFor({ state: "detached" });
         check(tag + ": private decline", (r.db.prepare("SELECT state FROM hub_room_agent_requests WHERE id=?").get(requestId) as any).state === "declined");
       }
@@ -108,6 +118,13 @@ try {
       await r.call(await r.signIn("example-owner"), "PUT", "/hub/v1/me/agent-request-settings", { accepting: true });
       check(tag + ": no direct grants", (r.db.prepare("SELECT COUNT(*) n FROM hub_grants").get() as any).n === 0);
       check(tag + ": no load alerts", await page.locator('[role="alert"]').count() === 0);
+      await context.clearCookies(); await page.goto(origin + "/ui/hub/exposures");
+      await page.fill("#hubLogin", "example-empty"); await page.fill("#hubPassword", "pw-example-empty");
+      await page.locator(".hub-signin button[type=submit]").click();
+      const empty = page.getByText(lang === "en" ? "You don't have an agent on this Hub yet." : "你在這個 Hub 還沒有自己的 Agent。", { exact: true });
+      await empty.waitFor();
+      check(tag + ": no opt-out without a Hub agent", await setting.count() === 0);
+      await shot("no-agent", empty);
     } finally { await context.close(); }
   }
   check("no page errors", errors.length === 0); check("no foreign requests", foreign.length === 0);

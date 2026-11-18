@@ -88,5 +88,8 @@
 /* Owner requests reuse the room consent card and ordinary checkbox/radio layout. */
 .hub-owner-agent-choices { border:0; padding:0; margin:12px 0; display:grid; gap:10px; }
 .hub-owner-agent-choices .check { align-items:flex-start; }
+.hub-owner-agent-choices input[type="radio"] { margin-top:.25em; }
+.hub-owner-agent-requests .hub-owner-request-title { font-weight:var(--fw-semibold); }
 .hub-owner-agent-choices small { display:block; }
-.hub-owner-agent-requests blockquote { overflow-wrap:anywhere; }
+.hub-owner-agent-requests blockquote { overflow-wrap:anywhere; margin:var(--s-2) 0; padding-left:var(--s-3); border-left:3px solid var(--border-strong); color:var(--text-2); }
+.hub-owner-agent-requests a { color:var(--accent); text-decoration:underline; }

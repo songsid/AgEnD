@@ -166,7 +166,8 @@ function OwnerRequestCard({ client, scope, item, busy, onAnswer }) {
     let result; try { result = await client.ownerAgentRequest(scope, item.id); } catch { result = null; }
     if (!live.current || mine !== generation.current) return;
     if (result?.ok && Array.isArray(result.choices)) {
-      const choices = result.choices.filter(row => row && typeof row.key === "string" && typeof row.name === "string");
+      const choices = result.choices.filter(row => row && typeof row.key === "string" && typeof row.name === "string")
+        .sort((a, b) => Number(b.canAdd === true) - Number(a.canAdd === true));
       setView({ request: result.request, choices });
       const available = choices.filter(row => row.canAdd === true && typeof row.exposureId === "string" && Number.isSafeInteger(row.revision));
       setSelected(old => available.some(row => row.key === old) ? old : available.length === 1 ? available[0].key : null);
@@ -174,6 +175,7 @@ function OwnerRequestCard({ client, scope, item, busy, onAnswer }) {
   };
   useEffect(() => { live.current = true; void load(); return () => { live.current = false; generation.current++; }; }, [client, scope, item.id]);
   const chosen = view?.choices.find(row => row.key === selected && row.canAdd === true);
+  const available = view?.choices.filter(row => row.canAdd === true) || [];
   const act = async choice => {
     setError(""); const result = await onAnswer(item, choice);
     if (!live.current || result?.ignored || result?.ok || result?.status === 404) return;
@@ -181,19 +183,20 @@ function OwnerRequestCard({ client, scope, item, busy, onAnswer }) {
   };
   const request = view?.request || item;
   return html`<article class="hub-invitation" data-owner-request-card=${item.id}>
-    <p>${hrq("requestLead", request.by?.name || "", request.room.name)}</p>
-    ${request.note ? html`<blockquote>${request.note}</blockquote>` : null}
+    <p class="hub-owner-request-title">${hrq("requestLead", request.by?.name || "", request.room.name)}</p>
+    ${request.note ? html`<blockquote>${hrq("quotedNote", request.note)}</blockquote>` : null}
     <p class="note">${hrq(request.room.people === 1 ? "requestBodyOne" : "requestBody", Number(request.room.people) || 0)}</p>
-    ${view ? html`<fieldset class="hub-owner-agent-choices" disabled=${busy}><legend>${hrq("which")}</legend>
+    ${view && !available.length ? html`<p class="note"><a href="/ui/hub/exposures">${hrq("noAgents")}</a></p>` : null}
+    ${view ? html`<fieldset class="hub-owner-agent-choices" disabled=${busy}><legend>${hrq(available.length > 1 && !chosen ? "chooseAgent" : "which")}</legend>
       ${view.choices.length ? view.choices.map(row => html`<label class="check" key=${row.key}>
         <input type="radio" name=${"owner-request-" + item.id} value=${row.key} disabled=${!row.canAdd} checked=${selected === row.key} onChange=${() => setSelected(row.key)} />
         <span><strong>${row.name}</strong>${row.kind === "classic-room" ? html` <small class="tag">${hrq("classic")}</small>` : null}
           ${row.intro ? html`<small class="note">${row.intro}</small>` : null}
           ${!row.canAdd ? html`<small class="note">${row.reason === "already-in-room" ? choiceReason(row) : html`<a href="/ui/hub/exposures">${choiceReason(row)}</a>`}</small>` : null}</span>
-      </label>`) : html`<p class="note"><a href="/ui/hub/exposures">${hrq("noAgents")}</a></p>`}
+      </label>`) : null}
     </fieldset>` : null}
     ${error ? html`<p class="note" role="alert">${error} <button class="btn btn-link" onClick=${() => { void load(); }}>${hrq("retry")}</button></p>` : null}
-    <div class="field-row"><button type="button" class="btn btn-primary" disabled=${busy || !chosen} onClick=${() => { void act(chosen); }}>${hrq("add")}</button>
+    <div class="field-row">${available.length ? html`<button type="button" class="btn btn-primary" disabled=${busy || !chosen} onClick=${() => { void act(chosen); }}>${hrq("add")}</button>` : null}
       <button type="button" class="btn" disabled=${busy} onClick=${() => { void act(null); }}>${hrq("decline")}</button></div>
   </article>`;
 }
