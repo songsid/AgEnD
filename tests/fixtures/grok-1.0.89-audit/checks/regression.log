@@ -1,0 +1,12 @@
+
+ RUN  v4.1.12 <repo>
+
+error: no such file or directory: /tmp/agend-precheck-pYRlIv/none
+(node:2218886) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  20 passed (20)
+      Tests  749 passed (749)
+   Start at  21:14:15
+   Duration  23.01s (transform 4.60s, setup 776ms, import 12.22s, tests 30.51s, environment 2ms)
+

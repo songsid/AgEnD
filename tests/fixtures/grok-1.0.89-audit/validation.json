@@ -1,0 +1,46 @@
+{
+  "fullAudit": {
+    "binary": "grok 1.0.89 (28be5bb1bf65)",
+    "isolation": "bwrap --unshare-all; private HOME and tmux socket; local mock only",
+    "phases": {
+      "full-final-1089": 74,
+      "compact-1089": 18,
+      "compact-1088": 18,
+      "usage-1089-v2": 18,
+      "login-1089": 2,
+      "reset-1089": 9
+    },
+    "publicNonemptyPanes": 139,
+    "mcpToolCalls": 1
+  },
+  "checks": {
+    "failFirst": {
+      "failed": 2,
+      "passed": 9
+    },
+    "focusedRegression": {
+      "files": 20,
+      "passed": 749,
+      "newFileAtThatStage": 11
+    },
+    "finalExpandedFile": {
+      "files": 1,
+      "passed": 40,
+      "additionalCases": 29
+    },
+    "distinctStagedCases": 778,
+    "reversals": {
+      "removeQuotaRule": 2,
+      "removeFrameGuard": 1
+    },
+    "sourceTypeScript": 0,
+    "testTypeScript": 0,
+    "manifest": "rebuilt and checked"
+  },
+  "limits": [
+    "Real terminal with mock model/API, not live account service",
+    "No completed OAuth, Windows CLI, installed-package upgrade or browser",
+    "Source rule is an existing gap reproduced on both versions",
+    "Initial permission and harness-timing failures excluded from passing counts"
+  ]
+}
