@@ -2,6 +2,8 @@ import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
+import { classicGuardInventory, classicPlanDigest, invalidateClassicGuard, type ClassicRestrictedPlan, type ClassicRestrictionInput } from "./classic-cli-guard.js";
+import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus } from "./contact-auth-types.js";
 import { generalByName } from "./general-instance.js";
 import { ClaudeModelObserver, normalizeClaudeModel, type ModelObservation } from "./claude-model-observation.js";
 import type { SubagentSource } from "./subagent-service.js";
@@ -2541,6 +2543,52 @@ export class Daemon extends EventEmitter {
     return this.nativePaneLifecycle ? !!this.nativeFleetBridge?.current() && !this.runtimeMonitorsFrozen : !!this.ipcServer;
   }
 
+
+  private classicRestriction: ClassicRestrictedPlan | undefined;
+  private classicRestrictionFailed = false;
+  private classicRestrictionNeedsRestart = false;
+  setClassicRestriction(input: ClassicRestrictionInput): void {
+    if (this.runtimeIdentity?.kind !== "classic") {
+      if (input?.mode === "legacy") return; // The optional adapter also sees existing/default-kind starts.
+      throw Error("Classic restriction requires a Classic room");
+    }
+    try {
+      if (!input || !["legacy", "restricted"].includes(input.mode)) throw Error("invalid-policy");
+      const next = input.mode === "restricted" ? { roomKey: this.name, policyRevision: input.policyRevision ?? 0,
+        publicRead: input.roomTools.publicRead, allowedMcpTools: structuredClone(input.roomTools.allowedMcpTools),
+        allowedAgendTools: [...CLASSIC_RESTRICTED_TOOLS] } : undefined;
+      // A1's revision also changes for contact grants and approvers. Validate it,
+      // but preserve the frozen launch when the native tool policy is unchanged.
+      if (next) classicPlanDigest(next);
+      const before = this.classicRestriction ? classicPlanDigest({ ...this.classicRestriction, policyRevision: 0 }) : null;
+      const after = next ? classicPlanDigest({ ...next, policyRevision: 0 }) : null;
+      if (before !== after) {
+        invalidateClassicGuard(this.instanceDir);
+        if (this.classicRestriction && !next && this.processStatus === "running") this.classicRestrictionNeedsRestart = true;
+        this.classicRestriction = next;
+      }
+      this.classicRestrictionFailed = false;
+    } catch {
+      this.classicRestrictionFailed = true;
+      try { invalidateClassicGuard(this.instanceDir); } catch { /* failed remains visible and refuses the next launch */ }
+    }
+  }
+  private assertClassicRestrictionLaunch(expected: string | null): void {
+    const current = this.classicRestriction ? classicPlanDigest(this.classicRestriction) : null;
+    if (this.classicRestrictionFailed || current !== expected) throw Error("Restricted room policy changed while CLI launch was being prepared");
+  }
+  classicNativeGuard(): ContactGuardStatus {
+    const backend = this.config.backend ?? this.backend?.binaryName ?? "unknown";
+    if (this.classicRestrictionFailed) return classicGuardInventory({ state: "failed", backend, reason: "guard-unavailable" });
+    if (!this.classicRestriction) return classicGuardInventory(this.classicRestrictionNeedsRestart
+      ? { state: "restart-required", backend, reason: "stale-policy" }
+      : { state: "not-covered", backend, reason: "legacy-mode" });
+    if (this.nativePaneLifecycle) return classicGuardInventory({ state: "not-covered", backend, reason: "unsupported-platform" });
+    const status = this.backend?.classicNativeGuard?.(this.classicRestriction)
+      ?? { state: "not-covered" as const, backend, reason: "unsupported-backend" };
+    return classicGuardInventory(status.state === "ready" && this.processStatus !== "running"
+      ? { state: "restart-required", backend, reason: "not-running" } : status);
+  }
 
   /** Internal lifecycle injection, before start. Native paths and provider files stay on their runner. */
   setNativePaneLifecycle(native: NativePaneLifecycle): void {
@@ -12989,6 +13037,7 @@ export class Daemon extends EventEmitter {
       ? resolveToolSet(this.config, this.name, "general")
       : resolveToolSet(this.config, this.name);
     mcpEnv.AGEND_TOOL_SET = toolSet;
+    if (this.classicRestriction) mcpEnv.AGEND_CLASSIC_ALLOWED_TOOLS = JSON.stringify(this.classicRestriction.allowedAgendTools);
     // The dashboard features the person switched off: out of the tool menu from this start (the fleet refuses them
     // at once, whatever the menu still shows).
     const dashboardOff = dashboardFeaturesOff(dashboardAccessOf(this.config));
@@ -13049,6 +13098,7 @@ export class Daemon extends EventEmitter {
     const backendOptions = this.config.backend_options?.[backendName];
 
     return {
+      ...(this.classicRestriction ? { classicRestriction: this.classicRestriction } : {}),
       workingDirectory: this.config.working_directory,
       instanceDir: this.instanceDir,
       instanceName: this.name,
@@ -14225,11 +14275,17 @@ export class Daemon extends EventEmitter {
   private async trySpawnInsideGate(reuseWindow = false, startupTimeoutMs?: number, repairAdmission?: (attempt: number) => boolean): Promise<boolean> {
     if (this.nativePaneLifecycle) throw Error("Native relaunch requires its owned exit and a new lifecycle reservation");
     let expectedAttempt = this.launchAttempt;
-    const admit = () => { this.startupAdmission?.(); if (repairAdmission && !repairAdmission(expectedAttempt)) throw new Error("CLI repair superseded by another launch, pause or stop"); };
+    const restrictionStamp = this.classicRestriction ? classicPlanDigest(this.classicRestriction) : null;
+    const admit = () => {
+      this.startupAdmission?.();
+      this.assertClassicRestrictionLaunch(restrictionStamp);
+      if (repairAdmission && !repairAdmission(expectedAttempt)) throw new Error("CLI repair superseded by another launch, pause or stop");
+    };
     this.assertSessionOomAdmission();
     admit();
     const launchFence = this.launchFenceEpoch;
     const backendConfig = this.buildBackendConfig();
+    if (this.classicRestrictionFailed) throw Error("Restricted room policy is unavailable");
 
     // A compatibility refusal is not a failed resume: no configuration, pin, history or pane may change.
     if (this.backend?.assertLaunchSupported) {
@@ -14256,6 +14312,7 @@ export class Daemon extends EventEmitter {
     if (launchFence !== this.launchFenceEpoch) throw new Error("Launch cancelled: the instance was stopped or paused while the launch was being prepared");
 
     this.backend!.writeConfig(backendConfig);
+    this.classicRestrictionNeedsRestart = false;
     if (freshInboundInstructions) this.installCompactInboundInstructions();
     else { this.compactInboundInstructions = false; this.inboundCompatibilityPending = true; this.resetInboundPresentation(); }
     this.backend!.preTrust?.(this.config.working_directory, backendConfig);

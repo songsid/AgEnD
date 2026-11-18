@@ -18,6 +18,7 @@ import {
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { agendVersion } from "../agent-whats-new.js";
+import { CLASSIC_RESTRICTED_TOOLS } from "../contact-auth-types.js";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
 import { TOOLS } from "./mcp-tools.js";
@@ -296,7 +297,16 @@ if (requestedToolSet && resolvedToolSet !== requestedToolSet) {
     `agend: ERROR — unknown AGEND_TOOL_SET "${requestedToolSet}", valid: ${Object.keys(TOOL_PROFILES).join(", ")}. Using "${resolvedToolSet}".\n`,
   );
 }
-const allowedTools = toolsFor(resolvedToolSet);
+const classicAllowedTools = (() => {
+  const raw = process.env.AGEND_CLASSIC_ALLOWED_TOOLS;
+  if (raw === undefined) return null;
+  try {
+    const names: unknown = JSON.parse(raw);
+    if (Array.isArray(names) && names.every(n => typeof n === "string" && CLASSIC_RESTRICTED_TOOLS.includes(n))) return new Set<string>(names);
+  } catch { /* malformed restricted configuration has an empty ceiling */ }
+  return new Set<string>();
+})();
+const allowedTools = new Set([...toolsFor(resolvedToolSet)].filter(n => !classicAllowedTools || classicAllowedTools.has(n)));
 // The IPC socket identifies the owning home even when the backend did not inherit AGEND_HOME.
 const featureDataDir = SOCKET_PATH ? dirname(dirname(dirname(SOCKET_PATH))) : getAgendHome();
 // The dashboard features the person switched off for this instance leave the menu too (the fleet refuses them anyway):
@@ -312,6 +322,9 @@ mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools
 // --- Tool call handler ---
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
+  if (classicAllowedTools && !allowedTools.has(req.params.name)) return {
+    content: [{ type: "text", text: "Restricted room: this tool is not allowed." }], isError: true,
+  };
   // #2793 / #2799: a removed Canvas Worker tool (a session that resumed with its old schema): said so, plainly.
   if (isCanvasWorkerTool(req.params.name)) {
     return { content: [{ type: "text", text: CANVAS_WORKER_EXPERIMENTAL_MESSAGE }], isError: true };

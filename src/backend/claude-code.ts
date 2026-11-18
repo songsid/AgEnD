@@ -1,7 +1,10 @@
+import { staticBackendVersion } from "../backend-version-static.js";
 import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES, parseClaudeEffortCapability } from "./effort-metadata.js";
 import { selectionCard } from "../selection-card.js";
 import { flagEffort } from "./launch-effort.js";
+import { classicGuardStatus, classicOwnerMcpServers, classicPlanDigest, stageClaudeClassicGuard, type ClassicGuardLaunch, type ClassicRestrictedPlan } from "../classic-cli-guard.js";
+import type { ContactGuardStatus } from "../contact-auth-types.js";
 import { basename, dirname, join, resolve } from "node:path";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -1564,6 +1567,33 @@ export class ClaudePaneDetectors {
 
 export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend {
   private binaryPath: string;
+  private classicVersion: string | null = null;
+  private classicPreparedBinaryStamp: string | null = null;
+  private classicBinaryStamp(): string | null {
+    try {
+      const path = realpathSync(this.binaryPath), s = statSync(path);
+      return JSON.stringify([path, s.dev, s.ino, s.size, s.mtimeMs, s.ctimeMs]);
+    } catch { return null; }
+  }
+  private classicGuardLaunch: ClassicGuardLaunch | undefined;
+  private classicGuardPending: ContactGuardStatus = { state: "restart-required", backend: "claude-code", reason: "load-not-verified" };
+  async prepareLaunch(config?: CliBackendConfig): Promise<void> {
+    if (!config?.classicRestriction) return;
+    this.classicGuardLaunch = undefined;
+    this.classicVersion = null;
+    this.classicPreparedBinaryStamp = null;
+    const before = this.classicBinaryStamp();
+    // Static metadata only: a guard probe must never start a CLI or contact an account.
+    const version = await staticBackendVersion("claude-code", this.binaryPath);
+    if (before && before === this.classicBinaryStamp()) { this.classicVersion = version; this.classicPreparedBinaryStamp = before; }
+  }
+  classicNativeGuard(plan: ClassicRestrictedPlan): ContactGuardStatus {
+    const binaryCurrent = !!this.classicPreparedBinaryStamp && this.classicPreparedBinaryStamp === this.classicBinaryStamp();
+    if (this.classicGuardLaunch && !binaryCurrent)
+      return { state: "failed", backend: "claude-code", reason: "binary-changed" };
+    const status = this.classicGuardLaunch ? classicGuardStatus(this.classicGuardLaunch, plan) : this.classicGuardPending;
+    return binaryCurrent && this.classicVersion ? { ...status, version: this.classicVersion } : status;
+  }
   private observationLaunchId = randomUUID();
   private observationStartedAt = Date.now();
   private observationModel: string | undefined;
@@ -1582,8 +1612,13 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
 
   buildCommand(config: CliBackendConfig): string {
     this.observationModel = config.model;
-    const settingsPath = join(this.instanceDir, "claude-settings.json");
-    const mcpConfigPath = join(this.instanceDir, "mcp-config.json");
+    const guard = config.classicRestriction ? this.classicGuardLaunch : undefined;
+    if (guard && (!this.classicPreparedBinaryStamp || this.classicPreparedBinaryStamp !== this.classicBinaryStamp()))
+      throw Error("Restricted room CLI binary changed while preparing its guard");
+    if (config.classicRestriction && (this.classicGuardPending.state === "failed"
+      || guard && classicPlanDigest(config.classicRestriction) !== guard.digest)) throw Error("Restricted room CLI policy is not current");
+    const settingsPath = guard?.settingsPath ?? join(this.instanceDir, "claude-settings.json");
+    const mcpConfigPath = guard?.mcpPath ?? join(this.instanceDir, "mcp-config.json");
     const envPrefix = [`AGEND_CLAUDE_LAUNCH_ID=${this.observationLaunchId}`, "CMUX_CLAUDE_HOOKS_DISABLED=1", "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"];
     // #1699: a named credential profile is its own config dir — its login, account, trust and conversations. No profile:
     // no credential additions or directories; the common observation marker above is independent of profile selection.
@@ -1603,8 +1638,14 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
       envPrefix.push(`ANTHROPIC_API_KEY=${shellQuote(process.env.ANTHROPIC_API_KEY)}`);
     }
-    let cmd = `${envPrefix.join(" ")} ${this.binaryPath} --settings ${settingsPath} --mcp-config ${mcpConfigPath}`;
-    if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
+    if (guard) {
+      envPrefix.splice(envPrefix.indexOf("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"), 1);
+      envPrefix.push("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0", "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=0",
+        "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "ENABLE_TOOL_SEARCH=false", "NODE_OPTIONS=''", "NODE_PATH=''");
+    }
+    let cmd = `${envPrefix.join(" ")} ${guard ? shellQuote(this.binaryPath) : this.binaryPath} --settings ${guard ? shellQuote(settingsPath) : settingsPath} --mcp-config ${guard ? shellQuote(mcpConfigPath) : mcpConfigPath}`;
+    if (guard) cmd += ` --strict-mcp-config --setting-sources '' --disable-slash-commands --no-chrome --permission-mode dontAsk --tools ${shellQuote(guard.tools.join(","))}`;
+    else if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
 
     const sessionIdFile = join(this.instanceDir, "session-id");
     // `session-id` belongs to the instance, not the backend. A ClassicBot can
@@ -1691,6 +1732,15 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // AGEND-181: without this the interactive TUI writes empty thinking blocks to its transcript (the API returns no
     // summary unless asked); with it they carry text the chat timeline can show. Applies at the next launch.
     if (config.thinkingSummaries === true) settings.showThinkingSummaries = true;
+    this.classicGuardLaunch = undefined;
+    if (config.classicRestriction) {
+      const staged = stageClaudeClassicGuard({ plan: config.classicRestriction, version: this.classicVersion,
+        platform: process.platform, agentMode: config.agentMode, instanceDir: this.instanceDir,
+        cwd: config.workingDirectory, mcpServers: classicOwnerMcpServers(config.classicRestriction,
+          claudeJsonPath(claudeProfileConfigDir(config.backendOptions)), config.mcpServers), settings });
+      this.classicGuardPending = staged.status;
+      this.classicGuardLaunch = staged.launch;
+    }
     writeFileSync(
       join(this.instanceDir, "claude-settings.json"),
       JSON.stringify(settings),

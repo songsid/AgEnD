@@ -64,9 +64,19 @@ and CLI hooks are policy controls, not an OS boundary against same-user processe
 Restricted rooms retain public read-only search and web fetch by default. Admins
 may add exact MCP tools per room. A tool using the owner's API key or account
 shows a cost and identity warning without revealing the credential. Shell,
-filesystem outside the room scratch and owner credential access remain off by
-default. Before a legacy room switches, its suggestion lists current tools that
-would stop. Public reading is not synonymous with unrestricted network or shell.
+file and subagent tools are refused only on CLI launches with verified native
+coverage; room attachments use the separate broker below. Unsupported restricted
+launches keep the AI tool's normal native permissions and are labelled not-covered,
+never ready. Their panel says: "This AI tool/version runs with its normal
+permissions; only contact approval applies." The new-room default and suggestion
+card show the same warning before mode selection. This slice does not refuse
+unsupported launches or add a strict mode.
+
+Before a legacy room switches, its suggestion lists current tools that would
+stop only when that inventory is known; an unavailable inventory is not a complete
+list. Public reading is not synonymous with unrestricted network or shell. The
+server's contact/tool ceiling and room-file broker remain enforced even without
+native coverage; they do not contain the AI tool's own native actions.
 
 ## Implementation seams
 
