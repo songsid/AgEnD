@@ -143,6 +143,8 @@ and fetch remain available by default, while native shell, file and subagent too
 refused. Additional MCP tools require the room administrator's exact selection;
 an owner-account tool can spend that account's quota or act with its identity.
 CLI mode, other backends and unproved versions/platforms report not covered.
+Those launches retain their normal native permissions; restricted mode on that
+path promises contact approval only, not CLI protection.
 The guard and AgEnD tool ceiling are policy controls, not OS process isolation.
 WebFetch refuses explicit non-public URL forms. DNS and redirects are not pinned,
 selected MCP tools keep their own access, and old conversation memory is not erased.

@@ -34,6 +34,21 @@ is 2.1.295; the preceding 2.1.294 is a negative control. Unknown versions, other
 backends, CLI mode and unproved operating systems report not-covered. Ordinary
 Fleet launches and legacy rooms keep their existing behavior.
 
+Unsupported restricted launches deliberately retain their backend's ordinary
+native permissions. For Claude, that ordinary launch can include
+`--dangerously-skip-permissions` and its full built-ins. Restricted mode does not
+claim CLI protection on that path: the status is not-covered, never ready, while
+the server's contact approval and AgEnD tool ceiling still apply. An unavailable
+binary can still fail to start normally; this adds no refusal for an unsupported
+guard. Missing selected MCP definitions are different: the covered base guard
+can run, but those selected tools stay unavailable and the reason remains visible.
+
+The restricted-mode panel must explain unsupported native coverage plainly:
+"This AI tool/version runs with its normal permissions; only contact approval
+applies." The new-room default and suggestion card show the same warning before
+the mode is set. A2 supplies that presentation before A3 is gated. There is no
+strict/refuse-unsupported option in this slice.
+
 ## Tool ceiling
 
 The AgEnD MCP server uses only `CLASSIC_RESTRICTED_TOOLS` (or a narrower subset),

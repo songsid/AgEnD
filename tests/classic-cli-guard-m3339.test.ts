@@ -17,7 +17,8 @@ it("loads a fail-closed room guard instead of the unrestricted Claude launch", a
   const root = mkdtempSync(join(tmpdir(), "classic-guard-test-")); roots.push(root);
   const instanceDir = join(root, "instance"), cwd = join(root, "room");
   mkdirSync(instanceDir); mkdirSync(cwd);
-  const backend = new ClaudeCodeBackend(instanceDir);
+  const binary = join(root, "fixture-binary"); writeFileSync(binary, "fixture only, never executed");
+  const backend = new ClaudeCodeBackend(instanceDir); backend.refreshLaunchBinary(binary);
   const config = { instanceDir, workingDirectory: cwd, instanceName: "sample-room", skipResume: true,
     mcpServers: { agend: { command: process.execPath, args: ["/fixture/mcp-server.js"], env: {} } },
     classicRestriction: { roomKey: "sample-room", policyRevision: 1, publicRead: true,
@@ -25,6 +26,7 @@ it("loads a fail-closed room guard instead of the unrestricted Claude launch", a
   await (backend as typeof backend & { prepareLaunch?(c: CliBackendConfig): Promise<void> }).prepareLaunch?.(config);
   backend.writeConfig(config);
   const command = backend.buildCommand(config);
+  expect(command).toContain(binary);
   expect(command).toContain("--strict-mcp-config");
   expect(command).toContain("--setting-sources ''");
   expect(command).toContain("--tools 'WebSearch,WebFetch'");
@@ -59,6 +61,7 @@ it("requires the current launch's actual hook load, not generated settings or an
   expect(classicGuardStatus(w.launch, w.p).state).toBe("ready");
   expect(w.run({ hook_event_name: "UserPromptSubmit" }).status).toBe(0);
   expect(w.run({ hook_event_name: "UserPromptSubmit", session_id: "another-session" }).status).toBe(2);
+  expect(w.run({ hook_event_name: "PreToolUse", tool_name: "mcp__agend__reply", cwd: join(w.root, "another-room") }).status).toBe(2);
   expect(classicGuardStatus(w.launch, { ...w.p, policyRevision: 2 }).state).toBe("restart-required");
   invalidateClassicGuard(w.root);
   expect(classicGuardStatus(w.launch, w.p).state).toBe("restart-required");

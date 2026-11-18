@@ -43,11 +43,11 @@
     },
     {
       "path": "src/general-knowledge/skills/concepts/SKILL.md",
-      "sha256": "299b9c10212ffcc0f98e5dac7f5eb50f0dc53588b5adef45b51cd4dbcd9c7da5"
+      "sha256": "be47daf53539acecae5edc8ead5e97e47e5a9ff393ee4c71229ed80786c6d7a9"
     },
     {
       "path": "docs/design/classic-cli-guard.md",
-      "sha256": "a8c45ab78608da095b9e55d4de2048e51e3dce6e850829b6c33b9d715a87d968"
+      "sha256": "3301edb57eaab69204574caaaac61e115a560992ba9bbf3d2ce6da420ac65d37"
     },
     {
       "path": "scripts/manual/classic-cli-guard/mcp.mjs",
@@ -71,11 +71,15 @@
     },
     {
       "path": "tests/classic-cli-guard-m3339.test.ts",
-      "sha256": "c6099c226864575fe21c8400f0e06fb3db9054ab193b52ef932ddeb917606353"
+      "sha256": "4541f820a9db8c2ed69afdf0dc85a4108edfabbaa7b9363bc09ccd2f64a6ca1d"
     },
     {
       "path": "tests/classic-cli-guard-mcp-m3339.test.ts",
       "sha256": "0b6785d3f1893c51ab256a1821022510a6f6315025a62cf9b825a660d9d427d6"
+    },
+    {
+      "path": "docs/concepts.md",
+      "sha256": "7162b8eabb746e9f7ce8bb9698c34fc13322b5e69edf51e5a599cd683bf233d0"
     }
   ],
   "evidence": [
@@ -85,11 +89,11 @@
     },
     {
       "path": "docs/evidence/classic-cli-guard-m3339/README.md",
-      "sha256": "d041f67f5d99c5095d05e98bdd0f3039b0088dfedd7d6aeca10f9656702bed6e"
+      "sha256": "58f3177b0520cd89c992e8a580f2463d87ab904b4b427127df38eb1bcb04cb36"
     },
     {
       "path": "docs/evidence/classic-cli-guard-m3339/validation.md",
-      "sha256": "841ce4c16ee5ef56e383b8663bec2fbab9781f072add83ba01d16b7b745491af"
+      "sha256": "1a5cf6bde025b60a28161065d9a4bdf6cebf42e9043cdd4d706c79d684f4f276"
     }
   ],
   "binaries": [
@@ -146,6 +150,25 @@
         "files": 4
       },
       "sourceTypeScriptExit": 0,
+      "testTypeScriptExit": 0,
+      "newRealCliObservations": 0
+    },
+    {
+      "name": "review-R1-portable-fixture-and-concepts",
+      "runtimeSourceUnchangedFrom": "2f8b65d6cf1faa8078f3698df7ae7db1c2be1960",
+      "conceptsBaselineFailed": 1,
+      "hostDependencyEvidence": "isolated reviewer Docker; local empty-PATH probe still resolved host binary",
+      "selectedReversals": [
+        "fixture-binary-binding",
+        "cwd-check",
+        "failure-blocking-option"
+      ],
+      "eachSelectedFailed": 1,
+      "eachUnselected": 9,
+      "restoredFocused": {
+        "passed": 19,
+        "files": 5
+      },
       "testTypeScriptExit": 0,
       "newRealCliObservations": 0
     }

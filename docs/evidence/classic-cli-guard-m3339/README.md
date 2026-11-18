@@ -87,3 +87,11 @@ revision changes, fences a launch overtaken by a native policy change, and
 reports restart-required when a running room leaves restricted mode. Two new
 policy-port tests are red before the correction; the four guard suites pass
 17/17 afterward. No real CLI observation was replaced or added for this change.
+
+Review correction: the concepts document now mirrors its skill. The launch
+test binds a never-executed temporary binary instead of relying on an installed
+Claude. The cwd assertion, fixture binding and failure-blocking setting each
+have a selected semantic reversal; all originals are restored. Five focused
+files pass 19/19. Unsupported guard coverage intentionally keeps ordinary native
+permissions with a not-covered warning; this is not a fail-closed claim for
+those unsupported launches. The covered CLI matrix remains unchanged.
