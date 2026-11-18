@@ -3,6 +3,7 @@ import { t } from "/assets/app-i18n.js";
 import { useLease } from "/assets/app-ctx.js";
 import { connectorPrompt } from "/assets/connector-prompt.js";
 import "./settings-connector-strings.js";
+import { assetUrl } from "/assets/asset-url.js";
 const tr = key => t(`connector.${key}`);
 export function SettingsConnector() {
   const lease = useLease("settings-connector");
@@ -23,7 +24,7 @@ export function SettingsConnector() {
     try { await navigator.clipboard.writeText(prompt); if (lease.current()) setNotice("copied"); }
     catch { if (lease.current()) setNotice("failed"); }
   };
-  return html`<section class="card s-group s-connector" id="connector"><link rel="stylesheet" href="/assets/settings-connector.css" /><div><h3>${tr("title")}</h3><p class="note">${tr("hint")}</p></div>
+  return html`<section class="card s-group s-connector" id="connector"><link rel="stylesheet" href=${assetUrl("/assets/settings-connector.css")} /><div><h3>${tr("title")}</h3><p class="note">${tr("hint")}</p></div>
     <p class="note">${tr("scope")}</p>
     ${error ? html`<button class="btn s-connector-action" type="button" onClick=${read}>${tr("retry")}</button>`
       : !info ? html`<p role="status">${tr("loading")}</p>`

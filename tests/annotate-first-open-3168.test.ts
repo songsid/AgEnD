@@ -11,7 +11,7 @@ const ROOT = join(import.meta.dirname, "..");
 const src = readFileSync(join(ROOT, "src/ui/shared/image-annotate.js"), "utf8")
   .replace(/^import .*$/gm, "")
   .replace(/^register\(/m, "(() => 0)(");
-const mod = await import(`data:text/javascript;base64,${Buffer.from(`const html = () => null, t = (k) => k, Icon = null, useEffect = () => {}, useRef = () => ({}), useState = (v) => [v, () => {}];\n${src}`).toString("base64")}`);
+const mod = await import(`data:text/javascript;base64,${Buffer.from(`const html = () => null, t = (k) => k, Icon = null, assetUrl = (p) => p, useEffect = () => {}, useRef = () => ({}), useState = (v) => [v, () => {}];\n${src}`).toString("base64")}`);
 
 /** A document with a head that keeps what is appended; links fire their own load/error listeners. */
 function fakeDoc() {

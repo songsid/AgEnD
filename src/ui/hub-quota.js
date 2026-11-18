@@ -2,9 +2,10 @@
 import { html, useEffect, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 if (typeof document !== "undefined" && !document.querySelector('link[data-hub-quota]')) {
-  const css = document.createElement("link"); css.rel = "stylesheet"; css.href = "/assets/hub-quota.css";
+  const css = document.createElement("link"); css.rel = "stylesheet"; css.href = assetUrl("/assets/hub-quota.css");
   css.setAttribute("data-hub-quota", ""); document.head.appendChild(css);
 }
 

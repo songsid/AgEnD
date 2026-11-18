@@ -2,11 +2,12 @@
 import { html } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
 import { t } from "./app-i18n.js";
+import { assetUrl } from "./asset-url.js";
 
 // Lazy panels can arrive in a shell with an older app.css. Keep the loading shapes in their own public stylesheet.
 function loadingStyles() {
-  if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/loading.css"]')) return;
-  const link = document.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/loading.css");
+  if (typeof document === "undefined" || !document.head || document.querySelector(`link[href="${assetUrl("/assets/loading.css")}"]`)) return;
+  const link = document.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/loading.css"));
   document.head.appendChild(link);
 }
 /** Initial data only: retain populated content on refresh. Existing callers still get simple text lines. */

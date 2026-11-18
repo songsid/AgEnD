@@ -11,6 +11,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import { InfoTip } from "./settings-shared.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("accountsKeepAlive", {
   en: {
@@ -54,7 +55,7 @@ export function linkKeepAliveCss(doc = typeof document !== "undefined" ? documen
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-accounts-keepalive-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/accounts-keepalive.css"); link.setAttribute("data-accounts-keepalive-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/accounts-keepalive.css")); link.setAttribute("data-accounts-keepalive-css", "1");
     doc.head.appendChild(link);
   } catch { /* the control still works without it */ }
 }

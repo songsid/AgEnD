@@ -1,0 +1,133 @@
+{
+  "before": true,
+  "cases": {
+    "desk": {
+      "mounted": true,
+      "org_first_routed": {
+        "pass": true,
+        "detail": 2300
+      },
+      "worker_versioned": {
+        "pass": true,
+        "detail": "/ui/js/fleet-route-worker.js"
+      },
+      "worker_private_immutable": {
+        "pass": true,
+        "detail": null
+      },
+      "worker_imports_not_plain": {
+        "pass": true,
+        "detail": [
+          "/ui/js/fleet-route-scene.js",
+          "/ui/js/fleet-canvas-layout.js"
+        ]
+      },
+      "worker_start_from_cache": {
+        "pass": true,
+        "detail": 1
+      },
+      "router_files_one_wave": {
+        "pass": true,
+        "detail": {
+          "waves": 2,
+          "files": [
+            "/ui/vendor/libavoid-0.4.5/libavoid.wasm 200",
+            "/ui/js/fleet-route-worker.js 0"
+          ]
+        }
+      },
+      "office_picture_versioned": {
+        "pass": true,
+        "detail": [
+          "/assets/office-cozy.png 200"
+        ]
+      },
+      "panel_css_versioned": {
+        "pass": true,
+        "detail": [
+          "/assets/loading.css",
+          "/assets/reply-previews.css",
+          "/assets/chat-work-bar.css",
+          "/assets/task-board.css",
+          "/assets/runtime-install.css",
+          "/assets/access-overview.css"
+        ]
+      },
+      "reload_mounted": true,
+      "org_again_routed": {
+        "pass": true,
+        "detail": 1481
+      },
+      "org_again_router_css_pictures_cached": {
+        "pass": true,
+        "detail": [
+          "/assets/loading.css",
+          "/assets/reply-previews.css",
+          "/assets/chat-work-bar.css",
+          "/assets/task-board.css",
+          "/ui/js/fleet-route-worker.js",
+          "/ui/js/fleet-route-scene.js",
+          "/ui/js/fleet-canvas-layout.js"
+        ]
+      },
+      "no_console_errors": {
+        "pass": true,
+        "detail": [
+          "Failed to load resource: the server responded with a status of 503 (Service Unavailable)"
+        ]
+      },
+      "no_csp_violations": {
+        "pass": true,
+        "detail": []
+      },
+      "update_no_newer_file_in_old_tab": {
+        "pass": true,
+        "detail": []
+      }
+    }
+  },
+  "org_first_ms_from_open": 2300,
+  "org_first_router_requests": [
+    "/ui/js/v-…/fleet-route-scene.js 200",
+    "/ui/js/v-…/fleet-canvas-layout.js 200",
+    "/ui/vendor/libavoid-0.4.5/libavoid.wasm 200",
+    "/ui/js/fleet-route-worker.js 0"
+  ],
+  "org_first_server_router_hits": [
+    "/ui/js/v-…/fleet-route-scene.js",
+    "/ui/js/v-…/fleet-canvas-layout.js",
+    "/ui/vendor/libavoid-0.4.5/libavoid.wasm",
+    "/ui/js/fleet-route-worker.js",
+    "/ui/vendor/libavoid-0.4.5/libavoid.js",
+    "/ui/js/fleet-route-scene.js",
+    "/ui/js/fleet-canvas-layout.js"
+  ],
+  "office_pictures": [
+    "/assets/office-cozy.png 200"
+  ],
+  "css_seen": [
+    "/assets/v-…/tokens.css",
+    "/assets/v-…/app.css",
+    "/assets/v-…/loading.css",
+    "/assets/loading.css",
+    "/assets/reply-previews.css",
+    "/assets/chat-work-bar.css",
+    "/assets/task-board.css",
+    "/assets/runtime-install.css",
+    "/assets/access-overview.css"
+  ],
+  "org_again_ms_from_open": 1481,
+  "org_again_cached": 6,
+  "org_again_server_hits": [
+    "/assets/loading.css",
+    "/assets/reply-previews.css",
+    "/assets/chat-work-bar.css",
+    "/assets/task-board.css",
+    "/ui/js/fleet-route-worker.js",
+    "/ui/js/fleet-route-scene.js",
+    "/ui/js/fleet-canvas-layout.js"
+  ],
+  "bad_responses": [
+    "/ui/tasks/board 503"
+  ]
+}

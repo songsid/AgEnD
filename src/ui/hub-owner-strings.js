@@ -2,6 +2,7 @@
 // of its own (#3261 review): a tab that loaded B's hub-chat-strings.js / hub-chat.css before C keeps them, so C's words
 // and rules come only from here.
 import { register, t } from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 export const ownerAdminEntryV1 = true;
 register("hubOwner", {
@@ -50,7 +51,7 @@ export function linkHubOwnerCss(doc = typeof document !== "undefined" ? document
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-owner-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-owner.css"); link.setAttribute("data-hub-owner-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-owner.css")); link.setAttribute("data-hub-owner-css", "1");
     doc.head.appendChild(link);
   } catch { /* the pages still work without it */ }
 }

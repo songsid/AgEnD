@@ -17,6 +17,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { clampPan, fitView, pinchView, stageToImage, zoomAt, STEP } from "./image-zoom.js";
 import { register, t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
+import { assetUrl } from "./asset-url.js";
 
 export const annotateV1 = true;
 register("annotate", {
@@ -129,7 +130,7 @@ export function fillMissingTokens(el) {
 export function linkAnnotateCss(doc = typeof document !== "undefined" ? document : null) {
   if (!doc || !doc.head || doc.querySelector('link[data-annotate-css="1"]')) return;
   const link = doc.createElement("link");
-  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/image-annotate.css"); link.setAttribute("data-annotate-css", "1");
+  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/image-annotate.css")); link.setAttribute("data-annotate-css", "1");
   doc.head.appendChild(link);
 }
 

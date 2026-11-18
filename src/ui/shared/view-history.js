@@ -13,6 +13,7 @@
 // links its own stylesheet (/assets/view-history.css): nothing it needs lives in a long-lived module. A server without
 // the history (an older one answers the pane's text) makes `first()` say `unsupported`: the View stays as it was.
 import { register, t } from "./app-i18n.js";
+import { assetUrl } from "./asset-url.js";
 
 register("viewHistory", {
   en: {
@@ -431,7 +432,7 @@ function ensureStylesheet(doc) {
     if (!doc.head || doc.querySelector('link[data-vh="1"]')) return;
     const link = doc.createElement("link");
     link.setAttribute("rel", "stylesheet");
-    link.setAttribute("href", "/assets/view-history.css");
+    link.setAttribute("href", assetUrl("/assets/view-history.css"));
     link.setAttribute("data-vh", "1");
     doc.head.appendChild(link);
   } catch { /* the history still reads without it */ }

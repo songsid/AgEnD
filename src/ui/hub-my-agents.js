@@ -6,6 +6,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { ms } from "./hub-my-agents-strings.js";
 import { rowAvailability, rowKey, shareRows, reconcileSharing } from "./hub-my-agents-model.js";
 import { HubGrantPicker } from "./hub-grant-picker.js";
+import { assetUrl } from "/assets/asset-url.js";
 const tone = name => { let h = 0; for (const c of name) h = (h * 31 + c.codePointAt(0)) >>> 0; return h % 6; };
 const shortSeen = at => Number.isFinite(at) ? new Intl.DateTimeFormat(lang() === "zh-TW" ? "zh-TW" : "en-GB", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(at) : "—";
 const Avatar = ({ name }) => html`<span class=${`hub-av sm t${tone(name)}`} aria-hidden="true">${[...name][0] || "?"}</span>`;
@@ -14,7 +15,7 @@ const STORE = "agend.hub.owner-sharing";
 const safeRead = scope => { try { const v = JSON.parse(sessionStorage.getItem(STORE)); return v?.scope === scope && Array.isArray(v.operations) ? v.operations.filter(op => op && typeof op.at === "number" && Array.isArray(op.rows) && op.input && typeof op.input.idempotencyKey === "string" && typeof op.input.fleetId === "string" && Array.isArray(op.input.share) && Array.isArray(op.input.stop)).slice(-32) : []; } catch { return []; } };
 function css() {
   if (document.querySelector('link[data-hub-my-agents-css]')) return;
-  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/hub-my-agents.css"; link.setAttribute("data-hub-my-agents-css", "1"); document.head.appendChild(link);
+  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = assetUrl("/assets/hub-my-agents.css"); link.setAttribute("data-hub-my-agents-css", "1"); document.head.appendChild(link);
 }
 const summary = x => !x?.grants?.length ? ms("nobody") : x.grants.some(g => g.subject?.kind !== "person") ? ms("subjects", x.grants.length) : mc("people", x.grants.length);
 export function HubMyAgents({ client, scope, shared = [], policy = false, personal = false, apps = false, pausable = false, subjects = false, onChanged, onAllow }) {

@@ -2,6 +2,7 @@
 // module so a tab holding an older hub-strings.js still draws these pages (retained-module SKEW). Preview; off unless the
 // Hub's session says `group-policy-v1`.
 import { register, t } from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("hubGroups", {
   en: {
@@ -112,7 +113,7 @@ export function linkHubGroupsCss(doc = typeof document !== "undefined" ? documen
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-groups-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-groups.css"); link.setAttribute("data-hub-groups-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-groups.css")); link.setAttribute("data-hub-groups-css", "1");
     doc.head.appendChild(link);
   } catch { /* the pages still work without it */ }
 }

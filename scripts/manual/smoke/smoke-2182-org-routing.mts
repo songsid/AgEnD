@@ -273,7 +273,7 @@ if (only("public")) {
 
 // ── blocked: no worker ──
 if (only("blocked")) {
-  const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { beforeNavigate: (ctx) => ctx.route("**/ui/js/fleet-route-worker.js", (r: any) => r.abort()) });
+  const p = await freshPage(fx, { device: "desk", theme: "light", lang: "en" }, { beforeNavigate: (ctx) => ctx.route(/\/ui\/js\/(v-[0-9a-f]{12}\/)?fleet-route-worker\.js$/, (r: any) => r.abort())   // M-3328: plain or under the version });
   const c: Record<string, boolean> = {};
   await openCanvas(p);
   const navEnd = p.errors.length;

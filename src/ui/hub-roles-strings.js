@@ -1,4 +1,5 @@
 import {register,t} from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 register("hubRole",{
  "en": {
   "migrationNotice": "Roles and permissions are now available. Nobody’s access changed during migration.",
@@ -435,5 +436,5 @@ const styles = new WeakMap();
 export function linkRoleCss(doc = typeof document === "undefined" ? null : document) {
  if (!doc?.head) return Promise.resolve(false);
  if (styles.has(doc)) return styles.get(doc);
- const ready = new Promise(resolve => {const link=doc.createElement("link");link.setAttribute("rel","stylesheet");link.setAttribute("href","/assets/hub-roles.css");link.setAttribute("data-hub-roles-css","1");link.addEventListener("load",()=>resolve(true),{once:true});link.addEventListener("error",()=>{styles.delete(doc);link.remove();resolve(false);},{once:true});doc.head.appendChild(link);});styles.set(doc,ready);return ready;
+ const ready = new Promise(resolve => {const link=doc.createElement("link");link.setAttribute("rel","stylesheet");link.setAttribute("href",assetUrl("/assets/hub-roles.css"));link.setAttribute("data-hub-roles-css","1");link.addEventListener("load",()=>resolve(true),{once:true});link.addEventListener("error",()=>{styles.delete(doc);link.remove();resolve(false);},{once:true});doc.head.appendChild(link);});styles.set(doc,ready);return ready;
 }

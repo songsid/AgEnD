@@ -2,6 +2,7 @@
 // its stylesheet. A module of its own (a tab opened before an upgrade holds an older hub-strings.js without these words,
 // and an older hub.css without these rules). The thread's own words are the fleet chat's (/assets/chat-strings.js).
 import { register, t } from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("hubChat", {
   en: {
@@ -80,7 +81,7 @@ export function linkHubChatCss(doc = typeof document !== "undefined" ? document 
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-chat-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-chat.css"); link.setAttribute("data-hub-chat-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-chat.css")); link.setAttribute("data-hub-chat-css", "1");
     doc.head.appendChild(link);
   } catch { /* the chat still works without it */ }
 }

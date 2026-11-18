@@ -17,7 +17,7 @@ describe("the phone target of the Runtime CLI list's buttons", () => {
     expect(read("shared/tokens.css")).toMatch(/--tap: 44px;/);
   });
   it("lives in runtime-install.css, which panel-runtimes.js links itself (an older app.css has no such rule), and the list's buttons are exactly the `.btn` the rule selects", () => {
-    expect(read("panel-runtimes.js")).toContain('href", "/assets/runtime-install.css"');
+    expect(read("panel-runtimes.js")).toContain('href", assetUrl("/assets/runtime-install.css")');
     expect(read("runtime-cli-install.js")).toMatch(/<ul class="runtime-cli-install-list"/);
     expect(read("runtime-cli-install.js")).toMatch(/<li key=\$\{cli\.id\}[^]*?<button type="button" class="btn btn-sm"/);
   });

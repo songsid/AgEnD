@@ -59,6 +59,7 @@ import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpe
 import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "/assets/chat-quote.js";
 import { installTableSelection } from "/assets/chat-table-select.js";
+import { assetUrl } from "/assets/asset-url.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
   "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
@@ -262,7 +263,7 @@ function linkHubSigninCss(doc = typeof document !== "undefined" ? document : nul
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-signin-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-signin.css"); link.setAttribute("data-hub-signin-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-signin.css")); link.setAttribute("data-hub-signin-css", "1");
     doc.head.appendChild(link);
   } catch { /* the page still works without it */ }
 }
@@ -1011,7 +1012,7 @@ function HubMine() {
   useEffect(() => {
     linkHubChatCss(); linkHubOwnerCss();
     if (!document.querySelector('link[data-hub-sharing-css="1"]')) {
-      const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/hub-sharing.css";
+      const link = document.createElement("link"); link.rel = "stylesheet"; link.href = assetUrl("/assets/hub-sharing.css");
       link.setAttribute("data-hub-sharing-css", "1"); document.head.appendChild(link);
     }
   }, []);

@@ -4,6 +4,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { SubjectPicker } from "./hub-subject-picker.js";
 import { hubClient } from "./hub-client.js";
+import { assetUrl } from "/assets/asset-url.js";
 register("hubGrantPicker", {
   en: {
     title: "Allow access to {0}", kind: "Allow", person: "A person", group: "An AD security group", team: "A team", teamPick: "Choose a team", teamHint: "The team's current members may ask. Removing someone from the team ends that permission. The grant's expiry keeps running.", findPerson: "Find a person", query: "Name or login", hint: "Type 2 to 64 characters.",
@@ -28,7 +29,7 @@ export function linkHubGrantPickerCss(doc = typeof document !== "undefined" ? do
   try {
     if (!doc?.head || doc.querySelector('link[data-hub-grant-picker-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-grant-picker.css"); link.setAttribute("data-hub-grant-picker-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-grant-picker.css")); link.setAttribute("data-hub-grant-picker-css", "1");
     doc.head.appendChild(link);
   } catch { /* The form's existing controls still work if the stylesheet cannot be linked. */ }
 }

@@ -1,0 +1,105 @@
+{
+  "before": false,
+  "cases": {
+    "desk": {
+      "mounted": true,
+      "org_first_routed": {
+        "pass": true,
+        "detail": 1526
+      },
+      "worker_versioned": {
+        "pass": true,
+        "detail": "/ui/js/v-441d41c15f87/fleet-route-worker.js"
+      },
+      "worker_private_immutable": {
+        "pass": true,
+        "detail": "private, max-age=31536000, immutable"
+      },
+      "worker_imports_not_plain": {
+        "pass": true,
+        "detail": []
+      },
+      "worker_start_from_cache": {
+        "pass": true,
+        "detail": 1
+      },
+      "router_files_one_wave": {
+        "pass": true,
+        "detail": {
+          "waves": 1,
+          "files": [
+            "/ui/vendor/libavoid-0.4.5/libavoid.wasm 200",
+            "/ui/js/v-…/fleet-route-worker.js 200",
+            "/ui/vendor/libavoid-0.4.5/libavoid.js 200"
+          ]
+        }
+      },
+      "office_picture_versioned": {
+        "pass": true,
+        "detail": [
+          "/assets/v-…/office-cozy.png 200"
+        ]
+      },
+      "panel_css_versioned": {
+        "pass": true,
+        "detail": []
+      },
+      "reload_mounted": true,
+      "org_again_routed": {
+        "pass": true,
+        "detail": 960
+      },
+      "org_again_router_css_pictures_cached": {
+        "pass": true,
+        "detail": []
+      },
+      "no_console_errors": {
+        "pass": true,
+        "detail": []
+      },
+      "no_csp_violations": {
+        "pass": true,
+        "detail": []
+      },
+      "update_no_newer_file_in_old_tab": {
+        "pass": true,
+        "detail": []
+      }
+    }
+  },
+  "org_first_ms_from_open": 1526,
+  "org_first_router_requests": [
+    "/ui/js/v-…/fleet-route-scene.js 200",
+    "/ui/js/v-…/fleet-canvas-layout.js 200",
+    "/ui/vendor/libavoid-0.4.5/libavoid.wasm 200",
+    "/ui/js/v-…/fleet-route-worker.js 200",
+    "/ui/vendor/libavoid-0.4.5/libavoid.js 200",
+    "/ui/js/v-…/fleet-route-worker.js 0"
+  ],
+  "org_first_server_router_hits": [
+    "/ui/js/v-…/fleet-route-scene.js",
+    "/ui/js/v-…/fleet-canvas-layout.js",
+    "/ui/vendor/libavoid-0.4.5/libavoid.wasm",
+    "/ui/js/v-…/fleet-route-worker.js",
+    "/ui/vendor/libavoid-0.4.5/libavoid.js"
+  ],
+  "office_pictures": [
+    "/assets/v-…/office-cozy.png 200"
+  ],
+  "css_seen": [
+    "/assets/v-…/tokens.css",
+    "/assets/v-…/app.css",
+    "/assets/v-…/loading.css",
+    "/assets/v-…/reply-previews.css",
+    "/assets/v-…/chat-work-bar.css",
+    "/assets/v-…/task-board.css",
+    "/assets/v-…/runtime-install.css",
+    "/assets/v-…/access-overview.css"
+  ],
+  "org_again_ms_from_open": 960,
+  "org_again_cached": 11,
+  "org_again_server_hits": [],
+  "bad_responses": [
+    "/ui/tasks/board 503"
+  ]
+}

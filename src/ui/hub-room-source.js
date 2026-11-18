@@ -3,6 +3,7 @@ import { html, render } from "/assets/app-html.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { hsource } from "./hub-room-source-strings.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 export function roomSource(author) {
   if (!author) return null;
@@ -18,7 +19,7 @@ export function RoomSourceMark({ source, decorative = false }) {
   if (!source) return null;
   return html`<span class="hub-source-mark" data-room-source=${source.kind} role=${decorative ? undefined : "img"}
     aria-hidden=${decorative ? "true" : undefined} aria-label=${decorative ? undefined : source.label} title=${source.label}>
-    ${source.kind === "agend" ? html`<img src="/assets/agend-mark.svg" width="16" height="16" alt="" aria-hidden="true" />` : html`<${Icon} name="view" size=${16} />`}
+    ${source.kind === "agend" ? html`<img src=${assetUrl("/assets/agend-mark.svg")} width="16" height="16" alt="" aria-hidden="true" />` : html`<${Icon} name="view" size=${16} />`}
   </span>`;
 }
 

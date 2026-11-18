@@ -4,6 +4,7 @@ import {ErrorState,Skeleton} from "/assets/ui-states.js";
 import {confirmDialog} from "/assets/ui-confirm.js";
 import {runtimeEnrollCommand} from "./runtime-commands.js";
 import {hp} from "./hub-personal-agent-strings.js";
+import { assetUrl } from "/assets/asset-url.js";
 const refused=()=>({ok:false});
 const fields=agent=>({name:agent?.name??"",description:agent?.introBy?agent.intro:introPreview(agent?.description??""),cli:agent?.cli??"",model:agent?.model??"",ifRevision:agent?.revision??0,answerOnly:agent?.answerOnly===true});
 const policy=value=>({enabled:value.enabled===true,people:[...(value.people??[])],teams:[...(value.teams??[])]});
@@ -14,7 +15,7 @@ export function personalCliReason(cli){
  if(cli.id==="codex"&&["sandbox-unavailable","profile-unavailable"].includes(cli.personalStatus)&&cli.answerOnlyAvailable===false)return "answerOnlyFailed";
  return cli.id==="codex"&&cli.personalStatus==="sandbox-unavailable"?"codexSandbox":"profile";
 }
-function installCss(){if(typeof document==="undefined"||document.querySelector('link[data-personal-install="1"]'))return;const link=document.createElement("link");link.rel="stylesheet";link.href="/assets/runtime-install.css";link.setAttribute("data-personal-install","1");document.head.appendChild(link);}
+function installCss(){if(typeof document==="undefined"||document.querySelector('link[data-personal-install="1"]'))return;const link=document.createElement("link");link.rel="stylesheet";link.href=assetUrl("/assets/runtime-install.css");link.setAttribute("data-personal-install","1");document.head.appendChild(link);}
 /** The captured sign-in is passed through every client call, including writes after an await. */
 export function HubPersonalAgent({client,scope,isAdmin=false,onSaved=()=>{}}){
  const [view,setView]=useState(null),[form,setForm]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(""),[issued,setIssued]=useState(null),[copied,setCopied]=useState(false),[clock,setClock]=useState(Date.now()),[editing,setEditing]=useState(false),[waiting,setWaiting]=useState(false);

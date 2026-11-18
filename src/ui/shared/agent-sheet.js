@@ -20,6 +20,7 @@ import { Icon } from "./ui-icons.js";
 import { setTextSize, textSizeStore, TEXT_SIZES, usageOffered } from "./header-tools.js";
 import { UsageDialog } from "./usage-dialog.js";
 import { supportsInstanceFeature } from "./instance-nav.js";
+import { assetUrl } from "./asset-url.js";
 
 register("agentSheet", {
   en: { sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend",
@@ -36,7 +37,7 @@ register("agentSheet", {
   try {
     if (typeof document === "undefined" || !document.head || document.querySelector('link[data-chat-work-bar-css="1"]')) return;
     const link = document.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/chat-work-bar.css"); link.setAttribute("data-chat-work-bar-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/chat-work-bar.css")); link.setAttribute("data-chat-work-bar-css", "1");
     document.head.appendChild(link);
   } catch { /* the header keeps its desk look */ }
 })();

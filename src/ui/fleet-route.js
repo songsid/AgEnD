@@ -7,6 +7,46 @@ import { routeOk } from "./fleet-route-scene.js";
 
 export const WORKER_URL = "/ui/js/fleet-route-worker.js";
 export const WASM_URL = "/ui/vendor/libavoid-0.4.5/libavoid.wasm";
+export const LIBAVOID_JS = "/ui/vendor/libavoid-0.4.5/libavoid.js";
+
+/**
+ * M-3328 (measured in M-3316): the worker under this module's own version. A worker does not use the page's import
+ * map, so a plain WORKER_URL was a `no-store` request on every open, and its `./fleet-route-scene.js` and
+ * `./fleet-canvas-layout.js` plain copies of modules the page already holds under its version. Under the version, its
+ * relative imports are the page's own (cached) files, and a tab older than the server asks for its own version: the
+ * stale-module answer fails the worker, and the lines keep their lane routes — never a newer worker in an older page.
+ * Loaded by a plain path (the office share page, tests), the plain WORKER_URL.
+ */
+export function workerUrlFor(url) {
+  const m = /\/ui\/js\/(v-[0-9a-f]{12})\/[^/?#]+(?:[?#].*)?$/.exec(String(url || ""));
+  return m ? `/ui/js/${m[1]}/fleet-route-worker.js` : WORKER_URL;
+}
+
+const wasmBytes = async (get) => {
+  const res = await get(WASM_URL, { credentials: "same-origin" });
+  if (!res.ok) throw new Error(`libavoid.wasm: ${res.status}`);
+  return res.arrayBuffer();
+};
+let warmed = null;
+/**
+ * M-3328: with the org chart's Live traffic on, everything the router needs is asked for at once — the .wasm, libavoid's
+ * glue and (under a version, where the answer is cached for good) the worker — instead of one after another once the
+ * first scene is routed (.wasm, then the worker, then its imports: about 1.7 s over a slow link). Once per page; a
+ * failed .wasm is asked for again by the next try. The bytes it fetched are what the client starts the worker with.
+ */
+export function warmRouter(get = (...a) => fetch(...a), url = import.meta.url) {
+  if (warmed) return warmed;
+  const worker = workerUrlFor(url);
+  for (const u of worker === WORKER_URL ? [LIBAVOID_JS] : [worker, LIBAVOID_JS]) {
+    Promise.resolve().then(() => get(u, { credentials: "same-origin" })).then((r) => r && r.arrayBuffer && r.arrayBuffer()).catch(() => {});
+  }
+  const p = wasmBytes(get);
+  warmed = p;
+  p.catch(() => { if (warmed === p) warmed = null; });
+  return p;
+}
+/** Tests: forget the warmed bytes. */
+export function resetRouterWarm() { warmed = null; }
 export const TIMEOUT_MS = 4000;
 const FAIL_LIMIT = 2;
 
@@ -17,6 +57,7 @@ const FAIL_LIMIT = 2;
 export function createRouteClient(deps = {}) {
   const W = deps.Worker ?? (typeof Worker === "function" ? Worker : null);
   const get = deps.fetch ?? ((...a) => fetch(...a));
+  const workerUrl = deps.workerUrl ?? workerUrlFor(import.meta.url);
   const timers = deps.timers ?? { set: (f, ms) => setTimeout(f, ms), clear: (t) => clearTimeout(t) };
   let worker = null, wasm = null, fails = 0, nextId = 1;
   let busy = null, waiting = null;          // { id, scene, resolve, timer }
@@ -29,15 +70,12 @@ export function createRouteClient(deps = {}) {
     pump();
   };
   async function start(job) {
-    if (!wasm) {
-      const res = await get(WASM_URL, { credentials: "same-origin" });
-      if (!res.ok) throw new Error(`libavoid.wasm: ${res.status}`);
-      wasm = await res.arrayBuffer();
-    }
+    // The bytes warmRouter fetched when Live was turned on (this page's), else fetched now.
+    if (!wasm) wasm = await (warmed ? warmed.catch(() => wasmBytes(get)) : wasmBytes(get));
     // #2194 review: closed, timed out or replaced while the .wasm was on its way — start nothing (a worker made now
     // would be nobody's, and a later start would make another).
     if (busy !== job || worker) return;
-    const w = new W(WORKER_URL, { type: "module" });
+    const w = new W(workerUrl, { type: "module" });
     w.onmessage = (ev) => {
       const m = ev.data;
       if (!m || typeof m !== "object" || w !== worker) return;
