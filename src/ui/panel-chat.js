@@ -722,7 +722,9 @@ function useMedia(query) {
 /** M-3167: the model's short name for the composer's chip on a desk ("Opus 5.5 (claude-opus-5-5)" → "Opus 5.5"). */
 export function shortModelName(label) {
   const s = String(label || "").replace(/\s*\([^)]*\)\s*$/, "").trim();
-  const family = /^claude-(opus|sonnet|haiku|fable)-(\d+)(?:-(\d+))?/i.exec(s);
+  // M-3304: a version is one or two digits each (`5`, `5-5`); a dated id's date is not a minor version —
+  // "claude-sonnet-6-20270101" is "Sonnet 6" (was "Sonnet 6.20270101"), "claude-opus-5-5-20261201" "Opus 5.5".
+  const family = /^claude-(opus|sonnet|haiku|fable)-(\d{1,2})(?:-(\d{1,2}))?(?![\d.])/i.exec(s);
   if (family) return `${family[1][0].toUpperCase()}${family[1].slice(1).toLowerCase()} ${family[2]}${family[3] ? `.${family[3]}` : ""}`;
   return s;
 }
@@ -1087,12 +1089,24 @@ function ModelMenu({ name, c, lease }) {
   // A desk: under the control that opened it (else above the box's left end); a click outside closes it.
   const place = (el) => {
     if (!el) return;
-    const at = modelMenuAnchor, w = el.offsetWidth || 320, h = el.offsetHeight || 0;
+    const at = modelMenuAnchor, w = el.offsetWidth || 320;
     const vw = globalThis.innerWidth || 1280, vh = globalThis.innerHeight || 800;   // (a test DOM has no viewport)
     let left, top;
-    // Under the control, or above it when it sits in the lower half (the composer's chip): never over it.
-    if (at) { left = Math.min(Math.max(8, at.right - w), vw - w - 8); top = at.top > vh / 2 ? Math.max(8, at.top - h - 6) : Math.min(at.bottom + 6, vh - h - 8); }
-    else { const box = el.closest(".p-chat")?.querySelector(".composer-box")?.getBoundingClientRect(); left = box ? box.left : 16; top = box ? Math.max(8, box.top - h - 8) : 72; }
+    // M-3304 (the user, beta.11): under the control — or above it when it sits in the lower half (the composer's chip) — and
+    // never over it: a list longer than the room there scrolls within the menu (its height capped to that room), instead
+    // of the menu moving up over the control and the header. Its left at the control's (kept in the viewport).
+    if (at) {
+      const up = at.top > vh / 2, room = Math.max(160, Math.floor(up ? at.top - 6 - 8 : vh - at.bottom - 6 - 8));
+      el.style.setProperty("max-height", `${room}px`);
+      const h = Math.min(el.offsetHeight || 0, room);
+      left = Math.min(Math.max(8, at.left), vw - w - 8);
+      top = up ? Math.max(8, at.top - 6 - h) : at.bottom + 6;
+    } else {
+      const box = el.closest(".p-chat")?.querySelector(".composer-box")?.getBoundingClientRect();
+      el.style.setProperty("max-height", `${Math.max(160, Math.floor((box ? box.top : vh) - 16))}px`);
+      const h = el.offsetHeight || 0;
+      left = box ? box.left : 16; top = box ? Math.max(8, box.top - h - 8) : 72;
+    }
     el.style.setProperty("left", `${Math.round(left)}px`); el.style.setProperty("top", `${Math.round(top)}px`);
   };
   return html`<div class="model-menu-scrim" onClick=${close}></div><div class="model-menu-pop" ref=${(el) => { pop.current = el; place(el); }} onKeyDown=${onKeys}>${body}</div>`;

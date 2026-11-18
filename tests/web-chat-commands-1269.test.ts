@@ -430,6 +430,18 @@ describe("the chat's commands (the real page modules)", () => {
       // In this DOM every rect is 0: by a control the menu keeps 8 px from the edge; by the box it takes the box's left (0).
       expect([byChip, byBox]).toEqual(["8px", "0px"]);
     });
+    it("M-3304: by the header's model button the menu opens under it, at its left, its height capped to the room below (a long list scrolls in it)", async () => {
+      const c = await chatPage({ model: "claude-opus-5-5" });
+      c.fx.respond = (path: string, body: any) => (path === "/ui/command" && !body.args ? LIST : {});
+      const chip = c.p.root.querySelectorAll(".hd-chip")[1] as any, g = globalThis as any, was = [g.innerWidth, g.innerHeight];
+      chip.getBoundingClientRect = () => ({ left: 762, right: 950, top: 12, bottom: 38, width: 188, height: 26, x: 762, y: 12 });
+      g.innerWidth = 1920; g.innerHeight = 1080;
+      try {
+        fire(chip, "click"); await settle(); await settle();
+        const pop = c.p.root.querySelector(".model-menu-pop") as any;
+        expect([pop.style.left, pop.style.top, pop.style["max-height"] ?? pop.style.maxHeight]).toEqual(["762px", "44px", "1028px"]);
+      } finally { g.innerWidth = was[0]; g.innerHeight = was[1]; }
+    });
   });
 
   it("the header shows the model and effort it runs; each opens its list (/model, /effort)", async () => {
