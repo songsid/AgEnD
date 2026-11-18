@@ -10,7 +10,7 @@
  * - under the cap nothing changes: connections are kept alive, nothing waits.
  */
 import { afterEach, describe, expect, it } from "vitest";
-import { request, Agent } from "node:http";
+import { createServer, request, Agent } from "node:http";
 import { connect } from "node:net";
 import { createPublicWebGateway, PUBLIC_GATEWAY_MAX_SOCKETS, PUBLIC_GATEWAY_QUEUE, PUBLIC_GATEWAY_WAIT_MS } from "../src/public-web-gateway.js";
 
@@ -19,10 +19,12 @@ const closers: Array<() => void> = [];
 afterEach(() => { for (const c of closers.splice(0)) c(); });
 
 /** A gateway whose every admitted request is answered after `delayMs` (the dashboard's handler, stubbed). */
-async function gateway(delayMs = 5, limits?: { max?: number; queue?: number; waitMs?: number }) {
+async function gateway(delayMs = 5, limits?: { max?: number; queue?: number; waitMs?: number }, sweepMs?: number) {
   const seen = { now: 0, most: 0 };
   const g = createPublicWebGateway({
     exposureId: "e1", isCurrent: () => true, isOpen: () => true, limits,
+    // Node's timeout sweep (30 s by default) made frequent, so a 408 for a too-long wait cannot hide between sweeps.
+    ...(sweepMs ? { create: ((handler: never) => createServer({ connectionsCheckingInterval: sweepMs }, handler)) as never } : {}),
     dispatch: (_req, res) => {
       seen.now++; seen.most = Math.max(seen.most, seen.now);
       setTimeout(() => { seen.now--; res.writeHead(200, { "Content-Type": "text/javascript" }); res.end("export {};\n"); }, delayMs);
@@ -56,12 +58,24 @@ describe("public gateway: a burst past the connection cap (M-3331)", () => {
     expect(out.some((o) => o.connection === "close")).toBe(true);                 // served while others waited: closed
   });
 
-  it("a waiting connection is served when a slot frees — even after longer than the 5 s headers timeout", async () => {
-    const { port } = await gateway(5, { max: 1, queue: 4, waitMs: 9_000 });
+  it("a waiting connection is served when a slot frees (Node's timeout sweep running every 100 ms)", async () => {
+    const { port } = await gateway(5, { max: 1, queue: 4 }, 100);
     const holder = await idle(port);
     const asked = oneShot(port);
-    setTimeout(() => holder.destroy(), 6_000);
+    setTimeout(() => holder.destroy(), 3_000);
     expect(await asked).toMatchObject({ status: 200 });
+  }, 20_000);
+
+  it("never held past the 5 s headers timeout (Fable #4176 F1): asked to wait 9 s, it is reset at 4 s — never a 408", async () => {
+    const { port } = await gateway(5, { max: 1, queue: 4, waitMs: 9_000 }, 100);
+    const holder = await idle(port);
+    closers.push(() => holder.destroy());
+    setTimeout(() => holder.destroy(), 6_000);
+    const t0 = performance.now();
+    const out = await oneShot(port);
+    expect(out.status).toBeUndefined();                                            // not a 408 (nor anything)
+    expect(out.error).toMatch(/ECONNRESET|socket hang up|EPIPE/);
+    expect(performance.now() - t0).toBeLessThan(5_000);
   }, 20_000);
 
   it("a connection that waited PUBLIC_GATEWAY_WAIT_MS without a slot is dropped", async () => {
@@ -77,7 +91,7 @@ describe("public gateway: a burst past the connection cap (M-3331)", () => {
   it("the guard stays: past the queue a new connection is destroyed at once", async () => {
     expect(PUBLIC_GATEWAY_MAX_SOCKETS).toBe(32);
     expect(PUBLIC_GATEWAY_QUEUE).toBeGreaterThanOrEqual(150);
-    expect(PUBLIC_GATEWAY_WAIT_MS).toBeLessThan(15_000);                         // under the gateway's own socket timeout
+    expect(PUBLIC_GATEWAY_WAIT_MS).toBeLessThan(5_000);                          // under the 5 s headers timeout (F1)
     const { port } = await gateway();
     // Idle connections that send nothing hold every slot and every place in the queue.
     const held = await Promise.all(Array.from({ length: PUBLIC_GATEWAY_MAX_SOCKETS + PUBLIC_GATEWAY_QUEUE }, () => idle(port)));

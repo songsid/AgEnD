@@ -16,13 +16,16 @@ export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
  * M-3331: the connections the gateway serves at once, and the ones past them that may wait for a slot. Since #4160 a
  * page asks for its ~150 modules at once; a tunnel that opens a connection per request went past the 32, and each one
  * past them was destroyed (a reset: a module that "could not be loaded"). A connection past the 32 now waits, paused
- * (nothing of it is read), for a slot — at most PUBLIC_GATEWAY_WAIT_MS, under the 15 s idle timeout every socket has.
+ * (nothing of it is read), for a slot — at most PUBLIC_GATEWAY_WAIT_MS. That stays under the server's headersTimeout
+ * (5 s): Node starts a connection's parser, and its headers clock, when the connection is accepted, so one held past
+ * headersTimeout would be answered 408 by the timeout sweep — a failed module all the same (Fable on #4176). The
+ * gateway's own timer always comes first (a reset, as before the queue); a tunnel's burst clears in milliseconds.
  * The queue's bound keeps the abuse guard: past 32 + PUBLIC_GATEWAY_QUEUE open connections a new one is destroyed as
  * before. 224 waiting covers a page's burst (~150-230 files) with room; a paused socket costs a descriptor and no work.
  */
 export const PUBLIC_GATEWAY_MAX_SOCKETS = 32;
 export const PUBLIC_GATEWAY_QUEUE = 224;
-export const PUBLIC_GATEWAY_WAIT_MS = 10_000;
+export const PUBLIC_GATEWAY_WAIT_MS = 4_000;
 
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
@@ -276,6 +279,8 @@ export function createPublicWebGateway(opts: {
   });
   server.maxHeadersCount = 64;
   server.headersTimeout = 5_000;
+  // M-3331: a waiting connection's headers clock already runs (above): it never waits as long as headersTimeout allows.
+  const waitMs = Math.max(0, Math.min(WAIT_MS, server.headersTimeout - 1_000));
   // #1937: an upload may take long on a slow link (its own clocks bound it); every other request is still dropped if it
   // has not arrived whole in PUBLIC_GATEWAY_RECEIVE_MS (limitRequestReceive, where the request is dispatched).
   server.requestTimeout = UPLOAD_REQUEST_TIMEOUT_MS;
@@ -287,7 +292,7 @@ export function createPublicWebGateway(opts: {
   server.on("connection", socket => {
     if (sockets.size < MAX) { admit(socket); return; }
     if (waiting.length >= QUEUE) { socket.destroy(); return; }       // the abuse guard: past the queue, refused as before
-    const entry = { socket, timer: setTimeout(() => { const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); socket.destroy(); }, WAIT_MS) };
+    const entry = { socket, timer: setTimeout(() => { const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); socket.destroy(); }, waitMs) };
     entry.timer.unref?.();
     socket.once("close", () => { clearTimeout(entry.timer); const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); });
     waiting.push(entry);
