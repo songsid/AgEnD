@@ -76,6 +76,8 @@ export function searchSnippet(text: string, terms: string[], width = 120): { sni
 const reactSchema = z.strictObject({ emoji: z.string().min(1).max(16), on: z.boolean() });
 /** M-3127: the most distinct emoji one post carries. */
 export const ROOM_REACTION_LIMIT = 12;
+/** M-3340: a person's pins per room (the Fleet chat's own limit, chat-pins.js PINS_MAX). */
+export const ROOM_PINS_MAX = 50;
 /** One emoji as a person picks it: one grapheme, a pictograph (ZWJ sequences, FE0F and skin tones kept), no controls. */
 export function validRoomEmoji(s: unknown): s is string {
   if (typeof s !== "string" || s.length < 1 || s.length > 16 || /[\u0000-\u001f\u007f\s]/u.test(s)) return false;
@@ -773,6 +775,43 @@ export class HubGroupRooms {
     // The post as it now is, on the stream every open tab already reads (message.updated): no new event name.
     if (done.changed) this.emit({ type: "message.updated", roomId: id, data: { roomId: id, message: this.projection(done.post) }, sequence: done.post.sequence });
     return { reactions: done.reactions };
+  }
+  /**
+   * M-3340: the signed-in person's own pins in a group room — newest first, each with the message as messages() shows it to
+   * them now. A pin whose message they can no longer see (it is older than their joining, or its question is not theirs)
+   * is left out. Nobody else's pins are ever read, and nobody else learns of these.
+   */
+  async pins(ctx: HubRequestContext, id: string): Promise<{ pins: Array<{ messageId: string; pinnedAt: number; message: RoomMessage }> }> {
+    const me = await this.who(ctx);
+    return this.core.atomic(db => ({ pins: this.pinList(db, id, this.member(db, id, me), me) }), this.fence(ctx));
+  }
+  /** M-3340: pin (on) or unpin a message the person can see; answers with their pins. Past ROOM_PINS_MAX: 409 pins-full. */
+  async pin(ctx: HubRequestContext, id: string, postId: unknown, on: boolean) {
+    const target = validated(uuid, postId), me = await this.who(ctx);
+    const out = this.core.atomic(db => {
+      const member = this.member(db, id, me);
+      if (on) {
+        const post = this.visiblePost(db, id, member, target);
+        if (post.author_kind === "system") throw new HubRoomRefusal(409, "invalid");
+        const has = db.prepare("SELECT 1 FROM hub_room_pins WHERE room_id=? AND person=? AND post_id=?").get(id, me, post.id);
+        if (!has && (db.prepare("SELECT COUNT(*) n FROM hub_room_pins WHERE room_id=? AND person=?").get(id, me) as { n: number }).n >= ROOM_PINS_MAX) throw new HubRoomRefusal(409, "pins-full");
+        if (!has) db.prepare("INSERT INTO hub_room_pins(room_id,person,post_id,pinned_at) VALUES(?,?,?,?)").run(id, me, post.id, this.core.now());
+      } else db.prepare("DELETE FROM hub_room_pins WHERE room_id=? AND person=? AND post_id=?").run(id, me, target);
+      return { pins: this.pinList(db, id, member, me) };
+    }, this.fence(ctx));
+    // The person's other tabs and devices read their pins again; the event says only which room.
+    this.emit({ type: "pins.changed", roomId: id, data: { roomId: id }, audiencePerson: me });
+    return out;
+  }
+  private pinList(db: DB, id: string, member: MemberRow, me: string) {
+    const rows = db.prepare("SELECT post_id,pinned_at FROM hub_room_pins WHERE room_id=? AND person=? ORDER BY pinned_at DESC,rowid DESC").all(id, me) as { post_id: string; pinned_at: number }[];
+    const out: Array<{ messageId: string; pinnedAt: number; message: RoomMessage }> = [];
+    for (const row of rows) {
+      let post: PostRow;
+      try { post = this.visiblePost(db, id, member, row.post_id); } catch { continue; }
+      out.push({ messageId: row.post_id, pinnedAt: row.pinned_at, message: this.projection(post) });
+    }
+    return out;
   }
   /**
    * M-3127: a post exactly as messages() shows it to `member` — since their joined_sequence, its lineage's audience floor

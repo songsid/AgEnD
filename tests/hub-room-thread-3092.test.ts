@@ -28,8 +28,8 @@ beforeAll(async () => {
 const realES = g.EventSource;
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } client.setHubClient(null); i18n.setLang("en", { store: false }); g.EventSource = realES; });
 
-async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean, opts: { matchNarrow?: boolean; matchMedia?: (q: string) => any; before?: () => void } = {}) {
-  const fx = createHubRoomsFixture(), realFetch = g.fetch;
+async function roomPage(roomId: string, lang = "en", personalAnswerOnly?: boolean, opts: { matchNarrow?: boolean; matchMedia?: (q: string) => any; before?: () => void; features?: string[] } = {}) {
+  const fx = createHubRoomsFixture(opts.features ? { features: opts.features } : {}), realFetch = g.fetch;
   if(personalAnswerOnly!==undefined){
     fx.rooms.find(r=>r.id===roomId)!.messages=[];
     const original=fx.fetch;
@@ -664,6 +664,56 @@ describe("a room on the page", () => {
       expect(pg.root.querySelector(".hub-room-page .hub-head-tools .hd-text")).toBeTruthy();
       fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
       expect([...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].some((b: any) => /Text size/.test(b.textContent || ""))).toBe(false);
+    } finally { restore(); }
+  });
+  // M-3340 (the user: personal pins): the Fleet chat's pin UX in a room — mine only, kept by a Hub with room-pins-v1.
+  const PINS = ["rooms-v1", "attachments-v1", "room-pins-v1"];
+  const menuOf = async (pg: AppPage, msg: any) => { fire(msg.querySelector(".body"), "contextmenu"); await settle(3); return [...pg.document.querySelectorAll(".msg-menu button")] as any[]; };
+  it.each([["en", "Pin", "Pinned messages", "Only you see your pins."], ["zh-TW", "釘選", "釘選的訊息", "只有你看得到你的釘選。"]])("M-3340: Pin in a message's menu (%s); the header's 📌 and ⋯ list it; the list says only I see it, shows the message, × unpins", async (lang, pinWord, title, only) => {
+    const { pg, fx, restore } = await roomPage("room-weekly", lang, undefined, { features: PINS });
+    try {
+      const msg = msgs(pg).filter((m) => !m.classList.contains("status-line")).at(-1);
+      expect(pg.root.querySelector(".hub-room-pins-btn"), "nothing pinned: no 📌").toBeNull();
+      const items = await menuOf(pg, msg);
+      const pinItem = items.find((b) => b.textContent === pinWord);
+      expect(pinItem, items.map((b) => b.textContent).join("|")).toBeTruthy();
+      fire(pinItem, "click"); await settle(8);
+      expect(fx.pinCalls.map((c: any) => c[0])).toEqual(["PUT"]);
+      const btn = pg.root.querySelector(".hub-room-pins-btn") as any;
+      expect(btn?.textContent).toBe("1");
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(4);
+      expect([...pg.document.querySelectorAll(".menu-list [role^=menuitem]")].map((b: any) => (b.textContent || "").trim())).toContain(`${title} · 1`);
+      fire(pg.root.querySelector(".hub-room-menu button") as any, "click"); await settle(3);
+      fire(btn, "click"); await settle(4);
+      const dlg = pg.document.querySelector(".hub-room-pins-dlg") as any;
+      expect(dlg.querySelector(".hub-room-pins-only").textContent).toBe(only);
+      expect(dlg.querySelectorAll(".chat-pin")).toHaveLength(1);
+      expect((await menuOf(pg, msg)).some((b) => b.textContent === (lang === "en" ? "Unpin" : "取消釘選")), "pinned: the menu says Unpin").toBe(true);
+      fire(pg.document.querySelector('.msg-menu [data-item="unpin"]') ?? pg.document.body, "keydown", { key: "Escape" }); await settle(2);
+      fire(dlg.querySelector(".chat-pin-x"), "click"); await settle(8);
+      expect(fx.pinCalls.map((c: any) => c[0])).toEqual(["PUT", "DELETE"]);
+      expect(pg.root.querySelector(".hub-room-pins-btn")).toBeNull();
+    } finally { restore(); }
+  });
+  it("M-3340: a pin's row shows its message in the room (the thread reveals it) and closes the list", async () => {
+    const { pg, restore } = await roomPage("room-weekly", "en", undefined, { features: PINS });
+    try {
+      const msg = msgs(pg).filter((m) => !m.classList.contains("status-line")).at(-1);
+      fire((await menuOf(pg, msg)).find((b) => b.textContent === "Pin"), "click"); await settle(8);
+      fire(pg.root.querySelector(".hub-room-pins-btn") as any, "click"); await settle(4);
+      fire(pg.document.querySelector(".hub-room-pins-dlg .chat-pin-go") as any, "click"); await settle(4);
+      await new Promise((r) => setTimeout(r, 80)); await settle(4);
+      expect(pg.document.querySelector(".hub-room-pins-dlg")).toBeNull();
+      expect(msg.classList.contains("flash"), "revealed: flashed (the thread's reveal)").toBe(true);
+    } finally { restore(); }
+  });
+  it("M-3340: a Hub without room-pins-v1 (an older one): no Pin, no 📌, and its pins are never asked for", async () => {
+    const asked: string[] = [];
+    const { pg, restore } = await roomPage("room-weekly", "en", undefined, { before: () => { const f = g.fetch; g.fetch = (u: string, i?: any) => { asked.push(String(u)); return f(u, i); }; } });
+    try {
+      const msg = msgs(pg).filter((m) => !m.classList.contains("status-line")).at(-1);
+      expect((await menuOf(pg, msg)).map((b) => b.textContent)).toEqual(["Reply", "Add reaction", "Copy text", "Copy link"]);
+      expect([pg.root.querySelector(".hub-room-pins-btn"), asked.some((u) => u.includes("/pins"))]).toEqual([null, false]);
     } finally { restore(); }
   });
   it("an archived room: the dock says so (a banner, as a closed chat's), nothing to send", async () => {

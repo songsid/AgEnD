@@ -111,6 +111,16 @@ CREATE INDEX hub_room_reactions_room ON hub_room_reactions(room_id,post_id);`);
 } });
 
 /**
+ * M-3340: personal pins — each person's own pinned messages of a group room (at most ROOM_PINS_MAX), seen only by them.
+ * A pin is a reference (the post stays the one copy: its visibility and the room's rules apply at every read).
+ */
+export const HUB_ROOM_PINS_MIGRATION: HubHttpMigration = Object.freeze({ component: "s3-room-pins", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_room_pins(room_id TEXT NOT NULL REFERENCES hub_group_rooms(id),person TEXT NOT NULL,
+  post_id TEXT NOT NULL REFERENCES hub_room_posts(id),pinned_at INTEGER NOT NULL,PRIMARY KEY(room_id,person,post_id));
+CREATE INDEX hub_room_pins_person ON hub_room_pins(person,room_id,pinned_at);`);
+} });
+
+/**
  * M-3127: an agent answer's buttons or poll in a group room. Choices live in the content store (content_ref); a plain
  * set answers only its asker (asker_member, possibly an agent membership); a poll takes one ballot per person member.
  */
