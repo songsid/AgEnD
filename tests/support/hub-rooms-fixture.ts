@@ -165,6 +165,10 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
 
   const sources = new Set<{ emit(name: string, data: unknown): void }>();
   const emit = (name: string, data: unknown) => { for (const s of sources) s.emit(name, data); };
+  // M-3340: my pins per room (newest first), and the writes made (for tests).
+  const pins = new Map<string, Array<{ id: string; at: number }>>();
+  const pinsOf = (roomId: string) => { if (!pins.has(roomId)) pins.set(roomId, []); return pins.get(roomId)!; };
+  const pinCalls: Array<[string, string, string]> = [];
   const unread = (r: FixtureRoom) => {
     const from = r.readUpTo ? r.messages.findIndex(m => m.id === r.readUpTo) + 1 : 0;
     return r.messages.slice(from).filter(m => m.author.id !== FIXTURE_ME.id && m.author.kind !== "system" && (m.text || m.stage !== "queued"));
@@ -228,7 +232,7 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         .sort((a, b) => b.at - a.at).slice(0, limit);
       return { status: 200, body: { hits } };
     }
-    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations|buttons)(?:\/([^/]+)(?:\/reactions)?)?)?$/);
+    const m = p.match(/^\/hub\/v1\/rooms\/([^/]+)(?:\/(members|messages|read|invitations|buttons|pins)(?:\/([^/]+)(?:\/reactions)?)?)?$/);
     if (m && m[1] !== "events" && m[1] !== "candidates") {   // candidates: Track U2 below
       const room = roomOf(decodeURIComponent(m[1]!));
       if (!room) return fail(404, "not-found");
@@ -293,6 +297,22 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
         room.readUpTo = msg.id;
         emit("message.added", { roomId: room.id, message: msg });
         return { status: 200, body: { message: msg } };
+      }
+      // M-3340: my own pins in a group room (a Hub with room-pins-v1): newest first, each with its message; at most 50.
+      if (sub === "pins" && features.includes("room-pins-v1") && room.kind === "group") {
+        const mine = pinsOf(room.id);
+        const view = () => ({ pins: mine.map(x => ({ messageId: x.id, pinnedAt: x.at, message: room.messages.find(y => y.id === x.id) })).filter(x => x.message) });
+        if (!m[3] && method === "GET") return { status: 200, body: view() };
+        const msg = m[3] ? room.messages.find(x => x.id === m[3]) as any : null;
+        if (m[3] && method === "PUT") {
+          if (!msg) return fail(404, "not-found");
+          if (msg.author?.kind === "system") return fail(409, "invalid");
+          if (!mine.some(x => x.id === msg.id)) { if (mine.length >= 50) return fail(409, "pins-full"); mine.unshift({ id: msg.id, at: now() + mine.length }); }
+          pinCalls.push(["PUT", room.id, msg.id]);
+          return { status: 200, body: view() };
+        }
+        if (m[3] && method === "DELETE") { const i = mine.findIndex(x => x.id === m[3]); if (i >= 0) mine.splice(i, 1); pinCalls.push(["DELETE", room.id, m[3]]); return { status: 200, body: view() }; }
+        return fail(405, "method");
       }
       // M-3127: my reaction on a message (`/messages/:id/reactions`): set semantics, the whole message on the stream.
       if (sub === "messages" && m[3] && p.endsWith("/reactions") && method === "POST") {
@@ -507,6 +527,6 @@ export function createHubRoomsFixture({ now = () => minutes(120), csrf = "fixtur
       return r.fulfill({ status: out.status, contentType: "application/json", body: JSON.stringify(out.body) });
     });
   }
-  return { me: FIXTURE_ME, rooms, invitations, teams, csrf, handle, emit, answerLater, setAssistant, fetch: fetchImpl, EventSource: FixtureEventSource, route };
+  return { me: FIXTURE_ME, rooms, invitations, teams, csrf, handle, emit, answerLater, setAssistant, fetch: fetchImpl, EventSource: FixtureEventSource, route, pinCalls };
 }
 export type HubRoomsFixture = ReturnType<typeof createHubRoomsFixture>;

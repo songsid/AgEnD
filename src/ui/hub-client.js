@@ -479,6 +479,10 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     },
     /** M-3127: add (`on`) or take back my reaction `emoji` on a group-room message → { reactions }. */
     reactRoomMessage(roomId, messageId, emoji, on) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages/${id(messageId)}/reactions`, { emoji: String(emoji), on: on === true }); },
+    /** M-3340: my own pins in a group room (nobody else's) → { pins: [{ messageId, pinnedAt, message }] }, newest first. */
+    roomPins(roomId) { return call("GET", `/hub/v1/rooms/${id(roomId)}/pins`); },
+    /** M-3340: pin (`on`) or unpin a group-room message for me only → { pins }. Past 50: the Hub refuses (pins-full). */
+    pinRoomMessage(roomId, messageId, on) { return call(on ? "PUT" : "DELETE", `/hub/v1/rooms/${id(roomId)}/pins/${id(messageId)}`); },
     markRoomRead(roomId, upTo) { return call("POST", `/hub/v1/rooms/${id(roomId)}/read`, { upTo }); },
     /**
      * The one live stream of everything this person may see (seam 1): `handlers[name](data)` for each of ROOM_EVENTS,

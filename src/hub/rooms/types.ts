@@ -31,7 +31,7 @@ export interface RoomAssistantPort {
   forget(roomId: string): void;
 }
 export interface RoomEvent {
-  type: "message.added" | "message.updated" | "presence.changed" | "member.changed" | "room.changed" | "unread.changed" | "invitation.changed";
+  type: "message.added" | "message.updated" | "presence.changed" | "member.changed" | "room.changed" | "unread.changed" | "invitation.changed" | "pins.changed";
   roomId: string;
   data: Record<string, unknown>;
   /** A removed member receives only the removal marker, never subsequent room content. */
