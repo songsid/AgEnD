@@ -271,6 +271,10 @@ export class HubCatalogService {
 
   /** What this person may see: their own exposures (with the grants on them) and what is granted to them now. */
   async visible(ctx: HubRequestContext): Promise<HubCatalogView> {
+    return this.withVisible(ctx, view => view);
+  }
+  /** A synchronous use of the picker/catalog view, within its current permission transaction. */
+  async withVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T): Promise<T> {
     const person = await ctx.requirePerson(), me = personKeyString(person), now = this.core.now();
     const initial = this.core.atomic((db) => {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
@@ -329,7 +333,7 @@ export class HubCatalogService {
     for (const proof of proofs) proof.assertCurrent();
     // Recheck ordinary grants after all asynchronous group reads too. A person row witnesses successful Hub
     // sign-in permanently; directory eligibility checks and ended sessions cannot manufacture or erase it.
-    return this.core.atomic(db => ({ mine: mine.filter(candidate => {
+    return this.core.atomic(db => use({ mine: mine.filter(candidate => {
       const row = readExposure(db, candidate.id);
       return row && row.owner === me && row.state !== "withdrawn" && row.revision === candidate.revision
         && this.core.deps.store.read().fleets.find(f => f.id === row.fleet_id)?.status !== "revoked";
