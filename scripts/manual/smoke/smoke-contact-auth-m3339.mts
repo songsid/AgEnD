@@ -17,6 +17,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, caseName, matrix, shotPath } from "../smoke-fixture/index.mts";
+import { fixtureInstances } from "../smoke-fixture/data.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-contact-auth-m3339";
 const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
@@ -25,8 +26,14 @@ const r: Record<string, unknown> = {};
 const fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
 
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48339), instances: 6 });
-const ROOM = fx.instances[1]!.name, WORKER = fx.instances[2]!.name;
+// Synthetic fixture names only, never a chat-id shape (the leader, #4196: no "-t<digits>" in public evidence, partial or not):
+// a small roster from the fixture's own names, without its ClassicBot rooms.
+const CHAT_ID = /-t\d{6,}/;
+const PICK = ["general", "docs-site-builder", "release-notes-drafter", "nightly-benchmarks"];
+const roster = fixtureInstances().filter((i) => PICK.includes(i.name));
+if (roster.length !== PICK.length || roster.some((i) => CHAT_ID.test(i.name))) throw new Error(`roster: ${roster.map((i) => i.name).join(", ")}`);
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48339), roster, classic: false });
+const ROOM = "docs-site-builder", WORKER = "release-notes-drafter";
 // The server's ticket ids: R + a UUID (contact-auth-api.ts, web-chat-history.ts contactBadge); the page reads them short (R + 8 hex).
 const R12 = "R12a4c8e0-5b1d-4f6a-9c3e-0d2b7f8a1c12", R11 = "R11b5d9f1-6c2e-4a7b-8d4f-1e3c8a9b2d11";
 const ALEX = { platform: "discord", adapterId: "dc-main", userId: "1001", label: "Alex" };
@@ -80,17 +87,25 @@ try {
     const errs: string[] = []; page.on("pageerror", (e: any) => errs.push(String(e).slice(0, 200)));
     page.on("dialog", (d: any) => d.dismiss());
     const body = () => page.evaluate(() => document.body.innerText) as Promise<string>;
+    // Every capture: no chat-id shape anywhere on the page (the sidebar, a header, a message).
+    const leaks: string[] = [];
+    const shoot = async (name: string, opts: any = {}) => {
+      const t = await body();
+      const m = t.match(new RegExp(CHAT_ID.source, "g"));
+      if (m) leaks.push(`${name}: ${[...new Set(m)].join(" ")}`);
+      await page.screenshot({ path: shotPath(SMOKE, cn, name), ...opts });
+    };
     // 1: a ClassicBot room's Permissions.
     await page.goto(`${fx.base}/ui/fleet/agent/${encodeURIComponent(ROOM)}?cat=permissions`);
     await page.waitForSelector(".contact-perm", { timeout: 20000 }); await page.waitForTimeout(400);
     const t1 = await body();
-    await page.screenshot({ path: shotPath(SMOKE, cn, "1-room-permissions"), fullPage: false });
+    await shoot("1-room-permissions");
     check(`${cn}:room`, t1.includes(zh ? "建議將這個房間切換為受限模式。" : "We suggest switching this room to restricted mode.") && t1.includes("mcp__drive__write")
       && t1.includes(zh ? "未涵蓋" : "Not covered") && t1.includes(zh ? "使用擁有者的帳號" : "Uses the owner's account")
       // The leader's A3 decision: a tool the guard doesn't cover runs with its normal permissions — said plainly, before the switch.
       && t1.includes(zh ? "這個 AI 工具或版本不在防護範圍內：它會以原本的權限執行，只有聯絡申請需要核准。" : "This AI tool or version isn't covered by the guard: it runs with its normal permissions; only contact approval applies."), t1.slice(0, 900));
     await page.locator(".contact-mode button").click(); await page.waitForTimeout(300);
-    await page.screenshot({ path: shotPath(SMOKE, cn, "1b-room-confirm") });
+    await shoot("1b-room-confirm");
     await page.locator("[data-confirm=yes]").click(); await page.waitForTimeout(500);
     check(`${cn}:room-switch-put`, calls.some(([m, p, b]: any) => m === "PUT" && p.endsWith(`${ROOM}/contact-permissions`) && b?.mode === "restricted" && b?.revision === 4)
       && (await page.locator(".contact-mode .contact-pill").innerText()) === (zh ? "受限模式" : "Restricted"), calls);
@@ -98,7 +113,7 @@ try {
     await page.goto(`${fx.base}/ui/fleet/agent/${encodeURIComponent(WORKER)}?cat=permissions`);
     await page.waitForSelector(".contact-approvers", { timeout: 20000 }); await page.waitForTimeout(400);
     const t2 = await body();
-    await page.screenshot({ path: shotPath(SMOKE, cn, "2-worker-permissions") });
+    await shoot("2-worker-permissions");
     check(`${cn}:worker`, t2.includes(zh ? "目前核准人必須是 Fleet 管理員。" : "Approver must be a Fleet admin for now.") && t2.includes(zh ? "剩下 3 次" : "3 uses left")
       && (await page.locator(".contact-approver-add option").allInnerTexts()).some((x: string) => x.startsWith("Kim")), t2.slice(0, 600));
     // 3: Fleet → Authorizations.
@@ -106,13 +121,13 @@ try {
     await page.waitForSelector(".contact-ticket", { timeout: 20000 }); await page.waitForTimeout(400);
     const tabs = await page.locator('a[href="/ui/fleet/authorizations"]').count();
     await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).check(); await page.waitForTimeout(200);
-    await page.screenshot({ path: shotPath(SMOKE, cn, "3-authorizations") });
+    await shoot("3-authorizations");
     await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).uncheck();
     await page.locator(`.contact-ticket[data-ticket="${R12}"] .btn-primary`).click(); await page.waitForTimeout(500);
     check(`${cn}:authorizations`, tabs >= 1 && calls.some(([m, p, b]: any) => m === "POST" && p === `/ui/api/contact-authorizations/${R12}/decision` && b?.decision === "approve-once" && b?.revision === 2 && !b?.grant)
       && (await page.locator(`.contact-ticket[data-ticket="${R12}"]`).getAttribute("data-state")) === "delivered"
       && (await page.locator(`.contact-ticket[data-ticket="${R11}"] .btn-primary`).count()) === 0, calls);
-    await page.screenshot({ path: shotPath(SMOKE, cn, "3b-authorizations-decided") });
+    await shoot("3b-authorizations-decided");
     // 4: Needs you (the server's needs list, as the stream would deliver it).
     await page.goto(`${fx.base}/ui/needs`); await page.waitForTimeout(800);
     await page.evaluate(async ([room, worker, r12]: [string, string, string]) => {
@@ -123,27 +138,30 @@ try {
     }, [ROOM, WORKER, R12]);
     await page.waitForSelector(".contact-need", { timeout: 10000 }); await page.waitForTimeout(500);
     const t4 = await body();
-    await page.screenshot({ path: shotPath(SMOKE, cn, "4-needs"), fullPage: c.device === "desk" });
+    await shoot("4-needs", { fullPage: c.device === "desk" });
     check(`${cn}:needs`, t4.includes(zh ? `${ROOM} 想聯絡 ${WORKER}` : `${ROOM} wants to contact ${WORKER}`) && t4.includes(zh ? "查看影響與常用轉交" : "See the impact and allowed contacts")
       && t4.includes(zh ? "稍後" : "Later"), t4.slice(0, 600));
     // 5: the chat's badges (the real stream's messages).
     await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(ROOM)}`); await page.waitForTimeout(1500); held();
     await page.waitForSelector(".msg .contact-badge", { timeout: 15000 }).catch(() => {});
     const b1 = await page.locator(".msg .contact-badge").allInnerTexts();
-    await page.screenshot({ path: shotPath(SMOKE, cn, "5-chat-badge-room") });
+    await shoot("5-chat-badge-room");
     await page.goto(`${fx.base}/ui/chat/${encodeURIComponent(WORKER)}`); await page.waitForTimeout(1500); forwarded();
     await page.waitForSelector(".msg .contact-badge", { timeout: 15000 }).catch(() => {});
     const b2 = await page.locator(".msg .contact-badge").allInnerTexts();
-    await page.screenshot({ path: shotPath(SMOKE, cn, "5-chat-badge-worker") });
+    await shoot("5-chat-badge-worker");
     check(`${cn}:badges`, b1.includes(zh ? "聯絡申請 #R12a4c8e0" : "Contact request #R12a4c8e0") && b2.includes(zh ? "已准轉交 #R12a4c8e0" : "Forwarded (approved) #R12a4c8e0"), { b1, b2 });
     check(`${cn}:no-errors`, errs.length === 0 && (await csp()).length === 0, { errs, csp: await csp() });
+    check(`${cn}:no-chat-id-shape`, leaks.length === 0, leaks);
     await ctx.close();
   }
 } catch (e) {
   fail.push("error"); r.error = String((e as Error).stack ?? e).slice(0, 1500);
 } finally {
   r.seconds = Math.round((Date.now() - started) / 1000);
-  writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
+  const json = JSON.stringify(r, null, 1);
+  if (CHAT_ID.test(json)) { fail.push("evidence-chat-id"); r["evidence-chat-id"] = { FAIL: "result.json would carry a chat-id shape" }; }
+  writeFileSync(join(OUT, "result.json"), CHAT_ID.test(json) ? JSON.stringify({ withheld: "chat-id shape" }) : json);
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 700)}`);
   console.log(fail.length ? `M-3339 A2 smoke FAILED (${fail.length}) in ${r.seconds}s — ${OUT}` : `M-3339 A2 smoke passed in ${r.seconds}s (${Object.keys(r).length - 1} checks)`);
   await fx.close();
