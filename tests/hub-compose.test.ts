@@ -2417,6 +2417,11 @@ describe.skipIf(process.platform === "win32")("room consent factory composition"
         exposures: [{ id: exposureId, fleetId, owner: NOTICE_READER.key, displayName: "Project notes", revision: 1,
           state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] } },
       { fleetId, owner: NOTICE_READER.key, linkEpoch: 1, features: new Set(), current: () => true });
+      const consentOwner = await directoryBrowser(r.hub, undefined, { login: NOTICE_READER.login, password: "Dummy-browser-only" });
+      const grant = await directoryBrowser(r.hub, consentOwner.cookie,
+        { exposureId, exposureRevision: 1, login: ADMIN.login, days: 7 }, "/hub/v1/grants",
+        { headers: { "X-AgEnD-Hub-CSRF": consentOwner.json.csrf } });
+      expect(grant.status).toBe(200);
       const invited = await directoryBrowser(r.hub, root.cookie, { agents: [exposureId] }, `/hub/v1/rooms/${roomId}/invitations`, { headers });
       expect(invited.status).toBe(200);
       const invitationId = invited.json.invited[0].id;

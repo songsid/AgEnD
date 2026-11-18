@@ -39,5 +39,16 @@
     }
   ],
   "scope": "Scratch HTTP/SQLite and inert directory only; no live account, model, native runtime or browser campaign.",
-  "schemaChange": false
+  "schemaChange": false,
+  "compositionRepair": {
+    "files": 1,
+    "passed": 142,
+    "failed": 0,
+    "run": "hub-compose.test.ts alone with maxWorkers=2",
+    "change": "Explicit owner grant to the room manager before the sealed-Hub restart invitation; production source unchanged."
+  },
+  "totalDistinct": {
+    "files": 9,
+    "passed": 277
+  }
 }

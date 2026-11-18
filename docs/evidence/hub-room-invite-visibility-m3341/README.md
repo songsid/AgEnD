@@ -12,7 +12,8 @@ The new HTTP/SQLite regression failed before the guard: the hidden ID returned 2
 
 - `vitest run tests/hub-room-invite-visibility-m3341.test.ts tests/hub-room-consent-track-c.test.ts tests/hub-room-integration-r3.test.ts tests/hub-room-candidates-r3.test.ts tests/hub-s3b-server.test.ts --maxWorkers=2`: 60 pass.
 - `vitest run tests/hub-grant-subjects-m3016.test.ts tests/hub-team-grants-track-c.test.ts tests/hub-room-teams-integration-r3.test.ts --maxWorkers=2`: 75 pass.
-- Source and test `tsc --noEmit`: no errors.
+- `vitest run tests/hub-compose.test.ts --maxWorkers=2`, alone: 142 pass. Its sealed-Hub restart fixture now grants the manager access before inviting, matching the owner-consent fixture. The production source is unchanged by this repair.
+- Source and test `tsc --noEmit`: no errors; test types rechecked after the restart fixture update.
 - `validation.json` records the narrow negative controls and restoration result.
 
 All people, rooms and IDs in the fixtures are synthetic. These checks use inert directory callbacks and scratch HTTP/SQLite only. Bilingual desktop/phone captures belong to the later UI slices; this PR adds no UI.
