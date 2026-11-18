@@ -85,7 +85,8 @@ describe("M-3307: switch to Claude's native install", () => {
     const file = installNative(AUDITED());
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(r.done).toHaveBeenCalledTimes(1);
-    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, claude: { kind: "native", path: file, npmLeftover: npmDir } });
+    // The page is told paths `~`-abbreviated (Fable note 2): the native file is under HOME; the npm prefix (a scratch system-like path) names no user and is kept.
+    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, claude: { kind: "native", path: `~${file.slice(home.length)}`, npmLeftover: npmDir } });
   });
 
   it("refused when `claude` is not an npm install (already native): nothing runs", async () => {
@@ -104,8 +105,9 @@ describe("M-3307: switch to Claude's native install", () => {
 });
 
 describe("M-3307: remove the npm copy (a separate step)", () => {
-  it("before any switch: nothing known to remove", async () => {
+  it("no npm copy anywhere: nothing to remove", async () => {
     const { fm, reporter } = fleet();
+    vi.spyOn(fm as any, "findClaudeNpmCopy").mockResolvedValue(null);
     expect(await fm.startWebInstall("claude-code", reporter(), undefined, "remove-npm")).toEqual({ refused: "no_npm_copy" });
     expect(fakeSessions).toHaveLength(0);
   });
@@ -125,7 +127,19 @@ describe("M-3307: remove the npm copy (a separate step)", () => {
     expect(cmd).toContain("-g uninstall @anthropic-ai/claude-code");
     rmSync(join(root, "prefix", "lib", "node_modules", "@anthropic-ai"), { recursive: true, force: true });   // what npm did
     await fakeSessions[1]!.events.onDone({ ok: true, detail: "clean exit" });
-    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, claude: { kind: "native", path: file, npmLeftover: null } });
+    expect(r.done.mock.calls[0]![0]).toMatchObject({ ok: true, claude: { kind: "native", path: `~${file.slice(home.length)}`, npmLeftover: null } });
+  });
+
+  it("Fable note 1: after a restart (a new FleetManager, nothing remembered) the copy is found afresh and its removal runs", async () => {
+    const { fm: before, reporter } = fleet();
+    await before.startWebInstall("claude-code", reporter(), undefined, "native");
+    installNative(AUDITED());
+    await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
+    const { fm } = fleet();                                                   // the restart
+    expect((fm as any).claudeNpmCopy).toBeNull();
+    vi.spyOn(fm as any, "findClaudeNpmCopy").mockResolvedValue(npmDir);       // what `npm root -g` / the system prefixes find
+    expect(await fm.startWebInstall("claude-code", reporter(), undefined, "remove-npm")).toEqual({ started: true });
+    expect(fakeSessions[1]!.flow.command).toContain(join(root, "prefix"));
   });
 
   it("the npm copy first on PATH and no native install: refused (removing it would leave no claude)", async () => {

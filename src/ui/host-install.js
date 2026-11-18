@@ -283,6 +283,10 @@ export function VersionLine({ row, label, blocked = false }) {
   return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via} data-latest=${u.latest ? "1" : "0"}>
     <p class="note s-account-why">${text}</p>
     ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${buttonLabel}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend, !!u.latest); }}>${updating ? th("updating") : buttonLabel}</button></span>` : null}
+    ${row.npmLeftover && row.backend === "claude-code" && !(runFor(state, row.backend) && runFor(state, row.backend).claude && runFor(state, row.backend).claude.npmLeftover) ? html`<div class="s-account-native" data-npm-left="1">
+      <p class="note s-account-why">${th("npmLeft", row.npmLeftover.dir)}</p>
+      <span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-npm-remove" disabled=${blocked || installRunning(state)} onClick=${() => { void startHostNpmRemove(); }}>${th("npmRemove")}</button></span>
+    </div>` : null}
     ${row.nativeSwitch && row.backend === "claude-code" ? html`<div class="s-account-native" data-native-offer="1">
       <p class="note s-account-why">${th("nativeOffer", row.nativeSwitch.npmPackageDir, u.audited)}</p>
       <span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-native-switch" aria-label=${`${label} — ${th("nativeSwitch")}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostNativeSwitch(); }}>${th("nativeSwitch")}</button></span>

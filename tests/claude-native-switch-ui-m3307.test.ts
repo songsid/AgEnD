@@ -110,6 +110,16 @@ describe("M-3307: switch an npm-global Claude Code to the native install", () =>
     expect(text(card("claude-code"))).toContain("the npm copy is still at");
   });
 
+  it("Fable note 1: a native install with an npm copy left (no run on the page, e.g. after a restart): the card offers the removal, naming the folder", async () => {
+    view = { clis: [{ ...CLAUDE_NPM, rows: [{ ...CLAUDE_NPM.rows[0], nativeSwitch: undefined, npmLeftover: { dir: "~/.nvm/v22/lib/node_modules/@anthropic-ai/claude-code" } }] }] };
+    await mount();
+    const left = card("claude-code")?.querySelector("[data-npm-left]");
+    expect(text(left)).toContain("~/.nvm/v22/lib/node_modules/@anthropic-ai/claude-code");
+    postAnswer = () => ({ body: { install: NRUN({ mode: "remove-npm", phase: "running" }) } });
+    fire(btn(/^Remove the npm copy$/), "click"); await settle(8);
+    expect(post()).toEqual([{ method: "POST", url: "/ui/host-npm-remove", body: { backend: "claude-code" } }]);
+  });
+
   it("zh-TW: the offer and the buttons in Chinese, no raw key", async () => {
     i18n.setLang("zh-TW", { store: false });
     run = NRUN({ claude: { kind: "native", path: "/p", npmLeftover: NPM } });

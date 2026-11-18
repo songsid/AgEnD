@@ -737,7 +737,8 @@ A Claude Code installed with npm (`npm install -g @anthropic-ai/claude-code`) ha
 #4146): it runs claude.ai/install.sh for the audited version in the install window. npm's own updates can be cut off by an
 AgEnD restart and leave `claude` half-installed; the native install avoids that. Afterwards the card says where `claude`
 runs now. If the npm copy is still there, **Remove the npm copy** is a separate step: it says which folder it removes and
-runs `npm -g uninstall @anthropic-ai/claude-code` in that npm folder. Needs you reminds you while Claude Code is an npm install.
+runs `npm -g uninstall @anthropic-ai/claude-code` in that npm folder; the card offers it whenever Claude Code runs from the native
+install and an npm copy is still on the computer (also after a restart). This offer is only on AI accounts, not in Needs you.
 
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
 before), from Settings → AI accounts & keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity
