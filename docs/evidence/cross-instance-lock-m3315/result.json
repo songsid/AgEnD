@@ -1,0 +1,15 @@
+{
+  "date": "2026-11-18",
+  "scope": "Real IPC dispatch + SQLite admission, inert pump; no terminal or live Fleet",
+  "directedPairs": 30,
+  "fiveToolAdmissions": 150,
+  "listTeams": "outside-team worker can inspect both Fleet teams",
+  "outsideTeamBroadcast": "worker-b (beta) -> both alpha members accepted",
+  "externalSession": "resolved to worker-b host; accepted",
+  "hubWindow": "all 5 peer tools refused; bound answer accepted; forged answer refused",
+  "hubWindowIncoming": "peer can still send to restricted shared-agent",
+  "hubExpiry": "peer contact resumes at 30 minutes",
+  "minimal": "send accepted; delegate/request/report/broadcast refused by tool profile",
+  "agentEndpointDispatchAdmissions": 5,
+  "oversized": "12,289-byte body refused"
+}
