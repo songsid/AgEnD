@@ -219,18 +219,13 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
       const ctx = await freshContext(fx.browser, c, popts.reducedMotion === true);
       // Stubbed transport: https://HOST/* → the gateway's local port, with that Host (the gateway pins it), as the tunnel
       // would carry it. The public link has no live stream (the page polls); one asked for anyway is refused.
-      // M-3329: at most TUNNEL_STREAMS requests at a time, as a tunnel reuses a few connections to the gateway. Each
-      // route.fetch is a connection of its own, and since #4160 a page asks for its ~150 modules at once: past the
-      // gateway's 32 connections it resets them (ECONNRESET), and the page hung on a request nobody answered.
-      const TUNNEL_STREAMS = 8;
-      let inFlight = 0;
-      const queue: Array<() => void> = [];
-      const slot = () => new Promise<void>(go => { if (inFlight < TUNNEL_STREAMS) { inFlight++; go(); } else queue.push(() => { inFlight++; go(); }); });
-      const free = () => { inFlight--; queue.shift()?.(); };
+      // M-3331: every request on its own connection, at once — unthrottled, as cloudflared's origin side can be (Go's
+      // http.Transport, no per-host cap: AgEnD sets no originRequest options; Fable on #4174). M-3329 had capped this at 8
+      // in flight, a gentler tunnel than the real one, while the gateway still reset connections past its 32; since #4176
+      // the gateway holds those for a slot, and this fixture checks that against the burst a page really makes.
       await ctx.route(`https://${HOST}/**`, async (route: any) => {
         const req = route.request(), u = new URL(req.url());
         if (/text\/event-stream/.test(req.headers().accept ?? "")) { await route.abort().catch(() => {}); return; }
-        await slot();
         try {
           const response = await route.fetch({ url: `http://127.0.0.1:${gatewayPort}${u.pathname}${u.search}`, headers: { ...req.headers(), host: HOST } });
           await route.fulfill({ response });
@@ -238,7 +233,7 @@ export async function openPublicLink(fx: { fm: any; browser: any }, opts: { host
           // The page or its context closed while a poll was in flight — or the transport failed: answer it as failed,
           // never leave the page waiting on it (M-3329).
           await route.abort("failed").catch(() => {});
-        } finally { free(); }
+        }
       });
       const page = await ctx.newPage();
       const seen = collectErrors(page);
