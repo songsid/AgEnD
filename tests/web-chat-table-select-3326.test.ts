@@ -17,7 +17,7 @@ afterEach(() => { for (const f of offs.splice(0)) f(); dom?.restore(); dom = nul
 const TABLE = `<div class="thread"><div class="msg agent" data-key="m1"><div class="body"><div class="md"><p>before</p><div class="tbl"><table>
 <thead><tr><th>Name</th><th>Model</th><th>Backend</th></tr></thead>
 <tbody><tr><td>Notes</td><td>opus</td><td>claude-code</td></tr><tr><td>Lumen</td><td>fable</td><td>claude-code</td></tr><tr><td>Argon</td><td>gemini 3</td><td>agy</td></tr></tbody>
-</table></div></div></div></div><div class="msg user" data-key="m2"><div class="body"><div class="md"><p>outside</p></div></div></div></div>`;
+</table></div></div></div></div><div class="msg user" data-key="m2"><div class="body"><div class="md"><p>outside</p><table class="second"><tbody><tr><td>x1</td><td>y1</td></tr><tr><td>x2</td><td>y2</td></tr></tbody></table></div></div></div><textarea id="box"></textarea></div>`;
 
 async function setup(o: { phone?: boolean } = {}) {
   dom = installDom({});
@@ -25,7 +25,7 @@ async function setup(o: { phone?: boolean } = {}) {
   const root = dom.document.createElement("div"); root.innerHTML = TABLE; dom.document.body.appendChild(root);
   const list = root.querySelector(".thread") as any;
   offs.push(mod.installTableSelection(list, { phone: () => !!o.phone }));
-  const rows = [...list.querySelectorAll("tr")].map((tr: any) => [...tr.children]) as any[][];
+  const rows = [...list.querySelector("table").querySelectorAll("tr")].map((tr: any) => [...tr.children]) as any[][];
   const cell = (r: number, c: number) => rows[r]![c]!;
   const table = list.querySelector("table") as any;
   const selected = () => rows.map((row) => row.map((c: any) => (c.classList.contains("cell-sel") ? 1 : 0)).join("")).join("|");
@@ -38,7 +38,8 @@ async function setup(o: { phone?: boolean } = {}) {
     dom!.document.body.dispatchEvent(e);
     return { data, prevented: e.defaultPrevented };
   };
-  return { mod, list, cell, table, selected, down, move, up, copy, outside: list.querySelector('[data-key="m2"] p') as any };
+  return { mod, list, cell, table, selected, down, move, up, copy, outside: list.querySelector('[data-key="m2"] p') as any,
+    second: list.querySelector("table.second") as any, box: list.querySelector("#box") as any };
 }
 
 describe("the grid and its text (pure)", () => {
@@ -100,6 +101,58 @@ describe("selecting cells with a mouse (a desk)", () => {
     t.down(t.cell(1, 0)); t.move(t.cell(3, 0)); t.up(t.cell(3, 0));
     t.table.parentNode.removeChild(t.table);
     expect(t.copy().prevented).toBe(false);
+  });
+});
+
+// M-3326 follow-up (#4172 review: the mutants that survived; the leader's call on formula cells).
+describe("hand-offs and edges", () => {
+  it("a cell starting with = or @ pastes as text (a leading '); + and - are left alone (numbers stay numbers)", async () => {
+    const t = await setup();
+    t.cell(1, 1).textContent = "=IMPORTXML(\"x\",\"//a\")"; t.cell(2, 1).textContent = "@sum"; t.cell(3, 1).textContent = "-5";
+    t.cell(1, 2).textContent = "+1"; t.cell(2, 2).textContent = "a=b"; t.cell(3, 2).textContent = "  =trimmed";
+    t.down(t.cell(1, 1)); t.move(t.cell(3, 2)); t.up(t.cell(3, 2));
+    expect(t.copy().data["text/plain"]).toBe("'=IMPORTXML(\"x\",\"//a\")\t+1\n'@sum\ta=b\n-5\t'=trimmed");
+  });
+  it("a text selection made since (Ctrl+A, Shift+arrows): Ctrl/Cmd+C copies that text, not the cells", async () => {
+    const t = await setup();
+    t.down(t.cell(1, 0)); t.move(t.cell(3, 0)); t.up(t.cell(3, 0));
+    (dom!.document as any).getSelection = () => ({ isCollapsed: false, toString: () => "some text", removeAllRanges() {} });
+    expect(t.copy().prevented).toBe(false);
+    (dom!.document as any).getSelection = () => ({ isCollapsed: true, toString: () => "", removeAllRanges() {} });
+    expect(t.copy().prevented, "the cells again once that selection is gone").toBe(true);
+  });
+  it("a field with its own selection (Tab into the composer, Shift+arrows): it copies its own text", async () => {
+    const t = await setup();
+    t.down(t.cell(1, 0)); t.move(t.cell(3, 0)); t.up(t.cell(3, 0));
+    t.box.value = "draft"; t.box.selectionStart = 0; t.box.selectionEnd = 3; t.box.focus();
+    expect(t.copy().prevented).toBe(false);
+    t.box.selectionEnd = 0;
+    expect(t.copy().prevented, "a caret only: the cells").toBe(true);
+  });
+  it("Shift+click in another table does not stretch the selection there: it starts again", async () => {
+    const t = await setup();
+    t.down(t.cell(1, 0)); t.move(t.cell(2, 1)); t.up(t.cell(2, 1));
+    const other = t.second.querySelectorAll("td")[3];
+    t.down(other, { shiftKey: true }); t.up(other);
+    expect([t.selected(), t.second.querySelectorAll(".cell-sel").length, t.table.classList.contains("cells-on")]).toEqual(["000|000|000|000", 0, false]);
+  });
+  it("while cells are being dragged the browser does not start its own selection; inside one cell it does", async () => {
+    const t = await setup();
+    const start = (el: any) => { const e = new MiniEvent("selectstart", { bubbles: true, cancelable: true }); el.dispatchEvent(e); return e.defaultPrevented; };
+    t.down(t.cell(1, 0));
+    expect(start(t.cell(1, 0)), "still in the cell pressed").toBe(false);
+    t.move(t.cell(2, 0));
+    expect(start(t.cell(2, 0)), "cells").toBe(true);
+    t.up(t.cell(2, 0));
+    expect(start(t.cell(2, 0)), "the drag is over").toBe(false);
+  });
+  it("removed: every listener goes (a thread drawn again does not stack copy handlers)", async () => {
+    const t = await setup();
+    const doc = dom!.document as any, kinds = ["pointerdown", "pointermove", "pointerup", "pointercancel", "selectstart", "keydown", "copy"];
+    const before = kinds.map((k) => doc.listenerCount(k));
+    expect(before.every((n: number) => n >= 1)).toBe(true);
+    offs.pop()!();
+    expect(kinds.map((k) => doc.listenerCount(k))).toEqual(kinds.map(() => 0));
   });
 });
 
