@@ -1057,6 +1057,7 @@ function HubMine() {
         <div class="hub-rows">${mine.map((e) => html`<a key=${e.id} class="s-row hub-row hub-row-link" href=${`/ui/hub/exposures?agent=${encodeURIComponent(e.id)}`}>
           <${Avatar} name=${e.displayName} /><span class="hub-row-text"><strong>${e.displayName}</strong>${e.intro?html`<small class="note">${e.intro}</small>`:null}<small class="note">${grantSummary(e.grants)}</small></span>
           ${stateTag(e.state, e.kind === "personal")}<${Icon} name="next" size=${16} /></a>`)}</div></section>` : null}
+      ${mine.length > 0 && session?.features?.includes("room-owner-requests-v1") ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentRequestSetting" props=${{ client: hubClient(), scope: session.csrf }} />` : null}
     </div>${allowTarget ? html`<${AllowDialog} x=${allowTarget} act=${act} onClose=${() => setAllowTarget(null)} />` : null}</div>`;
 }
 

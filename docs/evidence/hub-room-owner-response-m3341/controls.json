@@ -1,0 +1,22 @@
+[
+  {
+    "control": "shared-publication",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "protected-content",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "protected-anchor",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "hint-exclusion",
+    "caught": true,
+    "exit": 1
+  }
+]

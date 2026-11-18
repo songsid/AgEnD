@@ -1,0 +1,22 @@
+[
+  {
+    "control": "request-anchor",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "commit-permission",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "decline-pending",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "revoked-fleet",
+    "caught": true,
+    "exit": 1
+  }
+]

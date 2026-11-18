@@ -15,7 +15,7 @@ async function world(realAudit = false) {
   const r = rig = await s3bRig({ now: () => now, realAudit });
   const owner = r.addPerson("request-owner", "Example owner"), other = r.addPerson("other", "Other person");
   const manager = await r.signIn("admin"), outsider = await r.signIn("other");
-  r.httpDeps.uow.atomic(tx => HUB_ROOM_AGENT_REQUESTS_MIGRATION.up(r.sql(tx)));
+  if (!r.db.prepare("SELECT 1 FROM sqlite_master WHERE name='hub_room_agent_requests'").get()) r.httpDeps.uow.atomic(tx => HUB_ROOM_AGENT_REQUESTS_MIGRATION.up(r.sql(tx)));
   const events: { transaction: boolean; owner: string }[] = [];
   let service!: HubRoomAgentRequests;
   r.httpDeps.roomAgentRequests = (core, host) => service = createHubRoomAgentRequests(core, { ...host,
@@ -200,9 +200,9 @@ it("refuses a private hint whose content reference was replaced", async () => {
   expect(JSON.stringify(result.json)).not.toContain("private hint");
 });
 
-it("leaves the request schema, feature and routes absent from default composition", async () => {
+it("registers storage while leaving the routes and feature absent without their composition", async () => {
   const r = rig = await s3bRig(), admin = await r.signIn("admin");
-  expect(r.db.prepare("SELECT name FROM sqlite_master WHERE name LIKE 'hub_room_agent_request%'").all()).toEqual([]);
+  expect(r.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'hub_room_agent_request%'").all()).toHaveLength(3);
   expect(r.http.features).not.toContain("room-owner-requests-v1");
   expect((admin.body as any).features).not.toContain("room-owner-requests-v1");
   expect((await r.call(admin, "GET", "/hub/v1/agent-requests")).status).toBe(404);
