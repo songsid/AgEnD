@@ -12,6 +12,20 @@ import { takeAssetVersion } from "./web-asset-version.js";
 
 /** #1937: how long a public-link request other than an upload may take to arrive whole (the gateway's old requestTimeout). */
 export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
+/**
+ * M-3331: the connections the gateway serves at once, and the ones past them that may wait for a slot. Since #4160 a
+ * page asks for its ~150 modules at once; a tunnel that opens a connection per request went past the 32, and each one
+ * past them was destroyed (a reset: a module that "could not be loaded"). A connection past the 32 now waits, paused
+ * (nothing of it is read), for a slot — at most PUBLIC_GATEWAY_WAIT_MS. That stays under the server's headersTimeout
+ * (5 s): Node starts a connection's parser, and its headers clock, when the connection is accepted, so one held past
+ * headersTimeout would be answered 408 by the timeout sweep — a failed module all the same (Fable on #4176). The
+ * gateway's own timer always comes first (a reset, as before the queue); a tunnel's burst clears in milliseconds.
+ * The queue's bound keeps the abuse guard: past 32 + PUBLIC_GATEWAY_QUEUE open connections a new one is destroyed as
+ * before. 224 waiting covers a page's burst (~150-230 files) with room; a paused socket costs a descriptor and no work.
+ */
+export const PUBLIC_GATEWAY_MAX_SOCKETS = 32;
+export const PUBLIC_GATEWAY_QUEUE = 224;
+export const PUBLIC_GATEWAY_WAIT_MS = 4_000;
 
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
@@ -204,12 +218,34 @@ export function createPublicWebGateway(opts: {
   dispatch(req: IncomingMessage, res: ServerResponse): void;
   onError?(): void;
   create?: typeof createServer;
+  /** Tests: the connection limits (PUBLIC_GATEWAY_MAX_SOCKETS, _QUEUE, _WAIT_MS). */
+  limits?: { max?: number; queue?: number; waitMs?: number };
 }): PublicGateway {
   let host: string | null = null;
   const marker = `agend-public-${opts.exposureId}`;
   const sockets = new Set<Socket>();
+  const MAX = opts.limits?.max ?? PUBLIC_GATEWAY_MAX_SOCKETS, QUEUE = opts.limits?.queue ?? PUBLIC_GATEWAY_QUEUE, WAIT_MS = opts.limits?.waitMs ?? PUBLIC_GATEWAY_WAIT_MS;
+  /** Connections past MAX, oldest first, each with the timer that gives up on it. */
+  const waiting: Array<{ socket: Socket; timer: ReturnType<typeof setTimeout> }> = [];
+  const admit = (socket: Socket): void => {
+    sockets.add(socket);
+    socket.resume?.();                                                // reading starts now (pauseOnConnect, below)
+    socket.once("close", () => {
+      sockets.delete(socket);
+      // A slot is free: the longest-waiting connection that is still open takes it.
+      for (let next = waiting.shift(); next; next = waiting.shift()) {
+        clearTimeout(next.timer);
+        if (next.socket.destroyed) continue;
+        admit(next.socket);
+        break;
+      }
+    });
+  };
   const reject = (res: ServerResponse, status: number): void => { res.writeHead(status); res.end(JSON.stringify({ error: "public web request refused" })); };
   const server = (opts.create ?? createServer)((req, res) => {
+    // M-3331: while connections wait for a slot, a served one closes after its response, so the next one gets it now
+    // rather than after the keep-alive timeout. Under the cap nothing waits: connections stay kept alive.
+    if (waiting.length) res.shouldKeepAlive = false;
     applyWebSecurityHeaders(res);
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
@@ -243,12 +279,24 @@ export function createPublicWebGateway(opts: {
   });
   server.maxHeadersCount = 64;
   server.headersTimeout = 5_000;
+  // M-3331: a waiting connection's headers clock already runs (above): it never waits as long as headersTimeout allows.
+  const waitMs = Math.max(0, Math.min(WAIT_MS, server.headersTimeout - 1_000));
   // #1937: an upload may take long on a slow link (its own clocks bound it); every other request is still dropped if it
   // has not arrived whole in PUBLIC_GATEWAY_RECEIVE_MS (limitRequestReceive, where the request is dispatched).
   server.requestTimeout = UPLOAD_REQUEST_TIMEOUT_MS;
   server.keepAliveTimeout = 5_000;
   server.setTimeout(15_000, socket => socket.destroy());
-  server.on("connection", socket => { if (sockets.size >= 32) { socket.destroy(); return; } sockets.add(socket); socket.on("close", () => sockets.delete(socket)); });
+  // Every connection arrives unread (net.Server's pauseOnConnect: the HTTP parser reads the socket's handle itself, so a
+  // pause() after it attached would not hold it); an admitted one is resumed, a waiting one stays unread until its slot.
+  (server as Server & { pauseOnConnect: boolean }).pauseOnConnect = true;
+  server.on("connection", socket => {
+    if (sockets.size < MAX) { admit(socket); return; }
+    if (waiting.length >= QUEUE) { socket.destroy(); return; }       // the abuse guard: past the queue, refused as before
+    const entry = { socket, timer: setTimeout(() => { const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); socket.destroy(); }, waitMs) };
+    entry.timer.unref?.();
+    socket.once("close", () => { clearTimeout(entry.timer); const i = waiting.indexOf(entry); if (i >= 0) waiting.splice(i, 1); });
+    waiting.push(entry);
+  });
   // Upgrades are never accepted, but they still leave HTTP's ordinary connection accounting.
   server.on("upgrade", (_req, socket) => socket.destroy());
   server.on("connect", (_req, socket) => socket.destroy());
@@ -275,6 +323,7 @@ export function createPublicWebGateway(opts: {
       server.close();
       server.closeAllConnections();
       for (const socket of sockets) socket.destroy();
+      for (const w of waiting.splice(0)) { clearTimeout(w.timer); w.socket.destroy(); }
     },
   };
 }
