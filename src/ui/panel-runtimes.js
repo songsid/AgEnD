@@ -17,13 +17,14 @@ import { credentialProfileView, credentialProfileState } from "./credential-prof
 import { identityText } from "./account-identity.js";
 import { CliInstall, offersCliInstall } from "./runtime-cli-install.js";
 import { useWindowsCliCatalog, refreshWindowsCliCatalog, useWindowsCliCatalogSnapshot } from "./windows-cli-catalog.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 /** The install tabs', command cards' and account list's stylesheet, linked once by this lazy page (a tab opened before an upgrade has an app.css without these rules). */
 export function linkRuntimeInstallCss(doc = typeof document !== "undefined" ? document : null) {
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-runtime-install-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/runtime-install.css"); link.setAttribute("data-runtime-install-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/runtime-install.css")); link.setAttribute("data-runtime-install-css", "1");
     doc.head.appendChild(link);
   } catch { /* the page still works, only plainer, without it */ }
 }

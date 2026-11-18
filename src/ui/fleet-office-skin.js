@@ -47,6 +47,7 @@ import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
 import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
 import { tierColours } from "./fleet-office-levels.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 export { nameHash };
 
@@ -615,7 +616,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
 // ── The built-in cozy (#2631): the zones layout on a warm pixel-art office drawn as one picture, the built-in people ──
 
 /** Its picture, shipped with the page (src/ui/shared/office/cozy.png, auth-api.ts ASSETS: public static, as the font). */
-export const COZY_BACKGROUND = "/assets/office-cozy.png";
+export const COZY_BACKGROUND = assetUrl("/assets/office-cozy.png");
 const pts = (...xy) => xy.map(([x, y]) => ({ x, y }));
 // The seats are feet points on the picture: chairs in front of the desks, the sofa, the coffee table and machine, the
 // beanbags (a sleeper's bottom), in front of the whiteboard. The rects put a crowd's first extra spots (fleet-office-zones.js
@@ -662,7 +663,7 @@ const wps = (list) => list.map(([id, x, y]) => ({ id, x, y }));
 // alert corner bottom-right, one straight aisle up the middle from a bottom-centre door ──
 
 /** The guild: a fantasy adventurers' guild hall (src/ui/shared/office/guild.png). */
-export const GUILD_BACKGROUND = "/assets/office-guild.png";
+export const GUILD_BACKGROUND = assetUrl("/assets/office-guild.png");
 // Seats: the chairs at the six map desks, the tavern bench, the stools round the table, the bar; the inn beds (a sleeper's
 // middle); in front of the quest board.
 const GUILD_AREAS = {
@@ -696,7 +697,7 @@ export const GUILD_PACK = {
 };
 
 /** The school: a classroom (src/ui/shared/office/school.png). */
-export const SCHOOL_BACKGROUND = "/assets/office-school.png";
+export const SCHOOL_BACKGROUND = assetUrl("/assets/office-school.png");
 // Seats: the chairs at the six student desks; the sofa, the two stools, the vending machine; the nurse's beds; in front
 // of the chalkboard.
 const SCHOOL_AREAS = {

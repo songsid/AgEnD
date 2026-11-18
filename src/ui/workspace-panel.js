@@ -13,6 +13,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Skeleton } from "/assets/ui-states.js";
+import { assetUrl } from "/assets/asset-url.js";
 import "./workspace-strings.js";          // this panel's own words (an older cached chat-strings.js lacks them)
 import "./workspace-follow-strings.js";   // #3160's words, a module of their own (an older workspace-strings.js lacks them)
 
@@ -25,7 +26,7 @@ function linkCss(href, mark, doc = typeof document !== "undefined" ? document : 
     doc.head.appendChild(link);
   } catch { /* the panel still works without it */ }
 }
-const linkWorkspaceCss = (doc) => { linkCss("/assets/workspace.css", "1", doc); linkCss("/assets/workspace-follow.css", "follow", doc); };
+const linkWorkspaceCss = (doc) => { linkCss(assetUrl("/assets/workspace.css"), "1", doc); linkCss(assetUrl("/assets/workspace-follow.css"), "follow", doc); };
 const api = (instance, op, path, extra = "") => `/ui/workspace?instance=${encodeURIComponent(instance)}&op=${op}${path !== undefined ? `&path=${encodeURIComponent(path)}` : ""}${extra}`;
 async function read(instance, op, path, extra) {
   let r;

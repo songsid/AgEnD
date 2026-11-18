@@ -3,6 +3,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { Icon } from "/assets/ui-icons.js";
 import { navigate } from "/assets/app-nav.js";
 import { ht } from "./hub-teams-strings.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 const changes = new Set();
 const changed = () => { for (const fn of changes) fn(); };
@@ -18,7 +19,7 @@ export function linkHubTeamsCss(doc = typeof document === "undefined" ? null : d
   if (!doc?.head) return Promise.resolve(false);
   if (cssLoads.has(doc)) return cssLoads.get(doc);
   const promise = new Promise(resolve => {
-    const link = doc.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-teams.css");
+    const link = doc.createElement("link"); link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-teams.css"));
     link.setAttribute("data-hub-teams-css", "1");
     link.addEventListener("load", () => resolve(true), { once: true });
     link.addEventListener("error", () => { link.remove(); cssLoads.delete(doc); resolve(false); }, { once: true });

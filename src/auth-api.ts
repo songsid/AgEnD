@@ -193,6 +193,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     // #3822: the in-place "this tab is older than AgEnD — reload" prompt the Outlet and lazy panels show (static, no data).
     "stale-tab.js",
     "module-warm.js",
+    // M-3328: a module's later stylesheets and pictures under the page's version (static, no data).
+    "asset-url.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the

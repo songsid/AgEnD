@@ -60,6 +60,7 @@ import { applyTheme, clearAmbient, resolvedMode, themeFor, themeImageUrl, themeM
 import { colorMenuItem } from "/assets/identity-color.js";
 import { brokenPictures, cardFoldable, IdentityCard, useCard } from "/assets/identity-card.js";
 import { AgentWidget, instanceBinds, widgetFor } from "/assets/agent-widget.js";
+import { assetUrl } from "/assets/asset-url.js";
 // #1629 r4 §1: the identity card under the chat's header — hidden by default; shown or not is this device's choice.
 // #2217 (the user, 2026-10-19): no row of its own; its picture and bio can be folded away (the banner stays) — this
 // device's choice too, kept the same way. The user (2026-10-20): no control on the card — one card button in the header
@@ -187,7 +188,7 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-chat-work-bar-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/chat-work-bar.css"); link.setAttribute("data-chat-work-bar-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/chat-work-bar.css")); link.setAttribute("data-chat-work-bar-css", "1");
     doc.head.appendChild(link);
   } catch { /* Stop still works without it */ }
 }

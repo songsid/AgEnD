@@ -6,13 +6,14 @@ import { Skeleton } from "/assets/ui-states.js";
 import { WorkspaceFileViewer, linkWorkspaceCss } from "./workspace-panel.js";
 import { openReplyPreviewImage } from "/assets/image-lightbox.js";
 import { openReplyFile, openMarkdown, panelStore, closePanel } from "/assets/preview-panel.js";
+import { assetUrl } from "/assets/asset-url.js";
 register("replyPreview", {
   en: { button: "Preview {0}", title: "File preview", loading: "Loading file", unoffered: "File previews are not available for this agent.", missing: "This file is no longer in the agent's working folder.", denied: "This preview needs an administrator session and a file inside this agent's working folder.", changed: "The session or working folder changed. Open the preview again.", failed: "The file could not be loaded. Try opening the preview again.", remote: "Previews of files on a paired Windows computer aren't available yet.", lines: "Requested lines: {0}–{1}", readonly: "Read only · current file in this agent's working folder", pdf: "PDF preview" },
   "zh-TW": { button: "預覽 {0}", title: "檔案預覽", loading: "正在載入檔案", unoffered: "這個 Agent 無法提供檔案預覽。", missing: "這個檔案已不在 Agent 的工作資料夾裡。", denied: "需要管理員登入，且檔案必須在這個 Agent 的工作資料夾裡，才能預覽。", changed: "登入或工作資料夾已變更，請重新開啟預覽。", failed: "無法載入檔案，請重新開啟預覽再試一次。", remote: "目前還無法預覽已配對 Windows 電腦上的檔案。", lines: "指定行數：{0}–{1}", readonly: "唯讀 · 這個 Agent 工作資料夾裡的目前檔案", pdf: "PDF 預覽" },
 });
 function linkReplyCss() {
   if (typeof document === "undefined" || document.querySelector('link[data-reply-preview-css]')) return;
-  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/reply-previews.css"; link.dataset.replyPreviewCss = "1"; document.head.append(link);
+  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = assetUrl("/assets/reply-previews.css"); link.dataset.replyPreviewCss = "1"; document.head.append(link);
 }
 linkReplyCss();
 export const replyPreviewLabel = p => t("replyPreview.button", p.path + (p.line ? `:${p.line}${p.endLine && p.endLine !== p.line ? `–${p.endLine}` : ""}` : ""));

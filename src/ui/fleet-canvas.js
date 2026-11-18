@@ -34,7 +34,7 @@ import { OC, REST_KEY, SUM_LINE, canvasLayout, hits, needle, openingRegion, summ
 import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
 import { K_MAX, K_MIN, fitView, gestureState, gestures, miniPoint, pinchView, wheelFactor, zoomAt, zoomKey } from "./fleet-canvas-view.js";
-import { createRouteClient } from "./fleet-route.js";
+import { createRouteClient, warmRouter } from "./fleet-route.js";
 
 register("orgc", {
   en: {
@@ -461,6 +461,8 @@ export function OrgCanvas({ org, app, lease }) {
   // M-3253: on a phone the Office's tools (and Live) are one ⋯ sheet at the end of this bar: one row, Find keeps its width.
   const phone = useOfficePhone(), [officeMore, setOfficeMore] = useState(false), officeSheet = phone && mode === "office";
   const traffic = useTraffic(lease, live);
+  // M-3328: Live on — the router's files are asked for now, together, not one by one at the first routed scene.
+  useEffect(() => { if (live && typeof Worker === "function") warmRouter(); }, [live]);
   const sending = useMemo(() => sendingBy(traffic), [traffic]);
   const [folded, setFolded] = useState(readFolded);
   const [query, setQuery] = useState("");

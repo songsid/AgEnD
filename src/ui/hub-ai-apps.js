@@ -4,13 +4,14 @@ import {lang} from "/assets/app-i18n.js";
 import {hubConnectorPrompt} from "/assets/connector-prompt.js";
 import {SubjectPicker,subjectText} from "./hub-subject-picker.js";
 import {ha} from "./hub-ai-apps-strings.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 export const APP_SCOPES=Object.freeze(["rooms:read","rooms:post","agents:ask"]);
 const keys={"rooms:read":"read","rooms:post":"post","agents:ask":"ask"};
 const styles=new WeakMap();
 export function linkHubAppsCss(doc=typeof document==="undefined"?null:document){
  if(!doc?.head)return Promise.resolve(false);if(styles.has(doc))return styles.get(doc);
- const loaded=new Promise(resolve=>{const link=doc.createElement("link");link.setAttribute("rel","stylesheet");link.setAttribute("href","/assets/hub-ai-apps.css");link.setAttribute("data-hub-apps-css","1");
+ const loaded=new Promise(resolve=>{const link=doc.createElement("link");link.setAttribute("rel","stylesheet");link.setAttribute("href",assetUrl("/assets/hub-ai-apps.css"));link.setAttribute("data-hub-apps-css","1");
   link.addEventListener("load",()=>resolve(true),{once:true});link.addEventListener("error",()=>{link.remove();styles.delete(doc);resolve(false);},{once:true});doc.head.appendChild(link);});styles.set(doc,loaded);return loaded;
 }
 function useStyle(){const[ready,setReady]=useState(null),[retry,setRetry]=useState(0);useEffect(()=>{let live=true;linkHubAppsCss().then(r=>{if(live)setReady(r);});return()=>{live=false;};},[retry]);return[ready,()=>setRetry(n=>n+1)];}

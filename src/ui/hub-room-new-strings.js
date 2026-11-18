@@ -2,6 +2,7 @@
 // settings, section 7): only the words the shared room vocabulary (hub-room-strings.js, namespace hubRoom) does not have.
 // A module of its own, so a tab holding an older dictionary still has every word (upgrade skew).
 import { register, t } from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("hubRoomNew", {
   en: {
@@ -40,7 +41,7 @@ export function linkRoomsU2Css(doc = typeof document !== "undefined" ? document 
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-rooms-u2-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub-rooms-u2.css"); link.setAttribute("data-hub-rooms-u2-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub-rooms-u2.css")); link.setAttribute("data-hub-rooms-u2-css", "1");
     doc.head.appendChild(link);
   } catch { /* the screens still work without it */ }
 }

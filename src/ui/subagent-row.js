@@ -2,6 +2,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import { ErrorState } from "/assets/ui-states.js";
+import { assetUrl } from "/assets/asset-url.js";
 register("subagents", {
   en: { title: "Subagents", completed: "{0} finished", running: "{0} running", unknown: "{0} unconfirmed", parent: "Main Agent task: {0}", turn: "Main Agent task turn: {0}", done: "Finished", live: "Running", unsure: "Unconfirmed", seconds: "{0} s", elapsed: "{0} s elapsed", note: "A subagent's report is not the main Agent's final answer.", gap: "Some records are missing or no longer current. Their state is unconfirmed.", failed: "Subagent status could not be checked.", fallback: "Subagent", scroll: "Scroll to see all child runs.", bound: "Up to 16 recent child runs are shown." },
   "zh-TW": { title: "子 Agent", completed: "{0} 已完成", running: "{0} 執行中", unknown: "{0} 待確認", parent: "主 Agent 工作：{0}", turn: "主 Agent 工作回合：{0}", done: "已完成", live: "執行中", unsure: "待確認", seconds: "{0} 秒", elapsed: "已經過 {0} 秒", note: "子 Agent 的回報不是主 Agent 的最終答覆。", gap: "部分紀錄缺漏或已不再是目前的紀錄，狀態待確認。", failed: "暫時無法確認子 Agent 的狀態。", fallback: "子 Agent", scroll: "捲動檢視所有子工作回合。", bound: "最多顯示最近 16 個子工作回合。" },
@@ -46,8 +47,8 @@ export function observeSubagents(name, { fetcher = fetch, changed, setTimer = se
   return { retry: read, stop() { live = false; if (timer !== null) clearTimer(timer); abort?.abort(); } };
 }
 function styles() {
-  if (document.querySelector('link[href="/assets/subagent-row.css"]')) return;
-  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/subagent-row.css"; document.head.appendChild(link);
+  if (document.querySelector(`link[href="${assetUrl("/assets/subagent-row.css")}"]`)) return;
+  const link = document.createElement("link"); link.rel = "stylesheet"; link.href = assetUrl("/assets/subagent-row.css"); document.head.appendChild(link);
 }
 export function SubagentRow({ name }) {
   const [value, setValue] = useState({ owner: null, runs: [], error: false }), [tick, setTick] = useState(Date.now());

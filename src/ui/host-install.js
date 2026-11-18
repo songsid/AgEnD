@@ -9,6 +9,7 @@ import { register, t } from "/assets/app-i18n.js";
 import { createStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmedWrite } from "./settings-confirm.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("hostinstall", {
   en: {
@@ -154,9 +155,9 @@ register("hostinstall", {
 });
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
 function installStyles() {
-  if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/host-install.css"]')) return;
+  if (typeof document === "undefined" || !document.head || document.querySelector(`link[href="${assetUrl("/assets/host-install.css")}"]`)) return;
   const link = document.createElement("link");
-  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/host-install.css"); document.head.appendChild(link);
+  link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/host-install.css")); document.head.appendChild(link);
 }
 function revealPending(id) {
   const show = () => Array.from(document.querySelectorAll("[data-pending]")).find(n => n.getAttribute("data-pending") === id)?.scrollIntoView?.({ block: "center" });

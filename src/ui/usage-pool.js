@@ -6,6 +6,7 @@ import { html } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import "/assets/view-strings.js";   // the usage panel's own words (`view.usage.metric.*`)
 import { CompactMeter, usageClock, usageText } from "/assets/usage-meter.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 /**
  * The pool's name in the page's language from the usage panel's own reference (`labelI18n`), else the label the server sent. Text only; a reference that does not name a
@@ -26,7 +27,7 @@ function linkPoolCss(doc = typeof document !== "undefined" ? document : null) {
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-accounts-usage-pool-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/accounts-usage-pool.css"); link.setAttribute("data-accounts-usage-pool-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/accounts-usage-pool.css")); link.setAttribute("data-accounts-usage-pool-css", "1");
     doc.head.appendChild(link);
   } catch { /* the block still reads without it */ }
 }

@@ -14,6 +14,7 @@ import { sectionPath } from "/assets/app-route.js";
 import { api } from "./settings-confirm.js";
 import { agoWords } from "./settings-devices.js";
 import { roleName } from "/assets/device-roles.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("accessov", {
   en: {
@@ -67,7 +68,7 @@ export function linkAccessOverviewCss(doc = typeof document !== "undefined" ? do
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-access-overview-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/access-overview.css"); link.setAttribute("data-access-overview-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/access-overview.css")); link.setAttribute("data-access-overview-css", "1");
     doc.head.appendChild(link);
   } catch { /* the page still works without it */ }
 }

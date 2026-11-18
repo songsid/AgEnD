@@ -2,6 +2,7 @@
 // A lazy module of its own: loaded only with a Hub page or card, never while the Hub is off. It imports only names every
 // shell has had since #1408 (register / t), so a tab opened before an upgrade loads it as fresh as the rest.
 import { register, t } from "/assets/app-i18n.js";
+import { assetUrl } from "/assets/asset-url.js";
 
 register("hub", {
   en: {
@@ -172,7 +173,7 @@ export function linkHubCss(doc = typeof document !== "undefined" ? document : nu
   try {
     if (!doc || !doc.head || doc.querySelector('link[data-hub-css="1"]')) return;
     const link = doc.createElement("link");
-    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", "/assets/hub.css"); link.setAttribute("data-hub-css", "1");
+    link.setAttribute("rel", "stylesheet"); link.setAttribute("href", assetUrl("/assets/hub.css")); link.setAttribute("data-hub-css", "1");
     doc.head.appendChild(link);
   } catch { /* the pages still work without it */ }
 }

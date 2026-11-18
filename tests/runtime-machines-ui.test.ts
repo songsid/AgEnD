@@ -473,7 +473,7 @@ describe("remote machine UI",()=>{
       const own=[".runtime-install",".runtime-install-tabs",".runtime-install-panel",".runtime-command-card",".runtime-command-label",".runtime-command-row",".runtime-command-text",".runtime-installer-hash",".runtime-installer-error",".runtime-reinstall"];
       for(const selector of own){expect(selectors,selector).toContain(selector);expect(read("src/ui/shared/app.css"),`${selector} must not be in app.css: a tab with an older app.css never gets it`).not.toMatch(new RegExp(`(^|[\\s,}])${selector.replace(".","\\.")}(?![a-z-])`,"m"));}
       // the page links it, the server serves it, and the long command wraps and scrolls inside it (the phone layout is its media rule)
-      expect(read("src/ui/panel-runtimes.js")).toContain('href", "/assets/runtime-install.css"');
+      expect(read("src/ui/panel-runtimes.js")).toContain('href", assetUrl("/assets/runtime-install.css")');
       expect(read("src/auth-api.ts")).toContain('"runtime-install.css": { file: join("shared", "runtime-install.css")');
       expect(read("src/ui/shared/runtime-install.css")).toMatch(/\.runtime-command-text \{[^}]*white-space: pre-wrap[^}]*overflow-x: auto/);
       expect(read("src/ui/shared/runtime-install.css")).toMatch(/@media \(max-width: 600px\) \{ \.runtime-command-row \{ flex-direction: column/);
