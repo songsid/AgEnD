@@ -23,19 +23,19 @@ channels:
   - id: discord
     type: discord
     bot_token_env: DEMO_DISCORD_TOKEN
-    group_id: "1496407196106494055"
+    group_id: "1000000000000000201"
     access: { mode: open, allowed_users: ["368442200000000001"] }
   - id: grok-persona
     type: discord
     bot_token_env: DEMO_PERSONA_TOKEN
-    group_id: "1496407196106494055"
+    group_id: "1000000000000000201"
     access: { mode: locked }
   - id: telegram
     type: telegram
     mode: topic
     bot_token_env: DEMO_TELEGRAM_TOKEN
-    group_id: "-1003833855730"
-    access: { mode: locked, allowed_users: ["951494522"] }
+    group_id: "-1000000000201"
+    access: { mode: locked, allowed_users: ["100000101"] }
 web:
 ${web[1]}`);
 fm.loadConfig(fm.configPath);

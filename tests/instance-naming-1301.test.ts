@@ -32,7 +32,7 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-const LONG_ID = "1503381916525793300"; // 19 digits, pre-2.1.12 form
+const LONG_ID = "1000000000005793300"; // 19 digits, pre-2.1.12 form
 const last6 = LONG_ID.slice(-6);
 
 describe("uniqueInstanceName (#1301)", () => {
@@ -65,20 +65,20 @@ describe("uniqueInstanceName (#1301)", () => {
   it("refuses when the full form is owned by another topic (#1305 P1/r3)", () => {
     // Discord topic …125123456 owns blog-t123456; Telegram topic 123456 arrives.
     const taken = new Set(["blog-t123456"]);
-    const sameTopic = (n: string) => n === "blog-t1503381916525123456";
+    const sameTopic = (n: string) => n === "blog-t1000000000000123456";
     expect(() => uniqueInstanceName("blog", "123456", (n) => taken.has(n), sameTopic))
       .toThrow(/already used by a different topic.*different topic_name/);
     // Control: a genuine same-topic retry still reuses the full form.
-    expect(uniqueInstanceName("blog", "1503381916525123456",
-      (n) => n === "blog-t1503381916525123456",
-      (n) => n === "blog-t1503381916525123456"))
-      .toBe("blog-t1503381916525123456");
+    expect(uniqueInstanceName("blog", "1000000000000123456",
+      (n) => n === "blog-t1000000000000123456",
+      (n) => n === "blog-t1000000000000123456"))
+      .toBe("blog-t1000000000000123456");
   });
 
   it("reuses a taken short form owned by the same topic instead of duplicating (#1305 P2-2)", () => {
     // An earlier partial attempt left blog-t793300 for this same topic; the
     // full form is still free. Rebind must reuse it, not allocate another.
-    const idB = "9999999999999793300";
+    const idB = "1000000000009793300";
     const taken = new Set(["blog-t793300"]);
     const sameTopic = (n: string) => n === "blog-t793300";
     expect(uniqueInstanceName("blog", idB, (n) => taken.has(n), sameTopic))
@@ -89,10 +89,10 @@ describe("uniqueInstanceName (#1301)", () => {
   });
 
   it("reuses the longer owned form when the shorter collision disappears (#1305 r4)", () => {
-    // Topic 9999999999999793300 owns blog-t9793300; the old owner of
+    // Topic 1000000000009793300 owns blog-t9793300; the old owner of
     // blog-t793300 is gone. A rebind must reuse blog-t9793300, never start
     // a second instance at the free shorter form.
-    const idB = "9999999999999793300";
+    const idB = "1000000000009793300";
     const taken = new Set(["blog-t9793300"]);
     const sameTopic = (n: string) => n === "blog-t9793300";
     expect(uniqueInstanceName("blog", idB, (n) => taken.has(n), sameTopic))
@@ -136,9 +136,9 @@ describe("displayInstanceName (#1301)", () => {
   });
 
   it("keeps allocator-lengthened suffixes whole so same-tail names stay distinct (#1305 P2)", () => {
-    // Prism's pair: 1503381916525793300 vs 9999999999999793300.
-    const idA = "1503381916525793300";
-    const idB = "9999999999999793300";
+    // the pair: 1000000000005793300 vs 1000000000009793300.
+    const idA = "1000000000005793300";
+    const idB = "1000000000009793300";
     const nameA = uniqueInstanceName("blog", idA, () => false);
     expect(nameA).toBe("blog-t793300");
     const nameB = uniqueInstanceName("blog", idB, (n) => n === nameA);
@@ -190,7 +190,7 @@ describe("create_instance naming (#1301)", () => {
     const { fm, configPath } = makeFleet();
     const projectDir = makeTempDir("agend-1301-project-");
     // A different topic whose tail collides on 6 digits.
-    const otherId = `9999999999999${last6}`;
+    const otherId = `1000000000009${last6}`;
     const first = await create(fm, otherId, "blog", projectDir);
     expect(first.name).toBe(`blog-t${last6}`);
     const projectDir2 = makeTempDir("agend-1301-project2-");
@@ -217,7 +217,7 @@ describe("create_instance naming (#1301)", () => {
 
   it("refuses creation on cross-topic suffix collision instead of overwriting (#1305 P1/r3)", async () => {
     const { fm, configPath } = makeFleet();
-    const discordTopic = "1503381916525123456"; // last6 = 123456
+    const discordTopic = "1000000000000123456"; // last6 = 123456
     const projectDir = makeTempDir("agend-1301-project-");
     const first = await create(fm, discordTopic, "blog", projectDir);
     expect(first.name).toBe("blog-t123456");
@@ -379,16 +379,16 @@ describe("visibility posts and Mirror line (#1301)", () => {
 
   it("keeps two legacy same-tail entries distinct in topic posts and Mirror (#1305 P2-1)", async () => {
     const names = {
-      sender: "blog-t1503381916525793300",
-      target: "blog-t1503381916526793300",
+      sender: "blog-t1000000000005793300",
+      target: "blog-t1000000000006793300",
     };
     const { sendText, mirror } = await sendTask(undefined, undefined, names);
     expect(sendText).toHaveBeenCalledTimes(2);
     for (const call of sendText.mock.calls) {
       const text = String((call as unknown[])[1]);
       expect(text).toContain("blog-t793300 → blog-t6793300");
-      expect(text).not.toContain("1503381916525793300");
-      expect(text).not.toContain("1503381916526793300");
+      expect(text).not.toContain("1000000000005793300");
+      expect(text).not.toContain("1000000000006793300");
     }
     expect(mirror).toHaveLength(1);
     expect(mirror[0]).toContain("blog-t793300 → blog-t6793300:");
@@ -413,7 +413,7 @@ describe("bindAndStart naming (#1305 P1/r3)", () => {
   it("refuses a cross-topic suffix collision instead of overwriting", async () => {
     const dir = makeTempDir("agend-1305-bind-");
     const instances: Record<string, { working_directory: string; topic_id: string }> = {
-      "blog-t123456": { working_directory: "/tmp/orig", topic_id: "1503381916525123456" },
+      "blog-t123456": { working_directory: "/tmp/orig", topic_id: "1000000000000123456" },
     };
     const routing = new Map<string, unknown>();
     const tc = new TopicCommands({
@@ -426,7 +426,7 @@ describe("bindAndStart naming (#1305 P1/r3)", () => {
       logger: { debug: () => {}, info: () => {}, warn: () => {}, error: () => {} },
     } as never);
     await expect(tc.bindAndStart("/projects/blog", "123456")).rejects.toThrow(/different topic_name/);
-    expect(instances["blog-t123456"]).toEqual({ working_directory: "/tmp/orig", topic_id: "1503381916525123456" });
+    expect(instances["blog-t123456"]).toEqual({ working_directory: "/tmp/orig", topic_id: "1000000000000123456" });
     expect(Object.keys(instances)).toEqual(["blog-t123456"]);
   });
 
@@ -452,7 +452,7 @@ describe("bindAndStart naming (#1305 P1/r3)", () => {
 
   it("reuses the longer owned form when the shorter collision is gone (#1305 r4)", async () => {
     const dir = makeTempDir("agend-1305-rebind2-");
-    const ownedId = "9999999999999793300";
+    const ownedId = "1000000000009793300";
     const instances: Record<string, { working_directory: string; topic_id: string }> = {
       "blog-t9793300": { working_directory: "/tmp/orig", topic_id: ownedId },
     };
@@ -482,7 +482,7 @@ describe("allocator output always matches the orphan predicate (#1305 P2-3)", ()
       uniqueInstanceName("blog", LONG_ID, (n) => n === `blog-t${last6}`), // lengthened 7
       uniqueInstanceName("blog", LONG_ID, (n) => n !== `blog-t${LONG_ID}` && n.startsWith("blog-t")), // full
       uniqueInstanceName("My Blog!", "123456", () => false), // sanitized short
-      uniqueInstanceName("shop", "1503381916525793300", () => false),
+      uniqueInstanceName("shop", "1000000000005793300", () => false),
     ];
     expect(names).toHaveLength(6);
     for (const name of names) expect(isOrphanInstanceWindowName(name)).toBe(true);
@@ -493,8 +493,8 @@ describe("allocator output always matches the orphan predicate (#1305 P2-3)", ()
 });
 
 describe("assignDisplayLabels (#1305 P2-1)", () => {
-  const LEG_A = "blog-t1503381916525793300";
-  const LEG_B = "blog-t1503381916526793300";
+  const LEG_A = "blog-t1000000000005793300";
+  const LEG_B = "blog-t1000000000006793300";
 
   it("lengthens two legacy same-tail entries just enough to differ", () => {
     const labels = assignDisplayLabels([{ name: LEG_A }, { name: LEG_B }]);
@@ -583,13 +583,13 @@ describe("/status display (#1301)", () => {
   it("lengthens two legacy same-tail entries just enough in /status (#1305 P2-1)", async () => {
     const dir = makeTempDir("agend-1301-status-leg-");
     const commands = statusCommands({
-      "blog-t1503381916525793300": { working_directory: dir },
-      "blog-t1503381916526793300": { working_directory: dir },
+      "blog-t1000000000005793300": { working_directory: dir },
+      "blog-t1000000000006793300": { working_directory: dir },
     });
     const text = await commands.getStatusText();
     expect(text).toContain("blog-t793300");
     expect(text).toContain("blog-t6793300");
-    expect(text).not.toContain("1503381916525793300");
-    expect(text).not.toContain("1503381916526793300");
+    expect(text).not.toContain("1000000000005793300");
+    expect(text).not.toContain("1000000000006793300");
   });
 });
