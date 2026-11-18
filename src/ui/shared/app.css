@@ -1053,6 +1053,13 @@ html.lb-open .scroller { overflow: hidden; }
    wrapper instead. A column keeps at least 5em: CJK text can break between any two characters. */
 .msg .md th, .msg .md td, .text-card .tc-table th, .text-card .tc-table td { overflow-wrap: break-word; word-break: normal; min-width: 5em; }
 .msg .md .al-c { text-align: center; } .msg .md .al-r { text-align: right; }
+/* M-3326: a table's cells selected as a spreadsheet's (chat-table-select.js): while cells are selected the browser's own
+   text selection stays off the table, and the selected cells show the selection's tint over their own background. */
+.msg .md table.cells-on, .msg .tc-table.cells-on { -webkit-user-select: none; user-select: none; }
+.msg .md td.cell-sel, .msg .md th.cell-sel, .msg .tc-table td.cell-sel, .msg .tc-table th.cell-sel {
+  background-image: linear-gradient(var(--accent-dim), var(--accent-dim)), linear-gradient(var(--accent-dim), var(--accent-dim));
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
 .msg .md h3, .msg .md h4, .msg .md h5, .msg .md h6 { margin: var(--s-3) 0 var(--s-2); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
 .msg .md .tk-k { color: var(--tk-k); } .msg .md .tk-s { color: var(--tk-s); } .msg .md .tk-n { color: var(--tk-n); } .msg .md .tk-c { color: var(--tk-c); font-style: italic; }
 .codeblock { margin: var(--s-2) 0; border-radius: var(--r-md); overflow: hidden; background: var(--code-bg); position: relative; }
