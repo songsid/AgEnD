@@ -241,6 +241,17 @@ export class WebTerminalSession extends EventEmitter {
   /** The one-time access token, readable only until it is redeemed or the session ends. */
   peekAccessToken(): string | null { return this.accessToken; }
 
+  /**
+   * #4145: replace an unredeemed token that got out (pasted into a chat) — the old one stops working at once, the failed
+   * tries so far still count. False once it was redeemed or the session is not running.
+   */
+  rotateAccessToken(): boolean {
+    if (this.state !== "running" || this.accessToken === null) return false;
+    this.accessToken = generateAccessToken();
+    this.audit("web_terminal_token_rotated", {});
+    return true;
+  }
+
   get ttlRemainingMs(): number { return Math.max(0, this.expiresAt - this.now()); }
 
   async start(): Promise<void> {

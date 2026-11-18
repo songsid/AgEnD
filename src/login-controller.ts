@@ -304,6 +304,11 @@ function safeErr(err: unknown): { errorKind: "error"; errno?: number | string } 
   return { errorKind: "error" };
 }
 
+/** #4145: what a pasted access token reads as wherever the message goes on to (the agent, logs, the search index). */
+export const PASTED_TOKEN_MASK = "[sign-in token hidden]";
+/** #4145: at most this many taken-back tokens are kept for one sign-in (each paste takes back one). */
+const MAX_RETIRED_TOKENS = 8;
+
 export class LoginController {
   private active: ActiveLogin | null = null;
   /** True between shutdown() and reopen(): no new work is accepted. */
@@ -314,6 +319,8 @@ export class LoginController {
    * I started in is gone" — so a stopAll→startAll cannot resurrect old work.
    */
   private shutdownGeneration = 0;
+  /** #4145: access tokens taken back during the running sign-in (tokenPasted), still hidden by screenToken until it ends. */
+  private retiredTokens: string[] = [];
   private readonly backendFactory = new TmuxTerminalBackend();
   private readonly startTimes = new Map<string, number[]>();
   /** One tunnel owner for the process: the lease it writes is fleet-wide, so this must not be per-login. */
@@ -709,6 +716,44 @@ export class LoginController {
     return this.abort(entry, t("login.web_token_resend_failed", entry.backend), "token resend failed");
   }
 
+  /**
+   * #4145: `text` with this fleet's sign-in access token hidden — the live one, and any taken back during this sign-in
+   * (another copy of the same pasted message: a sibling bot's, a retry) — matched exactly against what AgEnD issued,
+   * either case (the terminal page takes either); null when there is none in it. `live`: the live one was there, so the
+   * caller takes it back (tokenPasted). Synchronous, so nothing can log the text between the paste and the mask.
+   */
+  screenToken(text: string): { text: string; live: boolean } | null {
+    if (!text) return null;
+    const live = this.active?.session.peekAccessToken() ?? null;
+    let out = text, hitLive = false;
+    for (const token of live ? [live, ...this.retiredTokens] : this.retiredTokens) {
+      const re = new RegExp(token.replace(/[^A-Za-z0-9]/g, "\\$&"), "gi");
+      const next = out.replace(re, PASTED_TOKEN_MASK);
+      if (next !== out && token === live) hitLive = true;
+      out = next;
+    }
+    return out === text ? null : { text: out, live: hitLive };
+  }
+
+  /**
+   * #4145: the live access token was pasted somewhere people (and agents) read: take it back — a new one replaces it at
+   * once — and send the new one the way the first went (privately, or to the dashboard window that asked). The one line
+   * for the chat it was pasted in; null when there is nothing to take back (redeemed meanwhile, no sign-in). A new token
+   * that cannot be delivered ends the sign-in, as a failed resend does.
+   */
+  async tokenPasted(): Promise<string | null> {
+    const entry = this.active;
+    if (!entry) return null;
+    const old = entry.session.peekAccessToken();
+    if (old === null || !entry.session.rotateAccessToken()) return null;
+    this.retiredTokens.push(old);
+    if (this.retiredTokens.length > MAX_RETIRED_TOKENS) this.retiredTokens.shift();
+    this.audit("token_pasted", { backend: entry.backend, requester: entry.requesterUserId });
+    const ok = await this.sendToken(entry, { offerResend: false, isResend: true });
+    if (ok) return t(entry.chat.web ? "login.token_pasted_web" : "login.token_pasted", entry.shown);
+    return this.abort(entry, t("login.token_pasted_closed", entry.shown), "token pasted, resend failed");
+  }
+
   // ── Internals ──
 
   private admitRate(userId: string): boolean {
@@ -724,7 +769,7 @@ export class LoginController {
   }
 
   private releaseEntry(entry: ActiveLogin): void {
-    if (this.active === entry) this.active = null;          // identity guard: never clear a newer owner
+    if (this.active === entry) { this.active = null; this.retiredTokens = []; }   // identity guard: never clear a newer owner
     this.deps.releaseWindow(entry.claim);
     entry.tunnelReservation?.releaseUnused();
   }
