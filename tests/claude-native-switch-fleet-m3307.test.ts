@@ -190,6 +190,17 @@ describe("M-3318: the npm copy's removal never races another npm (#4148's judgem
     expect((fm as any).loginWindow.isHeld).toBe(false);
   });
 
+  it.each([
+    ["a ps that does not list this process (a pid namespace)", `#!/bin/sh\necho "1 0 init"\necho "7777 1 npm install -g x"\n`],
+    ["a ps that fails (no usable ps, e.g. Windows)", `#!/bin/sh\nexit 1\n`],
+  ])("fail-open (Fable on #4167): %s — the list cannot be judged, so the removal is not held up", async (_label, body) => {
+    const { fm, reporter } = await afterSwitch();
+    const dir = join(root, "fake-ps"); mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "ps"), body); chmodSync(join(dir, "ps"), 0o755);
+    process.env.PATH = `${dir}:${process.env.PATH}`;
+    expect(await fm.startWebInstall("claude-code", reporter(), undefined, "remove-npm")).toEqual({ started: true });
+  });
+
   it("control: no other npm — the removal starts", async () => {
     const { fm, reporter } = await afterSwitch();
     fakePs(false);
