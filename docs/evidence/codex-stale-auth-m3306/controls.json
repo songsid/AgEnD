@@ -1,0 +1,30 @@
+[
+  {
+    "control": "live-decoration",
+    "caught": true
+  },
+  {
+    "control": "persistent-hold",
+    "caught": true
+  },
+  {
+    "control": "resume-history",
+    "caught": true
+  },
+  {
+    "control": "general-attention",
+    "caught": true
+  },
+  {
+    "control": "mcp-post-probe",
+    "caught": true
+  },
+  {
+    "control": "no-auto-wake",
+    "caught": true
+  },
+  {
+    "control": "pre-write-hold",
+    "caught": true
+  }
+]

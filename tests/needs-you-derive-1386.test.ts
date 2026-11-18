@@ -214,3 +214,14 @@ describe("#2233: an auth pause carries the login the dashboard can sign in", () 
     expect(items.map(i => [i.instance, i.signIn])).toEqual([["a", { backend: "claude-code", profile: "work" }], ["b", undefined]]);
   });
 });
+
+it("stale process sign-in is attention for busy/General and paused agents, without a Connect-account target", () => {
+  const items = deriveNeedsYou(inputs({ instances: [
+    { name: "general", state: "working", staleAuth: { since: 2_000 } },
+    { name: "worker", pauseReason: "stale_auth", pausedAt: 3_000, staleAuth: { since: 2_500 } },
+    { name: "after-restart", pauseReason: "stale_auth", pausedAt: 4_000 },
+  ] }));
+  expect(items.map(i => [i.instance, i.reason, i.since, i.signIn])).toEqual([
+    ["general", "stale_auth", 2_000, undefined], ["worker", "stale_auth", 2_500, undefined], ["after-restart", "stale_auth", 4_000, undefined],
+  ]);
+});

@@ -481,3 +481,11 @@ describe.each(["en", "zh-TW"] as const)("queue notifications in %s", locale => {
     expect(w.rows[0]!.attemptNo).toBe(0);
   });
 });
+
+it("holds queued work on stale process auth once until an explicit restart", () => {
+  const { w, c } = setup();
+  w.paused.add("t"); w.reasons.set("t", "stale_auth"); w.rows.push(row("t"), row("t"));
+  c.scan(); c.scan();
+  expect(w.wakes).toEqual([]);
+  expect(w.notices.filter(n => n.text.includes("restart"))).toHaveLength(1);
+});
