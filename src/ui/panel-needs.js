@@ -23,6 +23,11 @@ import { toast } from "/assets/ui-toast.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 
+register("app", {
+  en: { needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks." },
+  "zh-TW": { needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。" },
+});
+
 register("needs", {
   en: {
     title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
@@ -103,6 +108,7 @@ const BAD = new Set(["crashed", "delivery_failed", "hang", "exited"]);
  * its question or what it lacks; anything else is the server's own words.
  */
 function detailOf(item) {
+  if (item.reason === "stale_auth") return t("app.needs_stale_auth_detail");
   if (item.modelSwitch) return modelSwitchText(item.modelSwitch);
   const c = item.type === "task" ? item.card : null;
   if (!c || !c.title) return configDetail(item);

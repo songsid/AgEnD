@@ -116,7 +116,7 @@ it("persists the restart-specific pause reason without losing the ordinary pause
   expect(readPauseReason(dir)).toBe("stale_auth");
   expect(readFileSync(join(dir, "paused"), "utf8")).toBe("12000");
 });
-it("the native-pane path also stays instance-local and never asks the local login probe", async () => {
+it.runIf(typeof (Daemon.prototype as any).usesNativePane === "function")("the native-pane path also stays instance-local and never asks the local login probe", async () => {
   const runner = vi.fn(async () => ({ code: 0, output: "Logged in" })); setAuthCheckRunnerForTests(runner);
   const h = harness(); vi.spyOn(h.d, "usesNativePane").mockReturnValue(true); h.scan();
   await vi.waitFor(() => expect(h.notify).toHaveBeenCalledOnce());

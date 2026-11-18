@@ -56,7 +56,7 @@ export interface NeedsYouItem {
 export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
-  | "model_switch" | "auth_paused" | "crashed" | "usage_limit" | "backend_missing"  // instance
+  | "model_switch" | "auth_paused" | "stale_auth" | "crashed" | "usage_limit" | "backend_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback";                                 // task
@@ -85,6 +85,8 @@ export interface InstanceInput {
   interactionSummary?: string | null;
   /** The pause marker's reason, for a paused instance; and when it was paused. */
   pauseReason?: string | null;
+  /** Process-local login hold, including General/busy agents before a pause completes. */
+  staleAuth?: { since: number } | null;
   pausedAt?: number | null;
   /** "crashed" with the time the fleet first saw it so (§3.3). */
   crashedAt?: number | null;
@@ -216,6 +218,10 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
         reason: "dialog", kiroChoice: true, detail: inst.kiroCompatibility.message, since: inst.kiroCompatibility.since });
     }
     // §3.3 instance: paused for sign-in, or crashed.
+    if (inst.staleAuth || inst.pauseReason === "stale_auth") {
+      items.push({ id: `stale-auth:${inst.name}:${inst.staleAuth?.since ?? inst.pausedAt ?? 0}`, type: "instance", instance: inst.name,
+        reason: "stale_auth", detail: "", since: inst.staleAuth?.since ?? inst.pausedAt ?? 0 });
+    }
     if (inst.pauseReason === "auth") {
       items.push({ id: `auth:${inst.name}:${inst.pausedAt ?? 0}`, type: "instance", instance: inst.name, reason: "auth_paused", detail: "", since: inst.pausedAt ?? 0,
         ...(inst.signIn ? { signIn: { backend: inst.signIn.backend, ...(inst.signIn.profile ? { profile: inst.signIn.profile } : {}) } } : {}) });

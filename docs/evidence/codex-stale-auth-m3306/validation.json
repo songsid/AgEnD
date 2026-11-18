@@ -1,0 +1,24 @@
+{
+  "alpha": {
+    "affectedFiles": 13,
+    "passed": 302,
+    "finalChangedCoreFiles": 3,
+    "finalChangedCorePassed": 31,
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0
+  },
+  "main": {
+    "affectedFiles": 9,
+    "passed": 187,
+    "skipped": 1,
+    "skipReason": "native-pane path absent on main",
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0
+  },
+  "controlsCaught": 7,
+  "controlsTotal": 7,
+  "initialFailFirst": 3,
+  "newTestsUseLiveVendor": false,
+  "liveModelRuns": 0,
+  "livePaneOperations": 0
+}
