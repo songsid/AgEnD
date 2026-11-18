@@ -104,6 +104,10 @@ function fleet() {
   fm.fleetConfig = { defaults: {}, instances: { worker: config } } as any;
   // The IPC socket of a fake daemon never appears; the rest of startInstance is real.
   vi.spyOn(fm as any, "connectIpcToInstance").mockResolvedValue(undefined);
+  // M-3302: these cases run on a fixture binary. On a host without `claude` (CI) the lifecycle's own pre-check would find it
+  // missing and a failed start would be held as a missing binary instead of retried; that path has its own suite
+  // (tests/missing-backend-binary-m3302.test.ts).
+  vi.spyOn(fm.lifecycle, "missingBinaryAt").mockReturnValue(null);
   // Track the number of published daemons at every registration.
   let maxPublished = 0;
   const set = fm.lifecycle.daemons.set.bind(fm.lifecycle.daemons);
