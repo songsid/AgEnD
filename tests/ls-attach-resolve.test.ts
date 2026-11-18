@@ -45,35 +45,35 @@ describe("resolveCandidate — row numbers", () => {
 describe("resolveCandidate — CJK display names", () => {
   it("resolves CJK display name by exact match", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
-      { name: "tm1-a89-dev-fable-t1500000000000277715", displayLabel: "鑄碼副手 Fable" },
+      { name: "code-reviewer", displayLabel: "示範審查員" },
+      { name: "story-helper", displayLabel: "示範副手 Alpha" },
     );
-    expect(resolveCandidate("稜鏡 Prism", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+    expect(resolveCandidate("示範審查員", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
 
   it("resolves CJK display name substring (unique)", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
+      { name: "code-reviewer", displayLabel: "Reviewer" },
       { name: "other-t000", displayLabel: "Sentinel" },
     );
-    const r = resolveCandidate("鑄碼副手", cs);
-    expect(r.kind).toBe("none"); // "鑄碼副手" is not in any label above → suggestions
+    const r = resolveCandidate("示範副手", cs);
+    expect(r.kind).toBe("none"); // "示範副手" is not in any label above → suggestions
   });
 
   it("resolves partial CJK substring when unique", () => {
     const cs = fleet(
-      { name: "tm1-a89-dev-fable-t123", displayLabel: "鑄碼副手 Fable" },
+      { name: "story-helper-t123", displayLabel: "示範副手 Alpha" },
       { name: "other-t000", displayLabel: "Sentinel" },
     );
-    expect(resolveCandidate("鑄碼副手", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+    expect(resolveCandidate("示範副手", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
 
   it("CJK substring ambiguity returns ambiguous with both candidates", () => {
     const cs = fleet(
-      { name: "fable-1", displayLabel: "鑄碼副手 Fable" },
-      { name: "fable-2", displayLabel: "鑄碼副手 Beta" },
+      { name: "fable-1", displayLabel: "示範副手 Alpha" },
+      { name: "fable-2", displayLabel: "示範副手 Beta" },
     );
-    const r = resolveCandidate("鑄碼副手", cs);
+    const r = resolveCandidate("示範副手", cs);
     expect(r.kind).toBe("ambiguous");
     if (r.kind === "ambiguous") {
       expect(r.candidates).toHaveLength(2);
@@ -112,7 +112,7 @@ describe("resolveCandidate — ambiguity", () => {
 describe("resolveCandidate — no-match suggestions", () => {
   it("no match returns top-5 fuzzy suggestions, not the full list", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t001", displayLabel: "稜鏡 Prism" },
+      { name: "agend-reviewer-t001", displayLabel: "Reviewer" },
       { name: "agend-leader-t002", displayLabel: "Leader" },
       { name: "agend-coordinator-t003", displayLabel: "Coord" },
       { name: "games-server-t004", displayLabel: "Server" },
@@ -139,14 +139,14 @@ describe("resolveCandidate — no-match suggestions", () => {
   it("leading-char typo still gets a suggestion (charOverlapScore, not greedy LCS)", () => {
     // "xreviewer" vs "agend-reviewer": shared chars r,e,v,i,e,w,e,r → score > 0
     const cs = fleet(
-      { name: "agend-reviewer-t1500000000000996543", displayLabel: "稜鏡 Prism" },
+      { name: "code-reviewer", displayLabel: "Reviewer" },
       { name: "unrelated-t000", displayLabel: "Zephyr" },
     );
     const r = resolveCandidate("xreviewer", cs);
     expect(r.kind).toBe("none");
     if (r.kind === "none") {
       expect(r.suggestions.length).toBeGreaterThan(0);
-      expect(r.suggestions[0]?.realName).toBe("agend-reviewer-t1500000000000996543");
+      expect(r.suggestions[0]?.realName).toBe("code-reviewer");
     }
   });
 });
@@ -163,19 +163,19 @@ describe("resolveCandidate — real name resolution", () => {
 
   it("real name prefix resolves uniquely", () => {
     const cs = fleet(
-      { name: "agend-reviewer-t1500000000000996543" },
-      { name: "agend-leader-t1500000000000799511" },
+      { name: "code-reviewer" },
+      { name: "fleet-lead" },
     );
-    const r = resolveCandidate("agend-reviewer", cs);
+    const r = resolveCandidate("code-rev", cs);
     expect(r.kind).toBe("exact");
-    if (r.kind === "exact") expect(r.candidate.realName).toBe("agend-reviewer-t1500000000000996543");
+    if (r.kind === "exact") expect(r.candidate.realName).toBe("code-reviewer");
   });
 
   it("short -tNNNNNN display label resolves", () => {
     const cs = fleet(
-      { name: "agend-dev1-t1500000000000265082", displayLabel: "agend-dev1-t265082" },
+      { name: "core-dev-one", displayLabel: "core-dev-one-t265082" },
     );
-    expect(resolveCandidate("agend-dev1-t265082", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+    expect(resolveCandidate("core-dev-one-t265082", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
 });
 
@@ -365,12 +365,12 @@ describe("P2-4: pickerDefaultIdx uses first displayed candidate", () => {
 // ── Long real name never truncated in picker/ambiguity lines ─────────────────
 
 describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
-  const LONG = "tm1-a89-dev-fable-t1500000000000277715"; // 38 chars
+  const LONG = "synthetic-long-instance-name-38charsxx"; // 38 chars
   const SHORT = "alpha-t1";
 
   const cLong: Candidate = {
-    idx: 3, realName: LONG, displayLabel: "鑄碼副手 Fable",
-    status: "running", teams: ["rd1"],
+    idx: 3, realName: LONG, displayLabel: "Story helper",
+    status: "running", teams: ["a-team"],
   };
   const cShort: Candidate = {
     idx: 7, realName: SHORT, displayLabel: "Alpha",
@@ -381,10 +381,11 @@ describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
     const line = ambiguityLine(cLong, LONG.length);
     expect(line).toContain(LONG);
     // The full name must be present; the line must NOT end at the 32-char truncation point
-    expect(line.includes(LONG.slice(0, 32) + "2")).toBe(true); // char 33 is "2"
-    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
+    expect(line.includes(LONG.slice(0, 32))).toBe(true);
+    expect(line).toContain(LONG.slice(32)); // tail past the old 32-char truncation point
+    expect(line).not.toContain("Story helper"); // display label no longer printed
     expect(line).toContain("[running]");
-    expect(line).toContain("rd1");
+    expect(line).toContain("a-team");
   });
 
   it("ambiguityLine omits display suffix always (user decision: too many chars)", () => {
@@ -398,8 +399,8 @@ describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
     const line = pickerLine(cLong, LONG.length);
     expect(line).toContain(LONG);
     expect(line).toContain("●");
-    expect(line).not.toContain("鑄碼副手"); // display label no longer printed
-    expect(line).toContain("rd1");
+    expect(line).not.toContain("Story helper"); // display label no longer printed
+    expect(line).toContain("a-team");
   });
 
   it("pickerLine uses ○ for paused, no display label", () => {
@@ -412,7 +413,7 @@ describe("ambiguityLine and pickerLine: full real name, no truncation", () => {
   it("names are padded to maxNameW so status/teams columns align", () => {
     const maxW = Math.max(LONG.length, SHORT.length); // = 38
     // Use candidates where displayLabel === realName (no suffix) for clean alignment check
-    const cA: Candidate = { idx: 3, realName: LONG,  displayLabel: LONG,  status: "running", teams: ["rd1"] };
+    const cA: Candidate = { idx: 3, realName: LONG,  displayLabel: LONG,  status: "running", teams: ["a-team"] };
     const cB: Candidate = { idx: 7, realName: SHORT, displayLabel: SHORT, status: "paused",  teams: [] };
     const lineA = ambiguityLine(cA, maxW);
     const lineB = ambiguityLine(cB, maxW);
@@ -432,8 +433,8 @@ describe("P2-3: lsDisplayAnnotation (agend ls --display flag)", () => {
   });
 
   it("returns '  (label)' when show=true and label differs from realName", () => {
-    const a = lsDisplayAnnotation("agend-reviewer-t1500000000000996543", "稜鏡 Prism", true);
-    expect(a).toBe("  (稜鏡 Prism)");
+    const a = lsDisplayAnnotation("code-reviewer", "Reviewer", true);
+    expect(a).toBe("  (Reviewer)");
   });
 
   it("returns empty string when show=true but label equals realName (no annotation)", () => {

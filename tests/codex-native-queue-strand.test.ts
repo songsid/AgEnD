@@ -39,8 +39,8 @@ const STRANDED_SINGLELINE = pane("codex-stranded-singleline");
 
 const BODY = "減法設計驗證用的投遞測試訊息，請忽略不要回覆。";
 const MESSAGE_MULTILINE =
-  `[from:agend-dev-claude-t1500000000000083558] ${BODY}\n(message_id: m-1 | correlation_id: cid-1789356482291-pjykib)`;
-const MESSAGE_SINGLELINE = `[from:agend-dev-claude-t1500000000000083558] ${BODY}`;
+  `[from:core-dev] ${BODY}\n(message_id: m-1 | correlation_id: cid-1789356482291-pjykib)`;
+const MESSAGE_SINGLELINE = `[from:core-dev] ${BODY}`;
 
 /**
  * Codex while it is working, with our message accepted into its OWN queue —
@@ -52,7 +52,7 @@ const MESSAGE_SINGLELINE = `[from:agend-dev-claude-t1500000000000083558] ${BODY}
 const NATIVE_QUEUE_ACCEPTED = [
   "• Working (15s • esc to interrupt)",
   "• Messages to be submitted after next tool call (press esc to interrupt and send immediately)",
-  "  ↳ [from:agend-dev-claude-t1500000000000083558] 減法設計驗證用的投遞…",
+  "  ↳ [from:core-dev] 減法設計驗證用的投遞…",
   "› Ask Codex to do anything",
   "  Context 63% left",
 ].join("\n");
@@ -60,7 +60,7 @@ const NATIVE_QUEUE_ACCEPTED = [
 /** Codex after it submitted our message: transcript echo above, input row free. */
 const SUBMITTED = [
   "• You have 1 usage limit reset available. Run /usage to use one.",
-  `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+  `› [from:core-dev] ${BODY}`,
   "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
   "• Working (1s • esc to interrupt)",
   "› Ask Codex to do anything",
@@ -78,7 +78,7 @@ const RESUMING_WITH_MESSAGE = [
   "╰─────────────────────────────────────────────╯",
   "  Resuming session…",
   "",
-  `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+  `› [from:core-dev] ${BODY}`,
   "  (message_id: m-1 | correlation_id: cid-1789438369044-j7krk0)",
   "",
   "  ? for shortcuts",
@@ -221,7 +221,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = true;
     h.state.pane = READY_WITH_CHROME;
     h.state.afterPaste = [
-      "› [from:agend-dev-claude-t1500000000000083558] " + BODY,
+      "› [from:core-dev] " + BODY,
       "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
       "• Working (1s • esc to interrupt)",
       READY_WITH_CHROME,
@@ -559,7 +559,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.afterPaste = [
       "• You have 1 usage limit reset available. Run /usage to use one.",
       "› [system] an earlier notice whose Enter was dropped",
-      `  [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+      `  [from:core-dev] ${BODY}`,
       "  (message_id: m-1 | correlation_id: cid-1789356482291-pjykib)",
       "  Context 63% left",
     ].join("\n");
@@ -619,7 +619,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = false;
     h.state.pane = [
       "• Working (9s • esc to interrupt)",
-      `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+      `› [from:core-dev] ${BODY}`,
       "  (message_id: m-0 | correlation_id: cid-older-delivery)",
       "› Ask Codex to do anything",
       "  Context 63% left",
@@ -643,7 +643,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = false;
     const olderStranded = [
       "• Working (9s • esc to interrupt)",
-      `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+      `› [from:core-dev] ${BODY}`,
       "  (message_id: m-0 | correlation_id: cid-older-delivery)",
       "  Context 63% left",
     ].join("\n");
@@ -687,7 +687,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = false;
     const identicalOlderStrand = [
       "• Working (9s • esc to interrupt)",
-      `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+      `› [from:core-dev] ${BODY}`,
       "  Context 63% left",
     ].join("\n");
     h.state.pane = identicalOlderStrand;
@@ -716,7 +716,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     const bodyMentioningAnId = "inspect message_id: mentioned-by-user and report back";
     const older = [
       "• Working (9s • esc to interrupt)",
-      `› [from:agend-dev-claude-t1500000000000083558] ${bodyMentioningAnId}`,
+      `› [from:core-dev] ${bodyMentioningAnId}`,
       "  (message_id: m-0 | correlation_id: cid-older-delivery)",
       "› Ask Codex to do anything",
       "  Context 63% left",
@@ -726,7 +726,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
 
     h.state.afterSecondPaste = SUBMITTED; // the recovery paste lands
     const ok = await settle(h.daemon.deliverMessage(
-      `[from:agend-dev-claude-t1500000000000083558] ${bodyMentioningAnId}\n(message_id: m-1 | correlation_id: cid-now)`,
+      `[from:core-dev] ${bodyMentioningAnId}\n(message_id: m-1 | correlation_id: cid-now)`,
       STATUS,
       { submissionId: "m-1" },
     ));
@@ -861,7 +861,7 @@ describe("codex native-queue handoff: text left in the input row is NOT a delive
     h.state.idle = false;
     h.state.pane = [
       "• Working (9s • esc to interrupt)",
-      `› [from:agend-dev-claude-t1500000000000083558] ${BODY}`,
+      `› [from:core-dev] ${BODY}`,
       "  (message_id: m-0 | correlation_id: cid-older-delivery)",
       "› Ask Codex to do anything",
       "  Context 63% left",
