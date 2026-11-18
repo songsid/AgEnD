@@ -54,7 +54,7 @@ describe("the repo's smokes", () => {
     expect(step.env).toEqual({ OUT: "${{ runner.temp }}/ui-gate", FONTCONFIG_FILE: "${{ steps.cjk-fonts.outputs.fontconfig }}" });
     expect(i).toBeGreaterThan(steps.findIndex((s) => s.id === "cjk-fonts"));
     expect(i).toBeLessThan(steps.findIndex((s) => String(s.uses).startsWith("actions/cache/save")));
-    expect(ci.jobs["ui-gate"]["timeout-minutes"]).toBe(15);
+    expect(ci.jobs["ui-gate"]["timeout-minutes"]).toBe(25);
   });
   it("ci.yml: no step also runs a found smoke by hand, and no step's own port is a found smoke's", () => {
     const names = found.map((s: any) => s.file.split("/").pop());

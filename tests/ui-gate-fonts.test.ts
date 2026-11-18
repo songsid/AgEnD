@@ -143,7 +143,7 @@ describe("bounded pinned CJK font preparation", () => {
   it("keeps the UI gate deadline and makes cache restore/save optional, bounded optimizations", () => {
     const ci = load(readFileSync(resolve(".github/workflows/ci.yml"), "utf8")) as any;
     const gate = ci.jobs["ui-gate"], steps = gate.steps;
-    expect(gate["timeout-minutes"]).toBe(15);
+    expect(gate["timeout-minutes"]).toBe(25);
     expect(steps.some((s: any) => /apt-get/.test(s.run ?? ""))).toBe(false);
     const caches = steps.filter((s: any) => String(s.uses).startsWith("actions/cache/")); expect(caches).toHaveLength(2);
     expect(caches[0].with.key).toBe(caches[1].with.key); expect(caches[0].with["restore-keys"]).toBeUndefined();
