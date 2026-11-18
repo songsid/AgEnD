@@ -590,7 +590,7 @@ function HubChats() {
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
     rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
-    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} />`;
+    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} pinsOn=${roomPinsLive()} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   if (opening && (!rs.loaded || recentRoom(rs.rooms))) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><div class="hub-home-pick center"><${Skeleton} variant="rows" lines=${4} /></div></div>`;
@@ -910,6 +910,8 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
       ...(typeof ex.react === "function" ? { react: (x) => thread.pickReaction?.(msgKey(x)), canReact: (x) => !!x.roomMessage && ex.canReact?.(x) !== false, reactLabel: ex.reactLabel } : {}),
       // M-3311 (3): Copy link where the page gives a message an address (a room: extra.linkOf).
       ...(typeof ex.linkOf === "function" ? { linkOf: (x) => ex.linkOf(x) } : {}),
+      // M-3340: Pin / Unpin where the page keeps pins (a room of a Hub with room-pins-v1: extra.pin), mine only.
+      ...(typeof ex.pin === "function" ? { pin: (x) => ex.pin(x), pinned: (x) => ex.pinned?.(x) === true, canPin: (x) => ex.canPin?.(x) !== false } : {}),
     });
     // M-3311 (2): the Fleet chat's 「引用」 — a passage selected in one message goes into this conversation's composer as a quote
     // at the caret (chat-quote.js; panel-chat.js's own install), through the box's typing path. `extra.quote.field()`: the box.
@@ -1223,6 +1225,8 @@ function LazyRoomPart({ load, name, props = {} }) {
 }
 const teamsLive = () => { const c = hubClient(); return typeof c.teamsLive === "function" && c.teamsLive() === true; };
 const roomPurposeLive=()=>session?.features?.includes("room-purpose-v1")&&hubClient().roomPurposeV1===true;
+// M-3340: personal pins — a Hub that keeps them (room-pins-v1) and a client that can ask; an older Hub shows no Pin at all.
+const roomPinsLive=()=>session?.features?.includes("room-pins-v1")===true&&typeof hubClient().roomPins==="function";
 const roomsLive = () => { const c = hubClient(); return typeof c.roomsLive === "function" && c.roomsLive() === true; };
 function LazyThisHub({ directory }) {
   const [C, setC] = useState(null);
