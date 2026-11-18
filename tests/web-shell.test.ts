@@ -264,7 +264,7 @@ describe("the panels adopt the shell", () => {
     expect(head).toContain('<link rel="stylesheet" href="/assets/app.css">');
     expect(head).toContain('<script src="/assets/agend-auth.js"></script>');
     expect(head).toContain('<script src="/assets/theme.js"></script>');
-    expect(html).toContain('<script type="module" src="/assets/app.js"></script>');
+    expect(html).toContain('<script type="module" src="/assets/app.js"></script>');   // the file as written (served under its version)
     expect(html).not.toContain("/assets/shell.js");
     expect(html).not.toContain("/assets/shell.css");
     expect(html).not.toContain("data-agend-nav");
@@ -276,7 +276,7 @@ describe("the panels adopt the shell", () => {
       for (const path of ["/ui", "/view", "/view/alpha", "/settings", "/settings/general"]) {
         const r = await raw(h.port, "GET", path, { cookie: h.cookie, accept: "text/html" });
         expect(r.status, path).toBe(200);
-        expect(r.body, path).toContain('<script type="module" src="/assets/app.js"></script>');
+        expect(r.body, path).toMatch(/<script type="module" src="\/assets\/v-[0-9a-f]{12}\/app\.js"><\/script>/)  // M-3314: under its version;
         expect(r.body, path).not.toContain("/assets/shell.js");
       }
     } finally { await stop(h.fm); }

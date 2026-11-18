@@ -115,22 +115,29 @@ describe("every panel as served", () => {
           // Every opening script tag the page carries, in any case.
           const scripts = [...res.body.matchAll(/<script\b([^>]*)>/gi)].map(x => x[1]!);
           const inline = scripts.filter(a => !/\ssrc=/.test(a));
-          if (path !== "/signin") expect(inline, `${path}: the app shell loads only external scripts`).toEqual([]);
+          // M-3314: the app shell's only inline scripts are its import map, with this response's nonce, and its module
+          // graph as data (application/json, which no policy runs); everything that executes is external.
+          if (path !== "/signin") {
+            const code = inline.filter(a => !/^ type="application\/json" id="agend-modules"$/.test(a));
+            expect(code, `${path}: the app shell's only inline script is its import map, with this response's nonce`).toEqual([` type="importmap" nonce="${m![1]}"`]);
+          }
           // Every response gets its own nonce, inline script or not.
           expect(m, `${path}: script-src names this response's nonce`).not.toBeNull();
           expect(nonces.has(m![1]!), `${path}: a nonce is never reused`).toBe(false);
           nonces.add(m![1]!);
           if (inline.length) {
             expect(m, `${path} has inline script, so its CSP needs a nonce`).not.toBeNull();
-            for (const a of inline) expect(a.trim(), path).toBe(`nonce="${m![1]}"`);
+            // M-3314: the import map spells its type before the nonce; the module graph is data, not run.
+            for (const a of inline) if (!/type="application\/json"/.test(a)) expect(a.trim().replace(/^type="importmap" /, ""), path).toBe(`nonce="${m![1]}"`);
             expect(seen.has(m![1]!), "a nonce is never reused").toBe(false);
             seen.add(m![1]!);
           }
           expect(res.body.match(/\son[a-z]+\s*=\s*"/gi) ?? [], path).toEqual([]);
         }
       }
-      // /ui, /view and /settings are the app shell, which has no inline script (#1408 step 3: settings.html had one).
-      expect([...seen].length, "no app page has inline script").toBe(0);
+      // /ui, /view and /settings are the app shell. Its one inline script is its import map (M-3314), with a nonce of
+      // its own on each of the 4 × 2 loads (#1408 step 3: settings.html had another; it has none now).
+      expect([...seen].length, "each app page's import map has its own nonce").toBe(8);
       expect(nonces.size, "ten responses, ten nonces").toBe(10);
     } finally { await h.stop(); }
   }, 30_000);

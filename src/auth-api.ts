@@ -32,6 +32,7 @@ import { gatewayRequestContext, isWebRequestCurrent } from "./web-request-contex
  * See `docs/design/web-unification-secure-login.zh-TW.md` §3.
  */
 import { sendPanelHtml } from "./web-host-guard.js";
+import { assetVersionMark, answerStaleAsset, versionCss, IMMUTABLE_PUBLIC } from "./web-asset-version.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -191,6 +192,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "model-observation.js", "app-shell.js", "app-session.js", "web-authorize.js", "device-roles.js", "app-needs.js", "app-swipe.js", "text-undo.js", "ui-confirm.js", "ui-dialog.js", "ui-menu.js", "ui-states.js", "ui-icons.js", "ui-toast.js",
     // #3822: the in-place "this tab is older than AgEnD — reload" prompt the Outlet and lazy panels show (static, no data).
     "stale-tab.js",
+    "module-warm.js",
     // #1408 step 2: View is public (an anonymous reader opens it under web.view_access: open), loaded on demand.
     "panel-view.js", "view-strings.js",
     // Claude history in the View: its renderer, loaded by View when a Claude agent's View is scrolled up (static code; the
@@ -294,6 +296,11 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
 /** True for a name `/assets/` serves. The public link's manifest asks this too: one list, not two. */
 export function isServedAsset(name: string): boolean {
   return Object.prototype.hasOwnProperty.call(ASSETS, name);
+}
+
+/** M-3314: every name `/assets/` serves, with its file under the ui directory (the module graph and the asset version read them). */
+export function servedAssets(): ReadonlyArray<readonly [string, string]> {
+  return Object.entries(ASSETS).map(([name, a]) => [name, a.file] as const);
 }
 
 export function isAuthPath(path: string): boolean {
@@ -428,9 +435,17 @@ export function handleAuthRequest(
   if (path.startsWith("/assets/")) {
     const asset = method === "GET" ? ASSETS[path.slice("/assets/".length)] : undefined;
     if (!asset) { json(res, 404, { error: "not found" }); return true; }
+    // M-3314: under a version (/assets/v-<V>/…, rewritten to this path before routing): this process's <V> is kept for
+    // good; an older tab's gets the stale-tab answer, never this version's file.
+    const mark = assetVersionMark(req);
+    if (mark && !mark.current) { answerStaleAsset(res, path); return true; }
     try {
-      const body = readFileSync(join(__dirname, "ui", asset.file));
-      res.writeHead(200, { "Content-Type": asset.type });
+      const raw = readFileSync(join(__dirname, "ui", asset.file));
+      const body = mark && asset.type.startsWith("text/css") ? versionCss(raw.toString("utf-8"), mark.version) : raw;
+      // A versioned file is the same for everyone (it is served without a session): the public link's `Vary: Cookie` would
+      // only make a browser fetch it again once signing in sets the cookie.
+      if (mark) res.removeHeader("Vary");
+      res.writeHead(200, { "Content-Type": asset.type, ...(mark ? { "Cache-Control": IMMUTABLE_PUBLIC } : {}) });
       res.end(body);
     } catch {
       json(res, 404, { error: "not found" });

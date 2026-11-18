@@ -8,6 +8,7 @@ import { shellRoute } from "./web-shell-routes.js";
 import { isWebIconPath } from "./web-icons.js";
 import { UPLOAD_REQUEST_TIMEOUT_MS } from "./web-upload.js";
 import { LIBAVOID_PATHS } from "./web-libavoid.js";
+import { takeAssetVersion } from "./web-asset-version.js";
 
 /** #1937: how long a public-link request other than an upload may take to arrive whole (the gateway's old requestTimeout). */
 export const PUBLIC_GATEWAY_RECEIVE_MS = 10_000;
@@ -212,6 +213,8 @@ export function createPublicWebGateway(opts: {
     res.setHeader("Cache-Control", "no-store");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("Vary", "Cookie");
+    // M-3314: /assets/v-<V>/… and /ui/js/v-<V>/… are checked (and served) as their plain paths.
+    takeAssetVersion(req);
     const raw = req.url ?? "/";
     try {
       if (!opts.isCurrent() || !host || req.headers.host !== host) return reject(res, 403);

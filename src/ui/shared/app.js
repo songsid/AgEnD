@@ -22,6 +22,7 @@ import { t } from "./app-i18n.js";
 import { initTextSize, initUsageRail } from "./header-tools.js";
 import { installOwnerCss } from "./owner-css.js";
 import { startThemes } from "./app-themes.js";
+import { warmModules } from "./module-warm.js";
 
 const boot = document.body.dataset;
 const workspaceLanding = location.pathname === "/ui";
@@ -43,7 +44,8 @@ const hubPage = mode === "full" && !guest && String(boot.hub || "").split(/\s+/)
 
 // A failed load can be retried (the panel's Retry): each retry asks for a fresh URL, since a browser may keep a failed
 // module import cached under the first one. boot() runs once, whichever attempt succeeds.
-const retryUrl = (path, attempt) => (attempt ? `${path}?retry=${attempt}` : path);
+// M-3314: and before the first try, the module's whole graph is asked for at once (module-warm.js).
+const retryUrl = (path, attempt) => (attempt ? `${path}?retry=${attempt}` : (warmModules(path), path));
 // View is public (it is what an anonymous reader may open), so it lives under /assets/ beside this file.
 const loadView = retryable((a) => import(retryUrl("/assets/panel-view.js", a)));
 const panels = new Map([["view", { load: () => loadView().then((m) => m.ViewPanel) }]]);

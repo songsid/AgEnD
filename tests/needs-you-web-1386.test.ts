@@ -71,7 +71,7 @@ describe("the list rides the existing passive channels only", () => {
     const page = request("/ui/needs", "GET", { cookie: `agend_session=${s.sessionId}`, accept: "text/html" });
     handleWebRequest(page.req as never, page.res as never, new URL(page.req.url, local), ctx(store));
     expect(page.status()).toBe(200);
-    expect(page.body()).toContain('<script type="module" src="/assets/app.js"></script>');
+    expect(page.body()).toMatch(/<script type="module" src="\/assets\/v-[0-9a-f]{12}\/app\.js"><\/script>/)  // M-3314: under its version;
     for (const item of ITEMS) expect(page.body(), item.id).not.toContain(item.id);
     const passive = ["/ui/poll", "/ui/events", "/api/pane/x", "/api/profiles", "/api/ai-usage"];
     for (const p of passive) expect(isPassiveWebRead("GET", p), p).toBe(true);
