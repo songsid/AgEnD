@@ -8,6 +8,7 @@ import { LoginController, PASTED_TOKEN_MASK, type LoginControllerDeps, type Logi
 import { LoginWindowLock } from "../src/login-window-lock.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { t } from "../src/locale.js";
+import { createMemberReceive } from "../src/hub/compose/member.js";
 import type { WebTerminalEvents, WebTerminalResult, WebTerminalSpec } from "../src/web-terminal.js";
 
 /**
@@ -135,5 +136,42 @@ describe("a sign-in token in a Hub question", () => {
       await idle.fm.deliverHubQuestion(question(QUESTION));
       expect((idle.delivered.mock.calls[0][1] as any).content).toBe(QUESTION);
     } finally { idle.stop(); }
+  });
+});
+
+describe("taken back as the Fleet receives it, not at delivery (Fable #4165 F1)", () => {
+  it("a 1:1 question frame is shown to the Fleet's look before it is admitted", async () => {
+    const seen: string[] = [], order: string[] = [];
+    const receive = createMemberReceive({ admission: { admit: async () => { order.push("admit"); return { ok: true } as never; }, fence: () => {} } as never,
+      journal: { acknowledge: () => {} } as never, live: () => true, log: () => {}, sawText: text => { seen.push(text); order.push("saw"); } });
+    const link: any = { current: () => true, linkEpoch: 1, send: async () => {} };
+    await receive({ v: 1, type: "question", requestId: randomUUID(), linkEpoch: 1, payload: { text: `code ${TOKENS[0]}`, identity: { name: "Sam" } } } as never, link);
+    expect(seen.some(x => x.includes(TOKENS[0]))).toBe(true);
+    expect(order).toEqual(["saw", "admit"]);
+  });
+  it("the Fleet's look takes the live token back at once, with no delivery (a paused, offline or withdrawn agent never needs to take it)", async () => {
+    const r = await rig();
+    try {
+      r.fm.sawHubText(`{"text":"code ${TOKENS[0]}"}`);
+      expect(r.login.sessions[0].peekAccessToken()).toBe(TOKENS[1]);                       // synchronously: before any await
+      expect(r.delivered).not.toHaveBeenCalled();
+      await vi.waitFor(() => expect(r.chat.sendText).toHaveBeenCalledWith("chat", t("login.token_pasted_hub", "claude-code"), { threadId: "topic" }));
+      r.fm.sawHubText(`{"text":"code ${TOKENS[0]}"}`);                                     // the same frame again: already taken back
+      expect(r.login.sessions[0].peekAccessToken()).toBe(TOKENS[1]);
+      // When it is delivered later, the agent still never sees it.
+      await r.fm.deliverHubQuestion(question(`code ${TOKENS[0]}`));
+      expect(String((r.delivered.mock.calls[0][1] as any).content)).toBe(`code ${PASTED_TOKEN_MASK}`);
+      expect(r.lines.join("\n")).not.toMatch(new RegExp(`${TOKENS[0]}|${TOKENS[1]}`, "i"));
+    } finally { r.stop(); }
+  });
+  it("a new token that cannot go privately closes the sign-in, and its chat gets the closed words, not the Hub ones", async () => {
+    const r = await rig();
+    try {
+      r.chat.sendDirect.mockImplementation(async () => { throw new Error("Cannot send messages to this user"); });
+      r.fm.sawHubText(`code ${TOKENS[0]}`);
+      await vi.waitFor(() => expect(r.chat.sendText).toHaveBeenCalledWith("chat", t("login.token_pasted_closed", "claude-code"), { threadId: "topic" }));
+      expect(r.chat.sendText.mock.calls.some((c: unknown[]) => c[1] === t("login.token_pasted_hub", "claude-code"))).toBe(false);
+      expect(r.login.sessions[0].state).toBe("finished");
+    } finally { r.stop(); }
   });
 });

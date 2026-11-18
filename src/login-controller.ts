@@ -831,6 +831,19 @@ export class LoginController {
    * for the chat it was pasted in; null when there is nothing to take back (redeemed meanwhile, no sign-in). A new token
    * that cannot be delivered ends the sign-in, as a failed resend does.
    */
+  async tokenPasted(): Promise<string | null> {
+    const entry = this.active;
+    if (!entry) return null;
+    const old = entry.session.peekAccessToken();
+    if (old === null || !entry.session.rotateAccessToken()) return null;
+    this.retiredTokens.push(old);
+    if (this.retiredTokens.length > MAX_RETIRED_TOKENS) this.retiredTokens.shift();
+    this.audit("token_pasted", { backend: entry.backend, requester: entry.requesterUserId });
+    const ok = await this.sendToken(entry, { offerResend: false, isResend: true });
+    if (ok) return t(entry.chat.web ? "login.token_pasted_web" : "login.token_pasted", entry.shown);
+    return this.abort(entry, t("login.token_pasted_closed", entry.shown), "token pasted, resend failed");
+  }
+
   /**
    * M-3313: tokenPasted for a token seen where AgEnD has no reply of its own in that place (a Hub room, a 1:1 Hub
    * question): taken back and replaced the same way, and the sign-in's own chat told. True when one was taken back.
@@ -848,19 +861,6 @@ export class LoginController {
         .catch(err => this.deps.logger.warn(safeErr(err), "Pasted sign-in token (Hub) notice failed"));
     }
     return true;
-  }
-
-  async tokenPasted(): Promise<string | null> {
-    const entry = this.active;
-    if (!entry) return null;
-    const old = entry.session.peekAccessToken();
-    if (old === null || !entry.session.rotateAccessToken()) return null;
-    this.retiredTokens.push(old);
-    if (this.retiredTokens.length > MAX_RETIRED_TOKENS) this.retiredTokens.shift();
-    this.audit("token_pasted", { backend: entry.backend, requester: entry.requesterUserId });
-    const ok = await this.sendToken(entry, { offerResend: false, isResend: true });
-    if (ok) return t(entry.chat.web ? "login.token_pasted_web" : "login.token_pasted", entry.shown);
-    return this.abort(entry, t("login.token_pasted_closed", entry.shown), "token pasted, resend failed");
   }
 
   // ── Internals ──

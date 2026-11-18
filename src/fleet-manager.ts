@@ -2586,6 +2586,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachRoomInputs: handler => { this.hubRoomInput = handler; },
           attachRoomOwed: port=>{this.hubRoomOwed=port;},
           roomNotify: input => this.deliverHubRoomNotification(input),
+          // M-3313: a sign-in token in what the Hub sends is taken back the moment the link receives it.
+          sawText: text => this.sawHubText(text),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
               const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
@@ -2910,6 +2912,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
    * The Hub's own copy of the post is beyond the Fleet: it keeps it (encrypted) until its retention deletes it.
    */
+  /**
+   * M-3313 (Fable #4165 F1): a Hub frame's content as the member link receives it — before it waits for its agent (busy,
+   * paused, offline) or is dropped undelivered — so a live sign-in token in it is taken back at once, not at delivery.
+   * Nothing is changed here: the delivery hides it from the agent (screenHubText).
+   */
+  private sawHubText(text: string): void {
+    const screened = this.screenLoginToken(text);
+    if (!screened?.live) return;
+    this.logger.warn("A sign-in access token arrived from the Hub: taken back and replaced");
+    void this.loginController?.tokenPastedElsewhere().catch((err: unknown) =>
+      this.logger.warn({ err: (err as Error).message }, "Taking back a sign-in token pasted on the Hub failed"));
+  }
+
   private screenHubText(text: string): string {
     const screened = this.screenLoginToken(text);
     if (!screened) return text;

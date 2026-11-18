@@ -45,6 +45,7 @@ async function harness(withState = true, withPost = false, withNotify = true) {
   const logs: { message: string; meta?: Record<string, unknown> }[] = [];
   const inputs: HubRepresentativeDelivery[] = [];
   const notifications: import("../src/hub/member/room-post-answers.js").RoomPostNotification[]=[];
+  const seen: string[] = [];   // M-3313: what the Fleet's look (sawText) was handed, as each frame arrived
   let token = "test-current-agent-token";
   const readState = vi.fn((): AgentStateInput => ({ process: "running", execution: "idle" }));
   const representative = {
@@ -58,6 +59,7 @@ async function harness(withState = true, withPost = false, withNotify = true) {
     ...(withPost ? {attachAgentRooms:(value:AgentRoomPort|null)=>{rooms=value;},...(withNotify?{roomNotify:async(input:import("../src/hub/member/room-post-answers.js").RoomPostNotification)=>{
       if(!input.stillCurrent()||!await input.beforeInput())return false;notifications.push(input);return true;}}:{})} : {}),
     attachExposures: value => { api = value; }, attachAttention: () => {}, pokeAttention: () => {}, report: () => {},
+    sawText: text => { seen.push(text); },
     log: (_level, message, meta) => { logs.push({ message, meta }); } });
   const start = async () => { const service = await create({}, () => true); services.push(service); await service.start(); return service; };
   const send = (type: "room.ask" | "room.answer-ack" | "room.post-answer", payload: any) => r.server.send(profile.fleetId,
@@ -67,7 +69,7 @@ async function harness(withState = true, withPost = false, withNotify = true) {
     asker: { name: "Alex" }, text: "What changed?", context: [] });
   const row = (id: string) => { const db = new Database(join(r.memberHome, memberSet(profile.hub.hubId).database), { readonly: true });
     try { return db.prepare("SELECT state FROM hub_room_asks WHERE message_id=?").get(id); } finally { db.close(); } };
-  return { r, profile, inputs, notifications, postRoom, postMessage, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!, rooms:()=>rooms,
+  return { r, profile, inputs, notifications, seen, postRoom, postMessage, readState, start, publish, ask, send, row, representative, logs, epoch: () => epoch, api: () => api!, rooms:()=>rooms,
     replace: () => { token = "replacement-agent-token"; },
     report: (text: string) => reports!({ caller: "general", correlationId: inputs.at(-1)!.correlationId, text, callerCurrent: () => true }),
     failed: () => failed!(inputs.at(-1)!.correlationId, "general") };
@@ -245,4 +247,16 @@ it.each(["backpressure", "unexpected"] as const)("preserves the link failure pat
     await vi.waitFor(() => expect(h.logs).toContainEqual({ message: "Hub link held", meta: { code: kind === "backpressure" ? "backpressure" : "unavailable" } }));
     expect(h.logs.filter(row => row.message === "Hub room ask not admitted")).toEqual([]); expect(h.inputs).toHaveLength(0);
   } finally { spy.mockRestore(); }
+});
+
+it("M-3313: a room ask (its context too) and a room post's answer are shown to the Fleet's look as the link receives them (Fable #4165 F1)", async () => {
+  const h = await harness(true, true); await h.start(); const exposure = h.publish();
+  const ask = { ...h.ask(exposure.exposureId!), text: "my code ABCDEFGHJKMNPQRSTVWX", context: [{ author: "Sam", text: "earlier QQQQQQQQQQQQQQQQQQQ2", at: Date.now() }] };
+  await h.send("room.ask", ask);
+  await vi.waitFor(() => expect(h.seen.some(t => t.includes("ABCDEFGHJKMNPQRSTVWX") && t.includes("QQQQQQQQQQQQQQQQQQQ2"))).toBe(true));
+  const caller = { agent: "general", current: () => true }, operationId = randomUUID();
+  await h.rooms()!.post(caller, { room: "Weekly", text: "Update", operationId });
+  await h.send("room.post-answer", { id: randomUUID(), idempotencyKey: operationId, postId: h.postMessage, roomId: h.postRoom, exposureId: exposure.exposureId!,
+    message: { id: randomUUID(), author: { name: "Alex" }, text: "reply ZZZZZZZZZZZZZZZZZZZ3", at: Date.now() } });
+  await vi.waitFor(() => expect(h.seen.some(t => t.includes("ZZZZZZZZZZZZZZZZZZZ3"))).toBe(true));
 });

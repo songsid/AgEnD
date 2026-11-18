@@ -117,6 +117,12 @@ export interface HubMemberFactoryOptions {
   attachRoomInputs?(handler: ((correlationId: string, agent: string, generation: string) => void) | null): void;
   roomReceipt?(caller: import("../member/room-post.js").RoomCaller, receiptId: string): import("../member/room-post-receipt.js").RoomReceiptProof | null;
   roomNotify?(input: import("../member/room-post-answers.js").RoomPostNotification): Promise<boolean>;
+  /**
+   * M-3313 (#4145): what a Hub question, room ask or room post's answer carries, the moment this link receives it — before
+   * it is journaled or waits for its agent — so a sign-in token pasted there is taken back at once, not at delivery
+   * (which may be late, or never). The Fleet only looks (its delivery hides the token from the agent); it changes nothing.
+   */
+  sawText?(text: string): void;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
@@ -286,6 +292,12 @@ export function createMemberBinding(deps: {
  * same link, answering the question's own requestId; revoke → fence; receipt (the Hub's ACK) → journal.acknowledge;
  * anything else is refused. Never ordinary fleet delivery.
  */
+/** M-3313: hand a received frame's content to the Fleet's look (sawText) — never throwing into the link's routing. */
+function seen(saw: ((text: string) => void) | undefined, payload: unknown): void {
+  if (!saw) return;
+  try { saw(JSON.stringify(payload)); } catch { /* a look that fails must not refuse the frame */ }
+}
+
 export function createMemberReceive(deps: {
   admission: Pick<HubMemberAdmissionAdapter, "admit" | "fence">;
   journal: Pick<HubMemberJournal, "acknowledge">;
@@ -296,10 +308,13 @@ export function createMemberReceive(deps: {
   publicationRefused?(requestId: string, code: string): void;
   /** #3429 B: a `relocate` statement on this link (member-relocation-v1): kept durably, then acked on the same link. */
   relocate?(statement: unknown, requestId: string, l: HubMemberLink): Promise<void>;
+  /** M-3313: see HubMemberFactoryOptions.sawText. */
+  sawText?(text: string): void;
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
     if (frame.type === "question") {
+      seen(deps.sawText, frame.payload);
       const receipt = await deps.admission.admit(frame.payload);
       if (!l.current()) return;
       await l.send({ v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: l.linkEpoch, payload: receipt });
@@ -699,7 +714,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         try { completeRelocationPin(options.home, profile, profileDigest, webNow(), live, trust); }
         catch (err) { options.log("warn", "A company pin left behind by a relocation was not completed", { error: (err as Error).message }); }
       }
-      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices,
+      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices, sawText: options.sawText,
         publicationRefused: (requestId, code) => sender.refused(requestId, code),
         relocate: async (statement, requestId, l) => {
           if (!live() || !l.current() || !profileDigest) return;
@@ -821,6 +836,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             catch { options.log("warn", "Hub version advice was refused", { phase: "receive" }); }
             return Promise.resolve();
           }
+          if (frame.type === "room.ask" || frame.type === "room.post-answer") seen(options.sawText, frame.payload);
           if(frame.type === "room.post-answer") {
             if(postLink && roomLink(l).current())posts.receiveAnswer(frame.payload,postLink);
             return Promise.resolve();
