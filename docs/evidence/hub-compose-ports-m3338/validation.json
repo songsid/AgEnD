@@ -1,0 +1,39 @@
+{
+  "base": "377221bf3e224cd4a27f5a903fc8ab7a143a0df1",
+  "originalCi": {
+    "run": 44319424526,
+    "attempt": 1,
+    "job": 134855038576,
+    "failure": "HubInitError: member and web listeners use the same address"
+  },
+  "forcedLegacyPicker": {
+    "repeatedPort": 31337,
+    "baselineFailures": 1
+  },
+  "finalUnit": {
+    "passed": 2,
+    "files": 1,
+    "physicalCompetingBinds": "EADDRINUSE before and after TLS handoff"
+  },
+  "reversal": {
+    "failed": 1,
+    "unselected": 1,
+    "restorePassed": 2
+  },
+  "actualComposeFlow": {
+    "passed": 1,
+    "pending": 0,
+    "success": true,
+    "directory": "owned disposable OpenLDAP container",
+    "surface": "real initializer/runtime/TLS/sign-in/admin/disabled-owner next-request refusal"
+  },
+  "testTypeScript": 0,
+  "productChanges": false,
+  "retriesAdded": false,
+  "timeoutsChanged": false,
+  "reuse": "existing hubListenerPorts helper unchanged",
+  "limits": [
+    "No live Fleet or real directory",
+    "CI hub-directory result is required separately; local evidence is the focused compose file"
+  ]
+}

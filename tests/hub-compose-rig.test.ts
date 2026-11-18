@@ -5,7 +5,7 @@
  * disables them. Skipped unless AGEND_HUB_RIG_ENV names the rig's rig.env (CI's hub-directory job). Never a real
  * directory; listeners on 127.0.0.1 only.
  */
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { request } from "node:https";
 import { randomUUID } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -17,7 +17,7 @@ import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { HubRuntime } from "../src/hub/runtime.js";
 import { createHubDirectory } from "../src/hub/directory/index.js";
 import { makeTestCerts } from "./support/hub-init-fixtures.js";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubComposePorts } from "./helpers/hub-compose-ports.js";
 
 const envFile = process.env.AGEND_HUB_RIG_ENV;
 const rig: Record<string, string> = {};
@@ -57,6 +57,7 @@ function call(port: number, ca: string, origin: string, method: string, path: st
 
 describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub whole flow against the fake directory (S5b PR 2)", () => {
   let admin: Client;
+  let listenerPorts: Awaited<ReturnType<typeof hubComposePorts>> | undefined;
   // This suite disables its administrator; shared seed users remain read-only for concurrent suites.
   const ownerLogin = `compose-${randomUUID()}`, ownerDn = `uid=${ownerLogin},ou=people,dc=example,dc=test`;
   let ownerUuid = "", ownerCreated = false;
@@ -69,6 +70,10 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
     const { searchEntries } = await admin.search(ownerDn, { scope: "base", attributes: ["entryUUID"] });
     ownerUuid = String(searchEntries[0]!.entryUUID);
   });
+  afterEach(async () => {
+    try { await listenerPorts?.close(); }
+    finally { listenerPorts = undefined; vi.restoreAllMocks(); }
+  });
   afterAll(async () => {
     try { if (ownerCreated) await admin.del(ownerDn); }
     finally { await admin?.unbind(); }
@@ -79,7 +84,8 @@ describe.skipIf(rig.AGEND_HUB_RIG !== "1" || process.platform === "win32")("Hub 
     const home = mkdtempSync(join(process.cwd(), ".artifacts/hub-flow-"));
     chmodSync(home, 0o700);
     const certs = makeTestCerts();
-    const [memberPort, webPort] = [await freeHubPort(), await freeHubPort()];
+    listenerPorts = await hubComposePorts();
+    const { memberPort, webPort } = listenerPorts;
     const webOrigin = `https://hub.example.test:${webPort}`;
     const plan = {
       name: "Flow Hub", webOrigin, memberOrigin: `https://hub.example.test:${memberPort}`,

@@ -1,0 +1,57 @@
+{
+  "format": 1,
+  "base": "377221bf3e224cd4a27f5a903fc8ab7a143a0df1",
+  "stage": "test-only fixture repair before PR metadata",
+  "sourceSha256": [
+    {
+      "path": "tests/helpers/hub-compose-ports.ts",
+      "sha256": "6acf964aacc12a6ac72731a2f83e39ef605af819b8d82bc0f84534e5189e43f4"
+    },
+    {
+      "path": "tests/helpers/hub-listener-ports.ts",
+      "sha256": "b01d241652e12aca54716cd4f8cf8e8ccf343aeafeef656984a8ff5390d24f59"
+    },
+    {
+      "path": "tests/hub-compose-rig.test.ts",
+      "sha256": "13916ef571ec56147aaac299ae16b69d7032fc0b30b0269f788c57ead2417667"
+    },
+    {
+      "path": "tests/hub-compose-ports-m3338.test.ts",
+      "sha256": "56e694d71567a45f8c63f35d0706d72ab80438bbaecca2c0711b4a4e766355a8"
+    }
+  ],
+  "evidenceSha256": [
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/README.md",
+      "sha256": "bcef7698dcaf94ae8399d516bafa5df8ec6ced201e76067f4c47738818c60496"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/after.log",
+      "sha256": "edbdd10d076458b170a09ae642f22418be378ebeffa0a05964dd8be3dc84d1b7"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/ci-before.txt",
+      "sha256": "44f3101ab58a3def3d1529ee29407c7c7ae34eb3f6556409d287f0ecd8cd329f"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/fail-first.log",
+      "sha256": "21ce33f33bf892d1ada1b3d8501d9cca31fa864563b1ab2672d61f011f303644"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/restored.log",
+      "sha256": "b760bae78b941cfa9cce51bfda5370501a94caf8112915cc839c7abd1e7a7bf2"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/reversal.log",
+      "sha256": "723cec12c0f2e2a8fcdc39e141826ac3a9c30c8297b1183249a5bf9f69cba89c"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/test-tsc.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-compose-ports-m3338/validation.json",
+      "sha256": "a71fbd0641d6d787302521d23c46c3a383d595a8d7346c583332d0040bc6fef1"
+    }
+  ]
+}

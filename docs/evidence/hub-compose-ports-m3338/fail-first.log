@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/hub-compose-ports-m3338.test.ts (1 test | 1 failed) 6ms
+   × keeps distinct compose listeners when the legacy free-port picker repeats one address 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-compose-ports-m3338.test.ts > keeps distinct compose listeners when the legacy free-port picker repeats one address
+AssertionError: expected 31337 not to be 31337 // Object.is equality
+ ❯ tests/hub-compose-ports-m3338.test.ts:10:38
+      8|   vi.spyOn(rig, "freeHubPort").mockResolvedValue(31337);
+      9|   const ports = await hubComposePorts();
+     10|   try { expect(ports.memberPort).not.toBe(ports.webPort); }
+       |                                      ^
+     11|   finally { await ports.close(); }
+     12| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  22:15:37
+   Duration  876ms (transform 528ms, setup 81ms, import 667ms, tests 6ms, environment 0ms)

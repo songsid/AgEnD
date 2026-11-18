@@ -1,0 +1,2 @@
+##[error]HubInitError: the member listener and the web listener must use different addresses
+Serialized Error: { problems: [ 'the member listener and the web listener must use different addresses', 'the web address and the member address must differ (browsers and members use separate origins)' ] }
