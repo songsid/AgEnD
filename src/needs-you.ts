@@ -67,7 +67,7 @@ export type NeedsYouReason =
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
   | "general_windows_offline" | "general_location_hold"
-  | "model_switch" | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold"  // instance
+  | "model_switch" | "auth_paused" | "crashed" | "usage_limit" | "native_pane_hold" | "backend_missing"  // instance
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
@@ -124,6 +124,8 @@ export interface InstanceInput {
   paneRecovery?: { key: string; detail: string; since: number } | null;
   nativeDeliveryHold?: { key: string; since: number } | null;
   kiroCompatibility?: { message: string; since: number } | null;
+  /** M-3302 (#4146): held because its backend's CLI is not installed — the binary, and the command that installs it. */
+  backendMissing?: { backend: string; binary: string; since: number; fix: string } | null;
 }
 
 export interface DeliveryInput {
@@ -269,6 +271,11 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     if (inst.usageHold) {
       items.push({ id: `usage:${inst.name}:${inst.usageHold.since}`, type: "instance", instance: inst.name, reason: "usage_limit",
         detail: inst.usageHold.model, since: inst.usageHold.since });
+    }
+    if (inst.backendMissing) {
+      const m = inst.backendMissing;
+      items.push({ id: `backend-missing:${inst.name}:${m.since}`, type: "instance", instance: inst.name, reason: "backend_missing",
+        detail: m.fix ? `${m.binary} — ${m.fix}` : m.binary, since: m.since });
     }
     if (inst.crashedAt != null && !inst.generalLocation && !inst.kiroCompatibility) {
       items.push({ id: `crashed:${inst.name}:${inst.crashedAt}`, type: "instance", instance: inst.name, reason: "crashed", detail: "", since: inst.crashedAt });
