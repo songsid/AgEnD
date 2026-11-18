@@ -296,7 +296,8 @@ jobs:
   ui-gate:
     runs-on: ubuntu-24.04
     needs: detect-changes
-    timeout-minutes: 15
+    # 25: the smokes alone reached 14-14.5 min of 15 (11-18); one more smoke tipped #4173 over. Sharding is its own card.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Skip the UI gate on a text-only PR

@@ -5,7 +5,8 @@
 // - into another cell of the same table, the selection becomes cells: the rectangle between the cell pressed and the
 //   cell under the pointer (straight down: one column; diagonally: a block), drawn as selected; the browser's text
 //   selection is dropped while it lasts. Shift+click on a cell of that table moves the far corner there.
-// - Ctrl/Cmd+C copies those cells as TSV (a row per line, cells by tabs: a spreadsheet pastes it as cells).
+// - Ctrl/Cmd+C copies those cells as TSV (a row per line, cells by tabs: a spreadsheet pastes it as cells); a cell that
+//   starts with = or @ gets a leading ' so it pastes as text, never as a live formula.
 // - Esc, a press anywhere else, or a new press in a cell clears it. The thread drawing the table again clears it too.
 //
 // The Fleet chat and a Hub conversation install it on their thread (panel-chat.js, panel-hub.js). A phone (a coarse
@@ -61,9 +62,21 @@ export function cellText(cell) {
   return String(cell?.textContent ?? "").replace(/[\t\r\n]+/g, " ").replace(/ /g, " ").trim();
 }
 
+/**
+ * A cell as a spreadsheet takes it. M-3326 (#4172 review; the leader's call): a cell that starts with = or @ would be a live
+ * formula once pasted (a Hub room carries other people's words: =IMPORTXML(…)), so it gets a leading ' (kept as text).
+ * #4175 review (the leader's call): + or - starts a formula too (+HYPERLINK(…), -1+IMPORTXML(…)) unless the rest is a plain
+ * number — "-5", "+1", "-3.5", "+12%", "-1,234", "-.5" stay numbers; a lone "-" (a table's "none") stays as it is.
+ */
+const FORMULA = /^(?:[=@]|[+-](?!(?:\.?\d[\d.,]*%?)?$))/;
+export function tsvCell(cell) {
+  const text = cellText(cell);
+  return FORMULA.test(text) ? `'${text}` : text;
+}
+
 /** Rows of cells as TSV: cells by tabs, rows by line breaks. */
 export function toTsv(rows) {
-  return rows.map((row) => row.map(cellText).join("\t")).join("\n");
+  return rows.map((row) => row.map(tsvCell).join("\t")).join("\n");
 }
 
 /**
