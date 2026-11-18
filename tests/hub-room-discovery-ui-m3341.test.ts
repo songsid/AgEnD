@@ -32,11 +32,11 @@ it.each([
   const input = p.root.querySelector('input[type="checkbox"]'); expect(input.disabled).toBe(true); expect(input.checked).toBe(findable);
   input.checked = false; fire(input, "change"); await settle(); expect(c.agentRoomDiscovery).toHaveBeenCalledTimes(1);
 });
-it("retains person-picker behavior while giving discovered agents a distinct invitation action", async () => {
+it.each(["en", "zh-TW"])("offers the same owner action before either invitation, then shows waiting only after selection (%s)", async lang => {
   const c = { roomCandidates: vi.fn(async () => ({ ok: true, candidates: [
     { kind: "agent", id: "askable", name: "Example known helper", mine: false, owner: { name: "Example owner" }, intro: "Explains documents" },
     { kind: "agent", id: "findable", name: "Example discovered helper", mine: false, discoverable: true, owner: { name: "Example owner" }, intro: "Tracks releases" },
-  ] })) }, changed = vi.fn(), p = page(); pages.push(p);
+  ] })) }, changed = vi.fn(), p = page(); pages.push(p); i18n.setLang(lang, { store: false });
   await p.mount(h(picker.RoomPicker, { client: c, kinds: ["agent"], picked: [], onChange: changed, id: "pick", label: "Add agents" }));
   const input = p.root.querySelector("input"); input.value = "Example"; fire(input, "input");
   await vi.waitFor(() => expect(p.root.querySelectorAll('[role="option"]').length).toBe(2));
@@ -46,11 +46,17 @@ it("retains person-picker behavior while giving discovered agents a distinct inv
     expect(button.querySelector(".hub-room-agent-intro")).toBeTruthy();
     expect(button.querySelector(".hub-room-agent-action.btn")).toBeTruthy();
     expect(button.querySelectorAll("button")).toHaveLength(0);
+    expect(button.querySelector(".hub-room-agent-action").textContent).toBe(lang === "en" ? "Ask Example owner" : "請 Example owner 加入");
+    expect(button.getAttribute("aria-label")).toBe(lang === "en"
+      ? `Ask Example owner to add ${button === buttons[0] ? "Example known helper" : "Example discovered helper"} to this room`
+      : `請 Example owner 把 ${button === buttons[0] ? "Example known helper" : "Example discovered helper"} 加入這個房間`);
   }
-  expect(buttons[0].textContent).toContain("Invite · waiting for the owner");
-  expect(buttons[1].getAttribute("aria-label")).toBe("Ask Example owner to add Example discovered helper to this room");
-  expect(buttons[1].textContent).toContain("Tracks releases"); expect(buttons[1].textContent).toContain("Ask Example owner");
+  const waiting = lang === "en" ? "Invite · waiting for the owner" : "邀請 · 等擁有者同意";
+  expect(p.root.textContent).not.toContain(waiting);
+  expect(buttons[1].textContent).toContain("Tracks releases");
   fire(buttons[1], "click"); expect(changed).toHaveBeenCalledWith([expect.objectContaining({ id: "findable", mine: false })]);
+  await p.mount(h(picker.RoomPicker, { client: c, kinds: ["agent"], picked: changed.mock.calls[0][0], onChange: changed, id: "pick", label: "Add agents" }));
+  expect(p.root.querySelector(".hub-room-tags").textContent).toContain(waiting);
 });
 it("ignores a held choice from a retired owner session", async () => {
   let release!: (r: any) => void;
