@@ -63,6 +63,8 @@ afterEach(() => {
 function fleet() {
   const fm = new FleetManager(join(root, "data"));
   fm.fleetConfig = { defaults: {}, instances: {} } as any;
+  // M-3318: whether another npm is changing packages is this host's state (a CI runner may have one); these cases are not about it. Its own tests use a fake `ps`.
+  vi.spyOn(fm as any, "otherNpmChanging").mockResolvedValue([]);
   const reporter = () => ({ progress: vi.fn(), done: vi.fn<(r: Parameters<HostInstallReporter["done"]>[0]) => void>(), update: vi.fn() });
   return { fm, reporter };
 }
@@ -171,6 +173,7 @@ describe("M-3318: the npm copy's removal never races another npm (#4148's judgem
   };
   const afterSwitch = async () => {
     const { fm, reporter } = fleet();
+    (fm as any).otherNpmChanging.mockRestore();                             // the real judgement, over the fake `ps`
     await fm.startWebInstall("claude-code", reporter(), undefined, "native");
     installNative(AUDITED());
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
