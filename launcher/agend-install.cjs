@@ -184,7 +184,8 @@ function waitForOtherNpm(deps, log, before) {
   var fromEnv = Number((deps.env || {}).AGEND_INSTALL_OTHER_NPM_WAIT_MS);
   var clock = clockOf(deps), sleep = sleepOf(deps);
   var waitMs = deps.otherNpmWaitMs !== undefined ? deps.otherNpmWaitMs : (isFinite(fromEnv) && fromEnv >= 0 && String((deps.env || {}).AGEND_INSTALL_OTHER_NPM_WAIT_MS).trim() !== "" ? Math.min(fromEnv, OTHER_NPM_WAIT_MS) : OTHER_NPM_WAIT_MS);
-  var describe = function (rows) { return rows.map(function (row) { return "pid " + row.pid + ": " + row.args.slice(0, 120); }).join("; "); };
+  // Only the pid and npm's command word: `ps -A` is every user's processes, and an npm argv can carry a registry URL with credentials in it.
+  var describe = function (rows) { return rows.map(function (row) { var c = npmCommands(row.args) || ["?"]; return "pid " + row.pid + ": npm " + c[0]; }).join("; "); };
   log("  … another npm is changing packages on this host (" + describe(changing) + "); waiting up to " + Math.round(waitMs / 60000) + " min for it to finish before " + before);
   var start = clock();
   while (clock() - start < waitMs) {
