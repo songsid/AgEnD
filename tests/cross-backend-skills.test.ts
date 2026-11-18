@@ -379,8 +379,8 @@ describe("core-rules steering placement", () => {
 describe("MCP instructions budget", () => {
   it("stays under Claude Code's ~2KB truncation with realistic long names", () => {
     const s = buildMcpCoreInstructions({
-      instanceName: "a-realistically-long-instance-name",
-      workingDirectory: "/home/someuser/.agend/workspaces/a-realistically-long-instance-name",
+      instanceName: "a-realistically-long-synthetic-instance-name-for-budget",
+      workingDirectory: "/home/someuser/.agend/workspaces/a-realistically-long-synthetic-instance-name-for-budget",
       runtimeIdentity: { kind: "fleet-topic", backend: "claude-code", model: "claude-sonnet-4.6-with-long-tag" },
     });
     expect(Buffer.byteLength(s, "utf-8")).toBeLessThan(2048);

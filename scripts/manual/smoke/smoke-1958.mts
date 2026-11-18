@@ -13,8 +13,8 @@ const fx = await bootFixture({ port: Number(process.env.HP ?? 48400) });
 const enc = encodeURIComponent;
 
 // The instances the checks read, at their real long names (fixture data, not the short demo names of the first port).
-const PERSON_PICK = "docs-writer";             // a person's pick on the name and bar (pink)
-const AGENT_RING = "api-gateway-worker"; // the agent's own colour on its ring (teal preset)
+const PERSON_PICK = "示範文件撰寫與校對助理-layout-probes";             // a person's pick on the name and bar (pink)
+const AGENT_RING = "synthetic-gateway-worker-for-long-name-layout-probes"; // the agent's own colour on its ring (teal preset)
 const QUIET = "資料清洗與報表自動化助理";                          // colour shown nowhere
 const CHAT = "core-dev";             // the chat the checks open
 const AUTO = "web-preview-bot"; // automatic colour
