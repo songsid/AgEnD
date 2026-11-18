@@ -56,7 +56,7 @@ import { createHubChatStore } from "./hub-chat-store.js";
 import { QuotaBanner, QuotaCard, QuotaChip, QuotaVisibilityRow } from "./hub-quota.js";
 import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
-import { PendingFiles, hf, pageCarriesFiles, roomTakesFiles, uploadChosen } from "./hub-attachments.js";
+import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
   "zh-TW": { tag: "需要確認權限", refused: "提問遭到拒絕。請先重新檢查權限，再試一次。", check: "重新檢查權限", limited: "提問遭到拒絕，先前的權限資訊需要重新確認。" },
@@ -776,12 +776,17 @@ function HubRoomView({ room: given }) {
     const sent = new Set(chosen.map((f) => f.key));
     setDraft(""); setFiles(filesRef.current.filter((f) => !sent.has(f.key))); refreshRooms();
   };
-  const attach = takesFiles ? { title: hf("attach"), onFiles: async (list) => {
-    setMsg(null);
-    const refused = await uploadChosen(client, room.id, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
-    if (!alive.current) return;
-    if (refused.length) setMsg(refused.join(" "));
-  } } : null;
+  // M-3311: a paste (#4151 review: this composer's was empty) and a drop attach as the Fleet chat's — `left` and `notice` for them.
+  const attach = takesFiles ? { title: hf("attach"), left: () => MAX_FILES - filesRef.current.length, notice: (text) => { if (alive.current) toast(text); },
+    onFiles: async (list) => {
+      setMsg(null);
+      const refused = await uploadChosen(client, room.id, list, { current: () => filesRef.current, set: setFiles, alive: () => alive.current });
+      if (!alive.current) return refused;
+      if (refused.length) setMsg(refused.join(" "));
+      return refused;
+    } } : null;
+  const mainRef = useRef(null);
+  useFileDrop(mainRef, attach);
   const onKeyDown = (e) => { if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); send(); } };
   const toggleInfo = () => {
     if (!wide) { setSheet(true); return; }
@@ -796,7 +801,8 @@ function HubRoomView({ room: given }) {
   // The panel takes the info rail's place while it shows a page (the rail's button brings the rail back).
   const showRail = wide && rail && !panelOpen;
   return html`<div class=${`hub-chat${showRail ? " with-rail" : ""}`} ref=${split}>
-    <section class="hub-chat-main" aria-label=${name}>
+    <section class="hub-chat-main" aria-label=${name} ref=${mainRef}>
+      ${attach ? html`<${DropOverlay} />` : null}
       <header class=${`hub-chat-head${room.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">${back}<${Avatar} name=${name} size="sm" />
         <span class="hub-chat-title"><strong>${name}</strong><span class=${`s${room.answerOnly?" hub-answer-only-note":""}`}>${room.answerOnly?hp("answerOnlyAsker"):room.ownerName ? hc("answersFor", room.ownerName) : ""}</span>${room.intro?html`<span class="s hub-agent-intro-line">${room.intro}</span>`:null}</span>
         ${tag}
@@ -815,7 +821,7 @@ function HubRoomView({ room: given }) {
         ${closed ? null : html`<div class="composer-box"><${PendingFiles} files=${files} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
           formatSize=${(n) => (globalThis.AgendChatRender?.formatSize ? globalThis.AgendChatRender.formatSize(n) : `${n} B`)} />
           <${ComposerInput} inputRef=${input} value=${draft} placeholder=${hc("composer", name)} onValue=${setDraft}
-          onKeyDown=${onKeyDown} onPaste=${() => {}} attach=${attach}
+          onKeyDown=${onKeyDown} onPaste=${(e) => { if (!frozen && !denied) pasteToAttach(e, attach); }} attach=${attach}
           stop=${{ hidden: true, disabled: true, title: hc("stop"), label: hc("stop"), onClick: () => {} }}
           send=${{ hidden: false, disabled: !draft.trim() || sending || frozen || denied || uploading, label: hc("send"), onClick: send }} /></div>`}
         ${closed ? null : html`<div class="composer-row"><span class="hint hub-identity">${hw("roomNote")}</span></div>`}

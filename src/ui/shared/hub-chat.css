@@ -175,3 +175,11 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 
 /* Room context H1: a short public introduction stays readable on narrow screens. */
 .hub-chat-title .hub-agent-intro-line{white-space:normal;overflow-wrap:anywhere;text-overflow:clip}
+
+/* M-3311 (1): the Fleet chat's drop card over a Hub conversation, shown while files are dragged over it (app.css's
+   .p-chat.dragging .drop-overlay; .drop-overlay is hidden and .drop-card drawn there). */
+.hub-chat-main.dragging { position: relative; }
+.hub-chat-main.dragging .drop-overlay {
+  display: flex; position: absolute; inset: var(--s-2); z-index: 20; align-items: center; justify-content: center; pointer-events: none;
+  border: 2px dashed var(--accent); border-radius: var(--r-lg); background: color-mix(in srgb, var(--bg) 85%, transparent);
+}
