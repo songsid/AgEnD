@@ -188,6 +188,7 @@ import { RoutingEngine } from "./routing-engine.js";
 import {
   InstanceLifecycle,
   SupersededStartError,
+  BackendBinaryMissingError,
   type TransitionHandle,
   BACKEND_INSTALLATION_INFO,
   type BackendInstallationInfo,
@@ -3243,6 +3244,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startupRetries = new Map<string, { attempt: number; timer: NodeJS.Timeout }>();
   /** #2484: instances whose automatic startup retry is running now (between its timer and its outcome). */
   private startupRetriesRunning = new Set<string>();
+  /** M-3302 (#4146): instances held because their backend's CLI is not installed — started again the moment it is (watchMissingBinaries). */
+  private missingBinaryHolds = new Map<string, { backend: string; binary: string; since: number }>();
+  private missingBinaryWatch: NodeJS.Timeout | null = null;
+  private missingBinaryNotices = new Map<string, { names: string[]; backend: string; timer: NodeJS.Timeout }>();
+  static MISSING_BINARY_WATCH_MS = 15_000;
   /** Bumped by every explicit stop (incl. the stop half of a restart); fences the outage hand-off. */
   private explicitStopGeneration = new Map<string, number>();
   /** instanceName → outage hand-off currently executing; a repeat joins it. */
@@ -9081,6 +9087,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (err instanceof SessionOomStoppedError) await this.notifySessionOomStop(name);
       if (this.holdNativePaneRecovery(name,err)) return false;
       if (this.stopOnUnsupportedCli(name, err, what)) return false;
+      if (this.holdMissingBinary(name, err)) return false;
       this.logger.error({ err, name }, `Failed to start ${what}`);
       this.scheduleStartupRetry(name, 0);
       return false;
@@ -9124,6 +9131,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** Drop a pending automatic retry (an operator start/stop/restart supersedes it). */
   cancelStartupRetry(name: string): void {
+    // M-3302: a person's start/stop/restart supersedes the hold too (a start that still finds no binary holds it again).
+    if (this.missingBinaryHolds?.delete(name)) { this.needsYou?.poke(); this.stopMissingBinaryWatchIfIdle(); }
     const pending = this.startupRetries.get(name);
     if (!pending) return;
     clearTimeout(pending.timer);
@@ -9131,10 +9140,94 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.logger.info({ name }, "Pending automatic startup retry cancelled");
   }
 
+  /**
+   * M-3302 (#4146): the start failed because the backend's CLI is not installed (BackendBinaryMissingError). That does not get better
+   * on the 1 → 5 → 15 min backoff and should not be given up on either: the instance is held, one notice per binary names the binary
+   * and the install command (Needs you shows it too), and the fleet looks for the binary every MISSING_BINARY_WATCH_MS and starts each
+   * held instance the moment it is back. True: handled.
+   */
+  private holdMissingBinary(name: string, failure: unknown): boolean {
+    if (failure instanceof SupersededStartError) return false;
+    const err = this.lifecycle.missingBinaryAt?.(name, failure) ?? null;
+    if (!err) return false;
+    const pending = this.startupRetries.get(name);
+    if (pending) { clearTimeout(pending.timer); this.startupRetries.delete(name); }
+    const known = this.missingBinaryHolds.get(name);
+    if (!known || known.binary !== err.binary) {
+      this.missingBinaryHolds.set(name, { backend: err.backend, binary: err.binary, since: known?.since ?? Date.now() });
+      this.logger.error({ name, backend: err.backend, binary: err.binary }, `Not starting ${name}: its backend binary "${err.binary}" is not installed — held until it is back`);
+      this.queueMissingBinaryNotice(name, err.backend, err.binary);
+      this.needsYou?.poke();
+    }
+    this.instanceProcessStatus.set(name, "stopped");
+    this.ensureMissingBinaryWatch();
+    return true;
+  }
+
+  /** The install command shown for a missing binary: the registry's (what /login and the dashboard run). */
+  missingBinaryFix(backend: string): string {
+    return BACKEND_INSTALLATION_INFO[backend]?.install ?? "";
+  }
+
+  /** M-3302: a missing binary's hold, for Needs you (null: none). */
+  missingBinaryHold(name: string): { backend: string; binary: string; since: number; fix: string } | null {
+    const hold = this.missingBinaryHolds?.get(name);
+    return hold ? { ...hold, fix: this.missingBinaryFix(hold.backend) } : null;
+  }
+
+  /** One notice per missing binary, however many instances it stopped (the same aggregation window as the start-retry notices). */
+  private queueMissingBinaryNotice(name: string, backend: string, binary: string): void {
+    const pending = this.missingBinaryNotices.get(binary);
+    if (pending) { if (!pending.names.includes(name)) pending.names.push(name); return; }
+    const timer = setTimeout(() => {
+      const entry = this.missingBinaryNotices.get(binary);
+      this.missingBinaryNotices.delete(binary);
+      if (entry) this.notifyFleetError(t("fleet.backend_binary_missing", entry.names.length, entry.names.join(", "), binary, this.missingBinaryFix(entry.backend)));
+    }, FleetManager.STARTUP_RETRY_NOTICE_AGGREGATE_MS);
+    timer.unref?.();
+    this.missingBinaryNotices.set(binary, { names: [name], backend, timer });
+  }
+
+  private ensureMissingBinaryWatch(): void {
+    if (this.missingBinaryWatch || this.shuttingDown) return;
+    this.missingBinaryWatch = setInterval(() => { void this.checkMissingBinaries(); }, FleetManager.MISSING_BINARY_WATCH_MS);
+    this.missingBinaryWatch.unref?.();
+  }
+
+  private stopMissingBinaryWatchIfIdle(): void {
+    if (this.missingBinaryHolds?.size || !this.missingBinaryWatch) return;
+    clearInterval(this.missingBinaryWatch);
+    this.missingBinaryWatch = null;
+  }
+
+  private missingBinaryCheckRunning = false;
+  /** One look per backend still missing; each held instance whose binary is back is started now (through the spawn gate, as a retry). */
+  async checkMissingBinaries(): Promise<void> {
+    if (this.missingBinaryCheckRunning || this.shuttingDown) return;
+    this.missingBinaryCheckRunning = true;
+    try {
+      const backends = [...new Set([...this.missingBinaryHolds.values()].map(h => h.backend))];
+      for (const backend of backends) {
+        const path = await resolveBackendBinary(backend).catch(() => undefined);
+        if (typeof path !== "string" || !path) continue;
+        for (const [name, hold] of [...this.missingBinaryHolds]) {
+          if (hold.backend !== backend) continue;
+          this.missingBinaryHolds.delete(name);
+          this.logger.info({ name, backend, binary: hold.binary, path }, `Backend binary "${hold.binary}" is back — starting ${name}`);
+          void this.runStartupRetry(name, 0);
+        }
+        this.needsYou?.poke();
+      }
+    } finally {
+      this.missingBinaryCheckRunning = false;
+      this.stopMissingBinaryWatchIfIdle();
+    }
+  }
+
   /** #2484: the instance's own start retry is scheduled or running, and no person paused it (a stop cancels the retry). */
   private inStartRetryBackoff(name: string): boolean {
     if (this.shuttingDown || this.lifecycle.isPaused(name)) return false;
-    return this.startupRetries.has(name) || this.startupRetriesRunning.has(name);
+    return this.startupRetries.has(name) || this.startupRetriesRunning.has(name) || this.missingBinaryHolds?.has(name) === true;
   }
 
   /** Pending automatic retry, if any (status display / tests). */
@@ -9213,6 +9306,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // An earlier attempt could not tell (unknown probe); this one could.
       if (this.holdNativePaneRecovery(name,err)) return;
       if (this.stopOnUnsupportedCli(name, err, "instance")) return;
+      if (this.holdMissingBinary(name, err)) return;
       this.logger.error({ err, name, attempt: attempt + 1 }, "Automatic startup retry failed");
       this.scheduleStartupRetry(name, attempt + 1);
     } finally {
@@ -18931,6 +19025,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         interaction: p.interaction ? { kind: p.interaction.kind, owner: wait?.owner ?? null, episode: p.interaction.episode, since: p.interaction.since } : null,
         interactionSummary: p.interaction?.kind === "kiro_choice" ? t("kiro3.running") : p.interaction_summary ?? null,
         kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
+        backendMissing: this.missingBinaryHold(name),
         pauseReason, pausedAt,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
@@ -27483,6 +27578,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.stopCliEnvProbes();
     for (const pending of this.startupRetries.values()) clearTimeout(pending.timer);
     this.startupRetries.clear();
+    if (this.missingBinaryWatch) { clearInterval(this.missingBinaryWatch); this.missingBinaryWatch = null; }
+    for (const pending of this.missingBinaryNotices.values()) clearTimeout(pending.timer);
+    this.missingBinaryNotices.clear();
     for (const pending of this.startupRetryNotices.values()) clearTimeout(pending.timer);
     this.startupRetryNotices.clear();
     if (this.stormOpenNotifyTimer) {
