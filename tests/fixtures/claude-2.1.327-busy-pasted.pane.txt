@@ -1,0 +1,50 @@
+
+ ▐▛███▛█   Claude Code v2.1.327
+▝▜██████▀  Opus 5.5 · API Usage Billing
+ ▝▝   ▝▝   /tmp/agend-audit/w/p327
+
+
+❯ hello from the audit
+
+● mock reply 1
+
+✻ Baked for 0s · done 9:08 PM
+
+❯ SLOW turn please
+
+●
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+✢ Levitating… (2s · ↓ 8 tokens)
+  ⎿  Tip: Start small, ask Claude for a plan, and check its edits
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ queued while busy MARKQ
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)

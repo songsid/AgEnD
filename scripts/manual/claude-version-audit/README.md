@@ -339,3 +339,34 @@ Part 1 (the resume menu and the retry row) is its own section. Same binaries and
   - The queued-transcript fixture is not re-made: the transcript record types are unchanged.
   - Paths are normalised to `/tmp/agend-audit/…`.
 - **Mutation checks:** reverting the OAuth shape, the gateway footer, the login-menu footer or the queue marker each turns the screens test red.
+
+## 2.1.326 → 2.1.327: no detector change (2026-11-18, M-3336)
+
+The binaries were 2.1.326 (sha256 `b6b3647d981130dc44fc670846ae97b6cde531ffb667cf9c4d17cfcafb38cb37`) and 2.1.327 (sha256 `343c744baa14bfd38286a7cb90871051f04379956da6c5b803a9e66019a76ac9`, byte-identical to the host's `~/.local/share/claude/versions/2.1.327`). The host had already self-updated to 2.1.327. The daily precheck said MAJOR (hard=9, hinted=0).
+
+- **Passes:** `OLD=326 NEW=327 PORT=18327`, pass1 and extra–extra7. The host's tmux server was never used (private sockets only).
+- **Classification:** all 72 captures (62 from pass1–extra6, 8 from extra7, the gateway pair) and the 30 error frames read alike under the production predicates, except `132-danger-fast`. That is the known timing race, and `danger-probe.sh` (new) shows it is the same on both versions:
+  - Down+Enter in one burst the instant the menu paints: the cursor moves to No and the Enter is dropped, 4/4 on 2.1.326 and 4/4 on 2.1.327 (this run's pass happened to catch 2.1.326 taking it).
+  - AgEnD's cadence (Down, 200 ms, Enter): declined, 4/4 on each. After a 0.5 s or 1 s wait: 8/8 on each.
+  - A menu left on No is confirmed by AgEnD's next poll with Enter (`confirm No`), never Down again.
+- **The precheck's new prompt strings are not AgEnD screens:**
+  - `No, keep connecting` is the IDE auto-connect toggle (`/config`, `--ide`).
+  - `No, keep the limit` and `Press Enter to confirm again.` are the spend-limit menu (`/rate-limit-options`).
+  - `No, keep plan` and `No, keep running` are "Stop ultraplan?".
+  - `Retrying in 0s` and `Yes, and switch to default (ask each time) for this session` occur only in the embedded changelog prose.
+  - `Usage limit reset. Re-running` left the binary only because the workflow pause notice became a template (`` `${…?"Continuing on this login":"Usage limit reset"}. Re-running ${n} waiting …` ``). The `Usage limit reset · Continuing automatically` note that `Daemon.USAGE_LIMIT_RESET` reads is unchanged.
+- **The resume footer count (`Enter to confirm`, 1 → 3)** is the spend-limit menu's two new strings, not the resume menu. The menu is unchanged and live-tested below.
+- **Arrow keys "stop at No instead of wrapping"** (2.1.327 changelog). `extra7.sh` (new) presses past both ends of the Bash permission prompt and the "Switch model?" confirmation. Both versions behave alike: on the permission prompt, Up from `1. Yes` lands on `4. No` and Down past No stays on it. On the switch confirmation, two Downs and then two Ups each leave the cursor on `1. Yes` on both versions. AgEnD's own `/model` answer presses Up only from a verified `2.` and re-reads the screen after each key (`Daemon.answerOwnSwitchDialog`).
+  - AgEnD never relies on a wrap. Its automatic keys are Down from a verified cursor (trust, Bypass, the dangerous-command menu, the resume menu), and a remote card walks one verified step at a time, never past a list's ends (`remote-card-answer.ts`). No AgEnD path types a number into a prompt.
+- **"Switch model?" (#1690)** shows `Enter to confirm · Esc to cancel` under its options on both versions. `claudeSwitchDialog` allows up to three rows under the pair, so it reads the screen as before (kind, target, cursor), and the runtime table holds it.
+- **Indentation:** 2.1.327 draws dialog bodies two columns in (2.1.326: three). Every predicate already allows any leading whitespace.
+- **Cold-resume prompt, live** (`cold-resume/live.mts`, 327 cases added): `327-lookup`, `327-summary-lookup`, `327-summary-newfocus` and `327-summary-newfocus-80` all PASS, as do `326-lookup` and `326-summary-newfocus` on the same rig (`rig.sh up 327`). Each time the prompt was seen, Escape was sent, the history was kept and the prompt was gone. `327-summary-newfocus` needed the retrySafe second Escape (#3589).
+- **Resume-from-summary menu, live** (`cold-resume/resume-menu.mts`, 327 cases added): `326-menu`, `327-menu` and `327-menu-80` PASS. Each time the menu was seen, Down and Enter were sent, the full session was kept and nothing was compacted.
+- **Fixtures:** `tests/fixtures/claude-2.1.327-*.pane.txt`, held by `tests/claude-2.1.327-screens.test.ts` (40 tests):
+  - the screens of the 2.1.326 set, each from the same capture of this pass (`bypass-dialog-cursor-accept` from capture 92);
+  - the live cold-resume and resume-menu frames;
+  - the retry rows (the generic first-attempt row from 0.2 s frames, `retry-fast.sh`, not committed; the no-wait row is the real 429 frame with only the wait replaced, as for 2.1.326);
+  - the gateway pair (`gw.sh`, not committed);
+  - new: `switch-model-opus` and `bash-permission-down-past-end`.
+  - Paths are normalised to `/tmp/agend-audit/…`, including the project key in "Earlier messages are saved in …".
+- **Shipped ledger:** `src/cli-audited.ts` lists 2.1.326 and 2.1.327, so the dashboard's Update for Claude goes to 2.1.327. The ledger test requires the Windows Runtime pin to be the newest audited release, so `src/runtime-cli-install.ts` moves to 2.1.327 too. Each integrity there is the registry's (`npm view … dist.integrity`), and each matches a tarball downloaded with `npm pack` (sha512). The same two packages as 2.1.325, no dependencies, and `claude.exe` at the same path. The signer is still verified at install.
