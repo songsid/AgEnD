@@ -1880,6 +1880,8 @@ export class Daemon extends EventEmitter {
    * instance is still auth-broken and must not resume raising alarms.
    */
   private authFailureUnresolved = false;
+  /** A process-local login failure cannot be repaired by a valid auth file or idle chrome. */
+  private staleAuth: { generation: number; since: number } | null = null;
   /** One login-screen auth report per spawn — the screen persists across polls. */
   private loginScreenReported = false;
   /** #2795: the auth pattern match the token-free check is still to judge; it arms nothing until confirmAuthFailure(). */
@@ -2172,7 +2174,7 @@ export class Daemon extends EventEmitter {
   private paneQuotaPatterns(): ErrorPattern[] {
     if (!["codex", "grok"].includes(this.backend?.binaryName ?? "")) return [];
     const patterns = this.backend?.getErrorPatterns?.() ?? [];
-    return this.backend?.binaryName === "codex" ? patterns.filter(ep => Daemon.isCodexUsageLimitPause(ep)) : patterns.filter(ep => ep.type === "quota");
+    return this.backend?.binaryName === "codex" ? patterns.filter(ep => Daemon.isCodexUsageLimitPause(ep) || ep.type === "stale_auth") : patterns.filter(ep => ep.type === "quota");
   }
 
   private async prepareQuotaReplayHistory(reuseWindow: boolean): Promise<void> {
@@ -2225,7 +2227,7 @@ export class Daemon extends EventEmitter {
   }
 
   private quotaOccurrencesAfterInput(pane: string, ep: ErrorPattern): { input: NonNullable<Daemon["quotaInput"]>; count: number } | null {
-    if (!(this.backend?.binaryName === "codex" && Daemon.isCodexUsageLimitPause(ep)
+    if (!(this.backend?.binaryName === "codex" && (Daemon.isCodexUsageLimitPause(ep) || ep.type === "stale_auth")
       || this.backend?.binaryName === "grok" && ep.type === "quota")) return null;
     const input = this.quotaInput, history = input?.history;
     if (!input || !history || history.spawn !== this.spawnGeneration || history.fence !== this.launchFenceEpoch
@@ -2396,6 +2398,11 @@ export class Daemon extends EventEmitter {
     return super.emit(event, ...args);
   }
 
+  /** Attention remains active for General/busy agents too, until a new launch takes ownership. */
+  staleAuthIssue(): { since: number } | null {
+    return this.staleAuth?.generation === this.spawnGeneration ? { since: this.staleAuth.since } : null;
+  }
+
   /**
    * Undo an auth suspicion once the backend's token-free probe has said the credentials are fine. Since #2795 a pane
    * pattern match arms nothing before that probe (its pending match is just dropped); what is left to undo is a
@@ -2404,6 +2411,7 @@ export class Daemon extends EventEmitter {
    * is still live and stays.
    */
   clearSuspectedAuthFailure(): boolean {
+    if (this.staleAuthIssue()) return false;
     this.unverifiedAuthMatch = null;
     if (!this.authFailureUnresolved && !this.loginScreenReported) return false;
     this.authFailureUnresolved = false;
@@ -3190,6 +3198,7 @@ export class Daemon extends EventEmitter {
     if (this.sessionOomStopUnpersisted) return t("inst.session_oom_hold");
     const oomStop = readSessionOomStop(this.instanceDir);
     if (oomStop.blocked) return sessionOomStopHint(oomStop);
+    if (this.staleAuthIssue()) return t("inst.codex_stale_auth");
     if (this.pauseWakeState !== "active") return t("delivery.hold_state", this.pauseWakeState);
     if (this.inputBlockedDialogKey !== null) return t("delivery.hold_dialog", this.inputBlockedDialogKey);
     if (this.authFailureUnresolved) return t("delivery.hold_auth");
@@ -4847,6 +4856,7 @@ export class Daemon extends EventEmitter {
     now = Date.now(),
     busyPattern: RegExp | null = null,
   ): void {
+    if (this.staleAuthIssue()) return; // Ready chrome and recovery deadlines cannot repair this process.
     // Count occurrences across the WHOLE pane (not just text after the last
     // ready prompt). One shared counter (the static below): arm requires
     // count > baseline, so a drifted clone here would silently gate nudges.
@@ -4958,7 +4968,7 @@ export class Daemon extends EventEmitter {
       // composer to establish its baseline; later appended occurrences remain eligible.
       if ((ep.type === "rate_limit" && ep.action === "nudge_continue") || ep.historyUntilLiveComposer) {
         const baseline = this.nudgeBaselines?.get(key);
-        if (baseline === undefined || count <= baseline) {
+        if ((baseline === undefined || count <= baseline) && !(ep.type === "stale_auth" && newQuotaAfterInput)) {
           if (baseline !== undefined) this.lastErrorCount.set(key, count);
           continue;
         }
@@ -5062,6 +5072,10 @@ export class Daemon extends EventEmitter {
         this.logger.warn({ reason: String(err) }, "CLI launch repair failed");
       });
       return;
+    }
+    if (ep.type === "stale_auth") {
+      this.staleAuth = { generation: this.spawnGeneration, since: now };
+      this.authFailureUnresolved = true;
     }
     // #2795: auth text on the pane proves nothing about the credentials (22 of 22 such matches on the main host were
     // conversation text). It arms nothing here; it only asks the lifecycle's token-free check, and a failing check
@@ -6463,7 +6477,7 @@ export class Daemon extends EventEmitter {
     // auth pause — otherwise the instance would pause again the moment it idles.
     this.pausePending = false;
     this.pauseReconfirmAuth = false;
-    this.authFailureUnresolved = false;
+    if (!this.staleAuthIssue()) this.authFailureUnresolved = false;
     this.unverifiedAuthMatch = null;
     this.loginScreenReported = false;
     this.fatalStartupReported = false;
@@ -8906,7 +8920,7 @@ export class Daemon extends EventEmitter {
     const settleGeneration = this.spawnGeneration;
     const settleFence = this.launchFenceEpoch;
     if (cancelled()) return false;
-    if (this.refuseFatalStartupDelivery(verdict, status)) return false;
+    if (this.refuseBlockedDelivery(verdict, status)) return false;
 
     let windowId = this.getWindowId();
 
@@ -9025,7 +9039,7 @@ export class Daemon extends EventEmitter {
         // here (startup dismissal needs this lock) — back out and redo the
         // delivery from the top, where the settle wait runs again outside it.
         if (!settledClean || settleGeneration !== this.spawnGeneration || this.spawning) return "spawn-started";
-        if (this.refuseFatalStartupDelivery(verdict, status)) return false;
+        if (this.refuseBlockedDelivery(verdict, status)) return false;
         // A passive startup phase may paint after the outer readiness probe.
         // It clears without input, so waiting under the pane lock cannot starve
         // a dialog dismisser and closes the final clear→paste TOCTOU window.
@@ -9054,6 +9068,7 @@ export class Daemon extends EventEmitter {
         // same process, a pause/stop/respawn is not (launchFenceEpoch moves even
         // when a failed pause resumes the monitors).
         const writeCurrent = () => !cancelled()
+          && !this.staleAuthIssue()
           && !this.deliveryWritesStopping
           && !this.runtimeMonitorsFrozen
           && !this.spawning
@@ -10216,6 +10231,7 @@ export class Daemon extends EventEmitter {
    * pane proves nothing. The silence gate comes first and costs no capture.
    */
   private async paneReadinessForDelivery(windowId: string): Promise<"ready" | "busy" | "dialog" | "transient" | "unknown"> {
+    if (this.staleAuthIssue()) { this.resetFooterFallback(); return "dialog"; }
     // Each early return below is the pane seen outside the footer-fallback
     // candidate state, and never reaches deliveryInputReadyPane: reset here.
     if (!this.isPaneIdleForDelivery(windowId)) { this.resetFooterFallback(); return "busy"; }
@@ -10674,6 +10690,7 @@ export class Daemon extends EventEmitter {
   }
 
   /**
+   * A stale process login refuses delivery before any write; durable attempts stay retryable.
    * While the CLI is parked on a fatal startup screen (see fatalStartupBlocked),
    * no pane write may happen: paste+Enter into the corrupt-config modal would
    * confirm "Exit and fix manually" and exit the CLI. The message is failed (❌)
@@ -10681,7 +10698,11 @@ export class Daemon extends EventEmitter {
    * what to fix, and holding would only build a queue that floods the pane the
    * moment the flag clears.
    */
-  private refuseFatalStartupDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
+  private refuseBlockedDelivery(verdict: DeliveryVerdict, status?: DeliveryStatus): boolean {
+    if (this.staleAuthIssue()) {
+      this.failDelivery(verdict, status, "pre-write", "stale-auth");
+      return true;
+    }
     if (!this.fatalStartupBlocked && !this.modelMinimumBlocked) return false;
     this.logger.error("Delivery refused — CLI startup or model-version repair is held");
     this.failDelivery(verdict, status, "fatal-startup", "blocked-before-write");

@@ -2565,8 +2565,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
             locale: getLocale(),
             readState: agent => {
               const process = this.getInstanceStatus(agent), interaction = this.getInstanceInteraction(agent);
+              const reason = process === "paused" ? readPauseReason(this.getInstanceDir(agent)) : null;
               return { process, execution: this.getInstanceExecutionState(agent),
-                pauseReason: process === "paused" ? readPauseReason(this.getInstanceDir(agent)) : null,
+                pauseReason: reason === "stale_auth" ? "error" : reason,
                 waitingForApproval: interaction?.phase === "waiting" && !interaction.stale && !interaction.suspected
                   && (interaction.kind === "permission" || interaction.kind === "dangerous_command") };
             },
@@ -19123,6 +19124,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         kiroCompatibility: this.kiroCompatibilityHolds?.get(name),
         backendMissing: this.missingBinaryHold(name),
         pauseReason, pausedAt,
+        staleAuth: this.daemons.get(name)?.staleAuthIssue?.() ?? null,
         crashedAt: crashed ? (this.needsCrashedAt.get(name) ?? null) : null,
         signIn: pauseReason === "auth" ? this.signInFor(name) : null,
         modelSwitch: this.modelObservationForInstance(name)?.active ?? null,

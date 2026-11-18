@@ -272,10 +272,11 @@ export class WakeCoordinator {
       if (this.deps.isPaused(target)) {
         s.claimBlockNoticeSent = false;
         if (this.reserved.has(target) || this.deps.isRestarting(target)) continue;
-        if (this.deps.pauseReason(target) === "auth") {
+        const reason = this.deps.pauseReason(target);
+        if (reason === "auth" || reason === "stale_auth") {
           if (!s.authNoticeSent) {
             s.authNoticeSent = true;
-            this.deps.notifyTarget(target, t("delivery.wake_auth", target, waiting.length));
+            this.deps.notifyTarget(target, t(reason === "stale_auth" ? "delivery.wake_stale_auth" : "delivery.wake_auth", target, waiting.length));
           }
           continue;
         }

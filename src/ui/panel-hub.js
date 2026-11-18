@@ -58,6 +58,7 @@ import { PageHead } from "/assets/page-head.js";
 import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, roomPanelOpts, setHubPreviewOptIn } from "./hub-preview.js";
 import { DropOverlay, MAX_FILES, PendingFiles, hf, pageCarriesFiles, pasteToAttach, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "/assets/chat-quote.js";
+import { installTableSelection } from "/assets/chat-table-select.js";
 import { assetUrl } from "/assets/asset-url.js";
 register("hubAccess", {
   en: { tag: "Access needs checking", refused: "Asking was refused. Check your access before trying again.", check: "Check access", limited: "Asking was refused; the previous access information needs checking." },
@@ -936,8 +937,10 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
         }, 0);
       },
     }) : () => {};
+    // M-3326: the Fleet chat's table cell selection (a desk; chat-table-select.js), in every Hub conversation.
+    const offCells = installTableSelection(list, { phone });
     return () => {
-      offActions(); offQuote();
+      offActions(); offQuote(); offCells();
       paging = false;
       off(); offOpt(); offPanel(); sc.removeEventListener("scroll", onScroll); list.removeEventListener("click", thread.onClick);
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
