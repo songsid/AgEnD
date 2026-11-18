@@ -33,7 +33,7 @@ const keyOf = (item) => `${item.kind}:${item.id}`;
  * A picked AD group is read first (client.roomGroup): its tag shows its head count, and a group the directory cannot
  * read whole is not added — the other picks stay.
  */
-export function RoomPicker({ client, kinds, picked, onChange, placeholder, label, id, exclude = [], fixed = null, note = "" } = {}) {
+export function RoomPicker({ client, kinds, picked, onChange, placeholder, label, id, exclude = [], fixed = null, note = "", searchHelp = null } = {}) {
   const [q, setQ] = useState(""), [results, setResults] = useState(null), [failed, setFailed] = useState(false), [groupNote, setGroupNote] = useState("");
   const asked = useRef(0), timer = useRef(null), latest = useRef(picked), live = useRef(true);
   latest.current = picked;
@@ -76,6 +76,7 @@ export function RoomPicker({ client, kinds, picked, onChange, placeholder, label
     ${results && !failed ? offer.length ? html`<ul class="hub-room-results" role="listbox" aria-label=${label}>${offer.map(c => html`<li key=${keyOf(c)}>
         <button type="button" role="option" class="hub-room-result" onClick=${() => { void pick(c); }}>${pickLabel(c)}${c.intro?html` <small class="note">${c.intro}</small>`:null}${c.owner?.name && c.kind === "agent" ? html` <small class="note">${c.owner.name}</small>` : null}${c.kind === "agent" && !c.mine ? html` <small class="note">${hroom("invitePending")}</small>` : null}</button></li>`)}</ul>`
       : html`<p class="note">${hn("noMatch")}</p>` : null}
+    ${q.trim() ? searchHelp : null}
   </div>`;
 }
 

@@ -48,6 +48,8 @@ export interface HubHttpDeps {
   log?(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   /** C supplies consent/expiry storage; R supplies current room effects on the same Core/DB. */
   roomInvitations?(core: import("./core.js").HubCore, host: import("../invitations.js").RoomInvitationHost): import("../invitations.js").HubRoomInvitations;
+  /** M-3341 A1 foundation; production registration waits for the owner's A2 response UI. */
+  roomAgentRequests?(core: import("./core.js").HubCore, host: import("../invitations.js").RoomInvitationHost): import("../room-agent-requests.js").HubRoomAgentRequests;
   roomTeams?: import("../teams/types.js").HubTeamReader;
   /** C-owned Team list projection; suggestions confer no creation/membership authority. */
   roomTeamCandidates?(db: Database.Database, prefix: string): readonly { id: string; name: string; people: number }[];
