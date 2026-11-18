@@ -93,7 +93,10 @@ What it does and does not do:
   the bot), the login is closed instead; there is no "post it in the channel" fallback.
 - The token goes into the **terminal page**, never a chat. If it is pasted into a topic, General or the web chat anyway,
   AgEnD hides it before the message is logged, indexed or handed to the agent, cancels it, sends you a new one the same
-  way, and replies once there saying where it goes (#4145).
+  way, and replies once there saying where it goes (#4145). Pasted into a Hub room or a 1:1 Hub question, it is hidden
+  from the agent and replaced the same way, and the chat you started the sign-in from is told. The Hub keeps its own
+  copy of that post (encrypted) until its retention deletes it, and AgEnD can't remove it there, but the token in it
+  no longer works.
 - It **fails closed**: if the tunnel cannot start, dies, or the login ends in any way (done, cancelled, timeout, fleet
   shutdown), the tunnel is stopped before the next login can start. A tunnel that cannot be confirmed stopped is
   announced in the chat with its pid and blocks further tunnels until it is dealt with.

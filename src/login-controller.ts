@@ -844,6 +844,25 @@ export class LoginController {
     return this.abort(entry, t("login.token_pasted_closed", entry.shown), "token pasted, resend failed");
   }
 
+  /**
+   * M-3313: tokenPasted for a token seen where AgEnD has no reply of its own in that place (a Hub room, a 1:1 Hub
+   * question): taken back and replaced the same way, and the sign-in's own chat told. True when one was taken back.
+   */
+  async tokenPastedElsewhere(): Promise<boolean> {
+    const entry = this.active;
+    if (!entry) return false;
+    const notice = await this.tokenPasted();
+    if (notice === null) return false;
+    // M-3313: pasted where AgEnD cannot answer (a Hub room or a 1:1 Hub question): the chat the sign-in was started from is
+    // told, in its own words. A dashboard sign-in's window shows the new token by itself.
+    const ok = this.active === entry;                     // a new token that could not go privately ended the sign-in
+    if (!entry.chat.web) {
+      await entry.chat.adapter.sendText(entry.chat.chatId, ok ? t("login.token_pasted_hub", entry.shown) : notice, { threadId: entry.chat.threadId })
+        .catch(err => this.deps.logger.warn(safeErr(err), "Pasted sign-in token (Hub) notice failed"));
+    }
+    return true;
+  }
+
   // ── Internals ──
 
   private admitRate(userId: string): boolean {

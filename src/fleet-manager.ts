@@ -2587,6 +2587,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           attachRoomInputs: handler => { this.hubRoomInput = handler; },
           attachRoomOwed: port=>{this.hubRoomOwed=port;},
           roomNotify: input => this.deliverHubRoomNotification(input),
+          // M-3313: a sign-in token in what the Hub sends is taken back the moment the link receives it.
+          sawText: text => this.sawHubText(text),
           roomReceipt: (caller, receiptId) => verifyRoomReceipt({
             lookup: (agent, id) => {
               const item = this.queryDurableDeliveryStatus(agent, {messageId:id}).items[0];
@@ -2907,6 +2909,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
   /**
+   * M-3313 (#4145 for the Hub): what a Hub question or room notification hands the agent, with this fleet's sign-in
+   * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
+   * The Hub's own copy of the post is beyond the Fleet: it keeps it (encrypted) until its retention deletes it.
+   */
+  /**
+   * M-3313 (Fable #4165 F1): a Hub frame's content as the member link receives it — before it waits for its agent (busy,
+   * paused, offline) or is dropped undelivered — so a live sign-in token in it is taken back at once, not at delivery.
+   * Nothing is changed here: the delivery hides it from the agent (screenHubText).
+   */
+  private sawHubText(text: string): void {
+    const screened = this.screenLoginToken(text);
+    if (!screened?.live) return;
+    this.logger.warn("A sign-in access token arrived from the Hub: taken back and replaced");
+    void this.loginController?.tokenPastedElsewhere().catch((err: unknown) =>
+      this.logger.warn({ err: (err as Error).message }, "Taking back a sign-in token pasted on the Hub failed"));
+  }
+
+  private screenHubText(text: string): string {
+    const screened = this.screenLoginToken(text);
+    if (!screened) return text;
+    this.logger.warn("A sign-in access token reached this Fleet in a Hub question: hidden from the agent, taken back and replaced");
+    if (screened.live) void this.loginController?.tokenPastedElsewhere().catch((err: unknown) =>
+      this.logger.warn({ err: (err as Error).message }, "Taking back a sign-in token pasted on the Hub failed"));
+    return screened.text;
+  }
+
+  /**
    * A Hub question to its representative agent: ordinary cross-instance delivery (idle gate, wake, retries), from the
    * reserved Hub sender with the Hub-issued correlation id. beforeInput runs immediately before the IPC hand-off.
    */
@@ -2931,7 +2960,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       task_summary: "A question from the Hub",
     };
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
-    const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: input.text, meta: ipcMeta },
+    const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         const classic=this.isClassicInstance(input.agent);
         // A busy Classic room must finish its public turn first; never force a private question into that turn's queue.
@@ -2951,7 +2980,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const config=input.kind==="answer-reminder"?this.hubAgentConfig(input.agent):this.fleetConfig?.instances[input.agent];
     if (this.shuttingDown || !config || isNativeExecInstance(config)) return false;
     const prefix=input.kind==="answer-reminder"?"hub-room-answer-reminder":input.kind==="mention-feedback"?"hub-room-mention-feedback":"hub-room-post-answer";
-    const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:input.text,
+    const result=await this.deliverToInstance(input.agent,{type:"fleet_inbound",targetSession:input.agent,content:this.screenHubText(input.text),
       meta:{chat_id:"",message_id:`${prefix}-${input.id}`,user:`instance:${HUB_REPORT_TARGET}`,user_id:`instance:${HUB_REPORT_TARGET}`,
         ts:new Date().toISOString(),thread_id:"",from_instance:HUB_REPORT_TARGET,from_display:"Hub",correlation_id:`${prefix}-${input.id}`,
         request_kind:"notification",requires_reply:"false",task_summary:input.kind==="answer-reminder"?"Hub room answer reminder":input.kind==="mention-feedback"?"Hub mention delivery feedback":"A reply to your Hub room post"}},
