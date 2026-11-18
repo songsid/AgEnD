@@ -70,6 +70,8 @@ ${opts.foreignNpm ? `echo "  999999       1 npm install something-else"` : ""}
     npm_config_prefix: join(root, "prefix"), npm_config_cache: join(root, "cache"), npm_config_audit: "false", npm_config_fund: "false",
     npm_config_update_notifier: "false", npm_config_offline: "true", npm_config_loglevel: "error",
     ...(home ? { AGEND_HOME: home } : {}),
+    // M-3302: the installer waits up to 3 min for the foreign npm before its own; here it goes on at once (and says so).
+    ...(opts.foreignNpm ? { AGEND_INSTALL_OTHER_NPM_WAIT_MS: "0" } : {}),
   };
 }
 /** The user's systemd unit (what `agend install` made before): the installer then refreshes it through the new release. */
@@ -212,6 +214,9 @@ describe("#2264 the user's interrupted update, with real npm", { timeout: 240_00
     const run = s.npm(["exec", "--yes", "--package", v2, "--", "agend-install", "--spec", v2], npmEnv(s.root, s.home, { foreignNpm: true }));
     expect(run.status).toBe(1);
     expect(run.stdout).toMatch(/another npm is running on this host, so what an earlier install left .* was not touched/);
+    expect(run.stdout).toMatch(/another npm is changing packages on this host \(pid 999999: npm install\).*before installing AgEnD/);
+    expect(run.stdout).not.toContain("something-else");
+    expect(run.stdout).toMatch(/the other npm is still running after 0 min .*going on/);
     expect(existsSync(sibling), "left exactly where npm put it").toBe(true);
   });
 
@@ -868,5 +873,92 @@ describe("#2264 review (Prism r3 P1): mixed with updaters from before #2264 — 
     writeFileSync(r.lock, '{"pid":');
     expect(installer.admit(r.prefix, { ...r.deps, openedBy: () => null }, {}).refuse).toMatch(/is being written by another AgEnD install/);
     expect(readFileSync(r.lock, "utf8")).toBe('{"pid":');
+  });
+});
+
+describe("M-3302 (#4146): the installer waits, bounded, while another npm changes packages on this host", () => {
+  const CLAUDE_NPM = "7777     1 npm install -g @anthropic-ai/claude-code";
+  /** `busy(step)`: is the other npm running at this poll? Every poll is one `ps`; the clock moves 2 s per sleep. */
+  const rig = (busy: (poll: number, installed: boolean) => boolean, opts: { live?: number[]; waitMs?: number } = {}) => {
+    let installed = false, polls = 0, now = 0;
+    const r = unitRig({ live: opts.live, onInstall: () => { installed = true; } });
+    const run = r.deps.run;
+    const order: string[] = [];
+    const deps = r.deps as Record<string, unknown>;
+    deps.run = ((cmd: string, args: string[]) => {
+      if (cmd === "ps") {
+        polls += 1; const b = busy(polls, installed); order.push(`ps:${b ? "busy" : "idle"}`);
+        return { status: 0, stdout: `4242 1 node agend-install.cjs\n${b ? CLAUDE_NPM + "\n" : ""}`, stderr: "" };
+      }
+      if (cmd === "npm" && args[0] === "install") order.push("npm install");
+      if (args[0] === "restart") order.push("restart");
+      return run(cmd, args);
+    }) as typeof r.deps.run;
+    deps.monotonicNow = () => now;
+    deps.sleep = (ms: number) => { now += ms; };
+    if (opts.waitMs !== undefined) deps.otherNpmWaitMs = opts.waitMs;
+    return { r, order };
+  };
+  const spec = (upgrade = false) => [...(upgrade ? ["--upgrade"] : []), "--spec", `@songsid/agend@${OWN_VERSION}`];
+
+  it("busy for two polls, then gone: it says what it waits for, waits, then installs", () => {
+    const { r, order } = rig(poll => poll <= 2);
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(order.slice(0, 4)).toEqual(["ps:busy", "ps:busy", "ps:idle", "npm install"]);
+    const waiting = r.log.find(l => l.includes("another npm is changing packages"));
+    expect(waiting).toMatch(/pid 7777: npm install\).*before installing AgEnD/);
+    expect(waiting).not.toContain("@anthropic-ai");                    // only the command word, never the argv
+    expect(r.log).toContain("  ✓ the other npm finished");
+  });
+
+  it("never gone: after the bound it goes on, and says so", () => {
+    const { r, order } = rig(() => true, { waitMs: 10_000 });
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(order.filter(o => o === "ps:busy").length).toBe(6);          // the first look, then one per 2 s for 10 s
+    expect(order.indexOf("npm install")).toBe(6);
+    expect(r.log.some(l => /still running after 0 min \(pid 7777.*going on/.test(l))).toBe(true);
+  });
+
+  it("an npm that starts during AgEnD's install is waited for again before the fleet is restarted", () => {
+    let after = 0;
+    const { r, order } = rig((_poll, installed) => installed && ++after <= 2, { live: [9191] });
+    writeFileSync(join(r.home, "fleet.pid"), "9191");
+    mkdirSync(join(r.userHome, ".config", "systemd", "user"), { recursive: true });
+    writeFileSync(join(r.userHome, ".config", "systemd", "user", "com.agend.fleet.service"), "[Service]\n");
+    expect(installer.main(spec(true), r.deps)).toBe(0);
+    const at = order.indexOf("restart");
+    expect(at).toBeGreaterThan(0);
+    expect(order.slice(order.indexOf("npm install") + 1, at)).toEqual(["ps:busy", "ps:busy", "ps:idle"]);
+    expect(r.log.some(l => /before restarting the fleet/.test(l))).toBe(true);
+  });
+
+  it("an argv with a credential in it is never printed — only the pid and npm's command word", () => {
+    const { r } = rig(poll => poll === 1);
+    const run = r.deps.run;
+    r.deps.run = ((cmd: string, args: string[]) => cmd === "ps" ? { status: 0, stdout: "4242 1 node agend-install.cjs\n7777 1 npm install -g x --registry https://user:s3cret@registry.example.invalid/\n", stderr: "" } : run(cmd, args)) as typeof r.deps.run;
+    (r.deps as Record<string, unknown>).otherNpmWaitMs = 0;
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(r.log.join("\n")).not.toMatch(/s3cret|registry\.example/);
+    expect(r.log.some(l => l.includes("pid 7777: npm install"))).toBe(true);
+  });
+
+  it("AGEND_INSTALL_OTHER_NPM_WAIT_MS can only shorten the bound: a larger value still stops at 3 min", () => {
+    const { r, order } = rig(() => true);
+    (r.deps as Record<string, unknown>).env = { ...(r.deps.env as Record<string, string>), AGEND_INSTALL_OTHER_NPM_WAIT_MS: String(60 * 60_000) };
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(order.filter(o => o === "ps:busy").length).toBe(1 + (installer as unknown as { OTHER_NPM_WAIT_MS: number }).OTHER_NPM_WAIT_MS / 2000);
+  });
+
+  it("control: no other npm — no wait, no line", () => {
+    const { r } = rig(() => false);
+    expect(installer.main(spec(), r.deps)).toBe(0);
+    expect(r.log.some(l => /another npm is changing packages|other npm/.test(l))).toBe(false);
+  });
+
+  it("npmChangingFromProcessList: the changing rows; reads and exec are not; unreadable is null", () => {
+    const { npmChangingFromProcessList } = installer as unknown as { npmChangingFromProcessList(o: string, p: number): Array<{ pid: number }> | null };
+    expect(npmChangingFromProcessList(`300 1 node x\n${CLAUDE_NPM}\n401 1 npm exec mcp-remote\n402 1 npm ls -g\n`, 300)!.map(r => r.pid)).toEqual([7777]);
+    expect(npmChangingFromProcessList("300 1 node x\n", 300)).toEqual([]);
+    expect(npmChangingFromProcessList("garbage", 300)).toBeNull();
   });
 });

@@ -141,21 +141,60 @@ function npmCommands(args) {
   var all = readings(at + 1, false);
   return all.length ? all : ["?"];
 }
-function npmIdleFromProcessList(output, ownPid) {
+/** The rows of the process list whose npm may change packages; null when the list cannot be read (see npmIdleFromProcessList). */
+function npmChangingFromProcessList(output, ownPid) {
   var rows = String(output).trim().split("\n").map(function (line) {
     var m = /^\s*(\d+)\s+(\d+)\s+(.+)$/.exec(line);
     return m ? { pid: Number(m[1]), parent: Number(m[2]), args: m[3] } : null;
   });
-  if (!rows.length || rows.some(function (row) { return !row; })) return false;
-  if (!rows.some(function (row) { return row.pid === ownPid; })) return false;
-  return !rows.some(function (row) {
+  if (!rows.length || rows.some(function (row) { return !row; })) return null;
+  if (!rows.some(function (row) { return row.pid === ownPid; })) return null;
+  return rows.filter(function (row) {
     var commands = npmCommands(row.args);
     return commands !== null && !commands.every(function (c) { return NPM_READS.test(c); });
   });
 }
-function npmIdle(deps) {
+function npmIdleFromProcessList(output, ownPid) {
+  var changing = npmChangingFromProcessList(output, ownPid);
+  return changing !== null && changing.length === 0;
+}
+function npmChanging(deps) {
   var r = deps.run("ps", ["-A", "-o", "pid=,ppid=,args="], { timeoutMs: 5000 });
-  return r.status === 0 && npmIdleFromProcessList(r.stdout, deps.pid);
+  return r.status === 0 ? npmChangingFromProcessList(r.stdout, deps.pid) : null;
+}
+function npmIdle(deps) {
+  var changing = npmChanging(deps);
+  return changing !== null && changing.length === 0;
+}
+
+/** M-3302 (#4146): how long the installer waits for another npm that is changing packages on this host. */
+var OTHER_NPM_WAIT_MS = 3 * 60 * 1000;
+/**
+ * M-3302 (#4146): wait, bounded, while another npm on this host is changing packages — typically a backend CLI updating
+ * itself (Claude Code's auto-updater runs `npm install -g @anthropic-ai/claude-code` in the same global prefix). Called
+ * before this installer's own `npm install -g`, and again before the fleet is restarted: a restart stops every CLI, and a
+ * CLI's npm stopped half-way leaves its package half-installed (its binary gone or a placeholder) and the fleet without it.
+ * Says once what it waits for and how it ended; after OTHER_NPM_WAIT_MS it goes on. A process list that cannot be read is
+ * not waited on (repair() already treats it as busy for what it touches).
+ */
+function waitForOtherNpm(deps, log, before) {
+  var changing = npmChanging(deps);
+  if (!changing || !changing.length) return "idle";
+  // AGEND_INSTALL_OTHER_NPM_WAIT_MS: a shorter bound, for a test that runs a real npm beside a fake foreign one.
+  var fromEnv = Number((deps.env || {}).AGEND_INSTALL_OTHER_NPM_WAIT_MS);
+  var clock = clockOf(deps), sleep = sleepOf(deps);
+  var waitMs = deps.otherNpmWaitMs !== undefined ? deps.otherNpmWaitMs : (isFinite(fromEnv) && fromEnv >= 0 && String((deps.env || {}).AGEND_INSTALL_OTHER_NPM_WAIT_MS).trim() !== "" ? Math.min(fromEnv, OTHER_NPM_WAIT_MS) : OTHER_NPM_WAIT_MS);
+  // Only the pid and npm's command word: `ps -A` is every user's processes, and an npm argv can carry a registry URL with credentials in it.
+  var describe = function (rows) { return rows.map(function (row) { var c = npmCommands(row.args) || ["?"]; return "pid " + row.pid + ": npm " + c[0]; }).join("; "); };
+  log("  … another npm is changing packages on this host (" + describe(changing) + "); waiting up to " + Math.round(waitMs / 60000) + " min for it to finish before " + before);
+  var start = clock();
+  while (clock() - start < waitMs) {
+    sleep(2000);
+    changing = npmChanging(deps);
+    if (changing && !changing.length) { log("  ✓ the other npm finished"); return "finished"; }
+  }
+  log("  ⚠ the other npm is still running after " + Math.round(waitMs / 60000) + " min (" + describe(changing || []) + "); going on");
+  return "timeout";
 }
 
 /** Move a leftover into `<prefix>/.agend-quarantine/<time>-<pid>/` — kept as evidence, never deleted here. */
@@ -750,6 +789,7 @@ function main(argv, injected) {
     var npmEnv = Object.assign({}, deps.env);
     npmEnv[lockReaders.TOKEN_ENV] = admitted.token;
     var install = function () { return deps.run("npm", ["install", "-g", spec], { inherit: true, env: npmEnv }); };
+    waitForOtherNpm(deps, log, "installing AgEnD");
     var done = install();
     if (done.status !== 0) {
       // npm itself can leave its sibling behind (a failure inside its own move): once more, only if repairing moved one.
@@ -844,6 +884,7 @@ function main(argv, injected) {
     }
     var env = Object.assign({}, withoutUpdateNpmBounds(deps.env), { AGEND_RESTART_ORIGIN: upgrade ? "agend-update" : "agend-install" });
     if (fleetRunning(home, deps) && (kind || upgrade)) {
+      waitForOtherNpm(deps, log, "restarting the fleet");
       var restarted = deps.run(bin, ["restart", "--yes"], { inherit: true, env: env });
       // 75: the restart job is still running (systemd goes on with it); the new fleet settles the marker.
       if (restarted.status !== 0 && restarted.status !== 75) return rollBack("stopping", "the fleet did not restart onto v" + version + " (exit " + restarted.status + ")", "run `agend restart`");
@@ -870,5 +911,5 @@ function main(argv, injected) {
   }
 }
 
-module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
+module.exports = { main: main, repair: repair, admit: admit, openedBy: openedBy, setStage: setStage, claimMarker: claimMarker, npmIdleFromProcessList: npmIdleFromProcessList, npmChangingFromProcessList: npmChangingFromProcessList, waitForOtherNpm: waitForOtherNpm, OTHER_NPM_WAIT_MS: OTHER_NPM_WAIT_MS, npmCommands: npmCommands, withoutUpdateNpmBounds: withoutUpdateNpmBounds, LOCK: LOCK };
 if (require.main === module) process.exit(main(process.argv.slice(2)));
