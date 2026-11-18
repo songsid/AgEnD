@@ -79,8 +79,37 @@ counted as passing runs.
 
 ## Rollback
 
-Revert the narrow error rule and rebuild the detector manifest. This
+Revert the narrow error rule and its wake-history repair, then rebuild
+the detector manifest. This
 restores the earlier authentication classification for the compaction
 denial. The audit changes no installed CLI or real account configuration.
 The dev twin additionally updates its audited-version ledger with this
 evidence; that update target must be reverted together if rolling back.
+
+## Review repair: history after a Grok wake
+
+The initial regression set omitted the generic pane-quota-history suite.
+Its old Grok control selected the first quota rule by type, which now
+selected the new specific compaction rule. It now selects the broad
+rule by the ordinary credit line it is intended to match. Four additional
+cases cover the new multiline rule after acknowledged input.
+
+Review also exposed a product issue: the wake baseline tested the old
+pane one row at a time, losing multiline quota frames. It now retains
+the complete rows covered by each actual quota match, deduplicated by
+their position. The same known old frame also baselines its overlapping
+authentication match, so its 401 cannot arm an auth gate after quota
+history was absorbed. This does not grant an exemption to other text.
+
+Five captured 120/80-column wake cases first fail, then pass; each also
+checks that a subsequent new quota frame reports once. Their cosmetic
+workspace header is omitted because the synthetic rig folder's name
+itself contains `401`, an unrelated historical broad-auth false positive.
+The captured error, prompt and footer bytes remain intact. Removing only
+the overlapping-auth baseline makes those five new-hit assertions fail.
+The restored history and audit files pass 111 cases. The unchanged
+changelog cases passed in the earlier 186-case repair stage.
+
+Both fragment filenames were corrected to the accepted `4182-grok-1089`
+slug. The detector regex and all captured terminal evidence are unchanged.
+No additional terminal, account or model campaign was run for this repair.

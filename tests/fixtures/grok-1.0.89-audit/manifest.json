@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "stage": "main audit source and frozen evidence before PR metadata",
+  "stage": "main review repair: multiline wake history, unchanged CLI detector/captures",
   "sourceBase": "830f882d64b4fa3a3ad8217d297940689c30b5ca",
   "binaries": [
     {
@@ -19,7 +19,7 @@
     },
     {
       "path": "scripts/manual/cli-upstream-precheck/manifest.json",
-      "sha256": "fe6747e284a3fb60dc70ae87eaac4b3d5caff2abd7c9bfa7330b7d83b624ae28"
+      "sha256": "6773836843c9b306a92c0af7ffa34bd44ac157b5564b2bcd83143c410b5a31ca"
     },
     {
       "path": "tests/grok-1.0.89-audit.test.ts",
@@ -28,6 +28,14 @@
     {
       "path": "docs/design/grok-1.0.89-audit.md",
       "sha256": "766a9d78d4d0c7e61ce7b12fda417cc6015de4ffad9ecbf8ac6d986bbdd19d1a"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "41c45f923d463b3caa30bb5cf681812a46b7fb743f0e7a7c70d2659275b5e85f"
+    },
+    {
+      "path": "tests/pane-quota-history-3188.test.ts",
+      "sha256": "e499ed30376cc002787bc4af88b66e1ea193c93ae1735f56e91dfae886eb2e80"
     }
   ],
   "evidenceSha256": [
@@ -49,7 +57,7 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/README.md",
-      "sha256": "d8b0b9399acbadf84ff30960654ffa4a68a65569f20007ac20abdc759d72ee34"
+      "sha256": "6fc69c32d0d4a7d104022a533809a73bf0a75f463c585fd384d990e2d69ae226"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/after-v2.log",
@@ -94,6 +102,50 @@
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/manifest-check.log",
       "sha256": "1c75c85c4e1996d56ffd7513f8e56271eecb0b7b42c7faf11b43bfab234f2f94"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-after.log",
+      "sha256": "cfc1a7ac79386434e67df922070e2b0d5e3290cb896fe5ef40f61e08b4963cde"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-auth-overlap-restored.log",
+      "sha256": "5f2233f18e18b70166a7cc546fb087aef2c982d9f1d765cb0fdc848949f41f54"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-auth-overlap-reversal.log",
+      "sha256": "bdd7c9fa63538944080147c4ff5b9dff873a2afa0e18fa8575526412e37e2e24"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-changelog.log",
+      "sha256": "7add9fd32101731aea9a3e564c1ee00254826973b146edb24092bac1e58783e4"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-fail-first.log",
+      "sha256": "c90881b631cc7189ff4f34ce57187ad9886be84951c45896ea77c4cad514281f"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-final-after.log",
+      "sha256": "7afc069c44ad7e9c7fb8faaf4302492ff825b291fc28c1f76e45dfe3e2dd05e2"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-final-source-tsc.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-last-test-tsc.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-manifest-build.log",
+      "sha256": "268d0edd138f307889b358b5431953a42b31e189757612e5e7a9963b1a5b05dc"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-manifest-check.log",
+      "sha256": "1c75c85c4e1996d56ffd7513f8e56271eecb0b7b42c7faf11b43bfab234f2f94"
+    },
+    {
+      "path": "tests/fixtures/grok-1.0.89-audit/checks/r1-new-hit.log",
+      "sha256": "4eb001b9ee78c9a5454968b138048135d17fa28b96490287083ac65e97799e7b"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/regression.log",
@@ -713,7 +765,7 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/validation.json",
-      "sha256": "11f587d7857afa61a393109ccb999abc1ce48d9ce6340bf835acfd7efa2f542e"
+      "sha256": "9f4ff3e65f1a9349565c16c6d1dc0fcb119a6717bd35bd1742edb8bf97619b83"
     }
   ]
 }

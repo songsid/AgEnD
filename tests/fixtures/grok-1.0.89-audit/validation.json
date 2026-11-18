@@ -42,5 +42,36 @@
     "No completed OAuth, Windows CLI, installed-package upgrade or browser",
     "Source rule is an existing gap reproduced on both versions",
     "Initial permission and harness-timing failures excluded from passing counts"
-  ]
+  ],
+  "reviewRepair": {
+    "initialReviewedHead": "83a00f579536310e00f01e2b4af5cb0860fb700d",
+    "findings": [
+      "Select broad quota test rule explicitly; add four post-input multiline cases",
+      "Preserve whole matched rows before Grok wake and baseline overlapping auth only from the same proven frame",
+      "Rename dotted changelog slugs to grok-1089"
+    ],
+    "failFirstHistory": {
+      "failed": 5,
+      "passed": 66
+    },
+    "historyAndAuditFinal": {
+      "passed": 111,
+      "files": 2
+    },
+    "earlierRepairWithChangelog": {
+      "passed": 186,
+      "files": 3
+    },
+    "authOverlapReversal": {
+      "failed": 5,
+      "unselected": 66
+    },
+    "exactRestore": {
+      "passed": 5,
+      "unselected": 66
+    },
+    "sourceTypeScript": 0,
+    "testTypeScript": 0,
+    "newTerminalRuns": 0
+  }
 }
