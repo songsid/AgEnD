@@ -1238,6 +1238,12 @@ export type GuestAuditEntry =
   | { kind: "code"; at: number; account: string; name: string; outcome: string };
 
 /** #1490 row 27: a restart asked for one lifecycle of an instance after it was stopped, restarted or replaced. */
+/** M-3302: what a delivery log line says of a notice — its first line, places as plain text, at most 100 characters. */
+export function noticePreview(text: string): string {
+  const first = stripPlaceRefs(text).split("\n").find(l => l.trim() !== "")?.trim() ?? "";
+  return first.length > 100 ? `${first.slice(0, 99)}…` : first;
+}
+
 export class RestartSupersededError extends Error {
   /** `shown`: the instance as the chat list names it (shownInstanceName). */
   constructor(shown: string) {
@@ -18170,7 +18176,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.adapter && target) {
         const out = this.renderPlaces(this.getPrimaryAdapterId(), body, target.opts);
         this.adapter.sendText(target.chatId, out.text, out.opts)
-          .then(() => opts.ack?.(true), err => { this.logger.warn({ err }, "Failed to send fleet error notification"); opts.ack?.(false); });
+          .then(() => { this.logger.info({ notice: noticePreview(body) }, "Fleet notice delivered"); opts.ack?.(true); },
+            err => { this.logger.warn({ err }, "Failed to send fleet error notification"); opts.ack?.(false); });
         dispatched = true;
       }
     }
@@ -18266,7 +18273,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const send = this.sendToInstanceTopic(instanceName, text, extraOpts);
     if (!send) return false;
     // `ack` (a caller that must not lose the message) is told when the platform took it or refused it; everyone else only gets the log line.
-    send.sent.then(() => ack?.(true), e => { this.logger.warn({ err: e, instanceName }, send.failure); ack?.(false); });
+    // M-3302 (#4146): a delivered notice leaves one line, so the log can tell whether the person was told (only failures were logged).
+    send.sent.then(() => { this.logger.info({ instanceName, notice: noticePreview(text) }, "Notice delivered"); ack?.(true); },
+      e => { this.logger.warn({ err: e, instanceName }, send.failure); ack?.(false); });
     return true;
   }
 
