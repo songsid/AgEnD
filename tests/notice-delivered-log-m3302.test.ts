@@ -6,6 +6,7 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { FleetManager, noticePreview } from "../src/fleet-manager.js";
+import { placeRef, type PlaceTarget } from "../src/topic-link.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -63,5 +64,8 @@ describe("M-3302: a delivered notice is logged", () => {
     expect(noticePreview("\n\n  first line  \nsecond")).toBe("first line");
     expect(noticePreview("x".repeat(150))).toBe(`${"x".repeat(99)}…`);
     expect(noticePreview("")).toBe("");
+    // Fable on #4156: places are written as plain names, never their markup.
+    const dev: PlaceTarget = { kind: "instance", name: "dev-a" };
+    expect(noticePreview(`${placeRef(dev, "dev-a")} cannot start`)).toBe("dev-a cannot start");
   });
 });

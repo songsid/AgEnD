@@ -30,6 +30,8 @@ export interface RestartProgressSummary {
   version: string;
   pausedNames: string[];
   failedNames?: string[];
+  /** M-3302 (#4146): of the failed, those held because their AI CLI is not installed — per binary, with its install command. */
+  missingBinaries?: Array<{ binary: string; fix: string; names: string[] }>;
   /** Instances whose background work this restart/update ended (#1716); all modes. */
   backgroundWorkEndedNames?: string[];
   /** Optional non-fatal cleanup note (e.g. old system copy left behind); update mode only. */
@@ -115,6 +117,9 @@ export function formatRestartProgressCompletion(
   }
   if (summary.failedNames?.length) {
     lines.push(`⚠️ Failed (${summary.failedNames.length}): ${summary.failedNames.join(", ")}`);
+  }
+  for (const m of summary.missingBinaries ?? []) {
+    if (m.names.length) lines.push(t("restart.progress.missing_binary", m.binary, m.names.length, m.names.join(", "), m.fix));
   }
   if (summary.backgroundWorkEndedNames?.length) {
     lines.push(formatBackgroundWorkEndedLine(summary.backgroundWorkEndedNames));
