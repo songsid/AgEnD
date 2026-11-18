@@ -72,8 +72,7 @@ export type NeedsYouReason =
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
   | "hub_proposal" | "hub_execution_hold" | "hub_unavailable"
-  | "tmux_hold"
-  | "claude_npm_install";                                           // M-3307: the host's Claude Code is an npm-global install                                                    // M-2457: the bundled tmux's server/window held
+  | "tmux_hold";                                                    // M-2457: the bundled tmux's server/window held
 
 /** S-51: the Hub (or this fleet's Hub membership) is held: why, as the composition's reason code and localized text. */
 export interface HubHoldInput {
@@ -184,8 +183,6 @@ export interface NeedsYouInputs {
   deliveries: DeliveryInput[];
   tasks?: TaskInput[];
   backendSignIns?: BackendSignInInput[];
-  /** M-3307 (#4146): the host's Claude Code is an npm-global install (its package directory, and since when it was seen): AI accounts offers the switch to Claude's native install. */
-  claudeNpm?: { path: string; since: number } | null;
   signInKeepAlive?: SignInKeepAliveInput[];
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
@@ -304,7 +301,6 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   }
 
   // Installer-selected backends are fleet-level web items, including when no agent uses them.
-  if (inputs.claudeNpm) items.push({ id: `claude-npm:${inputs.claudeNpm.since}`, type: "backend", instance: "", reason: "claude_npm_install", detail: inputs.claudeNpm.path, since: inputs.claudeNpm.since });
   for (const b of inputs.backendSignIns ?? []) items.push({
     id: `backend-signin:${b.backend}:${b.since}`, type: "backend", instance: "", reason: "backend_signin", detail: b.backend, since: b.since,
     ...(b.browser ? { signIn: { backend: b.backend } } : {}),

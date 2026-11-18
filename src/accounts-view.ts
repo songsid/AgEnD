@@ -9,8 +9,9 @@
  * `{ kind: "machine", … }` (Claude Code first), as rows, never by reshaping these. An older page ignores a scope it does not know.
  * A machine row's `scope.readOnlyReason` is a CODE (`MachineReadOnlyReason`), which the page turns into words and the command to run on that computer.
  *
- * Read-only and admin-only (web-api.ts serves it to the fleet's local admin session). No credential, path or full
- * e-mail is in it: names, states, the masked identity and a host command for what the dashboard cannot sign in.
+ * Read-only and admin-only (web-api.ts serves it to the fleet's local admin session). No credential or full e-mail is in it: names,
+ * states, the masked identity and a host command for what the dashboard cannot sign in. M-3307: the one folder it may name (an npm copy of
+ * Claude Code) is shown `~`-abbreviated (claude-install-kind.ts displayHostPath), never with a user's name.
  */
 import type { ClaudeInstall } from "./claude-install-kind.js";
 import { lstatSync, readdirSync } from "node:fs";
@@ -97,6 +98,8 @@ export interface AccountRow {
    * claude.ai/install.sh), and afterwards a separate removal of this npm copy. `npmPackageDir` is what that removal deletes. Only on the host's default claude-code row.
    */
   nativeSwitch?: { npmPackageDir: string };
+  /** M-3307 (Fable note 1 on #4163): Claude Code runs from the native install but an npm copy is still on this computer: the page offers its removal. The folder is shown `~`-abbreviated. */
+  npmLeftover?: { dir: string };
   usedBy: { agents: string[]; classic: string[]; fleetDefault: boolean };
   /**
    * Every pool and every window the account reports (see `accountUsage`), as the page draws them: it is the page's to lay out, not the server's to pick from. A page that predates this field
@@ -276,6 +279,7 @@ export function buildAccountsView(input: AccountsInput): AccountsView {
       ...(def?.install ? { install: def.install } : {}), ...(def?.update ? { update: def.update } : {}), ...(def?.reconnect ? { reconnect: true as const } : {}),
       ...(installed && versionOf(printed) ? { version: versionOf(printed)! } : {}), ...(cliUpdate ? { cliUpdate } : {}),
       ...(backend === "claude-code" && installed && input.claudeInstall?.kind === "npm-global" && input.claudeInstall.npmPackageDir ? { nativeSwitch: { npmPackageDir: input.claudeInstall.npmPackageDir } } : {}),
+      ...(backend === "claude-code" && installed && input.claudeInstall?.kind === "native" && input.claudeInstall.npmLeftover ? { npmLeftover: { dir: input.claudeInstall.npmLeftover } } : {}),
       usedBy: usedBy(null), ...usageOf(null), ...keepAlive(null),
     });
     if (hostRelevant && PROFILE_CLIS.has(backend)) {

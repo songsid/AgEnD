@@ -59,18 +59,34 @@ describe("the accounts view offers the switch", () => {
   });
 });
 
-import { deriveNeedsYou } from "../src/needs-you.js";
-import { setLocale, t } from "../src/locale.js";
-describe("Needs you: an npm-global Claude Code", () => {
-  it("one backend item naming the npm copy; none when it is not npm", () => {
-    const base = { prompts: [], instances: [], deliveries: [], ownerOf: () => undefined } as any;
-    expect(deriveNeedsYou({ ...base, claudeNpm: { path: NPM, since: 7 } })).toEqual([expect.objectContaining({ id: "claude-npm:7", type: "backend", reason: "claude_npm_install", detail: NPM, since: 7 })]);
-    expect(deriveNeedsYou({ ...base, claudeNpm: null })).toEqual([]);
+
+import { displayHostPath } from "../src/claude-install-kind.js";
+describe("displayHostPath (Fable note 2 on #4163): no user's name leaves the host", () => {
+  it.each([
+    [`${HOME}/.local/share/claude/versions/2.1.325`, "~/.local/share/claude/versions/2.1.325"],
+    [HOME, "~"],
+    ["/home/someone-else/.nvm/versions/node/v22/lib/node_modules/@anthropic-ai/claude-code", "~…/.nvm/versions/node/v22/lib/node_modules/@anthropic-ai/claude-code"],
+    ["/Users/mac-user/x", "~…/x"],
+    [NPM, NPM],
+    [null, null],
+  ])("%s → %s", (path, shown) => {
+    expect(displayHostPath(path as string | null, HOME)).toBe(shown);
   });
-  it("its words, en and zh-TW, point at AI accounts", () => {
-    expect(t("needs.reason.claude_npm_install")).toContain("AI accounts");
-    setLocale("zh-TW");
-    expect(t("needs.reason.claude_npm_install")).toContain("AI 帳號");
-    setLocale("en");
+});
+
+describe("the accounts view offers the npm copy's removal on a native install (Fable note 1)", () => {
+  const input = (claudeInstall: unknown) => ({
+    targets: [{ backend: "claude-code", profile: null, state: "signed_in", signIn: true }],
+    diskProfiles: new Map(), agents: [], classic: [], fleetDefaults: new Map(), claudeInstall,
+  }) as any;
+  const host = (v: ReturnType<typeof buildAccountsView>) => v.clis.find(c => c.backend === "claude-code")!.rows.find(r => r.scope.kind === "host" && r.profile === null)!;
+  it("native with an npm copy left: npmLeftover, no switch offer", () => {
+    const row = host(buildAccountsView(input({ kind: "native", npmLeftover: "~/.nvm/x/lib/node_modules/@anthropic-ai/claude-code" })));
+    expect(row.npmLeftover).toEqual({ dir: "~/.nvm/x/lib/node_modules/@anthropic-ai/claude-code" });
+    expect(row.nativeSwitch).toBeUndefined();
+  });
+  it("native with none left, and npm-global: no removal offer", () => {
+    expect(host(buildAccountsView(input({ kind: "native" }))).npmLeftover).toBeUndefined();
+    expect(host(buildAccountsView(input({ kind: "npm-global", npmPackageDir: NPM }))).npmLeftover).toBeUndefined();
   });
 });

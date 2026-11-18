@@ -18,6 +18,8 @@ export interface ClaudeInstall {
   kind: ClaudeInstallKind;
   /** npm-global: the package directory (`…/node_modules/@anthropic-ai/claude-code`), what `npm -g uninstall` removes. */
   npmPackageDir?: string;
+  /** native, as the accounts page is told it: an npm copy still left on this computer (shown `~`-abbreviated), whose removal the page offers. */
+  npmLeftover?: string;
 }
 
 /** The npm package of Claude Code, as npm names it. */
@@ -42,4 +44,17 @@ export function claudeInstallKind(realPath: string | null | undefined, env: Node
   const after = realPath.slice(at + marker.length);
   if (after !== "" && !after.startsWith(sep)) return { kind: "other" };     // @anthropic-ai/claude-code-something at the top: not this package
   return { kind: "npm-global", npmPackageDir: realPath.slice(0, at + marker.length) };
+}
+
+/**
+ * M-3307 (Fable note 2 on #4163): a host path as the browser may see it — never one that names a user. Under this user's home it is `~/…`; under another user's
+ * home (`/home/<name>/…`, `/Users/<name>/…`) the name is left out (`~…/…`); a system path (`/usr/lib/…`) names nobody and is kept.
+ */
+export function displayHostPath(path: string | null | undefined, home: string): string | null {
+  if (!path) return null;
+  const h = home.replace(/\/+$/, "");
+  if (h && (path === h || path.startsWith(`${h}/`))) return `~${path.slice(h.length)}`;
+  const other = /^\/(?:home|Users)\/[^/]+(\/.*)?$/.exec(path);
+  if (other) return `~…${other[1] ?? ""}`;
+  return path;
 }

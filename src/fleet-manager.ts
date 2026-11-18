@@ -355,7 +355,7 @@ import { resolveUpdateLaunch, openUpdateLog, updateLogPath, watchUpdateLaunch } 
 import { isWebUpdateTarget, readLogTail, RUNNING_AGEND_VERSION, updateOffer, webProgressOf, webUpdateTarget, type UpdateOffer, type WebUpdateHost, type WebUpdatePin, type WebUpdateProgress } from "./web-update.js";
 import { admitProfileLogin, LoginController, LOGIN_TOKEN_RESEND_PREFIX, POST_LOGIN_RECOVERY_DEADLINE_MS, type PostLoginRecovery, type LoginChat, type LoginStartOptions } from "./login-controller.js";
 import { WebBackendLogins, dashboardSignInSupported, type SignInTarget } from "./web-backend-login.js";
-import { claudeInstallKind, type ClaudeInstall } from "./claude-install-kind.js";
+import { CLAUDE_NPM_PACKAGE, claudeInstallKind, displayHostPath, type ClaudeInstall } from "./claude-install-kind.js";
 import { WebHostInstalls, claudeSelfUpdating, hostUpdatePlan, npmUninstallCommand, type ClaudeInstallAfter, type HostInstallMode, type HostInstallReporter, type HostInstallStart } from "./web-host-install.js";
 import { cliUpdateView, versionOf } from "./cli-audited.js";
 import { runBeforeDeadline } from "./deadline.js";
@@ -19208,7 +19208,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       acknowledgeMissed: (id, by) => this.missedOfflineStore?.acknowledge(id, by) ?? false,
       tasks: () => this.needsYouTaskItems(),
       backendSignIns: () => this.needsYouBackendSignIns(),
-      claudeNpmInstall: () => this.claudeNpmAttention(),
       signInKeepAlive: () => this.keepAliveAttention(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
       runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
@@ -22566,7 +22565,38 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
     return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
-      versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)), claudeInstall: await this.claudeInstall() });
+      versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)), claudeInstall: await this.claudeInstallShown() });
+  }
+
+  /**
+   * M-3307: the install kind as the AI accounts page is told it — paths `~`-abbreviated (Fable note 2 on #4163) — and, for a native install, the npm copy still left on
+   * this computer (note 1: found again here, not only remembered from a switch in this process), so its removal is offered after a restart too.
+   */
+  private async claudeInstallShown(): Promise<ClaudeInstall | null> {
+    const ci = await this.claudeInstall();
+    if (!ci) return null;
+    const home = homedir();
+    if (ci.kind === "npm-global") return { kind: ci.kind, ...(ci.npmPackageDir ? { npmPackageDir: displayHostPath(ci.npmPackageDir, home)! } : {}) };
+    if (ci.kind !== "native") return { kind: ci.kind };
+    const left = await this.findClaudeNpmCopy().catch(() => null);
+    return { kind: "native", ...(left ? { npmLeftover: displayHostPath(left, home)! } : {}) };
+  }
+
+  private claudeNpmCopyCache: { at: number; dir: string | null } | null = null;
+  /**
+   * M-3307 (Fable note 1 on #4163): an npm copy of Claude Code on this computer, looked for afresh: the one a switch in this process found, else `<npm root -g>/@anthropic-ai/claude-code`
+   * (a fresh login shell's npm), else the system prefixes' (/usr/lib, /usr/local/lib). The answer is kept a minute (the page reads it on each view). Null: none.
+   */
+  private async findClaudeNpmCopy(): Promise<string | null> {
+    if (this.claudeNpmCopy && existsSync(this.claudeNpmCopy)) return this.claudeNpmCopy;
+    const now = performance.now();
+    if (this.claudeNpmCopyCache && now - this.claudeNpmCopyCache.at < 60_000) return this.claudeNpmCopyCache.dir;
+    const roots: string[] = [];
+    try { const r = await runOnLoginShell("npm root -g 2>/dev/null"); const root = r.status === 0 ? r.stdout.trim().split("\n").pop()?.trim() ?? "" : ""; if (isAbsolute(root)) roots.push(root); } catch { /* no npm */ }
+    roots.push("/usr/lib/node_modules", "/usr/local/lib/node_modules");
+    const dir = roots.map(root => join(root, CLAUDE_NPM_PACKAGE)).find(d => existsSync(d)) ?? null;
+    this.claudeNpmCopyCache = { at: now, dir };
+    return dir;
   }
 
   /** M-3307 (#4146): the kind of the host's Claude Code install, from the real path of the `claude` the availability snapshot resolved (null: none, or unreadable). */
@@ -23800,7 +23830,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // M-3307 (#4146): the switch and the npm copy's removal are Claude Code's alone.
     if ((mode === "native" || mode === "remove-npm") && backend !== "claude-code") return { refused: "unsupported" };
     // remove-npm: the npm copy the switch found (its package directory), removed with npm of that same prefix (<prefix>/lib/node_modules/@anthropic-ai/claude-code).
-    const npmCopy = mode === "remove-npm" ? this.claudeNpmCopy : null;
+    // Fable note 1 on #4163: found afresh, so a restart after the switch does not lose it.
+    if (mode === "remove-npm") this.claudeNpmCopyCache = null;
+    const npmCopy = mode === "remove-npm" ? await this.findClaudeNpmCopy().catch(() => null) : null;
     if (mode === "remove-npm" && (!npmCopy || !existsSync(npmCopy))) return { refused: "no_npm_copy" };
     const info = plan ? { install: plan.command } : npmCopy ? { install: npmUninstallCommand(npmCopy) } : base;
     // The fleet-wide window, claimed before the first await (shared with /login, chat's install and sign-in).
@@ -23861,10 +23893,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         }
         // M-3307: after the switch or the removal, where `claude` resolves now (a fresh login shell), its kind, and whether the npm copy is still there.
         const claude = ok && (mode === "native" || mode === "remove-npm") ? await this.claudeInstallAfter(base.binary, mode === "remove-npm" ? npmCopy : this.claudeNpmCopy).catch(() => undefined) : undefined;
-        if (claude && mode === "remove-npm" && !claude.npmLeftover) this.claudeNpmCopy = null;
+        if (claude && mode === "remove-npm" && !claude.npmLeftover) { this.claudeNpmCopy = null; this.claudeNpmCopyCache = null; }
         this.logger.info({ backend, mode, ok, verified, ...(plan ? { to: plan.target } : {}), ...(claude ? { claude } : {}), ...(ok ? {} : { detail }) },
           mode === "install" ? "Dashboard install ended" : mode === "update" ? "Dashboard update ended" : mode === "native" ? "Dashboard switch to Claude's native install ended" : "Dashboard removal of the npm Claude Code ended");
-        try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: mode === "install" && !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend), ...(claude ? { claude } : {}) }); } catch { /* a view never stops the install */ }
+        // Fable note 2 on #4163: what the page is told names no user — paths are shown `~`-abbreviated (the log above keeps them whole, on this computer).
+        const shown = claude ? { ...claude, path: displayHostPath(claude.path, homedir()), npmLeftover: displayHostPath(claude.npmLeftover, homedir()) } : undefined;
+        try { reporter.done({ ok, detail, cleanupFailed, verified, version, signIn: mode === "install" && !!LOGIN_FLOWS[backend] && dashboardSignInSupported(backend), ...(shown ? { claude: shown } : {}) }); } catch { /* a view never stops the install */ }
       },
     }, execution);
     if ("failure" in opened) {
@@ -23877,20 +23911,6 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** M-3307: the npm copy of Claude Code the last switch found (its package directory), the one `remove-npm` removes. */
   private claudeNpmCopy: string | null = null;
-
-  private claudeNpmSeen: { path: string; since: number } | null = null;
-  /**
-   * M-3307 (#4146): Needs you's "Claude Code is installed with npm" — while the `claude` the availability snapshot resolved really is an npm-global package. Its age is from the
-   * first time it was seen so; it goes away once the switch made `claude` native (the snapshot is refreshed after a dashboard install).
-   */
-  claudeNpmAttention(): { path: string; since: number } | null {
-    const path = this.backendAvailabilityRows().find(row => row.backend === "claude-code")?.path ?? null;
-    let dir: string | null = null;
-    if (path) { try { const kind = claudeInstallKind(realpathSync(path), process.env, homedir()); dir = kind.kind === "npm-global" ? kind.npmPackageDir ?? null : null; } catch { dir = null; } }
-    if (!dir) { this.claudeNpmSeen = null; return null; }
-    if (this.claudeNpmSeen?.path !== dir) this.claudeNpmSeen = { path: dir, since: Date.now() };
-    return this.claudeNpmSeen;
-  }
 
   /** M-3307: Claude's native install is there: `~/.local/bin/claude` leads into its versions folder. */
   private async nativeClaudePresent(): Promise<boolean> {

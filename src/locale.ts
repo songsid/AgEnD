@@ -377,7 +377,6 @@ const enMessages = {
     "needs.model_switch.observed": "Different served model observed: {0} → {1} · {2}",
     "needs.model_switch.turn": "turn", "needs.model_switch.session": "session", "needs.model_switch.unknown": "scope unknown",
     "needs.reason.usage_limit": "Usage limit reached · {0} · reset time unknown",
-    "needs.reason.claude_npm_install": "Claude Code is installed with npm: switch to its native install in AI accounts",
     "needs.reason.backend_missing": "AI CLI not installed",
     "needs.reason.backend_signin": "AI account needs connecting",
     // #3292: Keep sign-in alive. {0}: the CLI, {1}: the account (a profile's name, or "default sign-in"), {2}: a date.
@@ -2199,7 +2198,6 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "needs.model_switch.observed": "觀察到不同的回應模型：{0} → {1} · {2}",
     "needs.model_switch.turn": "此回合", "needs.model_switch.session": "此工作階段", "needs.model_switch.unknown": "範圍未知",
     "needs.reason.usage_limit": "用量已達上限 · {0} · 恢復時間未知",
-    "needs.reason.claude_npm_install": "Claude Code 是用 npm 安裝的：可在「AI 帳號」改用原生安裝",
     "needs.reason.backend_missing": "AI CLI 沒有安裝",
     "needs.reason.backend_signin": "需要連接 AI 帳號",
     "keepalive.default_name": "預設登入",
