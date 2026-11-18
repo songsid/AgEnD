@@ -160,3 +160,50 @@ describe("M-3307: remove the npm copy (a separate step)", () => {
     expect(await fm.startWebInstall("claude-code", r1, undefined, "remove-npm")).toEqual({ started: true });
   });
 });
+
+describe("M-3318: the npm copy's removal never races another npm (#4148's judgement)", () => {
+  /** A `ps` on PATH that lists this test process and, when asked, an npm that is installing — what an agent's Claude Code updating itself looks like. */
+  const fakePs = (withNpm: boolean) => {
+    const dir = join(root, "fake-ps"); mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "ps"), `#!/bin/sh\necho "$PPID 1 node vitest"\n${withNpm ? 'echo "7777 1 npm install -g @anthropic-ai/claude-code --registry https://u:s3cret@r.invalid/"\n' : ""}`);
+    chmodSync(join(dir, "ps"), 0o755);
+    process.env.PATH = `${dir}:${process.env.PATH}`;
+  };
+  const afterSwitch = async () => {
+    const { fm, reporter } = fleet();
+    await fm.startWebInstall("claude-code", reporter(), undefined, "native");
+    installNative(AUDITED());
+    await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
+    return { fm, reporter };
+  };
+
+  it("another npm is installing: refused with npm_busy, naming its pid and npm's command word (never its argv); no window opens", async () => {
+    const { fm, reporter } = await afterSwitch();
+    fakePs(true);
+    const r = await fm.startWebInstall("claude-code", reporter(), undefined, "remove-npm");
+    expect(r).toEqual({ refused: "npm_busy", message: "pid 7777: npm install" });
+    expect(JSON.stringify(r)).not.toContain("s3cret");
+    expect(fakeSessions).toHaveLength(1);                                   // only the switch's
+    expect((fm as any).loginWindow.isHeld).toBe(false);
+  });
+
+  it("control: no other npm — the removal starts", async () => {
+    const { fm, reporter } = await afterSwitch();
+    fakePs(false);
+    expect(await fm.startWebInstall("claude-code", reporter(), undefined, "remove-npm")).toEqual({ started: true });
+  });
+});
+
+describe("Fable on #4166: the accounts row's npm copy is shown `~`-abbreviated", () => {
+  it("claudeInstallShown: native with a copy under HOME → `~/…`", async () => {
+    const { fm } = fleet();
+    vi.spyOn(fm, "claudeInstall").mockResolvedValue({ kind: "native" });
+    vi.spyOn(fm as any, "findClaudeNpmCopy").mockResolvedValue(join(home, ".nvm", "v22", "lib", "node_modules", "@anthropic-ai", "claude-code"));
+    expect(await (fm as any).claudeInstallShown()).toEqual({ kind: "native", npmLeftover: "~/.nvm/v22/lib/node_modules/@anthropic-ai/claude-code" });
+  });
+  it("npm-global under HOME → its package folder `~/…`", async () => {
+    const { fm } = fleet();
+    vi.spyOn(fm, "claudeInstall").mockResolvedValue({ kind: "npm-global", npmPackageDir: join(home, "p", "lib", "node_modules", "@anthropic-ai", "claude-code") });
+    expect(await (fm as any).claudeInstallShown()).toEqual({ kind: "npm-global", npmPackageDir: "~/p/lib/node_modules/@anthropic-ai/claude-code" });
+  });
+});

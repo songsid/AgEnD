@@ -1508,7 +1508,7 @@ function handleBackendLogin(req: IncomingMessage, res: ServerResponse, url: URL,
  * is ever run; `POST …/cancel` `{}` stops the running one. Every answer is no-store.
  */
 const HOST_INSTALL_STATUS: Readonly<Record<string, number>> = { not_allowed: 403, unsupported: 400, already: 409, not_installed: 409, up_to_date: 409, version_unreadable: 409, cli_self_updating: 409,
-  not_npm: 409, still_npm: 409, no_npm_copy: 409, busy: 409, shutting_down: 503, failed: 500 };
+  not_npm: 409, still_npm: 409, no_npm_copy: 409, npm_busy: 409, busy: 409, shutting_down: 503, failed: 500 };
 function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, path: string, method: string): boolean {
   res.setHeader("Cache-Control", "private, no-store");
   res.setHeader("X-Content-Type-Options", "nosniff");
