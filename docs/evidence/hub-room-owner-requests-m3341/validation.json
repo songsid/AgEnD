@@ -1,0 +1,15 @@
+{
+  "tests": {
+    "files": 10,
+    "passed": 243,
+    "newCases": 31
+  },
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "changelogCheck": 0,
+  "negativeControls": 5,
+  "headlessChecks": 39,
+  "productionMounted": false,
+  "liveModelRuns": 0,
+  "windowsProcesses": 0
+}

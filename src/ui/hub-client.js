@@ -309,11 +309,17 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     return { ok: true, ...(json && typeof json === "object" ? json : {}) };
   }
   const id = (v) => encodeURIComponent(String(v));
+  const ownerRequestCall = async (scope, method, path, body) => {
+    if (!scope || scope !== csrf) return retired();
+    const mine = generation, result = await call(method, path, body);
+    return mine === generation && scope === csrf ? result : retired();
+  };
   // Track U2: a refused room write says what the person is told — 409 people-limit the room's would-be head count (the
   // deduplicated union, the creator and current members included) and the limit; 503 group-unavailable which group.
   const roomRefusal = (json) => json?.code === "people-limit" && Number.isSafeInteger(json.people)
     ? { people: json.people, limit: Number.isSafeInteger(json.limit) ? json.limit : 100 }
-    : json?.code === "group-unavailable" && typeof json.group === "string" ? { group: json.group } : {};
+    : json?.code === "group-unavailable" && typeof json.group === "string" ? { group: json.group }
+    : json?.code === "request-limit" && Number.isSafeInteger(json.resetsAt) && json.resetsAt > 0 && json.resetsAt <= 8.64e15 ? { resetsAt: json.resetsAt } : {};
   // One stream per tab (#1580): every live subscription shares one EventSource. A Hub with rooms carries the notices on
   // its rooms stream too (`notices` = the notice version); before that the notices have their own. Listeners are kept
   // per event name; the stream closes with its last listener, and a refused (CLOSED) stream tells every subscriber once.
@@ -365,6 +371,12 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     async signIn(login, password) { retireReads(); teamsLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; } return r; },
     async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; return r; },
     aiAppsScope() { return csrf; },
+    roomAgentRequestScope() { return csrf; },
+    requestRoomAgent(scope, roomId, input) { return ownerRequestCall(scope, "POST", "/hub/v1/rooms/" + id(roomId) + "/agent-requests", input); },
+    roomAgentRequests(scope, roomId, after) { return ownerRequestCall(scope, "GET", "/hub/v1/rooms/" + id(roomId) + "/agent-requests" + (after ? "?after=" + id(after) : "")); },
+    cancelRoomAgentRequest(scope, roomId, requestId) { return ownerRequestCall(scope, "DELETE", "/hub/v1/rooms/" + id(roomId) + "/agent-requests/" + id(requestId)); },
+    ownerAgentRequests(scope, after) { return ownerRequestCall(scope, "GET", "/hub/v1/agent-requests" + (after ? "?after=" + id(after) : "")); },
+    agentRequestSettings(scope, input) { return ownerRequestCall(scope, input === undefined ? "GET" : "PUT", "/hub/v1/me/agent-request-settings", input); },
     aiApps(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/ai-apps") : Promise.resolve(retired()); },
     disconnectAiApp(scope, appId) { return scope && scope === csrf ? call("DELETE", `/hub/v1/me/ai-apps/${id(appId)}`) : Promise.resolve(retired()); },
     appConsent(scope, request) { return scope && scope === csrf ? call("GET", `/hub/v1/mcp/consent?${new URLSearchParams({request})}`) : Promise.resolve(retired()); },
