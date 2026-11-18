@@ -45,10 +45,10 @@ describe("resolveCandidate — row numbers", () => {
 describe("resolveCandidate — CJK display names", () => {
   it("resolves CJK display name by exact match", () => {
     const cs = fleet(
-      { name: "code-reviewer", displayLabel: "Reviewer" },
+      { name: "code-reviewer", displayLabel: "示範審查員" },
       { name: "story-helper", displayLabel: "示範副手 Alpha" },
     );
-    expect(resolveCandidate("Reviewer", cs)).toEqual({ kind: "exact", candidate: cs[0] });
+    expect(resolveCandidate("示範審查員", cs)).toEqual({ kind: "exact", candidate: cs[0] });
   });
 
   it("resolves CJK display name substring (unique)", () => {

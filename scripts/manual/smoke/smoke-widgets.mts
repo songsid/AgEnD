@@ -12,8 +12,8 @@ const SMOKE = "smoke-widgets";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48410) });
 const enc = encodeURIComponent;
 
-const WITH = "api-gateway-worker"; // the agent with a chat header strip and a Details card
-const OTHER = "docs-writer";                       // another instance, no widgets: the strip must not follow
+const WITH = "synthetic-gateway-worker-for-long-name-layout-probes"; // the agent with a chat header strip and a Details card
+const OTHER = "示範文件撰寫與校對助理-layout-probes";                       // another instance, no widgets: the strip must not follow
 
 await seedAvatars(fx, 30);
 const seeded = { widgets: await seedWidgets(fx, WITH) };
