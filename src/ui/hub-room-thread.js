@@ -475,6 +475,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     // composer's files (uploaded like any chosen file) and the reply quotes the message it came from. Read at click time
     // (the thread keeps its options from its first render).
     openImage: (links, img) => openLightbox(links, img, annotateRef.current(img)),
+    // M-3311 (2): 「引用」 on a selected passage goes into this room's box (read at selection time).
+    quote: { field: () => input.current, can: () => !store.closed() },
   };
   const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");

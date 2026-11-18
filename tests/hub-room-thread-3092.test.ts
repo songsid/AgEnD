@@ -423,6 +423,40 @@ describe("a room on the page", () => {
       st.stop();
     } finally { restore(); }
   });
+  it.each(["en", "zh-TW"])("M-3311 (2): a passage selected in a room message shows the Fleet chat's Quote (%s); its click puts it in the room's box", async (lang) => {
+    const { pg, restore } = await roomPage("room-weekly", lang);
+    try {
+      const md = [...pg.root.querySelectorAll(".hub-room-page .thread .msg .md")].find((e: any) => (e.textContent || "").trim()) as any;
+      const walk = (n: any): any => (n.nodeType === 3 && n.data.trim() ? n : [...(n.childNodes || [])].map(walk).find(Boolean) || null);
+      const words = walk(md), passage = words.data.trim().slice(0, 6);
+      const doc = pg.document as any;
+      doc.getSelection = () => ({ isCollapsed: false, rangeCount: 1, toString: () => passage,
+        getRangeAt: () => ({ startContainer: words, endContainer: words, getClientRects: () => [{ left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 }] }),
+        removeAllRanges() {} });
+      fire(doc, "selectionchange"); await new Promise((r) => setTimeout(r, 200)); await settle(5);
+      const pill = doc.querySelector(".quote-pop button") as any;
+      expect(pill?.textContent).toBe(lang === "en" ? "Quote" : "引用");
+      expect((pg.root.querySelector(".hub-room-page #sendBtn") as any).disabled, "an empty box: Send off").toBe(true);
+      pill.click(); await settle(10);
+      expect((pg.root.querySelector(".hub-room-page #msgIn") as any).value).toBe(`> ${passage}\n`);
+      // Fable on #4155: through the box's own typing path — the composer's state took the quote, so Send is on.
+      expect((pg.root.querySelector(".hub-room-page #sendBtn") as any).disabled).toBe(false);
+    } finally { restore(); }
+  });
+  it("M-3311 (2): no Quote in a room that is closed (archived)", async () => {
+    const closed = await roomPage("room-archived");
+    try {
+      const pg = closed.pg;
+      await until(() => [...pg.root.querySelectorAll(".hub-room-page .thread .msg .md")].some((e: any) => (e.textContent || "").trim()));
+      const md = [...pg.root.querySelectorAll(".hub-room-page .thread .msg .md")].find((e: any) => (e.textContent || "").trim()) as any;
+      const walk = (n: any): any => (n.nodeType === 3 && n.data.trim() ? n : [...(n.childNodes || [])].map(walk).find(Boolean) || null);
+      const words = walk(md), doc = pg.document as any;
+      doc.getSelection = () => ({ isCollapsed: false, rangeCount: 1, toString: () => words.data.trim().slice(0, 4),
+        getRangeAt: () => ({ startContainer: words, endContainer: words, getClientRects: () => [{ left: 100, right: 300, top: 200, bottom: 220, width: 200, height: 20 }] }), removeAllRanges() {} });
+      fire(doc, "selectionchange"); await new Promise((r) => setTimeout(r, 200)); await settle(5);
+      expect(doc.querySelector(".quote-pop")).toBeNull();
+    } finally { closed.restore(); }
+  });
   it("M-3308: Ctrl+V of a screenshot, an unnamed clipboard picture, a copied file or a long text attaches it, as the Fleet chat does", async () => {
     const fx = createHubRoomsFixture(), detail = { ok: true, ...(await (await fx.fetch("/hub/v1/rooms/room-weekly")).json()) };
     const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
