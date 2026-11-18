@@ -16,6 +16,8 @@
 //   node scripts/ci/ui-gate-smokes.mjs            run them all (CI: the ui-gate job's "UI gate smokes" step)
 //   node scripts/ci/ui-gate-smokes.mjs --list     print what would run (name, port, file), run nothing
 //   node scripts/ci/ui-gate-smokes.mjs --only smoke-chat-pins-m3271.mts [more…]   just those (by file name)
+//   node scripts/ci/ui-gate-smokes.mjs --shard 2/3  one of n parallel jobs (CI: M-3332): the k-th of every n, in the
+//                                                    found order (by port) — each smoke in exactly one shard, no table
 import { spawnSync } from "node:child_process";
 import { appendFileSync, readdirSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
@@ -30,6 +32,18 @@ const NEAR = /^\s*\/[/*]\s*ui[-_ ]?gate\s*:/i;
 const KEYS = new Set(["name", "hp"]);
 // `npx tsx <file>`, as each step ran it: tsx's own CLI, from this checkout's devDependency (never a download).
 const TSX = createRequire(import.meta.url).resolve("tsx/cli");
+
+/**
+ * M-3332: shard k of n (1-based) — every n-th smoke from the k-th, in discover()'s order (by port). The shards split the
+ * list exactly (each smoke in one, none twice) and need no table to keep up to date; neighbours by port go to
+ * different shards, so a slow run of smokes added together spreads out. A bad "k/n" throws.
+ */
+export function shardOf(smokes, spec) {
+  const m = /^(\d+)\/(\d+)$/.exec(String(spec ?? ""));
+  const k = m ? Number(m[1]) : NaN, n = m ? Number(m[2]) : NaN;
+  if (!Number.isInteger(k) || !Number.isInteger(n) || n < 1 || n > 16 || k < 1 || k > n) throw new Error(`--shard: "${spec}" is not k/n with 1 ≤ k ≤ n ≤ 16`);
+  return smokes.filter((_, i) => i % n === k - 1);
+}
 
 /** Every smoke that declares itself, checked; or throws naming the file and what is wrong. Sorted by port, then file. */
 export function discover(root = process.cwd()) {
@@ -63,12 +77,16 @@ function main(argv) {
   const root = process.cwd();
   let smokes;
   try { smokes = discover(root); } catch (err) { console.error(`::error title=UI gate smokes::${String(err.message).replace(/\n\s*/g, " · ")}`); console.error(err.message); return 2; }
+  let shard = null;
   if (argv[0] === "--list") { for (const s of smokes) console.log(`${String(s.hp).padEnd(6)} ${s.name}  (${s.file})`); return 0; }
   if (argv[0] === "--only") {
     const want = new Set(argv.slice(1)), unknown = [...want].filter((w) => !smokes.some((s) => basename(s.file) === w));
     if (!want.size || unknown.length) { console.error(`--only: ${unknown.length ? `not a ui-gate smoke: ${unknown.join(", ")}` : "name at least one smoke file"}`); return 2; }
     smokes = smokes.filter((s) => want.has(basename(s.file)));
-  } else if (argv.length) { console.error(`unknown argument ${argv[0]} (--list, --only <file>…)`); return 2; }
+  } else if (argv[0] === "--shard" && argv.length === 2) {
+    try { smokes = shardOf(smokes, argv[1]); } catch (err) { console.error(err.message); return 2; }
+    shard = argv[1];
+  } else if (argv.length) { console.error(`unknown argument ${argv[0]} (--list, --only <file>…, --shard k/n)`); return 2; }
   const rows = [];
   for (const s of smokes) {
     console.log(`::group::${s.name} (${basename(s.file)}, HP ${s.hp})`);
@@ -84,12 +102,12 @@ function main(argv) {
   const failed = rows.filter((r) => !r.ok);
   if (process.env.GITHUB_STEP_SUMMARY) {
     try {
-      appendFileSync(process.env.GITHUB_STEP_SUMMARY, [`### UI gate smokes: ${rows.length - failed.length}/${rows.length} passed`, "",
+      appendFileSync(process.env.GITHUB_STEP_SUMMARY, [`### UI gate smokes${shard ? ` (shard ${shard})` : ""}: ${rows.length - failed.length}/${rows.length} passed`, "",
         "| | Smoke | File | HP | Time |", "|---|---|---|---|---|",
         ...rows.map((r) => `| ${r.ok ? "✅" : "❌"} | ${r.name.replace(/\|/g, "\\|")} | \`${basename(r.file)}\` | ${r.hp} | ${r.secs} s |`), ""].join("\n") + "\n");
     } catch { /* the summary is a convenience */ }
   }
-  console.log(`ui-gate smokes: ${rows.length - failed.length}/${rows.length} passed${failed.length ? ` — failed: ${failed.map((r) => r.name).join("; ")}` : ""}`);
+  console.log(`ui-gate smokes${shard ? ` (shard ${shard})` : ""}: ${rows.length - failed.length}/${rows.length} passed${failed.length ? ` — failed: ${failed.map((r) => r.name).join("; ")}` : ""}`);
   return failed.length ? 1 : 0;
 }
 
