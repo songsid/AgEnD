@@ -110,6 +110,46 @@ register("hostinstall", {
     updatedLatestNoVersion: "{0} 的更新程式已結束（結束碼 0），但之後讀不到已安裝的版本，不確定現在是哪個版本。",
   },
 });
+// M-3307 (#4146): an npm-global Claude Code is offered a switch to Claude's native install (the audited release through claude.ai/install.sh, in the same window), and afterwards
+// the removal of the npm copy as a separate step that says what it removes. Both are held changes like Install and Update; the page names only "claude-code".
+register("hostinstall", {
+  en: {
+    nativeOffer: "Claude Code is installed with npm ({0}). An AgEnD restart can interrupt npm's own updates and leave `claude` half-installed. Claude's native install avoids that: switching installs {1}, the release AgEnD has audited, with claude.ai/install.sh.",
+    nativeSwitch: "Switch to native install", cardLabelNative: "Switch Claude Code on this AgEnD computer to Claude's native install",
+    runningNative: "Installing Claude Code {0} with Claude's native installer (started on {1}).",
+    nativeOk: "`claude` now runs from Claude's native install: {0} ({1}).",
+    nativeStillNpm: "The native installer finished, but `claude` still runs the npm copy ({0}), which comes first on PATH. Removing the npm copy finishes the switch.",
+    nativeUnverified: "The native installer finished, but `claude` could not be found afterwards. Read its last lines below.",
+    failedNative: "The switch to Claude's native install did not finish.",
+    npmLeft: "The npm copy is still at {0}. Removing it runs npm -g uninstall @anthropic-ai/claude-code in that npm folder; Claude's native install stays.",
+    npmRemove: "Remove the npm copy", cardLabelNpmRemove: "Remove the npm copy of Claude Code from this AgEnD computer",
+    runningNpmRemove: "Removing the npm copy of Claude Code (started on {0}).",
+    npmRemoved: "The npm copy was removed. `claude` runs {0} ({1}).",
+    npmNotRemoved: "npm finished, but the npm copy is still at {0}. Read its last lines below: removing it may need the account that installed it.",
+    failedNpmRemove: "The npm copy was not removed.",
+    err_not_npm: "Claude Code here is not an npm install, so there is nothing to switch.",
+    err_still_npm: "There is no native install of Claude Code yet: switch to it first, then remove the npm copy.",
+    err_no_npm_copy: "There is no npm copy of Claude Code to remove.",
+  },
+  "zh-TW": {
+    nativeOffer: "Claude Code 是用 npm 安裝的（{0}）。AgEnD 重啟時可能打斷 npm 自己的更新，讓 `claude` 只裝了一半。改用 Claude 的原生安裝就不會這樣：切換會用 claude.ai/install.sh 安裝 {1}，也就是 AgEnD 稽核過的版本。",
+    nativeSwitch: "改用原生安裝", cardLabelNative: "把這台 AgEnD 電腦上的 Claude Code 改成 Claude 的原生安裝",
+    runningNative: "正在用 Claude 的原生安裝程式安裝 Claude Code {0}（從 {1} 啟動）。",
+    nativeOk: "`claude` 現在使用 Claude 的原生安裝：{0}（{1}）。",
+    nativeStillNpm: "原生安裝程式已結束，但 `claude` 仍然執行 npm 那份（{0}），因為它在 PATH 上比較前面。移除 npm 那份就能完成切換。",
+    nativeUnverified: "原生安裝程式已結束，但之後找不到 `claude`。請看下方它的最後幾行。",
+    failedNative: "改用 Claude 原生安裝沒有完成。",
+    npmLeft: "npm 那份還在 {0}。移除會在那個 npm 目錄執行 npm -g uninstall @anthropic-ai/claude-code；Claude 的原生安裝會保留。",
+    npmRemove: "移除 npm 那份", cardLabelNpmRemove: "從這台 AgEnD 電腦移除 npm 安裝的 Claude Code",
+    runningNpmRemove: "正在移除 npm 安裝的 Claude Code（從 {0} 啟動）。",
+    npmRemoved: "已移除 npm 那份。`claude` 現在執行 {0}（{1}）。",
+    npmNotRemoved: "npm 已結束，但 npm 那份還在 {0}。請看下方它的最後幾行：可能需要當初安裝它的帳號才能移除。",
+    failedNpmRemove: "npm 那份沒有移除。",
+    err_not_npm: "這裡的 Claude Code 不是用 npm 安裝的，不需要切換。",
+    err_still_npm: "還沒有 Claude Code 的原生安裝：請先改用原生安裝，再移除 npm 那份。",
+    err_no_npm_copy: "沒有 npm 安裝的 Claude Code 可以移除。",
+  },
+});
 const th = (k, ...v) => t(`hostinstall.${k}`, ...v);
 function installStyles() {
   if (typeof document === "undefined" || !document.head || document.querySelector('link[href="/assets/host-install.css"]')) return;
@@ -181,6 +221,9 @@ export const startHostInstall = (backend) => startHostCli("/ui/host-install", ba
 /** Update `backend` on the host to the audited release (AGEND-136). */
 /** AGEND-154 (Prism P2-1 on #3552): the update to the vendor's latest (`latest`, the one named exception) says so in the request — `acceptLatestUnaudited: true` — which is what lets the server run it; a page without this line sends `{ backend }`, and the server refuses. */
 export const startHostUpdate = (backend, latest = false) => startHostCli("/ui/host-update", backend, latest ? "cardLabelUpdateLatest" : "cardLabelUpdate", latest ? { acceptLatestUnaudited: true } : {});
+/** M-3307: switch the host's npm-global Claude Code to Claude's native install; then, a separate step, remove the npm copy. */
+export const startHostNativeSwitch = () => startHostCli("/ui/host-native-switch", "claude-code", "cardLabelNative");
+export const startHostNpmRemove = () => startHostCli("/ui/host-npm-remove", "claude-code", "cardLabelNpmRemove");
 
 export async function cancelHostInstall() {
   const r = await post("/ui/host-install/cancel", {});
@@ -240,6 +283,10 @@ export function VersionLine({ row, label, blocked = false }) {
   return html`<div class="s-account-version" data-cli-update=${u.state} data-via=${u.via} data-latest=${u.latest ? "1" : "0"}>
     <p class="note s-account-why">${text}</p>
     ${u.button ? html`<span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-update" aria-label=${`${label} — ${buttonLabel}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostUpdate(row.backend, !!u.latest); }}>${updating ? th("updating") : buttonLabel}</button></span>` : null}
+    ${row.nativeSwitch && row.backend === "claude-code" ? html`<div class="s-account-native" data-native-offer="1">
+      <p class="note s-account-why">${th("nativeOffer", row.nativeSwitch.npmPackageDir, u.audited)}</p>
+      <span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-native-switch" aria-label=${`${label} — ${th("nativeSwitch")}`} disabled=${blocked || installRunning(state)} onClick=${() => { void startHostNativeSwitch(); }}>${th("nativeSwitch")}</button></span>
+    </div>` : null}
   </div>`;
 }
 
@@ -259,7 +306,26 @@ export function HostInstallRun({ backend, label }) {
   const lines = Array.isArray(run.lines) ? run.lines : [];
   let text, cls = "";
   const update = run.mode === "update";
-  if (run.phase === "running") text = update ? (run.latest ? th("runningUpdateLatest", label, "", run.startedOn) : th("runningUpdate", label, run.targetVersion || "?", run.startedOn)) : th("running", label, run.startedOn);
+  // M-3307: the switch and the removal say where `claude` resolves afterwards (a fresh login shell) and whether the npm copy is still there, with the removal offered on it.
+  const switching = run.mode === "native" || run.mode === "remove-npm";
+  const c = run.claude || null;
+  let npmLeft = null;
+  if (switching) {
+    if (run.phase === "running") text = run.mode === "native" ? th("runningNative", run.targetVersion || "?", run.startedOn) : th("runningNpmRemove", run.startedOn);
+    else if (run.phase === "ok" && run.mode === "native") {
+      if (!c || !c.path) { cls = "signin-message"; text = th("nativeUnverified"); }
+      else if (c.kind === "native") { cls = "signin-ok"; text = th("nativeOk", c.path, run.version || "?"); }
+      else { cls = "signin-warn"; text = th("nativeStillNpm", c.path); }
+      npmLeft = c && c.npmLeftover ? c.npmLeftover : null;
+    }
+    else if (run.phase === "ok") {
+      if (c && c.npmLeftover) { cls = "signin-warn"; text = th("npmNotRemoved", c.npmLeftover); }
+      else { cls = "signin-ok"; text = th("npmRemoved", (c && c.path) || "?", run.version || "?"); }
+    }
+    else if (run.phase === "failed" || run.phase === "timeout" || run.phase === "cancelled") text = th(run.mode === "native" ? "failedNative" : "failedNpmRemove");
+  }
+  if (switching) { /* said above */ }
+  else if (run.phase === "running") text = update ? (run.latest ? th("runningUpdateLatest", label, "", run.startedOn) : th("runningUpdate", label, run.targetVersion || "?", run.startedOn)) : th("running", label, run.startedOn);
   else if (run.phase === "ok" && update) {
     // An update says the version before and after (the binary probe's own readings). Exit code 0 is not enough: when the version read afterwards is not the audited release (`reached`
     // false), or could not be read (null), it is a warning that names the installed and the audited version, not a success.
@@ -284,6 +350,10 @@ export function HostInstallRun({ backend, label }) {
     ${lines.length ? html`<pre class="s-account-install-output" aria-label=${th("output")}>${lines.join("\n")}</pre>`
       : run.phase === "running" ? html`<small class="note">${th("runningNoOutput")}</small>` : null}
     ${run.cleanupFailed ? html`<p class="note">${th("cleanup")}</p>` : null}
+    ${npmLeft ? html`<div class="s-account-native" data-npm-left="1">
+      <p class="note s-account-why">${th("npmLeft", npmLeft)}</p>
+      <span class="s-actions"><button type="button" class="btn btn-sm btn-primary s-account-npm-remove" disabled=${installRunning(state)} onClick=${() => { void startHostNpmRemove(); }}>${th("npmRemove")}</button></span>
+    </div>` : null}
     <div class="s-actions">${run.phase === "running"
       ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${cancel}>${th(update ? "cancelUpdate" : "cancel")}</button>`
       : html`<button type="button" class="btn btn-sm btn-ghost" onClick=${() => dismissHostInstall(run.id)}>${th("dismiss")}</button>`}</div>

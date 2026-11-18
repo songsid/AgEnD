@@ -286,3 +286,34 @@ describe("Update takes the same path (the audited release is the server's, shown
   });
 });
 
+
+describe("M-3307: the switch to Claude's native install and the npm copy's removal take the same path", () => {
+  const send = (h: ReturnType<typeof harness>, s: { req: any; gateway?: boolean; host?: string }, path: string, body: unknown = { backend: "claude-code" }) => h.send(s, "POST", path, body);
+  it("an admin: each is a held change applied at once in its own mode; the held change says what it does; the page's body carried only `claude-code`", async () => {
+    const h = harness({ enrolled: true }), s = h.session("code", "lan");
+    const sw = await send(h, s, "/ui/host-native-switch");
+    await vi.waitFor(() => expect(h.stateOf(sw, s)).toBe("applied"));
+    const rm = await send(h, s, "/ui/host-npm-remove");
+    await vi.waitFor(() => expect(h.stateOf(rm, s)).toBe("applied"));
+    expect(h.starts.map(x => [x.backend, x.mode])).toEqual([["claude-code", "native"], ["claude-code", "remove-npm"]]);
+    expect(h.store.get(sw.body.pending_change.id, s.record.idHash)!.summary.join(" ")).toMatch(/Claude's native install: run claude\.ai\/install\.sh for \d+\.\d+\.\d+/);
+    expect(h.store.get(rm.body.pending_change.id, s.record.idHash)!.summary.join(" ")).toMatch(/npm -g uninstall @anthropic-ai\/claude-code/);
+  });
+  it("any other CLI, or any extra field, is refused before it is proposed; the public link's read session, a guest and a hand-built POST start nothing", async () => {
+    const h = harness({ enrolled: true });
+    const admin = h.session("code", "lan");
+    for (const body of [{ backend: "codex" }, { backend: "claude-code", target: "9.9.9" }, {}]) {
+      for (const path of ["/ui/host-native-switch", "/ui/host-npm-remove"]) {
+        const r = await send(h, admin, path, body);
+        expect([path, r.status, r.body.error]).toEqual([path, 400, "install_args"]);
+      }
+    }
+    const link = h.session("read", "here", { gateway: true }), guest = h.session("guest", "here"), here = h.session("code", "here");
+    expect((await send(h, link, "/ui/host-native-switch")).body.error).toBe("install_needs_a_local_admin");
+    expect((await send(h, guest, "/ui/host-npm-remove")).body.error).toBe("install_needs_a_local_admin");
+    expect((await h.send(here, "POST", "/ui/host-native-switch", { backend: "claude-code" }, "route")).body.error).toBe("install_confirmation_required");
+    await h.settle();
+    expect(h.store.list(admin.record.idHash)).toEqual([]);
+    expect(h.starts.length).toBe(0);
+  });
+});
