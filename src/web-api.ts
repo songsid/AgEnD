@@ -395,6 +395,10 @@ export interface WebApiContext {
   /** #2305: `copies`, the copies' own message ids, so a reaction to the web message is put on them too. */
   webMessageInChannel?(instance: string, messageId: string, copies?: readonly import("./web-reactions.js").WebEchoCopy[]): void;
   /** false: definitely not delivered (the instance's IPC is gone, or it was restarted meanwhile). */
+  /** #4145: `text` with this fleet's sign-in access token hidden (`live`: the live one was in it); null when there is none. */
+  screenLoginToken?(text: string): { text: string; live: boolean } | null;
+  /** #4145: take a pasted access token back and send a new one; the line for the chat, or null. */
+  loginTokenPasted?(): Promise<string | null>;
   deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean }): Promise<boolean | void>;
   getUiStatus(): unknown;
@@ -3442,6 +3446,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
     // A claimed clientId is settled however this ends: with the messageId once accepted, else forgotten.
     let claim: Extract<WebSendClaim, { kind: "new" }> | undefined;
     let acceptedId: string | null = null;
+    let tellPasted: (() => void) | undefined;   // #4145: the pasted-token line, after this message's own (whatever the send's end)
     try {
       const raw = JSON.parse(body);
       const parsed = SendMessageSchema.safeParse(raw);
@@ -3450,7 +3455,15 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         json(res, 400, { error: `${issue.path.join(".") || "body"}: ${issue.message}` });
         return;
       }
-      const { instance, message: typed, attachments = [], replyTo, clientId } = parsed.data;
+      const { instance, message: sent, attachments = [], replyTo, clientId } = parsed.data;
+      // #4145: this fleet's sign-in access token pasted here is hidden before it goes anywhere (the agent, the chat's
+      // history, the topic's copy, the activity log), and taken back at once — a new one goes privately.
+      const pasted = ctx.screenLoginToken?.(sent) ?? null;
+      const typed = pasted?.text ?? sent;
+      const pastedNotice = pasted?.live ? (ctx.loginTokenPasted?.() ?? Promise.resolve(null)).catch(() => null) : null;
+      if (pastedNotice) tellPasted = () => void pastedNotice.then(notice => {
+        if (notice) ctx.emitSseEvent("message", { instance, role: "status", sender: "AgEnD", text: notice, ts: new Date().toISOString(), messageId: newWebMessageId() });
+      });
       // #1920 step 2b: a guest writes only to an in-scope instance, while guests may chat, and never a command.
       const guest = guestRequestOf(req);
       const refused = guestChatRefusal(guest, instance);
@@ -3624,6 +3637,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       else json(res, 400, { error: "Invalid JSON" });
     } finally {
       claim?.settle(acceptedId);
+      tellPasted?.();
     }
   });
 }

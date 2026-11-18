@@ -91,6 +91,9 @@ What it does and does not do:
 - The public link and the token are sent to **you, as two private messages** (Discord/Telegram DM) — never in the channel,
   which gets one status line. If either private message cannot be delivered (for example you never opened a chat with
   the bot), the login is closed instead; there is no "post it in the channel" fallback.
+- The token goes into the **terminal page**, never a chat. If it is pasted into a topic, General or the web chat anyway,
+  AgEnD hides it before the message is logged, indexed or handed to the agent, cancels it, sends you a new one the same
+  way, and replies once there saying where it goes (#4145).
 - It **fails closed**: if the tunnel cannot start, dies, or the login ends in any way (done, cancelled, timeout, fleet
   shutdown), the tunnel is stopped before the next login can start. A tunnel that cannot be confirmed stopped is
   announced in the chat with its pid and blocks further tunnels until it is dealt with.
