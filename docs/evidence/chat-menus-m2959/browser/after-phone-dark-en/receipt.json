@@ -582,7 +582,7 @@
           "barWidth": "3px"
         },
         {
-          "name": "rd1-platform-backend-sr4-server-t1547091841202130997",
+          "name": "api-gateway-worker-t1000000000000000002",
           "foreground": [
             210,
             168,
@@ -599,7 +599,7 @@
           "barWidth": "3px"
         },
         {
-          "name": "agend-reviewer-t1503382598640996543",
+          "name": "code-reviewer-t1000000000000000003",
           "foreground": [
             255,
             187,
