@@ -7,7 +7,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { h, page, settle, type AppPage } from "./helpers/app-harness.js";
 
-const TABS = ["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage"];
+const TABS = ["/ui/fleet", "/ui/fleet/schedules", "/ui/fleet/teams", "/ui/fleet/org", "/ui/fleet/cache", "/ui/fleet/usage", "/ui/fleet/authorizations"];
 const mounted: AppPage[] = [];
 const realFetch = (globalThis as { fetch?: unknown }).fetch;
 afterEach(async () => {

@@ -283,8 +283,9 @@ describe("the Settings tab of an agent (Details & settings)", () => {
     expect(pg.root.querySelectorAll(".p-details > .s-nav .s-nav-head").map((x: any) => x.textContent)).toEqual(["Status", "Settings"]);
     expect(navItems(pg)).toEqual([["Overview", "/ui/fleet/agent/web-dev?cat=overview", "page"], ["Basic info", "/ui/fleet/agent/web-dev?cat=basic", null],
       ["Runtime & model", "/ui/fleet/agent/web-dev?cat=runtime", null], ["Workspace", "/ui/fleet/agent/web-dev?cat=work", null],
-      ["Channels", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null]]);
-    expect(pg.root.querySelectorAll(".p-details > .s-nav .seg-item svg.icon").length).toBe(6);       // an icon in front of every item you can open
+      ["Channels", "/ui/fleet/agent/web-dev?cat=channel", null], ["Advanced", "/ui/fleet/agent/web-dev?cat=adv", null],
+      ["Permissions", "/ui/fleet/agent/web-dev?cat=permissions", null]]);   // M-3339
+    expect(pg.root.querySelectorAll(".p-details > .s-nav .seg-item svg.icon").length).toBe(7);       // an icon in front of every item you can open
     expect(pg.root.querySelector(".p-details .s-back")?.getAttribute("href")).toBe("/ui/fleet/agent/web-dev");
     // The Overview keeps everything Details showed (read-only), and the ⋯ menu's actions.
     expect(pg.root.querySelector("#ap-panel-overview")?.hasAttribute("hidden")).toBe(false);
@@ -363,10 +364,10 @@ describe("the Settings tab of an agent (Details & settings)", () => {
     const pg = await app("/ui/fleet/agent/web-dev");
     expect(pg.root.querySelector(".p-details")?.className).toContain("p-agent-page");
   });
-  it("a ClassicBot room: Overview, Runtime & model and Channels & replies only", async () => {
+  it("a ClassicBot room: Overview, Runtime & model, Channels & replies and Permissions (M-3339) only", async () => {
     const pg = await app("/ui/fleet/agent/classic-ops-1?cat=channel");
     await untilRead(); await settle(12);
-    expect(navItems(pg).map((i: any) => i[0])).toEqual(["Overview", "Runtime & model", "Channels & replies"]);
+    expect(navItems(pg).map((i: any) => i[0])).toEqual(["Overview", "Runtime & model", "Channels & replies", "Permissions"]);
     expect(pg.root.querySelector("#ap-panel-channel #cl-tp")).not.toBeNull();
     expect(pg.root.querySelector("#ap-panel-runtime #cl-be")).not.toBeNull();
   });
