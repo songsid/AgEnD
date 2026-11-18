@@ -423,6 +423,36 @@ describe("a room on the page", () => {
       st.stop();
     } finally { restore(); }
   });
+  it("M-3308: Ctrl+V of a screenshot, an unnamed clipboard picture, a copied file or a long text attaches it, as the Fleet chat does", async () => {
+    const fx = createHubRoomsFixture(), detail = { ok: true, ...(await (await fx.fetch("/hub/v1/rooms/room-weekly")).json()) };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    const got: File[][] = [];
+    await pg.mount(h(composer.RoomComposer, { store: { send: async () => ({ ok: true }) }, detail, attach: { title: "Attach files", onFiles: async (l: File[]) => { got.push([...l]); } } })); await settle(5);
+    const box = pg.root.querySelector("#msgIn") as any;
+    const paste = (files: File[], text = "") => fire(box, "paste", { clipboardData: { files, getData: () => text } });
+    const shot = new File([new Uint8Array([137, 80, 78, 71])], "image.png", { type: "image/png" });
+    expect([paste([shot]).defaultPrevented, got.at(-1)!.map((f) => f.name)]).toEqual([true, ["image.png"]]);
+    // A screen capture's picture with no name: the Hub refuses an upload without one — it is named by its type.
+    paste([new File([new Uint8Array([1])], "", { type: "image/png" })]);
+    expect(got.at(-1)!.map((f) => [/^screenshot-\d{14}\.png$/.test(f.name), f.type])).toEqual([[true, "image/png"]]);
+    paste([new File(["x"], "notes.txt", { type: "text/plain" })]);
+    expect(got.at(-1)!.map((f) => f.name)).toEqual(["notes.txt"]);
+    // Past 4,000 characters a text paste goes as a text file (the Fleet chat's rule); a short one stays text in the box.
+    const long = paste([], "y".repeat(4001));
+    expect([long.defaultPrevented, /^pasted-\d{14}\.txt$/.test(got.at(-1)![0]!.name), await got.at(-1)![0]!.text()]).toEqual([true, true, "y".repeat(4001)]);
+    const n = got.length, short = paste([], "y".repeat(4000));
+    expect([short.defaultPrevented, got.length]).toEqual([false, n]);
+    // A file with text beside it (a copy from an office app): the file is attached and the text still goes in.
+    expect(paste([shot], "caption").defaultPrevented).toBe(false);
+  });
+  it("M-3308: a room that takes no files leaves a paste to the box (nothing attached, nothing stopped)", async () => {
+    const fx = createHubRoomsFixture(), detail = { ok: true, ...(await (await fx.fetch("/hub/v1/rooms/room-weekly")).json()) };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    await pg.mount(h(composer.RoomComposer, { store: { send: async () => ({ ok: true }) }, detail })); await settle(5);
+    const box = pg.root.querySelector("#msgIn") as any;
+    expect(fire(box, "paste", { clipboardData: { files: [new File(["x"], "image.png", { type: "image/png" })], getData: () => "" } }).defaultPrevented).toBe(false);
+    expect(composer.pastedFile(new File(["x"], "named.png", { type: "image/png" })).name).toBe("named.png");
+  });
   it("the members panel's 「在這裡 @ 它」 puts the mention into the box, after what is there", async () => {
     const fx = createHubRoomsFixture(), detail = { ok: true, ...(await (await fx.fetch("/hub/v1/rooms/room-weekly")).json()) };
     const pg = page({ url: "http://127.0.0.1:19280/ui/hub", storage: { agend_tour_done: "1" } }); mounted.push(pg);
