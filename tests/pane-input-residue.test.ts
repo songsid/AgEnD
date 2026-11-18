@@ -71,7 +71,7 @@ const IDLE_BARE = `
 /** A long paste wraps across rows; the prompt row is not the last row. */
 const STRANDED_WRAPPED = `
  ▸ Time: 3s
-12% !> [from:agend-leader-t1500000000000799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）
+12% !> [from:fleet-lead] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）
 使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。
 `;
 
@@ -137,7 +137,7 @@ describe("pane-input-residue: input area text", () => {
 
   it("joins wrapped continuation rows below the prompt row", () => {
     const text = inputAreaText(STRANDED_WRAPPED, PROMPT)!;
-    expect(text.startsWith("[from:agend-leader-t1500000000000799511]")).toBe(true);
+    expect(text.startsWith("[from:fleet-lead]")).toBe(true);
     expect(text).toContain("使用者回報一個偶發");
   });
 
@@ -160,7 +160,7 @@ describe("pane-input-residue: did our paste get submitted?", () => {
   });
 
   it("survives the TUI re-wrapping the pasted text", () => {
-    const long = "[from:agend-leader-t1500000000000799511] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。\n(message_id: 2)";
+    const long = "[from:fleet-lead] ## Task: 研究 kiro delivery 偶發「paste 了但 Enter 沒送出」（忙碌時送訊息才發生）\n\n使用者回報一個偶發、低機率、只在 kiro 看到的 delivery bug，想請你查根因。\n(message_id: 2)";
     expect(pasteLeftInInput(STRANDED_WRAPPED, PROMPT, long)).toBe(true);
     expect(pastedTextSignature(long)).toHaveLength(24);
   });

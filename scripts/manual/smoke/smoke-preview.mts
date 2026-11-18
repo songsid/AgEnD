@@ -10,7 +10,7 @@ import { bootFixture, matrix, caseName, shotPath, PICTURES, VIEWPORTS, TEXT } fr
 const SMOKE = "smoke-preview";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48330) });
 const fm = fx.fm;
-const W = "tm1-platform-backend-sr4-server-t1500000000000130997";
+const W = "api-gateway-worker";
 const AV = fm.themeStore.addAsset(W, "avatar", await fx.picture(PICTURES.avatarTransparent));
 const BG = fm.themeStore.addAsset(W, "background", await fx.picture({ w: 800, h: 500, hue: 200, label: "", mime: "image/jpeg", seed: 9 }));
 const P = fm.themeStore.addAsset(W, "portrait", await fx.picture(PICTURES.portrait));

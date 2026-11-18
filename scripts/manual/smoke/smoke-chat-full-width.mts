@@ -13,7 +13,7 @@ const ENGINE = process.env.PW_ENGINE === "webkit" ? "webkit" : "chromium";
 const WEBKIT_OWN = /^(Viewport argument key "interactive-widget" not recognized and ignored\.|Refused to apply a stylesheet because its hash, its nonce, or 'unsafe-inline' does not appear in the style-src directive of the Content Security Policy\.|(EventSource|Fetch API) cannot load https?:\s*\/+[^\s/]+\/(ui\/[a-z-]+|auth\/sessions?|api\/[a-z/-]+)(\?\S*)? due to access control checks\.)/;
 const pageErrors = (errors: string[]) => errors.filter((e) => !(ENGINE === "webkit" && WEBKIT_OWN.test(e)));
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48870), instances: 3 });
-const CHAT = fx.instances.find((i: any) => !i.general)?.name ?? "agend-dev-claude-t1500000000000083558";
+const CHAT = fx.instances.find((i: any) => !i.general)?.name ?? "core-dev";
 const COLS = ["Instance", "Backend", "Model", "Effort", "Context", "Status", "Last reply", "Cache hit", "Tokens in", "Tokens out", "Cost (USD)", "Notes"];
 const ROWS = [["web-claude", "claude-code", "opus-5-5", "high", "42%", "running", "2 min ago", "91.4%", "1,204,331", "88,120", "$12.40", "reviewing #2552"],
   ["dev-codex", "codex", "gpt-5.5", "medium", "18%", "idle", "11 min ago", "77.0%", "640,002", "41,980", "$4.12", "waiting on CI"],

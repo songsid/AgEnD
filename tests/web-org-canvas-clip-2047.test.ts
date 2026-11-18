@@ -16,7 +16,7 @@ describe("clipText (#2047)", () => {
     expect(C.clipText("tm1-platform-backend", 15)).toBe("tm1-platform-b…");
   });
   it("shortens CJK by width: the result never exceeds the budget", () => {
-    for (const s of ["平台基礎設施與發佈工程負責人（主要）", "效能分析與火焰圖解讀", "產品官網-t1500000000000165914", "資料平台 dbt 模型新鮮度監控", "多語系翻譯校對（繁中）"]) {
+    for (const s of ["平台基礎設施與發佈工程負責人（主要）", "效能分析與火焰圖解讀", "docs-writer", "資料平台 dbt 模型新鮮度監控", "多語系翻譯校對（繁中）"]) {
       for (const n of [15, 20, 27]) expect(width(C.clipText(s, n))).toBeLessThanOrEqual(n);
     }
     expect(C.clipText("效能分析與火焰圖解讀", 15)).toBe("效能分析與火焰圖…");   // 10 CJK = 16 > 15

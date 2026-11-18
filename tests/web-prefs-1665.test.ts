@@ -389,7 +389,7 @@ describe("#2855: a guest saves its own preferences over the public link too (onl
     expect([a.status(), a.json().error]).toEqual([403, "prefs_not_over_public_link"]);
   });
   it("#4084: through the public link's own listener — a guest's star is kept (it was refused before the handler, and vanished)", async () => {
-    const sessions = new WebSessionStore(), prefs = new WebPrefsStore(tmp(), { exists: (n) => n === "alpha-t1500000000000000001" || n === "beta" });
+    const sessions = new WebSessionStore(), prefs = new WebPrefsStore(tmp(), { exists: (n) => n === "alpha-one" || n === "beta" });
     const owner = { adapterId: "discord", userId: "42" }, host = "sample.trycloudflare.com";
     const ctx = { webToken: token, webSessions: sessions, webPrefs: prefs, logger: { info() {}, debug() {}, error() {}, warn() {} },
       sseClients: new Set(), getUiStatus: () => ({ instances: [] }), emitSseEvent: vi.fn() } as any;
@@ -398,7 +398,7 @@ describe("#2855: a guest saves its own preferences over the public link too (onl
     // The fleet's gate binds a guest's request (its scope) before the shared handlers, as FleetManager does.
     const gateway = createPublicWebGateway({ exposureId, isCurrent: () => true, isOpen: () => true,
       dispatch: (req, res) => {
-        if (guestSessions.has(String(req.headers.cookie))) bindGuestRequest(req, { owner, scope: () => new Set(["alpha-t1500000000000000001", "beta"]), current: () => true });
+        if (guestSessions.has(String(req.headers.cookie))) bindGuestRequest(req, { owner, scope: () => new Set(["alpha-one", "beta"]), current: () => true });
         handleWebRequest(req as never, res as never, new URL(req.url ?? "/", local), ctx);
       },
       create: ((handler: typeof callback) => { callback = handler; return server; }) as never });
@@ -413,9 +413,9 @@ describe("#2855: a guest saves its own preferences over the public link too (onl
       h.feed(body);
       return h;
     };
-    const g = post("guest", { set: { "nav.favorites": ["beta", "alpha-t1500000000000000001"] } }); await flush();
-    expect([g.status(), g.json().values?.["nav.favorites"]]).toEqual([200, ["beta", "alpha-t1500000000000000001"]]);
-    expect([prefs.read("person:discord:42").values, prefs.read(OPERATOR).values]).toEqual([{ "nav.favorites": ["beta", "alpha-t1500000000000000001"] }, {}]);
+    const g = post("guest", { set: { "nav.favorites": ["beta", "alpha-one"] } }); await flush();
+    expect([g.status(), g.json().values?.["nav.favorites"]]).toEqual([200, ["beta", "alpha-one"]]);
+    expect([prefs.read("person:discord:42").values, prefs.read(OPERATOR).values]).toEqual([{ "nav.favorites": ["beta", "alpha-one"] }, {}]);
     // An admin's session over the link is still refused — by the handler, not the route list.
     const a = post("admin", { set: { theme: "dark" } }); await flush();
     expect([a.status(), a.json().error]).toEqual([403, "prefs_not_over_public_link"]);
