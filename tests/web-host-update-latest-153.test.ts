@@ -133,7 +133,7 @@ describe("startWebInstall — Antigravity's update to the latest (the named exce
     expect(fakeSessions).toHaveLength(1);
   });
   it("the pinned-release CLIs are unchanged: Grok at the audited release is still refused as up_to_date", async () => {
-    writeFileSync(join(profileBin, "grok"), '#!/bin/sh\necho "grok 1.0.88 (abc)"\n'); chmodSync(join(profileBin, "grok"), 0o755); onPath();
+    writeFileSync(join(profileBin, "grok"), '#!/bin/sh\necho "grok 1.0.89 (abc)"\n'); chmodSync(join(profileBin, "grok"), 0o755); onPath();
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ refused: "up_to_date" });
   });

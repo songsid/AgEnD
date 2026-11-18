@@ -1,0 +1,40 @@
+
+ RUN  v4.1.12 <repo>
+
+ ❯ tests/pane-quota-history-3188.test.ts (71 tests | 5 failed | 66 skipped) 172ms
+     × Grok preserves the multiline quota history before wake: compact-401-usage-120 56ms
+     × Grok preserves the multiline quota history before wake: compact-401-credits-120 30ms
+     × Grok preserves the multiline quota history before wake: compact-401-usage-80 28ms
+     × Grok preserves the multiline quota history before wake: compact-401-credits-80 35ms
+     × Grok preserves the multiline quota history before wake: 1.0.88-compact-401-usage-80 20ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-usage-120
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-credits-120
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-usage-80
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: compact-401-credits-80
+ FAIL  tests/pane-quota-history-3188.test.ts > quota history at the actual resume admission boundary > Grok preserves the multiline quota history before wake: 1.0.88-compact-401-usage-80
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/pane-quota-history-3188.test.ts:197:23
+    195|     expect(f.logger.debug.mock.calls.some(c => c[0]?.evidence === "bef…
+    196|     f.scan(pane + "\n│ ❯ a new call │\n" + pane);
+    197|     expect(f.quota()).toHaveLength(1);
+       |                       ^
+    198|   });
+    199|   it("Grok has no history exemption without a resumed, readable preser…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 66 skipped (71)
+   Start at  21:32:04
+   Duration  3.80s (transform 2.70s, setup 125ms, import 3.33s, tests 172ms, environment 0ms)

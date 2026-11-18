@@ -1,0 +1,21 @@
+{
+  "devBase": "a59da703c4df87be56ed6f2de71a6a1ab37611a3",
+  "mainMerge": "dee098f778004119d3335650a69a983a3f8320fb",
+  "checks": {
+    "auditHistoryAndLedger": {
+      "passed": 177,
+      "files": 6
+    },
+    "nativeHistoryInert": {
+      "passed": 15,
+      "files": 1
+    },
+    "sourceTypeScript": 0,
+    "testTypeScript": 0,
+    "manifest": "rebuilt from dev and checked"
+  },
+  "commonPanesByteEqual": 139,
+  "commonAuditFileByteEqual": true,
+  "repeatLiveCampaign": false,
+  "shippedGrokUpdateTarget": "1.0.89"
+}

@@ -1,0 +1,42 @@
+  master /r/work/core-120                                                                    1.3k / 256k │ [Dashboard]
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  ╭──────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+  │ ❯ [agend-delivery-id:aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa]                                                       │
+  │   [from:Audit peer (audit-peer)] please stall a                                                                  │
+  │   (message_id: audit-message)                                                                                    │
+  ╰─────────────────────────────────────────────────────────────────────────────── grok-mock (low) · always-approve ─╯
+
+  Enter:send  │  Alt+Enter:newline  │  Shift+Tab:mode  │  Ctrl+x:shortcuts
