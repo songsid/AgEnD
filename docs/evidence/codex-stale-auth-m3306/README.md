@@ -35,3 +35,5 @@ node_modules/.bin/tsc --noEmit -p tsconfig.test.json
 Full suites belong to CI. This proves the observed pane failure, not silent errors confined to Codex's private logs. A new error wording needs another fixture. Rollback is a code revert with no database migration; the standard pause marker remains and an explicit agent restart clears it.
 
 Main port: 187 passed / 1 native-only skipped across 9 affected files; both source and test typechecks report zero errors. Main retains its existing non-native lifecycle and pause reasons. Alpha alone maps its new pause reason to the Hub’s existing error presence; no Hub protocol changes.
+
+CI repair: one existing Claude minimum-version test still called the renamed private delivery guard. That caller now uses refuseBlockedDelivery. A tests/ scan found no other old-name callers; its focused suite passes 32/32 on main and 34/34 on dev. Runtime src and scripts are unchanged from the previous published heads.
