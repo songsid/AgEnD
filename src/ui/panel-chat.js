@@ -164,6 +164,7 @@ import { createThread, msgKey } from "/assets/chat-thread.js";
 import { ComposerInput, WorkBarView, touchScreen } from "/assets/chat-composer.js";
 import { installMessageActions } from "/assets/chat-msg-actions.js";
 import { composerCaret, insertQuote, installQuoteSelection, showCaret } from "./chat-quote.js";
+import { installTableSelection } from "/assets/chat-table-select.js";
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
@@ -877,6 +878,8 @@ function Thread({ name, label = name, th, bindings }) {
       pinned: (x) => isPinned(name, msgKey(x)),
       canPin: (x) => !guestPage() && pinOffered(name) && (x.role === "agent" || x.role === "user") && /^[0-9a-f]{1,32}-\d{1,15}$/.test(msgKey(x)),
     });
+    // M-3326: a table's cells selected as a spreadsheet's (a desk: drag down a column or across a block; Ctrl/Cmd+C as TSV).
+    const offCells = installTableSelection(ls, { phone: () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches });
     // M-2789: select a passage in a message → 「引用」 → it goes into the composer as a quote at the caret, repeatable.
     const offQuote = installQuoteSelection(ls, {
       field: () => bindings.input.current,
@@ -923,7 +926,7 @@ function Thread({ name, label = name, th, bindings }) {
     return () => {
       window.removeEventListener("hashchange", onHash);
       unfollow();
-      offActions(); offQuote();
+      offActions(); offQuote(); offCells();
       sc.removeEventListener("scroll", onScroll);
       ls.removeEventListener("click", thread.onClick);
       if (mountedThreads.get(name) === owner) mountedThreads.delete(name);
