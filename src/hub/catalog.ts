@@ -1,3 +1,4 @@
+import { roomDiscoverySupported, roomDiscoverySnapshot, roomFindable } from "./room-agent-discovery-model.js";
 import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
 import { keepStoppedList } from "./sharing-retention.js";
 /**
@@ -14,7 +15,7 @@ import { keepStoppedList } from "./sharing-retention.js";
  * - A grant binds one person or immutable AD group to one exact exposure id and revision. A new exposure revision leaves old grants
  *   inapplicable until the owner grants again. Only the exposure's owner grants or revokes, against the revision shown.
  * - Private-agent non-enumeration: a person sees the exposures they own, and the published ones granted to them now.
- *   They never see others.
+ *   Explicit room discovery has its own owner-selected projection; it never adds a direct-chat grant.
  */
 import { createHash, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
@@ -106,6 +107,8 @@ export function grantApplies(grant: HubGrant, exposure: HubExposure, asker: Pers
 export interface HubCatalogView {
   mine: readonly (HubExposure & { grants: readonly (HubGrant & { subjectName: string; subjectLogin: string; subjectSignedIn?: boolean })[] })[];
   askable: readonly { exposure: HubExposure; grant: HubGrant; ownerName: string }[];
+  /** Present only in an explicitly selected room-picker/invitation view. Never a direct-chat grant. */
+  findable?: readonly { exposure: HubExposure; ownerName: string }[];
 }
 
 /** One catalog entry per agent. Reuse a still-authorized chat; never move its history onto another grant. */
@@ -274,7 +277,10 @@ export class HubCatalogService {
     return this.withVisible(ctx, view => view);
   }
   /** A synchronous use of the picker/catalog view, within its current permission transaction. */
-  async withVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T): Promise<T> {
+  async withRoomVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T): Promise<T> {
+    return this.withVisible(ctx, use, true);
+  }
+  async withVisible<T>(ctx: HubRequestContext, use: (view: HubCatalogView) => T, roomDiscovery = false): Promise<T> {
     const person = await ctx.requirePerson(), me = personKeyString(person), now = this.core.now();
     const initial = this.core.atomic((db) => {
       const names = (id: string) => db.prepare("SELECT display_name, login_label FROM hub_people WHERE person=?").get(id) as { display_name: string; login_label: string } | undefined;
@@ -295,7 +301,13 @@ export class HubCatalogService {
           || personKeyString(grant.owner) !== personKeyString(exposure.owner)) continue;
         askable.push({ exposure, grant, ownerName: names(row.owner)?.display_name ?? "" });
       }
-      return { mine, askable };
+      const findable = roomDiscovery && roomDiscoverySupported(db)
+        ? (db.prepare(`SELECT e.* FROM hub_exposures e JOIN hub_room_agent_discovery d ON d.exposure_id=e.id
+            WHERE d.findable=1 AND d.owner=e.owner AND d.exposure_revision=e.revision AND e.owner<>? ORDER BY e.display_name,e.id`).all(me) as ExposureRow[])
+          .filter(row => (row.fleet_id === null || !retired.has(row.fleet_id)) && roomFindable(db, exposureOf(row)))
+          .map(row => ({ exposure: exposureOf(row), ownerName: names(row.owner)?.display_name ?? "", snapshot: roomDiscoverySnapshot(db, exposureOf(row)) }))
+        : [];
+      return { mine, askable, findable };
     });
     // A grant may precede its recipient's first sign-in. Resolve display labels by the grant's immutable key,
     // without manufacturing a Hub person row. Existing signed-in people's labels retain the normal path.
@@ -323,6 +335,21 @@ export class HubCatalogService {
       try { proofs.push(await this.core.groupExposure(candidate.exposure.id, null, context)); askable.push(candidate); }
       catch (e) { if (!(e instanceof HubProtocolError && (e.code === "denied" || e.code === "revoked"))) throw e; }
     }
+    const discovered: typeof initial.findable = [];
+    // A direct grant is independent of discovery and its owner opt-out. Do not bind an already askable row to
+    // the narrower discovery preference (including changes made while its ordinary permission read is held).
+    for (const candidate of initial.findable.filter(row => !askable.some(a => a.exposure.id === row.exposure.id))) {
+      try {
+        const permit = await this.core.groupExposure(candidate.exposure.id, null, context);
+        proofs.push(permit, { assertCurrent: () => this.core.atomic(db => {
+          const row = readExposure(db, candidate.exposure.id);
+          if (!row || JSON.stringify(exposureOf(row)) !== JSON.stringify(candidate.exposure)
+            || !roomFindable(db, exposureOf(row))
+            || JSON.stringify(roomDiscoverySnapshot(db, exposureOf(row))) !== JSON.stringify(candidate.snapshot)) throw new HubProtocolError("stale");
+        }) });
+        discovered.push(candidate);
+      } catch (e) { if (!(e instanceof HubProtocolError && ["denied", "revoked"].includes(e.code))) throw e; }
+    }
     subjectProof.assertSelectionCurrent();
     if (this.core.now() >= subjectProof.expiresAt) {
       const fresh = await this.core.grantAccess(askable.map(c => c.grant.id), person, context);
@@ -344,7 +371,8 @@ export class HubCatalogService {
       const e = readExposure(db, candidate.exposure.id), g = readGrant(db, candidate.grant.id);
       return e && g && exposureOf(e).state === "published" && grantOf(g).revision === candidate.grant.revision
         && grantApplies(grantOf(g), exposureOf(e), person, this.core.now(), subjectProof);
-    }), me) }), { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
+    }), me), ...(roomDiscovery ? { findable: discovered.filter(candidate => !askable.some(a => a.exposure.id === candidate.exposure.id))
+      .map(({ exposure, ownerName }) => ({ exposure, ownerName })) } : {}) }), { assertCurrent: () => { for (const proof of proofs) proof.assertCurrent(); } });
   }
 
   /** Owner-selected person or immutable AD security group; suggestions and labels never grant authority. */

@@ -230,3 +230,35 @@ function OwnerRequestSetting({ client, scope }) {
     <span>${hrq("stopRequests")}</span></label><p class="note">${hrq("stopHint")}</p>
     ${message ? html`<p class="note" role="status">${message}</p>` : null}</section>`;
 }
+
+export function OwnerAgentDiscoverySetting({ client, scope, exposure } = {}) {
+  if (!scope || !exposure?.id || typeof client?.agentRoomDiscovery !== "function") return null;
+  return html`<${AgentDiscoverySetting} key=${scope + ":" + exposure.id + ":" + exposure.revision + ":" + (exposure.sharingEpoch || 0)} client=${client} scope=${scope} exposure=${exposure} />`;
+}
+function AgentDiscoverySetting({ client, scope, exposure }) {
+  const [view, setView] = useState(null), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const live = useRef(true), writing = useRef(false), generation = useRef(0);
+  const load = async () => {
+    if (writing.current) return;
+    const mine = ++generation.current;
+    let r; try { r = await client.agentRoomDiscovery(scope, exposure.id); } catch { r = null; }
+    if (!live.current || mine !== generation.current) return;
+    if (r?.ok && typeof r.findable === "boolean" && typeof r.available === "boolean") { setView(r); setError(""); }
+    else setError(hrq("loadFailed"));
+  };
+  useEffect(() => { live.current = true; writing.current = false; setBusy(false); setView(null); void load(); return () => { live.current = false; generation.current++; }; }, [client, scope, exposure.id]);
+  const change = async event => {
+    if (writing.current || !view?.available) return;
+    const findable = event.target.checked; writing.current = true; setBusy(true); setError("");
+    const mine = ++generation.current;
+    let r; try { r = await client.agentRoomDiscovery(scope, exposure.id, { findable, ifRevision: view.revision, exposureRevision: view.exposureRevision }); } catch { r = null; }
+    if (!live.current || mine !== generation.current) return;
+    writing.current = false; setBusy(false);
+    if (r?.ok) setView(r); else { setError(hrq("actionFailed")); if (r?.status === 403 || r?.status === 409) void load(); }
+  };
+  return html`<section class="card hub-room-discovery-setting"><label class="check"><input type="checkbox" checked=${view?.findable === true} disabled=${busy || !view?.available} onChange=${change} /><span>${hrq("discoveryLabel")}</span></label>
+    <p class="note">${hrq("discoveryHint")}</p>
+    ${view?.reason ? html`<p class="note">${hrq(view.reason === "owner-disabled" ? "discoveryOptOut" : view.reason === "paused" ? "discoveryPaused" : "discoveryUnshared")}</p>` : null}
+    ${error ? html`<p class="note" role="alert">${error} <button class="btn btn-link" onClick=${() => { void load(); }}>${hrq("retry")}</button></p>` : null}
+  </section>`;
+}

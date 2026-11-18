@@ -1,0 +1,37 @@
+[
+  {
+    "control": "owner-optout",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "publication-binding",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "selection-revision",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "commit-permission",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "direct-surface",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "inventory",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "ui-retired-read",
+    "caught": true,
+    "exit": 1
+  }
+]

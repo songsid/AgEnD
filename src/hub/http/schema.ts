@@ -1,3 +1,4 @@
+import { HUB_ROOM_AGENT_DISCOVERY_MIGRATION } from "../room-agent-discovery-model.js";
 import {HUB_ROOM_PURPOSE_MIGRATION} from "../rooms/purpose.js";
 import { HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../room-agent-requests.js";
 import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
@@ -147,4 +148,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_AGENT_INTRO_TOOL_MIGRATION,
   HUB_ROOM_PINS_MIGRATION,
   HUB_ROOM_AGENT_REQUESTS_MIGRATION,
+  HUB_ROOM_AGENT_DISCOVERY_MIGRATION,
 ]);

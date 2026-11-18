@@ -41,6 +41,7 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
     const json = key === "GET /hub/v1/session" ? session : key === "GET /hub/v1/rooms" ? { rooms: o.rooms ?? [] } : key === "GET /hub/v1/notices" ? { notices: o.notices ?? [] }
       : key === "GET /hub/v1/exposures" ? { mine: o.mine ?? [], askable: [] }
       : key === "GET /hub/v1/me/agent-request-settings" ? { accepting: true }
+      : key.endsWith("/room-discovery") ? { findable: false, available: true, revision: 0, exposureRevision: 1 }
       : key === "GET /hub/v1/admin/overview" ? { fleets: [], pairings: [], permissions: o.management ?? (o.admin ? ["fleets.manage", "join.manage"] : []) }
       : key === "GET /hub/v1/security-notices/directory" ? { items: [], nextBefore: null } : {};
     return { ok: true, status: 200, json: async () => json, headers: { get: () => null } };
@@ -62,6 +63,19 @@ async function hub(o: { admin?: boolean; management?: string[]; features?: strin
 const rows = (pg: AppPage) => [...pg.root.querySelectorAll(".side-nav .side-row .grow")].map((x: any) => x.textContent);
 
 describe("the Hub's sidebar is the dashboard's (cid-hub-shell-parity)", () => {
+  it("keeps room findability after the main who-may-ask setting on the access page", async () => {
+    const id = "11111111-2222-4333-8444-555555555555";
+    const pg = await hub({ path: `/ui/hub/exposures?agent=${id}`, features: ["room-agent-discovery-v1"],
+      mine: [{ id, displayName: "Example helper", state: "published", revision: 1, grants: [] }] });
+    await import("/ui/js/hub-room-owner-requests.js");
+    await until(() => pg.root.querySelector(".hub-room-discovery-setting"));
+    const discovery = pg.root.querySelector(".hub-room-discovery-setting");
+    expect(discovery).toBeTruthy();
+    const cards = [...discovery.parentElement.children];
+    const access = cards.find((card: any) => card.querySelector("h3")?.textContent === "Who may ask");
+    expect(access).toBeTruthy(); expect(cards.indexOf(discovery)).toBeGreaterThan(cards.indexOf(access));
+  });
+
   it("places request opt-out after an owned agent list and hides it after the loaded empty state", async () => {
     const options = { path: "/ui/hub/exposures", features: ["rooms-v1", "room-owner-requests-v1"] };
     const empty = await hub(options);

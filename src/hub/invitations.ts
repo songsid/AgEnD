@@ -144,8 +144,8 @@ class RoomInvitations implements HubRoomInvitations {
         : (() => { throw new HubProtocolError("invalid"); })(),
     };
     this.expire(ctx, actor.id, undefined, roomId);
-    const out = await new HubCatalogService(this.core).withVisible(ctx, view => this.core.atomic((db, tx) => {
-      const visible = new Set([...view.mine.map(e => e.id), ...view.askable.map(row => row.exposure.id)]);
+    const out = await new HubCatalogService(this.core).withRoomVisible(ctx, view => this.core.atomic((db, tx) => {
+      const visible = new Set([...view.mine.map(e => e.id), ...view.askable.map(row => row.exposure.id), ...(view.findable ?? []).map(row => row.exposure.id)]);
       const room = this.host.managerRoom(db, roomId, actor.id), now = this.now();
       if (!Number.isSafeInteger(now + ROOM_INVITATION_TTL)) throw new HubProtocolError("invalid");
       let agents: string[], teamImage: unknown = null;

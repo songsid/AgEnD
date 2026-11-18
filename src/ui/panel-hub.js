@@ -1104,6 +1104,7 @@ function HubAgentPage({ x, act, msg }) {
         </div>`)}</div>` : html`<p class="note">${roomCount > 0 ? hroom("agentNoOneToOne") : hw("noGrants")}</p>`}
         ${roomCount > 0 ? html`<p class="note hub-rooms-can-ask">${hroom("roomsCanAskIt")}</p>` : null}
       </section>
+      ${session?.features?.includes("room-agent-discovery-v1") && typeof client.agentRoomDiscovery === "function" ? html`<${LazyRoomPart} load=${() => import("./hub-room-owner-requests.js")} name="OwnerAgentDiscoverySetting" props=${{ client, scope: session.csrf, exposure: x }} />` : null}
       ${roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-invitations.js")} name="AgentRoomsSection" props=${{ client: hubClient(), exposureId: x.id, onRooms: setRoomCount }} />` : null}
       <${QuotaVisibilityRow} exposure=${x} onSaved=${() => act(async () => ({ ok: true }))} />
       <section class="card"><h3>${ho("recent")}</h3><p class="note">${ho("recentLead")}</p>

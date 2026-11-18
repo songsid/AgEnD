@@ -472,18 +472,23 @@ export class HubGroupRooms {
         me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
     }, this.fence(ctx));
   }
-  async candidates(ctx: HubRequestContext, q: string, kind: string) {
+  async candidates(ctx: HubRequestContext, q: string, kind: string, discovery = false) {
     if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q) || !["person", "team", "group", "agent"].includes(kind)) throw new HubProtocolError("invalid");
     const me = await this.who(ctx);
     const allowed = (db: DB) => canCreateRoom(this.core, db, me) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
       WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me);
     if (kind === "agent") {
       this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
-      const view = await new HubCatalogService(this.core).visible(ctx);
-      const hits = [...view.mine.map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true, owner: { name: this.core.atomic(db => this.name(db, me)) } })),
-        ...view.askable.map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, owner: { name: ownerName } }))]
-        .filter(e => e.name.toLowerCase().startsWith(q.trim().toLowerCase())).slice(0, 20);
-      this.fence(ctx).assertCurrent(); return this.core.atomic(db=>hits.map(row=>({...row,...agentIntro(db,row.id)})),this.fence(ctx));
+      const catalog = new HubCatalogService(this.core);
+      return (discovery ? catalog.withRoomVisible.bind(catalog) : catalog.withVisible.bind(catalog))(ctx, view => {
+        const hits = [...view.mine.map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true, owner: { name: this.core.atomic(db => this.name(db, me)) } })),
+          ...view.askable.map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, owner: { name: ownerName } })),
+          ...(view.findable ?? []).map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, discoverable: true, owner: { name: ownerName } }))]
+          .filter(e => e.name.toLowerCase().startsWith(q.trim().toLowerCase())).slice(0, 20);
+        this.fence(ctx).assertCurrent(); return this.core.atomic(db => {
+          if (!allowed(db)) throw new HubRoomRefusal(403, "denied");
+          return hits.map(row => ({ ...row, ...agentIntro(db, row.id) }));
+      }, this.fence(ctx)); });
     }
     if (q.trim().length >= 2 && (kind === "group" && this.core.deps.directory.searchPolicyGroups || kind === "person" && this.core.deps.directory.searchGrantPeople)) {
       return this.directory.search(ctx, me, q.trim(), kind as "person" | "group", () => this.core.atomic(db => {
