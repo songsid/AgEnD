@@ -23,4 +23,3 @@ AssertionError: expected 'quota' not to be 'quota' // Object.is equality
       Tests  1 failed | 10 passed (11)
    Start at  21:15:42
    Duration  1.43s (transform 953ms, setup 85ms, import 1.18s, tests 11ms, environment 0ms)
-

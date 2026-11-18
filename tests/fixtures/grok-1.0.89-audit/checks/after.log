@@ -35,4 +35,3 @@ AssertionError: expected { …(4) } to match object { type: 'quota', action: 'no
       Tests  1 failed | 10 passed (11)
    Start at  21:12:24
    Duration  1.95s (transform 1.38s, setup 90ms, import 1.68s, tests 17ms, environment 0ms)
-

@@ -53,11 +53,11 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/after-v2.log",
-      "sha256": "d21db83a60faf9578e71fe70616e28ac6f8a49a7d2b59a0ead26b98120dc7fc8"
+      "sha256": "fe082178afe04406e03b7623837805791157fe154783a7b14d593d9aeafccbf3"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/after.log",
-      "sha256": "442dfd5b0da5605fba00ab0794f8140ab722c60b50d7075d621e0901021706cc"
+      "sha256": "bfe906e6041be57e72de705576f6b80f0af4476052e3bb5e9b29fbcd82745d4f"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/compact-1088.log",
@@ -69,11 +69,11 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/fail-first.log",
-      "sha256": "925972aaf38210ab485912ca76fe7644b0fdce581800617ffc09ecf01276db2d"
+      "sha256": "f87c8ed18b8c02da569c4abf1505977d67f213344135db8bda2c1731f6825779"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/final-controls.log",
-      "sha256": "0448ad8d38ccb61c6725646e6aeca9fc7d8d2b795d0ea46aabe94e4aa8fa7350"
+      "sha256": "a094db77e3a9475f11263d5be86500e1747dfdcb38470cb22a38448e64cf9608"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/final-test-tsc.log",
@@ -97,7 +97,7 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/regression.log",
-      "sha256": "506d74a27c890c614540348440d3ee0f0954dc87f0e13fd12df901097cc127ea"
+      "sha256": "cd5a322b24cc88f8e38c764b989e4142c0522a7b30c476e9e867ac7e7993c829"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/reset-1089.log",
@@ -105,15 +105,15 @@
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/restored.log",
-      "sha256": "141921f094f0012de5d7f6c04df43068ee67b38f13262706b981f669607edd7c"
+      "sha256": "9b2da091269a639ec96162c5050ba96b75579d6ed189d8e566672f75c6be8c6a"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/reversal-frame.log",
-      "sha256": "4cdf8dc7847f8fdfa426be71a02ba39066257cf18d900c824a9e8265a39c00a7"
+      "sha256": "8a614da87c484e75d86423cb9a8678273328c2a555c551a86fcd65ccfb11590f"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/reversal-priority.log",
-      "sha256": "9103372ed2e4261ded3ca0bf1a3cc45edd64fa82a7998c0acd1a737b383936a2"
+      "sha256": "0941d9795083e608820ceceba854abeb60f3dd3fd1710630874d3d4b5179f99d"
     },
     {
       "path": "tests/fixtures/grok-1.0.89-audit/checks/source-tsc.log",
