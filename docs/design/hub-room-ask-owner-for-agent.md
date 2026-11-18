@@ -146,6 +146,15 @@ Which agent
 | Owner's switch, per agent | Room managers can find this agent | 房間管理員可以找到這個 Agent |
 | Its hint | When on, anyone who manages a room sees this agent's name, your name and its introduction, and can ask you to add it. | 開啟後，任何房間管理員都會看到這個 Agent 的名稱、你的名字和它的自我介紹，並可以請你把它加入房間。 |
 | A findable agent in the picker | {agent} · {owner} · Ask {owner} | {agent} · {owner} · 請 {owner} 加入 |
+| Switch hint | Managers of any room can find it by name and ask you to add it to their room. They see its name, its introduction and your name. You still decide each time, and this lets nobody ask it one-to-one. | 任何房間的管理員都能用名稱找到它，並請你把它加入他們的房間。他們會看到它的名稱、介紹和你的名字。每次仍由你決定，而且這不會讓任何人可以一對一問它。 |
+| Switch, sharing paused | Hidden while sharing is paused. | 暫停分享期間不會顯示。 |
+| Switch, agent not shared | Share this agent first. | 請先分享這個 Agent。 |
+| Switch, owner's opt-out is on | Off while "Don't let room managers ask me for agents" is on. | 已開啟「不要讓房間管理員請我加入 Agent」，所以目前無法使用。 |
+
+Rules for the per-agent switch (settled with the builder, M-3341 A4): switching it off hides the agent from new
+searches and refuses a new invitation by id, while pending invitations stay answerable and an agent already in a
+room stays. Pausing sharing hides it and resuming restores the choice; sharing again after a stop starts with it
+off. The owner's opt-out wins over it: while the opt-out is on, none of that owner's agents can be found.
 | Owner's opt-out | Don't let room managers ask me for agents | 不要讓房間管理員請我加入 Agent |
 | Owner has opted out | {owner} isn't taking requests for agents. | {owner} 目前不接受加入 Agent 的請求。 |
 | One already open | A request to {owner} is already open for this room. | 這個房間已經向 {owner} 送出請求，仍在等待回應。 |
