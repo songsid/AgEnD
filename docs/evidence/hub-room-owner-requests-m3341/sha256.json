@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "02b502229a93ebe534b4977dfc8f331617a97b7f12af92267d0c4c796f965166"
+    "sha256": "d76eee60ef8463d8a46f0964a2d09bed8b2a40de28618c3143704012be42f72a"
   },
   {
     "path": "browser/desk-en-choose-person.png",
@@ -93,6 +93,6 @@
   },
   {
     "path": "validation.json",
-    "sha256": "25d3073c2f61814ad8791e7e4b9f66060c8f0658eda2c03d140e7b50baaf8d90"
+    "sha256": "d77a649f689309878ed9b87a9ef5f891eb09803b85f6ecd8e8594d955ddd70de"
   }
 ]

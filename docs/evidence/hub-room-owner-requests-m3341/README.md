@@ -25,6 +25,10 @@ The changed UI and two existing room suites pass **29/29**; the test typecheck p
 
 A superseded Load more response is fenced by its page/room generation. Three mounted held-response cases fail before the fix; the affected regression set passes 27/27 afterward, and dropping the generation guard makes all three red. Restored UI 13/13 and test typecheck pass. See [the interleavings and limits](paging.md). Copy, markup, backend and accepted PNGs are unchanged.
 
+## CI fixture repair
+
+Exact-head CI run 44356495851 exposed one remaining deterministic fixture mismatch: the shared-module test pinned the serving list before the two new owner-request modules were added. The expected list now includes both files in their actual order. The failing file passes **11/11** locally. Runtime source, scripts, templates, changes and CI configuration are byte-identical to the cleared 74ff7df head; no cleared source, mutation or browser campaign was repeated.
+
 ## Rendered views
 
 Each set contains empty agent search, person selection, the request dialog and the waiting row:

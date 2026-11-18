@@ -37,5 +37,12 @@
     "backendChanged": false,
     "markupChanged": false,
     "browserRepeated": false
+  },
+  "moduleListRepair": {
+    "failedRun": 44356495851,
+    "failedTestFile": "tests/hub-shared-modules-a.test.ts",
+    "passed": 11,
+    "files": 1,
+    "runtimeChanged": false
   }
 }
