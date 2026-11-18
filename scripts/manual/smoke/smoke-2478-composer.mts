@@ -12,7 +12,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 
 const SMOKE = "2478-composer", LABEL = process.env.LABEL ?? "after";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48822), instances: 6 });
-const NICK = "agend-leader-t1500000000000799511", BARE = "agend-dev-claude-t1500000000000083558";
+const NICK = "fleet-lead", BARE = "core-dev";
 const nick = String(fx.fm.fleetConfig.instances[NICK]?.display_name ?? "");
 // WebKit's own messages (smoke-composer-row-2215's list): a viewport key it does not know, the sheet it refuses
 // under style-src 'self' for its own controls, and fetches a navigation cancels. Anything else is an error.

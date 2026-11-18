@@ -51,7 +51,7 @@ export type DirectoryLookupResult =
   | { readonly ok: false; readonly reason: "bad-input" | "not-found" | "not-eligible" | "unavailable" };
 /** Bounded suggestions only; a selected key/login must be freshly rechecked at grant commit. */
 export type GrantPersonSearch = { readonly ok: true; readonly people: readonly {
-  readonly person: PersonKey; readonly login: string; readonly displayName: string;
+  readonly person: PersonKey; readonly login: string; readonly displayName: string; readonly department?: string;
 }[]; readonly truncated: boolean } | { readonly ok: false; readonly reason: "unknown" };
 /** Complete direct-members snapshot only; partial pages/referrals are never a smaller successful roster. */
 export type RoomGroupRoster = { readonly ok: true; readonly group: { readonly key: PersonKey; readonly name: string }; readonly people: readonly DirectoryPerson[] }
@@ -87,7 +87,8 @@ export interface HubDirectory {
   lookupForPairing?(login: string): Promise<DirectoryLookupResult>;
   /** Exact owner-authorized grant recipient selection, without sign-in or person/session creation. */
   lookupForGrant?(login: string): Promise<DirectoryLookupResult>;
-  searchGrantPeople?(q: string): Promise<GrantPersonSearch>;
+  /** Department is opt-in for room-picker presentation; ordinary search responses keep their existing shape. */
+  searchGrantPeople?(q: string, options?: { readonly includeDepartment?: boolean }): Promise<GrantPersonSearch>;
   /** Per-request eligibility (design §4): exists, same immutable id, enabled. No cache; unreachable = not eligible. */
   checkEligibility(key: PersonKey): Promise<Eligibility>;
   /** Release the directory; later calls refuse (unavailable). */

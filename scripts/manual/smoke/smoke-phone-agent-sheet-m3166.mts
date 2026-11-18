@@ -72,7 +72,7 @@ try {
     need(look.length >= 2, `Appearance opens this chat's look items in place (${look.join(" | ")})`);
     await page.screenshot({ path: shotPath(SMOKE, caseName(c), "3-look") });
     await page.keyboard.press("Escape"); await page.waitForTimeout(300);
-    await page.evaluate(async () => { const m = await import("/assets/ui-toast.js"); m.toast("agend-reviewer-t1500000000000996543 正在等你回應 — a long notice that must stay on one line"); });
+    await page.evaluate(async () => { const m = await import("/assets/ui-toast.js"); m.toast("code-reviewer 正在等你回應 — a long notice that must stay on one line"); });
     await page.waitForTimeout(400);
     const pill = await page.evaluate(() => { const t = document.querySelector(".toast") as HTMLElement | null; return t ? [getComputedStyle(t).whiteSpace, Math.round(t.getBoundingClientRect().height)] : null; });
     need(pill && pill[0] === "nowrap" && (pill[1] as number) < 40, `a toast is one line (${JSON.stringify(pill)})`);

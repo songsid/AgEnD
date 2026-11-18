@@ -1,0 +1,160 @@
+{
+  "base": "8047a9ae624b6bd20fe517e2eba211285328325f",
+  "source": [
+    {
+      "path": "scripts/manual/hub-person-picker-m3342/browser.mts",
+      "sha256": "1e064da974691aecd18af6014e1264b6c9793c34c995c41f5bc944bffafd5a3b"
+    },
+    {
+      "path": "src/hub/directory/directory.ts",
+      "sha256": "cbcf848b1200eee67048563ba0521a93f4aeffeb29907664a43807bf920c9a1d"
+    },
+    {
+      "path": "src/hub/directory/types.ts",
+      "sha256": "96d952544567d3b412962fec1c1df65f320cd8ff0cd42c2ae447dc2136c614f0"
+    },
+    {
+      "path": "src/hub/rooms/directory.ts",
+      "sha256": "007fbf1fe5fcafe4c70ab29750b2f188dcc89292d33eaf48aa02d7886568c200"
+    },
+    {
+      "path": "src/hub/rooms/service.ts",
+      "sha256": "f9f4f9ce579935f265f5cd91605b6f730848132531625427b4bc5ccb5a080bb3"
+    },
+    {
+      "path": "src/ui/hub-room-new.js",
+      "sha256": "d740c34a4cdf2402da40305634f9d67e5b7d67976f49798f58153e8839f20a17"
+    },
+    {
+      "path": "src/ui/shared/hub-rooms-u2.css",
+      "sha256": "4d177039fdea6170169f3b026313a5f574e347df577be255adcad29dfe4a45cd"
+    },
+    {
+      "path": "tests/hub-person-picker-m3342.test.ts",
+      "sha256": "63d45caf840747525294336cb09a2ec4d924fea2ed2a8fcc7c26d3194f775f9c"
+    },
+    {
+      "path": "tests/hub-room-candidates-r3.test.ts",
+      "sha256": "e529135d940022cd2331ab8e6ab984bf3cf4109300f035dabe24a4187c5e08b7"
+    },
+    {
+      "path": "tests/hub-room-client-contract-r3.test.ts",
+      "sha256": "e10f60fd951dc5a1e314613dd889fca2bdd4b4a104434de5e00ab0ebf71299f3"
+    },
+    {
+      "path": "tests/hub-room-directory-roster-r3.test.ts",
+      "sha256": "238891cded4d91b5849e6445848c4ea02109df4869e7fd82f588c0b4b4149260"
+    },
+    {
+      "path": "tests/hub-rooms-r1.test.ts",
+      "sha256": "25c7bd89cf589667148e78ffe17e3bb58b7cfec0390c0568da01fde12883d211"
+    },
+    {
+      "path": "tests/hub-room-admin-r3.test.ts",
+      "sha256": "d43d2e4e6f9f8f916527a3c9c54b4231157e5ac10684a957819b9d2d6a7b3d33"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/README.md",
+      "sha256": "61e3bcc890c485a30244ac6eb015a8a055c0a26c7d531712123aa5e43e865441"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/desk-en-add-members.png",
+      "sha256": "620d23dde956fe3172f6c16461ad724142ccc4a900187624fa18b30c2dc32faf"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/desk-en-ask-owner.png",
+      "sha256": "3dbb251840a7696d3e3625c88d210ff1d8e14967286fdb6d3c7b570e739c24a6"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/desk-zh-TW-add-members.png",
+      "sha256": "6af625083741ed89600aa64a9d3ee851a74d4d0ca7dd68a9a1a817bb1b27221d"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/desk-zh-TW-ask-owner.png",
+      "sha256": "9ce3d2eabfa525c42edd3d114601122cba6c09a806dda13ce0a0dbfa9c8c7080"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-en-add-members.png",
+      "sha256": "73f80274885b368e5c78c7f0be86b79e49d87186c2cde756ff83b3322c75984b"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-en-ask-owner.png",
+      "sha256": "dcee4a7ba4ffa9166fbe431c308f8baf9744ee045982892fd7dfcc096e1f4f71"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-en-long-department.png",
+      "sha256": "a3b0d85b68735d9a1fe15d7c44759ce93c357519ece86c7c3c834ff391c52d0f"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-zh-TW-add-members.png",
+      "sha256": "1a6494ce97fe338341df734799696735604c1801f524100680deb69a652448e8"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-zh-TW-ask-owner.png",
+      "sha256": "038284043fc17055c277ea0ddcd1456118304ca9a6ecf4071c4ad6a81f9b1364"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/phone-zh-TW-long-department.png",
+      "sha256": "28c6891ca5d8a01650e7e2564c4249aad7c89f47f0a1c7239ffc07642f10073e"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/after/receipt.json",
+      "sha256": "073ef7ce288eac3a1b5bb2f4a11d2cfae825f3a4be89904f8e6f12fb63950cb8"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/desk-en-add-members.png",
+      "sha256": "48c5e251ed4ffc1d0263e5c8e06b5d946620227c5e72e5e3b9ed3f2f9592d950"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/desk-en-ask-owner.png",
+      "sha256": "d0b9ea78744dc17c97a40a0693b9b40d4f1e8c4772b4e2b8fbf9ce1735f6e5cd"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/desk-zh-TW-add-members.png",
+      "sha256": "1878871020535ddbd6d7c3877d614adf376cb64c89efcd43e16ba3de1d2f45bc"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/desk-zh-TW-ask-owner.png",
+      "sha256": "7d8b14f3daeb7e4c639c8b297c6110938549ff9a340579405bf120d3ef309972"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/phone-en-add-members.png",
+      "sha256": "e290ef3e1499ff4b8d7081acf3fbc50b7b6198bbbac1f780728a0366de5bcba0"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/phone-en-ask-owner.png",
+      "sha256": "f39e4ff51bd04a48fb463dfe23e850a62462d65660372e52d33a20988924fcc3"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/phone-zh-TW-add-members.png",
+      "sha256": "8f6a7cea4817866ea4f043fc9cec08649728934e9b91f5fb7e471ced8b4f8aa2"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/phone-zh-TW-ask-owner.png",
+      "sha256": "aa1a4b7eea26d781a039d276b71504080ea72e37818acd937c09a69444ce1c5c"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/before/receipt.json",
+      "sha256": "85e2a50af0e8cc7899fbd807d80f5812e0fc22bbfc303a2d469fe70c5d940ada"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/r1/phone-zh-TW-long-duplicates.png",
+      "sha256": "475d33ae7a9676c7fc253f3fe03bca044e89332fa4be2bd571623fbbea18a1d3"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/r1/receipt.json",
+      "sha256": "b1e0c5dd84d51cc60c0c8b9f97571ea4dcc8d648398cfb0e55e1f7fd50bd2aaa"
+    },
+    {
+      "path": "docs/evidence/hub-person-picker-m3342/validation.json",
+      "sha256": "934852a2faa7c873dfe2429861e22ea1e11912c7fcf2062bc7b7db37ba95ff70"
+    }
+  ],
+  "rawHomesOrKeysPublished": false,
+  "stages": {
+    "initialLayoutHead": "654049f55fd167f8ae13ae09a0668e3961599eb1",
+    "r1": "account-first duplicates and closed results; one phone original"
+  }
+}

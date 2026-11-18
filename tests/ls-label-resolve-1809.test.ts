@@ -20,39 +20,39 @@ function ents(items: Array<{ name: string; displayName?: string | null }>) { ret
 
 describe("resolveName (#1809): full resolution pipeline", () => {
   it("exact real-name match resolves (case-insensitive)", () => {
-    const result = resolveName("AGEND-REVIEWER-t1500000000000996543", ents([
-      { name: "agend-reviewer-t1500000000000996543", displayName: "稜鏡 Prism" },
+    const result = resolveName("CODE-REVIEWER", ents([
+      { name: "code-reviewer", displayName: "Reviewer" },
     ]));
-    expect(result).toEqual({ kind: "name", realName: "agend-reviewer-t1500000000000996543" });
+    expect(result).toEqual({ kind: "name", realName: "code-reviewer" });
   });
 
   it("display_name label resolves when it differs from real name", () => {
-    const result = resolveName("稜鏡 Prism", ents([
-      { name: "agend-reviewer-t1500000000000996543", displayName: "稜鏡 Prism" },
+    const result = resolveName("Reviewer", ents([
+      { name: "code-reviewer", displayName: "Reviewer" },
     ]));
-    expect(result).toEqual({ kind: "name", realName: "agend-reviewer-t1500000000000996543" });
+    expect(result).toEqual({ kind: "name", realName: "code-reviewer" });
   });
 
   it("short -tNNNNNN label resolves", () => {
-    const result = resolveName("agend-reviewer-t996543", ents([
-      { name: "agend-reviewer-t1500000000000996543", displayName: null },
-      { name: "agend-leader-t1500000000000799511", displayName: null },
+    const result = resolveName("code-reviewer-t111111", ents([
+      { name: "code-reviewer-t1111111111111111111", displayName: null },
+      { name: "fleet-lead", displayName: null },
     ]));
-    expect(result).toEqual({ kind: "name", realName: "agend-reviewer-t1500000000000996543" });
+    expect(result).toEqual({ kind: "name", realName: "code-reviewer-t1111111111111111111" });
   });
 
   it("emoji display_name resolves", () => {
     const result = resolveName("📚 Wiki 管理員", ents([
-      { name: "agend-wiki-t1500000000000213527", displayName: "📚 Wiki 管理員" },
+      { name: "wiki-keeper", displayName: "📚 Wiki 管理員" },
     ]));
-    expect(result).toEqual({ kind: "name", realName: "agend-wiki-t1500000000000213527" });
+    expect(result).toEqual({ kind: "name", realName: "wiki-keeper" });
   });
 
   it("label resolves case-insensitively", () => {
-    const result = resolveName("FABLE 焚穹", ents([
-      { name: "claude-fable-t1500000000000277715", displayName: "Fable 焚穹" },
+    const result = resolveName("STORY HELPER", ents([
+      { name: "story-writer", displayName: "Story helper" },
     ]));
-    expect(result).toEqual({ kind: "name", realName: "claude-fable-t1500000000000277715" });
+    expect(result).toEqual({ kind: "name", realName: "story-writer" });
   });
 
   it("real name wins over a label of the same text (real-name-first priority)", () => {
@@ -67,7 +67,7 @@ describe("resolveName (#1809): full resolution pipeline", () => {
 
   it("no match returns none", () => {
     const result = resolveName("no-such-thing", ents([
-      { name: "agend-reviewer-t1500000000000996543", displayName: "稜鏡 Prism" },
+      { name: "code-reviewer", displayName: "Reviewer" },
     ]));
     expect(result).toEqual({ kind: "none" });
   });
@@ -105,8 +105,8 @@ describe("resolveByLabel: standalone label lookup (used inside resolveName)", ()
   it("returns null for a real name passed without a matching label", () => {
     // Callers must use resolveName (which checks real names first);
     // resolveByLabel itself only looks at labels.
-    const result = resolveByLabel("agend-reviewer-t1500000000000996543", ents([
-      { name: "agend-reviewer-t1500000000000996543", displayName: "稜鏡 Prism" },
+    const result = resolveByLabel("code-reviewer", ents([
+      { name: "code-reviewer", displayName: "Reviewer" },
     ]));
     expect(result).toBeNull(); // real name is not a label here
   });
