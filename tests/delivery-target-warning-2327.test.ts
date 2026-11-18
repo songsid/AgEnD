@@ -165,3 +165,11 @@ describe("send_to_instance's recipient warning says only what is known (#2327)",
     expect(result.warning).toBe("target keeps crashing and needs a restart or replacement. The message is queued and may not be processed.");
   });
 });
+
+it("a stale in-process sign-in tells the sender to restart the recipient", async () => {
+  setLocale("en");
+  const d = { isErrorState: true, errorStateCause: "error_detected", lastErrorType: "stale_auth" };
+  const result = await send(makeContext(d));
+  expect(result.warning).toContain("Restart the agent");
+  expect(result.warning).not.toContain("Check its credentials");
+});

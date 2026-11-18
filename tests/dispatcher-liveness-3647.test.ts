@@ -448,3 +448,9 @@ describe("agents are told once", async () => {
     expect(planWhatsNew({ record: { announced: others }, fresh: false, version: "2.3.5" })).toBeNull();   // not before its release
   });
 });
+
+it("a stale-process auth pause is a persistent error stop", () => {
+  const f: AssigneeFacts = { process: "running", paused: { reason: "stale_auth", at: T0 } };
+  expect(judgeAssignee(f, card, S, T0)).toMatchObject({ kind: "error", since: T0 });
+  expect(stillStopped({ kind: "error", since: T0 }, f, card)).toBe(true);
+});
