@@ -57,7 +57,10 @@ const IOS = `(() => {
     requestAnimationFrame(sample);
   };
   requestAnimationFrame(sample);
-  const anim = (from, to, ms, set) => new Promise((done) => { const start = performance.now(); const step = () => { const k = ease((performance.now() - start) / ms); set(from + (to - from) * k); if (k < 1) requestAnimationFrame(step); else done(); }; requestAnimationFrame(step); });
+  // M-3392: an animation's clock starts at the first frame the page draws after it is asked for — as a CSS transition's
+  // does (the shell's close ease) — not when it is asked for: a runner slow to draw that frame (a stalled main thread)
+  // would otherwise have the stand-in keyboard jump ahead of the page by the stall, a band no page could avoid.
+  const anim = (from, to, ms, set) => new Promise((done) => { let start = null; const step = (ts) => { if (start === null) start = ts; const k = ease((ts - start) / ms); set(from + (to - from) * k); if (k < 1) requestAnimationFrame(step); else done(); }; requestAnimationFrame(step); });
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   // order "pan-first": the pan at 16 ms, the shorter view at 130 ms (the recording); "view-first": the other way round.
   window.__iosOpen = async (order) => {
@@ -93,6 +96,9 @@ const IOS = `(() => {
     const taller = () => { height = null; fire("resize"); };
     const fall = anim(kbTop ?? 480, H, 350, (v) => { kbTop = v; });
     if (order !== "view-first") blur();
+    // JANK_MS (M-3392): the page's main thread blocked that long right after the close starts — a CI runner slow to draw
+    // the first frame. The result must not depend on it.
+    for (const end = performance.now() + ${Number(process.env.JANK_MS || 0)}; performance.now() < end;) { /* busy */ }
     await fall;
     kbTop = null;
     taller();
@@ -144,7 +150,8 @@ try {
     // before the shell's ease has started). The taller view first: from a frame after the focusout, the box at the bottom.
     const band = closeOrder === "view-first"
       ? close.log.filter((f: any) => f.t > close.outAt + 20 && f.box != null && 844 - f.box > 60)
-      : close.log.filter((f: any) => f.t > 20 && f.box != null && f.kb - f.box > 12 && f.kb < 844);
+      // M-3392: the first frame by index, not "the first 20 ms" (a first frame drawn later than that was counted).
+      : close.log.filter((f: any, i: number) => i > 0 && f.box != null && f.kb - f.box > 12 && f.kb < 844);
     const worstBand = band.reduce((m: number, f: any) => Math.max(m, (closeOrder === "view-first" ? 844 : f.kb) - f.box), 0);
     const worstHead = headOff.reduce((m: number, f: any) => Math.max(m, Math.abs(f.head)), 0);
     if (BASELINE) {
