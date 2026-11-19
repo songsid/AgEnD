@@ -1,0 +1,12 @@
+[
+  {
+    "control": "usable-first",
+    "caught": true,
+    "exit": 1
+  },
+  {
+    "control": "empty-optout",
+    "caught": true,
+    "exit": 1
+  }
+]

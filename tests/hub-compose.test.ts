@@ -167,7 +167,7 @@ describe.skipIf(process.platform !== "linux")("owned TCP refusal probe", () => {
   });
 });
 
-function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory" | "directoryReady">> = {}) {
+function factory(home: string, http?: HubHttpEntry, extra: Partial<Pick<import("../src/hub/compose/server.js").HubServerFactoryOptions, "retentionReady" | "retentionEveryMs" | "browserCertificateReady" | "createDirectory" | "directoryReady" | "now" | "log">> = {}) {
   const reports: { code: string; detail: string }[] = [];
   const directories: { bindPassword: string }[] = [];
   const create = createHubServerFactory({
@@ -642,6 +642,52 @@ describe.skipIf(process.platform === "win32")("S5b PR 2: the real Hub web servic
 });
 
 describe.skipIf(process.platform === "win32")("Hub retention composition", () => {
+  it("retains a pending request hint and anchor, refuses retired protection, and purges after expiry", async () => {
+    const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
+    let at = Date.now(), deps!: HubHttpDeps, http!: HubHttp, control!: import("../src/hub/retention.js").HubRetentionControl, warnings = 0;
+    const people = [ADMIN, NOTICE_READER];
+    const entry: HubHttpEntry = { ...real, createHubHttp(input) { deps = input; http = real.createHubHttp(input); return http; } };
+    const f = factory(hub.home, entry, { now: () => at, retentionEveryMs: 20, retentionReady(value) { control = value; return () => {}; },
+      log: (_level, message) => { if (message === "Hub retention could not run") warnings++; },
+      createDirectory: () => ({ realm: "corp", signIn: async (login, password) => {
+        const person = people.find(p => p.login === login); return person && password === "Dummy-browser-only" ? { ok: true, person } : { ok: false, reason: "invalid-credentials" };
+      }, checkEligibility: async key => { const person = people.find(p => p.key.realm === key.realm && p.key.objectId === key.objectId); return person ? { eligible: true, person } : { eligible: false, reason: "disabled" }; }, close: async () => {} }) });
+    const service = await f.create(hub.config.hub, () => true);
+    try {
+      await service.start(); expect(http.retainedContentRefs).toBeTypeOf("function");
+      const browser = await directoryBrowser(hub, undefined, { login: ADMIN.login, password: "Dummy-browser-only" });
+      expect(browser.json.features).toContain("room-owner-requests-v1");
+      expect(browser.json.features).toContain("room-agent-discovery-v1");
+      const headers = { "X-AgEnD-Hub-CSRF": browser.json.csrf };
+      const room = await directoryBrowser(hub, browser.cookie, { name: "Example project" }, "/hub/v1/rooms", { headers });
+      const made = await directoryBrowser(hub, browser.cookie, { owner: personKeyString(NOTICE_READER.key), note: "Protected request hint", idempotencyKey: randomUUID() }, `/hub/v1/rooms/${room.json.room.id}/agent-requests`, { headers });
+      expect(made.status).toBe(200);
+      const refs = http.retainedContentRefs!(); expect(refs).toHaveLength(1);
+      const noise = deps.uow.atomic(tx => { const ref = deps.content.put(tx, { question: "Unrelated old content" });
+        deps.audit.append(tx, { id: randomUUID(), sequence: 0, at, requestId: randomUUID(), actor: { kind: "local-host" }, action: "example.content", result: "completed", policyVersion: 0, contentRef: ref }); return ref; });
+      control.update({ contentDays: 1, eventDays: 1, revision: control.read().revision }, () => true);
+      const provider = http.retainedContentRefs!;
+      http.retainedContentRefs = () => { throw Error("Retired provider"); };
+      at += 2 * 86_400_000;
+      await vi.waitFor(() => expect(warnings).toBeGreaterThan(0));
+      expect(deps.content.get(noise)).toEqual({ question: "Unrelated old content" });
+      http.retainedContentRefs = provider;
+      await vi.waitFor(() => expect(deps.content.get(noise)).toBeUndefined());
+      expect(deps.content.get(refs[0]!)).toEqual({ question: "Protected request hint" });
+      deps.uow.atomic(tx => { expect(hubTxDatabase(tx).prepare("SELECT id FROM hub_audit WHERE content_ref=?").get(refs[0])).toBeTruthy(); });
+      at += 6 * 86_400_000;
+      await vi.waitFor(() => expect(deps.content.get(refs[0]!)).toBeUndefined());
+      deps.uow.atomic(tx => { expect(hubTxDatabase(tx).prepare("SELECT id FROM hub_audit WHERE content_ref=?").get(refs[0])).toBeUndefined(); });
+    } finally { await service.close(); }
+  });
+  it("refuses a request-enabled entry with no protected retention port before publishing listeners", async () => {
+    const hub = await initializedHub(), real = await import("../src/hub/runtime.js").then(m => m.S3B_HTTP_ENTRY());
+    let closed = 0;
+    const entry: HubHttpEntry = { ...real, createHubHttp(deps) { const http = real.createHubHttp(deps); return { ...http, retainedContentRefs: undefined, close: async () => { closed++; await http.close(); } }; } };
+    await expect(factory(hub.home, entry).create(hub.config.hub, () => true)).rejects.toThrow("protected content retention");
+    expect(closed).toBe(1);
+    expect(await refused(hub.webPort)).toBe(true);
+  });
   it("uses the saved policy at the next purge without changing the sealed initialization, then preserves it on reopen", async () => {
     const hub = await initializedHub(), http = fakeHttp();
     const originalSeal = readFileSync(join(hub.home, "hub/init-manifest.json"), "utf8");

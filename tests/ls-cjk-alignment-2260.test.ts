@@ -129,11 +129,11 @@ describe("ls formatter (production computeLsNameWidth + padToDisplayWidth)", () 
   });
 
   it("long CJK name (>16 display cols): nameW expands; short name pads correctly", () => {
-    // "產品官網-t1500000000000165914": displayWidth=8+21=29 → nameW=30
-    const longName = "產品官網-t1500000000000165914";
+    // a long CJK name: 10 glyphs → displayWidth 20 → nameW 21
+    const longName = "示範文件撰寫與校對助理";
     const names = ["short", longName];
     const nameW = computeLsNameWidth(names);
-    expect(nameW).toBe(displayWidth(longName) + 1); // 30
+    expect(nameW).toBe(displayWidth(longName) + 1); // 21
     const cells = names.map(n => padToDisplayWidth(n, nameW));
     const colStarts = cells.map(c => numW + displayWidth(c));
     // Both Backend columns at same display position
@@ -193,7 +193,7 @@ describe("lsAction production path: list_instances confirms CJK names preserved"
   }
 
   it("CJK and ASCII names in fleet: computeLsNameWidth + padToDisplayWidth give equal-width cells", async () => {
-    const fleetNames = ["agend-dev1-t001", "產品官網-t1500000000000165914"];
+    const fleetNames = ["agend-dev1-t001", "示範文件撰寫與校對助理"];
     const { outboundHandlers } = await import("../src/outbound-handlers.js");
     const handler = outboundHandlers.get("list_instances")!;
     let result: any;

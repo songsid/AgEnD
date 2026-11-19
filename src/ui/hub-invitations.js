@@ -8,6 +8,7 @@ import { hubClient } from "./hub-client.js";
 import { hi } from "./hub-invitations-strings.js";
 import { hroom } from "./hub-room-strings.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
+import { OwnerAgentRequestsList } from "./hub-room-owner-requests.js";
 
 linkRoomsU2Css();
 
@@ -42,7 +43,10 @@ const valid = (x) => x && typeof x.id === "string" && x.room && typeof x.room.na
  * The invitations themselves, each with 同意 / 不要. Nothing when there are none (My shared agents shows no empty box).
  * heading: the list's own 「邀請」 title — false where the page already says it (the invitations page's header).
  */
-export function InvitationsList({ client = hubClient(), heading = true } = {}) {   // onOpenRoom: not used — the owner is not a member of the inviting room
+export function InvitationsList({ client = hubClient(), heading = true } = {}) {
+  return html`<${OwnerAgentRequestsList} client=${client} heading=${heading} /><${LegacyInvitationsList} client=${client} heading=${heading} />`;
+}
+function LegacyInvitationsList({ client, heading }) {   // onOpenRoom: not used — the owner is not a member of the inviting room
   const { list, error, reload, answer } = useInvitations(client);
   const [busy, setBusy] = useState(null), [note, setNote] = useState(null), inflight = useRef(false);
   if (error && !list) return html`<p class="note hub-invitations-error" role="alert">${hi("loadFailed")} <button type="button" class="btn btn-link" onClick=${() => { void reload(); }}>${hi("retry")}</button></p>`;

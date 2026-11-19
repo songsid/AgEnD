@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-owner-response-m3341.test.ts (8 tests | 1 failed | 7 skipped) 173ms
+   × shows only the recipient's choices and adds one shared agent without a direct grant or owner membership 171ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-owner-response-m3341.test.ts > shows only the recipient's choices and adds one shared agent without a direct grant or owner membership
+AssertionError: expected 404 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 404
+
+ ❯ tests/hub-room-owner-response-m3341.test.ts:44:23
+     42|   const w = await world();
+     43|   const view = await w.r.call(w.browser, "GET", w.path);
+     44|   expect(view.status).toBe(200);
+       |                       ^
+     45|   expect(view.json.request).toMatchObject({ note: "The agent for relea…
+     46|   expect(view.json.choices.find((x: any) => x.exposureId === w.shared.…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 skipped (8)
+   Start at  01:55:40
+   Duration  5.78s (transform 4.13s, setup 160ms, import 5.26s, tests 173ms, environment 0ms)

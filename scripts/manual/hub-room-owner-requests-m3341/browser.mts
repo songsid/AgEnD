@@ -40,7 +40,7 @@ try {
   HUB_ROOM_INVITATIONS_MIGRATION.up(r.db);
   r.httpDeps.roomInvitations = (core, host) => createHubRoomInvitations(core, host);
   if (stage === "after") {
-    HUB_ROOM_AGENT_REQUESTS_MIGRATION.up(r.db);
+    if (!r.db.prepare("SELECT 1 FROM sqlite_master WHERE name='hub_room_agent_requests'").get()) HUB_ROOM_AGENT_REQUESTS_MIGRATION.up(r.db);
     r.httpDeps.roomAgentRequests = (core, host) => createHubRoomAgentRequests(core, host);
   }
   await r.restartHttp();

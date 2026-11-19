@@ -232,7 +232,7 @@ export function createStubClient({ now = () => Date.now(), agents = () => [] } =
 export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTimeoutMs = 120_000 } = {}) {
   // The factory override is for owned transports/rehearsals; the page uses the finite default.
   const readBudget = Number.isInteger(readTimeoutMs) && readTimeoutMs > 0 && readTimeoutMs <= 300_000 ? readTimeoutMs : 120_000;
-  let csrf = null, codeNotices = false, roomsLive = false, teamsLive = false, generation = 0;
+  let csrf = null, codeNotices = false, roomsLive = false, teamsLive = false, ownerRequestsLive = false, roomDiscoveryLive = false, generation = 0;
   const ended = new Set(), pendingReads = new Map(), waits = new Set(), readControllers = new Set();
   let readTail = Promise.resolve();
   const retired = () => ({ ok: false, status: 401, code: "unauthenticated" });
@@ -302,7 +302,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     let json = null;
     try { json = await r.json(); } catch { json = null; }
     if (method === "GET" && signal?.aborted) return unreachable();
-    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
+    if (r.status === 401 && mine === generation) { retireReads(); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; ownerRequestsLive = false; roomDiscoveryLive = false; for (const fn of ended) { try { fn(); } catch { /* a listener's own failure */ } } }
     if (!r.ok) return { ok: false, status: r.status, code: (json && typeof json.code === "string" && json.code) || "failed", retryAfter: Number(r.headers.get("Retry-After")) || 0,
       ...(method === "POST" && path === "/hub/v1/admin/enrolment-codes" && r.status === 429 && json?.code === "backpressure"
         && ["live-code-limit", "hourly-code-limit"].includes(json.reason) ? { reason: json.reason } : {}), ...roomRefusal(json) };
@@ -367,14 +367,20 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     stub: false, web: true,
     /** Hear the session end (a 401 anywhere). @returns {() => void} */
     onSignedOut(fn) { ended.add(fn); return () => ended.delete(fn); },
-    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.signedIn === true && r.features?.includes(TEAMS_FEATURE) === true; } return r; },
-    async signIn(login, password) { retireReads(); teamsLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; } return r; },
-    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; return r; },
+    async session() { const r = await call("GET", "/hub/v1/session"); if (r.ok) { csrf = r.signedIn ? r.csrf || null : null; codeNotices = r.signedIn === true && r.features?.includes("enrolment-code-v1") === true; roomsLive = r.signedIn === true && r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.signedIn === true && r.features?.includes(TEAMS_FEATURE) === true; ownerRequestsLive = r.signedIn === true && r.features?.includes("room-owner-requests-v1") === true; roomDiscoveryLive = r.signedIn === true && r.features?.includes("room-agent-discovery-v1") === true; } return r; },
+    async signIn(login, password) { retireReads(); teamsLive = false; ownerRequestsLive = false; roomDiscoveryLive = false; const r = await call("POST", "/hub/v1/session", { login, password }); if (r.ok) { csrf = r.csrf || null; codeNotices = r.features?.includes("enrolment-code-v1") === true; roomsLive = r.features?.includes(ROOMS_FEATURE) === true; teamsLive = r.features?.includes(TEAMS_FEATURE) === true; ownerRequestsLive = r.features?.includes("room-owner-requests-v1") === true; roomDiscoveryLive = r.features?.includes("room-agent-discovery-v1") === true; } return r; },
+    async signOut() { retireReads(); const r = await call("DELETE", "/hub/v1/session"); csrf = null; codeNotices = false; roomsLive = false; teamsLive = false; ownerRequestsLive = false; roomDiscoveryLive = false; return r; },
     aiAppsScope() { return csrf; },
     roomAgentRequestScope() { return csrf; },
     requestRoomAgent(scope, roomId, input) { return ownerRequestCall(scope, "POST", "/hub/v1/rooms/" + id(roomId) + "/agent-requests", input); },
     roomAgentRequests(scope, roomId, after) { return ownerRequestCall(scope, "GET", "/hub/v1/rooms/" + id(roomId) + "/agent-requests" + (after ? "?after=" + id(after) : "")); },
     cancelRoomAgentRequest(scope, roomId, requestId) { return ownerRequestCall(scope, "DELETE", "/hub/v1/rooms/" + id(roomId) + "/agent-requests/" + id(requestId)); },
+    ownerRequestsLive() { return ownerRequestsLive; },
+    roomDiscoveryLive() { return roomDiscoveryLive; },
+    agentRoomDiscovery(scope, exposureId, input) { return ownerRequestCall(scope, input === undefined ? "GET" : "PUT", "/hub/v1/exposures/" + id(exposureId) + "/room-discovery", input); },
+    ownerAgentRequest(scope, requestId) { return ownerRequestCall(scope, "GET", "/hub/v1/agent-requests/" + id(requestId)); },
+    acceptOwnerAgentRequest(scope, requestId, input) { return ownerRequestCall(scope, "POST", "/hub/v1/agent-requests/" + id(requestId) + "/accept", input); },
+    declineOwnerAgentRequest(scope, requestId) { return ownerRequestCall(scope, "POST", "/hub/v1/agent-requests/" + id(requestId) + "/decline", {}); },
     ownerAgentRequests(scope, after) { return ownerRequestCall(scope, "GET", "/hub/v1/agent-requests" + (after ? "?after=" + id(after) : "")); },
     agentRequestSettings(scope, input) { return ownerRequestCall(scope, input === undefined ? "GET" : "PUT", "/hub/v1/me/agent-request-settings", input); },
     aiApps(scope) { return scope && scope === csrf ? call("GET", "/hub/v1/me/ai-apps") : Promise.resolve(retired()); },
@@ -455,7 +461,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
      * server without rooms ignores the parameter (its answer is then normalised here).
      */
     async roomList() {
-      const r = await call("GET", "/hub/v1/rooms?v=2");
+      const r = await call("GET", "/hub/v1/rooms?v=2" + (ownerRequestsLive ? "&ownerRequests=1" : ""));
       if (!r.ok || roomsLive) return r;
       return { ...r, rooms: (Array.isArray(r.rooms) ? r.rooms : []).map(legacyRoom).filter(Boolean) };
     },
@@ -547,6 +553,7 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     roomCandidates(q, kind, signal) {
       const s = new URLSearchParams({ q: String(q ?? "") });
       if (kind) s.set("kind", kind);
+      if (kind === "agent" && roomDiscoveryLive) s.set("discovery", "1");
       return call("GET", `/hub/v1/rooms/candidates?${s}`, undefined, signal);
     },
     /**

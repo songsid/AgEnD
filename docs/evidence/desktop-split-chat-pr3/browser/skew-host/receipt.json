@@ -632,7 +632,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -642,7 +642,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   942,
@@ -652,7 +652,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,

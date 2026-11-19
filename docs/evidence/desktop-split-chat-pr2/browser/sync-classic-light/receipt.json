@@ -788,7 +788,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -798,7 +798,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   942,
@@ -808,7 +808,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,
@@ -1018,7 +1018,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -1028,7 +1028,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "目前core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1038,7 +1038,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,
@@ -1083,7 +1083,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-leader-t1503382358143799511閒置聊天檢視紀錄填滿小中大用量",
+                "text": "目前fleet-lead-t1000000000000000001閒置聊天檢視紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1093,7 +1093,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-leader-t1503382358143799511閒置",
+                "text": "目前fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1103,7 +1103,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   310,
@@ -1132,7 +1132,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄",
                 "scroll": 0,
                 "box": [
                   934,
@@ -1142,7 +1142,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1152,7 +1152,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1197,7 +1197,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視紀錄",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視紀錄",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1207,7 +1207,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1217,7 +1217,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1307,7 +1307,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視設定",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視設定",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1317,7 +1317,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1327,7 +1327,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1356,7 +1356,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置聊天檢視設定填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置聊天檢視設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -1366,7 +1366,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置",
+                "text": "目前core-dev-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1376,7 +1376,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,
@@ -1421,7 +1421,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視紀錄設定填滿小中大用量",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視紀錄設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1431,7 +1431,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   272,
@@ -1441,7 +1441,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   272,
@@ -1487,7 +1487,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視設定",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視設定",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1497,7 +1497,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1507,7 +1507,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1536,7 +1536,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置聊天檢視設定填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置聊天檢視設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -1546,7 +1546,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置",
+                "text": "目前core-dev-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1556,7 +1556,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,
@@ -1601,7 +1601,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視設定",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視設定",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1611,7 +1611,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1621,7 +1621,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1650,7 +1650,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置聊天檢視設定填滿小中大用量",
+                "text": "目前core-dev-t1000000000000000001閒置聊天檢視設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   934,
@@ -1660,7 +1660,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-dev-claude-t1519896892392083558閒置",
+                "text": "目前core-dev-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   942,
@@ -1670,7 +1670,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   984,
@@ -1715,7 +1715,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-leader-t1503382358143799511閒置聊天檢視紀錄設定填滿小中大用量",
+                "text": "目前fleet-lead-t1000000000000000001閒置聊天檢視紀錄設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1725,7 +1725,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-leader-t1503382358143799511閒置",
+                "text": "目前fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1735,7 +1735,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   310,
@@ -1765,7 +1765,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄設定",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視紀錄設定",
                 "scroll": 0,
                 "box": [
                   260,
@@ -1775,7 +1775,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1785,7 +1785,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   268,
@@ -1831,7 +1831,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-leader-t1503382358143799511閒置紀錄填滿小中大用量",
+                "text": "目前fleet-lead-t1000000000000000001閒置紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   480,
@@ -1841,7 +1841,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-leader-t1503382358143799511閒置",
+                "text": "目前fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   488,
@@ -1851,7 +1851,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   530,
@@ -1878,7 +1878,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天",
                 "scroll": 0,
                 "box": [
                   864,
@@ -1888,7 +1888,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   872,
@@ -1898,7 +1898,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   872,
@@ -1941,7 +1941,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-leader-t1503382358143799511閒置紀錄填滿小中大用量聊天檢視設定左右排列上下排列交換位置切換到另一窗格分割對話收起此格",
+                "text": "目前fleet-lead-t1000000000000000001閒置紀錄填滿小中大用量聊天檢視設定左右排列上下排列交換位置切換到另一窗格分割對話收起此格",
                 "scroll": 0,
                 "box": [
                   480,
@@ -1951,7 +1951,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-leader-t1503382358143799511閒置",
+                "text": "目前fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   488,
@@ -1961,7 +1961,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   530,
@@ -1988,7 +1988,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天",
                 "scroll": 0,
                 "box": [
                   864,
@@ -1998,7 +1998,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   872,
@@ -2008,7 +2008,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   872,
@@ -2051,7 +2051,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "目前agend-leader-t1503382358143799511閒置聊天紀錄填滿小中大用量",
+                "text": "目前fleet-lead-t1000000000000000001閒置聊天紀錄填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   260,
@@ -2061,7 +2061,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "目前agend-leader-t1503382358143799511閒置",
+                "text": "目前fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   268,
@@ -2071,7 +2071,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   310,
@@ -2099,7 +2099,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head ws-pane-head",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto聊天檢視",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto聊天檢視",
                 "scroll": 0,
                 "box": [
                   754,
@@ -2109,7 +2109,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-dev-claude-t1519896892392083558閒置Codex ▾default (detected when it starts) ▾auto",
+                "text": "core-dev-t1000000000000000001閒置Codex ▾default (detected when it starts) ▾auto",
                 "scroll": 0,
                 "box": [
                   762,
@@ -2119,7 +2119,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-dev-claude-t1519896892392083558",
+                "text": "core-dev-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   762,
@@ -2177,7 +2177,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視紀錄設定填滿小中大用量",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視紀錄設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   260,
@@ -2187,7 +2187,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   272,
@@ -2197,7 +2197,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   272,
@@ -2243,7 +2243,7 @@
             "titles": [
               {
                 "kind": "HEADER.panel-head",
-                "text": "agend-leader-t1503382358143799511閒置聊天檢視紀錄設定填滿小中大用量",
+                "text": "fleet-lead-t1000000000000000001閒置聊天檢視紀錄設定填滿小中大用量",
                 "scroll": 0,
                 "box": [
                   0,
@@ -2253,7 +2253,7 @@
               },
               {
                 "kind": "DIV.panel-title",
-                "text": "agend-leader-t1503382358143799511閒置",
+                "text": "fleet-lead-t1000000000000000001閒置",
                 "scroll": 0,
                 "box": [
                   120,
@@ -2263,7 +2263,7 @@
               },
               {
                 "kind": "H1.",
-                "text": "agend-leader-t1503382358143799511",
+                "text": "fleet-lead-t1000000000000000001",
                 "scroll": 0,
                 "box": [
                   120,
@@ -2287,7 +2287,7 @@
   "oldRef": "d2440106a2805187eb50a13c2385144192261f9a",
   "substitutions": {},
   "splitOwner": {
-    "a": "agend-leader-t1503382358143799511",
+    "a": "fleet-lead-t1000000000000000001",
     "b": "general",
     "layout": "stack"
   },

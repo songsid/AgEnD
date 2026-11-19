@@ -1,0 +1,31 @@
+{
+  "stages": [
+    {
+      "stage": "focused",
+      "command": "npx vitest run tests/hub-room-discovery-ui-m3341.test.ts",
+      "passed": 10,
+      "failed": 0,
+      "unselected": 0
+    },
+    {
+      "stage": "adjacent",
+      "command": "npx vitest run tests/hub-room-new.test.ts tests/hub-person-picker-m3342.test.ts tests/hub-room-owner-requests-ui-m3341.test.ts",
+      "passed": 29,
+      "failed": 1,
+      "unselected": 0
+    },
+    {
+      "stage": "new-room-copy",
+      "command": "npx vitest run tests/hub-room-new.test.ts -t \"the pickers:\"",
+      "passed": 1,
+      "failed": 0,
+      "unselected": 10
+    }
+  ],
+  "distinctPassingTests": 40,
+  "testTypeScript": {
+    "command": "npm run typecheck:tests",
+    "exitCode": 0
+  },
+  "note": "The adjacent run exposed one old initial-label expectation; only that expectation changed. Its selected integration test then passed, preserving room/invitation ordering and post-selection waiting assertions. Unselected tests are excluded from selected-run pass counts."
+}

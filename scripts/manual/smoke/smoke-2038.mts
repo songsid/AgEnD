@@ -11,7 +11,7 @@ const SMOKE = "smoke-2038";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48350),
   webYaml: "  appearance:\n    banner: { max_width: 1600, max_height: 1200, max_kib: 2048 }" });
 const fm = fx.fm;
-const LONG = "tm1-platform-backend-sr4-server-t1500000000000130997";
+const LONG = "synthetic-gateway-worker-for-long-name-layout-probes";
 const enc = encodeURIComponent;
 // The 16:9 picture is JPEG: as a noisy PNG it is past the 2048 KiB banner cap, and that refusal is not what this run tests.
 const BANNER_SPECS: Record<string, PictureSpec> = { "1600x900": { ...PICTURES.banner169, mime: "image/jpeg" },"1600x600": PICTURES.bannerWide, "1500x500": PICTURES.bannerShort,

@@ -26,7 +26,7 @@ import { RoomButtons } from "./buttons.js";
 import { HUB_ROOM_REACT_CAPABILITY, roomReactSchema } from "../protocol.js";
 import { replyButtonClickText } from "../../reply-buttons.js";
 import { pollResultsText, type PollBallot } from "../../reply-polls.js";
-import { RoomDirectoryCandidates, rememberRoomPeople, type RoomPersonSelection } from "./directory.js";
+import { RoomDirectoryCandidates, rememberRoomPeople, roomPersonLabels, type RoomPersonSelection } from "./directory.js";
 import type { HubAttachmentStore } from "../attachments/store.js";
 import type { HubAttachmentRef } from "../types.js";
 import { isInlineImage } from "../attachments/limits.js";
@@ -472,18 +472,23 @@ export class HubGroupRooms {
         me: { canCreateRooms: canCreateRoom(this.core, db, me), assistant: this.assistant.availability()?.enabled === true }, invitations: 0 };
     }, this.fence(ctx));
   }
-  async candidates(ctx: HubRequestContext, q: string, kind: string) {
+  async candidates(ctx: HubRequestContext, q: string, kind: string, discovery = false) {
     if (q.length > 64 || /[\u0000-\u001f\u007f]/.test(q) || !["person", "team", "group", "agent"].includes(kind)) throw new HubProtocolError("invalid");
     const me = await this.who(ctx);
     const allowed = (db: DB) => canCreateRoom(this.core, db, me) || !!db.prepare(`SELECT 1 FROM hub_room_members m JOIN hub_group_rooms r ON r.id=m.room_id
       WHERE m.kind='person' AND m.subject=? AND m.role='manager' AND r.archived=0`).get(me);
     if (kind === "agent") {
       this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied"); }, this.fence(ctx));
-      const view = await new HubCatalogService(this.core).visible(ctx);
-      const hits = [...view.mine.map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true, owner: { name: this.core.atomic(db => this.name(db, me)) } })),
-        ...view.askable.map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, owner: { name: ownerName } }))]
-        .filter(e => e.name.toLowerCase().startsWith(q.trim().toLowerCase())).slice(0, 20);
-      this.fence(ctx).assertCurrent(); return this.core.atomic(db=>hits.map(row=>({...row,...agentIntro(db,row.id)})),this.fence(ctx));
+      const catalog = new HubCatalogService(this.core);
+      return (discovery ? catalog.withRoomVisible.bind(catalog) : catalog.withVisible.bind(catalog))(ctx, view => {
+        const hits = [...view.mine.map(e => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: true, owner: { name: this.core.atomic(db => this.name(db, me)) } })),
+          ...view.askable.map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, owner: { name: ownerName } })),
+          ...(view.findable ?? []).map(({ exposure: e, ownerName }) => ({ kind: "agent" as const, id: e.id, name: e.displayName, mine: false, discoverable: true, owner: { name: ownerName } }))]
+          .filter(e => e.name.toLowerCase().startsWith(q.trim().toLowerCase())).slice(0, 20);
+        this.fence(ctx).assertCurrent(); return this.core.atomic(db => {
+          if (!allowed(db)) throw new HubRoomRefusal(403, "denied");
+          return hits.map(row => ({ ...row, ...agentIntro(db, row.id) }));
+      }, this.fence(ctx)); });
     }
     if (q.trim().length >= 2 && (kind === "group" && this.core.deps.directory.searchPolicyGroups || kind === "person" && this.core.deps.directory.searchGrantPeople)) {
       return this.directory.search(ctx, me, q.trim(), kind as "person" | "group", () => this.core.atomic(db => {
@@ -495,13 +500,13 @@ export class HubGroupRooms {
       if (kind === "team") return [];
       if (kind !== "person") return [];
       const prefix = `${q.trim().replace(/[\\%_]/g, c => `\\${c}`)}%`;
-      return db.prepare("SELECT person,display_name FROM hub_people WHERE status='active' AND (display_name LIKE ? ESCAPE '\\' OR login_label LIKE ? ESCAPE '\\') ORDER BY display_name,person LIMIT 20")
-        .all(prefix, prefix) as { person: string; display_name: string }[];
+      return db.prepare("SELECT person,display_name,login_label FROM hub_people WHERE status='active' AND (display_name LIKE ? ESCAPE '\\' OR login_label LIKE ? ESCAPE '\\') ORDER BY display_name,person LIMIT 20")
+        .all(prefix, prefix) as { person: string; display_name: string; login_label: string }[];
     }, this.fence(ctx));
-    const hits: { kind: "person"; id: string; name: string }[] = [];
-    for (const row of rows) if (await this.core.eligible(personFromString(row.person))) hits.push({ kind: "person", id: row.person, name: row.display_name });
+    const hits: { id: string; name: string; account: string }[] = [];
+    for (const row of rows) if (await this.core.eligible(personFromString(row.person))) hits.push({ id: row.person, name: row.display_name, account: row.login_label });
     return this.core.atomic(db => { if (!allowed(db)) throw new HubRoomRefusal(403, "denied");
-      return kind === "team" ? (this.core.deps.roomTeamCandidates?.(db, q.trim()) ?? []).slice(0, 20).map(row => ({ kind: "team", ...row })) : hits;
+      return kind === "team" ? (this.core.deps.roomTeamCandidates?.(db, q.trim()) ?? []).slice(0, 20).map(row => ({ kind: "team", ...row })) : roomPersonLabels(hits);
     }, this.fence(ctx));
   }
   private candidateAllowed(ctx: HubRequestContext, me: string): void {

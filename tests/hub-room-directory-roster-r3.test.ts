@@ -27,6 +27,13 @@ const entry = (id = personId, disabled = false) => ({ dn: "CN=Person,DC=example,
 beforeEach(() => { f.sockets = []; f.searches = []; f.references = []; f.change = false; f.error = false;
   f.group = { dn: "CN=Project (one),DC=example,DC=test", objectGUID: guidStringToBytes(groupId), groupType: "-2147483646", cn: "Project" }; f.people = [entry()]; });
 afterEach(async () => { await d?.close(); d = undefined; });
+it("returns a department only for the room-picker opt-in, keeping other search DTOs unchanged", async () => {
+  f.group = { ...entry(), department: "Project support" }; const directory = make();
+  const ordinary = await directory.searchGrantPeople!("Pe");
+  expect(ordinary).toEqual({ ok: true, truncated: false, people: [{ person: { realm: "corp", objectId: personId }, login: "person", displayName: "Person" }] });
+  const room = await directory.searchGrantPeople!("Pe", { includeDepartment: true });
+  expect(room).toMatchObject({ ok: true, people: [{ department: "Project support" }] });
+});
 it("reads every complete direct page under a5s bound and excludes disabled people", async () => {
   f.people = [entry(), entry("bbbbbbbb-cccc-4ddd-8eee-ffffffffffff", true)]; const out = await make().roomGroupMembers!({ realm: "corp", objectId: groupId });
   expect(out).toMatchObject({ ok: true, group: { key: { realm: "corp", objectId: groupId }, name: "Project" }, people: [{ key: { realm: "corp", objectId: personId }, displayName: "Person" }] });

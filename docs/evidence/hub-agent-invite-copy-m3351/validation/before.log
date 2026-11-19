@@ -1,0 +1,56 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > shows the explicit disclosure and saves a revision-bound owner choice (en)
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > shows the explicit disclosure and saves a revision-bound owner choice (zh-TW)
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > shows the current disabled choice with its paused reason
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > shows the current disabled choice with its not-shared reason
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > shows the current disabled choice with its owner-disabled reason
+ × tests/hub-room-discovery-ui-m3341.test.ts > offers the same owner action before either invitation, then shows waiting only after selection (en) 220ms
+   → expected 'Invite · waiting for the owner' to be 'Ask Example owner' // Object.is equality
+ × tests/hub-room-discovery-ui-m3341.test.ts > offers the same owner action before either invitation, then shows waiting only after selection (zh-TW) 214ms
+   → expected '邀請 · 等擁有者同意' to be '請 Example owner 加入' // Object.is equality
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > ignores a held choice from a retired owner session
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > refreshes the disabled reason when an owner opts out before a setting write
+ ↓ tests/hub-room-discovery-ui-m3341.test.ts > retires a held retry read before a newer successful owner write
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-discovery-ui-m3341.test.ts > offers the same owner action before either invitation, then shows waiting only after selection (en)
+AssertionError: expected 'Invite · waiting for the owner' to be 'Ask Example owner' // Object.is equality
+
+Expected: "Ask Example owner"
+Received: "Invite · waiting for the owner"
+
+ ❯ tests/hub-room-discovery-ui-m3341.test.ts:49:72
+     47|     expect(button.querySelector(".hub-room-agent-action.btn")).toBeTru…
+     48|     expect(button.querySelectorAll("button")).toHaveLength(0);
+     49|     expect(button.querySelector(".hub-room-agent-action").textContent)…
+       |                                                                        ^
+     50|     expect(button.getAttribute("aria-label")).toBe(lang === "en"
+     51|       ? `Ask Example owner to add ${button === buttons[0] ? "Example k…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-discovery-ui-m3341.test.ts > offers the same owner action before either invitation, then shows waiting only after selection (zh-TW)
+AssertionError: expected '邀請 · 等擁有者同意' to be '請 Example owner 加入' // Object.is equality
+
+Expected: "請 Example owner 加入"
+Received: "邀請 · 等擁有者同意"
+
+ ❯ tests/hub-room-discovery-ui-m3341.test.ts:49:72
+     47|     expect(button.querySelector(".hub-room-agent-action.btn")).toBeTru…
+     48|     expect(button.querySelectorAll("button")).toHaveLength(0);
+     49|     expect(button.querySelector(".hub-room-agent-action").textContent)…
+       |                                                                        ^
+     50|     expect(button.getAttribute("aria-label")).toBe(lang === "en"
+     51|       ? `Ask Example owner to add ${button === buttons[0] ? "Example k…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 8 skipped (10)
+   Start at  04:31:52
+   Duration  803ms (transform 184ms, setup 80ms, import 101ms, tests 503ms, environment 0ms)
+

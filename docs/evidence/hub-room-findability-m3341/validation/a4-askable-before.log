@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-discovery-m3341.test.ts (15 tests | 1 failed | 14 skipped) 189ms
+   × does not let discovery opt-out interrupt an already askable invitation 187ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-discovery-m3341.test.ts > does not let discovery opt-out interrupt an already askable invitation
+AssertionError: expected 409 to be 200 // Object.is equality
+
+- Expected
++ Received
+
+- 200
++ 409
+
+ ❯ tests/hub-room-discovery-m3341.test.ts:244:34
+    242|     expect((await w.r.call(w.browser, "PUT", "/hub/v1/me/agent-request…
+    243|   } finally { release(); }
+    244|   expect((await pending).status).toBe(200);
+       |                                  ^
+    245| });
+    246|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 14 skipped (15)
+   Start at  03:49:18
+   Duration  3.89s (transform 2.65s, setup 97ms, import 3.46s, tests 189ms, environment 0ms)

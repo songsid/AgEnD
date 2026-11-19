@@ -8,6 +8,14 @@
 .hub-room-results { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--r-sm); max-height: 240px; overflow-y: auto; }
 .hub-room-result { display: flex; width: 100%; align-items: baseline; gap: var(--s-2); padding: var(--s-2); background: transparent; border: 0; text-align: start; cursor: pointer; color: inherit; font: inherit; min-height: 40px; }
 .hub-room-result:hover, .hub-room-result:focus-visible { background: var(--surface-2); }
+.hub-room-person-label { display: flex; flex-direction: column; min-width: 0; max-width: 100%; }
+.hub-room-person-label > :is(.hub-room-person-name, .hub-room-person-detail) { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-room-result-agent { align-items: flex-start; flex-wrap: wrap; justify-content: space-between; }
+.hub-room-agent-label { display: flex; flex: 1 1 18rem; flex-direction: column; min-width: 0; gap: var(--s-1); }
+.hub-room-agent-title { overflow-wrap: anywhere; }
+.hub-room-agent-title > small { margin-inline-start: var(--s-1); }
+.hub-room-agent-intro { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-room-agent-action { flex: 0 1 auto; max-width: 100%; white-space: normal; pointer-events: none; }
 .hub-room-new .form, .hub-room-settings section.form { display: flex; flex-direction: column; gap: var(--s-3); }
 .hub-room-settings section + section { margin-top: var(--s-4); }
 /* Room settings → Name: the label above, then the input and 儲存 on one line, the input taking the rest of it. */
@@ -85,3 +93,11 @@
 .hub-owner-request .field { display: grid; gap: var(--space-2, .5rem); }
 .hub-owner-request-entry .btn { margin-inline-start: .35rem; }
 .hub-room-owner-requests:empty { display: none; }
+/* Owner requests reuse the room consent card and ordinary checkbox/radio layout. */
+.hub-owner-agent-choices { border:0; padding:0; margin:12px 0; display:grid; gap:10px; }
+.hub-owner-agent-choices .check { align-items:flex-start; }
+.hub-owner-agent-choices input[type="radio"] { margin-top:.25em; }
+.hub-owner-agent-requests .hub-owner-request-title { font-weight:var(--fw-semibold); }
+.hub-owner-agent-choices small { display:block; }
+.hub-owner-agent-requests blockquote { overflow-wrap:anywhere; margin:var(--s-2) 0; padding-left:var(--s-3); border-left:3px solid var(--border-strong); color:var(--text-2); }
+.hub-owner-agent-requests a { color:var(--accent); text-decoration:underline; }

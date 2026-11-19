@@ -1,0 +1,22 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "abf90420204c7f56ea4b1a075e06ddafdd1c8a3c99aca3a6338ae8b097485e97"
+  },
+  {
+    "path": "control.json",
+    "sha256": "b8cb53110461824fefbc298e6a3f8367aac8c0b063823ed83e0ce3c7e8efe1d9"
+  },
+  {
+    "path": "focused.log",
+    "sha256": "4dd42692caf65310ed921dc53e071fa037b8a3bc9ddcc3c1384652e136439448"
+  },
+  {
+    "path": "guard-removed.log",
+    "sha256": "8a7edf48f4eadc3765ace9d4f6aaac81522a17849e969c73ac1de2176efca838"
+  },
+  {
+    "path": "test-types.log",
+    "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+  }
+]

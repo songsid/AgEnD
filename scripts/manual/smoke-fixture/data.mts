@@ -31,9 +31,9 @@ export const TEAMS = [
 ] as const;
 
 const LATIN = [
-  "agend-leader-t1500000000000799511", "agend-dev-claude-t1500000000000083558", "agend-reviewer-t1500000000000996543",
-  "tm1-platform-backend-sr4-server-t1500000000000130997", "ota-svc-frontend-release-candidate-t1500000000000915890",
-  "games-manifests-asset-pipeline-t1500000000000872809", "web-claude", "sol", "fable", "qa-1",
+  "fleet-lead", "core-dev", "code-reviewer",
+  "synthetic-gateway-worker-for-long-name-layout-probes", "web-preview-bot",
+  "media-pack-builder", "web-claude", "sol", "fable", "qa-1",
   "infra-terraform-state-reconciler-weekly-audit", "nightly-benchmarks", "docs-site-builder", "mobile-ios-release-train",
   "mobile-android-crash-triage", "data-warehouse-dbt-models-and-freshness", "kiro-steering-experiments", "grok-scout",
   "codex-refactor-bot", "opencode-sandbox", "agy-design-review", "muse-writer", "release-notes-drafter",
@@ -41,7 +41,7 @@ const LATIN = [
   "customer-support-macros", "localization-zh-tw-review", "a",
 ];
 const CJK = [
-  "產品官網-t1500000000000165914", "遊戲開發-opus-t1500000000000445013", "遊戲企劃", "產品專案區-grok-bot",
+  "示範文件撰寫與校對助理-layout-probes", "pixel-art-helper", "plan-scribe", "room-grok-bot",
   "資料清洗與報表自動化助理", "客服知識庫維護", "研發週報彙整", "伺服器監控與告警分流", "美術資源命名檢查",
   "多語系翻譯校對（繁中）", "測試案例產生器", "需求訪談紀錄整理", "部署前檢查清單", "效能分析與火焰圖解讀",
   "資料庫遷移演練", "合約條款比對", "行銷文案草稿", "遊戲數值平衡試算", "玩家回饋分類", "排程與值班表",
@@ -98,6 +98,6 @@ export const TEXT = {
   profileName: "Alex 林 — 平台工程 Platform Engineering",
   widgetLabels: ["今日完成的工作項目數量（含審查）", "Open pull requests waiting for review", "夜間基準：p95 延遲", "Build", "部署前檢查清單完成度"],
   widgetValues: ["12 / 15（80%）", "7 — oldest is 3 days", "182 ms（比上週快 12%）", "#4821 passed", "9 of 11 items checked"],
-  chatCjk: "好的，我已經完成部署前檢查清單的前九項，剩下兩項需要你確認：\n1. 資料庫遷移腳本是否要在離峰時段執行？\n2. CDN 快取要不要在發佈後立刻清除？\n\n| 項目 | 狀態 | 負責人 |\n|---|---|---|\n| 單元測試 | ✅ 通過 | 產品官網-t1500000000000165914 |\n| 端對端測試 | ⏳ 進行中 | QA |\n\n請在今天下午五點前回覆，謝謝！",
+  chatCjk: "好的，我已經完成部署前檢查清單的前九項，剩下兩項需要你確認：\n1. 資料庫遷移腳本是否要在離峰時段執行？\n2. CDN 快取要不要在發佈後立刻清除？\n\n| 項目 | 狀態 | 負責人 |\n|---|---|---|\n| 單元測試 | ✅ 通過 | 示範文件撰寫與校對助理-layout-probes |\n| 端對端測試 | ⏳ 進行中 | QA |\n\n請在今天下午五點前回覆，謝謝！",
   chatLatin: "Here is the summary of last night's benchmark run: p95 latency is **182 ms** (down 12% week over week), and the only regression is in `search-indexer`'s cold start. Full flame graph attached; the hot path is `buildIndex → tokenize → normalizeCjk`.",
 };
