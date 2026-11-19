@@ -1,0 +1,19 @@
+{
+  "baseControl": {
+    "command": "npx vitest run tests/hub-relocation-network-3429.test.ts --maxWorkers=2 -t 'a pending.*upgrades'",
+    "failed": 2,
+    "filtered": 10,
+    "failure": "actual competing TCP bind returned bound instead of EADDRINUSE"
+  },
+  "fixed": {
+    "command": "npx vitest run tests/hub-relocation-network-3429.test.ts --maxWorkers=2",
+    "passed": 12
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "productionChanged": false,
+  "sharedHelperChanged": false,
+  "liveAccountsUsed": false
+}
