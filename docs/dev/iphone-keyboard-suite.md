@@ -52,7 +52,7 @@ docker run --rm --init --ipc=host --memory 3g --user "$(id -u):$(id -g)" -e HOME
 
 The smokes are `smoke-ime-composition`, `smoke-phone-kb-steady`, `smoke-phone-ime-keyboard-m3244`, `smoke-phone-typing-steady-m3265` and `smoke-phone-keyboard-motion-m3327`. `--list` shows which cases each one covers.
 
-`smoke-2478-keyboard` is not in the suite. It measures the bottom tabs in an agent's chat, and M-3115 (#3911) removed the tabs from an agent's pages, so it fails on today's app for a reason that has nothing to do with the keyboard. The `tabs-over-keyboard` case is pinned by its unit tests.
+#2478's own smoke (`smoke-2478-keyboard`) has been retired (M-3362). It measured the bottom tabs in an agent's chat, and M-3115 (#3911) removed the tabs from an agent's pages, so it failed on today's app for a reason that had nothing to do with the keyboard. The `tabs-over-keyboard` case is pinned by its unit tests in `tests/web-keyboard-2478.test.ts`, including the CSS rule that hides the tabs with the keyboard up. The box staying on the keyboard is shown in WebKit by `smoke-phone-kb-steady` and `smoke-phone-keyboard-motion-m3327`.
 
 ## What only a real iPhone or the iOS Simulator can see
 
