@@ -532,7 +532,7 @@ When an instance approaches the limit, a warning is posted to its Telegram topic
 Use `/status` in the General topic to see a live overview. It is a table with one row per instance:
 
 ```
-| Instance | Backend | Model | Ctx | Effort | Cost | State |
+| Instance | Backend | Model | Ctx | Effort | State |
 ```
 
 State combines paused, stopped or crashed with the execution state (see [Instance status indicators](#instance-status-indicators)), and Model is the live model, the same one `/ctx` reports. `/status` is for fleet admins. (The IPC column was removed in 2.1.9.)

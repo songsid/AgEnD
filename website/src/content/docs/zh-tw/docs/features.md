@@ -99,10 +99,10 @@ defaults:
 
 到警告門檻時 topic 裡會收到提醒。到上限時 instance 會被停下並通知 topic；要繼續就再啟動它。
 
-在 General topic 打 `/status` 看錢花到哪去：
+在 General topic 打 `/status` 查看 Fleet 的即時概況：
 
 ```
-| instance | Backend | Model | Context | 推理強度 | 花費 | 執行狀態 |
+| instance | Backend | Model | Context | 推理強度 | 執行狀態 |
 ```
 
 每個 instance 一列。執行狀態欄把暫停、停止、當機和目前在做什麼合併顯示。

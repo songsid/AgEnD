@@ -7,7 +7,7 @@ Telegram fleet 選單列出 23 個指令，ClassicBot 選單列出 11 個；Disc
 
 | 指令 | 描述 | 選項 / 參數 | 權限 |
 |---------|-------------|----------------|------------|
-| `/status` | Fleet 表格：Backend、Model、Context、推理強度、花費、執行狀態 | — | 🔒 管理員 |
+| `/status` | Fleet 表格：Backend、Model、Context、推理強度、執行狀態 | — | 🔒 管理員 |
 | `/sysinfo` | 詳細系統診斷（版本、負載、IPC 狀態、各 backend CLI 版本）；Telegram 另可用 `/sys-info`、`/sys_info` | — | 所有人 |
 | `/web` (`/dashboard` 別名) | 開啟登入選單，按登入按鈕才會私送一次性登入碼。Discord 私訊失敗可改用僅自己可見的回覆；Telegram 私送被拒時會說明如何先私訊啟動 bot。`/web revoke` 登出所有瀏覽器。`/dashboard` 列為已棄用，會先印提示再做同一件事 | `[revoke]` | 🔒 管理員 |
 | `/backend` | 切換 fleet instance 的 backend；ClassicBot 用設定頁或 `classicBot.yaml` | 名稱或選單 | 🔒 管理員 |

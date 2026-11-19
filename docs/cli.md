@@ -6,7 +6,7 @@ The Telegram fleet menu lists 23 commands; the ClassicBot menu lists 11. Discord
 
 | Command | Description | Options / args | Permission |
 |---------|-------------|----------------|------------|
-| `/status` | Fleet table with Backend, Model, Ctx, Effort, Cost and State columns | — | 🔒 admin |
+| `/status` | Fleet table with Backend, Model, Ctx, Effort and State columns | — | 🔒 admin |
 | `/sysinfo` | Show detailed system diagnostics (version, load, IPC status, each backend CLI's version); also `/sys-info`, `/sys_info` on Telegram | — | All |
 | `/web` (`/dashboard` alias) | Open the web sign-in menu, then press a login button to get a private one-time code. Discord uses DM with an ephemeral fallback; Telegram DM refusal explains how to start the bot privately. `/web revoke` (on Discord, the `action: revoke` option) signs every browser out. `/dashboard` is listed as deprecated and prints a notice, then does the same | `[revoke]` | 🔒 admin |
 | `/backend` | Switch a fleet instance’s backend; ClassicBot uses Settings or `classicBot.yaml` | Backend name or menu | 🔒 admin |

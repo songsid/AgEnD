@@ -498,7 +498,7 @@ instance 接近上限時，會在它的 Telegram topic 發出警告；達到上�
 在 General topic 用 `/status` 看即時概況。它是一張表格，每個 instance 一列：
 
 ```
-| Instance | Backend | Model | Ctx | Effort | Cost | State |
+| Instance | Backend | Model | Ctx | Effort | State |
 ```
 
 State 欄把暫停、停止或當機和執行狀態合併顯示（見 [Instance 狀態圖示](#instance-狀態圖示-instance-status-indicators)）；Model 是目前實際使用的模型，和 `/ctx` 回報的相同。`/status` 是給 fleet 管理員用的。（IPC 欄已在 2.1.9 移除。）

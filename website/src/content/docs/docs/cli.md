@@ -330,7 +330,7 @@ These run in the chat app. On **Discord** they work in any fleet-topic channel. 
 
 | Command | What it does | Permission |
 |---|---|---|
-| `/status` | Fleet table: backend, model, context, effort, cost, state | 🔒 admin |
+| `/status` | Fleet table: backend, model, context, effort, state | 🔒 admin |
 | `/sysinfo` | Version, load, IPC status, each backend CLI's version | All |
 | `/usage` | AI subscription usage (one row per subscription) | All |
 | `/ctx` | Agent context usage | All |

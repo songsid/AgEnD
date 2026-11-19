@@ -99,10 +99,10 @@ defaults:
 
 You get a warning in the topic at the warn threshold. At the limit the instance is stopped and its topic is told; start it again to continue.
 
-`/status` in the General topic shows where the money went:
+`/status` in the General topic shows a live fleet overview:
 
 ```
-| Instance | Backend | Model | Ctx | Effort | Cost | State |
+| Instance | Backend | Model | Ctx | Effort | State |
 ```
 
 One row per instance. State combines paused, stopped or crashed with what the instance is doing.
