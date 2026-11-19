@@ -133,6 +133,15 @@ describe("kiro model_error pattern (M-3398, kiro-cli 3.5.0)", () => {
     expect(modelError.test("warning: chat.defaultModel claude-bogus-9: is not available, so the session keeps its default model\n> ")).toBe(false);
   });
 
+  it("ignores that warning when a narrow pane wraps it (the error monitor reads rows unjoined)", () => {
+    const warning = "warning: chat.defaultModel claude-sonnet-4.5: is not available, so the session keeps its default model";
+    for (const cols of [80, 100]) {
+      const rows = warning.match(new RegExp(`.{1,${cols}}`, "g"))!.join("\n");
+      expect(rows.split("\n")[0]).toMatch(/model.*not available/i);   // the first row alone reads like a model error
+      expect(modelError.test(rows + "\n> ")).toBe(false);
+    }
+  });
+
   it("still matches a real model error, also below that warning", () => {
     expect(modelError.test(MODEL_ERROR_PANE)).toBe(true);
     expect(modelError.test("The selected model is not available\n> ")).toBe(true);
