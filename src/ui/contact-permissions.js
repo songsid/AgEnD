@@ -16,6 +16,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
 import { getPermissions, putPermissions, shortTicketId } from "./contact-auth-client.js";
 import { REASONS } from "./contact-authorizations.js";
+import { groupWouldDisable } from "./contact-tool-groups.js";
 
 const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
@@ -57,19 +58,36 @@ export function usePermissions(name) {
 /**
  * What would stop if this legacy room switched — AgEnD's known removals; when the backend's own inventory couldn't be read
  * (impactComplete false) that is said too, so the list is never taken as everything.
+ * M-3387: by kind with counts (contact-tool-groups.js), the AI tool's own tools on their own line, the two layers said, and
+ * every name behind "show all".
  */
 function WouldDisable({ tools, complete }) {
   const incomplete = complete === false ? html`<p class="feedback warning contact-impact-incomplete">${ca("impactIncomplete")}</p>` : null;
-  return tools && tools.length ? html`<div class="contact-would"><p>${ca("wouldDisableTitle")}</p><ul>${tools.map((n) => html`<li key=${n} class="mono">${n}</li>`)}</ul>${incomplete}</div>`
-    : complete === false ? incomplete : html`<p class="note">${ca("wouldDisableNone")}</p>`;
+  if (!tools || !tools.length) return complete === false ? incomplete : html`<p class="note">${ca("wouldDisableNone")}</p>`;
+  const { groups, cli, agendCount } = groupWouldDisable(tools);
+  return html`<div class="contact-would">
+    ${agendCount ? html`<p>${ca("toolsLostTitle", agendCount)}</p><ul class="contact-would-groups">${groups.map((g) => html`<li key=${g.id} data-group=${g.id}>${ca("toolGroupLine", ca(`toolGroup_${g.id}`), g.tools.length)}</li>`)}</ul>` : null}
+    ${cli.length ? html`<p class="contact-would-cli">${ca("cliToolsLine", cli.length, cli.join(", "))}</p>` : null}
+    <p class="note contact-would-layers">${ca("toolLayers")}</p>
+    <details class="contact-would-all"><summary>${ca("showAllTools", tools.length)}</summary><ul>${tools.map((n) => html`<li key=${n} class="mono">${n}</li>`)}</ul></details>
+    ${incomplete}</div>`;
 }
-/** The same, as the confirm's text (paragraphs). */
+/** The same, as the confirm's text (paragraphs): the kinds with counts, the AI tool's own tools, the two layers. */
 export function wouldDisableText(roomTools, guard) {
   const would = roomTools?.wouldDisable || [];
-  const parts = [would.length ? [ca("wouldDisableTitle"), ...would.map((n) => `• ${n}`)].join("\n") : roomTools?.impactComplete === false ? "" : ca("wouldDisableNone")];
+  const { groups, cli, agendCount } = groupWouldDisable(would);
+  const parts = [would.length ? "" : roomTools?.impactComplete === false ? "" : ca("wouldDisableNone")];
+  if (agendCount) parts.push([ca("toolsLostTitle", agendCount), ...groups.map((g) => ca("toolGroupLine", ca(`toolGroup_${g.id}`), g.tools.length))].join("\n"));
+  if (cli.length) parts.push(ca("cliToolsLine", cli.length, cli.join(", ")));
+  if (would.length) parts.push(ca("toolLayers"));
   if (roomTools?.impactComplete === false) parts.push(ca("impactIncomplete"));
   if (notCovered(guard)) parts.push(ca("notCoveredWarning"));
   return parts.filter(Boolean).join("\n\n");
+}
+/** M-3387: the confirm's "show all": every name that would stop, or null when none. */
+export function wouldDisableMore(roomTools) {
+  const would = roomTools?.wouldDisable || [];
+  return would.length ? { label: ca("showAllTools", would.length), lines: would } : null;
 }
 
 export function ContactPermissionsPanel({ name }) {
@@ -100,7 +118,8 @@ export function ContactPermissionsPanel({ name }) {
     const toRestricted = mode === "restricted";
     const ok = await confirmDialog({ title: ca(toRestricted ? "confirmRestricted" : "confirmLegacy"), message: toRestricted
       ? [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n")
-      : ca("modeLegacyNote"), confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
+      : ca("modeLegacyNote"), ...(toRestricted ? { more: wouldDisableMore(p.roomTools) } : {}),
+      confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
     if (ok) await write({ mode });
   };
   const tools = p.roomTools || { publicRead: false, allowedMcpTools: [], wouldDisable: [] };
