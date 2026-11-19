@@ -106,7 +106,7 @@ describe("the pickers say which fleet they belong to", () => {
       sendText: vi.fn(async () => ({ messageId: "t", chatId: "c" })),
     } as any;
     await fm.promptLoginBackends({ adapter, adapterId: "discord", chatId: "c" });
-    expect(messages).toEqual([
+    expect(messages.map(message => message.split("\n").slice(0, 2).join("\n"))).toEqual([
       `${t("login.choose_backend")}\n${t("fleet.label_line", "lab-box")}`,
     ]);
   });

@@ -6,9 +6,11 @@ import { FleetManager, LOGIN_CALLBACK_PREFIX } from "../src/fleet-manager.js";
 import { setAuthCheckRunnerForTests } from "../src/login-flows.js";
 
 /** The part of a captured notifyAlert payload these tests read. */
-type Alert = { choices: { id: string; label?: string }[] };
+type Alert = { message: string; choices: { id: string; label?: string }[] };
 const alertAt = (notifyAlert: { mock: { calls: unknown[][] } }, i = 0): Alert =>
   notifyAlert.mock.calls[i][1] as Alert;
+const statusLine = (alert: Alert, choice: Alert["choices"][number]) =>
+  alert.message.split("\n").find(line => line.startsWith(`${choice.label} · `)) ?? "";
 
 describe("/login auth pre-check", () => {
   let tmpDir: string;
@@ -237,12 +239,13 @@ describe("/login auth pre-check", () => {
 
     // Since #1131 the chooser also offers CLIs to install; the installed ones
     // are offered for sign-in, and the ClassicBot's backend counts as configured.
-    const signIn = alertAt(notifyAlert).choices.filter(choice => String(choice.label).includes("Installed"));
+    const alert = alertAt(notifyAlert);
+    const signIn = alert.choices.filter(choice => statusLine(alert, choice).includes("Installed"));
     expect(signIn.map(choice => choice.id)).toEqual([
       expect.stringMatching(/:codex$/),
       expect.stringMatching(/:kiro-cli$/),
     ]);
-    expect(String(signIn[1]!.label)).toContain("Configured");
+    expect(statusLine(alert, signIn[1]!)).toContain("Configured");
   });
 
   it("shows a freshly installed but not-yet-configured backend", async () => {
@@ -254,10 +257,10 @@ describe("/login auth pre-check", () => {
 
     const alert = alertAt(notifyAlert);
     const grok = alert.choices.find(choice => /:grok$/.test(choice.id))!;
-    expect(String(grok.label)).toContain("Installed");
-    expect(String(grok.label)).toContain("Connect");
+    expect(statusLine(alert, grok)).toContain("Installed");
+    expect(statusLine(alert, grok)).toContain("Connect");
     // Everything else on offer is an install (#1131).
-    expect(alert.choices.filter(choice => choice !== grok).every(choice => String(choice.label).includes("Not installed"))).toBe(true);
+    expect(alert.choices.filter(choice => choice !== grok).every(choice => statusLine(alert, choice).includes("Not installed"))).toBe(true);
   });
 
   it("explains installed backends without a remote login flow", async () => {
