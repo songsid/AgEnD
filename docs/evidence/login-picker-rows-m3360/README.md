@@ -52,3 +52,20 @@ This packet proves the provider payload; it does not claim a native client rende
 Risk: the reply is several lines taller because status details moved out of
 the buttons. Callback behavior is covered by existing login-click tests. Revert
 the change to restore the previous presentation; no stored data changes.
+
+## CI compatibility repair
+
+Exact CI on `c8cb5bd6` found two remaining old label assumptions in
+`install-cli-login-1059.test.ts` ([failed job](https://github.com/songsid/AgEnD/actions/runs/44445944313/job/135298538407)).
+The helper searched for a lowercase `grok` label and expected status in it.
+It now keys the choice by the unchanged callback backend ID and reads the
+matching status line. Install completion, PATH adoption, binary resolution,
+profile selection and failure assertions are preserved.
+
+The two affected tests pass with eight unselected tests excluded; test
+TypeScript exits 0. They use a scratch HOME, a fake Grok shell script and
+mocked login sessions/tmux. No real installer, AI CLI, account or Fleet is
+started. Runtime source and the skill are byte-identical to Prism's cleared
+`c8cb5bd67394b4f7cf2009aa64110b11da9e5e84`. The staged union is now
+**53 distinct passing tests across six files**; the earlier 51 are retained
+without rerunning them.
