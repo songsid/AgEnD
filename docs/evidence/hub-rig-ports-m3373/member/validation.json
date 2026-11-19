@@ -1,0 +1,33 @@
+{
+  "base": "8b488f50cf1e17b29bd9df8ebbb98f1dd43f0bf3",
+  "family": "default hubRig member listener only",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-member-rig-ports-m3373.test.ts --maxWorkers=2",
+    "baseResult": "1 semantic failure: expected EADDRINUSE, received bound after an actual competing bind during identity setup"
+  },
+  "focused": {
+    "command": "npx vitest run tests/hub-member-rig-ports-m3373.test.ts tests/hub-network.test.ts tests/hub-member-restore-3415.test.ts tests/hub-welcome-caps.test.ts tests/hub-room-members-link-h5.test.ts --maxWorkers=2",
+    "passed": 34,
+    "skipped": 0,
+    "files": 5
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "coveredContracts": [
+    "real HTTPS pairing and WSS reconciliation",
+    "same-port spoof and renewed-server replacement",
+    "repeated member backup/custom-peer replacements",
+    "explicit occupied port remains refused and competitor stays owned",
+    "external spare lease remains held after default/explicit rigs close",
+    "restoreAllMocks before fixture close",
+    "initial startup failure closes server/DB, releases owned port and removes state"
+  ],
+  "limits": [
+    "Read-only source inventory:39 importing files/eight caller-owned lease consumers. Other consumers remain CI coverage.",
+    "Only owned disposable TLS/WSS fixtures and inert directory logic.",
+    "No retries, increased timeouts, production changes or other family conversions."
+  ],
+  "rollback": "Revert test fixture, regressions and evidence only; no product or data rollback."
+}
