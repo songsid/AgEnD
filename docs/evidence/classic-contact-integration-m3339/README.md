@@ -53,3 +53,13 @@ these controls.
 
 Reverting this final slice removes the native pre-start disclosure while leaving
 A1 admission, A2 controls and A3 coverage unchanged. It adds no schema or storage.
+
+## Memory-pressure reply ordering
+
+The existing memory-hold test assumed no earlier Classic reply. It now explicitly
+expects the pre-start disclosure, one memory-hold notice while admission is
+blocked, then the completed status retaining the disclosure. Both locales still
+assert zero operation calls while held, one operation after recovery, one hold
+notice and no unrelated chat broadcast. The full failing file and both native
+start neighbours pass 38/38 using fake time. No runtime behavior changed in this
+correction.
