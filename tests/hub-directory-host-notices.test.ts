@@ -1,6 +1,7 @@
 /** Real fleet HTTP/D3 and existing WAL state after an owned mount refusal; no real LDAP, account or native manager. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -13,7 +14,7 @@ import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { createHubSettingsWriter } from "../src/hub/settings-commit.js";
 import { atomicWriteFileSync } from "../src/atomic-write.js";
 import { ADMIN, makeTestCerts, tempDir } from "./support/hub-init-fixtures.js";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubComposePorts } from "./helpers/hub-compose-ports.js";
 import { csrfTokenFor, tokenEpoch } from "../src/web-session.js";
 import { WebSessionStore } from "../src/web-session.js";
 import { WEB_CSRF_HEADER } from "../src/web-auth.js";
@@ -22,6 +23,7 @@ import { serveAppShell } from "../src/web-api.js";
 import * as directory from "../src/hub/directory/directory.js";
 import * as auditModule from "../src/hub/audit/index.js";
 import { hubServerDatabasePlan } from "../src/hub/compose/server.js";
+import * as factoryModule from "../src/hub/compose/server.js";
 import { HUB_HTTP_MIGRATIONS } from "../src/hub/http/schema.js";
 import { withHubDirectoryNoticeRecovery } from "../src/hub/settings-directory-recovery.js";
 import type { HubDirectoryNotices } from "../src/hub/settings-directory-notices.js";
@@ -29,7 +31,7 @@ import { SERVER_SET } from "../src/hub/compose/storage.js";
 
 const prefix = "/api/settings/hub/security-notices/directory";
 const cleanups: Array<() => Promise<void>> = [];
-afterEach(async () => { for (const close of cleanups.splice(0)) await close(); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(async () => { try { for (const close of cleanups.splice(0)) await close(); } finally { vi.restoreAllMocks(); vi.unstubAllEnvs(); } });
 function call(port: number, method: string, path: string, headers: Record<string, string> = {}, body?: string) {
   return new Promise<{ status: number; body: any; headers: import("node:http").IncomingHttpHeaders }>((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port, method, path, headers }, res => {
@@ -40,7 +42,21 @@ function call(port: number, method: string, path: string, headers: Record<string
 }
 async function fixture() {
   const home = tempDir("hub-host-notices-"), certs = makeTestCerts(), configPath = join(home, "fleet.yaml");
-  const memberPort = await freeHubPort(); let webPort = await freeHubPort(); while (memberPort === webPort) webPort = await freeHubPort();
+  let ports: Awaited<ReturnType<typeof hubComposePorts>> | undefined, runtime: HubRuntime | undefined, internal: any;
+  cleanups.push(async () => {
+    const errors: unknown[] = [];
+    for (const dispose of [async () => { await runtime?.close(); }, async () => {
+      const server = internal?.healthServer as Server | undefined;
+      if (server) { internal.healthServer = null; server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve())); }
+    }, () => { internal?.webSessions?.flush?.(); }, async () => { await ports?.close(); },
+    () => rmSync(home, { recursive: true, force: true }), () => rmSync(certs.dir, { recursive: true, force: true })]) {
+      try { await dispose(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, "Directory host-notice fixture cleanup failed");
+    expect(existsSync(home)).toBe(false);
+  });
+  ports = await hubComposePorts();
+  const { memberPort, webPort } = ports;
   const plan = { name: "Fictional Host Hub", webOrigin: `https://hub.example.test:${webPort}`, memberOrigin: `https://hub.example.test:${memberPort}`,
     webListen: { host: "127.0.0.1", port: webPort }, memberListen: { host: "127.0.0.1", port: memberPort },
     webTls: { certFile: certs.cert, keyFile: certs.key }, directory: { realm: "corp", url: "ldaps://directory.example.test:636",
@@ -49,8 +65,7 @@ async function fixture() {
   const init = createHubInitializer({ home, identity: hubIdentityProvider(), probe: { pidAlive: () => false } });
   const confirmation = await init.prepareConfirmation(plan, { bindPassword: "Dummy-old-service-only" }); await init.commit(plan, confirmation.reference);
   const config = yaml.load(readFileSync(configPath, "utf8")) as { hub: Record<string, unknown>; web?: unknown };
-  let runtime!: HubRuntime;
-  const writer = createHubSettingsWriter({ home, readHub: () => config.hub, directoryDecision: () => runtime.directoryDecision(), saveHub: patches => {
+  const writer = createHubSettingsWriter({ home, readHub: () => config.hub, directoryDecision: () => runtime!.directoryDecision(), saveHub: patches => {
     for (const patch of patches) { if (patch.remove) delete config.hub[patch.path[1]!]; else config.hub[patch.path[1]!] = patch.value; }
     atomicWriteFileSync(configPath, yaml.dump(config), { mode: 0o600 });
   } });
@@ -68,7 +83,7 @@ async function fixture() {
     expect(runtime.serverHealth(config.hub)).toBe("unavailable"); expect(runtime.directorySettings()).toBeNull();
   } finally { await runtime.close(); }
   config.web = { verified_authority: { enabled: true } }; writeFileSync(configPath, yaml.dump(config), { mode: 0o600 });
-  const fm = new FleetManager(home), internal = fm as any, sink = () => {};
+  const fm = new FleetManager(home), sink = () => {}; internal = fm as any;
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as any;
   vi.stubEnv("AGEND_FLEET_DATA_DIR", process.env.AGEND_FLEET_DATA_DIR); vi.stubEnv("AGEND_FLEET_CONFIG_PATH", process.env.AGEND_FLEET_CONFIG_PATH);
   fm.loadConfig(configPath); internal.initializeWebAuthTokens(); internal.startHealthServer(0);
@@ -86,14 +101,50 @@ async function fixture() {
   const states = () => inspect(db => db.prepare("SELECT kind,state FROM hub_settings_security_targets ORDER BY kind").all());
   const auditCount = () => inspect(db => (db.prepare("SELECT count(*) n FROM hub_audit").get() as { n: number }).n);
   const cold = vi.spyOn(directory, "createHubDirectory");
-  cleanups.push(async () => { const server = internal.healthServer as Server; internal.healthServer = null; server.closeAllConnections();
-    await new Promise<void>(resolve => server.close(() => resolve())); internal.webSessions?.flush?.();
-    rmSync(home, { recursive: true, force: true }); rmSync(certs.dir, { recursive: true, force: true }); expect(existsSync(home)).toBe(false); });
   return { home, fm, internal, port, origin, token, host, headers, signIn, dbPath, inspect, states, auditCount, cold,
     request: (method = "GET", suffix = "", extra: Record<string, string> = {}, id = host.id) => call(port, method, prefix + suffix, { ...headers(id), ...extra }) };
 }
 
 describe.skipIf(process.platform === "win32")("host directory notices from existing held state", () => {
+  it("holds the first runtime's sockets through startup and frees them before cold host notice reads", async () => {
+    const factory = factoryModule.createHubServerFactory;
+    const competitors: ReturnType<typeof createNetServer>[] = [], ports: number[] = [], results: string[] = [];
+    vi.spyOn(factoryModule, "createHubServerFactory").mockImplementation(options => {
+      const mount = factory(options);
+      return Object.assign(async (...args: Parameters<typeof mount>) => {
+        const service = await mount(...args), start = service.start.bind(service);
+        service.start = async () => {
+          for (const listener of [args[0].memberListen, args[0].webListen] as { port: number }[]) {
+            const competitor = createNetServer(); competitors.push(competitor); ports.push(listener.port);
+            results.push(await new Promise<string>(resolve => {
+              competitor.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+              competitor.listen(listener.port, "127.0.0.1", () => resolve("bound"));
+            }));
+          }
+          expect(results).toEqual(["EADDRINUSE", "EADDRINUSE"]);
+          await start();
+        };
+        return service;
+      }, { drain: mount.drain });
+    });
+    try {
+      let r!: Awaited<ReturnType<typeof fixture>>;
+      try { r = await fixture(); }
+      finally { expect(results).toEqual(["EADDRINUSE", "EADDRINUSE"]); }
+      expect(new Set(ports).size).toBe(2);
+      // The fixture already closed the runtime after the replacement mount refused.
+      // Bind before lease cleanup so fixture disposal cannot mask a production leak.
+      for (const port of ports) {
+        const probe = createNetServer();
+        try { await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(port, "127.0.0.1", resolve); }); }
+        finally { if (probe.listening) await new Promise<void>(resolve => probe.close(() => resolve())); }
+      }
+      expect(await r.request()).toMatchObject({ status: 200, body: { items: [{ kind: "directory", phase: "applying", acknowledged: false }] } });
+      expect(r.cold).not.toHaveBeenCalled(); expect(r.internal.hubRuntime).toBeNull();
+    } finally {
+      for (const competitor of competitors) if (competitor.listening) await new Promise<void>(resolve => competitor.close(() => resolve()));
+    }
+  });
   it("reads and ACKs the host target after a real mount refusal without starting Hub, directory or setup", async () => {
     const r = await fixture(), page = await r.request(); expect(page.status).toBe(200); expect(page.headers["cache-control"]).toBe("no-store");
     const shell = (headers: Record<string, string>) => new Promise<string>((resolve, reject) => {
