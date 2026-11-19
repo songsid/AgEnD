@@ -1,0 +1,40 @@
+{
+  "base": "d816dc4eb6db9f3001094e5a9c09dbd1a9683c1c",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-company-join-ports-m3369.test.ts -t 'holds both' --maxWorkers=2",
+    "result": "1 semantic failure, 1 filtered; actual real-listener EADDRINUSE"
+  },
+  "focused": {
+    "command": "npx vitest run tests/hub-company-join-ports-m3369.test.ts tests/hub-compose-ports-m3338.test.ts tests/hub-enrolment-code-http-b1.test.ts tests/hub-company-join-fixture.test.ts tests/hub-company-join-http.test.ts tests/hub-stop-sessions-3512.test.ts tests/hub-member-startup-3171.test.ts --maxWorkers=2",
+    "passed": 67,
+    "files": 7,
+    "skipped": 0
+  },
+  "consumers": {
+    "command": "npx vitest run tests/hub-company-join-ports-m3369.test.ts tests/hub-company-join-invitation.test.ts tests/hub-company-join-recovery.test.ts tests/hub-company-join-client.test.ts tests/hub-enrolment-code-session-b2.test.ts tests/hub-simplify-s1.test.ts tests/hub-group-search-s2.test.ts tests/hub-code-member-link-a2.test.ts tests/hub-pilot-trust-join.test.ts tests/hub-agent-intro-link-h2.test.ts --maxWorkers=2",
+    "passed": 40,
+    "files": 10,
+    "skipped": 0
+  },
+  "distinctTotals": {
+    "passed": 105,
+    "files": 16,
+    "note": "The two new company-join cases appear in both runs; the second run includes the final typed factory wrapper."
+  },
+  "cleanupControl": {
+    "change": "Remove scope.restore() at final allocator close",
+    "command": "npx vitest run tests/hub-compose-ports-m3338.test.ts -t 'isolates overlapping' --maxWorkers=2",
+    "result": "1 semantic failure, 2 filtered; original listen method was not restored",
+    "restoration": "Exact byte comparison with the saved original passes."
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "limits": [
+    "All listeners, directory peers, certificates and state are synthetic and disposable.",
+    "Full suites are left to CI. No live accounts, vendor CLI, models, Fleet or Windows work.",
+    "No retries, timeout increases or production files changed."
+  ],
+  "rollback": "Revert test helpers, regressions and evidence only; no product or stored-data rollback."
+}
