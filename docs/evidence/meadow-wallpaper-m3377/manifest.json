@@ -1,0 +1,63 @@
+{
+  "baseCommit": "c9206422049e8423a1511f558893b9ad4dd13326",
+  "source": [
+    {
+      "path": "docs/design/meadow-wallpaper-m3377.md",
+      "sha256": "0a271c03ff77e7b0728b8b12f6e735d70f757b4290d7a3dcd48d9917af855314"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-meadow-wallpaper-m3377.mts",
+      "sha256": "e7f7cf6694f3dbe05a5366a2a1dd0872839868f04fb6a2cb148769cbe1173afe"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "3019ec110db4c2e48157fbc5d7ea78ca4c228cac391d9be6f5c4bb5a3364133d"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "5d307e26aa8a615f814ac1629ce46a5caac34ace86b88159b0d72dde1a88cadc"
+    },
+    {
+      "path": "src/ui/shared/tokens.css",
+      "sha256": "429951b497de2fa7558d8dbc2f9ff28fafb05e6a6f29e9f3684660039939a611"
+    },
+    {
+      "path": "tests/builtin-theme-meadow-m3368.test.ts",
+      "sha256": "06e7fa9fd524045490a9eb799632dd9c5519cda0f73b3b5be8642b598faf5cc4"
+    },
+    {
+      "path": "tests/meadow-wallpaper-m3377.test.ts",
+      "sha256": "c68de25797ed52215d1c17b6579d58920f0fcdda80471d7ad2257c9cb0091d39"
+    },
+    {
+      "path": "tests/web-tokens-1408.test.ts",
+      "sha256": "56b97d36778fa0a3eddabd7ee594ee4bfd0cbe5ca049df55448e07176cfce2f6"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/README.md",
+      "sha256": "ab89cbeb9739263260e2a1a4ddc56b69c85d3a7a1add5d5ac8dd4fc9fa96588c"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/desk-dark-chat.png",
+      "sha256": "26494a40d0ba1c096804b6a0a47ee28707d9646cc7fab815e33023c4ce028c0b"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/desk-light-chat.png",
+      "sha256": "97ed19570f11c4df8115df847f231631754c612d2d05feab3cc713f73126fe6d"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/phone-dark-chat.png",
+      "sha256": "e341cd2c0f88a9f0fb6f1ce734d278b45eb461cfab5cb634cd9156b6c7b62ea5"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/phone-light-chat.png",
+      "sha256": "3c379dd89093c27c57d82fdb762c2a90ce773b7f5baea18c98686ff0df30ffaa"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/validation.json",
+      "sha256": "f1261f1a0221fd188a4f260fb8b76a6a8f463a0537576bdb3880c9c2aa857303"
+    }
+  ]
+}

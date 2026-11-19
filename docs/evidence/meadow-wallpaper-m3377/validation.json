@@ -1,0 +1,83 @@
+{
+  "baseCommit": "c9206422049e8423a1511f558893b9ad4dd13326",
+  "status": "HOLD: user approval required before merge",
+  "failFirst": {
+    "failed": 5,
+    "passed": 1
+  },
+  "stagedDistinctPassingTests": 47,
+  "files": 6,
+  "stages": [
+    {
+      "name": "focused",
+      "passed": 26,
+      "files": 4
+    },
+    {
+      "name": "contrast-skill",
+      "passed": 8,
+      "files": 2,
+      "repeatControls": 6
+    },
+    {
+      "name": "r1-font-page-boundaries",
+      "passed": 37,
+      "files": 4,
+      "distinctAdditionalControls": 19
+    }
+  ],
+  "opacityReversal": {
+    "failed": 1,
+    "unselected": 5,
+    "restoredPassed": 6
+  },
+  "testTypecheck": 0,
+  "browser": {
+    "headless": true,
+    "linux": true,
+    "syntheticData": true,
+    "checks": 22,
+    "errors": 0,
+    "images": [
+      "desk-light-chat.png",
+      "desk-dark-chat.png",
+      "phone-light-chat.png",
+      "phone-dark-chat.png"
+    ],
+    "scope": "SVG decode, stationary panel during child scrolling, fit, explicit agent background precedence. No frame-rate benchmark."
+  },
+  "visualReview": {
+    "originalsInspected": 4,
+    "issues": 0
+  },
+  "nativeBackendRuns": 0,
+  "r1FailFirst": {
+    "fontOrigin": {
+      "failed": 1,
+      "unselected": 17
+    },
+    "pageThemeSelectors": {
+      "failed": 2,
+      "unselected": 5
+    },
+    "pageThemeBrowser": {
+      "failed": 1,
+      "failure": "sage wallpaper and metadata persisted under a different shell page colour"
+    }
+  },
+  "r1Browser": {
+    "scope": "desk light only; actual applyPageTheme/CSSOM guard",
+    "checks": 8,
+    "errors": 0,
+    "result": {
+      "image": "none",
+      "bg": "rgb(243, 249, 248)",
+      "text": "rgb(12, 31, 29)",
+      "secondary": "#3a5a56",
+      "restored": true
+    },
+    "selectedImages": 0,
+    "ordinaryOriginalsUnchanged": 4
+  },
+  "r1TestTypecheck": 0
+}

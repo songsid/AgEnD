@@ -25,7 +25,7 @@ describe("M3368 Meadow reference and isolation", () => {
     expect(rules.length).toBeGreaterThan(0);
     for (const r of rules) for (const selector of r[1]!.trim().split(",")) expect(selector.trim()).toMatch(/^(?::root\[data-palette="meadow"\]|\.theme-swatch\[data-palette="meadow"\])/ );
     expect(rules.map(x => x[2]).join(" ")).not.toContain("!important");
-    const meta = /:root\[data-palette="meadow"\] \.p-chat \.msg \.meta\s*\{([^{}]*)\}/.exec(app)![1]!;
+    const meta = /:root\[data-palette="meadow"\] \.shell:not\(\.th-page\) \.p-chat \.msg \.meta\s*\{([^{}]*)\}/.exec(app)![1]!;
     expect(meta).toMatch(/background:\s*var\(--surface\)/);
   });
   it("preserves all six other palette declarations byte for byte after the light-sidebar fix", () => {

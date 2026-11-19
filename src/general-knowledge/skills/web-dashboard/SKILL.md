@@ -897,6 +897,7 @@ Settings → **Look**, card by card (the app icon and card upload limits are in 
 - **Colours** — **Other…** (「其他…」) in the theme menu, or **Choose…** (「選擇…」) in Look, opens a centred chooser: Default, Clear Sky / 晴空,
   Meadow / 青草, Night Violet / 夜紫 and Mint / 薄荷. Every palette works with System, Light and Dark; changing the
   appearance keeps the palette. Choices preview at once; **Apply** keeps them, **Cancel** or Escape puts them back.
+  Meadow adds a soft sage gradient and an original static leaf/grass texture behind the chat.
   The palette is kept in this browser. Agents' own themes and the person's custom CSS still take precedence.
 - **Agents' themes** — **Show agents' themes, effects and widgets**; off, every chat looks the same and pictures and
   ring colours fall back to the bots' own (all devices).
