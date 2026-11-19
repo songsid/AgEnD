@@ -9,6 +9,7 @@ tests/command-surface-docs-1148.test.ts
 tests/concepts-skill-sync.test.ts
 tests/docs-reading-tests-list.test.ts
 tests/fleet-docs-link-1844.test.ts
+tests/keyboard-suite-m3357.test.ts
 tests/no-wsl-shutdown-advice.test.ts
 tests/runtime-install-script.test.ts
 tests/signin-glossary-s117.test.ts
