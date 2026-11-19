@@ -1264,6 +1264,8 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
   //     composer's box writes its height only when its line count changes (#4026).
   // Pinned per keystroke by tests/web-typing-steady-m3265.test.ts and tests/web-keyboard-fit-3111.test.ts, and in the real app
   // (WebKit) by smoke-phone-kb-steady, smoke-phone-ime-keyboard-m3244 and smoke-phone-typing-steady-m3265.
+  // M-3357: every past keyboard case, each with the fix undone as a revert that must turn its tests red, is
+  // scripts/ci/keyboard-suite.mjs (CI's keyboard-suite job; docs/dev/iphone-keyboard-suite.md) — a fix here adds its case.
   // The bottom tabs (and the line under the composer) give their room to the keyboard on a phone (#2478).
   useEffect(() => {
     const vv = typeof window !== "undefined" ? window.visualViewport : null;

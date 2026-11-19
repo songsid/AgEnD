@@ -8,7 +8,7 @@ const ci = yaml.load(readFileSync(".github/workflows/ci.yml", "utf8")) as { jobs
 const gate = ci.jobs.build.steps.find(s => s.name === "Check all jobs succeeded")!;
 function aggregate(result: string, required: boolean) {
   return execFileSync("/bin/bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", gate.run!], {
-    encoding: "utf8", stdio: "pipe", env: { PATH: process.env.PATH, CHANGELOG: "success", ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success", PWSH: "success", HUB_DIRECTORY: "success", DOCS_TESTS: "success", UI_GATE: "success", SMOKE: "success", ROLLBACK: "success", PROFILE_PRIVACY: result, PROFILE_PRIVACY_REQUIRED: String(required) },
+    encoding: "utf8", stdio: "pipe", env: { PATH: process.env.PATH, CHANGELOG: "success", ACTIONS_PINNED: "success", SETUP: "success", SHARD: "success", INTEGRATION: "success", PWSH: "success", HUB_DIRECTORY: "success", DOCS_TESTS: "success", UI_GATE: "success", KEYBOARD: "success", SMOKE: "success", ROLLBACK: "success", PROFILE_PRIVACY: result, PROFILE_PRIVACY_REQUIRED: String(required) },
   });
 }
 it("runs exact-head NTFS proof only on release PRs and branch pushes, with a short deadline and no install", () => {
