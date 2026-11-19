@@ -5,8 +5,23 @@ import { readFileSync, rmSync } from "node:fs";
 import * as rig from "./helpers/hub-rig.js";
 import { hubComposePorts } from "./helpers/hub-compose-ports.js";
 import { makeTestCerts } from "./support/hub-init-fixtures.js";
+import { Server } from "node:net";
+import * as network from "../src/hub/init/network.js";
 
 afterEach(() => vi.restoreAllMocks());
+
+it("isolates overlapping allocations and restores interception after the last close", async () => {
+  const listen = Server.prototype.listen, checkHome = network.checkHubInitNetworkForHome, checkListeners = network.checkHubListeners;
+  const first = await hubComposePorts(), second = await hubComposePorts();
+  try {
+    expect(new Set([first.memberPort, first.webPort, second.memberPort, second.webPort]).size).toBe(4);
+    await first.close(); await first.close();
+    await expectHeld(second.memberPort); await expectHeld(second.webPort);
+  } finally { await first.close(); await second.close(); }
+  expect(Server.prototype.listen).toBe(listen);
+  expect(network.checkHubInitNetworkForHome).toBe(checkHome);
+  expect(network.checkHubListeners).toBe(checkListeners);
+});
 
 async function expectHeld(port: number) {
   const competitor = netServer();

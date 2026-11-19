@@ -6,7 +6,6 @@
  */
 import Database from "better-sqlite3";
 import yaml from "js-yaml";
-import { createServer } from "node:net";
 import { request } from "node:https";
 import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,6 +20,7 @@ import type { HubGroupPolicy } from "../../src/hub/group-policy/model.js";
 import { ADMIN, makeTestCerts, type TestCerts } from "./hub-init-fixtures.js";
 import { directoryCertificates } from "./hub-directory-ca-fixture.js";
 import { groupWirePeer, GROUP_A, GROUP_B, GROUP_DN, type GroupWireUser } from "./hub-group-directory-wire.js";
+import { hubComposePorts } from "../helpers/hub-compose-ports.js";
 
 /** Immutable source material; the caller owns its lifetime, never a rig's mutable state. */
 export interface CompanyJoinCertificates {
@@ -69,17 +69,9 @@ export async function companyJoinRig(directoryListening: (port: number) => void,
     ];
     const wire = await groupWirePeer(dcCerts.leaf, people); cleanups.push(wire.close);
     directoryListening(wire.port);
-    // Reserve both addresses simultaneously: sequential probing can hand back the same port.
-    const reservations: ReturnType<typeof createServer>[] = [];
-    cleanups.push(async () => {
-      for (const server of reservations) if (server.listening) await new Promise<void>((done, reject) => server.close(e => e ? reject(e) : done()));
-    });
-    for (let i = 0; i < 2; i++) {
-      const server = createServer(); reservations.push(server);
-      await new Promise<void>((done, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", done); });
-    }
-    const [memberPort, webPort] = reservations.map(server => (server.address() as { port: number }).port) as [number, number];
-    await Promise.all(reservations.map(server => new Promise<void>((done, reject) => server.close(e => e ? reject(e) : done()))));
+    // Keep both OS-assigned sockets bound until the real TLS listeners adopt them.
+    const ports = await hubComposePorts(); cleanups.push(ports.close);
+    const { memberPort, webPort } = ports;
     const webOrigin = `https://${host}:${webPort}`, memberOrigin = `https://${host}:${memberPort}`;
     const plan = {
       name: "Company-join test Hub", webOrigin, memberOrigin,
