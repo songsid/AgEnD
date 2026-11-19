@@ -69,20 +69,44 @@ it("admits a received question with an online authorization reply on the same li
 });
 
 it("does not resend an authorization operation when its reply is lost across a reconnect", async () => {
-  const r = await rig(), profile = await r.pair(), c = r.client(); await c.value.start();
-  let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; }); r.setServerGate(() => gate);
+  let releaseReconnect!: () => void, enteredReconnect!: () => void, syncs = 0;
+  const reconnectGate = new Promise<void>(resolve => { releaseReconnect = resolve; });
+  const reconnectEntered = new Promise<void>(resolve => { enteredReconnect = resolve; });
+  let ready!: () => void, readyFailed!: (error: unknown) => void, readyReceived = false, serverReadies = 0;
+  const reconnected = new Promise<void>((resolve, reject) => { ready = resolve; readyFailed = reject; });
+  const readyId = randomUUID();
+  const r = await hubRig({ serverReady: link => {
+    if (++serverReadies !== 2) return;
+    // A harmless control frame is dispatched to receive() only AFTER the client is ready.
+    // Server readiness or entry into the reconcile callback alone cannot prove that.
+    void r.server.send(link.fleetId, { v: 1, type: "error", requestId: readyId, linkEpoch: link.linkEpoch,
+      payload: { code: "unavailable", retryable: true } }).catch(readyFailed);
+  } }); rigs.push(r);
+  const profile = await r.pair(), c = r.client(async frame => {
+    if (frame.requestId === readyId) { readyReceived = true; ready(); }
+  }, async () => {
+    if (++syncs === 2) { enteredReconnect(); await reconnectGate; }
+  }); await c.value.start();
+  let release!: () => void, requestSeen!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const received = new Promise<void>(resolve => { requestSeen = resolve; });
+  r.setServerGate(() => { requestSeen(); return gate; });
   const request = { messageId: randomUUID(), operationId: randomUUID(), exposureRevision: 1, phase: "begin" as const };
   const pending = c.value.authorize(request), refusal = expect(pending).rejects.toThrow();
   try {
-    await vi.waitFor(() => expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(1));
+    await received;
     const old = c.state.link!;
     (r.server as any).connections.get(profile.fleetId).link.ws.terminate(); await refusal;
     r.setServerGate(); release();
-    await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(old.current()).toBe(false);
+    await reconnectEntered; expect(c.state.syncs).toBe(2); expect(old.current()).toBe(false);
+    // Force the former race: syncs is already 2, but reconciliation is still held.
+    expect(readyReceived).toBe(false);
+    await expect(c.value.authorize({ ...request, operationId: randomUUID() })).rejects.toThrow("Hub authorization unavailable");
     expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(1);
+    releaseReconnect(); await reconnected;
     expect(await c.value.authorize({ ...request, operationId: randomUUID() })).toHaveProperty("phase", "begin");
     expect(r.received.filter(f => f.type === "authorize.request")).toHaveLength(2);
-  } finally { r.setServerGate(); release(); }
+  } finally { r.setServerGate(); release(); releaseReconnect(); }
 });
 it("bounds queued external work and discards retired-link work without replaying it after reconnect", async () => {
   const r = await rig(), profile = await r.pair(); let started = 0, release!: () => void;

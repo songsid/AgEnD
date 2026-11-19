@@ -1,0 +1,16 @@
+--- a/tests/hub-network.test.ts
++++ b/tests/hub-network.test.ts
+@@ -72 +72,6 @@
+-  const r = await rig(), profile = await r.pair(), c = r.client(); await c.value.start();
++  let releaseReconnect!: () => void, enteredReconnect!: () => void, syncs = 0;
++  const reconnectGate = new Promise<void>(resolve => { releaseReconnect = resolve; });
++  const reconnectEntered = new Promise<void>(resolve => { enteredReconnect = resolve; });
++  const r = await rig(), profile = await r.pair(), c = r.client(undefined, async () => {
++    if (++syncs === 2) { enteredReconnect(); await reconnectGate; }
++  }); await c.value.start();
+@@ -81 +86 @@
+-    await vi.waitFor(() => expect(c.state.syncs).toBe(2)); expect(old.current()).toBe(false);
++    await reconnectEntered; expect(c.state.syncs).toBe(2); expect(old.current()).toBe(false);
+@@ -85 +90 @@
+-  } finally { r.setServerGate(); release(); }
++  } finally { r.setServerGate(); release(); releaseReconnect(); }
