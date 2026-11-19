@@ -220,6 +220,7 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "owner-css.js",
     // #1629: agents' themes on their own chat surfaces (static code; the themes are read behind the gate).
     "app-themes.js",
+    "theme-picker.js",
     // #1629 r4 §1: the identity card (Details, the chat header, and View — whose anonymous reader sees cards too).
     "identity-card.js", "card-strings.js",
     // #1629 r4-4: widgets drawn by the page's own components (static code; the widgets are read behind the gate).

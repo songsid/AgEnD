@@ -55,10 +55,21 @@ describe("the palette", () => {
   });
   it("the sidebar's colours are tokens.css's --bg-sidebar (dark is the default, light the other)", () => {
     const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "tokens.css"), "utf8");
-    const all = [...css.matchAll(/--bg-sidebar:\s*(#[0-9a-f]{6})/gi)].map(m => m[1]!.toLowerCase());
-    expect(all[0]).toBe(C.SIDEBAR_BG.dark);
-    expect(new Set(all.slice(1))).toEqual(new Set([C.SIDEBAR_BG.light]));
+    const value = (selector: RegExp) => /--bg-sidebar:\s*(#[0-9a-f]{6})/i.exec(new RegExp(`${selector.source}\\s*\\{([^{}]*)\\}`).exec(css)![1]!)![1]!.toLowerCase();
+    expect(value(/\n:root/)).toBe(C.SIDEBAR_BG.dark);
+    expect(value(/:root:not\(\[data-theme="dark"\]\)/)).toBe(C.SIDEBAR_BG.light);
+    expect(value(/:root\[data-theme="light"\]/)).toBe(C.SIDEBAR_BG.light);
   });
+  for (const id of ["sky", "meadow", "violet", "mint"]) for (const mode of ["light", "dark"] as const) {
+    it(`${id}/${mode}: every preset and automatic identity colour reads on the built-in page and sidebar`, () => {
+      const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "tokens.css"), "utf8");
+      const body = new RegExp(`\\.theme-swatch\\[data-palette="${id}"\\]\\[data-tone="${mode}"\\]\\s*\\{([^{}]*)\\}`).exec(css)![1]!;
+      const values = Object.fromEntries([...body.matchAll(/--(bg|bg-sidebar):\s*(#[0-9a-f]{6});/g)].map(m => [m[1]!, m[2]!]));
+      for (const p of [...C.IDENTITY_PALETTE, ...C.AUTO_PALETTE]) for (const bg of [values.bg!, values["bg-sidebar"]!]) {
+        expect(contrastRatio(p[mode], bg), `${p.id} ${mode} on ${bg}`).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+  }
 });
 
 describe("a colour as given, as kept, as drawn", () => {

@@ -17,6 +17,7 @@ import { applyPageTheme, pageNow, resolvedMode, themesStore } from "./app-themes
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { StaleTabPrompt, isStaleModuleError } from "./stale-tab.js";
 import { Dialog } from "./ui-dialog.js";
+import { ThemePicker, paletteName } from "./theme-picker.js";
 import { InstanceNav, RosterNav, namesStore, phoneDrawerStore, setNamesPrimary, sidebarDensityStore, setSidebarDensity, compactNameStore, setCompactName } from "./instance-nav.js";
 import { usageRailStore } from "./header-tools.js";
 import { RightRail, sidePanelStore } from "./side-panel.js";
@@ -510,18 +511,21 @@ function ViewOnlyNav({ route }) {
  */
 export function DevicePrefs({ labels = false, fields = ["theme", "language", "names"] } = {}) {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
+  const [palette, setPalette] = useState(globalThis.AgendTheme?.getPalette?.() || ""), [coloursOpen, setColoursOpen] = useState(false);
   const [l, setL] = useState(lang());
   const names = useStore(namesStore);   // #1722
   const density = useStore(sidebarDensityStore).value;
   const compactName = useStore(compactNameStore).value ?? names.primary;
   // #1665: what is in force, as it changes — another device's choice arriving while this is open is shown at once.
-  useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
+  useEffect(() => globalThis.AgendTheme?.onChange?.(value => { setTheme(value); setPalette(globalThis.AgendTheme.getPalette?.() || ""); }), []);
   useEffect(() => onLang(setL), []);
   const shows = (field) => fields.includes(field);
   return html`<div class=${`prefs${labels ? " labelled" : ""}`}>
     ${shows("theme") ? html`<label class="pref"><${Icon} name="sun" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.theme")}</span>
-      <select id=${labels ? "pref-theme" : undefined} value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { setTheme(e.target.value); if (typeof AgendTheme !== "undefined") AgendTheme.set(e.target.value); savePref("theme", e.target.value); }}>
-        <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option></select></label>` : null}
+      <select id=${labels ? "pref-theme" : undefined} value=${theme} aria-label=${t("app.theme")} onChange=${(e) => { const value = e.target.value; if (value === "other") { e.target.value = theme; setColoursOpen(true); return; } setTheme(value); if (typeof AgendTheme !== "undefined") AgendTheme.set(value); savePref("theme", value); }}>
+        <option value="system">${t("app.themeSystem")}</option><option value="light">${t("app.themeLight")}</option><option value="dark">${t("app.themeDark")}</option>
+        <option value="other">${palette ? t("app.themeOtherActive", paletteName(palette)) : t("app.themeOther")}</option></select></label>` : null}
+    ${coloursOpen ? html`<${ThemePicker} onClose=${() => setColoursOpen(false)} />` : null}
     ${shows("language") ? html`<label class="pref"><${Icon} name="globe" size=${16} /><span class=${labels ? "pref-label" : "sr-only"}>${t("app.language")}</span>
       <select id=${labels ? "pref-lang" : undefined} value=${l} aria-label=${t("app.language")} onChange=${(e) => { setL(e.target.value); setLang(e.target.value); savePref("lang", e.target.value); }}>
         <option value="en">English</option><option value="zh-TW">中文</option></select></label>` : null}
