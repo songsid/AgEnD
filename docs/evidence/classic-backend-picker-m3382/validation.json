@@ -59,5 +59,16 @@
     "No real vendor CLI, model request or live room operation was run.",
     "Headless captures exercise the real web app and command routes; the final switch button was not pressed.",
     "Native Discord and Telegram flows use adapter stubs; no messages were sent to live chats."
-  ]
+  ],
+  "publicContracts": {
+    "command": "npx vitest run tests/changelog-fragments.test.ts tests/cli-registry-no-literal-lists.test.ts --maxWorkers=2",
+    "passed": 79,
+    "skipped": 0,
+    "files": 2
+  },
+  "alphaSync": {
+    "base": "8f754300d5b636fef7ba6f60f35916095c54effc",
+    "ownAddedRemovedLinesUnchanged": true,
+    "addedRemovedLines": 607
+  }
 }
