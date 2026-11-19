@@ -1,0 +1,73 @@
+{
+  "stage": "dev port",
+  "mainMerge": "44e63b0994fde754ee86531918e5ae2febca5a95",
+  "devBase": "ae62202a30b6ff53f0a8b151252035e314c91ef1",
+  "files": [
+    {
+      "path": "changes/4211-login-picker-rows.md",
+      "sha256": "c70aeb09c30b2e16cc43e57be480fb609c41c47e91443beb5261e54e656bd1f0"
+    },
+    {
+      "path": "changes/4211-login-picker-rows.zh-TW.md",
+      "sha256": "a3eb587bccbbb02dc27d8766ce91b563031f89e885fe082322b0dcf2c49999a0"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/README.md",
+      "sha256": "e24e96d63051bcee1934a31079a703913cbf62fe5e2d073562b19ed9e8f5aaae"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/manifest.json",
+      "sha256": "8be904f09736e7d8bb52a683d5cd9dbbd0e8b8f1c1050aaaf7f0bb22bfd291a5"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/before.log",
+      "sha256": "2fc7afcb3e993d0f01217580816d14715225b0d9ab5d5f9f5bd4f84c1a747706"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/results.json",
+      "sha256": "044294a7c3592240920db8eccf7d9aeb0a023536af87888d330b25025b835534"
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "sha256": "764db7b2e9bfcc297c872381784874b394ab5a71308313b3bd8e3d9bde3a8bf5"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "fc863a704a5825bf9b8a21f7314ea90a5d8650cfb51cbf4875c09410d4b57f20"
+    },
+    {
+      "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "sha256": "87fbc1d46c8093ea82120b8232dbe715aed0633593178b0636e7b83b422f9481"
+    },
+    {
+      "path": "tests/fleet-label-1131.test.ts",
+      "sha256": "1021c6cbe9f2311261cf5a8f8c321f2ec73c539021d23327b5d49e81bfd6a828"
+    },
+    {
+      "path": "tests/install-cli-login-1059.test.ts",
+      "sha256": "dc80741523dabecce7e214121e4b8d644be34f7d0602bb720c4921264d5cf6de"
+    },
+    {
+      "path": "tests/login-one-entry-1131.test.ts",
+      "sha256": "279e72bb5db6d808e189ecb4e1a3b53e423592ed7cfcaa421760fffd4edcc0c7"
+    },
+    {
+      "path": "tests/login-picker-rows-m3360.test.ts",
+      "sha256": "50459df110d9c0da7ce6aa187d65173a563b968ff011599c3fcab29ed6544684"
+    },
+    {
+      "path": "tests/login-precheck.test.ts",
+      "sha256": "0aa200a256cf821098d9dcc8c7ff08a347c1931bd1fb987d62169111d89cbb6b"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/dev/README.md",
+      "sha256": "9a6cd9ebea264544c988d38781584f1fd2c30bbcd92f68388c1b74bf9a982fe6"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/dev/port-proof.json",
+      "sha256": "ea5837a361e198c384e040627d1885349362fe1564f0a605acf8e389220e0b44"
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "mainMerge": "44e63b0994fde754ee86531918e5ae2febca5a95",
+  "devBase": "ae62202a30b6ff53f0a8b151252035e314c91ef1",
+  "paths": [
+    {
+      "path": "changes/4211-login-picker-rows.md",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "2a609095ea4051adbabf0f744dbd0143a87b38296b25db808511456e1c4859fa",
+      "devOwnSha256": "2a609095ea4051adbabf0f744dbd0143a87b38296b25db808511456e1c4859fa",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "changes/4211-login-picker-rows.zh-TW.md",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "122738906312688e64b0a08ead74f8b08877e5c9324a3a6cc4a717c3e6ae278b",
+      "devOwnSha256": "122738906312688e64b0a08ead74f8b08877e5c9324a3a6cc4a717c3e6ae278b",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/README.md",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "6c54d843e4c1cb702f14006c281ac105d4da528545bdcde53948f5b1f594680d",
+      "devOwnSha256": "6c54d843e4c1cb702f14006c281ac105d4da528545bdcde53948f5b1f594680d",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/manifest.json",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "b87fa6f9aa8c10bea59f6e644146f2fed8a1d7bfb54b7192849d84d2cb62adff",
+      "devOwnSha256": "b87fa6f9aa8c10bea59f6e644146f2fed8a1d7bfb54b7192849d84d2cb62adff",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/before.log",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "361cbaec25747632cd9a89dc5ad8aa4f73ed9c77dfb8e5483bb613187ce152d6",
+      "devOwnSha256": "361cbaec25747632cd9a89dc5ad8aa4f73ed9c77dfb8e5483bb613187ce152d6",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/results.json",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "58d4b8a631d275afca06471694581ae023c9ae301e6147ac889d63deaeb87940",
+      "devOwnSha256": "58d4b8a631d275afca06471694581ae023c9ae301e6147ac889d63deaeb87940",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "1a6922ec7439e9624e79543cd04be222ddab79991d18f7c5176b84a378eb353d",
+      "devOwnSha256": "1a6922ec7439e9624e79543cd04be222ddab79991d18f7c5176b84a378eb353d",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "42f48db513010ba3933df692d37b86e600c696f87500eb53de50eedd6df0d7d6",
+      "devOwnSha256": "42f48db513010ba3933df692d37b86e600c696f87500eb53de50eedd6df0d7d6",
+      "fullBlobEqual": false
+    },
+    {
+      "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "ddfe1a11446bfe956d68204439be0ac090e7e7fff5bfb21474ffe64c91ba60bb",
+      "devOwnSha256": "ddfe1a11446bfe956d68204439be0ac090e7e7fff5bfb21474ffe64c91ba60bb",
+      "fullBlobEqual": false
+    },
+    {
+      "path": "tests/fleet-label-1131.test.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "216575196d5363a7f2ae85f94845f29eac42dcb94ff6993d56fea0f71e7f92e6",
+      "devOwnSha256": "216575196d5363a7f2ae85f94845f29eac42dcb94ff6993d56fea0f71e7f92e6",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "tests/install-cli-login-1059.test.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "9cebcc6de38b8f1aa64687afd194f455ee9e8183455f30f67eec550ca0533b91",
+      "devOwnSha256": "9cebcc6de38b8f1aa64687afd194f455ee9e8183455f30f67eec550ca0533b91",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "tests/login-one-entry-1131.test.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "b42f622dffbd177d055ee33abd8ac37ca5ef510a031976d10d8c43feaf6c1ced",
+      "devOwnSha256": "b42f622dffbd177d055ee33abd8ac37ca5ef510a031976d10d8c43feaf6c1ced",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "tests/login-picker-rows-m3360.test.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "9e332960ed01f7d0d369496645616a4612666c723216c306886ee149b2e95781",
+      "devOwnSha256": "9e332960ed01f7d0d369496645616a4612666c723216c306886ee149b2e95781",
+      "fullBlobEqual": true
+    },
+    {
+      "path": "tests/login-precheck.test.ts",
+      "ownLinesEqual": true,
+      "mainOwnSha256": "f61a671634092d842c36e472fd729b9a5a2d8c5a195f6d07ed055c3aaa8da4fb",
+      "devOwnSha256": "f61a671634092d842c36e472fd729b9a5a2d8c5a195f6d07ed055c3aaa8da4fb",
+      "fullBlobEqual": true
+    }
+  ],
+  "methods": [
+    {
+      "path": "src/fleet-manager.ts",
+      "method": "promptLoginBackends",
+      "equal": true
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "method": "notifyAlert",
+      "equal": true
+    }
+  ],
+  "incomingSkillPreserved": true,
+  "scope": "Static comparison only; no local test, provider, CLI or browser campaign.",
+  "devPortCommit": "c94e51d09f74c503fb7fa4de7d0e320a0cab4092"
+}
