@@ -156,14 +156,23 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     // The browser's own undo or redo went ahead (one it could not cancel, or a script's execCommand("undo"), which has no
     // beforeinput): what it left is a change of its own — the history starts afresh.
     if (h.native || e.inputType === "historyUndo" || e.inputType === "historyRedo") { h.native = false; h.undo = []; h.redo = []; h.kind = null; }
-    h.last = snap(el);                              // mid-composition too: the value the next edit starts from
+    // M-3356 (the user, iPhone, 注音: the candidate bar blanked on every key): never read the field's selection while an
+    // IME composes — iOS redraws its candidate bar when the page asks. compositionend (and WebKit's input after it) take
+    // the value the next edit starts from.
+    if (h.composing || e.isComposing) return;
+    h.last = snap(el);
   };
   const onCompStart = (e) => {
     const el = field(e);
     if (!el) return;
     const h = historyFor(el);
-    sync(el, h);
-    push(h.undo, snap(el)); h.redo = [];
+    // M-3356: the step a composition begins is the field as the last edit left it (already read, outside the composition);
+    // only a field a script changed since is read again. The price (#4208 review F2): a caret moved since without an
+    // edit (a tap elsewhere) is not in that step, so undoing the composition puts the caret where the last edit ended —
+    // the value is right. Reading it here is what iOS answers with a candidate-bar redraw.
+    if (String(el.value ?? "") === h.last.v) { h.marked = null; push(h.undo, h.last); }
+    else { sync(el, h); push(h.undo, snap(el)); }
+    h.redo = [];
     h.composing = true; h.kind = null;
   };
   const onCompEnd = (e) => {
@@ -173,6 +182,9 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     h.composing = false;
     h.last = snap(el);                              // WebKit's last input comes after compositionend: onInput updates it again
   };
+  // M-3356: a field's history starts when it takes the focus — its first read is never inside a composition (a first key
+  // that starts an IME would otherwise read the selection there).
+  const onFocus = (e) => { const el = field(e); if (el) historyFor(el); };
   const onKey = (e) => {
     const el = field(e);
     if (!el) return;
@@ -181,6 +193,7 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     e.preventDefault();                             // never the browser's page-wide stack, even when this field has no step
     step(el, which === "redo", win);
   };
+  doc.addEventListener("focusin", onFocus, true);
   doc.addEventListener("beforeinput", onBefore, true);
   doc.addEventListener("input", onInput, true);
   doc.addEventListener("compositionstart", onCompStart, true);
@@ -188,6 +201,7 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
   doc.addEventListener("keydown", onKey, true);
   return () => {
     doc.removeEventListener("beforeinput", onBefore, true);
+    doc.removeEventListener("focusin", onFocus, true);
     doc.removeEventListener("input", onInput, true);
     doc.removeEventListener("compositionstart", onCompStart, true);
     doc.removeEventListener("compositionend", onCompEnd, true);
