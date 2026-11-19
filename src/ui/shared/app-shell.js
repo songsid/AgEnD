@@ -1335,6 +1335,27 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
     let leaving = false, closingUntil = 0;
     const closing = (el, on) => { if (el?.setAttribute) { if (on) el.setAttribute("data-kb-closing", ""); else el.removeAttribute("data-kb-closing"); } };
     const unfit = (el) => { if (el?.style) { el.style.removeProperty("height"); el.style.removeProperty("transform"); } closing(el, false); closingUntil = 0; };
+    // M-3364 (prototype): a browser that honours this page's interactive-widget=resizes-content (WebKit since Safari 27.3
+    // beta; Chrome on Android) shrinks the page itself with the keyboard: the stylesheet's 100dvh is then the view, with no
+    // pan. Seen once with the keyboard up — a 100dvh probe as tall as the visual viewport, at the top — the shell is left
+    // to the stylesheet for the rest of the page's life: no inline height, no pan undone, no per-key hold (the browser's
+    // own resize). Until then, and on every browser that does not, everything below runs as before (the fallback).
+    let native = false, probe = null;
+    const nativeResizes = () => {
+      if (native) return true;
+      if (!(tallest - vv.height > KEYBOARD_MIN_PX) || Math.round(Number(vv.offsetTop) || 0) !== 0 || !document.body) return false;
+      if (!probe) {
+        probe = document.createElement("div");
+        probe.setAttribute("aria-hidden", "true");
+        probe.setAttribute("data-kb-probe", "");
+        probe.style.cssText = "position:fixed;top:0;left:0;width:0;height:100vh;height:100dvh;visibility:hidden;pointer-events:none";
+        document.body.appendChild(probe);
+      }
+      const ph = Number(probe.getBoundingClientRect?.().height) || 0;
+      native = ph > 0 && Math.abs(ph - vv.height) <= 1;
+      if (native && typeof document.documentElement?.setAttribute === "function") document.documentElement.setAttribute("data-kb-native", "");
+      return native;
+    };
     const fit = () => {
       const el = root.current;
       if (!el?.style) return;
@@ -1343,6 +1364,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       const typingNow = coarse() && isTextEntry(document.activeElement);
       const on = coarse() && (shellStore.get().keyboard || typingNow || now() < followUntil) && Math.abs((Number(vv.scale) || 1) - 1) < 0.01;
       if (!on) { unfit(el); fitH = 0; fitTop = 0; fitW = -1; moveSince = 0; return; }
+      if (nativeResizes()) { unfit(el); fitH = 0; fitTop = 0; fitW = -1; moveSince = 0; return; }   // M-3364: the browser's own
       // M-3244 (the user, iPhone, Zhuyin): while an IME composes, the keyboard's state waits for compositionend (check) — the
       // shell's height does not. The keyboard coming up, or its candidate bar, mid-composition made the view shorter while the
       // shell kept the height it had (the whole screen, or the view before the bar), and the box sat under the keyboard for
@@ -1436,6 +1458,7 @@ export function Shell({ panels, onNewInstance, viewOnly = false }) {
       if (downTimer && typeof clearTimeout === "function") clearTimeout(downTimer);
       if (moveTimer && typeof clearTimeout === "function") clearTimeout(moveTimer);
       unfit(root.current);
+      probe?.remove?.();
       document.removeEventListener("compositionstart", start, true); document.removeEventListener("compositionend", end, true);
     };
   }, []);
