@@ -51,6 +51,8 @@ export interface NeedsYouItem {
   configIssue?: ConfigIssue;
   contactTicket?: { id: string; source: string; target: string };
   contactSuggestion?: { instance: string };
+  /** M-3381: the chat's one line for a world's restricted-mode suggestions — how many rooms it stands for. */
+  contactSuggestionCount?: number;
   generalLocation?: true;
   /** Keep reason=dialog for tabs loaded before this compatibility hold existed. */
   kiroChoice?: true;

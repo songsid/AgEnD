@@ -61,6 +61,8 @@ export class ContactAuthStore {
       CREATE TABLE IF NOT EXISTS contact_auth_history (id TEXT PRIMARY KEY, instance TEXT NOT NULL, at INTEGER NOT NULL, row_json TEXT NOT NULL);`);
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_suggestions (instance TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_room_context (instance TEXT PRIMARY KEY, context_json TEXT NOT NULL)");
+    // M-3381: when the restricted-mode suggestion was first raised for a room (its age counts from here, not from the room).
+    db.exec("CREATE TABLE IF NOT EXISTS contact_auth_suggestion_raised (instance TEXT PRIMARY KEY, raised_at INTEGER NOT NULL)");
     db.transaction(() => {
       const existed = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_auth_outcome_notices'").get();
       db.exec("CREATE TABLE IF NOT EXISTS contact_auth_outcome_notices (ticket_id TEXT PRIMARY KEY)");
@@ -78,6 +80,11 @@ export class ContactAuthStore {
     const next = { generation, threadId: input.threadId, fileIds: [...new Set([...prior.fileIds, ...input.fileIds])].slice(-256) };
     this.db.prepare("INSERT INTO contact_auth_room_context VALUES (?,?) ON CONFLICT(instance) DO UPDATE SET context_json=excluded.context_json")
       .run(instance, JSON.stringify(next));
+  }
+  /** M-3381: when the restricted-mode suggestion was first raised for `instance` (recorded now, the first time it is asked). */
+  suggestionRaisedAt(instance: string): number {
+    this.db.prepare("INSERT INTO contact_auth_suggestion_raised VALUES (?,?) ON CONFLICT(instance) DO NOTHING").run(instance, this.now());
+    return (this.db.prepare("SELECT raised_at FROM contact_auth_suggestion_raised WHERE instance=?").get(instance) as { raised_at: number }).raised_at;
   }
   suggestionDismissed(instance: string): boolean {
     return !!this.db.prepare("SELECT 1 FROM contact_auth_suggestions WHERE instance=?").get(instance);
@@ -275,8 +282,8 @@ export class ContactAuthStore {
         if (!authority.current(request)) throw Error("stale-generation");
         ticket.deliveryId = authority.admit(request, ticket.id);
         ticket.state = "approved";
-        // Persist taint before any asynchronously scheduled outbox pump can expose input.
-        this.inheritOrigin(request.target, { ...request.origin, chain: [...request.origin.chain, request.target] });
+        // An administrator approval (including a standing grant) endorses this delivery.
+        // Keep its original origin on the ticket/source; do not merge it into the receiving agent.
         if (decision.grant) {
           if (request.origin.kind !== "human" || request.origin.people.length !== 1) throw Error("invalid-grant-origin");
           const previous = this.policy(request.target, request.targetGeneration);

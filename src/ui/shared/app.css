@@ -2259,6 +2259,8 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-group-head { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-1); color: var(--text-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
 .n-group-head a { color: inherit; }
 .n-group-head a:hover { text-decoration: underline; }
+/* M-3381: the rooms' restricted-mode suggestions, one closed group: its heading opens it. */
+.n-suggestions > summary { cursor: pointer; }
 .n-item { display: flex; gap: var(--s-3); padding: var(--s-3) var(--s-4); border-radius: var(--r-md); background: var(--surface); margin-bottom: 2px; }
 .n-icon { flex: none; margin-top: 2px; color: var(--warn); }
 .n-item.bad .n-icon { color: var(--danger); }
@@ -2275,6 +2277,10 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .notice-new { font-size: var(--fs-xs); color: var(--accent); font-weight: var(--fw-semibold); }
 .notice-sub { margin: 0 var(--s-1) var(--s-3); }
 .confirm-text { white-space: pre-wrap; font-size: var(--fs-sm); color: var(--text-2); }
+/* M-3387: a list closed under a confirm's text (every tool name a restricted switch stops), and the same on Permissions. */
+.confirm-more, .contact-would-all { margin-top: var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
+.confirm-more > summary, .contact-would-all > summary { cursor: pointer; }
+.confirm-more ul, .contact-would-all ul { margin: var(--s-1) 0 0; padding-left: var(--s-4); }
 
 /* ── Org chart (#1389): General → teams → instances. Connectors are borders and pseudo-elements; no inline style.
    Desktop: General's stem meets the bus over the team grid (no per-team ticks: a wrapped row would have nothing to

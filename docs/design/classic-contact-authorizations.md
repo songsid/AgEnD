@@ -38,6 +38,13 @@ remove that exception. Existing identity verification still applies.
 An approved application binds its exact arguments, origin, source and target
 generation, expiry and result recipient. Approval creates at most one durable
 outbox delivery. A lost confirmation is unknown, never permission to resend.
+An explicit administrator approval or a matching administrator-written standing
+grant endorses that delivery: it does not merge origin into the target, including
+General. The target's pre-existing origin is neither cleared nor replaced. The
+source room retains its own origin; the ticket retains the original origin and
+approval/grant audit. Approval is still contact permission, not permission for
+later data access or effects. This rule is prospective; old inherited origins
+are not silently cleared.
 Broadcast creates separate applications and reports each target's outcome.
 Decline and expiry each enqueue one short status-only system notice to the source
 agent, naming the ticket and target. Approval emits no such CLI notice. The
@@ -54,9 +61,10 @@ approved work reuses only its authorized return path, not a correlation string a
 The topmost human origin is carried by server-owned work records across relays,
 later turns, schedules, retries and restart. Mixed or unavailable origins do not
 become administrator work merely because the latest message is from an admin.
-The first slice conservatively stores this union per agent instance, including
-ordinary workers that receive the work. It is not keyed by conversation or work
-item. A later direct administrator message merges into that retained history; it
+The first slice conservatively stores this union per agent instance for ordinary
+relays without administrator endorsement. Approved or granted deliveries are
+excluded from target inheritance as described above. It is not keyed by
+conversation or work item. A later direct administrator message merges into that retained history; it
 does not clear earlier non-admin or unknown input. Approval allows the retained
 request once; it does not clear the union. Idle and compaction never clear it.
 Turning a Classic room back to legacy restores that room's outgoing behavior,

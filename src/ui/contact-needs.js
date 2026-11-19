@@ -15,7 +15,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
 import { getPermissions, getTicket, putPermissions } from "./contact-auth-client.js";
 import { TicketCard } from "./contact-authorizations.js";
-import { notCovered, wouldDisableText } from "./contact-permissions.js";
+import { notCovered, wouldDisableMore, wouldDisableText } from "./contact-permissions.js";
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -50,7 +50,7 @@ function SuggestionNeed({ item }) {
       if (!r.ok) { toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "loadFailed"), false); return; }
       const p = r.data;
       if (p.canSetMode !== true) { toast(ca("forbidden"), false); return; }
-      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n") });
+      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n"), more: wouldDisableMore(p.roomTools) });
       if (!ok) return;
       const w = await putPermissions(name, { revision: p.revision, mode: "restricted" });
       toast(ca(w.ok ? "saved" : w.code === "conflict" ? "stale" : w.code === "forbidden" ? "forbidden" : "saveFailed"), w.ok);
@@ -73,6 +73,22 @@ function SuggestionNeed({ item }) {
       <a class="btn btn-sm" href=${`${detailsPath(name)}?cat=permissions`}>${ca("suggestView")}</a>
       <button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${() => void later()}>${ca("suggestLater")}</button>
     </div>`;
+}
+
+/** M-3381: a Needs you item that is a room's restricted-mode suggestion. */
+export const isRestrictedSuggestion = (item) => item?.type === "contact" && item.reason === "contact_restricted_suggestion";
+
+/**
+ * M-3381 (the user, beta.14: one row per existing room flooded the list): every room's restricted-mode suggestion in ONE
+ * low-key group, closed until opened — "N existing ClassicBot rooms can switch to restricted mode" — each room's card
+ * (switch / preview / later) inside it.
+ */
+export function ContactSuggestionsGroup({ items }) {
+  if (!items?.length) return null;
+  return html`<details class="n-group n-suggestions" data-trust="permission">
+    <summary class="n-group-head">${ca("suggestGroup", items.length)}</summary>
+    ${items.map((item) => html`<${ContactNeedsItem} key=${item.id} item=${item} />`)}
+  </details>`;
 }
 
 /** One contact item of Needs you (item.type "contact"); null for a reason this page doesn't know. */
