@@ -10,14 +10,14 @@
 //                                                           GITHUB_OUTPUT set, writes run=true|false there
 //   node scripts/ci/keyboard-suite.mjs --unit               every listed unit test passes (each one found and run)
 //   node scripts/ci/keyboard-suite.mjs --reverts [ids…]     each case's fix undone, alone: at least one of its listed tests
-//                                                           fails (the file is always put back)
+//                                                           fails (the file is always put back, on Ctrl+C or SIGTERM too)
 //   node scripts/ci/keyboard-suite.mjs --smokes [files…]    the smokes, one after another, PW_ENGINE as set (CI: webkit in
 //                                                           the pinned Playwright image), each on its own port
 //
 // The manifest's integrity (files, test titles, each revert's text found exactly once) is pinned on every PR by
 // tests/keyboard-suite-m3357.test.ts; CI's keyboard-suite job runs --unit, --reverts and the WebKit smokes when a PR
 // touches the keyboard's code (KEYBOARD_PATHS).
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -33,7 +33,12 @@ export const KEYBOARD_PATHS = [
   /^src\/ui\/hub-room-composer\.js$/,          // the Hub's composer
   /^src\/ui\/shared\/text-undo\.js$/,          // document listeners that read the box's selection
   /^src\/ui\/shared\/chat-quote\.js$/,
+  /^src\/ui\/shared\/app\.js$/,                // installs text-undo's document listeners, mounts the Shell
+  /^src\/ui\/panel-hub\.js$/,                 // the Hub conversation's quote listeners
+  /^src\/ui\/chat-workspace\.js$/,            // the desktop panes' quote listeners
   /^scripts\/ci\/keyboard-suite\.mjs$/,
+  /^tests\/helpers\/(mini-dom|app-harness)\.ts$/, // the harness every case runs on: a change could make the suite pass for nothing
+  /^package(-lock)?\.json$/,                    // vitest, tsx, playwright-core
   /^tests\/(web-keyboard-2478|web-keyboard-fit-3111|web-typing-steady-m3265|web-composer-2478|web-ime-composition-m3356|keyboard-suite-m3357)\.test\.ts$/,
   /^scripts\/manual\/smoke\/(smoke-ime-composition|smoke-phone-kb-steady|smoke-phone-ime-keyboard-m3244|smoke-phone-typing-steady-m3265|smoke-phone-keyboard-motion-m3327)\.mts$/,
   /^scripts\/manual\/smoke-fixture\//,
@@ -166,12 +171,17 @@ export function check(root = process.cwd()) {
 
 export function touches(files) { return files.some((f) => KEYBOARD_PATHS.some((re) => re.test(f))); }
 
-const VITEST = ["node_modules/vitest/vitest.mjs", "run", "--maxWorkers=2"];
+// KEYBOARD_SUITE_VITEST: another runner in vitest's place (tests/keyboard-suite-m3357.test.ts: one that waits to be stopped).
+const VITEST = [process.env.KEYBOARD_SUITE_VITEST || "node_modules/vitest/vitest.mjs", "run", "--maxWorkers=2"];
+/** The vitest run in progress (for a stop to end it with the rest). */
+let running = null;
 /** Run vitest on `files`; per test title, its status ("passed", "failed", "skipped" …); null when vitest gave no report. */
-function vitest(root, files) {
+async function vitest(root, files) {
   const dir = mkdtempSync(join(tmpdir(), "kb-suite-")), out = join(dir, "report.json");
   try {
-    spawnSync(process.execPath, [...VITEST, "--reporter=json", `--outputFile=${out}`, ...files], { cwd: root, stdio: ["ignore", "ignore", "inherit"], env: process.env });
+    running = spawn(process.execPath, [...VITEST, "--reporter=json", `--outputFile=${out}`, ...files], { cwd: root, stdio: ["ignore", "ignore", "inherit"], env: process.env });
+    await new Promise((done) => { running.on("close", done); running.on("error", done); });
+    running = null;
     if (!existsSync(out)) return null;
     const report = JSON.parse(readFileSync(out, "utf8")), seen = new Map();
     for (const f of report.testResults ?? []) for (const a of f.assertionResults ?? []) {
@@ -183,9 +193,9 @@ function vitest(root, files) {
 }
 const statusOf = (seen, file, title) => seen?.get(`${file}\u0000${title}`);
 
-export function runUnit(root = process.cwd()) {
+export async function runUnit(root = process.cwd()) {
   const files = [...new Set(CASES.flatMap((c) => Object.keys(c.tests)))];
-  const seen = vitest(root, files), bad = [];
+  const seen = await vitest(root, files), bad = [];
   if (!seen) return ["vitest gave no report"];
   for (const c of CASES) for (const [f, titles] of Object.entries(c.tests)) for (const t of titles) {
     const s = statusOf(seen, f, t);
@@ -194,18 +204,34 @@ export function runUnit(root = process.cwd()) {
   return bad;
 }
 
-export function runReverts(root = process.cwd(), only = []) {
+/**
+ * Each case's fix undone alone, its tests run. The source file is written in place and always put back: after the run,
+ * on an error, and on Ctrl+C or a SIGTERM (#4210 review: a stop must never leave a fix undone in someone's checkout) —
+ * the run in progress is stopped, the file put back, and the exit is 130 / 143.
+ */
+export async function runReverts(root = process.cwd(), only = []) {
   const bad = [];
-  for (const c of CASES.filter((k) => !only.length || only.includes(k.id))) {
-    const path = join(root, c.revert.file), before = readFileSync(path, "utf8");
-    if (before.split(c.revert.from).length !== 2) { bad.push(`${c.id}: its revert does not apply (see --list / the manifest test)`); continue; }
-    let seen;
-    try { writeFileSync(path, before.replace(c.revert.from, () => c.revert.to)); seen = vitest(root, Object.keys(c.tests)); }
-    finally { writeFileSync(path, before); }
-    const failed = Object.entries(c.tests).flatMap(([f, ts]) => ts.filter((t) => statusOf(seen, f, t) === "failed"));
-    console.log(`${failed.length ? "red  " : "GREEN"} ${c.id} (${c.refs.join(", ")}): ${failed.length} of its tests failed with the fix undone`);
-    if (!failed.length) bad.push(`${c.id}: its fix undone, none of its tests failed — the suite no longer pins it`);
-  }
+  let restore = null;
+  const stop = (signal) => {
+    try { running?.kill(signal); } catch { /* already gone */ }
+    if (restore) { restore(); restore = null; }
+    console.error(`keyboard suite: stopped (${signal}); every source file is as it was`);
+    process.exit(signal === "SIGINT" ? 130 : 143);
+  };
+  process.on("SIGINT", stop); process.on("SIGTERM", stop);
+  try {
+    for (const c of CASES.filter((k) => !only.length || only.includes(k.id))) {
+      const path = join(root, c.revert.file), before = readFileSync(path, "utf8");
+      if (before.split(c.revert.from).length !== 2) { bad.push(`${c.id}: its revert does not apply (see --list / the manifest test)`); continue; }
+      let seen;
+      restore = () => writeFileSync(path, before);
+      try { writeFileSync(path, before.replace(c.revert.from, () => c.revert.to)); seen = await vitest(root, Object.keys(c.tests)); }
+      finally { if (restore) { restore(); restore = null; } }
+      const failed = Object.entries(c.tests).flatMap(([f, ts]) => ts.filter((t) => statusOf(seen, f, t) === "failed"));
+      console.log(`${failed.length ? "red  " : "GREEN"} ${c.id} (${c.refs.join(", ")}): ${failed.length} of its tests failed with the fix undone`);
+      if (!failed.length) bad.push(`${c.id}: its fix undone, none of its tests failed — the suite no longer pins it`);
+    }
+  } finally { process.off("SIGINT", stop); process.off("SIGTERM", stop); }
   return bad;
 }
 
@@ -230,7 +256,7 @@ function changedFiles() {
   return files.length ? files : null;
 }
 
-function main(argv) {
+async function main(argv) {
   const [mode, ...rest] = argv, root = process.cwd();
   const fail = (list) => { for (const e of list) console.error(`::error title=keyboard suite::${e}`); return list.length ? 1 : 0; };
   if (mode === "--list") {
@@ -251,11 +277,11 @@ function main(argv) {
   }
   const errors = check(root);
   if (errors.length) return fail(errors);
-  if (mode === "--unit") return fail(runUnit(root));
-  if (mode === "--reverts") return fail(runReverts(root, rest));
+  if (mode === "--unit") return fail(await runUnit(root));
+  if (mode === "--reverts") return fail(await runReverts(root, rest));
   if (mode === "--smokes") return fail(runSmokes(root, rest));
   console.error("usage: keyboard-suite.mjs --list | --touches [files…] | --unit | --reverts [ids…] | --smokes [files…]");
   return 2;
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = main(process.argv.slice(2));
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) process.exitCode = await main(process.argv.slice(2));

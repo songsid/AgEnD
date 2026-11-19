@@ -9,6 +9,6 @@ export const SMOKES: Array<{ file: string; hp: number }>;
 export function check(root?: string): string[];
 /** Whether any of `files` is keyboard code. */
 export function touches(files: string[]): boolean;
-export function runUnit(root?: string): string[];
-export function runReverts(root?: string, only?: string[]): string[];
+export function runUnit(root?: string): Promise<string[]>;
+export function runReverts(root?: string, only?: string[]): Promise<string[]>;
 export function runSmokes(root?: string, only?: string[]): string[];
