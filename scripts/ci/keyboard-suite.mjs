@@ -59,7 +59,7 @@ export const CASES = [
   { id: "tabs-over-keyboard", refs: ["#2478"], what: "With the keyboard up, the bottom tabs and the line under the composer sat between the box and the keyboard; innerHeight shrinks with the view on iOS, so it is no measure.",
     tests: { [T2478]: ["innerHeight stays, the visual viewport shrinks — kb-open while typing; back at once on blur",
       "innerHeight shrinks with the view (iOS Safari; Android under resizes-content) — still the keyboard: the old innerHeight − height test saw 0, the strips stayed"] },
-    // smoke-2478-keyboard measures the tabs in an agent's chat, where M-3115 (#3911) took them away: stale, not in the suite.
+    // No smoke: smoke-2478-keyboard measured the tabs in an agent's chat, which M-3115 (#3911) took away; retired (M-3362).
     smokes: [],
     revert: { file: SHELL, from: "if (!held) tallest = Math.max(tallest, window.innerHeight || 0, typing ? 0 : h);", to: "if (!held) tallest = window.innerHeight || 0;" } },
   { id: "candidate-bar-flips-tabs", refs: ["#2517"], what: "An IME's candidate bar crossing the keyboard threshold took the tabs out and back on every keystroke.",
