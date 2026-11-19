@@ -5660,18 +5660,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       && !service.host.store.suggestionDismissed(room.instanceName) && this.contactAdminOf(room.instanceName, actor))
       .map(room => ({ id: `contact-suggest:${room.instanceName}`, type: "contact" as const,
         reason: "contact_restricted_suggestion" as const, instance: room.instanceName,
-        since: Date.parse(room.createdAt) || 0, detail: "", contactSuggestion: { instance: room.instanceName } }))];
+        since: service.host.store.suggestionRaisedAt(room.instanceName), detail: "", contactSuggestion: { instance: room.instanceName } }))];
   }
+  /**
+   * The chat's contact items. M-3381 (the user, beta.14): the restricted-mode suggestions are ONE low-key line per world —
+   * "N existing ClassicBot rooms can switch to restricted mode", saying where to act (the dashboard's Needs you, or a
+   * room's Permissions) — not one line per room; each room's age counts from when its suggestion was raised.
+   */
   private contactSuggestions(): WebNeedsItem[] {
     const rooms = this.classicChannels?.getAll().filter(room => room.restrictedMode !== true) ?? [];
     const store = this.contactService().host.store;
     const pending: WebNeedsItem[] = store.pending().map(ticket => ({ id: `contact:${ticket.id}`, type: "contact",
       reason: "contact_request", instance: ticket.target, owner: this.getAdapterForInstance(ticket.target)?.id,
       since: Date.parse(ticket.createdAt), detail: "", contactTicket: { id: ticket.id, source: ticket.source, target: ticket.target } }));
-    return [...pending, ...rooms.filter(room => !store.suggestionDismissed(room.instanceName)).map(room => ({
-      id: `contact-suggest:${room.instanceName}`, type: "contact", reason: "contact_restricted_suggestion",
-      instance: room.instanceName, owner: this.getAdapterForInstance(room.instanceName)?.id,
-      since: Date.parse(room.createdAt) || 0, detail: t("contact.suggest"), contactSuggestion: { instance: room.instanceName },
+    const byWorld = new Map<string, { count: number; since: number }>();
+    for (const room of rooms) {
+      if (store.suggestionDismissed(room.instanceName)) continue;
+      const owner = this.getAdapterForInstance(room.instanceName)?.id;
+      if (owner === undefined) continue;
+      const raised = store.suggestionRaisedAt(room.instanceName), group = byWorld.get(owner);
+      byWorld.set(owner, { count: (group?.count ?? 0) + 1, since: Math.min(group?.since ?? Infinity, raised) });
+    }
+    return [...pending, ...[...byWorld].map(([owner, group]) => ({
+      id: `contact-suggest:rooms:${owner}`, type: "contact", reason: "contact_restricted_suggestion", instance: "", owner,
+      since: group.since, detail: "", contactSuggestionCount: group.count,
     } as WebNeedsItem))];
   }
   acknowledgeContactSuggestion(instance: string, actor: ContactPerson): void {

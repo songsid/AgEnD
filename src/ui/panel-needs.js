@@ -28,7 +28,7 @@ import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
 import { GeneralLocation } from "./general-location.js";
 import { runtimeUpdateText } from "./runtime-update-status.js";
-import { ContactNeedsItem } from "./contact-needs.js";
+import { ContactNeedsItem, ContactSuggestionsGroup, isRestrictedSuggestion } from "./contact-needs.js";
 import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-security-notices.js";
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
@@ -201,11 +201,14 @@ export function NeedsPanel({ navKey }) {
   // The chat store owns a prompt's busy/answered state; redraw when it changes (and when it arrives).
   useEffect(() => { if (owner) return owner.subscribe(() => tick((n) => n + 1)); return undefined; }, [owner, lease]);
   const updates = items.filter(item => item.runtimeUpdate);
-  const groups = groupNeeds(items.filter(item => !item.runtimeUpdate));
+  // M-3381: the rooms' restricted-mode suggestions are one group (below the rest), counted once.
+  const suggestions = items.filter(isRestrictedSuggestion);
+  const groups = groupNeeds(items.filter(item => !item.runtimeUpdate && !isRestrictedSuggestion(item)));
+  const shownCount = items.length - suggestions.length + (suggestions.length ? 1 : 0) + asks.length;
   if (updates.length) groups.push({ instance: "", items: updates });
   const nowMs = Date.now();
   return html`<div data-effect-panel="needs" class="panel p-needs">
-    <${PanelHeader} title=${tn("title")} sub=${items.length + asks.length ? t("app.needsCount", items.length + asks.length) : null} />
+    <${PanelHeader} title=${tn("title")} sub=${shownCount ? t("app.needsCount", shownCount) : null} />
     <div data-trust="panel-content" class="panel-body"><div class="col">
       ${asks.length || decidedHere.length ? html`<section class="n-group n-proposals" aria-label=${tn("proposals")}>
         <h2 class="n-group-head">${tn("proposals")}</h2>
@@ -220,7 +223,7 @@ export function NeedsPanel({ navKey }) {
             // M-3339: a contact request or the restricted-mode suggestion — its own card (contact-needs.js; references only).
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
             : html`<${NeedsItem} key=${item.id} item=${item} nowMs=${nowMs} owner=${owner} />`)}
-        </section>`)}
+        </section>`).concat(suggestions.length ? [html`<${ContactSuggestionsGroup} key="contact-suggestions" items=${suggestions} />`] : [])}
       <${HostDirectoryNotices} />
       <${NotifyToggle} />
     </div></div>

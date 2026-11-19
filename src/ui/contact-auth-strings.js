@@ -84,6 +84,7 @@ register("contactAuth", {
     // Needs you / suggestion
     needsTitle: "{0} wants to contact {1}", needsOpen: "Open",
     suggestTitle: "We suggest switching this room to restricted mode",
+    suggestGroup: "{0} existing ClassicBot room(s) can switch to restricted mode",
     suggestBody: "Requests from people who aren't admins to other agents would wait for approval first.",
     suggestSwitch: "Switch this room", suggestView: "See the impact and allowed contacts", suggestLater: "Later",
   },
@@ -156,6 +157,7 @@ register("contactAuth", {
     decideFailed: "無法記錄這個決定。", alreadyDecided: "這個請求已在其他地方處理，已重新載入。",
     needsTitle: "{0} 想聯絡 {1}", needsOpen: "開啟",
     suggestTitle: "建議將這個房間切換為受限模式",
+    suggestGroup: "{0} 個既有 ClassicBot 房間可以切換為受限模式",
     suggestBody: "非管理員對其他 Agent 的請求，將先經過核准才會送出。",
     suggestSwitch: "切換這個房間", suggestView: "查看影響與常用轉交", suggestLater: "稍後",
   },
