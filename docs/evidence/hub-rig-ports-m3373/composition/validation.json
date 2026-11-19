@@ -1,0 +1,41 @@
+{
+  "base": "b3c1e36ec85ec308f11f74e0bf2938b0958d0e9d",
+  "family": "private initializedHub and directoryRuntimeRig in hub-compose.test.ts",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-compose.test.ts -t 'keeps the first reserved' --maxWorkers=2",
+    "baseFailed": 2,
+    "filtered": 142,
+    "reason": "Actual member/web competing binds return bound instead of EADDRINUSE before mount."
+  },
+  "fullFile": {
+    "command": "npx vitest run tests/hub-compose.test.ts --maxWorkers=2",
+    "passed": 144,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "finalSingleAttemptControl": {
+    "command": "npx vitest run tests/hub-compose.test.ts -t 'fails once when an explicitly released' --maxWorkers=2",
+    "passed": 1,
+    "filtered": 143,
+    "note": "After refining blocker bookkeeping to make accidental extra attempts countable; no fixture behavior changed after full-file pass."
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "preservedChecks": [
+    "real trusted HTTPS startup in the same home on first attempt",
+    "deliberate occupied web port fails once",
+    "nonmatching readiness errors are never retried",
+    "partial/foreign/missing-secret and protected-retention refusal leave no production listeners",
+    "member-await still checks actual member teardown; only unused web reservation is released",
+    "ordinary stop/remount, browser certificate reopen, consent and roles restart",
+    "intentional closed-port TCP self-connection probe unchanged"
+  ],
+  "limits": [
+    "One test-file family only; other M-3373 subtasks remain open.",
+    "Only owned disposable listeners, storage and inert directory fixtures; no live accounts or vendor/model/Fleet/Windows/browser campaign.",
+    "Shared lease helper, production code and timeout values unchanged."
+  ],
+  "rollback": "Revert this test file and evidence only; no product settings, authentication or Hub data change."
+}
