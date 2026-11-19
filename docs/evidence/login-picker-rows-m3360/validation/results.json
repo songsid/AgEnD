@@ -1,0 +1,35 @@
+{
+  "stages": [
+    {
+      "command": "npx vitest run tests/login-picker-rows-m3360.test.ts tests/login-one-entry-1131.test.ts tests/login-precheck.test.ts tests/prompts-never-silent-1133.test.ts",
+      "passed": 43,
+      "failed": 2,
+      "unselected": 0
+    },
+    {
+      "command": "npx vitest run tests/login-precheck.test.ts -t \"bare /login chooser|freshly installed\"",
+      "passed": 2,
+      "failed": 0,
+      "unselected": 9
+    },
+    {
+      "command": "npx vitest run tests/fleet-label-1131.test.ts",
+      "passed": 6,
+      "failed": 0,
+      "unselected": 0
+    }
+  ],
+  "distinctPassingTests": 51,
+  "typeChecks": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck:tests",
+      "exitCode": 0
+    }
+  ],
+  "scope": "Real FleetManager chooser and real Telegram/Discord payload builders, inert installed probes and provider send. No live accounts, provider request, fleet start, login/install, CLI or browser.",
+  "note": "Two status assertions moved from button labels to the corresponding legend lines; their selected rerun passes2, with9unselected excluded. Fleet header test preserves its exact first two lines. Distinct union includes the six fleet-label tests, not another count of the selected precheck tests."
+}

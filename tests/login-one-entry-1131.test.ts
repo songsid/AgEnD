@@ -38,10 +38,13 @@ describe("one /login picker for installing and signing in", () => {
     const choices = offered(notifyAlert);
     const byBackend = new Map(choices.map(c => [c.id.split(":").pop()!, c.label]));
     expect([...byBackend.keys()].sort()).toEqual(Object.keys(BACKEND_INSTALLATION_INFO).sort());
-    expect(byBackend.get("codex")).toBe(`codex · ${t("login.status_installed")} · ${t("login.status_auth")}`);
-    expect(byBackend.get("grok")).toBe(`grok · ${t("login.status_not_installed")} · ${t("login.status_install_then_auth")}`);
+    expect(byBackend.get("codex")).toBe("Codex");
+    expect(byBackend.get("grok")).toBe("Grok");
+    expect(notifyAlert.mock.calls[0][1].message).toContain(`Codex · ${t("login.status_installed")} · ${t("login.status_auth")}`);
+    expect(notifyAlert.mock.calls[0][1].message).toContain(`Grok · ${t("login.status_not_installed")} · ${t("login.status_install_then_auth")}`);
     // opencode can be installed, but has no sign-in flow.
-    expect(byBackend.get("opencode")).toBe(`opencode · ${t("login.status_not_installed")} · ${t("login.status_install")}`);
+    expect(byBackend.get("opencode")).toBe("OpenCode");
+    expect(notifyAlert.mock.calls[0][1].message).toContain(`OpenCode · ${t("login.status_not_installed")} · ${t("login.status_install")}`);
   });
 
   it("keeps every callback id inside Telegram's 64-byte callback_data cap", async () => {
