@@ -39,6 +39,15 @@ An approved application binds its exact arguments, origin, source and target
 generation, expiry and result recipient. Approval creates at most one durable
 outbox delivery. A lost confirmation is unknown, never permission to resend.
 Broadcast creates separate applications and reports each target's outcome.
+Decline and expiry each enqueue one short status-only system notice to the source
+agent, naming the ticket and target. Approval emits no such CLI notice. The
+existing 30-second Fleet sweep detects expiry even without a page read; startup
+also sweeps retained pending work. Notice admission and its durable dedup marker
+share the outbox transaction, so retries/restart cannot create another notice.
+Previously terminal tickets are baselined on upgrade rather than re-announced.
+The notice contains no human receipt, grant, original correlation or routing
+capability, and never permits a new contact. Outbox delivery/reconciliation rules
+still apply if transport becomes uncertain.
 `report_result` cannot be used as an unapproved new contact. A proven return on
 approved work reuses only its authorized return path, not a correlation string alone.
 

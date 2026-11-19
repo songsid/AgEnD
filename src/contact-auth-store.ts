@@ -61,6 +61,12 @@ export class ContactAuthStore {
       CREATE TABLE IF NOT EXISTS contact_auth_history (id TEXT PRIMARY KEY, instance TEXT NOT NULL, at INTEGER NOT NULL, row_json TEXT NOT NULL);`);
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_suggestions (instance TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_room_context (instance TEXT PRIMARY KEY, context_json TEXT NOT NULL)");
+    db.transaction(() => {
+      const existed = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_auth_outcome_notices'").get();
+      db.exec("CREATE TABLE IF NOT EXISTS contact_auth_outcome_notices (ticket_id TEXT PRIMARY KEY)");
+      // Do not re-announce decisions already terminal before this feature was installed.
+      if (!existed) db.exec("INSERT INTO contact_auth_outcome_notices SELECT id FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state') IN ('declined','expired')");
+    })();
   }
   roomContext(instance: string, generation?: string): { threadId?: string; fileIds: string[] } {
     const row = this.db.prepare("SELECT context_json FROM contact_auth_room_context WHERE instance=?").get(instance) as { context_json: string } | undefined;
@@ -188,6 +194,7 @@ export class ContactAuthStore {
       if (total.n >= 512) throw Error("application-capacity");
       this.db.prepare("DELETE FROM contact_auth_tickets WHERE created_at<?")
         .run(now - 30 * 24 * 60 * 60_000);
+      this.db.exec("DELETE FROM contact_auth_outcome_notices WHERE ticket_id NOT IN (SELECT id FROM contact_auth_tickets)");
       this.db.prepare("DELETE FROM contact_auth_history WHERE at<?").run(now - 90 * 24 * 60 * 60_000);
       const ticket: ContactTicket = { id: `R${randomUUID()}`, revision: 1, scope: "peer.dispatch", state: "pending",
         source: input.source, target: input.target, sourceGeneration: input.sourceGeneration, targetGeneration: input.targetGeneration,
@@ -224,6 +231,21 @@ export class ContactAuthStore {
       + "WHERE created_at<=? AND json_extract(ticket_json,'$.state')='pending'").run(this.now() - CONTACT_APPLICATION_TTL_MS);
     return (this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state')='pending' ORDER BY created_at,id LIMIT 512")
       .all() as TicketRow[]).map(row => this.read(row));
+  }
+  /** M-3372: the callback admits a system notice on this same outbox connection. */
+  notifyOutcomes(admit: (ticket: ContactTicket) => void): number {
+    return this.db.transaction(() => {
+      // A timer calls this even if no person opens the web page.
+      this.pending();
+      const rows = this.db.prepare("SELECT t.* FROM contact_auth_tickets t LEFT JOIN contact_auth_outcome_notices n ON n.ticket_id=t.id "
+        + "WHERE n.ticket_id IS NULL AND json_extract(t.ticket_json,'$.state') IN ('declined','expired') ORDER BY t.created_at,t.id LIMIT 64")
+        .all() as TicketRow[];
+      for (const row of rows) {
+        admit(this.read(row));
+        this.db.prepare("INSERT INTO contact_auth_outcome_notices VALUES (?)").run(row.id);
+      }
+      return rows.length;
+    })();
   }
   list(filter: { agent?: string; status?: string; cursor?: string } = {}): { items: ContactTicket[]; nextCursor: string | null } {
     const offset = filter.cursor ? Number(filter.cursor) : 0;

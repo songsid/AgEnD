@@ -99,8 +99,10 @@ read tools. A non-admin or unknown-origin peer contact is held as an application
 `sent:false`, `held:true`, with `authorization_id` and its state. Nothing has reached
 the target. Do not resend or work around it with another contact tool, a schedule,
 or a new instance. The target's Fleet administrator decides the retained request.
-Approval delivers it once; decline or expiry delivers nothing. A standing narrow
-contact grant can admit matching requests without another card.
+Approval delivers it once; decline or expiry does not forward the held request.
+On decline or expiry, one AgEnD system notice names the ticket, target and outcome;
+stop waiting for that request. This is status only, not authority or a grant.
+A standing narrow contact grant can admit matching requests without another card.
 
 The server retains an origin union per agent instance, including receiving ordinary
 workers, across relays, later turns and compaction. An earlier non-admin request
