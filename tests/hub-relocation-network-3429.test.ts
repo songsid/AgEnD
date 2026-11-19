@@ -9,9 +9,11 @@
  *   stays silent before a welcome (a usable link) — it never retries that `to` in place of a healthy anchor.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createServer as createNetServer } from "node:net";
 import { createPrivateKey } from "node:crypto";
 import { createServer as createHttpsServer } from "node:https";
 import { WebSocketServer } from "ws";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 import { hubRig, freeHubPort } from "./helpers/hub-rig.js";
 import { readPrivateFile } from "../src/hub/private-files.js";
 import { issuerKeyId } from "../src/hub/identity.js";
@@ -20,7 +22,21 @@ import { HUB_OPTIONAL_CAPABILITIES } from "../src/hub/protocol.js";
 import { HUB_MEMBER_RELOCATION_CAPABILITY, HubMemberRelocationStore, acceptHubRelocation, relocationDigest, signHubRelocation } from "../src/hub/member-origin.js";
 
 const rigs: Awaited<ReturnType<typeof hubRig>>[] = [];
-afterEach(async () => { vi.restoreAllMocks(); for (const r of rigs.splice(0)) await r.close(); });
+afterEach(async () => {
+  const errors: unknown[] = [];
+  try { for (const r of rigs.splice(0)) {
+    try { await r.close(); } catch (error) { errors.push(error); }
+  } } finally { vi.restoreAllMocks(); }
+  if (errors.length) throw new AggregateError(errors, "Relocation fixture cleanup failed");
+});
+async function competeForPort(port: number) {
+  const server = createNetServer();
+  try { return await new Promise<string>(resolve => {
+    server.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+    server.listen(port, "127.0.0.1", () => resolve("bound"));
+  }); }
+  finally { if (server.listening) await new Promise<void>(resolve => server.close(() => resolve())); }
+}
 const B = "https://hub-b.example.test:9443";
 
 async function setup(opts: { dial?: () => string[] } = {}) {
@@ -122,8 +138,36 @@ describe("#3429 B — the member's dial order", () => {
     const server = createHttpsServer({ key: readPrivateFile(root, "hub/keys/tls-key.pem"), cert: readPrivateFile(root, "hub/keys/tls-cert.pem") });
     const wss = new WebSocketServer({ server }), seen = { upgrades: 0 };
     wss.on("connection", ws => { seen.upgrades++; if (mode === "close") ws.close(1011); });
-    const port = await freeHubPort(); await new Promise<void>(ok => server.listen(port, "127.0.0.1", ok));
-    return { origin: `https://127.0.0.1:${port}`, seen, close: () => { for (const c of wss.clients) c.terminate(); wss.close(); server.close(); } };
+    const ports = hubListenerPorts();
+    let port: number | undefined, started = false, closed = false;
+    const close = async () => {
+      if (closed) return;
+      closed = true;
+      const errors: unknown[] = [];
+      try {
+        for (const client of wss.clients) client.terminate();
+        wss.close();
+        await new Promise<void>((resolve, reject) => server.close(error =>
+          error && (error as NodeJS.ErrnoException).code !== "ERR_SERVER_NOT_RUNNING" ? reject(error) : resolve()));
+        // Real peer teardown must release the adopted socket before lease disposal.
+        if (started) expect(await competeForPort(port!)).toBe("bound");
+      } catch (error) { errors.push(error); }
+      try { await ports.close(); } catch (error) { errors.push(error); }
+      if (errors.length) throw new AggregateError(errors, "Relocation peer cleanup failed");
+    };
+    try {
+      port = await ports.next();
+      expect(await competeForPort(port)).toBe("EADDRINUSE");
+      await new Promise<void>((resolve, reject) => {
+        server.once("error", reject);
+        server.listen(port!, "127.0.0.1", () => { server.removeListener("error", reject); resolve(); });
+      });
+      started = true;
+      return { origin: `https://127.0.0.1:${port}`, seen, close };
+    } catch (error) {
+      try { await close(); } catch (cleanupError) { throw new AggregateError([error, cleanupError], "Relocation peer startup failed"); }
+      throw error;
+    }
   }
   it.each(["close", "silent"] as const)("a pending `to` that upgrades but %s before a welcome: the anchor in the same attempt, the `to` once", async mode => {
     let anchor = "", to = "";
@@ -134,7 +178,7 @@ describe("#3429 B — the member's dial order", () => {
       expect(c.state.link!.endpoint).toBe(p.hub.memberOrigin);
       expect(d.seen.upgrades).toBe(1);
       expect(c.state.holds).toEqual([]);                                                               // no outage was reported
-    } finally { d.close(); }
+    } finally { await d.close(); }
   }, 20_000);
   it("the anchor (last) that closes before a welcome is an outage, never a fallback elsewhere", async () => {
     const { r } = await setup({ dial: () => [d.origin] });
@@ -143,7 +187,7 @@ describe("#3429 B — the member's dial order", () => {
       const c = r.client(); await expect(c.value.start()).rejects.toThrow();
       expect(c.state.holds.length).toBeGreaterThan(0);
       await c.value.close();
-    } finally { d.close(); }
+    } finally { await d.close(); }
   }, 20_000);
   it("a relocation state that does not verify: nothing is dialled, the link holds", async () => {
     const { r } = await setup({ dial: () => [] });
