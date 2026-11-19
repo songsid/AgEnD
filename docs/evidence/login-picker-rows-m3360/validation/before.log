@@ -1,0 +1,115 @@
+
+ RUN  v4.1.12 <worktree>
+
+(node:3292330) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ × tests/login-picker-rows-m3360.test.ts > wraps the real Telegram login payload two per row without changing callback data (en) 22ms
+   → expected [ 7 ] to deeply equal [ 2, 2, 2, 1 ]
+ × tests/login-picker-rows-m3360.test.ts > wraps the real Telegram login payload two per row without changing callback data (zh-TW) 4ms
+   → expected [ 7 ] to deeply equal [ 2, 2, 2, 1 ]
+ × tests/login-picker-rows-m3360.test.ts > uses readable names on buttons and retains status details in the reply (en) 5ms
+   → expected [ …(7) ] to deeply equal [ 'Antigravity', 'Claude', …(5) ]
+ × tests/login-picker-rows-m3360.test.ts > uses readable names on buttons and retains status details in the reply (zh-TW) 4ms
+   → expected [ 'antigravity · 未安裝 · 安裝', …(6) ] to deeply equal [ 'Antigravity', 'Claude', …(5) ]
+ ✓ tests/login-picker-rows-m3360.test.ts > keeps Discord at five per row with the same full labels and callback values (en) 3ms
+ ✓ tests/login-picker-rows-m3360.test.ts > keeps Discord at five per row with the same full labels and callback values (zh-TW) 3ms
+ ✓ tests/login-picker-rows-m3360.test.ts > leaves other alert keyboards unchanged 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/login-picker-rows-m3360.test.ts > wraps the real Telegram login payload two per row without changing callback data (en)
+ FAIL  tests/login-picker-rows-m3360.test.ts > wraps the real Telegram login payload two per row without changing callback data (zh-TW)
+AssertionError: expected [ 7 ] to deeply equal [ 2, 2, 2, 1 ]
+
+- Expected
++ Received
+
+  [
+-   2,
+-   2,
+-   2,
+-   1,
++   7,
+  ]
+
+ ❯ tests/login-picker-rows-m3360.test.ts:35:39
+     33| it.each(["en", "zh-TW"] as const)("wraps the real Telegram login paylo…
+     34|   const { rows, chatId } = await picker(lang);
+     35|   expect(rows.map(row => row.length)).toEqual([2, 2, 2, 1]);
+       |                                       ^
+     36|   expect(chatId).toBe(-100123);
+     37|   const ids = rows.flat().map(button => button.callback_data);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/login-picker-rows-m3360.test.ts > uses readable names on buttons and retains status details in the reply (en)
+AssertionError: expected [ …(7) ] to deeply equal [ 'Antigravity', 'Claude', …(5) ]
+
+- Expected
++ Received
+
+  [
+-   "Antigravity",
+-   "Claude",
+-   "Codex",
+-   "Grok",
+-   "Kiro",
+-   "Muse",
+-   "OpenCode",
++   "antigravity · Not installed · Install",
++   "claude-code · Not installed · Install + connect",
++   "codex · Not installed · Install + connect",
++   "grok · Not installed · Install + connect",
++   "kiro-cli · Not installed · Install + connect",
++   "muse · Not installed · Install",
++   "opencode · Not installed · Install",
+  ]
+
+ ❯ tests/login-picker-rows-m3360.test.ts:46:50
+     44| it.each(["en", "zh-TW"] as const)("uses readable names on buttons and …
+     45|   const { rows, text } = await picker(lang);
+     46|   expect(rows.flat().map(button => button.text)).toEqual(names);
+       |                                                  ^
+     47|   for (const name of names) expect(text).toContain(`${name} · ${t("log…
+     48|   expect(text).toContain(t("login.status_install_then_auth"));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+ FAIL  tests/login-picker-rows-m3360.test.ts > uses readable names on buttons and retains status details in the reply (zh-TW)
+AssertionError: expected [ 'antigravity · 未安裝 · 安裝', …(6) ] to deeply equal [ 'Antigravity', 'Claude', …(5) ]
+
+- Expected
++ Received
+
+  [
+-   "Antigravity",
+-   "Claude",
+-   "Codex",
+-   "Grok",
+-   "Kiro",
+-   "Muse",
+-   "OpenCode",
++   "antigravity · 未安裝 · 安裝",
++   "claude-code · 未安裝 · 安裝並連接",
++   "codex · 未安裝 · 安裝並連接",
++   "grok · 未安裝 · 安裝並連接",
++   "kiro-cli · 未安裝 · 安裝並連接",
++   "muse · 未安裝 · 安裝",
++   "opencode · 未安裝 · 安裝",
+  ]
+
+ ❯ tests/login-picker-rows-m3360.test.ts:46:50
+     44| it.each(["en", "zh-TW"] as const)("uses readable names on buttons and …
+     45|   const { rows, text } = await picker(lang);
+     46|   expect(rows.flat().map(button => button.text)).toEqual(names);
+       |                                                  ^
+     47|   for (const name of names) expect(text).toContain(`${name} · ${t("log…
+     48|   expect(text).toContain(t("login.status_install_then_auth"));
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 3 passed (7)
+   Start at  10:33:11
+   Duration  8.52s (transform 6.10s, setup 123ms, import 8.14s, tests 46ms, environment 0ms)

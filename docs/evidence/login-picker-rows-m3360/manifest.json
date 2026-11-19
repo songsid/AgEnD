@@ -1,0 +1,47 @@
+{
+  "base": "053c4193fe7cc8c22a5d5fca15b95ee268dca631",
+  "files": [
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "4e23d8eaaced972ffefb13f5e69e5db8e86571c2f8850b0c0209a435ec6a8ace"
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "sha256": "764db7b2e9bfcc297c872381784874b394ab5a71308313b3bd8e3d9bde3a8bf5"
+    },
+    {
+      "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "sha256": "c357ae198022aeffc72669b9a3dce9d760ecb74a5bb53c5a523ae6e2fc2501e1"
+    },
+    {
+      "path": "tests/login-picker-rows-m3360.test.ts",
+      "sha256": "50459df110d9c0da7ce6aa187d65173a563b968ff011599c3fcab29ed6544684"
+    },
+    {
+      "path": "tests/login-one-entry-1131.test.ts",
+      "sha256": "279e72bb5db6d808e189ecb4e1a3b53e423592ed7cfcaa421760fffd4edcc0c7"
+    },
+    {
+      "path": "tests/login-precheck.test.ts",
+      "sha256": "0aa200a256cf821098d9dcc8c7ff08a347c1931bd1fb987d62169111d89cbb6b"
+    },
+    {
+      "path": "tests/fleet-label-1131.test.ts",
+      "sha256": "1021c6cbe9f2311261cf5a8f8c321f2ec73c539021d23327b5d49e81bfd6a828"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/README.md",
+      "sha256": "c6f40aade5b908cc24163c557389e393c6a3ba20f8f0abbd9373bd2b0fa1187a"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/before.log",
+      "sha256": "2fc7afcb3e993d0f01217580816d14715225b0d9ab5d5f9f5bd4f84c1a747706"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/results.json",
+      "sha256": "c2fb1bcd0c114d2aa08421bdbb61a3ee16387f4da5336e9fbe81fe02415ad40b"
+    }
+  ]
+}
