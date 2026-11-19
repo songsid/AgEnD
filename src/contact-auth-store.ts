@@ -275,8 +275,8 @@ export class ContactAuthStore {
         if (!authority.current(request)) throw Error("stale-generation");
         ticket.deliveryId = authority.admit(request, ticket.id);
         ticket.state = "approved";
-        // Persist taint before any asynchronously scheduled outbox pump can expose input.
-        this.inheritOrigin(request.target, { ...request.origin, chain: [...request.origin.chain, request.target] });
+        // An administrator approval (including a standing grant) endorses this delivery.
+        // Keep its original origin on the ticket/source; do not merge it into the receiving agent.
         if (decision.grant) {
           if (request.origin.kind !== "human" || request.origin.people.length !== 1) throw Error("invalid-grant-origin");
           const previous = this.policy(request.target, request.targetGeneration);
