@@ -162,7 +162,13 @@ export class PublicWebLink {
     permitted(owner: LoginCodeOwner): boolean;
     reserve(id: string): TunnelReservation | null;
     createGateway(id: string, current: () => boolean, open: () => boolean, failed: () => void, named?: { hostname: string; port: number }): PublicGateway;
-    revoke(id: string): void;
+    /**
+     * The link's sessions end (and its sign-in codes). M-3399: `keep.keepSessions` — a fixed link closing because the fleet
+     * stops (a restart, an update): its sessions are kept for the same link to take back when it opens again (`opened`).
+     */
+    revoke(id: string, keep?: { keepSessions: true; configuration: string }): void;
+    /** M-3399: a fixed link is open — `configuration` is its identity (hostname, token, port, protocol): kept sessions of it rejoin. */
+    opened?(id: string, configuration: string): void;
     /** `detail` (#1767): why, in words fit for daemon.log (logDetail) — never a URL. */
     log(event: string, id: string, detail?: string): void;
     onCleanupUnconfirmed?(result: TunnelStopResult, owner: LoginCodeOwner): void;
@@ -202,6 +208,11 @@ export class PublicWebLink {
     return e.preview.status();
   }
   /** The wall-clock end of this link (null: no expiry, or not the link open now): a session made over it ends by then. */
+  /** M-3399: the open fixed link's identity (configurationKey), or null for a quick link or another exposure. */
+  keyOf(exposureId: string): string | null {
+    const e = this.entry;
+    return e && e.id === exposureId && e.configuration !== "quick" ? e.configuration : null;
+  }
   endOf(exposureId: string): number | null {
     const e = this.entry;
     return e && e.id === exposureId ? e.expiresAt : null;
@@ -385,6 +396,7 @@ export class PublicWebLink {
       e.phase = "open";
       e.progress.complete();
       this.deps.log("opened", e.id);
+      if (e.configuration !== "quick") { try { this.deps.opened?.(e.id, e.configuration); } catch { /* sign-ins start afresh */ } }
     } catch (err) {
       const reason: PublicLinkFailure = err instanceof StartFailure ? err.reason : err instanceof CloudflaredInstallError ? failureOf(err.kind)
         : this.current(e) ? "unknown" : "closed";
@@ -396,7 +408,13 @@ export class PublicWebLink {
       throw new Error("public link unavailable");
     }
   }
-  close(reason: string, expectedId?: string): Promise<TunnelStopResult> {
+  /**
+   * M-3399: `opts.keepNamedSessions` — the fleet is stopping (a restart, an update), not a person closing the link: a fixed
+   * link's sessions are kept (revoke is told so) to rejoin it when it opens again on the same hostname and token. A quick
+   * link's never are (its next hostname is a new one). Every other close — Close, /web revoke, expiry, a policy, hostname or
+   * token change, a tunnel lost — revokes as before.
+   */
+  close(reason: string, expectedId?: string, opts?: { keepNamedSessions?: boolean }): Promise<TunnelStopResult> {
     const e = this.entry;
     if (!e || (expectedId && expectedId !== e.id)) return Promise.resolve({ confirmed: true });
     if (e.closing) return e.closing;
@@ -405,7 +423,8 @@ export class PublicWebLink {
     e.abort.abort();
     if (e.timer) clearTimeout(e.timer);
     e.unsubscribe?.();
-    this.deps.revoke(e.id);
+    if (opts?.keepNamedSessions && e.configuration !== "quick") this.deps.revoke(e.id, { keepSessions: true, configuration: e.configuration });
+    else this.deps.revoke(e.id);
     e.gateway?.setHost(null); e.gateway?.close();
     // #1723: the preview is fenced now too (its own stop fences synchronously), and its tunnel ends with this one.
     // Its failure is observed at once (an unproven stop, not an unhandled rejection while the link's own start ends).

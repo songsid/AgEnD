@@ -121,7 +121,14 @@ export interface SessionRecord {
   idleExpiry: number;
   readonly tier: SessionTier;
   readonly surface: SessionSurface;
-  readonly exposureId?: string;
+  /** The public link it was made over; M-3399: a fixed link's session is moved to the link's next exposure (adoptLink). */
+  exposureId?: string;
+  /**
+   * M-3399: a fixed (named) link's identity — its configurationKey (hostname, token, port, protocol) — when made over one.
+   * Its session outlives a fleet restart or update and rejoins the same link when it opens again; a hostname or token
+   * change (another key) ends it. Absent over a quick link (its next hostname is a new one) and locally.
+   */
+  readonly linkKey?: string;
   /** What the person sees in the device list. Display only, never an input to a decision. */
   readonly label: string;
   /** `sha256(web.token)` when the session was made; a mismatch means the token was rotated. */
@@ -231,6 +238,8 @@ export interface WebSessionStoreOptions {
   readonly guestPolicy?: () => SessionPolicy;
   /** The wall-clock end of the public link a session is made over (null: none, or not that link): it never outlives it. */
   readonly exposureEnd?: (exposureId: string) => number | null;
+  /** M-3399: the open fixed link's identity for this exposure (null: a quick link, or not the link open now). */
+  readonly linkKeyOf?: (exposureId: string) => string | null;
   readonly maxSessions?: number;
   readonly onWarn?: (message: string) => void;
 }
@@ -255,6 +264,7 @@ function isRecord(value: unknown): value is SessionRecord {
     && (v.tier === "admin" || v.tier === "read" || (v.tier === "guest" && v.owner !== undefined))
     && (v.surface === "local" || v.surface === "gateway")
     && (v.exposureId === undefined || (typeof v.exposureId === "string" && /^[0-9a-f]{32}$/.test(v.exposureId)))
+    && (v.linkKey === undefined || (typeof v.linkKey === "string" && /^[0-9a-f]{64}$/.test(v.linkKey) && v.surface === "gateway" && typeof v.exposureId === "string"))
     && (v.owner === undefined || isOwner(v.owner))
     && (v.host === undefined || (v.host === true && v.tier === "admin" && v.owner === undefined && v.surface === "local"))
     && typeof v.label === "string" && v.label.length <= LABEL_MAX
@@ -272,6 +282,7 @@ export class WebSessionStore {
   private readonly localPolicy: (() => SessionPolicy) | null;
   private readonly guestPolicy: () => SessionPolicy;
   private readonly exposureEnd: (exposureId: string) => number | null;
+  private readonly linkKeyOf: (exposureId: string) => string | null;
   private readonly maxSessions: number;
   private readonly path: string | null;
   private readonly warn: (message: string) => void;
@@ -290,6 +301,7 @@ export class WebSessionStore {
     this.localPolicy = opts.localPolicy ?? null;
     this.guestPolicy = opts.guestPolicy ?? (() => GUEST_SESSION_POLICY);
     this.exposureEnd = opts.exposureEnd ?? (() => null);
+    this.linkKeyOf = opts.linkKeyOf ?? (() => null);
     this.maxSessions = opts.maxSessions ?? MAX_WEB_SESSIONS;
     this.path = opts.dataDir ? join(opts.dataDir, "web-sessions.json") : null;
     this.warn = opts.onWarn ?? (() => {});
@@ -343,6 +355,7 @@ export class WebSessionStore {
     const sessionId = randomBytes(32).toString("hex");
     const policy = this.policyFor(input.surface, input.tier);
     const linkEnd = input.exposureId ? this.exposureEnd(input.exposureId) : null;
+    const linkKey = input.surface === "gateway" && input.exposureId ? this.linkKeyOf(input.exposureId) : null;
     const absoluteExpiry = Math.min(now + policy.absoluteMs, linkEnd ?? Infinity);
     const record: SessionRecord = {
       handle: randomBytes(8).toString("hex"),
@@ -354,6 +367,7 @@ export class WebSessionStore {
       tier: input.tier,
       surface: input.surface,
       ...(input.exposureId ? { exposureId: input.exposureId } : {}),
+      ...(linkKey && /^[0-9a-f]{64}$/.test(linkKey) ? { linkKey } : {}),
       label: sanitizeLabel(input.label),
       tokenEpoch: input.tokenEpoch,
       ...(input.owner ? { owner: { adapterId: input.owner.adapterId, userId: input.owner.userId } } : {}),
@@ -415,6 +429,21 @@ export class WebSessionStore {
     this.enforceCaps();
     this.persistNow();
     return this.byHash.has(hash);
+  }
+
+  /**
+   * M-3399: the fixed link `linkKey` is open again as `exposureId` (after a restart or an update): its kept sessions rejoin
+   * it. Sessions kept for another fixed link (the hostname or token changed meanwhile) end. Each keeps its own expiry.
+   */
+  adoptLink(linkKey: string, exposureId: string): { adopted: number; ended: string[]; durable: boolean } {
+    let adopted = 0;
+    const ended: string[] = [];
+    for (const [hash, record] of this.byHash) {
+      if (record.surface !== "gateway" || !record.linkKey || record.exposureId === exposureId) continue;
+      if (record.linkKey === linkKey) { record.exposureId = exposureId; adopted++; }
+      else { this.byHash.delete(hash); this.pending.delete(hash); ended.push(record.handle); }
+    }
+    return { adopted, ended, durable: adopted || ended.length ? this.persistNow() : true };
   }
 
   revokeExposure(exposureId: string): { count: number; durable: boolean } {
