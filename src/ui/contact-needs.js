@@ -15,7 +15,7 @@ import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
 import { getPermissions, getTicket, putPermissions } from "./contact-auth-client.js";
 import { TicketCard } from "./contact-authorizations.js";
-import { notCovered, wouldDisableText } from "./contact-permissions.js";
+import { notCovered, wouldDisableMore, wouldDisableText } from "./contact-permissions.js";
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -50,7 +50,7 @@ function SuggestionNeed({ item }) {
       if (!r.ok) { toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "loadFailed"), false); return; }
       const p = r.data;
       if (p.canSetMode !== true) { toast(ca("forbidden"), false); return; }
-      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n") });
+      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n"), more: wouldDisableMore(p.roomTools) });
       if (!ok) return;
       const w = await putPermissions(name, { revision: p.revision, mode: "restricted" });
       toast(ca(w.ok ? "saved" : w.code === "conflict" ? "stale" : w.code === "forbidden" ? "forbidden" : "saveFailed"), w.ok);

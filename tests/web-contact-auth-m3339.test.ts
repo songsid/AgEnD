@@ -88,7 +88,7 @@ describe("Permissions: a ClassicBot room", () => {
     expect([...pg.root.querySelectorAll(".contact-would li")].map(text)).toEqual(["Bash", "mcp__drive__write"]);
     fire(button(pg.root, "Switch to restricted"), "click"); await settle(4);
     const q = await yes();
-    expect(q.message).toContain("• Bash");
+    expect(q.message).toContain("The AI tool's own tools (2): Bash, mcp__drive__write");   // M-3387: by layer, not raw lines
     expect(q.message).toContain("allowed-contact grants cannot match");
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ revision: 4, mode: "restricted" }]);
     expect(text(pg.root.querySelector(".contact-mode .contact-pill"))).toBe("Restricted");
@@ -423,7 +423,7 @@ describe("Needs you: contact items (references only; the details from the scoped
       expect(pg.root.querySelector(".n-actions a")?.getAttribute("href")).toBe("/ui/fleet/agent/classic-ops?cat=permissions");
       fire(button(pg.root, "切換這個房間"), "click"); await settle(6);
       const q = await yes();
-      expect(q.message).toContain("• Bash");
+      expect(q.message).toContain("AI 工具本身的工具（2 個）：Bash, mcp__drive__write");
       expect(q.message).toContain("允許的聯絡授權無法配對");
       expect(text(pg.root.querySelector(".contact-origin-switch"))).toContain("包含管理員");
       fire(button(pg.root, "稍後"), "click"); await settle(6);
