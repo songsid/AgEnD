@@ -28,12 +28,16 @@
     {
       "path": "tests/fleet-label-1131.test.ts",
       "sha256": "1021c6cbe9f2311261cf5a8f8c321f2ec73c539021d23327b5d49e81bfd6a828"
+    },
+    {
+      "path": "tests/install-cli-login-1059.test.ts",
+      "sha256": "dc80741523dabecce7e214121e4b8d644be34f7d0602bb720c4921264d5cf6de"
     }
   ],
   "evidence": [
     {
       "path": "docs/evidence/login-picker-rows-m3360/README.md",
-      "sha256": "c6f40aade5b908cc24163c557389e393c6a3ba20f8f0abbd9373bd2b0fa1187a"
+      "sha256": "e24e96d63051bcee1934a31079a703913cbf62fe5e2d073562b19ed9e8f5aaae"
     },
     {
       "path": "docs/evidence/login-picker-rows-m3360/validation/before.log",
@@ -41,7 +45,7 @@
     },
     {
       "path": "docs/evidence/login-picker-rows-m3360/validation/results.json",
-      "sha256": "c2fb1bcd0c114d2aa08421bdbb61a3ee16387f4da5336e9fbe81fe02415ad40b"
+      "sha256": "044294a7c3592240920db8eccf7d9aeb0a023536af87888d330b25025b835534"
     }
   ]
 }

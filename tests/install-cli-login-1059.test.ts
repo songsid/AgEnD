@@ -72,7 +72,13 @@ function fleet() {
   const loginChoices = async () => {
     notifyAlert.mockClear();
     await fm.promptLoginBackends(chat);
-    return notifyAlert.mock.calls.flatMap(c => ((c[1] as any)?.choices ?? []).map((ch: any) => String(ch.label)));
+    const details = new Map<string, string>();
+    for (const [, value] of notifyAlert.mock.calls) {
+      const alert = value as { message: string; choices: Array<{ id: string; label: string }> };
+      for (const choice of alert.choices) details.set(choice.id.split(":").at(-1)!,
+        alert.message.split("\n").find(line => line.startsWith(`${choice.label} · `)) ?? "");
+    }
+    return details;
   };
   return { fm, chat, sendText, loginChoices };
 }
@@ -84,8 +90,8 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
 
   it("after a verified install, /login lists it, `which` finds it and a spawn resolves it", async () => {
     const { fm, chat, sendText, loginChoices } = fleet();
-    const grokLabel = async () => (await loginChoices()).find(l => l.startsWith("grok"))!;
-    expect(await grokLabel()).toContain("Not installed");
+    const grokStatus = async () => (await loginChoices()).get("grok")!;
+    expect(await grokStatus()).toContain("Not installed");
     const signIn = vi.spyOn(fm as any, "launchSignIn").mockResolvedValue("signing in");
     await fm.startInstallSession("grok", chat);
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
@@ -95,7 +101,7 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     expect(process.env.PATH!.split(":")[0]).toBe(profileBin);
     expect(checkBinaryInstalled("grok")).toBe(true);
     expect(resolveBinary("grok")).toBe(join(profileBin, "grok"));
-    expect(await grokLabel()).toMatch(/Installed.*Connect/);
+    expect(await grokStatus()).toMatch(/Installed.*Connect/);
   });
 
   it("#1699 part 2: an install that a `/login <backend> <profile>` started signs that profile in, not the default login", async () => {
@@ -123,7 +129,7 @@ describe("a CLI /login installed is offered for sign-in right away (#1059)", () 
     await fakeSessions[0]!.events.onDone({ ok: true, detail: "clean exit" });
     expect(String(sendText.mock.calls.at(-1)![1])).toContain("PATH");
     expect(process.env.PATH).toBe("/usr/bin:/bin");
-    expect((await loginChoices()).find(l => l.startsWith("grok"))).toContain("Not installed");
+    expect((await loginChoices()).get("grok")).toContain("Not installed");
   });
 });
 
