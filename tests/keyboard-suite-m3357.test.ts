@@ -6,8 +6,8 @@
  * WebKit smokes for a change to the keyboard's code, and build counts its result.
  * The reverts themselves (each fix undone turns its own tests red) run in that job, not here: ~4 min of vitest runs.
  */
-import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { mkdirSync } from "node:fs";
@@ -51,9 +51,35 @@ describe("M-3357: the manifest", () => {
   });
 });
 
+describe("M-3357 (#4210 review): --reverts never leaves a fix undone", () => {
+  /** A copy of the files the manifest reads, and a vitest stand-in that marks its start and then waits to be stopped. */
+  function tree() {
+    const root = mkdtempSync(join(tmpdir(), "kb-stop-")); dirs.push(root);
+    const files = new Set([...CASES.flatMap((c) => [...Object.keys(c.tests), c.revert.file]), ...SMOKES.map((s) => `scripts/manual/smoke/${s.file}`)]);
+    for (const f of files) { mkdirSync(join(root, dirname(f)), { recursive: true }); cpSync(f, join(root, f)); }
+    const runner = join(root, "waiting-vitest.mjs"), mark = join(root, "started");
+    writeFileSync(runner, `import { writeFileSync } from "node:fs"; writeFileSync(${JSON.stringify(mark)}, "1"); setInterval(() => {}, 1000);`);
+    return { root, runner, mark };
+  }
+  it.each([["SIGTERM", 143], ["SIGINT", 130]] as const)("%s mid-run: the run stops and the file is put back (exit %i)", async (signal, code) => {
+    const { root, runner, mark } = tree();
+    const shell = join(root, "src/ui/shared/app-shell.js"), before = readFileSync(shell, "utf8");
+    const child = spawn(process.execPath, [join(process.cwd(), "scripts/ci/keyboard-suite.mjs"), "--reverts", "zhuyin-per-key-nudge"],
+      { cwd: root, stdio: "ignore", env: { PATH: process.env.PATH ?? "", KEYBOARD_SUITE_VITEST: runner } });
+    const exited = new Promise<number | null>((done) => child.on("exit", (c) => done(c)));
+    for (let i = 0; i < 200 && !existsSync(mark); i++) await new Promise((r) => setTimeout(r, 25));
+    expect(existsSync(mark), "the stand-in started").toBe(true);
+    expect(readFileSync(shell, "utf8"), "the fix undone while it runs").toContain("const NUDGE_PX = 0;");
+    child.kill(signal);
+    expect(await exited).toBe(code);
+    expect(readFileSync(shell, "utf8") === before, "app-shell.js as it was").toBe(true);
+  });
+});
+
 describe("M-3357: which changes run it", () => {
   it("the keyboard's code and the suite itself: yes; elsewhere: no", () => {
-    for (const f of ["src/ui/shared/app-shell.js", "src/ui/shared/app.css", "src/ui/shared/chat-composer.js", "src/ui/panel-chat.js", "src/ui/hub-room-composer.js",
+    for (const f of ["src/ui/shared/app.js", "src/ui/panel-hub.js", "src/ui/chat-workspace.js", "tests/helpers/mini-dom.ts", "tests/helpers/app-harness.ts",
+      "package.json", "package-lock.json", "src/ui/shared/app-shell.js", "src/ui/shared/app.css", "src/ui/shared/chat-composer.js", "src/ui/panel-chat.js", "src/ui/hub-room-composer.js",
       "src/ui/shared/text-undo.js", "src/ui/shared/chat-quote.js", "src/ui/app.html", "scripts/ci/keyboard-suite.mjs", "tests/web-keyboard-fit-3111.test.ts",
       "scripts/manual/smoke/smoke-phone-keyboard-motion-m3327.mts", "scripts/manual/smoke-fixture/index.mts", ".github/workflows/ci.yml"]) expect(touches([f]), f).toBe(true);
     for (const f of ["src/hub/rooms/schema.ts", "src/ui/panel-settings.js", "docs/dev/iphone-keyboard-suite.md", "changes/1-x.md"]) expect(touches([f]), f).toBe(false);

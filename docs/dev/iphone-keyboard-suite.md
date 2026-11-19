@@ -4,6 +4,8 @@ Several betas in a row fixed one iPhone keyboard bug and brought another back. T
 
 The manifest is `scripts/ci/keyboard-suite.mjs` (`CASES`), and it is the source of truth. This page is the human view.
 
+The reverts are synthetic: each one undoes the fix in the code as it is today. They are not the code from before the fix. Some lines never existed on the dev branch; for example, `tallest = window.innerHeight || 0` stands in for #2478's old innerHeight test. What a revert must do is take away the mechanism its case depends on, so that the case's tests show they would notice it going.
+
 ## When it runs
 
 - **Every PR.** `tests/keyboard-suite-m3357.test.ts` runs in the unit shards. It checks that each listed test title is still in its file and each smoke exists. It also checks that each revert's text appears exactly once in its file. If a refactor moves a fix, update that case's revert so it undoes the fix in the code as it now stands.
@@ -12,13 +14,14 @@ The manifest is `scripts/ci/keyboard-suite.mjs` (`CASES`), and it is the source 
   2. `--reverts`: each fix undone, one at a time, turns at least one of its own tests red (about 4 minutes);
   3. `--smokes`: the five keyboard smokes in WebKit (Safari's engine), from the digest-pinned Playwright image.
 - A push, a tag or a manual run has no diff to judge, so the job runs everything (fail closed).
+- The smokes run in the image's node (24) on the node_modules the runner installed with node 22. This works because no native module is on the smokes' path. If one ever is, for example the fixture opening SQLite, run `npm rebuild` in the image or match the runner's node to the image's.
 
 Locally:
 
 ```sh
 node scripts/ci/keyboard-suite.mjs --list            # the cases, their tests, smokes and reverts
 node scripts/ci/keyboard-suite.mjs --unit
-node scripts/ci/keyboard-suite.mjs --reverts [id…]   # rewrites one source file at a time and always puts it back: run it in a worktree
+node scripts/ci/keyboard-suite.mjs --reverts [id…]   # rewrites one source file at a time and always puts it back, also on Ctrl+C / SIGTERM (not on SIGKILL): run it in a worktree
 # The WebKit smokes, as CI runs them (node_modules from `npm ci` on the host):
 docker run --rm --init --ipc=host --memory 3g --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:$PWD" -w "$PWD" \
   -e PW_ENGINE=webkit -e PW_DIR="$PWD" -e REPO="$PWD" -e OUT=/tmp/kb \
