@@ -1,6 +1,7 @@
 /** Quick routes over the sealed S5 factory, verified HTTPS and SQLite. Inert directory; no native/account operations. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request } from "node:https";
+import { createServer as createNetServer } from "node:net";
 import { chmodSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,8 +12,9 @@ import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
 import { hubTxDatabase } from "../src/hub/db.js";
 import { createHubServerFactory, type HubHttpDeps } from "../src/hub/compose/server.js";
+import * as factoryModule from "../src/hub/compose/server.js";
 import * as entry from "../src/hub/http/compose.js";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubComposePorts } from "./helpers/hub-compose-ports.js";
 import { ADMIN, makeTestCerts } from "./support/hub-init-fixtures.js";
 import type { DirectoryPerson, HubDirectory } from "../src/hub/directory/types.js";
 import type { PolicyGroupFacts } from "../src/hub/directory/groups.js";
@@ -22,14 +24,22 @@ import { HubServer } from "../src/hub/server.js";
 import { personKeyString } from "../src/hub/identity.js";
 
 const cleanups: Array<() => Promise<void>> = [];
-afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
+afterEach(async () => { try { for (const close of cleanups.splice(0).reverse()) await close(); } finally { vi.restoreAllMocks(); } });
 function gate<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 async function rig(supported = true) {
   const home = mkdtempSync(join(tmpdir(), "agend-group-composition-")), certs = makeTestCerts(); chmodSync(home, 0o700);
   let service: Awaited<ReturnType<ReturnType<typeof createHubServerFactory>>> | undefined, db: Database.Database | undefined;
-  cleanups.push(async () => { db?.close(); await service?.close(); rmSync(home, { recursive: true, force: true }); rmSync(certs.dir, { recursive: true, force: true }); });
-  const memberPort = await freeHubPort(); let webPort = await freeHubPort();
-  while (webPort === memberPort) webPort = await freeHubPort();
+  let ports: Awaited<ReturnType<typeof hubComposePorts>> | undefined;
+  cleanups.push(async () => {
+    const errors: unknown[] = [];
+    for (const dispose of [() => { db?.close(); }, async () => { await service?.close(); }, async () => { await ports?.close(); },
+      () => rmSync(home, { recursive: true, force: true }), () => rmSync(certs.dir, { recursive: true, force: true })]) {
+      try { await dispose(); } catch (error) { errors.push(error); }
+    }
+    if (errors.length) throw new AggregateError(errors, "Quick-pairing fixture cleanup failed");
+  });
+  ports = await hubComposePorts();
+  const { memberPort, webPort } = ports;
   const origin = `https://hub.example.test:${webPort}`, group = randomUUID(), outsider = randomUUID();
   const colleague: DirectoryPerson = { key: { realm: "corp", objectId: randomUUID() }, login: "morgan", displayName: "Morgan Example", dn: "CN=Morgan,DC=example,DC=test", groups: [] };
   const people = [ADMIN, colleague]; let known = true, adminEligible = true, live = true;
@@ -78,6 +88,45 @@ async function rig(supported = true) {
 }
 
 describe("quick pairing on the composed HTTPS surface", () => {
+  it("holds both quick-pairing sockets until real TLS startup and frees them on service close", async () => {
+    const factory = factoryModule.createHubServerFactory;
+    const competitors: ReturnType<typeof createNetServer>[] = [], ports: number[] = [], results: string[] = [];
+    vi.spyOn(factoryModule, "createHubServerFactory").mockImplementation(options => {
+      const mount = factory(options);
+      return Object.assign(async (...args: Parameters<typeof mount>) => {
+        const service = await mount(...args), start = service.start.bind(service);
+        service.start = async () => {
+          for (const listener of [args[0].memberListen, args[0].webListen] as { port: number }[]) {
+            const competitor = createNetServer(); competitors.push(competitor); ports.push(listener.port);
+            results.push(await new Promise<string>(resolve => {
+              competitor.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+              competitor.listen(listener.port, "127.0.0.1", () => resolve("bound"));
+            }));
+          }
+          expect(results).toEqual(["EADDRINUSE", "EADDRINUSE"]);
+          await start();
+        };
+        return service;
+      }, { drain: mount.drain });
+    });
+    try {
+      const r = await rig();
+      expect(new Set(ports).size).toBe(2);
+      await r.save(await r.proposal());
+      const offer = await r.call(r.admin, "POST", "/hub/v1/quick-pairing", { label: "Example computer" });
+      expect(offer.status).toBe(200);
+      expect(offer.json.code).toMatch(/^[a-f0-9]{12}$/);
+      expect((await r.call(r.admin, "POST", `/hub/v1/quick-pairing/${offer.json.pairingId}/stop`)).status).toBe(200);
+      await r.service!.close();
+      for (const port of ports) {
+        const probe = createNetServer();
+        try { await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(port, "127.0.0.1", resolve); }); }
+        finally { if (probe.listening) await new Promise<void>(resolve => probe.close(() => resolve())); }
+      }
+    } finally {
+      for (const competitor of competitors) if (competitor.listening) await new Promise<void>(resolve => competitor.close(() => resolve()));
+    }
+  });
   it("exposes older retained history and ACKs an exact owned old notice on the authenticated HTTPS route", async () => {
     const r=await rig(),ids:string[]=[];
     r.db!.transaction(()=>{for(let i=0;i<101;i++){

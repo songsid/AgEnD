@@ -1,0 +1,32 @@
+{
+  "base": "1e57087d64025153670704f3b013c0b0df8cbb3a",
+  "family": "hub-quick-pairing-http.test.ts private two-port rig",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-quick-pairing-http.test.ts -t 'holds both quick-pairing sockets' --maxWorkers=2",
+    "baseFailed": 1,
+    "filtered": 5,
+    "result": "Actual member/web competing binds both return bound, failing expected EADDRINUSE array."
+  },
+  "fullFile": {
+    "command": "npx vitest run tests/hub-quick-pairing-http.test.ts --maxWorkers=2",
+    "passed": 6,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0,
+    "exitCode": 0
+  },
+  "covered": [
+    "real TLS adoption, trusted HTTPS sign-in and quick-pairing create/stop",
+    "production service close frees both ports before lease disposal",
+    "existing pairing authorization and admission refusal cases"
+  ],
+  "limits": [
+    "One fixture family only.",
+    "Shared helpers, production code and timeout values unchanged.",
+    "Disposable local listeners, storage and inert directory only; no live account/CLI/model/Fleet/Windows/browser campaign."
+  ],
+  "rollback": "Revert test file and evidence only; no product settings, authentication or data rollback."
+}
