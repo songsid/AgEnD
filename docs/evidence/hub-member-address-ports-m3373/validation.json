@@ -1,0 +1,34 @@
+{
+  "base": "4cb4bbe601d214008c77eec039565ef8e2f4c7f2",
+  "fixtureBlob": "47383629ddb290540130f03d032040ceb0dfcc41",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-member-address-http-3429.test.ts -t 'moves only member HTTPS|cold restart finishes' --maxWorkers=2",
+    "failed": 2,
+    "filtered": 2,
+    "semanticFailures": [
+      "initial sockets: bound/bound instead of EADDRINUSE/EADDRINUSE",
+      "cold relocation candidate: bound instead of EADDRINUSE"
+    ]
+  },
+  "fixed": {
+    "command": "npx vitest run tests/hub-member-address-http-3429.test.ts tests/hub-compose-ports-m3338.test.ts --maxWorkers=2",
+    "passed": 7,
+    "skipped": 0,
+    "files": 2
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "scope": {
+    "sharedHelperChanged": false,
+    "productionChanged": false,
+    "timeoutsChanged": false,
+    "retriesAdded": false,
+    "mainTwin": false
+  },
+  "proofLimits": [
+    "Local synthetic HTTP/TLS/directory fixtures only.",
+    "No external account, CLI/model, browser, Windows or live Fleet operation."
+  ]
+}
