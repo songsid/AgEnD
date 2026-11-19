@@ -9,7 +9,7 @@
  *   composing): no style write on the shell, no scrollTo.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fire, settle } from "./helpers/mini-dom.js";
+import { fire, installDom, MiniEvent, settle, type MiniPage } from "./helpers/mini-dom.js";
 import type { AppPage } from "./helpers/app-harness.js";
 
 function fakeStream() {
@@ -18,7 +18,12 @@ function fakeStream() {
 }
 const pages: AppPage[] = [];
 const offs: Array<() => void> = [];
-afterEach(async () => { for (const f of offs.splice(0)) f(); for (const pg of pages.splice(0)) { await pg.unmount(); pg.restore(); } });
+let dom: MiniPage | null = null;
+afterEach(async () => {
+  for (const f of offs.splice(0)) f();
+  for (const pg of pages.splice(0)) { await pg.unmount(); pg.restore(); }
+  dom?.restore(); dom = null; vi.useRealTimers();
+});
 
 /** The Fleet chat on a phone, with the app's text-undo listener (app.js installs it) and the box instrumented. */
 async function chat() {
@@ -126,5 +131,107 @@ describe("M-3356: the shell's keyboard fit under the recorded conditions (the vi
       fire(box, "compositionend", { data: "字" }); await new Promise((r) => setTimeout(r, 120));
     }
     expect([writes, scrolls.length - before]).toEqual([[], 0]);
+  });
+});
+
+describe("M-3356 (#4208 review): the text history's guards, one at a time", () => {
+  /** A textarea with the history installed, its selection reads counted while `count` is on. */
+  async function field() {
+    vi.resetModules();
+    const { page } = await import("./helpers/app-harness.js");
+    const pg = page(); pages.push(pg);
+    const undo = await import("/assets/text-undo.js" as string);
+    const el = pg.document.createElement("textarea") as any;
+    pg.root.appendChild(el);
+    let start = 0, end = 0, reads = 0, count = false;
+    Object.defineProperty(el, "selectionStart", { configurable: true, get() { if (count) reads++; return start; }, set(v) { start = v; } });
+    Object.defineProperty(el, "selectionEnd", { configurable: true, get() { if (count) reads++; return end; }, set(v) { end = v; } });
+    el.setSelectionRange = (s: number, e: number) => { start = s; end = e; };
+    offs.push(undo.installTextUndo({ doc: pg.document, win: { Event: MiniEvent }, mac: false }) || (() => {}));
+    const put = (v: string) => { el.value = v; start = end = v.length; };
+    const type = (text: string) => { for (const ch of text) { fire(el, "beforeinput", { inputType: "insertText", data: ch }); put(el.value + ch); fire(el, "input", { inputType: "insertText", data: ch }); } };
+    return { el, undo, put, type, reads: () => reads, counting: (on: boolean) => { count = on; } };
+  }
+  it("a browser that doesn't flag its composition's input: still no selection read until the composition ends", async () => {
+    const f = await field();
+    fire(f.el, "focusin");
+    f.type("ab");
+    f.counting(true);
+    fire(f.el, "compositionstart", { data: "" });
+    for (const k of ["ㄐ", "ㄐㄧ", "ㄐㄧㄢˋ"]) { f.put("ab" + k); fire(f.el, "input", { inputType: "insertText", data: k }); }   // no isComposing
+    expect(f.reads(), "reads while composing").toBe(0);
+    f.counting(false);
+    f.put("ab鍵"); fire(f.el, "compositionend", { data: "鍵" });
+    expect(f.undo.historyOf(f.el).last).toBe("ab鍵");
+  });
+  it("a script's recorded change just before a composition stays its own step (compositionstart reads a changed field again)", async () => {
+    const f = await field();
+    fire(f.el, "focusin");
+    f.type("ab");
+    f.undo.recordEdit(f.el); f.put("ab X");                                           // a completion: undoable
+    fire(f.el, "compositionstart", { data: "" });
+    f.put("ab X鍵"); fire(f.el, "compositionend", { data: "鍵" });
+    fire(f.el, "input", { inputType: "insertFromComposition", data: "鍵" });
+    f.undo.step(f.el, false, { Event: MiniEvent });
+    expect(f.el.value).toBe("ab X");
+    f.undo.step(f.el, false, { Event: MiniEvent });
+    expect(f.el.value).toBe("ab");
+  });
+});
+
+describe("M-3356 (#4208 review): the quote's composition guard never sticks, and keeps the caret it should", () => {
+  /** The quote's listeners on a thread and a composer; the pill's selection checks counted. */
+  async function quote() {
+    vi.useFakeTimers();
+    dom = installDom({});
+    const q = await import("/ui/js/chat-quote.js" as string);
+    const doc = dom.document as any;
+    let box: any = doc.createElement("textarea"); doc.body.append(box);
+    const list = doc.createElement("div"); doc.body.append(list);
+    let checks = 0;
+    doc.getSelection = () => { checks++; return null; };
+    offs.push(q.installQuoteSelection(list, { insert() {}, canQuote: () => true, phone: () => false, field: () => box, targets: () => [] }));
+    const selectionChange = (ms = 160) => { fire(doc, "selectionchange"); vi.advanceTimersByTime(ms); };
+    return { q, doc, get box() { return box; }, replace() { box = doc.createElement("textarea"); doc.body.append(box); },
+      selectionChange, checks: () => checks };
+  }
+  it("the composer losing the focus mid-composition (no compositionend reaches it): the next selection is checked again", async () => {
+    const r = await quote();
+    fire(r.box, "compositionstart", { data: "" });
+    r.selectionChange();
+    expect(r.checks(), "while composing").toBe(0);
+    fire(r.box, "focusout");
+    r.selectionChange();
+    expect(r.checks(), "after the focus left").toBe(1);
+  });
+  it("a composer re-rendered mid-composition: the old box's compositionend still ends it", async () => {
+    const r = await quote();
+    const old = r.box;
+    fire(old, "compositionstart", { data: "" });
+    r.replace();
+    fire(old, "compositionend", { data: "鍵" });
+    r.selectionChange();
+    expect(r.checks()).toBe(1);
+  });
+  it("a selection check already waiting when a composition starts is dropped", async () => {
+    const r = await quote();
+    fire(r.doc, "selectionchange"); vi.advanceTimersByTime(50);
+    fire(r.box, "compositionstart", { data: "" });
+    r.selectionChange(200);
+    expect(r.checks()).toBe(0);
+  });
+  it("leaving mid-composition keeps the caret; an IME's flagged input or 229 keyup outside a seen composition does not", async () => {
+    const r = await quote();
+    r.box.value = "ab鍵"; r.box.selectionStart = 1;
+    fire(r.box, "compositionstart", { data: "" });
+    fire(r.box, "focusout");
+    r.box.selectionStart = 0;                                                         // Chrome's reset once the thread is selected
+    expect(r.q.composerCaret(r.box, "ab鍵"), "the caret as it left").toBe(1);
+    r.box.value = "abcd"; r.box.selectionStart = 2;
+    fire(r.box, "input", { isComposing: true, inputType: "insertCompositionText" });
+    fire(r.box, "keyup", { key: "Unidentified", keyCode: 229 });
+    expect(r.q.composerCaret(r.box, "abcd"), "neither kept (not focused: the end)").toBe(4);
+    fire(r.box, "keyup", { key: "c" });
+    expect(r.q.composerCaret(r.box, "abcd")).toBe(2);
   });
 });
