@@ -29,7 +29,7 @@ const ROWS = [
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],
-  ["prefs.theme", "look", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme"], ["主題", "深色", "淺色", "外觀"]],
+  ["prefs.theme", "look", "#pref-theme", "app.theme", null, ["theme", "dark", "light", "dark mode", "colour scheme", "colours", "Clear Sky", "Meadow", "Night Violet", "Mint"], ["主題", "深色", "淺色", "外觀", "配色", "晴空", "青草", "夜紫", "薄荷"]],
   ["prefs.lang", "preferences", "#pref-lang", "app.language", null, ["language", "dashboard language", "english", "chinese", "locale"], ["語言", "介面語言", "中文", "英文"]],
   ["prefs.density", "preferences", "#pref-density", "app.sidebarDensity", null, ["sidebar", "compact", "detailed", "density", "agent list"], ["側邊欄", "精簡", "詳細", "密度", "Agent 清單"]],
   ["prefs.compactName", "preferences", "#pref-compact-name", "app.compactName", null, ["compact", "display name", "instance name"], ["精簡", "暱稱", "實際名稱"]],

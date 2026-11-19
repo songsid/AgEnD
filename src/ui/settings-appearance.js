@@ -9,6 +9,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { DEFAULT_SETTINGS_CONTENT_WIDTH, SETTINGS_CONTENT_WIDTHS, settingsContentWidthStore, setSettingsContentWidth } from "/assets/settings-width.js";
 import { ModsCard } from "./settings-mods.js";
 import { Icon } from "/assets/ui-icons.js";
+import { ThemePicker, paletteName } from "/assets/theme-picker.js";
 import { toast } from "/assets/ui-toast.js";
 import { ownerCssOffHere, ownerCssTrial, safeMode, setOwnerCssActive, setOwnerCssOffHere, startOwnerCssTrial } from "/assets/owner-css.js";
 import { setThemesShown, themesStore } from "/assets/app-themes.js";
@@ -109,7 +110,8 @@ export function AppearanceSection(props = {}) {
 /** Theme remains a normal personal preference. */
 function ThemeModeCard() {
   const [theme, setTheme] = useState(typeof AgendTheme !== "undefined" ? AgendTheme.get() : "system");
-  useEffect(() => (typeof AgendTheme !== "undefined" && typeof AgendTheme.onChange === "function" ? AgendTheme.onChange(setTheme) : undefined), []);
+  const [coloursOpen, setColoursOpen] = useState(false), [palette, setPalette] = useState(globalThis.AgendTheme?.getPalette?.() || "");
+  useEffect(() => globalThis.AgendTheme?.onChange?.(value => { setTheme(value); setPalette(globalThis.AgendTheme.getPalette?.() || ""); }), []);
   const choose = (value) => { setTheme(value); if (typeof AgendTheme !== "undefined") AgendTheme.set(value); savePref("theme", value); };
   return html`<section class="card s-appearance s-look-display"><h3>${tn("lookDisplayGroup")}</h3>
     <fieldset id="pref-theme" class="s-theme-picker"><legend>${t("app.theme")}</legend><div class="s-theme-options">
@@ -119,6 +121,9 @@ function ThemeModeCard() {
         <span class="s-theme-choice-label">${t(`app.${key}`)}</span>
       </label>`)}
     </div></fieldset>
+    <div class="s-row s-theme-colours-row"><div class="grow"><span>${t("app.colours")}</span><small class="note">${paletteName(palette)}</small></div>
+      <button type="button" class="btn s-theme-colours" onClick=${() => setColoursOpen(true)}>${t("app.themeOther")}</button></div>
+    ${coloursOpen ? html`<${ThemePicker} onClose=${() => { setColoursOpen(false); setPalette(globalThis.AgendTheme?.getPalette?.() || ""); }} />` : null}
     <${SettingsContentWidth} />
   </section>`;
 }

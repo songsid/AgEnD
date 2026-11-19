@@ -1,0 +1,220 @@
+{
+  "baseCommit": "8db3a240c046fa7623087c3a3a341bef5d61f886",
+  "source": [
+    {
+      "path": "docs/design/builtin-colours-m3368.md",
+      "sha256": "655df9031e911354fc2bce2e4ce81fc8b46f55112a7fd20ba027645931f509f1"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-builtin-themes-m3368.mts",
+      "sha256": "3797394aedc32a25c91759e889c0f677b883d78d386093c9d24de3d195f93a48"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "d94f8849b21b9236afe3de057f1483a986cdf4cdbd2b9cb6c092d407d149f3ec"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "d1722cd56192b5f0168e83e02952904b902d38f1ed06cca48cf5f0a4c11cc65f"
+    },
+    {
+      "path": "src/ui/settings-appearance.js",
+      "sha256": "36f158a46fa9bce6cdc64d9e9fca1a0beb2535e6dd07275d888f8bcab662bcab"
+    },
+    {
+      "path": "src/ui/settings-registry.js",
+      "sha256": "94dbf2bd0503d2a7420bccaf8ca06b8d113ceb2aaca224115e935b76f892283b"
+    },
+    {
+      "path": "src/ui/shared/app-i18n.js",
+      "sha256": "a311a071382a6f8295cf41411a33d4b53e0742b54012f4b98d00a67b0e784e86"
+    },
+    {
+      "path": "src/ui/shared/app-shell.js",
+      "sha256": "a8c15993f635ee5cba34e48bbcaadd0caf3c318cee71713407fcfc2b7522de52"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "f46f83e626041f01e66fa2d4f05aeef7c44eae6e75e617250973055da266eed6"
+    },
+    {
+      "path": "src/ui/shared/theme-picker.js",
+      "sha256": "69be7b2a4e30cf291e397c6a82e91e89cdb57e7c271d4666010897c6e883e004"
+    },
+    {
+      "path": "src/ui/shared/theme.js",
+      "sha256": "791d93faa0f1da99582b2c1a273a50d4560c40d3fd2c882e59ecea6af6bc1b6d"
+    },
+    {
+      "path": "src/ui/shared/tokens.css",
+      "sha256": "63e8f66eee1dc232016d78e4bddbc0c0fba2ea16c3721032ef5c7af3ac4acf95"
+    },
+    {
+      "path": "tests/builtin-theme-apply-m3368.test.ts",
+      "sha256": "e1e169ba9ab1cb0b6944ecd18f82934ad9e9022cd3ded7f82a26b18af467743b"
+    },
+    {
+      "path": "tests/builtin-theme-colours-m3368.test.ts",
+      "sha256": "18e7306af70f01ca848e34c158b981908a8b2e693d7623eb604afbf7fe295766"
+    },
+    {
+      "path": "tests/builtin-themes-m3368.test.ts",
+      "sha256": "d38780069caa131883b42daa9461e9c09812070dcc1d550f767fb0fbdb41e248"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/builtin-colours-m3368/README.md",
+      "sha256": "0700a292bd02b626ec26b2e77507853fd64eaf990f70642e6f543f7439867e2d"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-agent-look-over-mint.png",
+      "sha256": "4abb34e6f89b2c43cda2b147c7084ba19fb4097780064fd6894b6e799f17cbfc"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-dialog-dark.png",
+      "sha256": "38959297fb0c8784ad0272c3aac8e816fe2b02f9d07f9439f16ef7c4b96c89b8"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-dialog-light.png",
+      "sha256": "4a8de7ba646ec9db84a5067ff7b1028423221dbbe317f6291468d228aac06606"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-look-colours-row.png",
+      "sha256": "0cbb298f4d48d4f77711c8b3fbc3700cdf80822ea0099705e093b09bbff9492b"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-meadow-dark-chat.png",
+      "sha256": "cef384d088bdcbec1d141b1a33037c232a801da0756c3c833ef3c95e3e7fde2a"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-meadow-light-chat.png",
+      "sha256": "cb695eab124a7ef090b500085885aa6bb582baf6693abd51fb3fa49a9e68c568"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-menu-default.png",
+      "sha256": "2a8de30527baaf491f03212169f507bd56a91613b44d45ce8177a08d999b6bd7"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-menu-mint.png",
+      "sha256": "5d73a0df8f9f3a3bb22f865f578b9ebe2b02a03bb6cd93293607619feb254a3d"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-mint-dark-chat.png",
+      "sha256": "4a6f68d1ec50f3b9da3c6a6344aae6272fd6389f5d8554d3c80b4b2f79a432a0"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-mint-light-chat.png",
+      "sha256": "e29cc499989caacd02f94cdb3b68766f8e5d0e8be252b5efa2889a592cf55b21"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-sky-dark-chat.png",
+      "sha256": "84d0fb372154354dfd49c8cd46fd86177933b9efde4c49b8d22faac9b19d0704"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-sky-light-chat.png",
+      "sha256": "2dd3e12c5de57f4219fb8ef3f237e48a1b43a9feaf83a57329fea77ed4b3ec19"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-violet-dark-chat.png",
+      "sha256": "994603e490d84ecc31f13d2fd992ff652e34aa169e4bc9fa89401b25abd3e488"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-violet-light-chat.png",
+      "sha256": "ffe74985eff8af83f3de08fe3e8d978c4324fe305700ce75e22f8de8b8194f92"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-dialog-dark.png",
+      "sha256": "b85fd26bb0b609b190aed9b43a4b351b6d5626f693b76e4562864307892ba24b"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-dialog-light.png",
+      "sha256": "05b1e8388d71c195b656e33bb8a6ecfaef74e75aa649e2e2baaa83af755aadc3"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-look-colours-row.png",
+      "sha256": "6a9a98a1337b132a11c300cd911c63cb9b46386eea345c75b226350dee3b645a"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-menu-default.png",
+      "sha256": "96ef9ffe006c49cc9835d9e630ebf52a55c3b13e8aed2266ed2c6ffc252a0d35"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-menu-mint.png",
+      "sha256": "8eddcccf6ece87707cfe4c3e2f5ca1c5aefdd1cd8dd7c3e3c37b5a6902d8ad70"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-mint-dark-chat.png",
+      "sha256": "1cdd09dba1aa3920dd86a55317d4cb75b537120c7b1ae8a179a037c987646cef"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-mint-light-chat.png",
+      "sha256": "a0d226d7578bef6193c53b06cf9a87070a3008c5fb8bdd6b3cd0c7446626f55d"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-dialog-dark.png",
+      "sha256": "59b9c64a26a0c7c0902dff96f55f663aa96b944dc042dc50dff90be51099b250"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-dialog-light.png",
+      "sha256": "8098f202dd949567d1e94d46a00ba3b618fb9e06464ac053194947a16be96691"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-menu-default.png",
+      "sha256": "2504fe6b5f2abfd9ce55129eb8b81c84077fd67b83770d19f5cdd06c64f98312"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-menu-mint.png",
+      "sha256": "7d37532bd6f21b3a259e2012137b046b77bd95d3c0038fc610a81949aec259c7"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-mint-dark-chat.png",
+      "sha256": "d71fa1b1a1f248ae43f43b941773dae7c1c96d15c6b9c9fe75c886dfb0507325"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-dialog-dark.png",
+      "sha256": "69a064574fd32e63a6dfc22d6f4e003be5432053e996a5080deff7a3ba5af3bb"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-dialog-light.png",
+      "sha256": "6a0a26c063299c462ed6e9174d04de2b3dea2e45265c3c7a9659abdc30150205"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-menu-default.png",
+      "sha256": "06895d3d4e646394619536419e1db9b90fd0684b75d249c79613d5b0e9dec2b9"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-menu-mint.png",
+      "sha256": "5cb0888713ddc0fb51c580667ea7fdc2e73fd72a03d29e3b83c8715f7ee96abe"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-mint-dark-chat.png",
+      "sha256": "50e02dbf2a2d12fd2176bd8f62f9adba359fd74d11b91b5bb79f30a88253345d"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/before/fleet-desk-before-look.png",
+      "sha256": "167006c858556d1cf29a6b8d10d34fc39e58078296833a38f094d75b26bae43c"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/before/fleet-phone-before-look.png",
+      "sha256": "4ccad0e2e46e2d0ad8a9e7b12ba2de368f636854f0b80049540d3f8eef011b2c"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/before/hub-desk-before-menu.png",
+      "sha256": "bb3be666d9171cbb3353114fb7fdcc40bcab0b32db255c4b89f36db8b6f6aec3"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/before/hub-phone-before-menu.png",
+      "sha256": "f3e1f435542a0c24b4f677b6dfe85fd8cdd69e115e5af64705522b05f05a2ff1"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/validation.json",
+      "sha256": "feedadc768a927d1911cbcde1ac7cd06a2388c09c94f6de806f73ae170bbf64a"
+    }
+  ],
+  "captureScopes": {
+    "before": 4,
+    "after": 31,
+    "runtimeNote": "Eight colour variants, markup and geometry unchanged through final handler hardening; final System/Default and Look row controls verified separately."
+  }
+}
