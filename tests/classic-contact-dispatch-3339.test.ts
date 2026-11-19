@@ -88,6 +88,8 @@ it("a Hub window refuses before a ticket and also stops a previously pending app
 });
 it("an approved but undelivered request does not authorize a correlation-only return; a confirmed return does", async () => {
   const { manager, outbox } = rig();
+  // Pre-existing worker restrictions still need the proven return; approval no longer creates them.
+  outbox.contactAuthorizations.inheritOrigin("worker", outbox.contactAuthorizations.origin("room")!);
   const held = await call(manager, "delegate_task", { target_instance: "worker", task: "Read public status", correlation_id: "fake-work" });
   const ticket = manager.contactAuthorization(held.mock.calls[0]?.[0].authorization_id, admin);
   manager.decideContactAuthorization(ticket.id, { revision: ticket.revision, decision: "approve-once" }, admin);
@@ -114,7 +116,7 @@ it("rechecks Hub restriction at final handoff and keeps the original source acro
   setHub(true); expect((manager as any).contactDeliveryCurrent(row)).toBe(false);
   setHub(false); manager.getDaemonBootId = (name: string) => `${name}-replacement-boot`;
   expect((manager as any).contactDeliveryCurrent(row)).toBe(true);
-  expect(outbox.contactAuthorizations.origin("worker")?.people).toEqual([member]);
+  expect(outbox.contactAuthorizations.origin("worker")).toBeUndefined();
   expect(outbox.listPending()).toHaveLength(1);
 });
 it("matches only an exact standing contact row and consumes its one use without replay", async () => {
@@ -180,3 +182,32 @@ it("does not require an incarnation token to launch or send from a legacy room",
   expect(outbox.listPending()).toHaveLength(1);
   expect(token).not.toHaveBeenCalled();
 });
+it.each(["approve-once", "standing-grant"].flatMap(via => ["none", "human", "mixed", "unknown"].map(kind => ({ via, kind }))))(
+  "admin-endorsed $via leaves target $kind origin unchanged and retains the source audit", async ({ via, kind }) => {
+    const { manager, outbox } = rig(), store = outbox.contactAuthorizations;
+    const second = { ...member, userId: "fake-second-member", label: "Second member" };
+    store.inheritOrigin("room", { kind: "human", people: [second], receiptIds: ["fake-second-receipt"], chain: ["room"] });
+    const source = store.origin("room")!;
+    if (kind !== "none") store.inheritOrigin("worker", { kind: kind as "human" | "mixed" | "unknown",
+      people: [{ ...member, userId: "fake-target-member", label: "Target member" }, ...(kind === "mixed" ? [{ ...member, userId: "fake-other-target-member", label: "Other target member" }] : [])], receiptIds: ["fake-target-receipt"], chain: ["worker"] });
+    const before = store.origin("worker");
+    if (via === "standing-grant") store.writePolicy("worker", { revision: 0, grants: source.people.map(person => ({ id: "", person,
+      source: "room", target: "worker", verbs: ["delegate_task"], expiresAt: new Date(Date.now() + 60_000).toISOString(), remainingUses: 1 })) }, admin,
+      name => `${name}-incarnation`);
+    const response = await call(manager, "delegate_task", { target_instance: "worker", task: "Synthetic public-status question" });
+    if (via === "approve-once") {
+      expect(response.mock.calls[0]?.[0]).toMatchObject({ sent: false, held: true });
+      const held = store.list().items[0]!;
+      manager.decideContactAuthorization(held.id, { revision: held.revision, decision: "approve-once" }, admin);
+    } else expect(response.mock.calls[0]?.[0]).toMatchObject({ sent: true });
+    expect(store.origin("worker")).toEqual(before);
+    expect(store.origin("room")).toEqual(source);
+    expect(store.list().items).toEqual([expect.objectContaining({ state: "approved", origin: source, verb: "delegate_task" })]);
+    const rows = outbox.listPending(); expect(rows).toHaveLength(1);
+    expect(rows[0].payload).toMatchObject({ content: "Synthetic public-status question", meta: { request_kind: "task" } });
+    expect((manager as any).contactDeliveryCurrent(rows[0])).toBe(true);
+    if (kind === "none") {
+      const next = await call(manager, "send_to_instance", { instance_name: "peer", message: "Synthetic follow-up" }, "worker", "fake-target-follow-up");
+      expect(next.mock.calls[0]?.[0]).toMatchObject({ sent: true });
+    }
+  });

@@ -104,8 +104,12 @@ On decline or expiry, one AgEnD system notice names the ticket, target and outco
 stop waiting for that request. This is status only, not authority or a grant.
 A standing narrow contact grant can admit matching requests without another card.
 
-The server retains an origin union per agent instance, including receiving ordinary
-workers, across relays, later turns and compaction. An earlier non-admin request
+An administrator's approval or a matching administrator-written grant endorses
+that delivery: the receiving agent's origin stays unchanged. The source keeps its
+own origin, and the ticket keeps the original origin and decision audit. Existing
+target origins are not cleared. The server still retains an origin union per
+agent instance for ordinary relays without this endorsement, later turns and
+compaction. An earlier non-admin request
 can therefore require approval after an admin speaks directly to that worker.
 Only a verified managing administrator can explicitly clear retained origin in
 the agent's web Permissions tab, accepting the current conversation as their own
