@@ -1,0 +1,31 @@
+{
+  "base": "2550ec2d69e7300d02a159de1fc66204358cbea9",
+  "family": "hub-group-composition.test.ts private two-port rig",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-group-composition.test.ts -t 'holds both group fixture sockets' --maxWorkers=2",
+    "baseFailed": 1,
+    "filtered": 20,
+    "result": "Actual member/web competing binds both return bound, failing expected EADDRINUSE array."
+  },
+  "fullFile": {
+    "command": "npx vitest run tests/hub-group-composition.test.ts --maxWorkers=2",
+    "passed": 21,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "covered": [
+    "real TLS listener adoption and trusted HTTPS sign-in/policy read",
+    "production service close frees both ports before lease disposal",
+    "existing complete group policy and permission controls"
+  ],
+  "limits": [
+    "One fixture family only.",
+    "Shared helpers, production code and timeout values unchanged.",
+    "Owned disposable listeners, storage and inert directory only; no live account/CLI/model/Fleet/Windows/browser campaign."
+  ],
+  "rollback": "Revert test file and evidence only; no product settings, authentication or data rollback."
+}
