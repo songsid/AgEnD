@@ -1,0 +1,34 @@
+{
+  "base": "dd237c025f5ed9451fa36f3fe9d1cfe96ec952fc",
+  "family": "hub-directory-host-notices.test.ts first runtime listener ports",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-directory-host-notices.test.ts -t 'holds the first runtime' --maxWorkers=2",
+    "baseFailed": 1,
+    "filtered": 12,
+    "result": "With base port selection, actual member/web competitors both bind; the outer socket-ownership assertion fails."
+  },
+  "fullFile": {
+    "command": "npx vitest run tests/hub-directory-host-notices.test.ts --maxWorkers=2",
+    "passed": 13,
+    "skipped": 0,
+    "exitCode": 0
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0,
+    "exitCode": 0
+  },
+  "covered": [
+    "real runtime first mount, replacement directory refusal and close",
+    "both runtime ports rebind before lease disposal",
+    "retained host notice read over local HTTP without a cold Hub/directory mount",
+    "existing authorization, held continuation, audit and schema refusal controls"
+  ],
+  "limits": [
+    "One fixture family only.",
+    "Shared helpers, production code and timeout values unchanged.",
+    "Local Fleet HTTP listener already uses port zero and is unchanged.",
+    "Disposable local listeners, storage and inert directory only; no live account/CLI/model/Fleet/Windows/browser campaign."
+  ],
+  "rollback": "Revert test file and evidence only; no product settings, authentication or data rollback."
+}
