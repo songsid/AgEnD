@@ -5602,7 +5602,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (input.revision !== before.revision) throw Error("conflict");
     // Mode persists in the existing Classic configuration; absent historical fields remain legacy.
     if (input.mode) {
-      if (input.mode === "restricted") store.inheritOrigin(name, { kind: "unknown", people: [], receiptIds: [], chain: [name] });
+      if (input.mode === "restricted" && before.mode !== "restricted") store.inheritOrigin(name, { kind: "unknown", people: [], receiptIds: [], chain: [name] });
       this.classicChannels!.setRestrictedMode(name, input.mode === "restricted");
     }
     const policy = store.writePolicy(name, input, actor, instance => this.contactGeneration(instance));

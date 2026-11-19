@@ -102,11 +102,20 @@ or a new instance. The target's Fleet administrator decides the retained request
 Approval delivers it once; decline or expiry delivers nothing. A standing narrow
 contact grant can admit matching requests without another card.
 
-The server keeps the originating human across relays, later turns and compaction.
-An earlier non-admin request can therefore require approval after an admin speaks.
+The server retains an origin union per agent instance, including receiving ordinary
+workers, across relays, later turns and compaction. An earlier non-admin request
+can therefore require approval after an admin speaks directly to that worker.
+There is no verified reset in this version. A first legacy-to-restricted switch
+treats earlier history as unknown; saving the same mode leaves the origin alone.
+Unknown origins never match standing grants, so new contacts need separate approval.
+Known-person authority does not change when old receipt or hop metadata is trimmed.
 Approval does not clear that history or authorize the worker's data access or
 changes. A matching `report_result` return is allowed only for proven approved work,
 not an arbitrary correlation string. The Hub contact limit always takes precedence.
 Restricted attachment paths are limited to the room's own inbox/scratch; reply,
 react and edit cannot choose another room. Native tool coverage is separate: an
 uncovered backend is not protected by a claimed CLI sandbox.
+
+For a target with no Discord/Telegram adapter, only an already verified host
+operator may approve. An ordinary delegated Fleet worker with no explicit
+`channel_id` still inherits the primary adapter's Fleet administrators.

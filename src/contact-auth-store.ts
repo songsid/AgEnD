@@ -44,7 +44,8 @@ export function mergeContactOrigins(before: ContactOrigin | undefined, next: Con
   const people = unique([...before.people, ...next.people], contactPersonKey);
   const receipts = [...new Set([...before.receiptIds, ...next.receiptIds])];
   const chain = [...new Set([...before.chain, ...next.chain])];
-  const unknown = before.kind === "unknown" || next.kind === "unknown" || people.length > 16 || receipts.length > 64 || chain.length > 32;
+  // Receipt/hop history is diagnostic. Trimming it must not change the known people's authority.
+  const unknown = before.kind === "unknown" || next.kind === "unknown" || people.length > 16;
   return { kind: unknown ? "unknown" : people.length === 1 && before.kind !== "mixed" && next.kind !== "mixed" ? "human" : "mixed",
     people: people.slice(0, 16), receiptIds: receipts.slice(-64), chain: chain.slice(-32) };
 }

@@ -50,7 +50,7 @@ function SuggestionNeed({ item }) {
       if (!r.ok) { toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "loadFailed"), false); return; }
       const p = r.data;
       if (p.canSetMode !== true) { toast(ca("forbidden"), false); return; }
-      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n") });
+      const ok = await confirmDialog({ title: ca("confirmRestricted"), confirmLabel: ca("suggestSwitch"), message: [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n") });
       if (!ok) return;
       const w = await putPermissions(name, { revision: p.revision, mode: "restricted" });
       toast(ca(w.ok ? "saved" : w.code === "conflict" ? "stale" : w.code === "forbidden" ? "forbidden" : "saveFailed"), w.ok);
@@ -66,6 +66,7 @@ function SuggestionNeed({ item }) {
   };
   return html`<div class="n-title"><strong>${ca("suggestTitle")}</strong></div>
     <p class="n-detail">${name}: ${ca("suggestBody")}</p>
+    <p class="feedback warning contact-origin-switch">${ca("switchOriginNote")}</p>
     ${notCovered(guard) ? html`<p class="feedback warning contact-not-covered">${ca("notCoveredWarning")}</p>` : null}
     <div class="n-actions">
       <button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => void switchRoom()}>${ca("suggestSwitch")}</button>
