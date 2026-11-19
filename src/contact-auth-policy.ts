@@ -9,6 +9,8 @@ const uses = z.number().int().min(1).max(10_000).nullable();
 export const ContactDecisionSchema = z.strictObject({ revision: z.number().int().positive(),
   decision: z.enum(["approve-once", "decline"]), grant: z.strictObject({ expiresAt: future, remainingUses: uses }).optional() })
   .refine(value => !value.grant || value.decision === "approve-once");
+export const ContactOriginClearSchema = z.strictObject({ revision: z.number().int().nonnegative(),
+  originRevision: z.number().int().nonnegative(), generation: text });
 export const ContactPermissionsSchema = z.strictObject({ revision: z.number().int().nonnegative(),
   mode: z.enum(["legacy", "restricted"]).optional(), approvers: z.array(ContactPersonSchema).max(10).optional(),
   roomTools: z.strictObject({ publicRead: z.boolean(), allowedMcpTools: z.array(z.strictObject({

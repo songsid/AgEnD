@@ -84,18 +84,31 @@ export interface ContactHistoryRow {
   id: string;
   at: string;
   actor: ContactPerson;
-  action: "policy" | "approve" | "decline" | "grant-add" | "grant-remove" | "grant-use";
+  action: "policy" | "approve" | "decline" | "grant-add" | "grant-remove" | "grant-use" | "origin-clear";
   ticketId?: string;
   summary: string;
   source?: string;
   target?: string;
   generation?: string;
+  originChange?: { before: ContactOriginImage; after: ContactOriginImage };
   policyChange?: {
     approvers?: { before: ContactPerson[] | null; after: ContactPerson[] | null };
     grants?: { before: ContactGrant[]; after: ContactGrant[] };
     roomTools?: { before: ContactRoomTools; after: ContactRoomTools };
     modeRequested?: "legacy" | "restricted";
   };
+}
+export type ContactOriginImage = Pick<ContactOrigin, "kind" | "people" | "chain"> & { receiptCount: number };
+export interface ContactOriginClear { revision: number; originRevision: number; generation: string }
+export interface ContactOriginState {
+  kind: ContactOrigin["kind"] | "none";
+  people: ContactPerson[];
+  chain: string[];
+  receiptCount: number;
+  revision: number;
+  generation: string;
+  canClear: boolean;
+  lastCleared?: { actor: ContactPerson; at: string };
 }
 export interface ContactPermissions {
   instance: string;
@@ -114,6 +127,7 @@ export interface ContactPermissions {
   suggestRestricted: boolean;
   grants: ContactGrant[];
   history: ContactHistoryRow[];
+  originState?: ContactOriginState;
   originRestriction?: { active: true; reason: "earlier-non-admin" | "unknown-origin"; resetSupported: false };
 }
 export interface ContactPermissionsWrite {

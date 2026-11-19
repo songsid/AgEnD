@@ -72,7 +72,12 @@ but does not remove origins from work already handed to a worker.
 An observed, proven context erasure could clear the union. Today's `/clear`
 acknowledgement proves handoff only, and the existing conversation-generation
 counter also rotates on retained resumes. Neither is used as erasure proof here;
-`resetSupported:false` states this gap explicitly. Automatic recovery at a work-item
+`resetSupported:false` describes this automatic-reset gap. An explicit verified
+administrator override is now available on every agent's Permissions tab; see
+[Administrator contact-origin reset](contact-origin-reset.md). It accepts the
+current retained conversation as that administrator's work, with a monotonic
+origin revision, incarnation/policy checks and atomic audit. It never erases CLI
+text or alters frozen tickets, other agents or grants. Automatic recovery at a work-item
 boundary is later work and requires a verifiable work-item close, never a guessed
 correlation string or the most recent speaker.
 
