@@ -4895,3 +4895,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 :root[data-palette="meadow"] .p-chat .msg.user .meta { margin-left: auto; }
 .theme-swatch[data-palette="meadow"] .theme-swatch-chat { background: var(--palette-chat-bg); }
 .theme-swatch[data-palette="meadow"] .theme-swatch-chat i:last-child { background: var(--accent-decoration); }
+
+/* M3377: original leaf/grass art is static on the panel; only its child messages scroll. */
+:root[data-palette="meadow"] .p-chat:not([style*="--bg:"]) {
+  background-image: var(--meadow-wallpaper-tile), linear-gradient(145deg, var(--meadow-wallpaper-start), var(--meadow-wallpaper-end));
+  background-size: 192px 192px, 100% 100%;
+  background-position: 0 0, 0 0;
+  background-repeat: repeat, no-repeat;
+}

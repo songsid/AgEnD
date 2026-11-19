@@ -1,0 +1,55 @@
+{
+  "baseCommit": "c9206422049e8423a1511f558893b9ad4dd13326",
+  "source": [
+    {
+      "path": "docs/design/meadow-wallpaper-m3377.md",
+      "sha256": "4ea41c090ddb98bcc7689ad52096f662db1e60f395b6bc2603924ab77c3c135f"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-meadow-wallpaper-m3377.mts",
+      "sha256": "72f3db58a222042477f386236f3b7e0b04192644325e678a16fa33d566d10b29"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "3019ec110db4c2e48157fbc5d7ea78ca4c228cac391d9be6f5c4bb5a3364133d"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "4362003aeb4a9cab394c72a77cee49ea0dcd1a8247dce395508f47e9a8ca8c09"
+    },
+    {
+      "path": "src/ui/shared/tokens.css",
+      "sha256": "429951b497de2fa7558d8dbc2f9ff28fafb05e6a6f29e9f3684660039939a611"
+    },
+    {
+      "path": "tests/meadow-wallpaper-m3377.test.ts",
+      "sha256": "19a9622b7ff86897794cbb2320e1392e106bea8b0042642c4e4affcf6f33eb12"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/README.md",
+      "sha256": "21e24d4387b1d64f2b3d44958a069e64cb6d264ee9dd81743226305c00bb79fb"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/desk-dark-chat.png",
+      "sha256": "26494a40d0ba1c096804b6a0a47ee28707d9646cc7fab815e33023c4ce028c0b"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/desk-light-chat.png",
+      "sha256": "97ed19570f11c4df8115df847f231631754c612d2d05feab3cc713f73126fe6d"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/phone-dark-chat.png",
+      "sha256": "e341cd2c0f88a9f0fb6f1ce734d278b45eb461cfab5cb634cd9156b6c7b62ea5"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/phone-light-chat.png",
+      "sha256": "3c379dd89093c27c57d82fdb762c2a90ce773b7f5baea18c98686ff0df30ffaa"
+    },
+    {
+      "path": "docs/evidence/meadow-wallpaper-m3377/validation.json",
+      "sha256": "066073195972ed1857c16449de94f42b3168bd81cbc58ddc5ea51089f572fbd6"
+    }
+  ]
+}

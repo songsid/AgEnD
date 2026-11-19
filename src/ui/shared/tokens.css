@@ -289,6 +289,9 @@
   --palette-chat-text-2: #e1e7ce;
   --palette-chat-text-3: #d1dabb;
   --accent-decoration: #4fae4e;
+  --meadow-wallpaper-start: #343a22;
+  --meadow-wallpaper-end: #2b301d;
+  --meadow-wallpaper-tile: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Cg%20opacity%3D%22.035%22%20fill%3D%22none%22%20stroke%3D%22%23ffffff%22%20stroke-width%3D%221.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M27%2062C13%2048%2017%2029%2032%2022C39%2039%2037%2053%2027%2062ZM27%2062L31%2031M114%2048C109%2033%20120%2022%20135%2024C134%2039%20126%2049%20114%2048ZM114%2048L128%2029M73%20138C56%20135%2050%20121%2056%20108C73%20113%2080%20125%2073%20138ZM73%20138L59%20116M139%20160Q137%20143%20129%20136M139%20160Q144%20139%20154%20131M139%20160L141%20137%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 @media (prefers-color-scheme: light) {
   :root[data-palette="meadow"]:not([data-theme="dark"]) {
@@ -314,6 +317,9 @@
   --palette-chat-text-2: #424833;
   --palette-chat-text-3: #4b513c;
   --accent-decoration: #4fae4e;
+  --meadow-wallpaper-start: #c4cf93;
+  --meadow-wallpaper-end: #cdd69e;
+  --meadow-wallpaper-tile: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Cg%20opacity%3D%22.02%22%20fill%3D%22none%22%20stroke%3D%22%23000000%22%20stroke-width%3D%221.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M27%2062C13%2048%2017%2029%2032%2022C39%2039%2037%2053%2027%2062ZM27%2062L31%2031M114%2048C109%2033%20120%2022%20135%2024C134%2039%20126%2049%20114%2048ZM114%2048L128%2029M73%20138C56%20135%2050%20121%2056%20108C73%20113%2080%20125%2073%20138ZM73%20138L59%20116M139%20160Q137%20143%20129%20136M139%20160Q144%20139%20154%20131M139%20160L141%20137%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 }
 :root[data-palette="meadow"][data-theme="light"], .theme-swatch[data-palette="meadow"][data-tone="light"] {
@@ -339,6 +345,9 @@
   --palette-chat-text-2: #424833;
   --palette-chat-text-3: #4b513c;
   --accent-decoration: #4fae4e;
+  --meadow-wallpaper-start: #c4cf93;
+  --meadow-wallpaper-end: #cdd69e;
+  --meadow-wallpaper-tile: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20192%20192%22%3E%3Cg%20opacity%3D%22.02%22%20fill%3D%22none%22%20stroke%3D%22%23000000%22%20stroke-width%3D%221.4%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpath%20d%3D%22M27%2062C13%2048%2017%2029%2032%2022C39%2039%2037%2053%2027%2062ZM27%2062L31%2031M114%2048C109%2033%20120%2022%20135%2024C134%2039%20126%2049%20114%2048ZM114%2048L128%2029M73%20138C56%20135%2050%20121%2056%20108C73%20113%2080%20125%2073%20138ZM73%20138L59%20116M139%20160Q137%20143%20129%20136M139%20160Q144%20139%20154%20131M139%20160L141%20137%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E");
 }
 :root[data-palette="violet"], .theme-swatch[data-palette="violet"][data-tone="dark"] {
   --bg: #211e32;

@@ -1,0 +1,48 @@
+{
+  "baseCommit": "c9206422049e8423a1511f558893b9ad4dd13326",
+  "status": "HOLD: user approval required before merge",
+  "failFirst": {
+    "failed": 5,
+    "passed": 1
+  },
+  "stagedDistinctPassingTests": 28,
+  "files": 5,
+  "stages": [
+    {
+      "name": "focused",
+      "passed": 26,
+      "files": 4
+    },
+    {
+      "name": "contrast-skill",
+      "passed": 8,
+      "files": 2,
+      "repeatControls": 6
+    }
+  ],
+  "opacityReversal": {
+    "failed": 1,
+    "unselected": 5,
+    "restoredPassed": 6
+  },
+  "testTypecheck": 0,
+  "browser": {
+    "headless": true,
+    "linux": true,
+    "syntheticData": true,
+    "checks": 22,
+    "errors": 0,
+    "images": [
+      "desk-light-chat.png",
+      "desk-dark-chat.png",
+      "phone-light-chat.png",
+      "phone-dark-chat.png"
+    ],
+    "scope": "SVG decode, stationary panel during child scrolling, fit, explicit agent background precedence. No frame-rate benchmark."
+  },
+  "visualReview": {
+    "originalsInspected": 4,
+    "issues": 0
+  },
+  "nativeBackendRuns": 0
+}
