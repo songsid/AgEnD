@@ -9,7 +9,7 @@ const check=(name:string,ok:unknown,detail?:unknown)=>{checks.push({name,ok:!!ok
 const fx=await bootFixture({port:Number(process.env.HP||19892),classic:false,roster:[{name:'release-helper',displayName:'Release helper',backend:'codex',status:'running'},{name:'notes-helper',displayName:'Notes helper',backend:'codex'}]});
 try{
  for(const message of [{role:'user',sender:'Example person',text:'Please review this small change.'},{role:'agent',sender:'Release helper',text:'The example is ready.\n\n```ts\nconst message = "Hello, world";\nconsole.log(message);\n```\n\nPlease check the highlighted notice before sending.'}])fx.fm.emitSseEvent('message',{instance:'release-helper',...message,ts:new Date().toISOString()});
- for(const device of ['desk','phone'])for(const theme of ['light','dark']){
+ for(const device of ['desk','phone'].filter(x=>!process.env.DEVICE||x===process.env.DEVICE))for(const theme of ['light','dark'].filter(x=>!process.env.TONE||x===process.env.TONE)){
   const a=await fx.page({device,theme,lang:device==='desk'?'en':'zh-TW'},{path:'/settings/look',prefs:{'nav.density':'detailed'}}),p=a.page;
   try{
    p.on('pageerror',(e:any)=>errors.push(String(e).slice(0,160)));
@@ -22,8 +22,9 @@ try{
    const fit=await p.evaluate(()=>({w:innerWidth,body:document.documentElement.scrollWidth,unsafe:/-t\d+/.test(document.body.innerText)}));check(`${device}-${theme}-fit`,fit.body<=fit.w+1&&!fit.unsafe,fit);
    await p.evaluate(()=>document.fonts.ready);const name=`${device}-${theme}-chat.png`;await p.screenshot({path:join(out,name),animations:'disabled'});shots.push(name);
    const override=await p.locator('.p-chat').evaluate((el:any)=>{el.style.setProperty('--bg','#202020');const hidden=getComputedStyle(el).backgroundImage==='none';el.style.removeProperty('--bg');return hidden&&getComputedStyle(el).backgroundImage.includes('linear-gradient(');});check(`${device}-${theme}-agent-background-wins`,override);
+   const pageTheme=await p.evaluate(async(theme:string)=>{const {applyPageTheme,pagePalette}=await import('/assets/app-themes.js');const shell=document.querySelector('.shell'),panel=document.querySelector('.p-chat');const colors={bg:'#f3f9f8',surface:'#ffffff',text:'#0c1f1d',text2:'#3a5a56',accent:'#0f766e'};applyPageTheme(shell,pagePalette({colors:{[theme]:colors},page:{on:true}},theme),theme);const style=getComputedStyle(panel),parent=getComputedStyle(shell),result={image:style.backgroundImage,bg:style.backgroundColor==='rgba(0, 0, 0, 0)'?parent.backgroundColor:style.backgroundColor,text:style.color,secondary:style.getPropertyValue('--text-2').trim()};applyPageTheme(shell,null,theme);return {...result,restored:getComputedStyle(panel).backgroundImage.includes('linear-gradient(')};},theme);check(`${device}-${theme}-page-theme-wins`,pageTheme.image==='none'&&pageTheme.bg==='rgb(243, 249, 248)'&&pageTheme.text==='rgb(12, 31, 29)'&&pageTheme.secondary==='#3a5a56'&&pageTheme.restored,pageTheme);
   }finally{await a.ctx.close();}
  }
- check('all-cases-ran',shots.length===4);check('no-page-errors',errors.length===0,errors);
+ check('all-cases-ran',shots.length===(process.env.DEVICE?1:2)*(process.env.TONE?1:2));check('no-page-errors',errors.length===0,errors);
 }finally{await fx.close();writeFileSync(join(out,'result.json'),JSON.stringify({checks,shots,errors},null,2));}
 console.log(JSON.stringify({checks:checks.length,shots:shots.length}));

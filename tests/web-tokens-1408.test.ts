@@ -149,7 +149,9 @@ describe("Inter, bundled", () => {
     expect(face).toMatch(/unicode-range: U\+0000-00FF,/);
     expect(face).not.toMatch(/U\+(4E00|3000|AC00)/);   // no CJK range: Chinese is the system's font
     // Nothing anywhere in the file comes from another site.
-    expect([...CSS.matchAll(/url\(([^)]*)\)/g)].map(m => m[1])).toEqual(['"/assets/inter.woff2"']);
+    const urls = [...CSS.matchAll(/url\(([^)]*)\)/g)].map(m => m[1]!);
+    expect(urls.filter(url => !/^"data:image\/svg\+xml,[^"]+"$/.test(url))).toEqual(['"/assets/inter.woff2"']);
+    expect([...face.matchAll(/url\(([^)]*)\)/g)].map(m => m[1])).toEqual(['"/assets/inter.woff2"']);
   });
 
   it("names the CJK fallbacks in the agreed order, before the generic system stack", () => {

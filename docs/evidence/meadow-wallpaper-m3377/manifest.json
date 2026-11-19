@@ -3,11 +3,11 @@
   "source": [
     {
       "path": "docs/design/meadow-wallpaper-m3377.md",
-      "sha256": "4ea41c090ddb98bcc7689ad52096f662db1e60f395b6bc2603924ab77c3c135f"
+      "sha256": "0a271c03ff77e7b0728b8b12f6e735d70f757b4290d7a3dcd48d9917af855314"
     },
     {
       "path": "scripts/manual/smoke/smoke-meadow-wallpaper-m3377.mts",
-      "sha256": "72f3db58a222042477f386236f3b7e0b04192644325e678a16fa33d566d10b29"
+      "sha256": "e7f7cf6694f3dbe05a5366a2a1dd0872839868f04fb6a2cb148769cbe1173afe"
     },
     {
       "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
@@ -15,21 +15,29 @@
     },
     {
       "path": "src/ui/shared/app.css",
-      "sha256": "4362003aeb4a9cab394c72a77cee49ea0dcd1a8247dce395508f47e9a8ca8c09"
+      "sha256": "5d307e26aa8a615f814ac1629ce46a5caac34ace86b88159b0d72dde1a88cadc"
     },
     {
       "path": "src/ui/shared/tokens.css",
       "sha256": "429951b497de2fa7558d8dbc2f9ff28fafb05e6a6f29e9f3684660039939a611"
     },
     {
+      "path": "tests/builtin-theme-meadow-m3368.test.ts",
+      "sha256": "06e7fa9fd524045490a9eb799632dd9c5519cda0f73b3b5be8642b598faf5cc4"
+    },
+    {
       "path": "tests/meadow-wallpaper-m3377.test.ts",
-      "sha256": "19a9622b7ff86897794cbb2320e1392e106bea8b0042642c4e4affcf6f33eb12"
+      "sha256": "c68de25797ed52215d1c17b6579d58920f0fcdda80471d7ad2257c9cb0091d39"
+    },
+    {
+      "path": "tests/web-tokens-1408.test.ts",
+      "sha256": "56b97d36778fa0a3eddabd7ee594ee4bfd0cbe5ca049df55448e07176cfce2f6"
     }
   ],
   "evidence": [
     {
       "path": "docs/evidence/meadow-wallpaper-m3377/README.md",
-      "sha256": "21e24d4387b1d64f2b3d44958a069e64cb6d264ee9dd81743226305c00bb79fb"
+      "sha256": "ab89cbeb9739263260e2a1a4ddc56b69c85d3a7a1add5d5ac8dd4fc9fa96588c"
     },
     {
       "path": "docs/evidence/meadow-wallpaper-m3377/desk-dark-chat.png",
@@ -49,7 +57,7 @@
     },
     {
       "path": "docs/evidence/meadow-wallpaper-m3377/validation.json",
-      "sha256": "066073195972ed1857c16449de94f42b3168bd81cbc58ddc5ea51089f572fbd6"
+      "sha256": "f1261f1a0221fd188a4f260fb8b76a6a8f463a0537576bdb3880c9c2aa857303"
     }
   ]
 }

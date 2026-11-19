@@ -8,7 +8,7 @@ only paths; no scripts, referenced images, animation or filters.
 
 The stationary chat panel paints the two background layers. Messages scroll in
 its existing child. There is no viewport-fixed attachment, scroll handler or
-animation. Explicit per-agent backgrounds retain precedence. All tokens outside
+animation. Explicit per-agent chat backgrounds and shell page themes retain precedence. All tokens outside
 Meadow remain byte-identical to the base; only one Meadow-scoped CSS rule is added.
 
 Names keep their opaque surface strips and bubbles stay opaque. Tests check text,
@@ -32,5 +32,17 @@ The earlier flat Meadow originals remain in the [base packet](../builtin-colours
 
 Reproduce using `scripts/manual/smoke/smoke-meadow-wallpaper-m3377.mts` with owned
 REPO/OUT, Linux CHROME and PW_DIR. It runs serially and closes its owned resources.
+
+R1 preserves the font-origin restriction while allowing only inline SVG images in
+the token sheet; the font-face still names only the bundled same-origin font.
+The original origin assertion first fails, then the affected tests pass. All
+Meadow chat treatments now yield under an agent page theme, including the earlier
+flat base. Two selector controls and the actual `applyPageTheme` browser control
+first fail; after the fix, the page's own background, text and secondary text are
+shown with no wallpaper. Clearing it restores Meadow. The focused R1 stage is
+37/37 (47 distinct controls across six files in total), TypeScript passes, and the
+single desktop-light browser follow-up passes eight checks. The four ordinary
+wallpaper originals are unchanged and were not replaced; this boundary fix adds
+no new user-facing capture campaign. User HOLD remains in force.
 
 Rollback is a presentation revert. No migration, storage, permission or API change.

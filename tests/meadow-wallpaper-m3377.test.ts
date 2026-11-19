@@ -42,10 +42,15 @@ describe("M3377 original static Meadow wallpaper", () => {
   it("paints the stationary panel, and leaves explicit agent backgrounds in charge", () => {
     const rules = [...app.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(x => /meadow-wallpaper/.test(x[2]!));
     expect(rules).toHaveLength(1);
-    expect(rules[0]![1]!.trim()).toBe(':root[data-palette="meadow"] .p-chat:not([style*="--bg:"])');
+    expect(rules[0]![1]!.trim()).toBe(':root[data-palette="meadow"] .shell:not(.th-page) .p-chat:not([style*="--bg:"])');
     expect(rules[0]![2]).toContain('linear-gradient(');
     expect(rules[0]![2]).toContain('background-size: 192px 192px, 100% 100%');
     expect(rules[0]![2]).not.toMatch(/animation|transition|filter|background-attachment:\s*(fixed|local)|will-change/);
+  });
+  it("yields every Meadow chat treatment to a shell page theme", () => {
+    const selectors = [...app.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{[^{}]*\}/g)].map(x => x[1]!.trim()).filter(x => x.startsWith(':root[data-palette="meadow"]') && x.includes('.p-chat'));
+    expect(selectors.length).toBeGreaterThanOrEqual(2);
+    for (const selector of selectors) expect(selector).toContain('.shell:not(.th-page) .p-chat');
   });
   it("keeps every token outside Meadow byte-identical to the dev base", () => {
     const rest = css.replace(/((?::root\[data-palette="meadow"\]|\.theme-swatch\[data-palette="meadow"\])[^{}]*\{)[^{}]*(\})/g, (_all, start, end) => start + end);

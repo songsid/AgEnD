@@ -5,8 +5,8 @@
     "failed": 5,
     "passed": 1
   },
-  "stagedDistinctPassingTests": 28,
-  "files": 5,
+  "stagedDistinctPassingTests": 47,
+  "files": 6,
   "stages": [
     {
       "name": "focused",
@@ -18,6 +18,12 @@
       "passed": 8,
       "files": 2,
       "repeatControls": 6
+    },
+    {
+      "name": "r1-font-page-boundaries",
+      "passed": 37,
+      "files": 4,
+      "distinctAdditionalControls": 19
     }
   ],
   "opacityReversal": {
@@ -44,5 +50,34 @@
     "originalsInspected": 4,
     "issues": 0
   },
-  "nativeBackendRuns": 0
+  "nativeBackendRuns": 0,
+  "r1FailFirst": {
+    "fontOrigin": {
+      "failed": 1,
+      "unselected": 17
+    },
+    "pageThemeSelectors": {
+      "failed": 2,
+      "unselected": 5
+    },
+    "pageThemeBrowser": {
+      "failed": 1,
+      "failure": "sage wallpaper and metadata persisted under a different shell page colour"
+    }
+  },
+  "r1Browser": {
+    "scope": "desk light only; actual applyPageTheme/CSSOM guard",
+    "checks": 8,
+    "errors": 0,
+    "result": {
+      "image": "none",
+      "bg": "rgb(243, 249, 248)",
+      "text": "rgb(12, 31, 29)",
+      "secondary": "#3a5a56",
+      "restored": true
+    },
+    "selectedImages": 0,
+    "ordinaryOriginalsUnchanged": 4
+  },
+  "r1TestTypecheck": 0
 }

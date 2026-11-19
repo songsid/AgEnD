@@ -4889,15 +4889,15 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 }
 
 /* Meadow keeps the surrounding UI neutral; inline agent colours still override these inherited tokens. */
-:root[data-palette="meadow"] .p-chat { --bg: var(--palette-chat-bg); --text-2: var(--palette-chat-text-2); --text-3: var(--palette-chat-text-3); background: var(--bg); color: var(--text); }
-:root[data-palette="meadow"] .p-chat > .panel-head { background: var(--surface-2); }
-:root[data-palette="meadow"] .p-chat .msg .meta { width: fit-content; padding: 0 var(--s-1); border-radius: var(--r-sm); background: var(--surface); }
-:root[data-palette="meadow"] .p-chat .msg.user .meta { margin-left: auto; }
+:root[data-palette="meadow"] .shell:not(.th-page) .p-chat { --bg: var(--palette-chat-bg); --text-2: var(--palette-chat-text-2); --text-3: var(--palette-chat-text-3); background: var(--bg); color: var(--text); }
+:root[data-palette="meadow"] .shell:not(.th-page) .p-chat > .panel-head { background: var(--surface-2); }
+:root[data-palette="meadow"] .shell:not(.th-page) .p-chat .msg .meta { width: fit-content; padding: 0 var(--s-1); border-radius: var(--r-sm); background: var(--surface); }
+:root[data-palette="meadow"] .shell:not(.th-page) .p-chat .msg.user .meta { margin-left: auto; }
 .theme-swatch[data-palette="meadow"] .theme-swatch-chat { background: var(--palette-chat-bg); }
 .theme-swatch[data-palette="meadow"] .theme-swatch-chat i:last-child { background: var(--accent-decoration); }
 
 /* M3377: original leaf/grass art is static on the panel; only its child messages scroll. */
-:root[data-palette="meadow"] .p-chat:not([style*="--bg:"]) {
+:root[data-palette="meadow"] .shell:not(.th-page) .p-chat:not([style*="--bg:"]) {
   background-image: var(--meadow-wallpaper-tile), linear-gradient(145deg, var(--meadow-wallpaper-start), var(--meadow-wallpaper-end));
   background-size: 192px 192px, 100% 100%;
   background-position: 0 0, 0 0;
