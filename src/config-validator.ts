@@ -780,6 +780,9 @@ export function validateClassicBotConfig(config: unknown): ValidationResult {
       if (!isObj(channel)) { err(`channels.${key}`, "must be a mapping"); continue; }
       const backendIssue = backendProblem(channel.backend, typeof channel.instanceName === "string" ? channel.instanceName : typeof channel.name === "string" ? channel.name : key, true);
       if (backendIssue) err(`channels.${key}.backend`, backendIssue);
+      if (channel.effort !== undefined && (typeof channel.effort !== "string" || !/^(low|medium|high|xhigh|max)$/.test(channel.effort))) {
+        err(`channels.${key}.effort`, "must be one of: low, medium, high, xhigh, max");
+      }
       validateAutoPause(channel.auto_pause_after, `channels.${key}.auto_pause_after`);
       if (channel.quota_notice !== undefined) { const problem = quotaNoticeProblem(channel.quota_notice); if (problem) err(`channels.${key}.quota_notice`, problem); }
       if (channel.tool_progress !== undefined && !["off", "standard", "verbose"].includes(String(channel.tool_progress))) {

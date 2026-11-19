@@ -267,6 +267,10 @@ Access & security → **Shared pages** lists the live ones.
 **Slash commands** (the **Commands** palette): `/ctx`, `/compact [instructions]`, `/clear` (asks first), `/model
 [name]`, `/backend [backend] [model] [effort]` (asks first), `/effort [level]`, `/cancel`, `/btw`, `/steer`, `/pause`,
 `/wake`, `/save <file>` (not for a guest on a public link; an admin session there may, M-3278). Anything else: "Not a command here — Enter sends it as a message."
+`/backend` also works in a ClassicBot room, on web, Discord and Telegram, for an admin of that room. Choose the backend,
+then its model and effort, and confirm. Nothing changes before confirmation. Each backend's saved account settings
+are kept; a stopped room stays stopped. For a restricted room, the confirmation explains guard coverage: an uncovered
+backend or version runs with its normal permissions; contact approval still applies.
 At 70% context, quick actions **Compact** and **Clear…** appear. `/raw <text>` (an admin session, the public link's too since M-3278; never a guest there) passes text to the CLI
 unwrapped.
 
