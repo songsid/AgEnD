@@ -330,7 +330,7 @@ zsh 需要先初始化補全系統。如果 `~/.zshrc` 裡還沒有 `autoload -U
 
 | 指令 | 作用 | 權限 |
 |---|---|---|
-| `/status` | Fleet 表格：backend、model、context、推理強度、花費、執行狀態 | 🔒 管理員 |
+| `/status` | Fleet 表格：backend、model、context、推理強度、執行狀態 | 🔒 管理員 |
 | `/sysinfo` | 版本、負載、IPC 狀態、各 backend CLI 版本 | 所有人 |
 | `/usage` | AI 訂閱用量（每個訂閱各一列） | 所有人 |
 | `/ctx` | Agent context 用量 | 所有人 |

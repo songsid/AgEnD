@@ -20,7 +20,7 @@ Registered via `setMyCommands` with `scope: chat` and `scope: chat_administrator
 | `/steer <message>` | Interject into the agent's *current* turn instead of queueing for idle. Not admin-gated — anyone who can talk to the agent can steer it. `claude-code`, `codex`, `grok` and `muse` accept a busy-pane interjection, and so does `kiro-cli` running its TUI on a verified version (see [backend support](#steer-btw-and-clear-backend-support)). Other backends reply "not supported". | All |
 | `/btw <message>` | Ask a side question without interrupting the agent's current task — delivered as a labelled `[BTW — side question]` inbound message via the same paste path as `/steer`, but framed as a question rather than new direction. Not admin-gated. `claude-code` only; every other backend replies "not supported". | All |
 | `/tips` | Draw a random usage tip, posted directly in the topic/channel where you ran it (no longer routed through General). 300 tips exist (100 beginner + 100 intermediate + 100 advanced), but only the **beginner** tier is currently drawn from — intermediate/advanced are staged but not yet enabled fleet-wide. | All |
-| 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, Cost, State (State merges paused/stopped/crashed with the execution state) | Admin |
+| 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, State (State merges paused/stopped/crashed with the execution state) | Admin |
 | 🔒 `/pause` | Pause an idle instance | Admin |
 | 🔒 `/wake` | Wake a paused instance | Admin |
 | 🔒 `/restart [full]` | Restart all instances in-process; `full` reloads the entire Fleet process and adapters, independent of version | Admin |
@@ -92,7 +92,7 @@ Registered globally via `client.application.commands.set()`.
 | `/btw <message>` | Side question that doesn't interrupt the current task (not admin-gated; `claude-code` only, others reply "not supported") | All |
 | `/tips [mode]` | Draw a random usage tip, posted in the current channel (`mode` empty); `mode: on\|off` toggles the daily auto-send; `mode: advanced on` manually unlocks the advanced tier fleet-wide (no visible effect yet — beginner-only rollout stage) | All / 🔒 for `on`\|`off`\|`advanced on` |
 | 🔒 `/web` (`/dashboard`) | General admin menu with private local/public sign-in; public link is opt-in. `/dashboard` is a listed deprecated Discord slash (#1569 / #2359): same gate, same replies and `action: revoke`, after a one-line “use /web” notice. Typed `/dashboard` still goes to the slash menu | Admin |
-| 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, Cost, State (State merges paused/stopped/crashed with the execution state) | Admin |
+| 🔒 `/status` | Fleet table: Instance, Backend, Model, Ctx, Effort, State (State merges paused/stopped/crashed with the execution state) | Admin |
 | 🔒 `/pause [instance]` | Pause an idle instance | Admin |
 | 🔒 `/wake [instance]` | Wake a paused instance | Admin |
 | 🔒 `/restart [mode:full]` | Restart all instances in-process; `mode:full` reloads the entire Fleet process and adapters | Admin |

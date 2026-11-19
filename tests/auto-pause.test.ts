@@ -285,11 +285,11 @@ describe("paused status visibility", () => {
     // #1052: Model column after Backend; single merged State column; no
     // Status-icon or IPC columns. No modelDisplayForInstance stub here, so
     // every row shows the "default" fallback.
-    expect(status).toContain("| sleeping | codex | default | - | - | $0.00 | ⏸ paused |");
-    expect(status).toContain("| active | kiro-cli | default | - | - | $0.00 | 🔵 working |");
-    expect(status).toContain("| ready | claude-code | default | - | - | $0.00 | 🟢 idle |");
-    expect(status).toContain("| frozen | gemini-cli | default | - | - | $0.00 | 🔴 stuck |");
-    expect(status).toContain("| classic-room-1234 | codex | default | - | - | $0.00 | 🟢 idle |");
+    expect(status).toContain("| sleeping | codex | default | - | - | ⏸ paused |");
+    expect(status).toContain("| active | kiro-cli | default | - | - | 🔵 working |");
+    expect(status).toContain("| ready | claude-code | default | - | - | 🟢 idle |");
+    expect(status).toContain("| frozen | gemini-cli | default | - | - | 🔴 stuck |");
+    expect(status).toContain("| classic-room-1234 | codex | default | - | - | 🟢 idle |");
   });
 
   it("/sysinfo is system-level only — the instance table moved to /status", async () => {
