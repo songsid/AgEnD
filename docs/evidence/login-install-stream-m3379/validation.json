@@ -1,0 +1,250 @@
+{
+  "scope": "dev branch; fixture and manual reproducer only",
+  "base": "dd237c025f5ed9451fa36f3fe9d1cfe96ec952fc",
+  "observedCi": {
+    "pullRequest": 4225,
+    "head": "b2e831a5c5647bafe12c8217e5c2c89a2aca2652",
+    "run": 44486934247,
+    "attempt": 1,
+    "job": "test-shard (3)",
+    "failedLine": 128,
+    "paneDead": "1",
+    "errorPrefixPresent": true,
+    "wrapperVerdict": "undefined; expected 3",
+    "nativeCallbackOrderRecorded": false
+  },
+  "forcedOrdering": {
+    "command": "node scripts/manual/repro-login-install-stream-m3379.mjs <checkout>",
+    "kind": "capture-boundary fault injection, not a forced vendor event-loop schedule",
+    "results": [
+      {
+        "case": "canonical-base",
+        "exit": 1,
+        "passed": 0,
+        "failed": 1,
+        "unselected": 26
+      },
+      {
+        "case": "canonical-fixed",
+        "exit": 0,
+        "passed": 1,
+        "failed": 0,
+        "unselected": 28
+      }
+    ]
+  },
+  "native": {
+    "tmux": "3.4, built from official release tarball",
+    "releaseArchive": {
+      "path": "tmux-3.4.tar.gz",
+      "sha256": "551ab8dea0bf505c0ad6b7bb35ef567cdde0ccb84357df142c254f35a23e19aa"
+    },
+    "command": "npx vitest run tests/login-install-stream-2980.test.ts --maxWorkers=2",
+    "consecutiveRuns": 20,
+    "distinctTests": 29,
+    "executions": 580,
+    "retries": 0,
+    "runs": [
+      {
+        "run": 1,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.64
+      },
+      {
+        "run": 2,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.55
+      },
+      {
+        "run": 3,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.49
+      },
+      {
+        "run": 4,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.34
+      },
+      {
+        "run": 5,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.31
+      },
+      {
+        "run": 6,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 9.0
+      },
+      {
+        "run": 7,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.1
+      },
+      {
+        "run": 8,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.25
+      },
+      {
+        "run": 9,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.27
+      },
+      {
+        "run": 10,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.58
+      },
+      {
+        "run": 11,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 9.23
+      },
+      {
+        "run": 12,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 11.8
+      },
+      {
+        "run": 13,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 11.95
+      },
+      {
+        "run": 14,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 9.44
+      },
+      {
+        "run": 15,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.93
+      },
+      {
+        "run": 16,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.57
+      },
+      {
+        "run": 17,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.79
+      },
+      {
+        "run": 18,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 9.25
+      },
+      {
+        "run": 19,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.89
+      },
+      {
+        "run": 20,
+        "exit": 0,
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0,
+        "seconds": 8.46
+      }
+    ]
+  },
+  "reversals": [
+    {
+      "case": "inherit-host",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "unselected": 28
+    },
+    {
+      "case": "capture-before-signal",
+      "exit": 1,
+      "passed": 0,
+      "failed": 1,
+      "unselected": 28
+    }
+  ],
+  "typecheck": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "exit": 0,
+    "diagnostics": 0
+  },
+  "budgets": {
+    "originalGateDelayMs": 500,
+    "outputDeadlineMs": 5000,
+    "testTimeoutMs": 15000,
+    "increased": false
+  },
+  "mainTwin": {
+    "mainTipInspected": "44e63b0994fde754ee86531918e5ae2febca5a95",
+    "originalTestBlob": "c733fd2101e96e268542ad0dfba08094b432a265",
+    "sameOriginalTest": true,
+    "wrapperDifference": "dev honors AGEND_TMUX; main uses PATH tmux. Fixture clears AGEND_TMUX, so both select PATH tmux."
+  },
+  "limits": [
+    "No live tmux server or provider account used.",
+    "No production runtime behavior changed.",
+    "The observer also activates tmux drain checks; native fixture success is not proof for the production no-pipe path.",
+    "Earlier private SIGSTOP probes retained the verdict on tmux 3.4 and 3.7b; they are not reproductions.",
+    "Raw logs, upstream source, binaries and temporary sockets remain private."
+  ]
+}
