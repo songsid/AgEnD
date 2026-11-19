@@ -10,10 +10,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { createServer, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createHash, createPrivateKey, createPublicKey, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
 import { HubPairingService } from "../src/hub/pairing.js";
@@ -27,14 +28,30 @@ import type { HubAuditRecord, HubDirectory, HubQuestion, HubTx, PersonKey } from
 
 const sha = (s: string) => createHash("sha256").update(s, "utf8").digest("hex");
 const cleanup: (() => Promise<void> | void)[] = [];
-afterEach(async () => { for (const f of cleanup.splice(0).reverse()) await f(); });
+afterEach(async () => {
+  const errors: unknown[] = [];
+  try { for (const dispose of cleanup.splice(0).reverse()) {
+    try { await dispose(); } catch (error) { errors.push(error); }
+  } } finally { vi.restoreAllMocks(); }
+  if (errors.length) throw new AggregateError(errors, "S3b flow cleanup failed");
+});
+
+async function competeForPort(port: number) {
+  const server = createNetServer();
+  try { return await new Promise<string>(resolve => {
+    server.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+    server.listen(port, "127.0.0.1", () => resolve("bound"));
+  }); }
+  finally { if (server.listening) await new Promise<void>(resolve => server.close(() => resolve())); }
+}
 
 it("pairs, publishes, grants, asks, leases and answers end to end over S1's real TLS/WSS link", async () => {
   mkdirSync(".artifacts", { recursive: true });
   const root = mkdtempSync(join(process.cwd(), ".artifacts/hub-s3b-flow-")); chmodSync(root, 0o700);
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 });
-  const port = await freeHubPort(), memberOrigin = `https://127.0.0.1:${port}`, webOrigin = "https://hub-web.example.test";
+  const ports = hubListenerPorts(); cleanup.push(ports.close);
+  const port = await ports.next(), memberOrigin = `https://127.0.0.1:${port}`, webOrigin = "https://hub-web.example.test";
   const identity = await provisionHubIdentity({ home: root, memberOrigin });
   const issuerKey = createPrivateKey(readPrivateFile(root, "hub/keys/issuer-key.pem"));
 
@@ -68,11 +85,16 @@ it("pairs, publishes, grants, asks, leases and answers end to end over S1's real
     issuer: { keyId: identity.issuerKeyId, sign: (e) => signAsker(e, issuerKey) } }, sql);
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,
     current: () => enabled, hold: () => {}, receive: (frame, link) => http.receive(frame, link) });
+  cleanup.push(async () => {
+    await server.close();
+    // Observe the actual TLS close before the database/lease/root cleanup can free anything.
+    expect(await competeForPort(port)).toBe("bound");
+  });
+  expect(await competeForPort(port)).toBe("EADDRINUSE");
   await server.start();
-  cleanup.push(() => server.close());
   const web: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end(); } });
-  await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", resolve));
   cleanup.push(() => new Promise<void>((resolve) => web.close(() => resolve())));
+  await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(web.address() as { port: number }).port}`;
   const browser = async (login: string) => {
     const r = await fetch(`${base}/hub/v1/session`, { method: "POST", headers: { "Content-Type": "application/json", Origin: webOrigin }, body: JSON.stringify({ login, password: `pw-${login}` }) });
