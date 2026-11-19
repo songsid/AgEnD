@@ -50,6 +50,20 @@ describe("M-3381: the chat's restricted-mode suggestions", () => {
     const suggestions = items.filter(i => i.reason === "contact_restricted_suggestion");
     expect(suggestions.map(i => [i.id, i.instance, i.owner, i.contactSuggestionCount])).toEqual([["contact-suggest:rooms:fake-bot", "", "fake-bot", 5]]);
   });
+  it("#4228 review: low-key — quiet (no new-item notification, no DM), explicitly", () => {
+    const { m } = manager();
+    const item = ((m as any).contactSuggestions() as NeedsYouItem[]).find(i => i.reason === "contact_restricted_suggestion")!;
+    expect(item.quiet).toBe(true);
+  });
+  it("#4228 review: rooms raised at different times — the world's line is aged from the earliest", () => {
+    const { m } = manager();
+    const early = Date.now() - 3 * DAY, later = Date.now() - DAY;
+    const db = (m.deliveryOutbox as any).db;
+    db.prepare("INSERT INTO contact_auth_suggestion_raised VALUES (?,?)").run("room-4", later);
+    db.prepare("INSERT INTO contact_auth_suggestion_raised VALUES (?,?)").run("room-2", early);
+    const item = ((m as any).contactSuggestions() as NeedsYouItem[]).find(i => i.reason === "contact_restricted_suggestion")!;
+    expect(item.since).toBe(early);
+  });
   it("its age counts from when the suggestion was raised — not from the rooms' creation (136–156 days ago) — and stays put", () => {
     const { m } = manager();
     const before = Date.now();

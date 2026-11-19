@@ -5683,7 +5683,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     return [...pending, ...[...byWorld].map(([owner, group]) => ({
       id: `contact-suggest:rooms:${owner}`, type: "contact", reason: "contact_restricted_suggestion", instance: "", owner,
-      since: group.since, detail: "", contactSuggestionCount: group.count,
+      // Low-key (#4228 review): listed in the chat's Needs you, but never a new-item notification or a DM.
+      since: group.since, detail: "", contactSuggestionCount: group.count, quiet: true,
     } as WebNeedsItem))];
   }
   acknowledgeContactSuggestion(instance: string, actor: ContactPerson): void {
