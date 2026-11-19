@@ -7126,6 +7126,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         guestPolicy: () => guestSessionPolicy(this.fleetConfig?.web?.guests?.session),
         // A session over the temporary link ends with the link (its TTL, at most 8 h on a quick tunnel).
         exposureEnd: id => this.publicWebLink?.endOf(id) ?? null,
+        // M-3399: a session made over the fixed link carries its identity, to outlive a restart or an update.
+        linkKeyOf: id => this.publicWebLink?.keyOf?.(id) ?? null,
       });
       this.enforceGuestSwitch();                     // #1920: guests off while the fleet was down
     }
@@ -7278,15 +7280,31 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       reserve: id => this.getTunnelLane().reserve("dashboard", id),
       createGateway: (exposureId, current, open, failed, named) => createPublicWebGateway({ ...named, exposureId, isCurrent: current, isOpen: open, onError: failed,
         dispatch: (req, res) => this.dispatchWebHttp(req, res, this.fleetConfig?.health_port ?? 19280) }),
-      revoke: id => {
+      revoke: (id, keep) => {
         this.webLoginCodes?.revokeAudience(id);
         this.webGuestLoginCodes?.revokeAudience(id);
+        // M-3399 (the user: "sign-in should survive an update or restart"): the fixed link closing because the fleet stops
+        // keeps its sessions — and their verified authority — for the same link to take back when it opens again. Sign-in
+        // codes still end; nothing over the link answers until it is open again.
+        if (keep?.keepSessions) {
+          this.logger.info({ exposureId: id }, "Public web link: fixed-link sessions kept across the fleet stop");
+          return;
+        }
         // #2453 (§0.2): the link's sessions end, and the authorizations kept for them go with them (housekeeping: their
         // handles can never match again).
         const ended = new Set(this.webSessions?.list(undefined, r => r.exposureId === id).map(r => r.handle) ?? []);
         if (ended.size) this.sessionAuthorizationStore()?.prune(a => !ended.has(a.handle));
         const result = this.webSessions?.revokeExposure(id);
         if (result && !result.durable) this.logger.warn("Public session revocation could not be saved; exposure remains closed");
+      },
+      // M-3399: the fixed link open again (auto_open, or a /web): its kept sessions rejoin it; ones kept for another hostname
+      // or token end, with their authorizations.
+      opened: (id, configuration) => {
+        const result = this.webSessions?.adoptLink(configuration, id);
+        if (!result) return;
+        if (result.ended.length) { const ended = new Set(result.ended); this.sessionAuthorizationStore()?.prune(a => !ended.has(a.handle)); }
+        if (result.adopted || result.ended.length) this.logger.info({ exposureId: id, adopted: result.adopted, ended: result.ended.length }, "Public web link: kept fixed-link sessions rejoined");
+        if (!result.durable) this.logger.warn("Fixed-link session changes could not be saved");
       },
       log: (event, exposureId, detail) => this.logger.info({ event, exposureId, ...(detail ? { detail } : {}) }, "Public web link"),
       createPreview: ({ id, expiresAt, binary, protocol, dashboardOrigin, isCurrent }) => {
@@ -22601,7 +22619,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     const settingsControl = this.settingsControl; this.settingsControl = null;
     const settingsControlStopped = settingsControl?.close();
     this.publicLinkAutoOpen?.stop();
-    const publicStopped = this.publicWebLink?.close("fleet shutdown");
+    // M-3399: a stop (a restart, an update) is not a person closing the link: the fixed link's sessions are kept.
+    const publicStopped = this.publicWebLink?.close("fleet shutdown", undefined, { keepNamedSessions: true });
     const sharesStopped = this.officeSharesInstance?.close();   // #2636: every Office share ends, and its tunnel
     // #1386: every live "Needs you" message says the fleet stopped (capabilities revoked first) — while the
     // adapters can still edit. Bounded: a platform that does not answer must not hold the shutdown.
