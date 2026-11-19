@@ -95,7 +95,7 @@ describe("#1712 memory protection without chat broadcasts", () => {
     expect(second).toHaveBeenCalledOnce();
   });
 
-  it.each(["en", "zh-TW"] as const)("%s: real Classic start action replies once while the real gate holds, then continues", async language => {
+  it.each(["en", "zh-TW"] as const)("%s: real Classic start discloses coverage, reports the hold once, then continues", async language => {
     setLocale(language); const { fm, f, set, notify } = make("linux", "critical");
     vi.spyOn(f, "validateClassicStart").mockReturnValue(undefined);
     vi.spyOn(f, "getMissingBackendWarning").mockReturnValue(undefined);
@@ -105,10 +105,14 @@ describe("#1712 memory protection without chat broadcasts", () => {
     const respond = vi.fn().mockResolvedValue(undefined);
     const result = f.handleClassicStartSlash({ channelId: "requested-room", channelName: "fixture", userId: "admin", options: { backend: "codex" }, respond }, "dc");
     await vi.advanceTimersByTimeAsync(30_000);
-    expect(operation).not.toHaveBeenCalled(); expect(respond).toHaveBeenCalledExactlyOnceWith(t("memory.action_held"));
+    const notice = t("classic.restricted_start_notice"), held = t("memory.action_held");
+    expect(operation).not.toHaveBeenCalled();
+    expect(respond.mock.calls).toEqual([[notice], [held]]);
     expect(notify).not.toHaveBeenCalled();
     set("normal"); await vi.advanceTimersByTimeAsync(120_000); await result;
-    expect(operation).toHaveBeenCalledOnce(); expect(respond).toHaveBeenCalledTimes(2); expect(respond.mock.calls[1]).toEqual(["started"]);
+    expect(operation).toHaveBeenCalledOnce();
+    expect(respond.mock.calls).toEqual([[notice], [held], [`${notice}\n\nstarted`]]);
+    expect(respond.mock.calls.filter(([text]) => text === held)).toHaveLength(1);
   });
 
   it("concurrent action owners retain their own reply through retries; background work broadcasts nothing", async () => {

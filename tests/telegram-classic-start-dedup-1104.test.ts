@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Bot } from "grammy";
 import type { Update } from "grammy/types";
+import { setLocale } from "../src/locale.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { ClassicChannelManager } from "../src/classic-channel-manager.js";
 import { TelegramAdapter } from "../src/channel/adapters/telegram.js";
@@ -20,6 +21,7 @@ const dirs: string[] = [];
 const liveAdapters: TelegramAdapter[] = [];
 
 afterEach(async () => {
+  setLocale("en");
   // No adapter.start/polling was called. Stop only the private in-memory
   // grammy object and its HTTP agents; never a fleet/process lifecycle.
   for (const adapter of liveAdapters.splice(0)) await adapter.stop();
@@ -119,7 +121,7 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
       expect(h.classic.getInstanceByChannel(GROUP, "primary")).toBeUndefined();
       expect(h.classic.getAdapterIdByInstance(name!)).toBe("secondary");
       expect(h.state.getAdapterForInstance(name!)).toBe(h.target.adapter);
-      expect(h.target.adapter.sendText).toHaveBeenCalledTimes(1);
+      expect(h.target.adapter.sendText).toHaveBeenCalledTimes(2); // One disclosure plus the start reply; duplicates still start nothing.
       expect(h.primary.adapter.sendText).not.toHaveBeenCalled();
     });
   }
@@ -140,7 +142,7 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     await h.target.feed("/start@TargetBot codex");
     await h.target.feed("/start@TargetBot codex");
     expect(h.start).toHaveBeenCalledTimes(1);
-    expect(h.target.adapter.sendText).toHaveBeenCalledTimes(1);
+    expect(h.target.adapter.sendText).toHaveBeenCalledTimes(2); // One disclosure plus the start reply; duplicates still start nothing.
   });
 
   it("two bot private chats with equal user/chat/message ids have independent onboarding selectors", async () => {
@@ -223,5 +225,21 @@ describe("Telegram ClassicBot onboarding dedup (#1104)", () => {
     expect(h.deliver).toHaveBeenCalledTimes(1);
     expect(h.deliver).toHaveBeenCalledWith("general", expect.anything(), expect.objectContaining({ onStartRetryHold: expect.any(Function) })); // #2484
     expect([...h.state.recentMessageIds]).toEqual([`telegram:${PRIMARY_GROUP}:10`]);
+  });
+});
+
+
+describe("restricted Classic start disclosure", () => {
+  it.each(["en", "zh-TW"] as const)("%s: direct native /start warns before restricted registration", async locale => {
+    setLocale(locale);
+    const r = setup();
+    const register = vi.spyOn(r.classic, "register");
+    await r.target.feed("/start@TargetBot codex");
+    const sends = vi.mocked(r.target.adapter.sendText);
+    const phrase = locale === "en" ? "only contact approval applies" : "只有聯絡申請需要核准";
+    const notice = sends.mock.calls.findIndex(call => String(call[1]).includes(phrase));
+    expect(notice).toBeGreaterThanOrEqual(0);
+    expect(register).toHaveBeenCalledOnce();
+    expect(sends.mock.invocationCallOrder[notice]!).toBeLessThan(register.mock.invocationCallOrder[0]!);
   });
 });
