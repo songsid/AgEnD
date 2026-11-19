@@ -51,7 +51,7 @@ const workerPerm = { instance: WORKER, revision: 9, classicRoom: false, mode: "l
     { id: "h2", at: "2026-11-18T08:05:00Z", actor: OWNER, action: "grant-add", summary: "Alex" }] };
 const ticket = (o: any = {}) => ({ id: R12, revision: 2, scope: "peer.dispatch", state: "pending", source: ROOM, target: WORKER, sourceGeneration: "s1", targetGeneration: "t1",
   verb: "send_to_instance", origin: { kind: "human", people: [ALEX], receiptIds: ["hmsg-1"], chain: [ROOM] }, message: "Please rerun the nightly report and post the summary here.",
-  requestHash: "h", correlationId: "c", resultRecipient: ROOM, createdAt: "2026-11-18T08:00:00Z", expiresAt: "2026-11-19T08:00:00Z", canDecide: true, ...o });
+  requestHash: "h", correlationId: "c", resultRecipient: ROOM, createdAt: "2026-11-18T08:00:00Z", expiresAt: "2026-11-18T08:30:00Z", canDecide: true, ...o });
 
 /** The contract's routes, answered in the page (the calls are recorded). */
 async function contactApi(ctx: any, calls: Array<[string, string, unknown]>) {
@@ -121,6 +121,9 @@ try {
     await page.waitForSelector(".contact-ticket", { timeout: 20000 }); await page.waitForTimeout(400);
     const tabs = await page.locator('a[href="/ui/fleet/authorizations"]').count();
     await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).check(); await page.waitForTimeout(200);
+    // M-3385: the approve block in view (the note, "also allow" with its hint and fields, the buttons) — on a phone it is below the fold.
+    await page.locator(`.contact-ticket[data-ticket="${R12}"] .contact-decide`).evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
+    await page.waitForTimeout(200);
     await shoot("3-authorizations");
     await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).uncheck();
     await page.locator(`.contact-ticket[data-ticket="${R12}"] .btn-primary`).click(); await page.waitForTimeout(500);
@@ -137,6 +140,8 @@ try {
         { id: `contact-suggest:${room}`, type: "contact", reason: "contact_restricted_suggestion", instance: room, since: Date.now() - 60000, contactSuggestion: { instance: room } }] });
     }, [ROOM, WORKER, R12]);
     await page.waitForSelector(".contact-need", { timeout: 10000 }); await page.waitForTimeout(500);
+    // M-3381 (#4228): the rooms' restricted-mode suggestions are one closed group; opened, each room's card is inside.
+    await page.locator("details.n-suggestions > summary").click(); await page.waitForTimeout(200);
     const t4 = await body();
     await shoot("4-needs", { fullPage: c.device === "desk" });
     check(`${cn}:needs`, t4.includes(zh ? `${ROOM} 想聯絡 ${WORKER}` : `${ROOM} wants to contact ${WORKER}`) && t4.includes(zh ? "查看影響與常用轉交" : "See the impact and allowed contacts")
