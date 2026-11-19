@@ -77,15 +77,16 @@ it("ordinary admission copies origin to a non-Classic worker with a different ow
   expect(r.store.origin("peer")?.kind).toBe("mixed");
   expect(r.service().needsApplication("peer")).toBe(true);
 });
-it("approved member work taints a worker; a later direct administrator message does not clear it", () => {
+it("approved member work preserves a clean worker; its administrator remains unrestricted", () => {
   const r = rig(); r.store.inheritOrigin("room", origin());
   expect(() => r.admit("worker")).toThrow();
   const ticket = r.store.list().items[0]!;
   r.fm.decideContactAuthorization(ticket.id, { revision: ticket.revision, decision: "approve-once" }, admin);
-  expect(r.store.origin("worker")?.people).toEqual([member]);
+  expect(r.store.origin("worker")).toBeUndefined();
+  expect(r.store.origin("room")?.people).toEqual([member]);
   r.human("worker", admin, "fake-direct-admin-input");
-  expect(r.store.origin("worker")?.kind).toBe("mixed");
-  expect(r.service().needsApplication("worker")).toBe(true);
+  expect(r.store.origin("worker")).toBeUndefined();
+  expect(r.service().needsApplication("worker")).toBe(false);
 });
 it("keeps admin authority and a matching grant at 64, 65 and 66 real receipt inputs", () => {
   const r = rig(); r.grant();

@@ -335,7 +335,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准只會轉交這筆申請。保留的來源也會影響接手的工作者，不會因後來的管理員訊息解除；此版本沒有已驗證的重設方式。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准或符合管理員設定的常用轉交，表示管理員對這次轉交背書。接收 Agent 的來源維持原狀，發送 Agent 仍保留自己的來源。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
@@ -343,7 +343,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ originRestriction: { active: true, reason: "unknown-origin", resetSupported: false } } as any) }) });
     const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
-    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approval forwards this request only. Retained origins also affect workers and are not cleared by a later admin message; this version has no verified reset.");
+    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approval or a matching administrator-written grant forwards this request with the administrator's endorsement. The receiving agent's origin is unchanged; the source agent keeps its own origin.");
   });
 });
 
