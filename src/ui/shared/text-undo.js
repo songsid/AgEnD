@@ -167,7 +167,9 @@ export function installTextUndo({ doc = document, win = typeof window !== "undef
     if (!el) return;
     const h = historyFor(el);
     // M-3356: the step a composition begins is the field as the last edit left it (already read, outside the composition);
-    // only a field a script changed since is read again.
+    // only a field a script changed since is read again. The price (#4208 review F2): a caret moved since without an
+    // edit (a tap elsewhere) is not in that step, so undoing the composition puts the caret where the last edit ended —
+    // the value is right. Reading it here is what iOS answers with a candidate-bar redraw.
     if (String(el.value ?? "") === h.last.v) { h.marked = null; push(h.undo, h.last); }
     else { sync(el, h); push(h.undo, snap(el)); }
     h.redo = [];

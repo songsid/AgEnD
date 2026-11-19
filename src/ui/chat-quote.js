@@ -232,11 +232,17 @@ export function installQuoteSelection(list, deps) {
   const onFocusIn = (e) => { const f = deps.field?.(); if (f && e.target === f) f.dataset.touched = "1"; };
   // The caret as the person leaves it: kept on every move inside the composer and when it loses the focus.
   // M-3356: never while an IME composes (its keys, their keyup): the caret is kept when the composition ends, or on leaving.
-  const onCompose = (e) => { const f = deps.field?.(); if (f && e.target === f) composing = e.type === "compositionstart"; };
+  // Any compositionend ends it, and so does the composer losing the focus (#4208 review: a blur, a tab switch or a
+  // re-rendered composer may never send the field its compositionend — the pill would never show again).
+  const onCompose = (e) => {
+    if (e.type === "compositionend") { composing = false; return; }
+    const f = deps.field?.(); if (f && e.target === f) composing = true;
+  };
   const keep = (e) => {
     const f = deps.field?.();
     if (!f || e.target !== f) return;
-    if (e.type !== "focusout" && (composing || e.isComposing || e.keyCode === 229)) return;
+    if (e.type === "focusout") composing = false;
+    if (composing || e.isComposing || e.keyCode === 229) return;
     remembered.set(f, { value: f.value, caret: f.selectionStart ?? f.value.length });
   };
   const KEEP = ["focusout", "input", "keyup", "mouseup", "select"];
