@@ -9,10 +9,11 @@
 import { afterEach, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { createServer, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { createHash, createPrivateKey, createPublicKey, randomBytes, randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 import { provisionHubIdentity } from "../src/hub/tls.js";
 import { HubTransportStore, migrateHubTransportStore } from "../src/hub/store.js";
 import { HubPairingService } from "../src/hub/pairing.js";
@@ -28,16 +29,24 @@ import type { HubAttachmentRef, HubAuditRecord, HubDirectory, HubQuestion, HubTx
 
 const sha = (b: string | Buffer) => createHash("sha256").update(b).digest("hex");
 const cleanup: (() => Promise<void> | void)[] = [];
-afterEach(async () => { for (const f of cleanup.splice(0).reverse()) await f(); });
+afterEach(async () => {
+  const errors: unknown[] = [];
+  try { for (const dispose of cleanup.splice(0).reverse()) {
+    try { await dispose(); } catch (error) { errors.push(error); }
+  } } finally { vi.restoreAllMocks(); }
+  if (errors.length) throw new AggregateError(errors, "Attachment fixture cleanup failed");
+});
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), randomBytes(2 * HUB_ATTACHMENT_CHUNK + 1234)]);
 const CSV = Buffer.from("region,sales\n" + "north,42\n".repeat(30_000));
 
-async function world(opts: { memberCapabilities?: readonly string[]; hubCapabilities?: readonly string[]; answer?: "file" | "text" } = {}) {
+async function world(opts: { memberCapabilities?: readonly string[]; hubCapabilities?: readonly string[]; answer?: "file" | "text" } = {},
+  probe?: { beforeStart(port: number): Promise<void>; afterClose(port: number): Promise<void> }) {
   mkdirSync(".artifacts", { recursive: true });
   const root = mkdtempSync(join(process.cwd(), ".artifacts/hub-attach-")); chmodSync(root, 0o700);
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const memberHome = join(root, "member"); mkdirSync(memberHome, { mode: 0o700 });
-  const port = await freeHubPort(), memberOrigin = `https://127.0.0.1:${port}`, webOrigin = "https://hub-web.example.test";
+  const ports = hubListenerPorts(); cleanup.push(ports.close);
+  const port = await ports.next(), memberOrigin = `https://127.0.0.1:${port}`, webOrigin = "https://hub-web.example.test";
   const identity = await provisionHubIdentity({ home: root, memberOrigin });
   const issuerKey = createPrivateKey(readPrivateFile(root, "hub/keys/issuer-key.pem"));
   const db = new Database(join(root, "hub.sqlite")); chmodSync(join(root, "hub.sqlite"), 0o600);
@@ -67,10 +76,12 @@ async function world(opts: { memberCapabilities?: readonly string[]; hubCapabili
     issuer: { keyId: identity.issuerKeyId, sign: (e) => signAsker(e, issuerKey) } }, sql);
   server = new HubServer({ home: root, hubId: identity.hubId, memberOrigin, listen: { host: "127.0.0.1", port }, pairing,
     ...(opts.hubCapabilities ? { capabilities: opts.hubCapabilities } : {}), current: () => enabled, hold: () => {}, receive: (frame, link) => http.receive(frame, link) });
-  await server.start(); cleanup.push(() => server.close());
+  cleanup.push(async () => { await server.close(); await probe?.afterClose(port); });
+  await probe?.beforeStart(port);
+  await server.start();
   const web: Server = createServer((req, res) => { if (!http.handle(req, res)) { res.writeHead(404); res.end(); } });
-  await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", resolve));
   cleanup.push(() => new Promise<void>((resolve) => web.close(() => resolve())));
+  await new Promise<void>((resolve) => web.listen(0, "127.0.0.1", resolve));
   const base = `http://127.0.0.1:${(web.address() as { port: number }).port}`;
   const browser = async (login: string) => {
     const r = await fetch(`${base}/hub/v1/session`, { method: "POST", headers: { "Content-Type": "application/json", Origin: webOrigin }, body: JSON.stringify({ login, password: `pw-${login}` }) });
@@ -142,8 +153,21 @@ async function world(opts: { memberCapabilities?: readonly string[]; hubCapabili
   return { db, audits, alex, olivia, room, seen, link: () => link, attachments };
 }
 
+async function competeForPort(port: number) {
+  const server = createNetServer();
+  try { return await new Promise<string>(resolve => {
+    server.once("error", error => resolve((error as NodeJS.ErrnoException).code ?? "unknown"));
+    server.listen(port, "127.0.0.1", () => resolve("bound"));
+  }); }
+  finally { if (server.listening) await new Promise<void>(resolve => server.close(() => resolve())); }
+}
+
 it("both directions end to end: upload → signed question with files → member pulls and checks → answer with a file → asker downloads", async () => {
-  const w = await world();
+  const w = await world({}, {
+    async beforeStart(port) { expect(await competeForPort(port)).toBe("EADDRINUSE"); },
+    // Runs after the real TLS close, before fixture lease disposal can free anything.
+    async afterClose(port) { expect(await competeForPort(port)).toBe("bound"); },
+  });
   // Every optional feature this build offers, as both ends are this build (quota-band-v1 too, since G).
   expect(w.room.features).toEqual(HUB_OPTIONAL_CAPABILITIES.filter(f => f !== "welcome-caps-v1"));
   const png = await w.alex("POST", `/hub/v1/rooms/${w.room.id}/files`, undefined, { bytes: PNG, name: "chart.png" });
