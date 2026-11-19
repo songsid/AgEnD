@@ -30,6 +30,7 @@ describe("M3368 every built-in palette in both appearances", () => {
       for (const [t, b] of textPairs) expect(contrastRatio(p[t!]!, p[b!]!), `${t}/${b}`).toBeGreaterThanOrEqual(4.5);
       for (const t of ["focus", "border-strong"]) for (const b of ["bg", "bg-sidebar", "surface"]) expect(contrastRatio(p[t]!, p[b]!), `${t}/${b}`).toBeGreaterThanOrEqual(3);
       for (const b of ["bg", "bg-sidebar", "surface"]) expect(contrastRatio(p["text-3"]!, tint(p.accent!, p[b]!, mode === "dark" ? 0.14 : 0.08)), `metadata on tinted ${b}`).toBeGreaterThanOrEqual(4.5);
+      if (p["palette-chat-bg"] && mode === "dark") for (const t of ["palette-chat-text-2", "palette-chat-text-3"]) expect(Math.abs(apca(p[t]!, p["palette-chat-bg"]!)), `${t}/chat APCA`).toBeGreaterThanOrEqual(60);
       if (mode === "dark") for (const t of ["text-2", "text-3"]) for (const b of ["bg", "bg-sidebar", "surface"]) expect(Math.abs(apca(p[t]!, p[b]!)), `${t}/${b} APCA`).toBeGreaterThanOrEqual(60);
     });
   }

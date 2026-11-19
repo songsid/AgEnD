@@ -9,7 +9,7 @@ keys. All four colour palettes have both light and dark variants.
 
 The dialog previews its choices immediately. Apply keeps them; Cancel, Escape
 and backdrop/close restore the prior appearance and palette. The controller
-uses a preview lease so an outside choice retires a stale preview. Changing
+uses a preview lease so an outside choice retires a stale preview and closes its dialog. Changing
 System/Light/Dark outside the dialog keeps the selected palette. Default is the
 explicit route back to neutral colours.
 
@@ -31,3 +31,12 @@ pair matrix, metadata on accent-tinted rows, and the phone audit's dark APCA
 Lc 60 floor. Sizes, assets, fonts and layout tokens are unchanged. Captures use
 synthetic content on owned Hub/Fleet listeners, with Linux headless Chromium.
 The feature introduces no service branding or external assets.
+
+Meadow follows the approved olive-sage reference. Light uses white page, sidebar
+and panels, with `#c4cf93` limited to the chat area. Neutral message-name strips
+keep preset and automatic identity names readable at 4.5:1. Chat metadata uses
+darker olive text. The reference green `#4fae4e` is decorative; controls carrying
+white text use `#317531` (5.65:1). Dark uses an olive chat background (`#30351f`),
+distinct from Mint's teal. Meadow-only CSS consumes its chat tokens; the other
+six palette declarations remain byte-identical to the reviewed values after the
+light-sidebar contrast correction. Inline agent colours retain precedence.

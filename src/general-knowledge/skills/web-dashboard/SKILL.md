@@ -894,7 +894,7 @@ Alpha preview line"). Guests and agents can't update.
 
 For an agent changing its *own* look, the `web-appearance` skill has the tools and limits. What a person sees in
 Settings → **Look**, card by card (the app icon and card upload limits are in **Web dashboard**; following reduced motion and custom CSS off here are in **Preferences**):
-- **Colours** — **Other…** (「其他…」) in the theme menu or Look opens a centred chooser: Default, Clear Sky / 晴空,
+- **Colours** — **Other…** (「其他…」) in the theme menu, or **Choose…** (「選擇…」) in Look, opens a centred chooser: Default, Clear Sky / 晴空,
   Meadow / 青草, Night Violet / 夜紫 and Mint / 薄荷. Every palette works with System, Light and Dark; changing the
   appearance keeps the palette. Choices preview at once; **Apply** keeps them, **Cancel** or Escape puts them back.
   The palette is kept in this browser. Agents' own themes and the person's custom CSS still take precedence.

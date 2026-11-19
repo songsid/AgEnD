@@ -4878,8 +4878,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .theme-mode-options { display: flex; flex-wrap: wrap; gap: var(--s-3); }
 .theme-mode-options .check { min-height: var(--tap); }
 .s-theme-colours { align-self: flex-start; }
-.s-theme-colours-row > .grow { display: flex; flex-direction: column; gap: var(--s-1); }
-@media (max-width: 899px) {
+.s-theme-colours-row > .grow { display: flex; align-items: center; gap: var(--s-2); min-width: 0; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .s-theme-colours { min-width: var(--tap); min-height: var(--tap); }
   .theme-colours { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--s-2); }
   .theme-picker .dlg-head { padding-top: var(--s-3); }
@@ -4887,3 +4887,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .theme-picker .dlg-actions { padding-top: var(--s-2); }
   .theme-mode-options { gap: var(--s-2); }
 }
+
+/* Meadow keeps the surrounding UI neutral; inline agent colours still override these inherited tokens. */
+:root[data-palette="meadow"] .p-chat { --bg: var(--palette-chat-bg); --text-2: var(--palette-chat-text-2); --text-3: var(--palette-chat-text-3); background: var(--bg); color: var(--text); }
+:root[data-palette="meadow"] .p-chat > .panel-head { background: var(--surface-2); }
+:root[data-palette="meadow"] .p-chat .msg .meta { width: fit-content; padding: 0 var(--s-1); border-radius: var(--r-sm); background: var(--surface); }
+:root[data-palette="meadow"] .p-chat .msg.user .meta { margin-left: auto; }
+.theme-swatch[data-palette="meadow"] .theme-swatch-chat { background: var(--palette-chat-bg); }
+.theme-swatch[data-palette="meadow"] .theme-swatch-chat i:last-child { background: var(--accent-decoration); }

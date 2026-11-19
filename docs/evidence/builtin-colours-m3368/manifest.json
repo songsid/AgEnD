@@ -3,11 +3,11 @@
   "source": [
     {
       "path": "docs/design/builtin-colours-m3368.md",
-      "sha256": "655df9031e911354fc2bce2e4ce81fc8b46f55112a7fd20ba027645931f509f1"
+      "sha256": "c9f59c436d6369bace24ff38b4dfcb6adf5f8a7c8cf52a00350d0709778a3926"
     },
     {
       "path": "scripts/manual/smoke/smoke-builtin-themes-m3368.mts",
-      "sha256": "3797394aedc32a25c91759e889c0f677b883d78d386093c9d24de3d195f93a48"
+      "sha256": "56afe0e896fee0ba3e6441914f8e4a9e2be2086b666d3732f491f8cdca0a05c4"
     },
     {
       "path": "src/auth-api.ts",
@@ -15,11 +15,11 @@
     },
     {
       "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
-      "sha256": "d1722cd56192b5f0168e83e02952904b902d38f1ed06cca48cf5f0a4c11cc65f"
+      "sha256": "df72ef53782edfdbb55003726b21f07c160fc48d7d13116f6e967f0db310d6f8"
     },
     {
       "path": "src/ui/settings-appearance.js",
-      "sha256": "36f158a46fa9bce6cdc64d9e9fca1a0beb2535e6dd07275d888f8bcab662bcab"
+      "sha256": "5c7e821140a2a03163fd5780ddca2e4820be837a1d30983772d900cd600c8fb1"
     },
     {
       "path": "src/ui/settings-registry.js",
@@ -27,7 +27,7 @@
     },
     {
       "path": "src/ui/shared/app-i18n.js",
-      "sha256": "a311a071382a6f8295cf41411a33d4b53e0742b54012f4b98d00a67b0e784e86"
+      "sha256": "24ac7709746d1a20964f8dfae679c19de917c265a433469c82ad1b4bd16c47b7"
     },
     {
       "path": "src/ui/shared/app-shell.js",
@@ -35,19 +35,19 @@
     },
     {
       "path": "src/ui/shared/app.css",
-      "sha256": "f46f83e626041f01e66fa2d4f05aeef7c44eae6e75e617250973055da266eed6"
+      "sha256": "534acbf91ce41fbe76ebf8827696e710938e3d094ecaa0ae00ca5b457fbb17f3"
     },
     {
       "path": "src/ui/shared/theme-picker.js",
-      "sha256": "69be7b2a4e30cf291e397c6a82e91e89cdb57e7c271d4666010897c6e883e004"
+      "sha256": "484e7ce1f5b0d0fc357902b705d9f5682b26567dcc06895f4628417436381611"
     },
     {
       "path": "src/ui/shared/theme.js",
-      "sha256": "791d93faa0f1da99582b2c1a273a50d4560c40d3fd2c882e59ecea6af6bc1b6d"
+      "sha256": "25c06433fd67287aaf79f153e59dc1051168ea9afff85930792c387329043359"
     },
     {
       "path": "src/ui/shared/tokens.css",
-      "sha256": "63e8f66eee1dc232016d78e4bddbc0c0fba2ea16c3721032ef5c7af3ac4acf95"
+      "sha256": "eb26782cd7ef64554708800a8a9b49882593a8f77e002687dbf9d5cc6d4ef3e1"
     },
     {
       "path": "tests/builtin-theme-apply-m3368.test.ts",
@@ -55,41 +55,45 @@
     },
     {
       "path": "tests/builtin-theme-colours-m3368.test.ts",
-      "sha256": "18e7306af70f01ca848e34c158b981908a8b2e693d7623eb604afbf7fe295766"
+      "sha256": "c5237019f08db7e45b474d31ea170396711dc308a9f8a583f86d88ca83cfc8fd"
+    },
+    {
+      "path": "tests/builtin-theme-meadow-m3368.test.ts",
+      "sha256": "cb575f5783110001f52a7a3f3462fa614332035b6bc0f9bb060fe637c5e60ab0"
     },
     {
       "path": "tests/builtin-themes-m3368.test.ts",
-      "sha256": "d38780069caa131883b42daa9461e9c09812070dcc1d550f767fb0fbdb41e248"
+      "sha256": "e3f8cc169be8245c06024b1d54bee4a0486fbde48b33ccedeaacb1db4c63677d"
+    },
+    {
+      "path": "tests/web-identity-color-1958.test.ts",
+      "sha256": "22c469e27159337c1e46547aa70029c1909f71d18d82aa3e872082d5fa32aa43"
     }
   ],
   "evidence": [
     {
       "path": "docs/evidence/builtin-colours-m3368/README.md",
-      "sha256": "0700a292bd02b626ec26b2e77507853fd64eaf990f70642e6f543f7439867e2d"
+      "sha256": "6de30e4080fdaa6c7a5665991bf1387652280ed8561406c40571c4ed413ffc54"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-agent-look-over-mint.png",
       "sha256": "4abb34e6f89b2c43cda2b147c7084ba19fb4097780064fd6894b6e799f17cbfc"
     },
     {
-      "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-dialog-dark.png",
-      "sha256": "38959297fb0c8784ad0272c3aac8e816fe2b02f9d07f9439f16ef7c4b96c89b8"
-    },
-    {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-dialog-light.png",
-      "sha256": "4a8de7ba646ec9db84a5067ff7b1028423221dbbe317f6291468d228aac06606"
+      "sha256": "0d8fc3520afb82ee20af3ade12ddfcc23c989d32525692ca2ae8ae2d4e4a5d47"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-look-colours-row.png",
-      "sha256": "0cbb298f4d48d4f77711c8b3fbc3700cdf80822ea0099705e093b09bbff9492b"
+      "sha256": "2006f672183ef8d0ba271548b2b1adf8a57e4d9264c6a6eae1e3bda8953ac982"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-meadow-dark-chat.png",
-      "sha256": "cef384d088bdcbec1d141b1a33037c232a801da0756c3c833ef3c95e3e7fde2a"
+      "sha256": "cad7746ae6b6a6039ff31f87ffd6ede9a72ed9c73431e29ec982cfe31e7d155a"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-meadow-light-chat.png",
-      "sha256": "cb695eab124a7ef090b500085885aa6bb582baf6693abd51fb3fa49a9e68c568"
+      "sha256": "b6c8e1cf44748774e8317337ff37c64d25090a8b57ebfb22b89838aa09d903f8"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-menu-default.png",
@@ -97,7 +101,7 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-menu-mint.png",
-      "sha256": "5d73a0df8f9f3a3bb22f865f578b9ebe2b02a03bb6cd93293607619feb254a3d"
+      "sha256": "0fbbb41e5f62c673d72df3df5bb2927a3992c31109c21a9a3ce71a5276b55b88"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-mint-dark-chat.png",
@@ -105,7 +109,7 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-mint-light-chat.png",
-      "sha256": "e29cc499989caacd02f94cdb3b68766f8e5d0e8be252b5efa2889a592cf55b21"
+      "sha256": "6361d618e9786f6280b6ca8e0cc0e6316bf0a65c6ad121cebddf7351f81006be"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-sky-dark-chat.png",
@@ -113,7 +117,7 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-sky-light-chat.png",
-      "sha256": "2dd3e12c5de57f4219fb8ef3f237e48a1b43a9feaf83a57329fea77ed4b3ec19"
+      "sha256": "7f9a34bb4ea3f2afab66ba06825736d0a3f0e51ca0e00acca99222f61c6976de"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-violet-dark-chat.png",
@@ -121,19 +125,19 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-desk-violet-light-chat.png",
-      "sha256": "ffe74985eff8af83f3de08fe3e8d978c4324fe305700ce75e22f8de8b8194f92"
-    },
-    {
-      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-dialog-dark.png",
-      "sha256": "b85fd26bb0b609b190aed9b43a4b351b6d5626f693b76e4562864307892ba24b"
+      "sha256": "e6981cf573c9b649e198bf66902e3ae41833defd4db671e23cdfc6d0d1bf723d"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-dialog-light.png",
-      "sha256": "05b1e8388d71c195b656e33bb8a6ecfaef74e75aa649e2e2baaa83af755aadc3"
+      "sha256": "97926747bb70c5d29898480ede522b12f9f843696c8196a92c6d906a34f6d20c"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-look-colours-row.png",
-      "sha256": "6a9a98a1337b132a11c300cd911c63cb9b46386eea345c75b226350dee3b645a"
+      "sha256": "77dd4031f941a93ef9db8f288b61f678aa50036a6152b548a6fbd4a948877f92"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-meadow-dark-chat.png",
+      "sha256": "d8ade989f880952dc9b599b4016668b8048f09604a710931bcd6038eba72486f"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-menu-default.png",
@@ -141,7 +145,7 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-menu-mint.png",
-      "sha256": "8eddcccf6ece87707cfe4c3e2f5ca1c5aefdd1cd8dd7c3e3c37b5a6902d8ad70"
+      "sha256": "1a5a58c874413884fe821026e2be345987642d9e856e5bfb86a59ed9c3926cf4"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-mint-dark-chat.png",
@@ -149,15 +153,11 @@
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/fleet-phone-mint-light-chat.png",
-      "sha256": "a0d226d7578bef6193c53b06cf9a87070a3008c5fb8bdd6b3cd0c7446626f55d"
-    },
-    {
-      "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-dialog-dark.png",
-      "sha256": "59b9c64a26a0c7c0902dff96f55f663aa96b944dc042dc50dff90be51099b250"
+      "sha256": "6d07d267191013ffd58180b893c6997197a1e0fea5da53d90e1830fa47d61bb1"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-dialog-light.png",
-      "sha256": "8098f202dd949567d1e94d46a00ba3b618fb9e06464ac053194947a16be96691"
+      "sha256": "4889fb1192c690ba72f531ea717011cf67a966f7062c80c90634dfb68a2a45c1"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/hub-desk-menu-default.png",
@@ -172,12 +172,8 @@
       "sha256": "d71fa1b1a1f248ae43f43b941773dae7c1c96d15c6b9c9fe75c886dfb0507325"
     },
     {
-      "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-dialog-dark.png",
-      "sha256": "69a064574fd32e63a6dfc22d6f4e003be5432053e996a5080deff7a3ba5af3bb"
-    },
-    {
       "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-dialog-light.png",
-      "sha256": "6a0a26c063299c462ed6e9174d04de2b3dea2e45265c3c7a9659abdc30150205"
+      "sha256": "4044bcb7a7c05c168a35f9e8dd6efaeb4e912e9b024bfe62abe9dce4de869f2d"
     },
     {
       "path": "docs/evidence/builtin-colours-m3368/after/hub-phone-menu-default.png",
@@ -208,13 +204,31 @@
       "sha256": "f3e1f435542a0c24b4f677b6dfe85fd8cdd69e115e5af64705522b05f05a2ff1"
     },
     {
+      "path": "docs/evidence/builtin-colours-m3368/historical/fleet-desk-dialog-dark.png",
+      "sha256": "38959297fb0c8784ad0272c3aac8e816fe2b02f9d07f9439f16ef7c4b96c89b8"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/historical/fleet-phone-dialog-dark.png",
+      "sha256": "b85fd26bb0b609b190aed9b43a4b351b6d5626f693b76e4562864307892ba24b"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/historical/hub-desk-dialog-dark.png",
+      "sha256": "59b9c64a26a0c7c0902dff96f55f663aa96b944dc042dc50dff90be51099b250"
+    },
+    {
+      "path": "docs/evidence/builtin-colours-m3368/historical/hub-phone-dialog-dark.png",
+      "sha256": "69a064574fd32e63a6dfc22d6f4e003be5432053e996a5080deff7a3ba5af3bb"
+    },
+    {
       "path": "docs/evidence/builtin-colours-m3368/validation.json",
-      "sha256": "feedadc768a927d1911cbcde1ac7cd06a2388c09c94f6de806f73ae170bbf64a"
+      "sha256": "0c6ed66e7f342496f53856145408e845a2d6d0781129e2713d0adf71b5d9acdb"
     }
   ],
   "captureScopes": {
     "before": 4,
-    "after": 31,
-    "runtimeNote": "Eight colour variants, markup and geometry unchanged through final handler hardening; final System/Default and Look row controls verified separately."
+    "after": 28,
+    "historical": 4,
+    "r1InspectedOriginals": 15,
+    "runtimeNote": "R1 updates affected light scenes, two Look rows and the olive Meadow dark pair. Historical dark dialogs retain their original pre-wording/swatch-correction scope; unchanged dark chats carry. No repeated backend/native campaign."
   }
 }

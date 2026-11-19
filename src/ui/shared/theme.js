@@ -79,6 +79,7 @@
       var lease = { mode: current, colours: palette }, before = current, beforePalette = palette;
       preview = lease;
       return {
+        isCurrent: function () { return preview === lease; },
         update: function (mode, colours) { if (preview !== lease) return; current = valid(mode); palette = validPalette(colours); changed(); },
         cancel: function () { if (preview !== lease) return; preview = null; current = before; palette = beforePalette; changed(); },
         commit: function () { if (preview !== lease) return false; preview = null; cache(current); cachePalette(); changed(); return true; },

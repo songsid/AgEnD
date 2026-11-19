@@ -13,16 +13,20 @@ export function ThemePicker({ onClose }) {
   const draft = useRef({ mode, palette });
   const [systemLight, setSystemLight] = useState(() => globalThis.matchMedia?.("(prefers-color-scheme: light)").matches === true);
   const lease = useRef(null);
+  const closing = useRef(false);
   if (!lease.current) lease.current = T?.beginPreview?.();
   useEffect(() => {
     const media = globalThis.matchMedia?.("(prefers-color-scheme: light)");
     const changed = () => setSystemLight(media.matches);
+    const unsubscribe = T?.onChange?.(() => {
+      if (!closing.current && lease.current?.isCurrent?.() === false) { closing.current = true; onClose(); }
+    });
     media?.addEventListener?.("change", changed);
-    return () => { media?.removeEventListener?.("change", changed); lease.current?.cancel(); };
+    return () => { unsubscribe?.(); media?.removeEventListener?.("change", changed); lease.current?.cancel(); };
   }, []);
   const update = (nextMode, nextPalette) => { draft.current = { mode: nextMode, palette: nextPalette }; setMode(nextMode); setPalette(nextPalette); lease.current?.update(nextMode, nextPalette); };
-  const cancel = () => { lease.current?.cancel(); onClose(); };
-  const apply = () => { if (lease.current?.commit()) withoutHold(() => savePref("theme", draft.current.mode)); onClose(); };
+  const cancel = () => { closing.current = true; lease.current?.cancel(); onClose(); };
+  const apply = () => { closing.current = true; if (lease.current?.commit()) withoutHold(() => savePref("theme", draft.current.mode)); onClose(); };
   const tone = mode === "system" ? systemLight ? "light" : "dark" : mode;
   return html`<${Dialog} title=${t("app.colours")} cls="theme-picker" onClose=${cancel} actions=${html`
     <button type="button" class="btn theme-cancel" onClick=${cancel}>${t("app.cancel")}</button>
@@ -34,7 +38,7 @@ export function ThemePicker({ onClose }) {
         <span class="theme-colour-name">${paletteName(id)}<span class="theme-tick" aria-hidden="true">${palette === id ? "✓" : ""}</span></span>
       </label>`)}
     </div>
-    <fieldset class="theme-appearance"><legend>${t("app.appearance")}</legend><div class="theme-mode-options">
+    <fieldset class="theme-appearance"><legend>${t("app.theme")}</legend><div class="theme-mode-options">
       ${["system", "light", "dark"].map(value => html`<label class="check"><input type="radio" name="builtin-appearance" value=${value} checked=${mode === value}
         onChange=${(e) => { if (e.currentTarget.checked) update(value, draft.current.palette); }} /><span>${t(`app.theme${value[0].toUpperCase() + value.slice(1)}`)}</span></label>`)}
     </div></fieldset>

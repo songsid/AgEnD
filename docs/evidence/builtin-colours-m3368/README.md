@@ -14,7 +14,7 @@ their existing precedence. No server data, identity or permission changes are ma
 The radio cards preview the page immediately. Apply persists the palette and mode;
 Cancel, Escape, or closing the dialog restores the prior choice. An outside mode
 change retires the preview and restores its original palette before applying that
-new mode, so a cancelled preview cannot leave an uncommitted palette behind.
+new mode and closes the dialog, so a cancelled preview cannot leave an uncommitted palette behind.
 
 ## Validation
 
@@ -23,7 +23,7 @@ new mode, so a cancelled preview cannot leave an uncommitted palette behind.
 - Nine affected theme, preference, Look and installed-chrome suites pass 153 tests.
   Five style, localization, source-scan and skill suites pass another 32 tests.
   Later asset-graph/shell and Settings checks, plus two interaction controls, bring
-  the staged total to 260 distinct passing tests across 19 files. Repeated runs
+  the initial staged total to 260 distinct passing tests across 19 files. Repeated runs
   are not added again. Source and test TypeScript both pass.
 - A strengthened interruption assertion first fails once, with four unselected
   tests excluded. After the fix, the three affected controller/prefs/chrome suites
@@ -37,7 +37,7 @@ A rapid palette/appearance control also fails before its fix and passes after it
 The latest draft is kept synchronously so rapid radio changes and Apply preserve
 both choices. The shared asset serving gap is pinned by a separate red control.
 
-The selected packet has 31 after views and four before views. Visual review covers
+The initial selected packet had 31 after views and four before views. Visual review covers
 the selected layouts, all eight palette chats, the agent override, and the new
 Look row. Representative chats include an enabled unsent draft and an inert
 fixture warning status. No Send action starts an agent. Menu images wait for finite
@@ -48,10 +48,50 @@ allowance changes. [Validation stages](validation.json) retain the exact scopes.
 The browser harness is `scripts/manual/smoke/smoke-builtin-themes-m3368.mts`.
 Supply an owned `REPO`, `OUT`, Linux `CHROME`, `PW_DIR` and Traditional Chinese
 `CJK_FONT`; `STAGE=before|after` selects the assertions. `SURFACE=hub` or
-`DEVICE=phone` limits a follow-up to that scope. It runs serial headless Chromium,
+`DEVICE=phone` limits a follow-up to that scope. `TONE=light` runs the affected
+light follow-up; `PALETTE=meadow TONE=dark SURFACE=fleet` limits a retake to
+Meadow’s dark pair. `VIEW=look SURFACE=fleet` takes the two Look rows. It runs serial headless Chromium,
 owned listeners, real shipped UI, and synthetic content, with no live accounts or
 agent backends. The Fleet quick selector is the existing anonymous View reader's;
 signed-in Fleet users also reach the same picker in Settings → Look.
+
+## Review fixes and Meadow reference
+
+R1 pins the three neutral sidebar declarations separately and checks every preset
+and automatic identity colour against every built-in page/sidebar pair. Four light
+pairs first fail and all eight then pass. The lighter sidebars preserve 4.5:1.
+An outside-change dialog control and the shared phone-query control also fail
+before their respective fixes. The updated label group says **Theme** / **主題**;
+Look now shows **Colours Default [Choose…]** / **配色 預設 [選擇…]**.
+
+Meadow uses white page/sidebar/panels and an olive-sage chat background `#c4cf93`.
+Message-name strips keep identity colours readable. Its reference green is
+ornamental; white-text controls use a darker green at 5.65:1. Dark Meadow has an
+olive chat surface `#30351f`, distinct from Mint's teal. Chat text and metadata
+pass AA; dark secondary chat text also meets APCA Lc 60. The adaptation is scoped
+to Meadow, and six other palette declarations are pinned byte for byte after the
+light-sidebar fix. Existing inline agent colours retain precedence.
+
+R1 stages add 43 distinct controls (303 total across 22 files). The focused
+controller/identity/colour/Apply stage is 51/51; phone/style/i18n is 15/15; the
+Meadow/identity/colour/CSS stage is 54/54. Repeated controls are not added twice.
+Source/test type checks pass. The completed light follow-up has 39 checks and
+11 images, Look has seven checks and two images, and the dark Meadow pair has
+five checks and two images. The repeated Look UI gate passes all 14 checks.
+No backend or native CLI runs were added.
+
+The current selection has 28 after views, four before views and four explicitly
+historical dark dialogs. Those dark-dialog originals predate the wording and
+Meadow-swatch correction; current light dialogs show both. The unchanged dark
+chats carry their earlier visual review. Only the changed 15 originals were
+re-inspected. The two Meadow desktop views are the user-reference follow-up.
+
+## Capture scope
+
+`fleet-agent-look-over-mint.png` demonstrates the agent’s bubble shape (8 px radius
+and a thin border). Its fixture supplies colours only for Light, while this image
+is Dark, so it is not evidence of an active agent colour override. The existing
+theme precedence controls cover colour overrides.
 
 ## Rollback
 

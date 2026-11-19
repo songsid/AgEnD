@@ -122,7 +122,7 @@ function ThemeModeCard() {
       </label>`)}
     </div></fieldset>
     <div class="s-row s-theme-colours-row"><div class="grow"><span>${t("app.colours")}</span><small class="note">${paletteName(palette)}</small></div>
-      <button type="button" class="btn s-theme-colours" onClick=${() => setColoursOpen(true)}>${t("app.themeOther")}</button></div>
+      <button type="button" class="btn s-theme-colours" onClick=${() => setColoursOpen(true)}>${t("app.themeChoose")}</button></div>
     ${coloursOpen ? html`<${ThemePicker} onClose=${() => { setColoursOpen(false); setPalette(globalThis.AgendTheme?.getPalette?.() || ""); }} />` : null}
     <${SettingsContentWidth} />
   </section>`;

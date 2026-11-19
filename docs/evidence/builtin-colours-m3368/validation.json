@@ -4,8 +4,8 @@
     "tests": 5,
     "semanticFailures": 5
   },
-  "distinctStagedPassingTests": 260,
-  "suiteFiles": 19,
+  "distinctStagedPassingTests": 303,
+  "suiteFiles": 22,
   "stages": [
     {
       "stage": "affected",
@@ -98,6 +98,54 @@
         "ui-css-literals-ratchet.test.ts",
         "web-settings-search-2347.test.ts"
       ]
+    },
+    {
+      "stage": "r1-focused",
+      "passed": 51,
+      "failed": 0,
+      "files": [
+        "builtin-theme-apply-m3368.test.ts",
+        "builtin-theme-colours-m3368.test.ts",
+        "builtin-themes-m3368.test.ts",
+        "web-identity-color-1958.test.ts"
+      ]
+    },
+    {
+      "stage": "r1-guards",
+      "passed": 15,
+      "failed": 0,
+      "files": [
+        "i18n-ui-literals-2390.test.ts",
+        "phone-landscape-m3254.test.ts",
+        "ui-css-literals-ratchet.test.ts"
+      ]
+    },
+    {
+      "stage": "r1-meadow",
+      "passed": 54,
+      "failed": 0,
+      "files": [
+        "builtin-theme-colours-m3368.test.ts",
+        "builtin-theme-meadow-m3368.test.ts",
+        "ui-css-literals-ratchet.test.ts",
+        "web-identity-color-1958.test.ts"
+      ]
+    },
+    {
+      "stage": "r1-skill",
+      "passed": 2,
+      "failed": 0,
+      "files": [
+        "concepts-skill-sync.test.ts"
+      ]
+    },
+    {
+      "stage": "r1-chat-apca",
+      "passed": 2,
+      "failed": 0,
+      "files": [
+        "builtin-theme-colours-m3368.test.ts"
+      ]
     }
   ],
   "sourceTypecheck": 0,
@@ -135,6 +183,27 @@
         "failed": 0,
         "errors": 0,
         "shots": 2
+      },
+      {
+        "stage": "r1-light-final",
+        "checks": 39,
+        "failed": 0,
+        "errors": 0,
+        "shots": 11
+      },
+      {
+        "stage": "r1-look",
+        "checks": 7,
+        "failed": 0,
+        "errors": 0,
+        "shots": 2
+      },
+      {
+        "stage": "r1-meadow-dark",
+        "checks": 7,
+        "failed": 0,
+        "errors": 0,
+        "shots": 2
       }
     ],
     "settingsGate": {
@@ -148,7 +217,13 @@
       "failed": 0
     },
     "selectedBefore": 4,
-    "selectedAfter": 31
+    "selectedAfter": 28,
+    "r1SettingsGate": {
+      "scope": "Look, CI cases and middle width",
+      "checks": 14,
+      "failed": 0
+    },
+    "selectedHistorical": 4
   },
   "scopeNotes": [
     "Repeated passes are not summed into the distinct count.",
@@ -157,6 +232,38 @@
     "Representative captures add an unsent draft and an inert fixture stuck event; no backend is started.",
     "Settled menu captures await finite colour transitions; earlier dim capture was transient.",
     "Shared picker handler race fixed after palette captures; markup, colour tokens and geometry unchanged; current System/Default flow and eight controls pass.",
-    "Settings search adds 34 distinct passing controls; its seven CSS checks repeat the earlier guard stage."
-  ]
+    "Settings search adds 34 distinct passing controls; its seven CSS checks repeat the earlier guard stage.",
+    "R1 reproduces four light-sidebar identity contrast failures; all presets and automatic colours now pass on all eight page/sidebar pairs. Neutral-default token checks remain pinned.",
+    "R1 closes the picker when an outside mode change retires its preview.",
+    "R1 replaces the isolated narrow phone media query with the shared landscape-aware phone query.",
+    "Meadow follows the approved olive-sage reference with chat-only colour, neutral name strips and accessible green controls. Six other palette declarations are frozen after the identity fix.",
+    "The first R1 light capture stopped at a hidden phone status dot. The harness now checks attachment on phone and visibility on desktop; only the completed final stage is selected.",
+    "The first Meadow scope test parsed a CSS comment as a selector; the helper now strips comments. The corrected stage is fully green.",
+    "Four earlier dark-dialog originals are historical: they predate the Theme legend and updated Meadow swatch. Current light-dialog originals show both corrections. No unchanged dark-chat matrix was repeated."
+  ],
+  "r1FailFirst": {
+    "identity": {
+      "failed": 4,
+      "passed": 4,
+      "unselected": 26
+    },
+    "outsideChoiceDialog": {
+      "failed": 1,
+      "unselected": 7
+    },
+    "sharedPhoneQuery": {
+      "failed": 1,
+      "unselected": 2
+    },
+    "meadowReference": {
+      "semanticFailures": 2,
+      "missingTokenAssertions": 2,
+      "passed": 1
+    }
+  },
+  "r1NameStripReversal": {
+    "failedWithoutBackground": 1,
+    "unselected": 4,
+    "restoredPassed": 5
+  }
 }

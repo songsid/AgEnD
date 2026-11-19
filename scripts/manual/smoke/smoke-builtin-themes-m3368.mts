@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, copyFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-const repo=process.env.REPO!, out=resolve(process.env.OUT!), before=process.env.STAGE==='before';
+const repo=process.env.REPO!, out=resolve(process.env.OUT!), before=process.env.STAGE==='before', lightOnly=process.env.TONE==='light';
 if(!repo||!process.env.OUT||!process.env.PW_DIR||!process.env.CJK_FONT)throw Error('REPO/OUT/PW_DIR/CJK_FONT required');
 if(process.platform!=='linux'||!process.env.CHROME?.startsWith('/home/')||process.env.CHROME.includes('/mnt/'))throw Error('Linux headless browser required');
 mkdirSync(out,{recursive:true});
@@ -30,6 +30,7 @@ try{
   const a=await fx.page(c,{path:'/settings/look',prefs:{'nav.density':'detailed'}}),p=a.page;p.on('pageerror',(e:any)=>errors.push('fleet:'+String(e).slice(0,160)));
   try{
    await p.locator('#pref-theme').waitFor();await noOverflow(p,'fleet-'+device+'-look');
+   if(process.env.PALETTE){const id=process.env.PALETTE,mode=process.env.TONE||'light';await p.locator('.s-theme-colours').click();await choose(p,id,mode);await p.waitForTimeout(950);await p.goto(fx.base+'/ui/chat/release-helper');await p.locator('.p-chat .msg .md pre').waitFor();await p.locator('#msgIn').fill('Example reply ready to send.');fx.fm.getInstanceStatus=()=> 'running';fx.fm.emitSseEvent('activity',{instance:'release-helper',state:'stuck'});await p.locator('.dot.warn').first().waitFor({state:'attached'});await noOverflow(p,`fleet-${device}-${id}-${mode}-fits`);const paint=await p.locator('.p-chat').evaluate((el:any)=>({bg:getComputedStyle(el).backgroundColor,meta:getComputedStyle(el.querySelector('.msg .meta')).backgroundColor,sidebar:getComputedStyle(document.querySelector('#sidebar')).backgroundColor}));check(`fleet-${device}-${id}-${mode}-chat-paint`,paint.bg===(mode==='light'?'rgb(196, 207, 147)':'rgb(48, 53, 31)'),paint);await shot(p,`fleet-${device}-${id}-${mode}-chat`);continue;}
    if(process.env.VIEW==='look'){await shot(p,'fleet-'+device+'-look-colours-row');await p.locator('.s-theme-colours').click();await choose(p,'mint','system');await p.emulateMedia({colorScheme:'dark'});const dark=await p.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());await p.emulateMedia({colorScheme:'light'});const light=await p.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--bg').trim());check('fleet-'+device+'-system-keeps-palette',dark!==light&&await p.evaluate(()=>globalThis.AgendTheme.get()==='system'&&globalThis.AgendTheme.getPalette()==='mint'),{dark,light});await p.locator('.s-theme-colours').click();await choose(p,'','light');check('fleet-'+device+'-default-restores-neutral',await p.evaluate(()=>!document.documentElement.hasAttribute('data-palette')&&localStorage.getItem('agend_palette')===null));continue;}
    if(before){await shot(p,'fleet-'+device+'-before-look');continue;}
    await p.locator('.s-theme-colours').click();await p.locator('dialog.theme-picker[open]').waitFor();
@@ -41,14 +42,15 @@ try{
    await p.locator('input[name=builtin-palette]').first().focus();await p.keyboard.press('ArrowRight');
    check('fleet-'+device+'-arrow',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='sky');
    await p.keyboard.press('Escape');check('fleet-'+device+'-escape',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='');
-   for(const id of device==='desk'?['sky','meadow','violet','mint']:['mint'])for(const mode of ['light','dark']){
+   for(const id of device==='desk'?['sky','meadow','violet','mint']:['mint'])for(const mode of lightOnly?['light']:['light','dark']){
     await p.locator('.s-theme-colours').click();await choose(p,id,mode);
     await p.waitForTimeout(950);await p.goto(fx.base+'/ui/chat/release-helper');await p.locator('.p-chat .msg .md pre').waitFor();
     check(`fleet-${device}-${id}-${mode}-paint`,await p.evaluate(({id,mode})=>document.documentElement.dataset.palette===id&&globalThis.AgendTheme.get()===mode,{id,mode}));
-    await p.locator('#msgIn').fill('Example reply ready to send.');fx.fm.getInstanceStatus=()=> 'running';fx.fm.emitSseEvent('activity',{instance:'release-helper',state:'stuck'});await p.locator('.av-dot.warn, .dot.warn').first().waitFor();check(`fleet-${device}-${id}-${mode}-send-ready`,await p.locator('#sendBtn').isEnabled());
+    await p.locator('#msgIn').fill('Example reply ready to send.');fx.fm.getInstanceStatus=()=> 'running';fx.fm.emitSseEvent('activity',{instance:'release-helper',state:'stuck'});await p.locator('.av-dot.warn, .dot.warn').first().waitFor({state:'attached'});if(device==='desk')await p.locator('.av-dot.warn:visible, .dot.warn:visible').first().waitFor();check(`fleet-${device}-${id}-${mode}-send-ready`,await p.locator('#sendBtn').isEnabled());
     await noOverflow(p,`fleet-${device}-${id}-${mode}-fits`);await shot(p,`fleet-${device}-${id}-${mode}-chat`);
     await p.goto(fx.base+'/settings/look');await p.locator('.s-theme-colours').waitFor();
    }
+   if(!lightOnly){
    await p.locator('.s-theme-colours').click();await choose(p,'mint','dark',false);await shot(p,'fleet-'+device+'-dialog-dark');await p.locator('.theme-apply').click();
    await p.reload();await p.locator('#pref-theme').waitFor();check('fleet-'+device+'-reload',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');
    await p.locator('#pref-theme input[value=light]').check();check('fleet-'+device+'-mode-keeps-colours',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');
@@ -56,6 +58,8 @@ try{
     fx.seedTheme('release-helper',{v:1,colors:{light:{bg:'#f6f2ff',surface:'#f0eafa',text:'#20182e',text2:'#514563',accent:'#6847a5'}},bubble:{radius:8,border:'thin'}});
     await p.goto(fx.base+'/ui/chat/release-helper');await p.locator('.p-chat.th').waitFor();await shot(p,'fleet-agent-look-over-mint');
    }
+   }
+   if(lightOnly){await p.locator('.s-theme-colours').click();await p.locator('dialog.theme-picker[open]').waitFor();await p.evaluate(()=>globalThis.AgendTheme.set('dark'));await p.locator('dialog.theme-picker').waitFor({state:'detached'});check('fleet-'+device+'-outside-change-closes-dialog',await p.evaluate(()=>globalThis.AgendTheme.get()==='dark'&&globalThis.AgendTheme.getPalette()==='mint'));}
   }finally{await a.ctx.close();}
   }
   // The Fleet quick control is the existing anonymous View reader's menu, not an invented admin control.
@@ -64,8 +68,8 @@ try{
    await ctx.addInitScript({content:`localStorage.setItem('agend_lang',${JSON.stringify(lang)});`});const q=await ctx.newPage();await q.goto(fx.base+'/view/release-helper');await q.locator('.prefs-pop').waitFor({state:'attached'});
    if(!await q.locator('.prefs-pop > summary').isVisible())await q.locator('#sbOpen').click();await q.locator('.prefs-pop > summary').click();
    const values=await q.locator('#pref-theme option').evaluateAll((xs:any[])=>xs.map(x=>x.value));check('fleet-'+device+'-quick-options',JSON.stringify(values)===JSON.stringify(before?['system','light','dark']:['system','light','dark','other']),values);
-   await shot(q,'fleet-'+device+(before?'-before-menu':'-menu-default'));
-   if(!before){await openColours(q,'#pref-theme');await choose(q,'mint','dark');await q.locator('#pref-theme').selectOption('light');check('fleet-'+device+'-quick-mode-keeps-colours',await q.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');await q.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));const colours=await q.locator('.v-term-earlier,.v-id .btn').evaluateAll((xs:any[])=>xs.map(x=>({text:x.textContent.trim(),color:getComputedStyle(x).color,bg:getComputedStyle(x).backgroundColor,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette})));checks.push({name:'fleet-'+device+'-view-control-colours',ok:true,details:colours});await shot(q,'fleet-'+device+'-menu-mint');}
+   if(!lightOnly)await shot(q,'fleet-'+device+(before?'-before-menu':'-menu-default'));
+   if(!before){await openColours(q,'#pref-theme');await choose(q,'mint',lightOnly?'light':'dark');await q.locator('#pref-theme').selectOption('light');check('fleet-'+device+'-quick-mode-keeps-colours',await q.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');await q.evaluate(()=>Promise.all(document.getAnimations().filter(a=>a.effect?.getComputedTiming().iterations!==Infinity).map(a=>a.finished.catch(()=>{}))));const colours=await q.locator('.v-term-earlier,.v-id .btn').evaluateAll((xs:any[])=>xs.map(x=>({text:x.textContent.trim(),color:getComputedStyle(x).color,bg:getComputedStyle(x).backgroundColor,theme:document.documentElement.dataset.theme,palette:document.documentElement.dataset.palette})));checks.push({name:'fleet-'+device+'-view-control-colours',ok:true,details:colours});await shot(q,'fleet-'+device+'-menu-mint');}
   }finally{await ctx.close();}
  }
  await fx.close();fx=null;
@@ -88,9 +92,10 @@ try{
    const p=await ctx.newPage();p.on('pageerror',(e:any)=>errors.push('hub:'+String(e).slice(0,160)));await p.goto(origin+'/ui/hub');await p.fill('#hubLogin','example-person');await p.fill('#hubPassword','pw-example-person');await p.locator('.hub-signin button[type=submit]').click();await p.locator('.hub-session-row').first().waitFor({state:'attached'});
    await p.goto(`${origin}/ui/hub?room=${room}`);await p.locator('#msgIn').waitFor();
    if(!await p.locator('.hub-prefs > summary').isVisible()){if(!await p.locator('#sbOpen').count())await p.locator('.hub-back').click();await p.locator('#sbOpen').click();}await p.locator('.hub-prefs > summary').click();
-   const values=await p.locator('#pref-theme option').evaluateAll((xs:any[])=>xs.map(x=>x.value));check('hub-'+device+'-quick-options',JSON.stringify(values)===JSON.stringify(before?['system','light','dark']:['system','light','dark','other']),values);await shot(p,'hub-'+device+(before?'-before-menu':'-menu-default'));
+   const values=await p.locator('#pref-theme option').evaluateAll((xs:any[])=>xs.map(x=>x.value));check('hub-'+device+'-quick-options',JSON.stringify(values)===JSON.stringify(before?['system','light','dark']:['system','light','dark','other']),values);if(!lightOnly)await shot(p,'hub-'+device+(before?'-before-menu':'-menu-default'));
    if(!before){
     await openColours(p,'#pref-theme');await choose(p,'mint','light',false);await shot(p,'hub-'+device+'-dialog-light');await p.locator('.theme-apply').click();
+    if(lightOnly)continue;
     await p.locator('#pref-theme').selectOption('dark');check('hub-'+device+'-keep-palette',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');await shot(p,'hub-'+device+'-menu-mint');
     await openColours(p,'#pref-theme');await choose(p,'violet','dark',false);await shot(p,'hub-'+device+'-dialog-dark');await p.locator('.theme-cancel').click();check('hub-'+device+'-cancel',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');
     await p.goto(`${origin}/ui/hub?room=${room}`);await p.locator('#msgIn').waitFor();await noOverflow(p,'hub-'+device+'-chat-fits');check('hub-'+device+'-reload',await p.evaluate(()=>globalThis.AgendTheme.getPalette())==='mint');await shot(p,'hub-'+device+'-mint-dark-chat');

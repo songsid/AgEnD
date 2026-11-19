@@ -49,6 +49,16 @@ describe("M3368 built-in colours in the existing theme controller", () => {
     theme.set("light"); preview.cancel();
     expect([theme.get(), theme.getPalette()]).toEqual(["light", ""]);
   });
+  it("closes the picker when an outside theme choice retires its preview", async () => {
+    const theme = boot({ agend_theme: "light", agend_palette: "mint" });
+    const { ThemePicker } = await import("/assets/theme-picker.js");
+    const { useState } = await import("/assets/app-html.js");
+    function Host() { const [open, setOpen] = useState(true); return open ? h(ThemePicker, { onClose: () => setOpen(false) }) : null; }
+    await pg!.mount(h(Host, {}));
+    theme.set("dark"); await settle();
+    expect(pg!.root.querySelector("dialog")).toBeNull();
+    expect([theme.get(), theme.getPalette()]).toEqual(["dark", "mint"]);
+  });
   it("keeps both rapid choices before the next render", async () => {
     const theme = boot({ agend_theme: "dark", agend_palette: "mint" });
     const { ThemePicker } = await import("/assets/theme-picker.js");
