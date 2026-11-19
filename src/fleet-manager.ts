@@ -5347,6 +5347,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (row) this.publishTraffic(row, "consumed");
     });
     outbox.on("generation_recovered", () => this.scheduleDeliveryOutboxPump());
+    this.sweepContactAuthorizationOutcomes();
     this.replyObligationTimer = setInterval(() => measureSyncWork("fleet.replyObligationSweep", () => this.sweepReplyObligations()), REPLY_OBLIGATION_SWEEP_MS);
     this.replyObligationTimer.unref?.();
     // #856: the text the target daemon received differs from what was
@@ -5523,6 +5524,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         return admitted.delivery.deliveryId;
       },
       changed: (instance, ticketId) => {
+        this.sweepContactAuthorizationOutcomes();
         const revision = this.deliveryOutbox!.contactAuthorizations.policy(instance).revision;
         const ticket = ticketId ? this.deliveryOutbox!.contactAuthorizations.get(ticketId) : undefined;
         if (ticket) {
@@ -5633,6 +5635,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   decideContactAuthorization(id: string, decision: ContactTicketDecision, actor: ContactPerson) {
     return this.contactService().decide(id, decision, actor);
+  }
+  /** Status only: no human receipt, approval capability or original correlation is attached. */
+  private sweepContactAuthorizationOutcomes(): void {
+    const outbox = this.deliveryOutbox;
+    if (!outbox?.isOpen || this.shuttingDown) return;
+    try {
+      outbox.contactAuthorizations.notifyOutcomes(ticket => {
+        outbox.admitSystemNotice(ticket.source, `contact-outcome:${ticket.id}`,
+          t(ticket.state === "declined" ? "contact.noticeDeclined" : "contact.noticeExpired", ticket.id, ticket.target));
+      });
+    } catch (err) {
+      this.logger.error({ err }, "Contact outcome notice sweep failed; durable state will retry");
+    }
   }
   contactNeeds(actor: ContactPerson): WebNeedsItem[] {
     const service = this.contactService();
@@ -5866,6 +5881,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * requesters are no longer told about overdue or expired asks (they can check delivery_status / describe_instance).
    */
   sweepReplyObligations(now = new Date()): void {
+    this.sweepContactAuthorizationOutcomes();
     const outbox = this.deliveryOutbox;
     if (!outbox || this.shuttingDown) return;
     const stateOf = (name: string) => this.daemons.get(name)?.getInstanceState();
