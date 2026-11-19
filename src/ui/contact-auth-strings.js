@@ -85,7 +85,8 @@ register("contactAuth", {
     from: "From {0}", via: "Via {0}", to: "To {0}", origin_unknown: "Origin unknown", origin_mixed: "Earlier non-admin request",
     "reason_earlier-non-admin": "This agent's retained history includes non-admin input, so this contact needs approval.",
     "reason_unknown-origin": "This agent's retained history has an unknown origin, so this contact needs approval.",
-    resetNote: "Approval or a matching administrator-written grant forwards this request with the administrator's endorsement. The receiving agent's origin is unchanged; the source agent keeps its own origin. A managing administrator can explicitly clear an agent's origin in Permissions. Automatic reset is not supported.",
+    // M-3385: under the reason — what an approval leaves as it is, and the one way this agent stops needing approval.
+    resetNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. For this agent's contacts to stop needing approval, a managing administrator can clear its retained origin in its Permissions; it never resets on its own.",
     created: "Asked {0}", expires: "Expires {0}", decided: "{0} by {1}",
     approveOnce: "Approve once", decline: "Decline", alsoAllowUntil: "Until", alsoAllowUses: "Uses (empty: no limit)",
     // M-3385: what the card's parts do, said where they are.
@@ -179,7 +180,7 @@ register("contactAuth", {
     from: "來自 {0}", via: "經由 {0}", to: "給 {0}", origin_unknown: "來源不明", origin_mixed: "先前有非管理員的請求",
     "reason_earlier-non-admin": "這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。",
     "reason_unknown-origin": "這個 Agent 保留的歷史來源不明，因此這次聯絡需要核准。",
-    resetNote: "核准或符合管理員設定的常用轉交，表示管理員對這次轉交背書。接收 Agent 的來源維持原狀，發送 Agent 仍保留自己的來源。具管理權限的管理員可在「權限」明確清除 Agent 的來源，不支援自動重設。",
+    resetNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。",
     created: "{0} 提出", expires: "{0} 到期", decided: "{1} 於 {0} 處理",
     approveOnce: "核准這一次", decline: "拒絕", alsoAllowUntil: "到期時間", alsoAllowUses: "次數（留空表示不限）",
     alsoAllow: "之後 {0} 從 {2} 發給 {3} 的{1}請求，也直接轉交，不必再核准",
