@@ -215,7 +215,14 @@ export function installQuoteSelection(list, deps) {
     place(passage);
   }
   function soon() { if (timer) clearTimeout(timer); timer = setTimeout(check, 120); }
-  const onSelection = () => soon();
+  // M-3356 (the user, iPhone, 注音: the candidate bar blanked on every key): while an IME composes in the composer, no
+  // selection check (iOS redraws its candidate bar when the page reads the selection); a selection in the thread is not
+  // being made then. `composing` is kept by the composer's composition events (below).
+  let composing = false;
+  const onSelection = () => {
+    if (composing) { if (timer) { clearTimeout(timer); timer = null; } return; }
+    soon();
+  };
   const onDown = (e) => { if (pop && pop.contains(e.target)) return; down = true; hide(); };
   // A gesture the browser took over (a touch scroll: pointerdown → pointercancel, no pointerup — #3555 review P2-1)
   // ends the press as a pointerup does; the selection then decides.
@@ -224,10 +231,25 @@ export function installQuoteSelection(list, deps) {
   const onScroll = () => { if (pop && current) place(current); };
   const onFocusIn = (e) => { const f = deps.field?.(); if (f && e.target === f) f.dataset.touched = "1"; };
   // The caret as the person leaves it: kept on every move inside the composer and when it loses the focus.
-  const keep = (e) => { const f = deps.field?.(); if (f && e.target === f) remembered.set(f, { value: f.value, caret: f.selectionStart ?? f.value.length }); };
+  // M-3356: never while an IME composes (its keys, their keyup): the caret is kept when the composition ends, or on leaving.
+  // Any compositionend ends it, and so does the composer losing the focus (#4208 review: a blur, a tab switch or a
+  // re-rendered composer may never send the field its compositionend — the pill would never show again).
+  const onCompose = (e) => {
+    if (e.type === "compositionend") { composing = false; return; }
+    const f = deps.field?.(); if (f && e.target === f) composing = true;
+  };
+  const keep = (e) => {
+    const f = deps.field?.();
+    if (!f || e.target !== f) return;
+    if (e.type === "focusout") composing = false;
+    if (composing || e.isComposing || e.keyCode === 229) return;
+    remembered.set(f, { value: f.value, caret: f.selectionStart ?? f.value.length });
+  };
   const KEEP = ["focusout", "input", "keyup", "mouseup", "select"];
   doc.addEventListener("focusin", onFocusIn);
   for (const k of KEEP) doc.addEventListener(k, keep, true);
+  doc.addEventListener("compositionstart", onCompose, true);
+  doc.addEventListener("compositionend", onCompose, true);
   doc.addEventListener("selectionchange", onSelection);
   list.addEventListener("pointerdown", onDown);
   doc.addEventListener("pointerup", onUp);
@@ -240,6 +262,8 @@ export function installQuoteSelection(list, deps) {
     hide();
     doc.removeEventListener("focusin", onFocusIn);
     for (const k of KEEP) doc.removeEventListener(k, keep, true);
+    doc.removeEventListener("compositionstart", onCompose, true);
+    doc.removeEventListener("compositionend", onCompose, true);
     doc.removeEventListener("selectionchange", onSelection);
     list.removeEventListener("pointerdown", onDown);
     doc.removeEventListener("pointerup", onUp);
