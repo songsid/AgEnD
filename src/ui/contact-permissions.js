@@ -99,7 +99,7 @@ export function ContactPermissionsPanel({ name }) {
   const switchMode = async (mode) => {
     const toRestricted = mode === "restricted";
     const ok = await confirmDialog({ title: ca(toRestricted ? "confirmRestricted" : "confirmLegacy"), message: toRestricted
-      ? [ca("modeRestrictedNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n")
+      ? [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n")
       : ca("modeLegacyNote"), confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
     if (ok) await write({ mode });
   };
@@ -121,6 +121,7 @@ export function ContactPermissionsPanel({ name }) {
       <h3>${ca("modeTitle")}</h3>
       ${p.suggestRestricted && p.mode !== "restricted" ? html`<p class="feedback warning contact-suggest-banner" role="status">${ca("suggestBanner")}</p>` : null}
       <p class="contact-mode-line"><span class=${`contact-pill ${p.mode === "restricted" ? "ok" : "warn"}`}>${ca(p.mode === "restricted" ? "modeRestricted" : "modeLegacy")}</span></p>
+      ${p.mode !== "restricted" ? html`<p class="feedback warning contact-origin-switch">${ca("switchOriginNote")}</p>` : null}
       <p class="note">${ca(p.mode === "restricted" ? "modeRestrictedNote" : "modeLegacyNote")}</p>
       ${p.mode !== "restricted" ? html`<${WouldDisable} tools=${tools.wouldDisable} complete=${tools.impactComplete} />` : null}
       ${notCovered(p.nativeGuard) ? html`<p class="feedback warning contact-not-covered" role="status">${ca("notCoveredWarning")}</p>` : null}

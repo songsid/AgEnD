@@ -30,6 +30,10 @@ In slice 1 an approver must be a Fleet admin for the target's adapter. The
 verified host operator may also approve. The picker uses `eligibleApprovers`,
 never arbitrary names or message-supplied identities. Non-admin approvers are
 deferred; they do not receive global administrator rights through this feature.
+An ordinary delegated Fleet worker without `channel_id` inherits the primary
+adapter. When a target truly has no Discord/Telegram adapter, only an already
+verified host operator may approve; an empty channel-approver list does not
+remove that exception. Existing identity verification still applies.
 
 An approved application binds its exact arguments, origin, source and target
 generation, expiry and result recipient. Approval creates at most one durable
@@ -41,8 +45,10 @@ approved work reuses only its authorized return path, not a correlation string a
 The topmost human origin is carried by server-owned work records across relays,
 later turns, schedules, retries and restart. Mixed or unavailable origins do not
 become administrator work merely because the latest message is from an admin.
-The first slice conservatively keeps the union for the conversation: “This
-conversation earlier handled a non-admin request.” Approval allows the retained
+The first slice conservatively stores this union per agent instance, including
+ordinary workers that receive the work. It is not keyed by conversation or work
+item. A later direct administrator message merges into that retained history; it
+does not clear earlier non-admin or unknown input. Approval allows the retained
 request once; it does not clear the union. Idle and compaction never clear it.
 Turning a Classic room back to legacy restores that room's outgoing behavior,
 but does not remove origins from work already handed to a worker.
@@ -52,6 +58,19 @@ counter also rotates on retained resumes. Neither is used as erasure proof here;
 `resetSupported:false` states this gap explicitly. Automatic recovery at a work-item
 boundary is later work and requires a verifiable work-item close, never a guessed
 correlation string or the most recent speaker.
+
+Only an actual legacy-to-restricted switch initializes the retained origin as
+unknown, because earlier CLI history has not been verified as erased. Saving an
+already restricted mode does not alter its origin. Unknown origins cannot match
+standing contact grants, so new contacts, including administrator contacts, need
+separate approval. This is shown before switching.
+
+Receipt identifiers and diagnostic hops are retained as the latest 64/32 entries;
+trimming those lists does not change known originating people or their authority.
+More than 16 distinct people still fails closed as unknown. Explicit and already
+stored unknown remains unknown: old records do not say whether the cause was
+unverified history or a former metadata overflow, so this change does not guess
+or automatically clear them.
 The Hub contact-window refusal remains prior to this gate; its approved answer
 path is unchanged and no application can waive the Hub limit.
 

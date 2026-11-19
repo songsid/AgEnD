@@ -84,10 +84,12 @@ describe("Permissions: a ClassicBot room", () => {
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
     expect(text(pg.root.querySelector(".contact-suggest-banner"))).toBe("We suggest switching this room to restricted mode.");
     expect(text(pg.root.querySelector(".contact-mode .contact-pill"))).toBe("Not restricted (older setting)");
+    expect(text(pg.root.querySelector(".contact-origin-switch"))).toContain("existing history is treated as unknown");
     expect([...pg.root.querySelectorAll(".contact-would li")].map(text)).toEqual(["Bash", "mcp__drive__write"]);
     fire(button(pg.root, "Switch to restricted"), "click"); await settle(4);
     const q = await yes();
     expect(q.message).toContain("• Bash");
+    expect(q.message).toContain("allowed-contact grants cannot match");
     expect(calls.filter((c) => c.method === "PUT").map((c) => c.body)).toEqual([{ revision: 4, mode: "restricted" }]);
     expect(text(pg.root.querySelector(".contact-mode .contact-pill"))).toBe("Restricted");
     expect(pg.root.querySelector(".contact-suggest-banner")).toBeNull();
@@ -326,22 +328,22 @@ describe("a tool the guard doesn't cover (the leader's A3 decision): said plainl
 });
 
 describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)", () => {
-  it("a ticket's reason code in words, with the /clear note while it waits; a code the page doesn't know says nothing", async () => {
+  it("a ticket's reason code in words, with the retained-history note while it waits; a code the page doesn't know says nothing", async () => {
     api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket({ reason: "earlier-non-admin" }), ticket({ id: "R13", reason: "something-else" as any, state: "declined", canDecide: false })], nextCursor: null } }) });
     const i18n = await import("/assets/app-i18n.js") as any;
     i18n.setLang("zh-TW", { store: false });
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個對話先前處理過非管理員請求，因此這次聯絡需要核准。 核准這筆申請即可轉交；此版本尚未驗證 /clear 後自動解除限制。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准只會轉交這筆申請。保留的來源也會影響接手的工作者，不會因後來的管理員訊息解除；此版本沒有已驗證的重設方式。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
-  it("Permissions: an active origin restriction says why (unknown origin: its uncertainty wording) and that /clear isn't a verified reset", async () => {
+  it("Permissions: an active origin restriction says why (unknown origin: its uncertainty wording) and that no reset is verified", async () => {
     api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ originRestriction: { active: true, reason: "unknown-origin", resetSupported: false } } as any) }) });
     const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
-    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("Who started this conversation can't be confirmed, so this contact needs approval. Approve this request to continue. Automatic reset after /clear is not verified in this version.");
+    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approval forwards this request only. Retained origins also affect workers and are not cleared by a later admin message; this version has no verified reset.");
   });
 });
 
@@ -422,6 +424,8 @@ describe("Needs you: contact items (references only; the details from the scoped
       fire(button(pg.root, "切換這個房間"), "click"); await settle(6);
       const q = await yes();
       expect(q.message).toContain("• Bash");
+      expect(q.message).toContain("允許的聯絡授權無法配對");
+      expect(text(pg.root.querySelector(".contact-origin-switch"))).toContain("包含管理員");
       fire(button(pg.root, "稍後"), "click"); await settle(6);
       expect(calls.map((c) => [c.method, c.url, c.body])).toEqual([["GET", "/ui/api/instances/classic-ops/contact-permissions", undefined],   // the card's guard coverage
         ["GET", "/ui/api/instances/classic-ops/contact-permissions", undefined],                                                              // the switch: its revision
