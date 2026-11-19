@@ -14,8 +14,9 @@ import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
-import { getPermissions, putPermissions, shortTicketId } from "./contact-auth-client.js";
+import { getPermissions, putPermissions, clearOrigin, shortTicketId } from "./contact-auth-client.js";
 import { REASONS } from "./contact-authorizations.js";
+import { groupWouldDisable } from "./contact-tool-groups.js";
 
 const when = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; };
 /** A3's guard reason codes (ContactGuardStatus.reason), each said in words (contact-auth-strings.js guardReason_<code>). */
@@ -37,39 +38,58 @@ const personLabel = (p) => (p && (p.label || p.userId)) || "";
 export function usePermissions(name) {
   const [state, setState] = useState({ loading: true });
   const rev = useRef(-1);
+  const originRev = useRef(-1);
   const read = async () => {
     const r = await getPermissions(name);
-    if (r.ok) { rev.current = r.data.revision; setState({ data: r.data }); } else setState((s) => ({ ...(s.data ? { data: s.data } : {}), error: r.code }));
+    if (r.ok) { rev.current = r.data.revision; originRev.current = r.data.originState?.revision ?? -1; setState({ data: r.data }); } else setState((s) => ({ ...(s.data ? { data: s.data } : {}), error: r.code }));
     return r;
   };
   useEffect(() => {
     let live = true;
     void read().then(() => { if (!live) rev.current = -1; });
     const sub = appStore.get().streamOn;
-    const off = typeof sub === "function" ? sub("contact-auth", (d) => { if (d && d.instance === name && !(Number(d.revision) <= rev.current)) void read(); }) : null;
+    const off = typeof sub === "function" ? sub("contact-auth", (d) => { if (d && d.instance === name && (!(Number(d.revision) <= rev.current) || Number(d.originRevision) > originRev.current)) void read(); }) : null;
+    const offMessage = typeof sub === "function" ? sub("message", (d) => { if (d?.instance === name) void read(); }) : null;
     const onShow = () => { if (document.visibilityState === "visible") void read(); };
     document.addEventListener("visibilitychange", onShow);
-    return () => { live = false; if (typeof off === "function") off(); document.removeEventListener("visibilitychange", onShow); };
+    return () => { live = false; if (typeof off === "function") off(); if (typeof offMessage === "function") offMessage(); document.removeEventListener("visibilitychange", onShow); };
   }, [name]);
-  return { ...state, read, setData: (data) => { rev.current = data.revision; setState({ data }); } };
+  return { ...state, read, setData: (data) => { rev.current = data.revision; originRev.current = data.originState?.revision ?? -1; setState({ data }); } };
 }
 
 /**
  * What would stop if this legacy room switched — AgEnD's known removals; when the backend's own inventory couldn't be read
  * (impactComplete false) that is said too, so the list is never taken as everything.
+ * M-3387: by kind with counts (contact-tool-groups.js), the AI tool's own tools on their own line, the two layers said, and
+ * every name behind "show all".
  */
 function WouldDisable({ tools, complete }) {
   const incomplete = complete === false ? html`<p class="feedback warning contact-impact-incomplete">${ca("impactIncomplete")}</p>` : null;
-  return tools && tools.length ? html`<div class="contact-would"><p>${ca("wouldDisableTitle")}</p><ul>${tools.map((n) => html`<li key=${n} class="mono">${n}</li>`)}</ul>${incomplete}</div>`
-    : complete === false ? incomplete : html`<p class="note">${ca("wouldDisableNone")}</p>`;
+  if (!tools || !tools.length) return complete === false ? incomplete : html`<p class="note">${ca("wouldDisableNone")}</p>`;
+  const { groups, cli, agendCount } = groupWouldDisable(tools);
+  return html`<div class="contact-would">
+    ${agendCount ? html`<p>${ca("toolsLostTitle", agendCount)}</p><ul class="contact-would-groups">${groups.map((g) => html`<li key=${g.id} data-group=${g.id}>${ca("toolGroupLine", ca(`toolGroup_${g.id}`), g.tools.length)}</li>`)}</ul>` : null}
+    ${cli.length ? html`<p class="contact-would-cli">${ca("cliToolsLine", cli.length, cli.join(", "))}</p>` : null}
+    <p class="note contact-would-layers">${ca("toolLayers")}</p>
+    <details class="contact-would-all"><summary>${ca("showAllTools", tools.length)}</summary><ul>${tools.map((n) => html`<li key=${n} class="mono">${n}</li>`)}</ul></details>
+    ${incomplete}</div>`;
 }
-/** The same, as the confirm's text (paragraphs). */
+/** The same, as the confirm's text (paragraphs): the kinds with counts, the AI tool's own tools, the two layers. */
 export function wouldDisableText(roomTools, guard) {
   const would = roomTools?.wouldDisable || [];
-  const parts = [would.length ? [ca("wouldDisableTitle"), ...would.map((n) => `• ${n}`)].join("\n") : roomTools?.impactComplete === false ? "" : ca("wouldDisableNone")];
+  const { groups, cli, agendCount } = groupWouldDisable(would);
+  const parts = [would.length ? "" : roomTools?.impactComplete === false ? "" : ca("wouldDisableNone")];
+  if (agendCount) parts.push([ca("toolsLostTitle", agendCount), ...groups.map((g) => ca("toolGroupLine", ca(`toolGroup_${g.id}`), g.tools.length))].join("\n"));
+  if (cli.length) parts.push(ca("cliToolsLine", cli.length, cli.join(", ")));
+  if (would.length) parts.push(ca("toolLayers"));
   if (roomTools?.impactComplete === false) parts.push(ca("impactIncomplete"));
   if (notCovered(guard)) parts.push(ca("notCoveredWarning"));
   return parts.filter(Boolean).join("\n\n");
+}
+/** M-3387: the confirm's "show all": every name that would stop, or null when none. */
+export function wouldDisableMore(roomTools) {
+  const would = roomTools?.wouldDisable || [];
+  return would.length ? { label: ca("showAllTools", would.length), lines: would } : null;
 }
 
 export function ContactPermissionsPanel({ name }) {
@@ -100,8 +120,21 @@ export function ContactPermissionsPanel({ name }) {
     const toRestricted = mode === "restricted";
     const ok = await confirmDialog({ title: ca(toRestricted ? "confirmRestricted" : "confirmLegacy"), message: toRestricted
       ? [ca("modeRestrictedNote"), ca("switchOriginNote"), wouldDisableText(p.roomTools, p.nativeGuard)].join("\n\n")
-      : ca("modeLegacyNote"), confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
+      : ca("modeLegacyNote"), ...(toRestricted ? { more: wouldDisableMore(p.roomTools) } : {}),
+      confirmLabel: ca(toRestricted ? "switchRestricted" : "switchLegacy"), danger: !toRestricted });
     if (ok) await write({ mode });
+  };
+  const clearRetainedOrigin = async () => {
+    if (busy || !p.originState?.canClear) return;
+    setBusy(true);
+    const confirmed = await confirmDialog({ title: ca("originClear"), message: ca("originClearConfirm"),
+      confirmLabel: ca("originClear"), danger: true });
+    if (!confirmed) { setBusy(false); return; }
+    const r = await clearOrigin(name, { revision: p.revision, originRevision: p.originState.revision, generation: p.originState.generation });
+    setBusy(false);
+    if (r.ok) { perm.setData(r.data); toast(ca("originCleared"), true); return; }
+    if (r.code === "conflict") { await perm.read(); toast(ca("stale"), false); return; }
+    toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "saveFailed"), false);
   };
   const tools = p.roomTools || { publicRead: false, allowedMcpTools: [], wouldDisable: [] };
   const setTools = (next) => write({ roomTools: { publicRead: next.publicRead, allowedMcpTools: next.allowedMcpTools } });
@@ -182,6 +215,18 @@ export function ContactPermissionsPanel({ name }) {
             if (await confirmDialog({ message: ca("grantRemoveConfirm"), confirmLabel: ca("grantRemove"), danger: true })) void grantsWrite(p.grants.filter((x) => x.id !== gr.id));
           }}>${ca("grantRemove")}</button>` : null}</li>`)}</ul>` : html`<p class="note">${ca("grantsNone")}</p>`}
     </section>`}
+    ${p.originState ? html`<section class="card contact-origin">
+      <h3>${ca("originTitle")}</h3>
+      <p class="contact-origin-state"><strong>${ca(`originKind_${p.originState.kind}`)}</strong></p>
+      <p class="note">${ca("originRetainedNote")}</p>
+      <p>${ca("originPeople")}</p>
+      ${p.originState.people.length ? html`<ul class="contact-list contact-origin-people">${p.originState.people.map((person) => html`<li key=${`${person.platform}:${person.adapterId}:${person.userId}`}>
+        <strong>${personLabel(person)}</strong> <span class="muted">${person.platform} · ${person.adapterId} · ${person.userId}</span></li>`)}</ul>` : html`<p class="note">${ca("originPeopleNone")}</p>`}
+      <p class="contact-origin-chain">${ca("originChain")}: ${p.originState.chain.length ? p.originState.chain.join(" → ") : ca("originChainNone")}</p>
+      <p class="note">${ca("originReceipts", p.originState.receiptCount)}</p>
+      ${p.originState.lastCleared ? html`<p class="contact-origin-last">${ca("originLastCleared", personLabel(p.originState.lastCleared.actor), when(p.originState.lastCleared.at))}</p>` : null}
+      ${p.originState.canClear ? html`<button type="button" class="btn btn-sm btn-danger contact-origin-clear" disabled=${busy} onClick=${() => void clearRetainedOrigin()}>${ca("originClear")}</button>` : null}
+    </section>` : null}
     <section class="card contact-history">
       <h3>${ca("historyTitle")}</h3>
       ${p.history.length ? html`<ul class="contact-list contact-history-list">${p.history.map((h) => html`<li key=${h.id}>

@@ -18,6 +18,20 @@ import { unattendedInstallCommand, loginShell, UNATTENDED_INSTALL_SCRIPT, instal
 import { InstallStream, renderInstallFrame, INSTALL_STREAM_BYTES, INSTALL_STREAM_LINES, type InstallStreamClock } from "../src/install-stream.js";
 import { LoginSession, type LoginTmux } from "../src/login-manager.js";
 import { t } from "../src/locale.js";
+import { shellQuote } from "../src/backend/types.js";
+
+/** Wrapper subprocesses outside the owned pane must never inherit the host's live tmux selectors. */
+function installEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env = { ...process.env, ...extra };
+  delete env.TMUX; delete env.TMUX_PANE; delete env.AGEND_TMUX;
+  return env;
+}
+const fixtureEnv = installEnv();
+/** A dead pane is not an output publication signal; the observer's final marker is. */
+async function completedFrame(completion: Promise<void>, capture: () => string): Promise<string> {
+  await completion;
+  return capture();
+}
 
 const dir = mkdtempSync(join(tmpdir(), "agend-2980-"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
@@ -31,9 +45,9 @@ else echo "no terminal: skipped"; fi
 echo installed
 `, { mode: 0o755 });
 
-const hasPython = spawnSync("python3", ["-c", "import pty"]).status === 0;
+const hasPython = spawnSync("python3", ["-c", "import pty"], { env: fixtureEnv }).status === 0;
 /** Run a sh command line under a fresh pseudo-terminal (its controlling tty); null when it timed out. */
-function underPty(command: string, timeoutMs = 6000, env: NodeJS.ProcessEnv = process.env): { status: number | null; out: string } | null {
+function underPty(command: string, timeoutMs = 6000, env: NodeJS.ProcessEnv = fixtureEnv): { status: number | null; out: string } | null {
   const r = spawnSync("python3", ["-c", "import pty,sys; sys.exit(pty.spawn(['sh','-c',sys.argv[1]]) >> 8)", command],
     { encoding: "utf8", timeout: timeoutMs, input: "", env });
   if (r.error && (r.error as NodeJS.ErrnoException).code === "ETIMEDOUT") return null;
@@ -57,7 +71,7 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
     // A PATH whose setsid is missing: only sh and the tools the wrapper needs.
     const bin = join(dir, "nosetsid"); mkdirSync(bin, { recursive: true });
     for (const tool of ["sh", "nice", "cat", "printf"]) {
-      const real = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8" }).stdout.trim();
+      const real = spawnSync("sh", ["-c", `command -v ${tool}`], { encoding: "utf8", env: fixtureEnv }).stdout.trim();
       if (real) writeFileSync(join(bin, tool), `#!/bin/sh\nexec ${real} "$@"\n`, { mode: 0o755 });
     }
     // Under this PATH /dev/tty still opens (no new session), so the stdin branch is what is shown: answer it via stdin.
@@ -70,7 +84,7 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
   });
 
   it("keeps the install's exit code", () => {
-    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 3", null)], { encoding: "utf8" });
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 3", null)], { encoding: "utf8", env: fixtureEnv });
     expect(r.status).toBe(3);
     expect(r.stdout).toContain("out");
   });
@@ -78,7 +92,7 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
   it("an ionice that refuses (a container) does not stop the install", () => {
     const bin = join(dir, "badionice"); mkdirSync(bin, { recursive: true });
     writeFileSync(join(bin, "ionice"), "#!/bin/sh\necho 'ioprio_set: Operation not permitted' >&2\nexit 1\n", { mode: 0o755 });
-    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo ran", null)], { encoding: "utf8", env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } });
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo ran", null)], { encoding: "utf8", env: { ...fixtureEnv, PATH: `${bin}:${fixtureEnv.PATH}` } });
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("ran");
   });
@@ -88,7 +102,7 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
     const pidFile = join(dir, "grandchild.pid");
     // The install starts a grandchild that would write the marker after 3 s if it survived.
     const install = `sh -c 'echo $$ > ${pidFile}; sleep 3; touch ${marker}' & wait`;
-    const child = spawn("sh", ["-c", unattendedInstallCommand(install, null)], { stdio: "ignore", detached: true });
+    const child = spawn("sh", ["-c", unattendedInstallCommand(install, null)], { stdio: "ignore", detached: true, env: fixtureEnv });
     const deadline = Date.now() + 3000;
     while (!existsSync(pidFile) && Date.now() < deadline) await new Promise(r => setTimeout(r, 20));
     expect(existsSync(pidFile)).toBe(true);
@@ -106,36 +120,60 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
     expect(existsSync(marker)).toBe(false);
   }, 10_000);
 
-  it.skipIf(spawnSync("tmux", ["-L", "agend-test-2980-probe", "-V"]).status !== 0)("in a tmux window, an install that ends at once still leaves its exit code and output (remain-on-exit is waited for)", async () => {
-    const sock = `agend-test-2980-${process.pid}`;
-    const tmux = (...args: string[]) => spawnSync("tmux", ["-L", sock, ...args], { encoding: "utf8" });
+  it("fixture children cannot inherit the host's live tmux selectors", () => {
+    const env = installEnv({ TMUX: "host-socket", TMUX_PANE: "%fake", AGEND_TMUX: "host-command" });
+    expect([env.TMUX, env.TMUX_PANE, env.AGEND_TMUX]).toEqual([undefined, undefined, undefined]);
+  });
+
+  it("takes one final frame only after output completion, even if death was already reported", async () => {
     const marker = installExitMarker();
+    let frame = "error: no terminal", release!: () => void;
+    const completed = new Promise<void>(resolve => { release = resolve; });
+    const capture = vi.fn(() => frame);
+    const answer = completedFrame(completed, capture);
+    await Promise.resolve();
+    expect(capture).not.toHaveBeenCalled();
+    frame += `\n${marker}3\n`; release();
+    expect(exitCodeFromMarker(await answer, marker)).toBe(3);
+    expect(capture).toHaveBeenCalledTimes(1);
+  });
+
+  it.skipIf(spawnSync("tmux", ["-S", join(dir, "probe.sock"), "-V"], { env: fixtureEnv }).status !== 0)("in a tmux window, an install that ends at once still leaves its exit code and output (remain-on-exit is waited for)", async () => {
+    const sock = join(dir, "tmux.sock");
+    const tmux = (...args: string[]) => spawnSync("tmux", ["-S", sock, "-f", "/dev/null", ...args], { encoding: "utf8", env: fixtureEnv });
+    const marker = installExitMarker(), channel = `install-output-${marker.slice(19, -1)}`;
+    let waiter: ReturnType<typeof spawn> | undefined, timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      tmux("new-session", "-d", "-s", "s", "-x", "80", "-y", "20", `sleep 60`);
-      // What LoginSession does: the window first, remain-on-exit some time after (here 500 ms — far longer than the install).
+      expect(tmux("new-session", "-d", "-s", "s", "-x", "80", "-y", "20", "sleep 60").status).toBe(0);
       const id = tmux("new-window", "-d", "-t", "s:", "-P", "-F", "#{window_id}", unattendedInstallCommand("echo 'error: no terminal'; exit 3", null, marker)).stdout.trim();
       expect(id).toMatch(/^@\d+$/);
+      // The pipe keeps tmux's PTY-drain checks active. Its signal is processed after the read callback parsed the
+      // complete marker into the grid. This protects this fixture; it makes no claim about production's no-pipe path.
+      const observer = `while IFS= read -r output; do case "$output" in *${shellQuote(marker)}[0-9]*) tmux -S ${shellQuote(sock)} wait-for -S ${shellQuote(channel)};; esac; done`;
+      expect(tmux("pipe-pane", "-O", "-t", `s:${id}`, observer).status).toBe(0);
+      // Deliberately keep the original delay: the wrapper must wait for remain-on-exit before the installer starts.
       await new Promise(r => setTimeout(r, 500));
       expect(tmux("set-option", "-t", `s:${id}`, "remain-on-exit", "on").status).toBe(0);
-      // The explicit condition: the pane is dead — its pty reached EOF, so every byte the install and the wrapper wrote
-      // is in the pane (and the window was kept: remain-on-exit was waited for). Not tmux's exit status: tmux 3.4 can
-      // miss the pane's SIGCHLD and never record it (the CI flake: "1" for "1 3"); the wrapper's own verdict line is read.
-      let dead = "";
-      for (let i = 0; i < 200 && dead !== "1"; i++) { await new Promise(r => setTimeout(r, 25)); dead = tmux("display-message", "-p", "-t", `s:${id}`, "#{pane_dead}").stdout.trim(); }
-      expect(dead).toBe("1");
-      const shown = tmux("capture-pane", "-p", "-S", "-", "-t", `s:${id}`).stdout;
+      const completion = new Promise<void>((resolve, reject) => {
+        waiter = spawn("tmux", ["-S", sock, "wait-for", channel], { stdio: "ignore", env: fixtureEnv });
+        timer = setTimeout(() => { waiter?.kill(); reject(new Error("install output signal not received")); }, 5000);
+        waiter.once("error", err => { clearTimeout(timer); reject(err); });
+        waiter.once("exit", code => { clearTimeout(timer); code === 0 ? resolve() : reject(new Error(`install output observer exited ${code}`)); });
+      });
+      const shown = await completedFrame(completion, () => tmux("capture-pane", "-p", "-S", "-", "-t", `s:${id}`).stdout);
       expect(shown).toContain("error: no terminal");
       expect(exitCodeFromMarker(shown, marker)).toBe(3);
-      // When tmux did record a status, it agrees.
+      // tmux 3.4 may never publish an exit status. When one exists, it agrees with the wrapper's completed verdict.
       const status = tmux("display-message", "-p", "-t", `s:${id}`, "#{pane_dead_status}").stdout.trim();
       if (status) expect(status).toBe("3");
     } finally {
+      clearTimeout(timer); waiter?.kill();
       tmux("kill-server");
     }
   }, 15_000);
 
   it("passes the account's login shell, so the installer's PATH line lands in the rc file the user's terminals read", async () => {
-    const r = spawnSync("sh", ["-c", unattendedInstallCommand('echo "shell=$SHELL"', "/bin/sh")], { encoding: "utf8", env: { ...process.env, SHELL: "" } });
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand('echo "shell=$SHELL"', "/bin/sh")], { encoding: "utf8", env: { ...fixtureEnv, SHELL: "" } });
     expect(r.stdout).toContain("shell=/bin/sh");
     expect(await loginShell(() => "/bin/sh")).toBe("/bin/sh");
     expect(await loginShell(() => "relative/zsh")).toBeUndefined();
@@ -148,16 +186,16 @@ describe("the install wrapper: nothing can wait on a terminal (M-2281)", () => {
   it("the wrapper prints its own verdict after the session's marker, and keeps the install's exit code", () => {
     const marker = installExitMarker();
     expect(marker).toMatch(/^AGEND-INSTALL-EXIT-[0-9a-f]{16}=$/);
-    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null, marker)], { encoding: "utf8" });
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null, marker)], { encoding: "utf8", env: fixtureEnv });
     expect(r.status).toBe(4);
     expect(r.stdout.trim().split("\n").at(-1)).toBe(`${marker}4`);
-    const none = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null)], { encoding: "utf8" });
+    const none = spawnSync("sh", ["-c", unattendedInstallCommand("echo out; exit 4", null)], { encoding: "utf8", env: fixtureEnv });
     expect([none.status, none.stdout]).toEqual([4, "out\n"]);                      // no marker, no line
     expect(() => unattendedInstallCommand("x", null, "bad marker; rm -rf /")).toThrow();
   });
 
   it("an install command with quotes survives the wrapping intact", () => {
-    const r = spawnSync("sh", ["-c", unattendedInstallCommand(`printf '%s\\n' "it's \\"quoted\\""`, null)], { encoding: "utf8" });
+    const r = spawnSync("sh", ["-c", unattendedInstallCommand(`printf '%s\\n' "it's \\"quoted\\""`, null)], { encoding: "utf8", env: fixtureEnv });
     expect(r.stdout.trim()).toBe(`it's "quoted"`);
     expect(UNATTENDED_INSTALL_SCRIPT).toContain("</dev/null");
   });
@@ -461,7 +499,7 @@ it.skipIf(spawnSync("dash", ["-c", "true"]).status !== 0)("dash parses and runs 
   const f = join(dir, "w.sh");
   writeFileSync(f, unattendedInstallCommand("echo ok", null));
   chmodSync(f, 0o755);
-  const r = spawnSync("dash", [f], { encoding: "utf8" });
+  const r = spawnSync("dash", [f], { encoding: "utf8", env: fixtureEnv });
   expect(r.stdout).toContain("ok");
   expect(r.status).toBe(0);
 });

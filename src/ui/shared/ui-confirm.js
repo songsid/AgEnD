@@ -14,9 +14,11 @@ let seq = 0;
  * Ask. Resolves true for the confirm button, false for Cancel, Esc, the backdrop or ×.
  * `message` may hold blank lines (paragraphs); it is shown as text.
  */
-export function confirmDialog({ title, message, confirmLabel, danger = false } = {}) {
+export function confirmDialog({ title, message, confirmLabel, danger = false, more = null } = {}) {
   return new Promise((resolve) => {
-    const item = { id: ++seq, title: title || t("app.confirmTitle"), message: String(message || ""), confirmLabel: confirmLabel || t("app.confirmOk"), danger, resolve };
+    // M-3387: `more` { label, lines } — a list closed under the text until opened (e.g. every tool name a switch stops).
+    const extra = more && more.label && Array.isArray(more.lines) && more.lines.length ? { label: String(more.label), lines: more.lines.map(String) } : null;
+    const item = { id: ++seq, title: title || t("app.confirmTitle"), message: String(message || ""), confirmLabel: confirmLabel || t("app.confirmOk"), danger, more: extra, resolve };
     confirmStore.set((s) => ({ queue: [...s.queue, item] }));
   });
 }
@@ -39,5 +41,6 @@ export function ConfirmHost() {
     actions=${html`<button type="button" class="btn" onClick=${() => answerConfirm(q.id, false)}>${t("app.cancel")}</button>
       <button type="button" class=${`btn ${q.danger ? "btn-danger" : "btn-primary"}`} data-confirm="yes" onClick=${() => answerConfirm(q.id, true)}>${q.confirmLabel}</button>`}>
     ${paragraphs.map((p, i) => html`<p key=${i} class="confirm-text">${p}</p>`)}
+    ${q.more ? html`<details class="confirm-more"><summary>${q.more.label}</summary><ul>${q.more.lines.map((l, i) => html`<li key=${i} class="mono">${l}</li>`)}</ul></details>` : null}
   </${Dialog}>`;
 }

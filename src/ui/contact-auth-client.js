@@ -29,6 +29,8 @@ const enc = encodeURIComponent;
 export const getPermissions = (name) => call("GET", `/ui/api/instances/${enc(name)}/contact-permissions`);
 /** ContactPermissionsWrite (with the revision read) → ContactPermissions. */
 export const putPermissions = (name, write) => call("PUT", `/ui/api/instances/${enc(name)}/contact-permissions`, write);
+/** Explicit administrator override; never accepts a client-supplied origin/person. */
+export const clearOrigin = (name, snapshot) => call("POST", `/ui/api/instances/${enc(name)}/contact-permissions/origin-clear`, snapshot);
 /** ContactTicketPage: { items, nextCursor }; filters: status, agent, person (an exact server identity key), cursor. */
 export function listTickets(filters = {}) {
   const q = new URLSearchParams();

@@ -1,8 +1,8 @@
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
-import { ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
-import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
+import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
+import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
 import type { ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
@@ -5559,13 +5559,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const canManage = service.canManage(name, actor), canSetMode = !!room && this.contactAdminOf(name, actor);
     if (!canManage && !canSetMode) throw Error("forbidden");
     if (!this.webChatOwner(name)) throw Error("not-found");
-    const store = service.host.store, policy = store.policy(name, this.contactGeneration(name));
+    const store = service.host.store, generation = this.contactGeneration(name), policy = store.policy(name, generation);
+    const origin = store.origin(name);
     const daemon = this.daemons.get(name) as (Daemon & { classicNativeGuard?(): ContactGuardStatus }) | undefined;
     const backend = room ? this.classicChannels!.getBackendByInstance(name, this.fleetConfig?.defaults?.backend) : this.fleetConfig?.instances[name]?.backend ?? "unknown";
     const nativeGuard = daemon?.classicNativeGuard?.() ?? { state: "not-covered" as const, backend, reason: "Native guard is not loaded in this build", impactComplete: false };
     const removedTools = room ? [...toolsFor(resolveToolSet(this.fleetConfig?.instances[name], name))]
       .filter(tool => !CLASSIC_RESTRICTED_TOOLS.includes(tool)) : [];
-    return { instance: name, revision: policy.revision, classicRoom: !!room,
+    return { instance: name, revision: policy.revision,
+      originState: { kind: origin?.kind ?? "none", people: origin?.people ?? [], chain: origin?.chain ?? [],
+        receiptCount: origin?.receiptIds.length ?? 0, revision: store.originRevision(name), generation,
+        canClear: canManage && !!origin, lastCleared: store.lastOriginClear(name, generation) },
+      classicRoom: !!room,
       mode: room?.restrictedMode === true ? "restricted" : "legacy", approvers: service.approvers(name),
       eligibleApprovers: service.host.defaultApprovers(name),
       inheritedApprovers: policy.approvers === undefined,
@@ -5614,6 +5619,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("contact-auth", { instance: name, revision: policy.revision });
     this.needsYou?.poke();
     this.emitSseEvent("needs", { items: this.needsYouItems() });
+    return this.contactPermissions(name, actor);
+  }
+
+  clearContactOrigin(name: string, raw: ContactOriginClear, actor: ContactPerson): ContactPermissions {
+    const parsed = ContactOriginClearSchema.safeParse(raw);
+    if (!parsed.success) throw Error("invalid-request");
+    const service = this.contactService();
+    if (!service.canManage(name, actor)) throw Error("forbidden");
+    if (!this.webChatOwner(name)) throw Error("not-found");
+    service.host.store.clearOrigin(name, parsed.data, actor, () => {
+      if (!service.canManage(name, actor)) throw Error("forbidden");
+      return this.contactGeneration(name);
+    });
+    this.emitSseEvent("contact-auth", { instance: name, revision: parsed.data.revision,
+      originRevision: service.host.store.originRevision(name) });
     return this.contactPermissions(name, actor);
   }
 
