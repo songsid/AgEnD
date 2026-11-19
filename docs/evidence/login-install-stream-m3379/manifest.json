@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "scope": "M-3379 main twin; exact dev fixture carry plus port disclosure",
+  "sourceSha256": [
+    {
+      "path": "tests/login-install-stream-2980.test.ts",
+      "sha256": "5a7ad326a6d375eefdf99bd57b0cd0bbceb9f66e0bb22e3147a53f340d948348"
+    },
+    {
+      "path": "scripts/manual/fixtures/login-install-late-frame-m3379.mjs",
+      "sha256": "7a1b10c07d89ca217fe829e602635026038b724ab25c555e784c58ffae4a568a"
+    },
+    {
+      "path": "scripts/manual/repro-login-install-stream-m3379.mjs",
+      "sha256": "199ec0d0dd27c87abdd0cb466604fb06078be33e62a37505205ac2f7c6e4f78e"
+    },
+    {
+      "path": "docs/design/login-install-stream-m3379.md",
+      "sha256": "56d7df4c27ece88d082c85b0827538948367171efe792a467fc7a98e0085b644"
+    }
+  ],
+  "evidenceSha256": [
+    {
+      "path": "docs/evidence/login-install-stream-m3379/README.md",
+      "sha256": "8f61023408d2415a076beffc3cce30a4114ebe0b27b33062bb193958d199cd08"
+    },
+    {
+      "path": "docs/evidence/login-install-stream-m3379/validation.json",
+      "sha256": "a960679935b4da19f21820a79067c2e3b339bb34fb5fe2fee12566e392ae90cb"
+    },
+    {
+      "path": "docs/evidence/login-install-stream-m3379/main-port.json",
+      "sha256": "15dad709b2ce839b5b637c66ffd80b93cb3ce637b802f4176dd5b1c10aef61ec"
+    }
+  ]
+}

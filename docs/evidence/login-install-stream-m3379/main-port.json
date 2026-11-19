@@ -1,0 +1,39 @@
+{
+  "card": "M-3379",
+  "mainBase": "44e63b0994fde754ee86531918e5ae2febca5a95",
+  "devReviewedHead": "34530897c0192953803b4333a37368a6a36f4ef5",
+  "devPullRequest": 4230,
+  "originalTestBlob": "c733fd2101e96e268542ad0dfba08094b432a265",
+  "originalTestEqual": true,
+  "commonFiles": [
+    {
+      "path": "tests/login-install-stream-2980.test.ts",
+      "sha256": "5a7ad326a6d375eefdf99bd57b0cd0bbceb9f66e0bb22e3147a53f340d948348",
+      "byteEqualDev": true
+    },
+    {
+      "path": "scripts/manual/fixtures/login-install-late-frame-m3379.mjs",
+      "sha256": "7a1b10c07d89ca217fe829e602635026038b724ab25c555e784c58ffae4a568a",
+      "byteEqualDev": true
+    },
+    {
+      "path": "scripts/manual/repro-login-install-stream-m3379.mjs",
+      "sha256": "199ec0d0dd27c87abdd0cb466604fb06078be33e62a37505205ac2f7c6e4f78e",
+      "byteEqualDev": true
+    },
+    {
+      "path": "docs/design/login-install-stream-m3379.md",
+      "sha256": "56d7df4c27ece88d082c85b0827538948367171efe792a467fc7a98e0085b644",
+      "byteEqualDev": true
+    }
+  ],
+  "productionSourceChanged": false,
+  "wrapperAdaptation": "None. Main uses PATH tmux; dev also accepts AGEND_TMUX. Both fixtures clear AGEND_TMUX and use the same PATH choice. The production files are not claimed byte-identical.",
+  "verificationScope": "Dev evidence in validation.json is carried at the identical test/manual source bytes. No additional 20-run or native campaign on main. Main-specific exact-head CI remains required.",
+  "mergeOrder": "main twin first, then dev #4230, per revised task ordering",
+  "mainTypecheck": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "exit": 0,
+    "diagnostics": 0
+  }
+}
