@@ -410,6 +410,7 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext {
+  clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
   writeContactPermissions?: ContactApiHost["writeContactPermissions"];
   contactAuthorization?: ContactApiHost["contactAuthorization"];

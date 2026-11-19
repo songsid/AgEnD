@@ -1,6 +1,6 @@
 # Administrator contact-origin reset
 
-Status: proposed for M-3366; review this note before implementation. Dev-only.
+Status: first-slice design approved 2026-11-19 at `84906ffea`. Dev-only.
 This extends the contact-origin behavior in classic-contact-authorizations.md;
 it does not add a sandbox, credentials broker or model-decided permission.
 
@@ -49,9 +49,10 @@ change the native tool guard. Publish the normal contact-auth refresh after
 commit. No CLI launch, restart or automatic delivery is part of the clear action.
 
 API sketch: POST `/ui/api/instances/:name/contact-permissions/origin-clear` with
-`{revision, originRevision}`; response is the updated Permissions DTO. No client
+`{revision, originRevision, generation}`; response is the updated Permissions DTO. No client
 identity, arbitrary origin or authority text is accepted. GET Permissions adds
-`originState` (kind, people, chain, receiptCount, revision, canClear). No stored
+`originState` (kind, people, chain, receiptCount, revision, generation, canClear, lastCleared). The tab always shows the last clear
+actor and time from the audit for this incarnation, even after later input. No stored
 receipt IDs need to be exposed. Existing servers without this field offer no
 clear control. History uses the existing list and localized action labels.
 

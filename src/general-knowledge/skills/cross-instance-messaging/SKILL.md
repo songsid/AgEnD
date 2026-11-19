@@ -107,7 +107,11 @@ A standing narrow contact grant can admit matching requests without another card
 The server retains an origin union per agent instance, including receiving ordinary
 workers, across relays, later turns and compaction. An earlier non-admin request
 can therefore require approval after an admin speaks directly to that worker.
-There is no verified reset in this version. A first legacy-to-restricted switch
+Only a verified managing administrator can explicitly clear retained origin in
+the agent's web Permissions tab, accepting the current conversation as their own
+work without erasing its text. The agent and peers have no clear tool. New
+non-admin input is restricted again; other agents, tickets and grants are unchanged.
+There is no automatic reset. A first legacy-to-restricted switch
 treats earlier history as unknown; saving the same mode leaves the origin alone.
 Unknown origins never match standing grants, so new contacts need separate approval.
 Known-person authority does not change when old receipt or hop metadata is trimmed.

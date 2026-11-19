@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { createHash, randomUUID } from "node:crypto";
-import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactPerson, ContactPermissionsWrite, ContactRoomTools, ContactTicket, ContactTicketDecision, ContactVerb } from "./contact-auth-types.js";
+import type { ContactGrant, ContactHistoryRow, ContactOrigin, ContactOriginClear, ContactPerson, ContactPermissionsWrite, ContactRoomTools, ContactTicket, ContactTicketDecision, ContactVerb } from "./contact-auth-types.js";
 
 export const CONTACT_APPLICATION_TTL_MS = 30 * 60_000;
 export interface ContactRequest {
@@ -60,6 +60,7 @@ export class ContactAuthStore {
       CREATE TABLE IF NOT EXISTS contact_auth_policies (instance TEXT PRIMARY KEY, revision INTEGER NOT NULL, policy_json TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS contact_auth_history (id TEXT PRIMARY KEY, instance TEXT NOT NULL, at INTEGER NOT NULL, row_json TEXT NOT NULL);`);
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_suggestions (instance TEXT PRIMARY KEY, dismissed_at INTEGER NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS contact_auth_origin_revisions (instance TEXT PRIMARY KEY, revision INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS contact_auth_room_context (instance TEXT PRIMARY KEY, context_json TEXT NOT NULL)");
     db.transaction(() => {
       const existed = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='contact_auth_outcome_notices'").get();
@@ -90,8 +91,36 @@ export class ContactAuthStore {
       const combined = mergeContactOrigins(this.origin(instance), origin);
       this.db.prepare("INSERT INTO contact_auth_origins VALUES (?,?) ON CONFLICT(instance) DO UPDATE SET origin_json=excluded.origin_json")
         .run(instance, JSON.stringify(combined));
+      this.bumpOriginRevision(instance);
       return combined;
     })();
+  }
+  private bumpOriginRevision(instance: string): void {
+    this.db.prepare("INSERT INTO contact_auth_origin_revisions VALUES (?,1) ON CONFLICT(instance) DO UPDATE SET revision=revision+1").run(instance);
+  }
+  originRevision(instance: string): number {
+    return (this.db.prepare("SELECT revision FROM contact_auth_origin_revisions WHERE instance=?").get(instance) as { revision: number } | undefined)?.revision ?? 0;
+  }
+  clearOrigin(instance: string, input: ContactOriginClear, actor: ContactPerson, currentGeneration: () => string): void {
+    this.db.transaction(() => {
+      const generation = currentGeneration();
+      if (generation !== input.generation || this.policy(instance, generation).revision !== input.revision
+        || this.originRevision(instance) !== input.originRevision) throw Error("conflict");
+      const before = this.origin(instance);
+      if (!before) throw Error("conflict");
+      const after: ContactOrigin = { kind: "human", people: [actor], receiptIds: [], chain: [instance] };
+      this.db.prepare("UPDATE contact_auth_origins SET origin_json=? WHERE instance=?").run(JSON.stringify(after), instance);
+      this.bumpOriginRevision(instance);
+      const image = (value: ContactOrigin) => ({ kind: value.kind, people: value.people, chain: value.chain, receiptCount: value.receiptIds.length });
+      this.history(instance, actor, "origin-clear", "", undefined, undefined, { generation, originChange: { before: image(before), after: image(after) } });
+    })();
+  }
+  lastOriginClear(instance: string, generation: string): { actor: ContactPerson; at: string } | undefined {
+    const row = this.db.prepare("SELECT row_json FROM contact_auth_history WHERE instance=? AND json_extract(row_json,'$.action')='origin-clear' "
+      + "AND json_extract(row_json,'$.generation')=? ORDER BY at DESC,rowid DESC LIMIT 1").get(instance, generation) as { row_json: string } | undefined;
+    if (!row) return;
+    const entry = JSON.parse(row.row_json) as ContactHistoryRow;
+    return { actor: entry.actor, at: entry.at };
   }
   origin(instance: string): ContactOrigin | undefined {
     const row = this.db.prepare("SELECT origin_json FROM contact_auth_origins WHERE instance=?").get(instance) as { origin_json: string } | undefined;
@@ -134,11 +163,11 @@ export class ContactAuthStore {
       return next;
     })();
   }
-  private history(instance: string, actor: ContactPerson, action: ContactHistoryRow["action"], summary: string, ticketId?: string, policyChange?: ContactHistoryRow["policyChange"]): void {
+  private history(instance: string, actor: ContactPerson, action: ContactHistoryRow["action"], summary: string, ticketId?: string, policyChange?: ContactHistoryRow["policyChange"], details?: Pick<ContactHistoryRow, "generation" | "originChange">): void {
     const id = randomUUID(), at = this.now();
     const ticket = ticketId ? this.get(ticketId) : undefined;
-    const row: ContactHistoryRow = { id, at: new Date(at).toISOString(), actor, action, summary, target: instance, generation: ticket?.targetGeneration ?? this.policy(instance).generation,
-      ...(ticket ? { source: ticket.source } : {}), ...(ticketId ? { ticketId } : {}), ...(policyChange ? { policyChange } : {}) };
+    const row: ContactHistoryRow = { id, at: new Date(at).toISOString(), actor, action, summary, target: instance, generation: details?.generation ?? ticket?.targetGeneration ?? this.policy(instance).generation,
+      ...(ticket ? { source: ticket.source } : {}), ...(ticketId ? { ticketId } : {}), ...(policyChange ? { policyChange } : {}), ...(details?.originChange ? { originChange: details.originChange } : {}) };
     this.db.prepare("INSERT INTO contact_auth_history VALUES (?,?,?,?)").run(id, instance, at, JSON.stringify(row));
   }
   histories(instance: string, generation?: string): ContactHistoryRow[] {
