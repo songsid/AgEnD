@@ -1768,7 +1768,8 @@ export class TelegramAdapter extends EventEmitter implements ChannelAdapter {
     const threadId = opts?.threadId;
     if (alert.choices && alert.choices.length > 0) {
       const keyboard = new InlineKeyboard();
-      for (const choice of alert.choices) {
+      for (const [index, choice] of alert.choices.entries()) {
+        if (alert.type === "login" && index > 0 && index % 2 === 0) keyboard.row();
         keyboard.text(choice.label, choice.id);
       }
       const message = stripPlaceRefs(alert.message);

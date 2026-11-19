@@ -1,0 +1,101 @@
+{
+  "mainMerge": "44e63b0994fde754ee86531918e5ae2febca5a95",
+  "devBase": "ae62202a30b6ff53f0a8b151252035e314c91ef1",
+  "failedDevHead": "830806e3a862790b9c039561cc16483c567e3249",
+  "failedRun": 44451495871,
+  "failedJob": 135316460059,
+  "diagnostic": "TS2300 duplicate BACKEND_LABELS import",
+  "fix": "Reuse the existing dev binding from the same module; omit the redundant main import specifier.",
+  "paths": [
+    {
+      "path": "changes/4211-login-picker-rows.md",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "changes/4211-login-picker-rows.zh-TW.md",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/README.md",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/manifest.json",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/before.log",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/validation/results.json",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "rawEqual": false,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "tests/fleet-label-1131.test.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "tests/install-cli-login-1059.test.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "tests/login-one-entry-1131.test.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "tests/login-picker-rows-m3360.test.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    },
+    {
+      "path": "tests/login-precheck.test.ts",
+      "rawEqual": true,
+      "equalAfterOmittingRedundantMainImport": true
+    }
+  ],
+  "methods": [
+    {
+      "path": "src/fleet-manager.ts",
+      "method": "promptLoginBackends",
+      "equal": true
+    },
+    {
+      "path": "src/channel/adapters/telegram.ts",
+      "method": "notifyAlert",
+      "equal": true
+    }
+  ],
+  "backendLabelBindings": [
+    {
+      "module": "./interaction-observation.js",
+      "local": "BACKEND_LABELS",
+      "exported": "BACKEND_LABELS"
+    }
+  ],
+  "runtimeDeltaSha256": "5a265fc702de0abc495498d1b8de5211c9125e2526a63d6783c16523b60990b7"
+}

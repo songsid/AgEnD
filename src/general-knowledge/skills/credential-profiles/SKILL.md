@@ -10,6 +10,11 @@ One AgEnD fleet normally shares one login per backend. A **credential profile**
 is a named, separate login for the same backend, so two agents can run on two
 subscriptions at once.
 
+Bare `/login` offers the AI tools by display name. Telegram shows two buttons
+per row; Discord keeps at most five per row. Installed and next-step details
+are in the message above the buttons. Choosing a display name still uses the
+same backend identifier, such as `claude-code` or `kiro-cli`.
+
 `kiro-cli`, `codex` and `claude-code` have profiles today, and `antigravity` has
 named accounts (told its folder by an argument, `agy --app_data_dir <folder>`).
 An Antigravity account is **made and connected from the dashboard only** (Settings

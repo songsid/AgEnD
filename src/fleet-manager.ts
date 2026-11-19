@@ -23454,7 +23454,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const installable = new Set(Object.keys(BACKEND_INSTALLATION_INFO));
     const candidates = new Set<string>([...installed, ...configured, ...installable]);
     const unsupported: Array<{ backend: string; flow?: LoginFlow; status: string[] }> = [];
+    const details: string[] = [];
     const choices = [...candidates].sort().flatMap(backend => {
+      const label = backend === "claude-code" ? "Claude" : BACKEND_LABELS[backend] ?? backend;
       const flow = LOGIN_FLOWS[backend];
       const remoteLogin = !!flow && flow.remoteLogin !== "unsupported";
       const isInstalled = installed.has(backend);
@@ -23463,11 +23465,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (configured.has(backend)) status.push(t("login.status_configured"));
       if (!isInstalled && installable.has(backend)) {
         status.push(t(remoteLogin ? "login.status_install_then_auth" : "login.status_install"));
-        return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
+        details.push(`${label} · ${status.join(" · ")}`);
+        return [{ action: backend, label }];
       }
       if (remoteLogin && isInstalled) {
         status.push(t("login.status_auth"));
-        return [{ action: backend, label: `${backend} · ${status.join(" · ")}` }];
+        details.push(`${label} · ${status.join(" · ")}`);
+        return [{ action: backend, label }];
       }
       status.push(t("login.status_unsupported"));
       unsupported.push({ backend, flow, status });
@@ -23501,7 +23505,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       adapterId: chat.adapterId,
       chatId: chat.chatId,
       threadId: chat.threadId,
-      message: `${t("login.choose_backend")}\n${t("fleet.label_line", fleetLabel(this.fleetConfig))}`,
+      message: `${t("login.choose_backend")}\n${t("fleet.label_line", fleetLabel(this.fleetConfig))}\n\n${details.join("\n")}`,
       choices,
       expiredText: t("buttons.stale"),
     });
