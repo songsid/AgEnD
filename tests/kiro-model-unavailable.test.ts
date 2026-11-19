@@ -124,3 +124,18 @@ describe("kiro model_error with a pinned model", () => {
     }
   });
 });
+
+describe("kiro model_error pattern (M-3398, kiro-cli 3.5.0)", () => {
+  const modelError = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns().find(p => p.type === "model_error")!.pattern;
+
+  it("ignores 3.5.0's chat.defaultModel warning: kiro keeps its default model and carries on", () => {
+    // The 3.5.0 binary's text: "warning: chat.defaultModel {}: is not available, so the session keeps its default model".
+    expect(modelError.test("warning: chat.defaultModel claude-bogus-9: is not available, so the session keeps its default model\n> ")).toBe(false);
+  });
+
+  it("still matches a real model error, also below that warning", () => {
+    expect(modelError.test(MODEL_ERROR_PANE)).toBe(true);
+    expect(modelError.test("The selected model is not available\n> ")).toBe(true);
+    expect(modelError.test("warning: chat.defaultModel x: is not available, so the session keeps its default model\nThe selected model is not available\n> ")).toBe(true);
+  });
+});

@@ -2154,7 +2154,10 @@ export class KiroBackend implements CliBackend {
 
   getErrorPatterns(): ErrorPattern[] {
     return [
-      { pattern: /model.*not available|Please use '\/model'/i, type: "model_error", action: "notify", message: "Model unavailable — use /model to switch" },
+      // 3.5.0 added a startup warning, "warning: chat.defaultModel <id>: is not available, so the session keeps its
+      // default model": kiro carries on with its default, so it is no model error (a match would restart a resumed
+      // agent onto the fallback model, decideKiroModelError). Excluded per line; everything else matches as before.
+      { pattern: /^(?!.*keeps its default model).*model.*not available|Please use '\/model'/im, type: "model_error", action: "notify", message: "Model unavailable — use /model to switch" },
       { pattern: /Response timed out/i, type: "timeout", action: "notify", message: "Kiro response timed out (generation too long) — please try again", skipCooldown: true, skipRecoveryWait: true },
       // Session/login expiry. kiro had NO auth pattern, so an expired login was
       // silent: it kept accepting work and failing every turn. Strings taken from
