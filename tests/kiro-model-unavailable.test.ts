@@ -124,3 +124,29 @@ describe("kiro model_error with a pinned model", () => {
     }
   });
 });
+
+describe("kiro model_error pattern (M-3398, kiro-cli 3.5.0)", () => {
+  const modelError = new KiroBackend("/tmp/test", TEST_KIRO_COMPAT).getErrorPatterns().find(p => p.type === "model_error")!.pattern;
+
+  it("ignores 3.5.0's chat.defaultModel warning: kiro keeps its default model and carries on", () => {
+    // The 3.5.0 binary's text: "warning: chat.defaultModel {}: is not available, so the session keeps its default model".
+    expect(modelError.test("warning: chat.defaultModel claude-bogus-9: is not available, so the session keeps its default model\n> ")).toBe(false);
+  });
+
+  it("ignores that warning when a narrow pane wraps it (the error monitor reads rows unjoined)", () => {
+    const warning = "warning: chat.defaultModel claude-sonnet-4.5: is not available, so the session keeps its default model";
+    for (const cols of [80, 100]) {
+      const rows = warning.match(new RegExp(`.{1,${cols}}`, "g"))!.join("\n");
+      expect(rows.split("\n")[0]).toMatch(/model.*not available/i);   // the first row alone reads like a model error
+      expect(modelError.test(rows + "\n> ")).toBe(false);
+      // A genuine model error printed below the wrapped warning still matches.
+      expect(modelError.test(rows + "\nThe selected model is not available\n> ")).toBe(true);
+    }
+  });
+
+  it("still matches a real model error, also below that warning", () => {
+    expect(modelError.test(MODEL_ERROR_PANE)).toBe(true);
+    expect(modelError.test("The selected model is not available\n> ")).toBe(true);
+    expect(modelError.test("warning: chat.defaultModel x: is not available, so the session keeps its default model\nThe selected model is not available\n> ")).toBe(true);
+  });
+});
