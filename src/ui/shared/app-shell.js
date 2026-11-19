@@ -416,7 +416,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     aria-current=${on(panel) ? "page" : undefined} aria-label=${count ? `${label} (${t(countText, count)})` : undefined} onClick=${closeDrawer}>
     <${Icon} name=${icon} /><span class="grow">${label}</span>${count ? html`<span class="nav-count" aria-hidden="true">${count}</span>` : null}</a>`;
   // alpha.2 (M-2300): an agent's request waiting for this web-only fleet's owner counts too (only the owner's page has any).
-  const needsCount = (Array.isArray(app.needs) ? app.needs.length : 0) + (Array.isArray(app.proposals) ? app.proposals.length : 0);
+  const needsTotal = needsCount(app);
   // View-only (an anonymous reader, #1408 §3): View and a way to sign in — nothing that needs a session is rendered.
   if (viewOnly) {
     return html`<aside id="sidebar" class="sidebar" aria-label=${t("app.menu")}>
@@ -466,7 +466,7 @@ function Sidebar({ route, onNewInstance, viewOnly }) {
     ${/* AgEnD Hub P1: a member fleet's "My fleet ↔ Hub" (shown once paired; nothing loads when the switch is off) */ hubMarks().member ? html`<${HubSwitcherSlot} />` : null}
     <nav data-trust="navigation" class="side-nav" aria-label=${t("app.menu")}>
       ${overview}
-      ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsCount)}
+      ${navLink("needs", NEEDS_PATH, "inbox", t("app.needsNav"), needsTotal)}
       ${/* #2910 D2: a web-only fleet (no chat connection) has Notices — what General would have said. AGEND-122: a chat fleet too, while one is unread (a confirmation from another device that nothing else could carry). */
         (app.connections === 0 || (app.notices && app.notices.unread > 0)) && app.notices && app.notices.enabled ? navLink("notices", NOTICES_PATH, "bell", t("app.noticesNav"), app.notices.unread | 0, "app.noticesCount") : null}
       ${searchOffered(canCreate) ? searchRow() : null}
@@ -565,7 +565,12 @@ register("phoneNav", {
   "zh-TW": { back: "回到 Agent 清單" },
 });
 /** What Needs you counts: its items and the agents' proposals (the tab's badge, the sidebar's). */
-export function needsCount(app) { return (app.needs || []).length + (app.proposals || []).length; }
+/** M-3381: the rooms' restricted-mode suggestions count once (one group on the page), however many rooms. */
+export function needsCount(app) {
+  const needs = Array.isArray(app.needs) ? app.needs : [], proposals = Array.isArray(app.proposals) ? app.proposals : [];
+  const suggestions = needs.filter(i => i?.type === "contact" && i.reason === "contact_restricted_suggestion").length;
+  return needs.length - suggestions + (suggestions ? 1 : 0) + proposals.length;
+}
 
 export function PanelHeader({ title, sub, children, headingRef, nav, notice, pageControls, pageActions, back = null }) {
   const shell = useStore(shellStore);
@@ -629,7 +634,7 @@ function BottomTabs({ route, viewOnly }) {
   // last tab), Settings.
   return html`<nav data-trust="navigation" class="tabs" aria-label=${t("app.menu")}>
     ${tab(chatHref, "chat", t("app.chat"), !!open || (!!route && route.panel === "chat"), anyAwaiting)}
-    ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", (app.needs || []).length + (app.proposals || []).length, t("app.needsCount", (app.needs || []).length + (app.proposals || []).length))}
+    ${tab(NEEDS_PATH, "inbox", t("app.needsTab"), route && route.panel === "needs", needsCount(app), t("app.needsCount", needsCount(app)))}
     ${tab(fleetEntryPath(route), "fleet", t("app.fleet"), route && route.panel === "fleet")}
     ${tab(settingsPath(), "settings", t("app.settings"), route && route.panel === "settings")}
   </nav>`;

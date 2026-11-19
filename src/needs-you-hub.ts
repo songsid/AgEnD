@@ -373,6 +373,8 @@ export class NeedsYouHub {
       const s = item.modelSwitch;
       return this.ctx.t(`needs.model_switch.${s.cause}`, s.original, s.served, this.ctx.t(`needs.model_switch.${s.scope}`));
     }
+    // M-3381: a world's restricted-mode suggestions, one line: how many rooms, and where to act.
+    if (item.contactSuggestionCount) return this.ctx.t("needs.contact_suggestions", item.contactSuggestionCount);
     const reason = item.runtimeUpdate ? this.ctx.t("runtime.update.attention") : item.reason === "usage_limit"
       ? this.ctx.t("needs.reason.usage_limit", item.detail || "Claude")
       : this.ctx.t(`needs.reason.${item.kiroChoice ? "kiro_choice" : item.reason}`);

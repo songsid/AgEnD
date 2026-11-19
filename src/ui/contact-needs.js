@@ -75,6 +75,22 @@ function SuggestionNeed({ item }) {
     </div>`;
 }
 
+/** M-3381: a Needs you item that is a room's restricted-mode suggestion. */
+export const isRestrictedSuggestion = (item) => item?.type === "contact" && item.reason === "contact_restricted_suggestion";
+
+/**
+ * M-3381 (the user, beta.14: one row per existing room flooded the list): every room's restricted-mode suggestion in ONE
+ * low-key group, closed until opened — "N existing ClassicBot rooms can switch to restricted mode" — each room's card
+ * (switch / preview / later) inside it.
+ */
+export function ContactSuggestionsGroup({ items }) {
+  if (!items?.length) return null;
+  return html`<details class="n-group n-suggestions" data-trust="permission">
+    <summary class="n-group-head">${ca("suggestGroup", items.length)}</summary>
+    ${items.map((item) => html`<${ContactNeedsItem} key=${item.id} item=${item} />`)}
+  </details>`;
+}
+
 /** One contact item of Needs you (item.type "contact"); null for a reason this page doesn't know. */
 export function ContactNeedsItem({ item }) {
   const body = item.reason === "contact_request" ? html`<${RequestNeed} item=${item} />` : item.reason === "contact_restricted_suggestion" ? html`<${SuggestionNeed} item=${item} />` : null;
