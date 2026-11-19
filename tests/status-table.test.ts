@@ -16,7 +16,7 @@ afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
 });
 
-function setup(models: Record<string, string>, statuses: Record<string, { status: string; exec?: string | null }>) {
+function setup(models: Record<string, string>, statuses: Record<string, { status: string; exec?: string | null }>, costGuard?: object) {
   const dir = mkdtempSync(join(tmpdir(), "agend-status-table-"));
   roots.push(dir);
   const instances: Record<string, { backend: string; working_directory: string }> = {};
@@ -27,6 +27,7 @@ function setup(models: Record<string, string>, statuses: Record<string, { status
     getInstanceStatus: (name: string) => statuses[name].status,
     getInstanceExecutionState: (name: string) => statuses[name].exec ?? null,
     modelDisplayForInstance: (name: string) => models[name] ?? "default",
+    costGuard,
   } as any);
   return commands;
 }
@@ -44,7 +45,7 @@ describe("/status table (#1052)", () => {
     );
     const text = await commands.getStatusText();
     const header = text.split("\n").find(l => l.startsWith("| Instance")) ?? "";
-    expect(header).toBe("| Instance | Backend | Model | Ctx | Effort | Cost | State |");
+    expect(header).toBe("| Instance | Backend | Model | Ctx | Effort | State |");
     expect(text).not.toContain("IPC");
     expect(text).toContain("gpt-6-luna");
     expect(text).toContain("⏸ paused");
@@ -86,8 +87,28 @@ describe("/status table (#1052)", () => {
     );
     const text = await commands.getStatusText();
     expect(text.split("\n").find(l => l.startsWith("| instance")) ?? "")
-      .toBe("| instance | Backend | Model | Context | 推理強度 | 花費 | 執行狀態 |");
+      .toBe("| instance | Backend | Model | Context | 推理強度 | 執行狀態 |");
     expect(text).toContain("✗ 已停止");
     expect(text).toContain("🔴 已當機");
+  });
+
+  it.each(["en", "zh-TW"] as const)("omits cost header and values, preserving the six remaining cells (%s)", async lang => {
+    setLocale(lang);
+    const commands = setup({ worker: "example-model" }, { worker: { status: "running", exec: "idle" } }, {
+      isLimited: () => false, getDailyCostCents: () => 123456,
+      getLimitCents: () => 500000, getFleetTotalCents: () => 123456,
+    });
+    const text = await commands.getStatusText(), table = text.split("\n").filter(line => line.startsWith("|"));
+    const cells = (line: string) => line.split("|").slice(1, -1).map(value => value.trim());
+    expect(cells(table[0])).toEqual(lang === "en"
+      ? ["Instance", "Backend", "Model", "Ctx", "Effort", "State"]
+      : ["instance", "Backend", "Model", "Context", "推理強度", "執行狀態"]);
+    expect(cells(table[1])).toHaveLength(6);
+    expect(cells(table[2])).toHaveLength(6);
+    expect(cells(table[2]).slice(0, 5)).toEqual(["worker", "codex", "example-model", "-", "-"]);
+    expect(cells(table[2])[5]).toContain("🟢");
+    expect(table.join("\n")).not.toMatch(/Cost|花費|\$/);
+    // The existing fleet limit summary is outside the table and remains intact.
+    expect(text).toContain("$1234.56 / $5000.00");
   });
 });

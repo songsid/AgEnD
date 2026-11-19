@@ -369,6 +369,9 @@ and omits speed stats by default; `detail: true` restores its full legacy shape.
 Amounts are API-equivalents, never money spent. Both report modes preserve the
 caller scope and estimated/not-priced marks. Web usage and `/usage` are unchanged.
 
+The admin `/status` table lists instance, backend, model, context, effort and
+execution state, without a cost column. Usage reports retain their amounts.
+
 ## credential profile
 
 A named credential set for one backend (`CREDENTIAL_HOMES`), so one fleet can

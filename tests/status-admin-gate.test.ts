@@ -1,15 +1,17 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setLocale } from "../src/locale.js";
 import { TopicCommands } from "../src/topic-commands.js";
 import type { InboundMessage } from "../src/channel/types.js";
 
 /**
- * /status now folds in the old /sysinfo instance table (per-instance cost),
+ * /status folds in the old /sysinfo instance table,
  * so it is admin-gated. /sysinfo keeps only machine-level facts and stays
  * open. Per-instance IPC health left /status in #1052 and stays queryable
  * via /api/fleet.
  */
 
-function makeCommands(isAdmin: boolean) {
+afterEach(() => setLocale("en"));
+function makeCommands(isAdmin: boolean, source: InboundMessage["source"] = "discord") {
   const sendText = vi.fn().mockResolvedValue({ messageId: "m1" });
   const commands = new TopicCommands({
     fleetConfig: { defaults: {}, instances: { alpha: { working_directory: "/tmp" } } },
@@ -23,13 +25,13 @@ function makeCommands(isAdmin: boolean) {
     costGuard: null,
     adapter: { sendText },
     getAdapterForInstance: () => ({ sendText }),
-    adapters: new Map([["discord", { sendText }]]),
+    adapters: new Map([[source, { sendText }]]),
   } as any);
   return { commands, sendText };
 }
 
-const msg = (): InboundMessage => ({
-  source: "discord", adapterId: "discord", chatId: "c1", messageId: "m0",
+const msg = (source: InboundMessage["source"] = "discord"): InboundMessage => ({
+  source, adapterId: source, chatId: "c1", messageId: "m0",
   userId: "u1", username: "someone", text: "/status", timestamp: new Date(),
 });
 
@@ -47,14 +49,19 @@ describe("/status admin gate", () => {
     expect(reply).not.toContain("alpha");
   });
 
-  it("answers an admin with the merged table, Model column, no IPC", async () => {
-    const { commands, sendText } = makeCommands(true);
+  it.each((["discord", "telegram", "web"] as const).flatMap(source =>
+    (["en", "zh-TW"] as const).map(lang => [source, lang] as const)))
+  ("answers an admin through %s with the six-column table (%s)", async (source, lang) => {
+    setLocale(lang);
+    const { commands, sendText } = makeCommands(true, source);
 
-    await commands.handleGeneralCommand(msg());
+    await commands.handleGeneralCommand(msg(source));
 
     const reply = sendText.mock.calls[0][1] as string;
-    expect(reply).toContain("Fleet Status");
-    expect(reply).toContain("| Instance | Backend | Model | Ctx | Effort | Cost | State |");
+    expect(reply).toContain(lang === "en" ? "Fleet Status" : "Fleet 狀態");
+    expect(reply).toContain(lang === "en" ? "| Instance | Backend | Model | Ctx | Effort | State |"
+      : "| instance | Backend | Model | Context | 推理強度 | 執行狀態 |");
     expect(reply).not.toContain("| IPC |");
+    expect(reply).not.toMatch(/\| Cost \||\| 花費 \|/);
   });
 });

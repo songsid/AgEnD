@@ -8725,8 +8725,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     } else if (data.command === "tips") {
       await this.handleTipsSlash(data, adapterId);
     } else if (data.command === "status") {
-      // Admin-gated (like the topic path): the merged table shows every
-      // instance's cost and IPC health.
+      // Admin-gated, like the topic path: use the shared fleet instance table.
       if (!this.isFleetAdmin(data.userId, adapterId)) {
         await data.respond(t("cmd.admin_required", "/status"));
         return;

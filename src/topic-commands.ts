@@ -1522,8 +1522,7 @@ export class TopicCommands {
   private async handleStatusCommand(msg: InboundMessage): Promise<void> {
     const adapter = this.getReplyAdapter(msg);
     if (!adapter || !this.ctx.fleetConfig) return;
-    // Admin-gated: with the /sysinfo instance table folded in, /status now shows
-    // the whole fleet's per-instance costs and IPC health in one message.
+    // Admin-gated: /status shows the whole fleet's instance table.
     if (!this.ctx.isFleetAdmin(msg.userId, msg.adapterId)) {
       await adapter.sendText(msg.chatId, t("cmd.admin_required", "/status"), { threadId: msg.threadId });
       return;
@@ -1548,7 +1547,7 @@ export class TopicCommands {
     })));
   }
 
-  /** Get fleet status as markdown text (shared by TG + DC) */
+  /** Get fleet status as markdown text (shared by chat adapters and Discord slash commands). */
   async getStatusText(): Promise<string> {
     if (!this.ctx.fleetConfig) return t("status.no_config");
 
@@ -1581,8 +1580,6 @@ export class TopicCommands {
         : resolveInstanceContext(this.ctx.dataDir, name, backend, { source: this.ctx.getPaneContextSource?.(name) });
       const contextStr = context == null ? "-" : `${Math.round(context)}%`;
 
-      const costCents = this.ctx.costGuard?.getDailyCostCents(name) ?? 0;
-
       // Merged State (#1052): lifecycle + execution state in one column. The
       // old Status icon column duplicated it (⏸/⏸, 🟢/🟢); IPC duplicated it
       // too (✗ exactly when State is stopped/crashed/—) and stays queryable
@@ -1607,7 +1604,7 @@ export class TopicCommands {
       // "-" distinguishes "backend has no effort setting" from an unset one:
       // an empty cell would read as missing data rather than not-applicable.
       const effort = this.ctx.resolveInstanceEffort?.(name).effort ?? "-";
-      rows.push(`| ${displayName} | ${backend} | ${model} | ${contextStr} | ${effort} | ${formatCents(costCents)} | ${stateLabel} |`);
+      rows.push(`| ${displayName} | ${backend} | ${model} | ${contextStr} | ${effort} | ${stateLabel} |`);
     }
 
     if (rows.length === 0) return t("status.no_instances");
@@ -1616,7 +1613,7 @@ export class TopicCommands {
       `## ${t("status.title")}`,
       "",
       t("status.table_header"),
-      "|----------|---------|-------|-----|--------|------|-------|",
+      "|----------|---------|-------|-----|--------|-------|",
       ...rows,
       "",
       t("status.paused_count", pausedCount),
