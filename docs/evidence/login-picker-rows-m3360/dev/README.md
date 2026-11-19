@@ -1,5 +1,19 @@
 # Dev twin of the main login-picker fix
 
+The current dev adaptation reuses its existing `BACKEND_LABELS` import from
+`interaction-observation.js`. The initial port added that same binding again;
+CI setup stopped with TS2300 before test shards could run. R1 removes only the
+redundant specifier. Both picker methods and all five changed test files still
+match main; the original dev import and its other uses are untouched.
+
+The seven picker payload controls pass on dev, and source/test TypeScript both
+exit 0. These checks were run for the actual import integration failure; the
+earlier main 53 tests were not repeated or added again to that count. No real
+provider, AI CLI, account or browser was used. [R1 proof](r1-proof.json) and
+[validation](r1-validation.json) record this adaptation.
+
+## Initial port and retained main evidence
+
 Main #4211 merged as `44e63b0994fde754ee86531918e5ae2febca5a95`, from approved
 head `91ae128779ed0d368b0dc8014d2789cc83a06312`. Its actual merge and main ancestry
 were verified before creating this standalone branch from dev tip
@@ -20,14 +34,16 @@ does not replace dev's account guidance with the older main paragraph.
 The [main packet](../README.md), manifest and validation logs are retained as
 historical main evidence: four baseline failures, 53 distinct staged passing
 tests, source/test TypeScript success, and exact-head 23/23 green checks before
-merge. Those checks were not rerun for this identical port. No new local test,
-provider, CLI, native-client or browser campaign is claimed here; fresh dev CI
-provides the branch integration checks.
+merge. Apart from the focused R1 checks above, those checks were not rerun.
+Fresh dev CI provides the remaining branch integration checks.
 
 The original main manifest describes the main source stage. The separate
 [dev manifest](manifest.json) records the current full dev blobs, including
-the larger FleetManager and preserved dev skill. No runtime or callback change
-is added beyond the reviewed fix. Changelog validation reports 678 fragments OK.
+the larger FleetManager and preserved dev skill. R1's only source difference
+from the initial port is omitting the duplicate import; raw own lines match
+main on 13 of 14 common paths, and all 14 match when that redundant main import
+hunk is omitted. No callback or behavioral change is added. Changelog
+validation reports 678 fragments OK.
 
 Telegram uses two buttons per row and short display names; Discord retains
 five per row. Callback values, nonce behavior and login/install actions remain

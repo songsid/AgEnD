@@ -385,7 +385,7 @@ import { ClassicChannelManager, type ClassicChannel, classicWebEchoOn, getClassi
 import { assertExplicitInstanceRemoval, type ExplicitInstanceRemoval } from "./instance-removal.js";
 import { KNOWN_BACKENDS, validateFleetConfig } from "./config-validator.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
-import { presentationState, interactionSummary, sameInteractionOwner, BACKEND_LABELS } from "./interaction-observation.js";
+import { presentationState, interactionSummary, sameInteractionOwner } from "./interaction-observation.js";
 import type { WorkingStateObservation, WorkingStateReason, WorkingStateReference } from "./working-state-journal.js";
 import { describeSelfOom } from "./session-oom.js";
 import { assertNoSessionOomStop, readSessionOomStop, captureSessionOomRetry, clearSessionOomStopForRetry, SessionOomStoppedError, sessionOomStopHint, type SessionOomRetry } from "./session-oom-stop.js";

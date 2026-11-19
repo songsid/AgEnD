@@ -1,0 +1,23 @@
+{
+  "failedHead": "830806e3a862790b9c039561cc16483c567e3249",
+  "failedRun": 44451495871,
+  "failedJob": 135316460059,
+  "failure": "TS2300 duplicate BACKEND_LABELS import; downstream tests skipped",
+  "fix": "Remove the redundant specifier and reuse the existing same-module binding",
+  "checks": [
+    {
+      "command": "npx vitest run tests/login-picker-rows-m3360.test.ts",
+      "passed": 7,
+      "failed": 0
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0
+    },
+    {
+      "command": "npm run typecheck:tests",
+      "exitCode": 0
+    }
+  ],
+  "scope": "Focused dev integration checks only; main53 retained separately, not summed. No real provider, AI CLI, account, browser or Fleet startup."
+}

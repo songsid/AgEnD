@@ -1,5 +1,5 @@
 {
-  "stage": "dev port",
+  "stage": "dev port R1 import adaptation",
   "mainMerge": "44e63b0994fde754ee86531918e5ae2febca5a95",
   "devBase": "ae62202a30b6ff53f0a8b151252035e314c91ef1",
   "files": [
@@ -33,7 +33,7 @@
     },
     {
       "path": "src/fleet-manager.ts",
-      "sha256": "fc863a704a5825bf9b8a21f7314ea90a5d8650cfb51cbf4875c09410d4b57f20"
+      "sha256": "92856663bce8fd3f2e95c141b281ceec72332ada7b97ef84d611d6b9ae0641ac"
     },
     {
       "path": "src/general-knowledge/skills/credential-profiles/SKILL.md",
@@ -63,11 +63,19 @@
   "evidence": [
     {
       "path": "docs/evidence/login-picker-rows-m3360/dev/README.md",
-      "sha256": "9a6cd9ebea264544c988d38781584f1fd2c30bbcd92f68388c1b74bf9a982fe6"
+      "sha256": "fe8d1909411d3f9b5a8136ce0d623492c0a8968b2adc1aa77262214754e79275"
     },
     {
       "path": "docs/evidence/login-picker-rows-m3360/dev/port-proof.json",
       "sha256": "ea5837a361e198c384e040627d1885349362fe1564f0a605acf8e389220e0b44"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/dev/r1-proof.json",
+      "sha256": "d9a13c61f47f034cd5801b6ce0f8759d6a3e0baa97ae2745fb3c6ccde8c4ce2d"
+    },
+    {
+      "path": "docs/evidence/login-picker-rows-m3360/dev/r1-validation.json",
+      "sha256": "807eaa27ceb2a65784cd197744a6585d2d2d8fc3c026bb7878a717ebb9d0d5bd"
     }
   ]
 }
