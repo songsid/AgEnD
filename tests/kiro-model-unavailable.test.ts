@@ -139,6 +139,8 @@ describe("kiro model_error pattern (M-3398, kiro-cli 3.5.0)", () => {
       const rows = warning.match(new RegExp(`.{1,${cols}}`, "g"))!.join("\n");
       expect(rows.split("\n")[0]).toMatch(/model.*not available/i);   // the first row alone reads like a model error
       expect(modelError.test(rows + "\n> ")).toBe(false);
+      // A genuine model error printed below the wrapped warning still matches.
+      expect(modelError.test(rows + "\nThe selected model is not available\n> ")).toBe(true);
     }
   });
 
