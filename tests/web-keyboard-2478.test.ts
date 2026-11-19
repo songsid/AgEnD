@@ -166,6 +166,18 @@ describe("IME: a candidate bar never takes the tabs out and back", () => {
     await c.blur("#box");
     expect(c.kb()).toBe(false);
   });
+  it("M-3357: the compact keyboard's bar gone for longer than #4011's 300 ms hold (a pause between words): still up", async () => {
+    // The fast keystrokes above stay inside #4011's hold; only the bar's own rule (a bar's height from the lowest is not
+    // the keyboard) keeps the tabs away through a pause.
+    const c = await phone();
+    await c.focus("#box");
+    await c.resize({ height: 844 - 164 });
+    expect(c.kb(), "the bar: past the threshold").toBe(true);
+    await c.resize({ height: 844 - 120 });
+    await new Promise((r) => setTimeout(r, 450));
+    await settle();
+    expect(c.kb(), "the bar gone 450 ms, the box still focused").toBe(true);
+  });
   it("put away while focused (the view back by more than a keyboard from its lowest): down", async () => {
     const c = await phone();
     await c.focus("#box");

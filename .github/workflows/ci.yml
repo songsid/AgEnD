@@ -409,6 +409,65 @@ jobs:
           path: ${{ runner.temp }}/ui-gate
           retention-days: 7
 
+  # ── iPhone keyboard suite (M-3357) ──────────────────────────────────────────
+  # Every past iPhone keyboard bug, each red when its fix is undone (scripts/ci/keyboard-suite.mjs; the human view:
+  # docs/dev/iphone-keyboard-suite.md). Always runs; the work only when the change touches the keyboard's code (the
+  # shell's keyboard fit, the composers, app.css, the document listeners that read the box) or the suite itself — and on
+  # every push, tag and manual run (no diff to judge: fail closed). Three steps: the cases' unit tests; each fix undone
+  # alone turns its own tests red; the keyboard smokes in WebKit (Safari's engine) from the pinned Playwright image
+  # (the runner's checkout and node_modules mounted; no browser download, no --privileged, loopback only).
+  keyboard-suite:
+    runs-on: ubuntu-24.04
+    needs: detect-changes
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Does the change touch the keyboard's code?
+        id: touches
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node scripts/ci/keyboard-suite.mjs --touches
+      - name: Skip the keyboard suite (no keyboard code changed)
+        if: steps.touches.outputs.run != 'true'
+        run: echo "No keyboard code changed — keyboard suite skipped."
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        if: steps.touches.outputs.run == 'true'
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        if: steps.touches.outputs.run == 'true'
+        run: npm ci
+      - name: Every case's unit tests
+        if: steps.touches.outputs.run == 'true'
+        run: node scripts/ci/keyboard-suite.mjs --unit
+      - name: Each fix undone turns its own tests red
+        if: steps.touches.outputs.run == 'true'
+        run: node scripts/ci/keyboard-suite.mjs --reverts
+      - name: The keyboard smokes in WebKit (pinned Playwright image)
+        if: steps.touches.outputs.run == 'true'
+        env:
+          IMAGE: mcr.microsoft.com/playwright:v1.64.0-noble@sha256:06a9939e57531807f8d5fd76ce44b53165ffb7d7501d87ab10e285c20b1e971f
+          OUT: ${{ runner.temp }}/keyboard-suite
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"
+          docker run --rm --init --ipc=host --memory 3g --user "$(id -u):$(id -g)" -e HOME=/tmp \
+            -v "$GITHUB_WORKSPACE:$GITHUB_WORKSPACE" -v "$OUT:$OUT" -w "$GITHUB_WORKSPACE" \
+            -e PW_ENGINE=webkit -e PW_DIR="$GITHUB_WORKSPACE" -e REPO="$GITHUB_WORKSPACE" -e OUT="$OUT" \
+            "$IMAGE" node scripts/ci/keyboard-suite.mjs --smokes
+      - name: The smokes' pictures (on failure)
+        if: failure() && steps.touches.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: keyboard-suite
+          path: ${{ runner.temp }}/keyboard-suite
+          retention-days: 7
+
   # Real NTFS ACL proof, isolated to a fresh hosted Windows runner on release lines.
   runtime-profile-privacy:
     if: (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release/')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/'))
@@ -433,7 +492,7 @@ jobs:
   # is release-only; its skip is accepted only outside its explicit event scope.
   build:
     runs-on: ubuntu-24.04
-    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, test-pwsh, hub-directory, docs-tests, ui-gate, install-smoke, release-rollback-smoke, runtime-profile-privacy]
+    needs: [detect-changes, changelog, actions-pinned, setup, test-shard, test-integration, test-pwsh, hub-directory, docs-tests, ui-gate, keyboard-suite, install-smoke, release-rollback-smoke, runtime-profile-privacy]
     if: always()
     steps:
       - name: Check all jobs succeeded
@@ -449,6 +508,7 @@ jobs:
           PROFILE_PRIVACY_REQUIRED: ${{ (github.event_name == 'pull_request' && startsWith(github.base_ref, 'release/')) || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')) }}
           DOCS_TESTS: ${{ needs.docs-tests.result }}
           UI_GATE: ${{ needs.ui-gate.result }}
+          KEYBOARD: ${{ needs.keyboard-suite.result }}
           SMOKE: ${{ needs.install-smoke.result }}
           ROLLBACK: ${{ needs.release-rollback-smoke.result }}
         run: |
@@ -463,7 +523,7 @@ jobs:
             exit 1
           fi
           failed=()
-          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "test-pwsh:$PWSH" "hub-directory:$HUB_DIRECTORY" "docs-tests:$DOCS_TESTS" "ui-gate:$UI_GATE" "install-smoke:$SMOKE" "release-rollback-smoke:$ROLLBACK"; do
+          for name_result in "setup:$SETUP" "test-shard:$SHARD" "test-integration:$INTEGRATION" "test-pwsh:$PWSH" "hub-directory:$HUB_DIRECTORY" "docs-tests:$DOCS_TESTS" "ui-gate:$UI_GATE" "keyboard-suite:$KEYBOARD" "install-smoke:$SMOKE" "release-rollback-smoke:$ROLLBACK"; do
             name="${name_result%%:*}"
             result="${name_result##*:}"
             if [ "$result" != "success" ]; then
