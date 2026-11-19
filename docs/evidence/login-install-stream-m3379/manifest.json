@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "scope": "M-3379 dev fixture and bounded evidence",
+  "scope": "M-3379 main twin; exact dev fixture carry plus port disclosure",
   "sourceSha256": [
     {
       "path": "tests/login-install-stream-2980.test.ts",
@@ -22,11 +22,15 @@
   "evidenceSha256": [
     {
       "path": "docs/evidence/login-install-stream-m3379/README.md",
-      "sha256": "c00fc2c2379bca1167b3ee593d1b00ff8fed10bf3927ea804780cefdce833bc1"
+      "sha256": "8f61023408d2415a076beffc3cce30a4114ebe0b27b33062bb193958d199cd08"
     },
     {
       "path": "docs/evidence/login-install-stream-m3379/validation.json",
       "sha256": "a960679935b4da19f21820a79067c2e3b339bb34fb5fe2fee12566e392ae90cb"
+    },
+    {
+      "path": "docs/evidence/login-install-stream-m3379/main-port.json",
+      "sha256": "15dad709b2ce839b5b637c66ffd80b93cb3ce637b802f4176dd5b1c10aef61ec"
     }
   ]
 }

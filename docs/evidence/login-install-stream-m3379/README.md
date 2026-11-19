@@ -44,3 +44,13 @@ no-pipe path. Main has the identical original test, requiring a separate twin;
 its one wrapper binary-selection difference is recorded explicitly in the JSON.
 There is no user-visible change or changelog fragment. Rollback is a test-only
 revert. No browser, backend model or live account campaign was run.
+
+## Main twin
+
+This branch cleanly cherry-picks the reviewed dev fixture onto current main. The
+original test blob and all four submitted source/design files match exactly.
+[main-port.json](main-port.json) binds that comparison and states the wrapper's
+binary-selection difference. The 20 native runs and fault-injection results above
+were obtained on the dev source, which is carried unchanged; they are not new
+main-branch executions. No extra native campaign is claimed. Exact-head main CI
+is required. The revised order is main first, then dev #4230.
