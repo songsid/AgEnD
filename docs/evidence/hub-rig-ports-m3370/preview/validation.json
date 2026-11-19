@@ -1,0 +1,39 @@
+{
+  "family": "preview fixture (first M-3370 PR)",
+  "base": "8db3a240c046fa7623087c3a3a341bef5d61f886",
+  "forcedCollision": {
+    "command": "npx vitest run tests/hub-preview-ports-m3370.test.ts --maxWorkers=2",
+    "baseResult": "1 semantic failure: actual EADDRINUSE at real listener startup after all three competitors bind"
+  },
+  "lifecycle": {
+    "command": "npx vitest run tests/hub-preview-ports-m3370.test.ts tests/hub-preview.test.ts --maxWorkers=2",
+    "passed": 22,
+    "skipped": 0,
+    "files": 2
+  },
+  "addedCleanupCase": {
+    "command": "npx vitest run tests/hub-preview-ports-m3370.test.ts -t 'initial start failure' --maxWorkers=2",
+    "passed": 1,
+    "filtered": 1,
+    "note": "Only the newly added cleanup case runs; no cleared lifecycle repetition."
+  },
+  "distinctPassed": 23,
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "preservedCases": [
+    "preview:false leaves unused preview address free",
+    "start:false real deferred startup",
+    "off/on/off Runtime reload",
+    "intentional occupied preview with production member teardown probe",
+    "real HTTPS shell/frame certificate and authorization tests"
+  ],
+  "limits": [
+    "Owned disposable TLS and stub directory only.",
+    "Full CI is separate; no real-account, CLI, model, Fleet or Windows work.",
+    "Other M-3370 families remain pending in separate PRs.",
+    "No retries, timeout increases or production changes."
+  ],
+  "rollback": "Revert this test fixture, regression cases and evidence only; no product or stored-data rollback."
+}

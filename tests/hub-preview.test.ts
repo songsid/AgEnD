@@ -91,10 +91,13 @@ describe.skipIf(process.platform === "win32")("real Hub HTTPS preview lifecycle"
   });
   it("cleans a partial start when the preview port cannot bind", async () => {
     const r = await hubPreviewRig({ start: false }); cleanup.push(r.close);
+    await r.releasePort(r.previewPort);
     const occupied = createServer(); await new Promise<void>(done => occupied.listen(r.previewPort, "127.0.0.1", done));
     cleanup.push(() => new Promise<void>(done => occupied.close(() => done())));
     const service = await r.factory(r.config, () => true); cleanup.push(() => service.close());
     await expect(service.start()).rejects.toThrow(); await service.close();
+    // Web never started: release its fixture reservation. The member probe still checks production teardown.
+    await r.releasePort(r.webPort);
     for (const port of [r.memberPort, r.webPort]) {
       const probe = createServer(); await new Promise<void>((done, fail) => { probe.once("error", fail); probe.listen(port, "127.0.0.1", done); });
       await new Promise<void>(done => probe.close(() => done()));
@@ -106,6 +109,9 @@ describe.skipIf(process.platform === "win32")("real Hub HTTPS preview lifecycle"
     expect(shell.text).not.toContain("data-preview-origin="); expect(shell.text).toContain('data-preview-reason-code="notOffered"');
     expect(shell.headers["content-security-policy"]).not.toContain(r.previewOrigin);
     expect((r.service as any).previewAddress()).toBeNull();
+    const probe = createServer();
+    try { await new Promise<void>((done, fail) => { probe.once("error", fail); probe.listen(r.previewPort, "127.0.0.1", done); }); }
+    finally { if (probe.listening) await new Promise<void>(done => probe.close(() => done())); }
   });
   it("reloads the local opt-in without changing existing sealed initialization", async () => {
     const r = await hubPreviewRig({ preview: false, start: false }); cleanup.push(r.close);
