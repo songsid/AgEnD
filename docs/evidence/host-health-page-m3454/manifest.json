@@ -16,8 +16,12 @@
     "sha256": "1901eda57709fc92d75bbbea3ecf88f91fd8571af1da0cd421411fcb0954c8cb"
   },
   {
+    "path": "docs/evidence/host-health-page-m3454/R2.md",
+    "sha256": "12e58265c5c59e5a558b1e4d1632a26bc917f589089fcd3a2ee76fbf7bbce0b1"
+  },
+  {
     "path": "docs/evidence/host-health-page-m3454/README.md",
-    "sha256": "82f8430f6ea1256f0663439d16e6479e46d74b79ecdd37ebffb1802ce84fa970"
+    "sha256": "c00cdc515ca01f90abe6be92b40ab06f47d956280950670105b74454cea1961d"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/fixture-darwin-desk-light-en.png",
@@ -142,6 +146,14 @@
   {
     "path": "docs/evidence/host-health-page-m3454/gallery.md",
     "sha256": "f6a69e3a15f7de598a546a881d04812d6333e7c8d09e9ca1ef1b9a718fa2495f"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/i18n-rig-green.log",
+    "sha256": "bbb4eb0ffda5a932db4d16dc8e2c8c746ff82605bbc429dcdeb00ba44df97fa6"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/i18n-rig-red.log",
+    "sha256": "b9b62bec13ca36f15c13b059d65099e56f4bd785317ed48506ae3a33b22e87b3"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/layout-green.log",
@@ -274,6 +286,10 @@
   {
     "path": "src/web-shell-routes.ts",
     "sha256": "14968f08fb129fa78ad6425b9117200afd259a2b61becf76ec7d170a450476f0"
+  },
+  {
+    "path": "tests/dashboard-i18n.test.ts",
+    "sha256": "eb36d566e7d6a8f5303112f274128986976f3ed49ffd49cbcd82c7a7703d6f3e"
   },
   {
     "path": "tests/host-health-model-m3454.test.ts",

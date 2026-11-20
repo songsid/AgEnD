@@ -13,7 +13,9 @@ const read = (file: string) => readFileSync(file, "utf8");
 // the dictionary it fills (app-i18n.js), then each module's own register("…") call.
 const strip = (src: string) => src.replace(/^import .*$/gm, "").replace(/^export /gm, "");
 
-const ctx = vm.createContext({ navigator: { language: "en" } });
+// This realm loads dictionaries, not panels. Imports are deliberately removed; provide the lazy factory's
+// inert binding, and refuse any accidental panel load. Real module/loader wiring is covered by the app route tests.
+const ctx = vm.createContext({ navigator: { language: "en" }, retryable: () => () => { throw new Error("Dictionary fixture must not load a panel"); } });
 vm.runInContext(strip(read(join(SHARED, "app-i18n.js"))), ctx);
 vm.runInContext(strip(read(join(UI, "shared", "chat-strings.js"))), ctx);
 vm.runInContext(strip(read(join(UI, "workspace-strings.js"))), ctx);   // #3153: the Files & changes panel's own words
