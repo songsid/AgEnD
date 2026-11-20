@@ -201,7 +201,7 @@ async function buildSyntheticCardPacks(browser: any) {
               slice: 10,
               border: "#c8a165",
               text: "#f6ead7",
-              muted: "#c9b69a",
+              muted: "#e2d4bc",
               accent: "#e5b84b",
               barTrack: "#382d25",
               barFill: "#e5b84b",
@@ -247,7 +247,7 @@ async function buildSyntheticCardPacks(browser: any) {
               background: "#f6f4ef",
               border: "#6b7280",
               text: "#1c1917",
-              muted: "#4b5563",
+              muted: "#334155",
               accent: "#1d4ed8",
               buttonBg: "#e7e5e0",
               buttonText: "#1c1917",
@@ -363,10 +363,11 @@ try {
     }
   };
 
-  // Case 1: Built-in Cozy (no `card` key) — unchanged default
+  // Case 1: Built-in Cozy (no `card` key) — unchanged default, single-line 今天 (zero orphaned wrap)
   const def = await runCase("desk-default-zh", { device: "desk", theme: "dark", lang: "zh-TW", skin: "cozy" });
   if (def.className.includes("oo-card-custom")) throw new Error(`desk-default-zh should not have oo-card-custom: ${def.className}`);
   if (def.rect.w !== 320) throw new Error(`desk-default-zh width expected 320, got ${def.rect.w}`);
+  if (!def.today || def.today.h > 28) throw new Error(`desk-default-zh today row wrapped unexpectedly: ${JSON.stringify(def.today)}`);
   console.log("PASS desk-default-zh:", JSON.stringify(def));
 
   // Case 2: RPG preset (dark zh-TW) — 84px portrait, backing bg+frame canvas, single-line 今天 (Glitch #2 fix)

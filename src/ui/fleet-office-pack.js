@@ -562,6 +562,7 @@ function cardOf(v) {
     const pairs = [
       ["text", "background", CARD_LIMITS.textContrast],
       ["muted", "background", CARD_LIMITS.textContrast],
+      ["accent", "background", CARD_LIMITS.textContrast],
       ["buttonText", "buttonBg", CARD_LIMITS.textContrast],
       ["buttonPrimaryText", "buttonPrimaryBg", CARD_LIMITS.textContrast],
       ["border", "background", CARD_LIMITS.uiContrast],

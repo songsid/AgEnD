@@ -106,6 +106,14 @@ function fgFor(bgHex, minRatio = 4.5, light = "#f6f4f0", dark = "#18181b") {
   return rd >= minRatio ? dark : "#000000";
 }
 
+function mixHex(fgHex, bgHex, alpha) {
+  const ch = (i) => {
+    const a = parseInt(fgHex.slice(i, i + 2), 16), b = parseInt(bgHex.slice(i, i + 2), 16);
+    return Math.round(a * alpha + b * (1 - alpha)).toString(16).padStart(2, "0");
+  };
+  return `#${ch(1)}${ch(3)}${ch(5)}`;
+}
+
 function scrimRgba(hex, alpha) {
   const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
@@ -139,32 +147,67 @@ export function resolveCardSpec(packCard) {
   let text = s.text || null;
   let muted = s.muted || null;
   let border = s.border || null;
+  let accent = s.accent || null;
   let barTrack = s.barTrack || null;
   let barFill = s.barFill || null;
   let buttonBg = s.buttonBg || null;
   let buttonText = s.buttonText || null;
-  const buttonPrimaryBg = s.buttonPrimaryBg || null;
+  let buttonPrimaryBg = s.buttonPrimaryBg || null;
   let buttonPrimaryText = s.buttonPrimaryText || null;
 
+  const pickContrast = (against, minRatio, candidates) => {
+    for (const c of candidates) if (c && contrastRatio(c, against) >= minRatio) return c;
+    return fgFor(against, minRatio, "#f6f4f0", "#18181b");
+  };
+
   if (hasSurface && bgRef) {
-    if (!text) text = fgFor(bgRef, 4.5, "#f6f4f0", "#18181b");
-    if (!muted) {
-      const cand = dark ? "#c4bfb6" : "#4b5563";
-      muted = contrastRatio(cand, bgRef) >= 4.5 ? cand : fgFor(bgRef, 4.5, "#d6d3ce", "#374151");
+    if (!text || contrastRatio(text, bgRef) < 4.5) text = fgFor(bgRef, 4.5, "#f6f4f0", "#18181b");
+    if (!border || contrastRatio(border, bgRef) < 3.0) {
+      border = pickContrast(bgRef, 3.0, [dark ? "#6e665c" : "#71717a", dark ? "#a8a29e" : "#52525b"]);
     }
-    if (!border) {
-      const cand = dark ? "#6e665c" : "#71717a";
-      border = contrastRatio(cand, bgRef) >= 3.0 ? cand : fgFor(bgRef, 3.0, "#a8a29e", "#52525b");
+    if (accent && contrastRatio(accent, bgRef) < 4.5) accent = text;
+    if (!barTrack) {
+      barTrack = barFill
+        ? pickContrast(barFill, 3.0, [dark ? "#342f2a" : "#d4d4d8", "#27272a", "#e4e4e7"])
+        : (dark ? "#342f2a" : "#d4d4d8");
     }
-    if (!barTrack) barTrack = dark ? "#342f2a" : "#d4d4d8";
-    if (!barFill) {
-      if (s.accent && contrastRatio(s.accent, barTrack) >= 3.0) barFill = s.accent;
-      else barFill = dark ? "#e5b84b" : "#4f46e5";
+    // Ensure muted labels achieve >= 4.5:1 against both the card background and RPG stat/XP tile tint.
+    const tileBg = preset === "rpg" && barTrack ? mixHex(barTrack, bgRef, 0.65) : bgRef;
+    const mutedOk = (c) => contrastRatio(c, bgRef) >= 4.5 && contrastRatio(c, tileBg) >= 4.5;
+    if (!muted || !mutedOk(muted)) {
+      const cand = dark ? "#d6d0c6" : "#374151";
+      muted = mutedOk(cand) ? cand : fgFor(tileBg, 4.5, "#e7e5e0", "#1f2937");
     }
-    if (!buttonBg) buttonBg = dark ? "#2c2622" : "#e4e4e7";
+    if (!barFill || contrastRatio(barFill, barTrack) < 3.0) {
+      barFill = pickContrast(barTrack, 3.0, [s.accent, accent, dark ? "#e5b84b" : "#4f46e5"]);
+    }
+    if (!buttonBg) {
+      buttonBg = buttonText
+        ? pickContrast(buttonText, 4.5, [dark ? "#2c2622" : "#e4e4e7", "#1f2937", "#f4f4f5"])
+        : (dark ? "#2c2622" : "#e4e4e7");
+    }
+  } else {
+    // Partial overrides without an explicit card background: pair each supplied side with a contrasting counterpart.
+    if (barTrack && (!barFill || contrastRatio(barFill, barTrack) < 3.0)) {
+      barFill = pickContrast(barTrack, 3.0, [s.accent, "#4f46e5", "#e5b84b"]);
+    } else if (barFill && !barTrack) {
+      barTrack = pickContrast(barFill, 3.0, ["#27272a", "#e4e4e7"]);
+    }
+    if (buttonText && !buttonBg) buttonBg = pickContrast(buttonText, 4.5, ["#1f2937", "#f4f4f5"]);
   }
-  if (buttonBg && !buttonText) buttonText = fgFor(buttonBg, 4.5, "#f6f4f0", "#18181b");
-  if (buttonPrimaryBg && !buttonPrimaryText) buttonPrimaryText = fgFor(buttonPrimaryBg, 4.5, "#f6f4f0", "#18181b");
+
+  if (buttonBg && (!buttonText || contrastRatio(buttonText, buttonBg) < 4.5)) {
+    buttonText = fgFor(buttonBg, 4.5, "#f6f4f0", "#18181b");
+  }
+  // Primary button falls back to accent in CSS: resolve its foreground explicitly so light/dark surface never breaks contrast.
+  if (!buttonPrimaryBg && buttonPrimaryText) {
+    buttonPrimaryBg = pickContrast(buttonPrimaryText, 4.5, [accent, "#1d4ed8", "#18181b", "#f4f4f5"]);
+  } else if (!buttonPrimaryBg && accent) {
+    buttonPrimaryBg = accent;
+  }
+  if (buttonPrimaryBg && (!buttonPrimaryText || contrastRatio(buttonPrimaryText, buttonPrimaryBg) < 4.5)) {
+    buttonPrimaryText = fgFor(buttonPrimaryBg, 4.5, "#f6f4f0", "#18181b");
+  }
 
   const radiusKey = s.radius || PRESET_RADIUS[preset] || "lg";
   const avatarPx = AVATAR_PX[layout.avatarSize] || 56;
@@ -178,7 +221,7 @@ export function resolveCardSpec(packCard) {
   if (border) cssVars["--oo-card-border"] = border;
   if (text) cssVars["--oo-card-text"] = text;
   if (muted) cssVars["--oo-card-muted"] = muted;
-  if (s.accent) cssVars["--oo-card-accent"] = s.accent;
+  if (accent) cssVars["--oo-card-accent"] = accent;
   if (barTrack) cssVars["--oo-card-bar-track"] = barTrack;
   if (barFill) cssVars["--oo-card-bar-fill"] = barFill;
   if (buttonBg) cssVars["--oo-card-btn-bg"] = buttonBg;
@@ -348,7 +391,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
         ${m.level.line2 ? html`<div class="muted">${m.level.line2}</div>` : null}
         ${m.level.pct !== null ? html`<progress class="oo-card-bar" max="100" value=${Math.round(m.level.pct * 100)} aria-label=${tc("xp", m.level.next)}></progress>` : null}
       </div>` : null}
-      <dl class="oo-card-rows">${m.rows.map(([k, v]) => html`<div><dt>${k}</dt><dd>${v}</dd></div>`)}</dl>
+      <dl class="oo-card-rows">${(m.rowItems || m.rows.map(([label, value]) => ({ key: "", label, value }))).map((r) => html`<div data-row=${r.key || undefined}><dt>${r.label}</dt><dd>${r.value}</dd></div>`)}</dl>
       ${m.now ? html`<div class="oo-card-now"><span class="muted">${tc("now")}:</span> ${m.now}</div>` : null}
       ${tell ? html`<label class="check oo-card-tell" title=${tc("tellNote")}><input type="checkbox" checked=${tell.on} onChange=${(e) => tell.set(e.target.checked)} />
         <span>${tc("tell", m.name)}</span></label>` : null}
@@ -369,7 +412,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     "oo-card-custom",
     spec.preset !== "default" ? `oo-card-${spec.preset}` : "",
     spec.layout.headerAlign === "center" ? "oo-card-center" : "",
-    spec.layout.rowColumns === 1 ? "oo-card-cols-1" : "",
+    `oo-card-cols-${spec.layout.rowColumns}`,
     spec.backdrop && spec.backdrop.frame ? "oo-card-framed" : "",
     sheet ? "sheet" : "",
   ].filter(Boolean).join(" ");

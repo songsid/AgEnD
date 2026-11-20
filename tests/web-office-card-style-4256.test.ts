@@ -134,15 +134,16 @@ describe("skin-pack card schema & WCAG contrast checks (#4256)", () => {
     expect(check({ layout: { hide: ["close"] } }).error).toMatch(/^card\.layout\.hide\[0\]:/);
   });
 
-  it("enforces WCAG contrast ratios on explicit colour pairs (4.5:1 text/buttons, 3.0:1 border/bar)", () => {
+  it("enforces WCAG contrast ratios on explicit colour pairs (4.5:1 text/accent/buttons, 3.0:1 border/bar)", () => {
     const check = (style: Record<string, unknown>) => PK.checkSkinPack(baseManifest({ card: { style } }));
     expect(check({ background: "#1f1916", text: "#3a302a" }).error).toMatch(/card\.style\.text: contrast ratio against background must be at least 4\.5:1/);
     expect(check({ background: "#1f1916", muted: "#554b44" }).error).toMatch(/card\.style\.muted: contrast ratio against background must be at least 4\.5:1/);
+    expect(check({ background: "#181614", accent: "#181614" }).error).toMatch(/card\.style\.accent: contrast ratio against background must be at least 4\.5:1/);
     expect(check({ buttonBg: "#3a2c22", buttonText: "#665544" }).error).toMatch(/card\.style\.buttonText: contrast ratio against buttonBg must be at least 4\.5:1/);
     expect(check({ buttonPrimaryBg: "#c88d2e", buttonPrimaryText: "#f6ead7" }).error).toMatch(/card\.style\.buttonPrimaryText: contrast ratio against buttonPrimaryBg must be at least 4\.5:1/);
     expect(check({ background: "#1f1916", border: "#302824" }).error).toMatch(/card\.style\.border: contrast ratio against background must be at least 3:1/);
     expect(check({ barTrack: "#382d25", barFill: "#52443a" }).error).toMatch(/card\.style\.barFill: contrast ratio against barTrack must be at least 3:1/);
-    expect(check({ background: "#1f1916", text: "#f6ead7", muted: "#c9b69a", border: "#c8a165", barTrack: "#382d25", barFill: "#e5b84b" }).ok).toBe(true);
+    expect(check({ background: "#1f1916", text: "#f6ead7", muted: "#c9b69a", accent: "#e5b84b", border: "#c8a165", barTrack: "#382d25", barFill: "#e5b84b" }).ok).toBe(true);
   });
 });
 
@@ -225,6 +226,46 @@ describe("resolveCardSpec, auto-foreground contrast & share-link security (#4256
     const imgOnly = C.resolveCardSpec({ style: { backgroundImage: "ui/bg.png" } });
     expect(imgOnly.backdrop.scrim).toMatch(/^rgba\(/);
     expect(imgOnly.cssVars["--oo-card-text"]).toBeTruthy();
+
+    // RPG stat/XP tile tint: if explicit muted passes against background but dips below 4.5:1 against the tinted tile, auto-upgrade.
+    const rpgTint = C.resolveCardSpec({ preset: "rpg", style: { background: "#141110", barTrack: "#5a4d42", muted: "#887e74" } });
+    expect(PK.contrastRatio(rpgTint.cssVars["--oo-card-muted"], "#141110")).toBeGreaterThanOrEqual(4.5);
+    expect(PK.contrastRatio(rpgTint.cssVars["--oo-card-muted"], "#413830")).toBeGreaterThanOrEqual(4.5);
+
+    // Prism P2 partial-override controls: derived defaults must contrast with supplied counterparts.
+    const goldTrack = C.resolveCardSpec({ style: { background: "#181614", barTrack: "#e5b84b" } });
+    expect(PK.contrastRatio(goldTrack.cssVars["--oo-card-bar-fill"], "#e5b84b")).toBeGreaterThanOrEqual(3.0);
+
+    const sameAccent = C.resolveCardSpec({ style: { background: "#181614", accent: "#181614" } });
+    expect(PK.contrastRatio(sameAccent.cssVars["--oo-card-accent"], "#181614")).toBeGreaterThanOrEqual(4.5);
+
+    // Accent-derived primary button must always pair with >= 4.5:1 buttonPrimaryText.
+    const accentPrimary = C.resolveCardSpec({ style: { background: "#181614", accent: "#e5b84b" } });
+    expect(accentPrimary.cssVars["--oo-card-btn-primary-bg"]).toBe("#e5b84b");
+    expect(PK.contrastRatio(accentPrimary.cssVars["--oo-card-btn-primary-text"], "#e5b84b")).toBeGreaterThanOrEqual(4.5);
+
+    // Partial overrides without background still resolve contrasting bar & button pairs.
+    const trackOnly = C.resolveCardSpec({ style: { barTrack: "#e5b84b" } });
+    expect(PK.contrastRatio(trackOnly.cssVars["--oo-card-bar-fill"], "#e5b84b")).toBeGreaterThanOrEqual(3.0);
+    const btnTextOnly = C.resolveCardSpec({ style: { buttonText: "#f6ead7" } });
+    expect(PK.contrastRatio("#f6ead7", btnTextOnly.cssVars["--oo-card-btn-bg"])).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("Prism P3: dossier preset with rowColumns: 2 emits oo-card-cols-2 and CSS overrides dossier single-column rule", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
+    expect(css).toContain(".oo-card-dossier.oo-card-cols-2 .oo-card-rows { grid-template-columns: 1fr 1fr;");
+    const { render } = await import("/assets/app-html.js");
+    const { h } = await import("/assets/app-html.js");
+    const host = document.createElement("div");
+    const node = { name: "alpha", state: "working", i: { name: "alpha", display_name: "Alpha", backend: "claude-code", model: "claude-opus-5-5" } };
+    const m = C.cardModel({ node, lv: null, levels: null, share: false, state: "Working", now: "Typing", where: "Eng · Work" });
+    render(h(C.OfficeCard, { model: m, onClose: () => {}, packCard: { preset: "dossier", layout: { rowColumns: 2 } } }), host);
+    const cardEl = host.querySelector(".oo-card")!;
+    expect(cardEl.className).toContain("oo-card-dossier");
+    expect(cardEl.className).toContain("oo-card-cols-2");
+    render(null, host);
   });
 
   it("share-link invariant: card.layout can never reveal stripped model/backend/today/firstSeen on a share link", () => {
