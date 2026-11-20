@@ -25,8 +25,8 @@ import { identityClasses, identityOf, paintIdentity, useIdentityColors } from ".
 
 // Keep new copy beside its caller: a retained view-strings.js still links and renders the menu.
 register("agentRow", {
-  en: { actions: "Actions for {0}", add: "Add to favorites", remove: "Remove from favorites" },
-  "zh-TW": { actions: "{0} 的操作", add: "加入最愛", remove: "移出最愛" },
+  en: { actions: "Actions for {0}", add: "Add to favorites", remove: "Remove from favorites", contextAdd: "Add to favorites", contextRemove: "Remove from favorites" },
+  "zh-TW": { actions: "{0} 的操作", add: "加入最愛", remove: "移出最愛", contextAdd: "加到我的最愛", contextRemove: "從我的最愛移除" },
 });
 
 /** view.* text with named values. */
@@ -809,6 +809,9 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onSelect: () => { if (!shown.active && !favsSorted) { focusRow.current = name; moveFavorite(name, 1, known); } } },
       ] : []),
     ].filter(Boolean);
+    const favorite = menuItems.find(item => item.key === "favorite");
+    const contextFavorite = favorite ? { ...favorite, label: t(`agentRow.${starred ? "contextRemove" : "contextAdd"}`),
+      onSelect: () => { setContext(null); favorite.onSelect(); } } : null;
     return html`<li key=${name} data-agent-row=${name} class=${`v-li${!compact && two ? " two-line" : ""}`} ...${contextEvents(name)}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-label=${compact ? [...new Set([label, name, labelOf(it)])].join(" · ") : undefined}
@@ -826,7 +829,7 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       ownerKey=${name} label=${t("agentRow.actions", label)} items=${menuItems}
       trigger=${styledMenus ? html`<span class="inst-menu-star" aria-hidden="true">${starred ? html`<${Icon} name="star" size=${14} />` : null}</span><span class="inst-menu-more" aria-hidden="true"><${Icon} name="more" size=${16} /></span>` : undefined} />`
       : starred ? html`<span class="inst-favorite-mark" aria-hidden="true"><${Icon} name="star" size=${14} /></span>` : null}
-      ${contextAllowed() && context?.name === name ? html`<${app.sidebarChatMenu} key=${context.id} inst=${it} context=${context} onClose=${() => setContext(null)} />` : null}</li>`;
+      ${contextAllowed() && context?.name === name ? html`<${app.sidebarChatMenu} key=${context.id} inst=${it} context=${context} favorite=${contextFavorite} onClose=${() => setContext(null)} />` : null}</li>`;
   };
   // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
   const facetSet = f.status.length > 0 || f.cli.length > 0;

@@ -1521,7 +1521,7 @@ function DeleteDialog({ name, inst, onClose, onDeleted = () => navigate("/ui") }
 ChatPanel.workspaceVersion = 1;
 
 /** Session-only injection: public InstanceNav never imports this module. */
-export function SidebarChatMenu({ inst, context, onClose }) {
+export function SidebarChatMenu({ inst, context, onClose, favorite = null }) {
   const name = inst.name || inst.instance_name, lease = useLease(`sidebar-menu:${name}`);
   const [phase, setPhase] = useState("menu");
   const [, redraw] = useState(0);
@@ -1546,9 +1546,9 @@ export function SidebarChatMenu({ inst, context, onClose }) {
       modelText: `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`,
       onBackend: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend"), backendText: backendLabel(inst.backend) } : {}) };
   return html`${phase === "menu" ? narrowScreen()
-    ? html`<${AgentSheet} name=${name} inst=${inst} current="chat" items=${items} chat=${chat} targetLabel=${inst.display_name || name}
+    ? html`<${AgentSheet} name=${name} inst=${inst} current="chat" items=${items} extra=${[favorite, items.find(item => item?.key === "splitChat")].filter(Boolean)} chat=${chat} targetLabel=${inst.display_name || name}
         verifiedUntil=${auth.st?.state === "verified" ? auth.st.until : null} onUsage=${() => setPhase("usage")} onClose=${dismiss} />`
-    : html`<${Menu} cls="agent-menu" fit=${true} topLayer=${true} ownerKey=${name} context=${{...context, onClose: dismiss}} items=${items} label=${t("agentRow.actions", inst.display_name || name)} />` : null}
+    : html`<${Menu} cls="agent-menu" fit=${true} topLayer=${true} ownerKey=${name} context=${{...context, onClose: dismiss}} items=${[favorite, ...items]} label=${t("agentRow.actions", inst.display_name || name)} />` : null}
     ${phase === "delete" ? html`<${DeleteDialog} name=${name} inst=${inst} onClose=${dismiss}
       onDeleted=${() => { if (navStore.get().route?.instance === name) navigate("/ui"); }} />` : null}
     ${phase === "pins" ? html`<${PinsDialog} name=${name} onClose=${dismiss} onJump=${pin => { dismiss(); navigate(`${chatPath(name)}#m=${encodeURIComponent(pin.key)}`); }} />` : null}

@@ -33,20 +33,37 @@ try{
   }else await row.click({button:'right'});
   await page.waitForSelector(c.device==='phone'?'dialog[open] .chat-sheet-row':'[role="menu"]');
   assert.equal(page.url(),before,'opening context menu must not navigate');
-  await page.waitForFunction(expected => JSON.stringify([...document.querySelectorAll('[role=\"menu\"] button,dialog[open] .chat-sheet-row')].map(el=>el.textContent))===JSON.stringify(expected),headerItems);
+  const favoriteLabels=['Add to favorites','Remove from favorites','加到我的最愛','從我的最愛移除'];
+  const splitLabel=c.lang==='en'?'Split chat':'分割對話';
+  await page.waitForFunction(({expected,favorites,split}) => JSON.stringify([...document.querySelectorAll('[role="menu"] button,dialog[open] .chat-sheet-row')].map(el=>el.textContent).filter(text=>!favorites.includes(text) && (text!==split || expected.includes(text))))===JSON.stringify(expected),{expected:headerItems,favorites:favoriteLabels,split:splitLabel});
   const contextItems=await page.locator('[role="menu"] button,dialog[open] .chat-sheet-row').allTextContents();
   const geometry=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth>innerWidth,menus:[...document.querySelectorAll('[role="menu"],dialog[open]')].map(el=>{const r=el.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height,clipped:r.left<0||r.right>innerWidth+1||r.top<0||r.bottom>innerHeight+1};})}));
   assert.equal(geometry.overflow,false);assert.ok(geometry.menus.length);assert.ok(geometry.menus.every(r=>!r.clipped));
   await page.screenshot({path:`${out}/${caseName(c)}-sidebar.png`});
+  assert.ok(contextItems.includes(c.lang==='en'?'Add to favorites':'加到我的最愛'));
+  const splitAvailable=await page.evaluate(async()=>!!(await import("/assets/app-store.js")).appStore.get().chatWorkspace);
+  assert.equal(contextItems.includes(splitLabel),splitAvailable);
   await page.keyboard.press('Escape');await page.waitForSelector('dialog[open],[role="menu"]',{state:'hidden'});
   assert.equal(await row.evaluate((el:HTMLElement)=>document.activeElement===el),true,'Escape returns to row');
   if(c.device==='desk'){
    await row.focus();await page.keyboard.press('Shift+F10');await page.waitForSelector('[role="menu"]');
    await page.locator('.p-chat .panel-title h1').click();await page.waitForSelector('[role="menu"]',{state:'hidden'});
   }
-  checks.push({case:caseName(c),headerItems,contextItems,geometry,csp:await csp(),errors,writes});
+  let splitProof=null;
+  if(c.device==='desk' && c.lang==='en'){
+    await row.click({button:'right'});await page.getByRole('menuitem',{name:'Add to favorites',exact:true}).click();
+    await page.waitForFunction(name=>JSON.parse(localStorage.getItem('agend_favorites')||'[]').includes(name),b);
+    const moved=page.locator(`[data-agent-row="${b}"] a.inst`);await moved.click({button:'right'});await page.getByRole('menuitem',{name:'Remove from favorites',exact:true}).waitFor();
+    await page.screenshot({path:`${out}/${caseName(c)}-favorite-on.png`});await page.keyboard.press('Escape');
+    await page.locator(`[data-agent-row="${b}"] .inst-row-menu > button`).click();await page.getByRole('menuitem',{name:'Remove from favorites',exact:true}).click();
+    await moved.click({button:'right'});await page.getByRole('menuitem',{name:'Split chat',exact:true}).click();
+    await page.waitForSelector('.ws-pane[data-pane="b"] .p-chat');
+    splitProof=await page.evaluate(()=>[...document.querySelectorAll('.ws-pane .panel-title h1')].map(el=>el.textContent));
+    assert.ok(splitProof.some((text:string)=>text?.includes('Alpha')||text?.includes('alpha')));assert.ok(splitProof.some((text:string)=>text?.includes('Beta')||text?.includes('beta')));
+  }
+  checks.push({case:caseName(c),splitProof,headerItems,contextItems,geometry,csp:await csp(),errors,writes});
   writeFileSync(`${out}/checks.json`,JSON.stringify(checks,null,2)+'\n');
-  assert.deepEqual(contextItems,headerItems,'matching ordinary agents offer the same actions');assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);await ctx.close();
+  assert.deepEqual(contextItems.filter((text:string)=>!favoriteLabels.includes(text)&&(text!==splitLabel||headerItems.includes(text))),headerItems,'existing actions remain alongside requested sidebar additions');assert.deepEqual(errors,[]);assert.deepEqual(writes,[]);await ctx.close();
  }
  writeFileSync(`${out}/checks.json`,JSON.stringify(checks,null,2)+'\n');
 }finally{await fx.close();}

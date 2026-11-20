@@ -6,7 +6,7 @@ const alpha={name:'alpha',backend:'codex',status:'running'}, beta={name:'beta',b
 let selected:string[]=[];
 beforeAll(async()=>{
  p=page({url:'http://127.0.0.1:19280/ui/chat/alpha'});
- vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:404,json:async()=>({})})));
+ p.document.documentElement.setAttribute('data-prefs',JSON.stringify({rev:1,values:{}}));vi.stubGlobal('fetch',vi.fn(async()=>({ok:false,status:404,json:async()=>({})})));
  nav=await import('/assets/instance-nav.js'); app=await import('/assets/app-store.js');
  Menu=(await import('/assets/ui-menu.js')).Menu;
 });
@@ -61,7 +61,7 @@ describe('the registered action host',()=>{
   fire(row,'contextmenu');await settle(8);
   const list=p.root.querySelector('[role="menu"]')!;
   const expected=chat.chatAgentMenuItems({name:'beta',inst:beta,wide:false}).filter(Boolean).map((x:any)=>x.label);
-  expect([...list.querySelectorAll('button')].map((b:any)=>b.textContent)).toEqual(expected);
+  expect([...list.querySelectorAll('button')].map((b:any)=>b.textContent)).toEqual(["Add to favorites",...expected]);
   const del=[...list.querySelectorAll('button')].at(-1);expect(del).toBeTruthy();fire(del!,'click');await settle(8);
   expect(p.root.querySelector('dialog')?.textContent).toContain('beta');expect(p.root.querySelector('dialog input')?.getAttribute('placeholder')).toBe("delete beta");
   expect(globalThis.location.pathname).toContain('alpha');expect(p.root.querySelector('.p-chat')).toBeNull();

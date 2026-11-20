@@ -1,5 +1,7 @@
 # Sidebar chat actions
 
+**Current user-requested Favorite/Split additions:** [fresh desktop/phone captures and proof](favorites/README.md). The original 16 menu images below are historical references from before those sidebar additions.
+
 A sidebar Agent row opens its chat actions on right-click, long-press, Shift+F10 or the context-menu key, without changing the current chat. The header and sidebar share `chatAgentMenuItems`, `Menu` and the phone `AgentSheet`; dialogs and server routes are reused. The existing favorites/workspace row button remains separate. Public/guest viewers gain no chat controls. No stylesheet or permission route changed.
 
 ## Real-app originals
