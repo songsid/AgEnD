@@ -10,8 +10,36 @@
       "sha256": "788f2bc5843108487183f50cc13fa8ab57f2db1ef35bf5fed9806727b4a3f552"
     },
     {
+      "path": "docs/evidence/host-monitoring-settings-m3454/README.md",
+      "sha256": "5cf7b251711e246e68730dd983de5f31e47f5b71947e07c7bd6af78aa4311e03"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-checks.json",
+      "sha256": "cc00e603e6c27590bfbc2f914eca387acf0bc721e82a03479e2113871c969dff"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-desk-en.png",
+      "sha256": "5a9707724d928e8ae985fdf114265d80a2e9b8ac1855e7499593731fbf72f760"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-phone-zh.png",
+      "sha256": "c52fe36761198f09ff14a7749465d7b69c5f07158fdfa6b8b541096f9d879bb4"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/integration.json",
+      "sha256": "4aeeee3b1445196452d3ca19660c3955d09f91a765ed4c742cf1635592dff025"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/mutants.json",
+      "sha256": "3b474719062efbeea09a62817f2af6ded2dedef07bf30359683058ed39faa5e7"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/validation.json",
+      "sha256": "2cc53a161d1617f115a010a9be358c020e0849470c254f0e38f922601a819882"
+    },
+    {
       "path": "src/config-validator.ts",
-      "sha256": "51b8bcffd058a9cfa9f23fb593471366ad211389ccc9746f09b652d897d20af1"
+      "sha256": "019cda271ab1ff72f96bd3df22761066676dfbcd340fd2f912ef7aebe55aa925"
     },
     {
       "path": "src/config.ts",
@@ -23,7 +51,7 @@
     },
     {
       "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
-      "sha256": "6faf6762b8bd1596fa5d383547c9c03831f151e5998575036a671bcf3175689f"
+      "sha256": "9e6fbe6840a6ccf7de8346e6c6f22675acbb62386df6f2089ba98db343970914"
     },
     {
       "path": "src/host-monitoring-config.ts",
@@ -35,7 +63,7 @@
     },
     {
       "path": "src/settings-api.ts",
-      "sha256": "e0464b34f81bb1c4d6b06580cc79e263533d1822347a42873438ffff304658f5"
+      "sha256": "13e106eb3091a69a1da2cd5e3a38ee31746fe32076a243433b0b7d536a111ffc"
     },
     {
       "path": "src/settings-change.ts",
@@ -72,30 +100,6 @@
     {
       "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
       "sha256": "973e3c58dbfd16db078de86a3416e891d02bb82f1581d12a16263bec8034016d"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/README.md",
-      "sha256": "2be66d87e89de9d34dde106600e31ea058de958e57dc5c57f1c78c98855e0b18"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-checks.json",
-      "sha256": "cc00e603e6c27590bfbc2f914eca387acf0bc721e82a03479e2113871c969dff"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-desk-en.png",
-      "sha256": "5a9707724d928e8ae985fdf114265d80a2e9b8ac1855e7499593731fbf72f760"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-phone-zh.png",
-      "sha256": "c52fe36761198f09ff14a7749465d7b69c5f07158fdfa6b8b541096f9d879bb4"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/mutants.json",
-      "sha256": "3b474719062efbeea09a62817f2af6ded2dedef07bf30359683058ed39faa5e7"
-    },
-    {
-      "path": "docs/evidence/host-monitoring-settings-m3454/validation.json",
-      "sha256": "d7dc455cfd89cf846ee1c1b9e3c92e729043df026f659473bea36d82cbdb045f"
     }
   ]
 }

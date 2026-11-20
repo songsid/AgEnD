@@ -47,7 +47,14 @@
     "seconds": 57,
     "tapAllowancesChanged": false,
     "actualProductCaptures": 2,
-    "visualPrivacy": "both individually clear"
+    "visualPrivacy": "both individually clear",
+    "postMergeTerminalRecheck": {
+      "checks": 124,
+      "passed": 124,
+      "seconds": 44,
+      "exitCode": 0,
+      "sourceUnchanged": true
+    }
   },
   "mutants": {
     "defaultOn": "assertion expected enabled false, got true",
@@ -58,5 +65,14 @@
     "Stage counts overlap; not a single aggregate suite.",
     "No real host metrics or monitoring runtime in this slice.",
     "One-hour both-options-on measurement is pending S-209."
-  ]
+  ],
+  "postMerge": {
+    "tests": 72,
+    "files": 3,
+    "exitCode": 0,
+    "method": "foreground non-login serial invocation",
+    "sourceDiagnostics": 0,
+    "testDiagnostics": 0,
+    "earlierBackgroundAttempts": "all72 reported pass but later exit143; origin unknown"
+  }
 }
