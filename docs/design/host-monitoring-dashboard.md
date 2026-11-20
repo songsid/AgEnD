@@ -2,9 +2,37 @@
 
 **Design only; awaiting user approval.** This note implements no collector, API, alert sender or product UI. Captures use the real Fleet shell with an inert prototype and synthetic snapshots.
 
+## Optional Settings switch — off by default
+
+Put **Host monitoring / 主機監測** in **Settings → Notifications**, using the shared Settings card, labelled switch, hint and Save bar. The switch is **Off** initially. One-sentence hint: “When on, samples every 30–60 seconds; estimated 2–4 MiB RAM and 1–4 MiB of local writes per hour.” /「開啟後每 30–60 秒取樣；估計使用 2–4 MiB 記憶體，每小時本機寫入 1–4 MiB。」These are planning estimates, not an implemented service benchmark.
+
+Proposed persisted settings: `monitoring.enabled: false` and `monitoring.agent_footprint: false`. Off must be a stored boolean **false**, never deleting the key or falling through to a future default. A missing key is also treated as false; migration materialises false before any monitoring startup. No future default change enables an existing installation.
+
+**While off, monitoring does nothing:** no collector/provider discovery, process snapshot, timer, worker, notification retry, history store or history file. Page requests return the disabled state without probes. Independent pre-existing Fleet memory admission checks and the operator's cron script are unaffected. First enable creates the bounded store and schedules work only after the setting is committed.
+
+Turning off persists false, cancels schedules/outbox, drains or terminates the bounded monitoring worker, closes and removes only the dedicated monitoring history/incident store and its known sidecars, and stops monitoring notifications. There is no “recovery” claim from disabling. Do not retain a hidden history file. Interrupted shutdown gets one fixed-path cleanup at startup with false, without opening/creating the store; no cleanup timer or directory scan. A cleanup failure is reported explicitly, never presented as a successful clean Off state; it cannot restart monitoring. Confirmation warns that recorded history will be removed. Re-enabling starts fresh.
+
+**Per-agent footprint is a separate sub-option, also off by default.** When monitoring is on, the owner may enable **Include agent footprint / 包含 Agent 資源用量**. Its hint explains the extra process snapshot and estimated 2–8 MiB RAM plus 1–4 MiB/hour for 32 agents. With it off there is no PID enumeration, descendant attribution or managed-file sampling; the page says “Agent footprint is off” rather than showing zero. Turning the parent off cancels both, with no subordinate timer. Agent preference may remain explicitly false/true in config, but can run only when both booleans are true. The dashboard cannot start monitoring by opening it.
+
+### Enabled overhead: bounded proxy on this host and estimates
+
+A private, short-lived probe read Linux CPU/RAM/pressure counters and the two filesystem counters 10 times, then read at most 4096 `/proc/*/stat` rows in five snapshots. It read no command lines, environments or user-state trees. On this 6-logical-CPU WSL host, the final warm-cache sample had 368 processes. Host reads averaged **0.120 ms CPU / 0.327 ms wall** (max 0.232 / 0.589); process snapshots averaged **4.592 ms CPU / 4.613 ms wall** (max 5.271 / 5.290), reading about 107 KiB per snapshot. These are read-cost proxies, not a production collector, cold-cache guarantee or macOS/Windows benchmark.
+
+Conservatively charging the combined host read every 30s (including disk counters that will actually run every 60s), those measured read costs alone project to 14.4 ms CPU/hour for host samples and an extra 276 ms/hour for one process snapshot/minute: **0.0004% and 0.0077% of one core**, respectively (divide by six for total-host CPU%). This excludes aggregation, persistence, discovery helpers and IPC. Do not present these tiny figures as total overhead.
+
+| Enabled scope | Planning CPU budget | Incremental resident memory estimate | Local disk writes/hour estimate |
+| --- | --- | --- | --- |
+| Host metrics only, 2 volumes, 30s/60s | 0.01–0.05% of one core; about 0.002–0.009% total on this host | 2–4 MiB within the existing Fleet process | 1–4 MiB |
+| Add agent footprint, 32 agents / observed ~368 process rows | Additional 0.02–0.2% of one core; about 0.003–0.034% total here | Additional 2–8 MiB | Additional 1–4 MiB |
+| Monitoring off | 0 monitoring CPU | No monitoring buffers/worker/history allocation | 0 monitoring writes; configuration writes only when edited |
+
+Write estimates assume compact bounded records: host/volume samples under 64 KiB payload/hour; 32 agents × 60 × 64 bytes ≈120 KiB/hour. Page/index/WAL amplification, rollups and deletion increase physical writes, so reserve the larger 1–4 MiB bands; they are estimates, **not measured disk traffic or hard guarantees**. No per-sample fsync; batch once/minute and account for WAL inside the 64 MiB cap. Alert traffic and restart discovery are extra bounded bursts. Slow WSL interop may briefly use a helper process, so peak memory needs later measurement; do not hide it in steady resident estimates. At 128 agents/4096 process rows, use the existing caps and report coverage; do not extrapolate the 32-agent numbers unchanged.
+
+The process snapshot was ~38 times the host read CPU cost in this small warm-cache probe, so a separate off-by-default agent option is justified. After implementation, measure actual incremental CPU/RSS/physical writes for an hour on WSL, Ubuntu and macOS, plus capped-agent/slow-provider cases, before claiming these budgets. The proof here is an estimate backed by bounded read samples, with no persistent monitoring enabled on the host.
+
 ## The page
 
-Add **Fleet → Host health / 主機狀態**. Answer: “Is this computer running out of something, what changed, and which agents are contributing?”
+Add **Fleet → Host health / 主機狀態**. While disabled, show “Host monitoring is off” and a link to its Settings switch, without sampling or history. The enabled page answers: “Is this computer running out of something, what changed, and which agents are contributing?”
 
 Reuse PageHead, cards, tabs, buttons, status tags and existing colour/spacing/type tokens. Desktop has adjacent CPU/memory trends and storage; phone puts storage first and pairs CPU/memory summary cards, with the active alert and lowest-space disk first. Ranges: 1h, 24h, 7d, 30d. Charts include units, peaks/minima and accessible text; missing samples remain gaps. Agent CPU, estimated memory and known managed-file bytes follow below, as cards on a phone.
 
@@ -23,7 +51,7 @@ Show computer/platform, last successful sample and coverage beside the title. WS
 
 APFS shares container space ([Apple](https://support.apple.com/en-gb/guide/security/seca6147599e/web)). Linux PSI measures resource stalls, not simply RAM used ([kernel interface](https://docs.kernel.org/accounting/psi.html)). Windows free-space calls distinguish caller-available bytes from total free space ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexa)). Windows has no Unix load equivalent in [Node's OS API](https://nodejs.org/api/os.html#osloadavg).
 
-**Agent footprint:** CPU is a percentage of the selected computer's total CPU capacity. Memory is an RSS estimate including descendants; shared pages may be counted twice. Shared services have a separate overhead row. No command lines, environments, prompts or credentials enter telemetry. Managed-file size uses existing accounting/known-file metadata only. Workspace size is **Not measured** without cheap accounting. No periodic du, Docker size query or recursive Fleet-state scan.
+**Agent footprint (optional):** CPU is a percentage of the selected computer's total CPU capacity. Memory is an RSS estimate including descendants; shared pages may be counted twice. Shared services have a separate overhead row. No command lines, environments, prompts or credentials enter telemetry. Managed-file size uses existing accounting/known-file metadata only. Workspace size is **Not measured** without cheap accounting. No periodic du, Docker size query or recursive Fleet-state scan.
 
 ### WSL backing drive
 
@@ -35,7 +63,7 @@ If interop, registration, mount or identity is unavailable, show **Windows drive
 
 ## Sampling, bounds and low-water behaviour
 
-One sampler per computer; no probes per browser or request.
+Only while enabled: one sampler per computer; no probes per browser or request. Agent intervals below apply only when its separate sub-option is enabled.
 
 - CPU and existing memory snapshot every 30s; filesystem counters every 60s, prioritising Fleet state and WSL backing drive; agent footprint every 60s.
 - Reuse host-memory.ts, memory-pressure.ts and DarwinMemoryProbe without changing admission/spawn policy. The on-demand directory-size probes in resource-report.ts are **not** a periodic source.
@@ -47,7 +75,7 @@ One sampler per computer; no probes per browser or request.
 - Below 2GiB available on the state volume **or verified WSL backing volume**, pause history writes and retain current snapshots in RAM. Resume after both exceed 4GiB for 10min. Minimal incident/delivery state has a preallocated bounded reserve inside the same budget. ENOSPC/read-only never crashes Fleet or starts repeated writes.
 - Log transitions and bounded diagnostics, not every sample. Never automatically delete workspaces, compact disks or kill agents.
 
-Handlers, Needs you and /sysinfo read the same cache. Refresh reloads that cache without launching probes. Return at most 240 chart buckets/series and 50 agent rows/page; do not allow a history reader to pin an unbounded journal. Collection runs even with the web closed.
+Handlers, Needs you and /sysinfo read the same cache. Refresh reloads that cache without launching probes. Return at most 240 chart buckets/series and 50 agent rows/page; do not allow a history reader to pin an unbounded journal. Enabled collection runs even with the web closed. Off runs nothing.
 
 After two missed intervals, show **Stale / 資料已過期** and last-good time. Expected but unreadable metrics show **Not available / 無法取得** and a reason. Unknown is never zero or green; no-data gaps break lines. Unsuitable fields, such as APFS on Ubuntu, are omitted rather than treated as failures.
 
@@ -79,7 +107,7 @@ Do not change cron/webhook during design. After implementation, the operator exp
 
 ## Approval and later delivery
 
-Approve/reject the page, platform-specific views, defaults and bounded policy before implementation. First delivery must support **WSL, macOS and native Ubuntu**. Windows Runtime adds negotiated coverage and honest unknowns for older versions.
+Approve/reject the off-by-default Settings control, separate agent option, overhead estimates, page, platform-specific views, defaults and bounded policy before implementation. First delivery must support **WSL, macOS and native Ubuntu**. Windows Runtime adds negotiated coverage and honest unknowns for older versions.
 
 Later slices: collector/cache and bounded history; incident/delivery integration; Fleet UI. Validate parsers/missing states offline, storage caps/low-water deterministically, then native acceptance on each platform. Prototype captures prove layout only, not native collection or alert delivery.
 
