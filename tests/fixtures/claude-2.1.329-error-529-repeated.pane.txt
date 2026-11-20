@@ -1,0 +1,50 @@
+ ▝▝   ▝▝   /tmp/agend-audit/w/p329
+
+
+❯ hello from the audit
+
+● mock reply 1
+
+✻ Baked for 0s · done 9:53 PM
+
+❯ SLOW turn please
+
+● slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+  slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow slow
+
+✻ Churned for 25s · done 9:53 PM
+
+❯ queued while busy MARKQ
+
+● mock reply 6
+
+✻ Baked for 0s · done 9:53 PM
+
+❯ [agend-delivery-id:11111111-2222-3333-4444-555555555555]
+  [from:audit-peer] first line of a multi-line message
+  second line with detail
+  third line closes it
+  (message_id: xmsg-1 | correlation_id: cid-1)
+
+● mock reply 7
+
+✻ Sautéed for 0s · done 9:53 PM
+
+❯ same words start this paste
+  middle line
+  end with same words start this paste
+
+● mock reply 9
+
+✻ Cogitated for 0s · done 9:53 PM
+
+❯ trigger E429 nowtrigger E529 now
+
+● API Error: Repeated 529 Overloaded errors. The API is at capacity — this is usually temporary. Try again in a moment. If it persists, check your
+  inference gateway (127.0.0.1:18329).
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ Resend your message to try again
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ok
+  ⏵⏵ bypass permissions on (shift+tab to cycle)
