@@ -12,6 +12,7 @@ import { register } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState, Empty } from "/assets/ui-states.js";
+import { labelOf } from "/assets/instance-nav.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
 
@@ -33,6 +34,9 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
   const [allow, setAllow] = useState(false);
   const [until, setUntil] = useState(() => localIn(7));
   const [uses, setUses] = useState("");
+  const { instances } = useStore(appStore);
+  const agentLabel = (name) => labelOf((instances || []).find((i) => i.name === name) || { name });
+  const personLabel = (p) => p?.label || agentLabel(p?.userId || "");
   const tk = ticket, st = stateOf(tk.state);
   const decide = async (decision) => {
     if (busy) return;
@@ -53,25 +57,30 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
   const people = tk.origin?.people || [];
   const originText = tk.origin?.kind === "unknown" ? ca("origin_unknown") : tk.origin?.kind === "mixed" ? ca("origin_mixed") : "";
   return html`<article class=${`card contact-ticket${focus ? " focus" : ""}`} data-ticket=${tk.id} data-state=${st}>
-    <div class="contact-ticket-head"><strong title=${tk.id}>${ca("ticket", shortTicketId(tk.id))}</strong><span class=${`contact-pill ${TONE[st]}`}>${ca(`state_${st}`)}</span>
-      <span class="muted">${ca(`verb_${tk.verb}`)}</span></div>
-    <p class="contact-ticket-route">${ca("from", tk.source)} → ${ca("to", tk.target)}</p>
-    <p class="contact-ticket-origin">${people.map((p, i) => html`${i ? ", " : ""}<button type="button" class="link-btn" title=${ca("filterPerson", label(p))}
-        onClick=${() => onPerson?.(p)}>${label(p)}</button>`)}${originText ? html` <span class="contact-pill warn">${originText}</span>` : null}
-      ${tk.origin?.chain?.length ? html` <span class="muted">${ca("via", tk.origin.chain.join(" → "))}</span>` : null}</p>
+    <div class="contact-ticket-head"><strong>${ca("ticketTitle")}</strong><code class="contact-ticket-id" title=${tk.id}>#${shortTicketId(tk.id)}</code>
+      <span class="contact-ticket-verb">${ca(`verb_${tk.verb}`)}</span><span class=${`contact-pill ${TONE[st]}`}>${ca(`state_${st}`)}</span></div>
+    <div class="contact-ticket-meta">
+      <div class="contact-ticket-route"><span>${ca("from", "")}</span><span class="contact-agent-chip" title=${tk.source}>${agentLabel(tk.source)}</span>
+        <span>→ ${ca("to", "")}</span><span class="contact-agent-chip" title=${tk.target}>${agentLabel(tk.target)}</span></div>
+      <div class="contact-ticket-origin">${people.map((p) => html`<button type="button" class="link-btn" title=${ca("filterPerson", personLabel(p))}
+          onClick=${() => onPerson?.(p)}>${personLabel(p)}</button>`)}${originText ? html`<span class="contact-pill warn">${originText}</span>` : null}
+        ${tk.origin?.chain?.length ? html`<span class="contact-hop-chain"><span>${ca("via", "")}</span>${tk.origin.chain.map((name, i) => html`${i ? html`<span aria-hidden="true">→</span>` : null}<span class="contact-hop" title=${name}>${agentLabel(name)}</span>`)}</span>` : null}</div>
+    </div>
     ${tk.message ? html`<pre class="contact-ticket-message">${tk.message}</pre>` : null}
-    <p class="muted contact-ticket-times">${ca("created", when(tk.createdAt))} · ${tk.decidedAt ? ca("decided", when(tk.decidedAt), label(tk.decidedBy)) : ca("expires", when(tk.expiresAt))}</p>
-    ${st === "delivered" ? html`<p class="note">${ca("deliveryNote")}</p>` : null}
-    ${/* The server's reason code, in words (Sentinel's A1 copy); a code the page doesn't know says nothing rather than a guess. */ ""}
-    ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html` ${ca("resetNote")}` : null}</p>` : null}
+    <div class="contact-ticket-foot">
+      <div class="contact-ticket-times"><span class="contact-time-item">${ca("created", when(tk.createdAt))}</span>
+        <span class="contact-time-item">${tk.decidedAt ? ca("decided", when(tk.decidedAt), personLabel(tk.decidedBy)) : ca("expires", when(tk.expiresAt))}</span></div>
+      ${st === "delivered" ? html`<p class="note">${ca("deliveryNote")}</p>` : null}
+      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html` ${ca("resetNote")}` : null}</p>` : null}
+    </div>
     ${tk.canDecide && st === "pending" ? html`<div class="contact-decide">
-      <p class="note">${ca("decidedNote")}</p>
-      <label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} /><span>${ca("alsoAllow")}</span></label>
       ${allow ? html`<div class="field-row contact-allow">
         <label class="field"><span>${ca("alsoAllowUntil")}</span><input class="input" type="datetime-local" value=${until} disabled=${busy} onInput=${(e) => setUntil(e.currentTarget.value)} /></label>
         <label class="field"><span>${ca("alsoAllowUses")}</span><input class="input" type="number" min="1" inputmode="numeric" value=${uses} disabled=${busy} onInput=${(e) => setUses(e.currentTarget.value)} /></label></div>` : null}
-      <div class="field-row"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => void decide("approve-once")}>${ca("approveOnce")}</button>
-        <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => void decide("decline")}>${ca("decline")}</button></div>
+      <div class="contact-decide-controls"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => void decide("approve-once")}>${ca("approveOnce")}</button>
+        <button type="button" class="btn btn-sm danger" disabled=${busy} onClick=${() => void decide("decline")}>${ca("decline")}</button>
+        <label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} /><span>${ca("alsoAllow")}</span></label></div>
+      <p class="note">${ca("decidedNote")}</p>
     </div>` : null}
   </article>`;
 }
@@ -107,18 +116,18 @@ export function ContactAuthorizations() {
   const names = (instances || []).map((i) => i.name).filter(Boolean).sort();
   const list = page.items.filter((x) => !focus || x.id !== focus.id);
   return html`<div class="contact-auth-page">
-    <p class="note">${ca("pageLead")}</p>
-    <div class="field-row contact-filters">
-      <div class="seg" role="group" aria-label=${ca("filterStatus")}>${["pending", "all"].map((s) => html`<button key=${s} type="button" class=${`seg-item${status === s ? " active" : ""}`}
+    <p class="contact-lead">${ca("pageLead")}</p>
+    <div class="contact-filters">
+      <div class="seg-inline" role="group" aria-label=${ca("filterStatus")}>${["pending", "all"].map((s) => html`<button key=${s} type="button" class=${`btn btn-sm${status === s ? " btn-primary" : ""}`}
           aria-pressed=${status === s ? "true" : "false"} onClick=${() => setStatus(s)}>${ca(`filter_${s}`)}</button>`)}</div>
-      <label class="field contact-agent-filter"><span>${ca("filterAgent")}</span><select class="input" value=${agent} onChange=${(e) => setAgent(e.currentTarget.value)}>
-        <option value="">${ca("filterAny")}</option>${names.map((n) => html`<option key=${n} value=${n}>${n}</option>`)}</select></label>
-      ${person ? html`<button type="button" class="btn btn-sm btn-ghost contact-person-filter" onClick=${() => setPerson(null)}>${ca("filterPerson", label(person))} · ${ca("filterPersonClear")}</button>` : null}
+      <label class="contact-agent-filter"><span>${ca("filterAgent")}</span><select class="input" value=${agent} onChange=${(e) => setAgent(e.currentTarget.value)}>
+        <option value="">${ca("filterAny")}</option>${names.map((n) => html`<option key=${n} value=${n}>${labelOf((instances || []).find((i) => i.name === n))}</option>`)}</select></label>
+      ${person ? html`<span class="chip contact-person-filter"><span>${ca("filterPerson", label(person))}</span><button type="button" class="chip-x" aria-label=${ca("filterPersonClear")} title=${ca("filterPersonClear")} onClick=${() => setPerson(null)}>×</button></span>` : null}
     </div>
     ${focus ? html`<${TicketCard} ticket=${focus} focus=${true} onChange=${replace} onPerson=${setPerson} />` : null}
     ${page.loading ? html`<${Skeleton} lines=${4} label=${ca("loading")} />`
       : page.error && !page.items.length ? (page.error === "forbidden" ? html`<p class="note">${ca("forbidden")}</p>` : html`<${ErrorState} message=${ca(page.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void read()} />`)
-      : !list.length && !focus ? html`<${Empty} icon="key" title=${ca(status === "pending" ? "emptyPending" : "empty")} />`
+      : !list.length && !focus ? html`<${Empty} icon="key" title=${ca(status === "pending" ? "emptyPending" : "empty")} hint=${ca("emptyHint")} action=${status === "pending" ? html`<button type="button" class="btn btn-sm" onClick=${() => setStatus("all")}>${ca("viewAll")}</button>` : null} />`
       : html`<div class="contact-ticket-list">${list.map((tk) => html`<${TicketCard} key=${tk.id} ticket=${tk} onChange=${replace} onPerson=${setPerson} />`)}</div>`}
     ${page.next ? html`<div class="field-row"><button type="button" class="btn btn-sm" onClick=${() => void read(page.next)}>${ca("more")}</button></div>` : null}
   </div>`;

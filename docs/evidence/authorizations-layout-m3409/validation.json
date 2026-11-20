@@ -1,0 +1,24 @@
+{
+  "uiGate": {
+    "command": "node scripts/ci/ui-gate-smokes.mjs",
+    "passed": 27,
+    "failed": 0
+  },
+  "focusedUi": {
+    "files": 11,
+    "passed": 234
+  },
+  "changelog": {
+    "files": 1,
+    "passed": 75
+  },
+  "finalPersonFilterCase": {
+    "passed": 1
+  },
+  "testTypes": {
+    "diagnostics": 0
+  },
+  "principalViews": 8,
+  "liveFleetOrVendorCalls": false,
+  "authorizationPolicyChanged": false
+}
