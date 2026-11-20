@@ -2546,6 +2546,16 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   border-bottom: 1px solid var(--border); user-select: none; }
 .oo-zoom .oo-fill { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
 .oo-zoom .oo-fill.on { background: var(--accent-dim); color: var(--text); }
+/* M-3432 (#4255): floating snack tray for packs with `snacks` — bottom-left on desktop, above zone pills on phone, 44 px tap targets. */
+.oo-snacks { position: absolute; z-index: 6; left: var(--s-3); bottom: var(--s-3); display: flex; align-items: center; gap: var(--s-1);
+  max-width: calc(100% - 2 * var(--s-3)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
+.oo-snack { flex: none; min-width: var(--tap); min-height: var(--tap); padding: var(--s-1); border: 1px solid transparent; border-radius: var(--r-md); touch-action: none; }
+.oo-snack[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-dim); }
+.oo-snack-icon { width: 28px; height: 28px; display: block; image-rendering: pixelated; pointer-events: none; }
+.oo-snack-ghost { position: absolute; left: 0; top: 0; z-index: 9; pointer-events: none; display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: var(--s-1); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--shadow-2); }
+.oo-snack-hint { font-size: var(--fs-xs); color: var(--text); white-space: nowrap; padding-right: var(--s-1); }
 .oo-stage.editing .oo-mini { display: none; }
 /* #2737: a single office all in view (the page sets data-whole): the overview would repeat the panel. */
 .oo-mini[data-whole] { display: none; }
@@ -2720,6 +2730,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
     max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
   .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
+  .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
+  .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
 /* M-3253: the Office's ⋯ sheet (a Dialog: a bottom sheet on a phone) — Fit, Fill and Fullscreen as tiles, then Live and
    the Office bar's own controls, one per row, each at least 44 px; a select's text from --fs-md (16 px in a field on a phone: tokens.css). */

@@ -445,7 +445,7 @@ in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its
 #4119 **Drag and pat** in the Office bar (per device, on by default, off with reduced motion; never on a share link): drag
 someone and they walk back; their card's Pat/Feed show hearts and words; nothing reaches the agent unless that card's
 **Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
-its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words, and upload or delete **skin packs** (an
+its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words; (#4255) packs with optional `snacks` (1–12 items, `sprite`, optional `eat` overlay, `radius`) and `characters.<set>.eat` show a floating snack tray (bottom-left; above zone pills on phone) for drag-to-feed, tap-to-arm, and placed snacks (up to 6 on floor, 30 s TTL, up to 4 nearest idle racers honoring `stayInArea`, first eats and others scatter; packs without `snacks` stay unchanged), and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
 checks every rule — PNG only, each strip sheet exactly frames·w × h, a 16:9 background, size and 64 Mpx decoded-pixel caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, a character may walk four
