@@ -326,6 +326,6 @@ describe("the Latest pill takes no room in the thread", () => {
   });
   it("the thread puts the pill in that dock, which stays when the pill goes", () => {
     const src = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
-    expect(src).toMatch(/<div class="jump-dock">\$\{jump\.show \? html`<button data-trust="thread-control" type="button" class=\$\{`jump-latest\$\{jumpIdle \? " is-idle" : ""\}`\}/);
+    expect(src).toMatch(/<div class="jump-dock">\$\{jump\.show \? html`<button data-trust="thread-control" type="button" ref=\$\{jumpBtn\} class=\$\{`jump-latest\$\{jumpIdle \? " is-idle" : ""\}`\}/);
   });
 });

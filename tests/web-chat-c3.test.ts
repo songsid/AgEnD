@@ -806,9 +806,35 @@ describe("the chat panel (the real page modules)", () => {
     expect([!!jump(), idle()], "at rest: still in the DOM (tab order, screen reader), faded").toEqual([true, true]);
     sc.scrollTop = 10; fire(sc, "scroll"); await settle();
     expect(idle(), "the next scroll brings it back").toBe(false);
-    fire(jump(), "focus"); await wait(JUMP_IDLE_MS + 100); await settle();
+    jump().focus(); fire(jump(), "focus"); await wait(JUMP_IDLE_MS + 100); await settle();
     expect(idle(), "focused: it stays").toBe(false);
   }, 15_000);
+  it("M-3492 review: focus is read from the button there now — activating a focused 最新 (gone, no blur) or a chat switch never keeps the next one from fading", async () => {
+    const c = await chatPage();
+    const { JUMP_IDLE_MS } = await import("/ui/js/panel-chat.js" as string);
+    c.stream.emit("status", frame(inst("w"), inst("x")));
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const jump = () => c.p.root.querySelector(".jump-latest");
+    const scrollUp = async () => {
+      const sc = c.p.root.querySelector(".scroller");
+      Object.assign(sc, { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000 }); fire(sc, "scroll");
+      sc.scrollTop = 0; fire(sc, "scroll"); await settle();
+      return sc;
+    };
+    await c.mount("w");
+    await scrollUp();
+    jump().focus(); fire(jump(), "focus");
+    fire(jump(), "click"); await settle();                          // activated: the view is at the bottom, the button goes
+    expect(jump(), "gone without a blur").toBeNull();
+    await scrollUp();                                               // the reader scrolls up again: a new 最新
+    await wait(JUMP_IDLE_MS + 100); await settle();
+    expect(jump().classList.contains("is-idle"), "the new one fades").toBe(true);
+    jump().focus(); fire(jump(), "focus");                          // focused in w…
+    await c.mount("x"); await settle();                             // …then another chat
+    await scrollUp();
+    await wait(JUMP_IDLE_MS + 100); await settle();
+    expect(jump().classList.contains("is-idle"), "x's fades").toBe(true);
+  }, 20_000);
 
   it("#2053: a chat shown again puts its kept thread back — the same list, only what arrived meanwhile drawn, where the reader was; it leaves as a chat always did", async () => {
     const c = await chatPage();
