@@ -1,3 +1,4 @@
+import { ClaudeTokenFetch } from "./claude-setup-token.js";
 // Local verified credential management; no credential is read back or persisted by this page.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t, lang } from "/assets/app-i18n.js";
@@ -102,6 +103,7 @@ export function ClaudeCredentialsDialog({profile,initial="subscription",continue
  <fieldset class="field" disabled=${busy}><legend>${d("method")}</legend><div class="checks">${["subscription","oauth","api"].map(kind=>html`<div class="credential-method-row"><label class="check"><input type="radio" name="claude-credential-method" value=${kind} checked=${method===kind} onChange=${()=>{if(input.current)input.current.value="";setMethod(kind);setHasInput(false);setDone(false);setError("");}} /><span>${d(kind)}</span></label><a class="btn btn-ghost credential-help" data-trust="navigation" href=${credentialHelpUrl(kind)} target="_blank" rel="noopener noreferrer">${d("help")}<${Icon} name="external" size=${14} /></a></div>`)}</div></fieldset>
  <p>${d(method+"Hint")}</p>
  ${!read?html`<${Skeleton} variant="rows" lines=${2} />`:!read.ok?html`<${ErrorState} title=${e("read")} message=${["credential_unavailable"].includes(read.error)?e("read"):credentialError(read.error)} onRetry=${load} />`:null}
+ ${method==="oauth"?html`<${ClaudeTokenFetch} key=${profile?"profile:"+profile:"default"} profile=${profile} read=${read} onBusy=${setBusy} onSaved=${result=>{if(input.current)input.current.value="";setHasInput(false);changed();setRead({...read,credential:result.credential});setPending(result.pending||[]);setDone(true);}} />`:null}
  ${method!=="subscription"?html`<div class="field"><label for="claudeCredentialSecret">${d(method==="oauth"?"tokenLabel":"apiLabel")}</label><input ref=${inputRef.current} id="claudeCredentialSecret" type="password" onInput=${event=>setHasInput(!!event.target.value)} disabled=${busy||done||!read?.ok||!read.local} autocomplete="off" spellcheck=${false} placeholder=${d("paste")} /><p class="note">${d("saved")}</p></div><p class="note">${read?.local?d("local"):e("local")}</p>${initial!=="subscription"?html`<p class="note">${d("replacement")}</p>`:null}<details class="credential-disclosure"><summary><span>${d("runtime")}</span><${Icon} name="chevron" size=${16} /></summary><p class="note">${d("runtimeHint")}</p></details>`:null}
  <p class="note credential-managed-policy">${e("managedPolicy")}</p>
  ${pending.length?html`<p role="status" class="note">${e("pending")} ${pending.join(", ")}</p>`:null}

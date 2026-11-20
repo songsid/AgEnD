@@ -5022,7 +5022,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* M-3419 approved credential UI: shared controls, with touch sizing only; no new visual treatment. */
 .credential-dialog :is(p, strong, legend) { overflow-wrap: anywhere; }
 @media (max-width: 899px), (pointer: coarse) {
-  .credential-dialog :is(.check, summary, .field input, .credential-help) { min-height: var(--tap); }
+  .credential-dialog :is(.check, summary, .field input, .credential-help, .credential-token-fetch .btn) { min-height: var(--tap); }
   .credential-dialog .check, .credential-dialog summary { align-items: center; }
   .credential-dialog summary { display: flex; }
   /* The inherited Needs you notification action is a touch target in these mockups too. */
