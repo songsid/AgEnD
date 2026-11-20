@@ -1,7 +1,11 @@
 [
   {
     "path": "README.md",
-    "sha256": "db73826afb1b5c4335f6d06856bd40765f4efd983a2422542504226c065ba9b3"
+    "sha256": "e1d4ff14e228ec578c67ea9916d61430bcec430639c57ad454ae52cd9971ac8c"
+  },
+  {
+    "path": "asset-cache-fixed.log",
+    "sha256": "cf1c27575ac9e4d14ea8d2961abd706962e9071979462212792bc7a2416b3ccd"
   },
   {
     "path": "attachment-boundary.log",

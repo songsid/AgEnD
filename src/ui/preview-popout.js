@@ -1,6 +1,7 @@
 // M-3438: presentation only. Each new window authenticates and reads its own history.
 // Only a bounded locator crosses the existing exact-window protocol; never HTML, credentials or permissions.
 import { appStore } from "/assets/app-store.js";
+import { assetUrl } from "/assets/asset-url.js";
 import { Shell, shellStore } from "/assets/app-shell.js";
 import { isSafeInstanceName } from "/assets/app-route.js";
 import { register, t } from "/assets/app-i18n.js";
@@ -59,7 +60,7 @@ export async function readPreviewSpec(chat, name, locator, current) {
 let styles;
 function loadStyles() {
   return styles ??= new Promise(resolve => {
-    const link = document.createElement("link"); link.rel = "stylesheet"; link.href = "/assets/preview-popout.css";
+    const link = document.createElement("link"); link.rel = "stylesheet"; link.href = assetUrl("/assets/preview-popout.css");
     link.onload = () => resolve(true); link.onerror = () => resolve(false); document.head.appendChild(link);
   });
 }

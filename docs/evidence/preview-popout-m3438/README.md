@@ -30,3 +30,7 @@ This is a scratch fixture/browser and stubbed test proof, not a live account, pr
 ## Current visual correction
 
 The original captures above are historical. See [R1 toolbar correction](r1/README.md) and its retaken captures for the current user look. Secondary phone controls now use the shared options dialog; fullscreen is a standard icon button.
+
+## CI asset-version correction
+
+Exact run 44698651292 failed job 136164935598 on the existing stylesheet cache contract. The optional loader now imports assetUrl and wraps its CSS URL, like other lazy panels. A versioned tab requests its own stylesheet version; plain module loads retain the plain path. No CSS, component layout, frame, handoff or public-link policy changed, so the approved R1 captures are unchanged. The asset-cache and preview-popout suites pass 17/17. Existing source/image proof is carried; no new browser or live campaign.
