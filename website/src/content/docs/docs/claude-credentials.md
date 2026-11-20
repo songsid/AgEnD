@@ -3,7 +3,7 @@ title: 'Connect Claude Code: login, setup token, or API key'
 description: Choose how a Claude Code profile signs in, understand billing, and replace or remove a saved credential.
 ---
 
-This guide applies from the **AgEnD 2.4.0 beta that includes web credential setup**. Earlier versions may not have these controls.
+This guide applies from the **AgEnD 2.4.0-beta.16 and later**. Earlier versions may not have these controls.
 
 Organization-managed Claude settings are not supported.
 
@@ -25,6 +25,10 @@ In **Settings → AI accounts & keys → Accounts → Claude Code**, choose **Su
 <span id="oauth"></span>
 ## Get a setup token
 
+In the local dashboard on the AgEnD computer, verify your administrator session and choose **Token from setup-token → Get a token for me**. AgEnD opens a private sign-in session. Choose **Open sign-in page** and sign in on Claude’s website; if prompted, paste the **Authorization code** back into AgEnD. The token goes directly into encrypted storage and is never displayed. The flow expires after 10 minutes; you can retry or paste a token instead. Saving makes no model request.
+
+To obtain a token yourself instead:
+
 1. On **your own computer**, install or open the official Claude Code CLI. Run:
 
    ```sh
@@ -34,7 +38,7 @@ In **Settings → AI accounts & keys → Accounts → Claude Code**, choose **Su
 2. Complete the official sign-in flow. Copy the resulting token privately. The command prints it; it does not save it for you.
 3. On the computer running AgEnD, open the **local dashboard** and use a verified administrator session. Under the Claude Code account controls, choose **Token from setup-token**, paste it and choose **Save credential**.
 
-A public dashboard link cannot save credentials. Do not send the token in chat or include it in screenshots. This command obtains a credential; the dashboard does not run it for you. See the [official CLI reference](https://code.claude.com/docs/en/cli-reference).
+A public dashboard link cannot save credentials. Do not send the token in chat or include it in screenshots. The command above is the manual alternative to **Get a token for me**. See the [official CLI reference](https://code.claude.com/docs/en/cli-reference).
 
 <span id="api"></span>
 ## Get an API key
@@ -47,7 +51,7 @@ API charges are separate from your subscription. AgEnD does not set Anthropic’
 
 ## Saved does not mean verified
 
-The state **Saved · not verified** means the format was checked and the credential was stored. **Saving makes no model call**, paid or otherwise. Successful normal use confirms that Anthropic accepts it. A pasted credential does not provide a subscription meter or a guessed remaining balance.
+The state **Saved · not verified** means the format was checked and the credential was stored. **Saving makes no model call**, paid or otherwise. Saving alone does not confirm that Anthropic accepts it; the saved status remains unverified. If normal use fails authentication, check or replace the credential. A pasted credential does not provide a subscription meter or a guessed remaining balance.
 
 ## Who can obtain the credential?
 
