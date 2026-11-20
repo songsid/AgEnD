@@ -14,7 +14,11 @@ import { bootFixture } from "../smoke-fixture/index.mts";
 const REPO = process.env.REPO!, OUT = process.env.OUT!, THROTTLE = Number(process.env.THROTTLE ?? 4), WIDTH = Number(process.env.WIDTH ?? 1366), LABEL = process.env.LABEL ?? "run";
 const HEIGHT = WIDTH >= 1920 ? 1080 : 768;
 mkdirSync(OUT, { recursive: true });
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49792), instances: 3, classic: false });
+// A plain placeholder roster (no teams): the evidence picture carries no realistic team, channel or agent names.
+const fx = await bootFixture({ port: Number(process.env.HP ?? 49792), classic: false, roster: [
+  { name: "general", backend: "claude-code", general: true, displayName: "General" },
+  { name: "agent-a", backend: "claude-code", displayName: "Agent A" },
+  { name: "agent-b", backend: "codex", displayName: "Agent B" }] });
 const fm = fx.fm as any;
 const [, A, B] = fx.instances.map((i: any) => i.name);
 const { publicAttachment } = await import(REPO + "/src/web-upload.ts");

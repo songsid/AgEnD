@@ -13,7 +13,7 @@ Each of two agents has 200 messages, about 14,000 DOM nodes per pane:
 - reactions, reply quotes and status lines;
 - the live activity block (a turn of 14 tool steps, the last one running).
 
-The picture `fixture-1366.png` shows the drag's starting state. The drag moves the divider 120 px right and back, then
+The picture `fixture-1366.png` shows the drag's starting state. It was recaptured with a placeholder roster: General, Agent A, Agent B, and no teams. The measured runs used the fixture's default roster, whose agent names appear relabelled as agent-a/agent-b in the result files. Names don't affect the measurement. The drag moves the divider 120 px right and back, then
 left and back, one pointer move per frame (120 moves).
 
 **Before** is `origin/release/2.3.5-alpha` 1889715bf, which already has #4277; **after** is this branch. The runs
