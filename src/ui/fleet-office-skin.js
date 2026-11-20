@@ -45,7 +45,7 @@
 // among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, walkStrip } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
 import { tierColours } from "./fleet-office-levels.js";
 import { assetUrl } from "/assets/asset-url.js";
 
@@ -526,23 +526,26 @@ export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawB
  */
 export function spriteSkin(pack, images, base = pixelSkin) {
   const img = (src) => (src && images.get(src)) || null;
+  const ready = (st) => !!st && (Array.isArray(st.sheets) ? stripImages(st).every((s) => !!img(s)) : !!img(st.src));
+  const clipMs = (env, key, st, ms) => (ms > 0 && env && typeof env.clock === "function" ? env.clock(key, st, ms) : ms);
   // A strip's frame at its displayed size (dw × dh, unsmoothed), its anchor on (x, y); mirrored about the anchor.
   const strip = (ctx, st, ms, x, y, frame = null, mirror = false) => {
-    const im = img(st && st.src);
+    if (!ready(st)) return false;
+    const f = frame ?? stripFrameAt(st, ms), cell = stripCell(st, f), im = img(cell.src);
     if (!im) return false;
-    const f = frame ?? frameAt(ms, st.frames, st.fps), b = stripBox(st, x, y, mirror);
+    const b = stripBox(st, x, y, mirror);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, f * st.w, 0, st.w, st.h, 0, 0, b.w, b.h); }
-    else ctx.drawImage(im, f * st.w, 0, st.w, st.h, b.x, b.y, b.w, b.h);
+    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, 0, 0, b.w, b.h); }
+    else ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, b.x, b.y, b.w, b.h);
     ctx.restore();
     return true;
   };
   const setOf = (look) => own(pack.characters, own(pack.byInstance, look.name)) || own(pack.characters, "default");
-  /** The strip a look shows (its pose; walking, by its heading), when its picture is loaded. */
+  /** The strip a look shows (its pose; walking, by its heading), when all its pictures are loaded. */
   const shown = (look, walking = look.pose === "walk") => {
     const ps = poseStrip(setOf(look), walking ? "walk" : look.pose, look.heading);
-    return ps && img(ps.strip.src) ? ps : null;
+    return ps && ready(ps.strip) ? ps : null;
   };
   return {
     ...base,
@@ -586,10 +589,10 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }
       // An NPC walking (#2596): its walk strip for its heading (walkSide mirrored going left), when its picture is loaded.
       const ws = walkStrip(f);
-      if (ws && strip(ctx, ws.strip, ms, f.x, f.y, null, ws.mirror)) return;
+      if (ws && ready(ws.strip) && strip(ctx, ws.strip, clipMs(env, `fw:${f.id}`, ws.strip, ms), f.x, f.y, null, ws.mirror)) return;
       // Active: its activeSprite (or its strip) plays; otherwise its strip loops ("loop", #2570) or its first frame holds.
-      if (active) strip(ctx, f.activeSprite || f.sprite, ms, f.x, f.y);
-      else if (f.loop) strip(ctx, f.sprite, ms, f.x, f.y);
+      if (active) { const st = f.activeSprite || f.sprite; strip(ctx, st, clipMs(env, `fa:${f.id}`, st, ms), f.x, f.y); }
+      else if (f.loop) strip(ctx, f.sprite, clipMs(env, `fl:${f.id}`, f.sprite, ms), f.x, f.y);
       else strip(ctx, f.sprite, 0, f.x, f.y, 0);
     },
     drawCharacter(ctx, d, look, ms, env) {
@@ -597,7 +600,8 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const ps = shown(look);
       ctx.save();
       if (look.dim) ctx.globalAlpha = 0.35;
-      const done = !!ps && strip(ctx, ps.strip, ms, d.seat.x, d.seat.y, null, ps.mirror);
+      const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}`, ps.strip, ms) : ms;
+      const done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
       ctx.restore();
       if (!done) base.drawCharacter(ctx, d, look, ms, env);
     },
@@ -608,7 +612,9 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     // An item in the air: its sender's own (their set's "prop", #2562), else the pack's for its kind, else the built-in one.
     drawProp(ctx, it, ms, env) {
       const mine = it.from ? own(setOf({ name: it.from }) || {}, "prop") : null;
-      if (!strip(ctx, mine || own(pack.props, it.hue), ms, it.x, it.y)) base.drawProp(ctx, it, ms, env);
+      const st = mine || own(pack.props, it.hue);
+      const pms = st && it.id ? clipMs(env, `p:${it.id}`, st, ms) : ms;
+      if (!strip(ctx, st, pms, it.x, it.y)) base.drawProp(ctx, it, ms, env);
     },
   };
 }
@@ -770,7 +776,12 @@ const MAX_LOADED = 24;
 const defaultImage = (url) => new Promise((resolve) => {
   if (typeof Image !== "function") { resolve(null); return; }
   const im = new Image();
-  im.onload = () => resolve(im);
+  im.onload = () => {
+    // M-3394 (#4231): pre-decode each sheet before handing the skin to the renderer so multi-sheet
+    // boundaries never trigger a synchronous decode hitch on desktop or phone.
+    if (typeof im.decode === "function") im.decode().then(() => resolve(im), () => resolve(im));
+    else resolve(im);
+  };
   im.onerror = () => resolve(null);
   im.src = url;
 });

@@ -67,6 +67,7 @@ import yaml from "js-yaml";
 import { parseDocument } from "yaml";
 import { isDeepStrictEqual } from "node:util";
 import { classicProfile, normalizeBackendOptions } from "./classic-bindings.js";
+import { modelNameCarried, type BackendPlan } from "./backend-command.js";
 import { channelWithDefaults } from "./config.js";
 import type { Logger } from "./logger.js";
 import type { FleetConfig, RawFleetConfig } from "./types.js";
@@ -411,28 +412,88 @@ function spliceChangedLines(original: string, base: string, edited: string): str
  * a runtime someone else has stopped or started meanwhile.
  */
 async function rollBackClassicProfile(ctx: SettingsApiContext, key: string, instanceName: string, paths: string[][],
-  undo: ReturnType<typeof settingsUndo>, op: { restore(): Promise<"restarted" | "not-running" | "superseded"> }, cause: string): Promise<string> {
+  undo: ReturnType<typeof settingsUndo>, op: { restore(): Promise<"restarted" | "not-running" | "superseded"> }, cause: string,
+  choice = "account", fields = "backend_options", next = "new account"): Promise<string> {
   const failed = `The room's restart failed (${cause})`;
   try {
     const retained = undoSettingsPaths(classicPath(ctx), readClassic(ctx), undo);
     if (retained.conflicts) {
       ctx.logger.warn({ key, instanceName }, "update_instance_config: classicBot.yaml changed meanwhile; the newer account is kept");
-      return `${failed}. Its account was not put back: classicBot.yaml was changed again meanwhile, and that newer change is kept. Check the room.`;
+      return `${failed}. Its ${choice} was not put back: classicBot.yaml was changed again meanwhile, and that newer change is kept. Check the room.`;
     }
     writeClassicLeaves(ctx, retained.value, paths);
   } catch (rollbackErr) {
     ctx.logger.error({ err: rollbackErr, key }, "update_instance_config: failed to roll back classicBot.yaml");
-    return `${failed}, and classicBot.yaml could not be put back (${(rollbackErr as Error).message}). The room's backend_options may still name the new account. Check the room.`;
+    return `${failed}, and classicBot.yaml could not be put back (${(rollbackErr as Error).message}). The room's ${fields} may still name the ${next}. Check the room.`;
   }
   let recovery: "restarted" | "not-running" | "superseded";
   try { recovery = await op.restore(); }
   catch (recoveryErr) {
     ctx.logger.error({ err: recoveryErr, instanceName }, "update_instance_config: failed to restore the classic room after rollback");
-    return `${failed}. Its account was put back in classicBot.yaml, but starting the room on it failed too (${(recoveryErr as Error).message}). Check the room.`;
+    return `${failed}. Its ${choice} was put back in classicBot.yaml, but starting the room on it failed too (${(recoveryErr as Error).message}). Check the room.`;
   }
-  return recovery === "restarted" ? `${failed}, so its account was put back and the room was started on it again.`
-    : recovery === "not-running" ? `${failed}. Its account was put back in classicBot.yaml; the room was not running.`
-    : `${failed}. Its account was put back in classicBot.yaml. The room was not restarted: it was stopped or started by something else meanwhile.`;
+  return recovery === "restarted" ? `${failed}, so its ${choice} was put back and the room was started on it again.`
+    : recovery === "not-running" ? `${failed}. Its ${choice} was put back in classicBot.yaml; the room was not running.`
+    : `${failed}. Its ${choice} was put back in classicBot.yaml. The room was not restarted: it was stopped or started by something else meanwhile.`;
+}
+
+/** A confirmed room /backend uses Settings' leaf writer, account gate, undo and owned restart. */
+export async function switchClassicRoomBackend(
+  ctx: SettingsApiContext, target: { instanceName: string; channelId: string; adapterId?: string },
+  plan: BackendPlan, from: string, current: () => boolean,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!current()) return { ok: false, error: "The room changed. Open /backend again." };
+  if (!KNOWN_BACKENDS.includes(plan.backend) || plan.backend === "mock"
+    || (plan.model !== null && !modelNameCarried(plan.backend, plan.model))
+    || (plan.effort !== null && !/^(low|medium|high|xhigh|max)$/.test(plan.effort))) {
+    return { ok: false, error: "Invalid backend, model or effort" };
+  }
+  const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+  let classic: Record<string, unknown>;
+  try { classic = readClassic(ctx); } catch (error) { return { ok: false, error: (error as Error).message }; }
+  if (!record(classic.channels)) return { ok: false, error: "ClassicBot room not found" };
+  const entries = Object.entries(classic.channels).filter(([key, room]) => {
+    if (!record(room) || (room.instanceName !== undefined && room.instanceName !== target.instanceName)) return false;
+    const separator = key.lastIndexOf("#");
+    const channelId = room.channelId ?? (separator < 0 ? key : key.slice(0, separator));
+    const adapterId = room.adapterId ?? (separator < 0 ? undefined : key.slice(separator + 1));
+    return channelId === target.channelId && (adapterId === undefined || adapterId === target.adapterId);
+  });
+  if (entries.length !== 1) return { ok: false, error: "ClassicBot room not found or ambiguous" };
+  const [key, value] = entries[0]!, room = value as Record<string, unknown>;
+  const defaults = record(classic.defaults) ? classic.defaults : {};
+  const backend = String(room.backend ?? defaults.backend ?? ctx.fleetConfig?.defaults?.backend ?? "claude-code");
+  if (backend !== from) return { ok: false, error: "The room's backend changed. Open /backend again." };
+  const previous = structuredClone(classic), merged: Record<string, unknown> = { ...room, backend: plan.backend };
+  for (const field of ["model", "effort"] as const) {
+    if (plan[field] === null) delete merged[field]; else merged[field] = plan[field];
+  }
+  // Keep every backend's saved options; equal profile names on different CLIs are different accounts.
+  const binding = classicProfile(normalizeBackendOptions(merged.backend_options).options, ctx.fleetConfig?.defaults?.backend_options, plan.backend);
+  if (binding.state === "invalid") return { ok: false, error: `Invalid credential_profile: ${binding.reason}` };
+  if (binding.state === "profile") {
+    const login = signedOutCredentialProfile(ctx.dataDir, plan.backend, binding.name);
+    if (login) return { ok: false, error: `The ${plan.backend} account "${binding.name}" is not signed in.\n${login.loginCommand}` };
+  }
+  classic.channels[key] = merged;
+  const before = new Set(validateClassicBotConfig(previous).errors.map(issueKey));
+  const introduced = validateClassicBotConfig(classic).errors.filter(issue => !before.has(issueKey(issue)));
+  if (introduced.length) return { ok: false, error: `Rejected: ${introduced.map(issue => `${issue.path}: ${issue.message}`).join("; ")}` };
+  if (!ctx.beginClassicSettingsRestart) return { ok: false, error: "This fleet cannot restart a ClassicBot room here" };
+  if (!current()) return { ok: false, error: "The room changed. Open /backend again." };
+  const fields = ["backend", "model", "effort"], paths = fields.map(field => ["channels", key, field]);
+  const op = ctx.beginClassicSettingsRestart(target.instanceName, fields);
+  try { writeClassicLeaves(ctx, classic, paths); }
+  catch (error) { op.close(); return { ok: false, error: "Failed to write classicBot.yaml" }; }
+  const undo = settingsUndo(classicPath(ctx), previous, classic, paths);
+  try { await op.restart(); }
+  catch (error) {
+    op.close();
+    return { ok: false, error: await rollBackClassicProfile(ctx, key, target.instanceName, paths, undo, op, (error as Error).message,
+      "backend choice", "backend/model/effort", "new settings") };
+  }
+  op.close();
+  return { ok: true };
 }
 
 /** #3715: what switchClassicRoomProfile answers. `profile` is the room's effective profile after the write (null: the shared login). */
@@ -1954,6 +2015,7 @@ export function handleSettingsRequest(
       const allowed = new Set([
         "backend",
         "model",
+        "effort",
         "auto_pause_after",
         "collab",
         "reply_triggers",
@@ -1971,6 +2033,10 @@ export function handleSettingsRequest(
         return json(res, 400, { error: "backend must be a known backend" });
       }
       if (body.model !== undefined && body.model !== null && typeof body.model !== "string") return json(res, 400, { error: "model must be a string" });
+      if (body.effort !== undefined && body.effort !== null
+        && (typeof body.effort !== "string" || !/^(low|medium|high|xhigh|max)$/.test(body.effort))) {
+        return json(res, 400, { error: "effort must be low, medium, high, xhigh, or max" });
+      }
       if (body.auto_pause_after !== undefined && body.auto_pause_after !== null
         && (typeof body.auto_pause_after !== "number" || !Number.isFinite(body.auto_pause_after) || body.auto_pause_after < 0)) {
         return json(res, 400, { error: "auto_pause_after must be a non-negative finite number" });
@@ -2016,6 +2082,7 @@ export function handleSettingsRequest(
       const previous = structuredClone(classic);
       const merged = { ...(current as Record<string, unknown>), ...body };
       if (body.model === null || body.model === "") delete merged.model;
+      if (body.effort === null) delete merged.effort;
       if (body.auto_pause_after === null) delete merged.auto_pause_after;
       if (body.tool_progress === null) delete merged.tool_progress;
       if (body.reply_completion_guard === null) delete merged.reply_completion_guard;

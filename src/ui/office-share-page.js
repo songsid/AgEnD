@@ -89,7 +89,11 @@ function blobImage(blob) {
   return new Promise((resolve) => {
     if (typeof Image !== "function") { resolve(null); return; }
     const src = URL.createObjectURL(blob), im = new Image();
-    im.onload = () => { URL.revokeObjectURL(src); resolve(im); };
+    const finish = () => { URL.revokeObjectURL(src); resolve(im); };
+    im.onload = () => {
+      if (typeof im.decode === "function") im.decode().then(finish, finish);
+      else finish();
+    };
     im.onerror = () => { URL.revokeObjectURL(src); resolve(null); };
     im.src = src;
   });

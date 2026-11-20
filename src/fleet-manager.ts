@@ -372,7 +372,7 @@ import { BrowserBackendSignIns } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
 import { ONBOARDING_BACKENDS, ONBOARDING_BROWSER_BACKENDS, readPendingBackendSignIns } from "./backend-signin-pending.js";
 import { hostFacts, runtimeAccountsCapability, runtimeFacts } from "./cli-registry.js";
-import { handleSettingsRequest, switchClassicRoomProfile, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
+import { handleSettingsRequest, switchClassicRoomProfile, switchClassicRoomBackend, type ClassicProfileSwitch, type RawConfigPatch } from "./settings-api.js";
 import type { SettingsChangeAuthority } from "./settings-authority.js";
 import { setLocale, detectLocale, getLocale, t } from "./locale.js";
 import { remoteCardAction, remoteCardChoiceLabel, remoteCardOutcomeText, remoteCardPrompt, REMOTE_CARD_TEXT_MAX } from "./remote-card-prompt.js";
@@ -1053,6 +1053,7 @@ const MODEL_SELECT_CALLBACK_PREFIX = "model-select:";
 const EFFORT_SELECT_CALLBACK_PREFIX = "effort-select:";
 const BACKEND_SELECT_CALLBACK_PREFIX = "backend-select:";
 /** #1806: where a `/backend` step is shown and answered — the Discord interaction, or a Telegram chat. */
+interface BackendMenuTarget { value: object; classicSnapshot?: string }
 interface BackendMenuPlace {
   instanceName: string; userId: string; channelId: string; adapterId?: string;
   respond: (text: string) => Promise<string | undefined>;
@@ -1062,7 +1063,7 @@ interface BackendMenuPlace {
   retireButtons?: (text: string) => Promise<void>;
   adapter?: ChannelAdapter; adapterChatId?: string; adapterThreadId?: string; menuMessageId?: string;
   /** The instance's config entry when the command was given: a step or the switch for any other is stale. */
-  target?: object;
+  target?: BackendMenuTarget;
 }
 interface PendingBackendSelect extends BackendMenuPlace {
   step: Extract<BackendStep, { kind: "choose" | "confirm" }>;
@@ -14531,7 +14532,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           return;
         }
 
-        // #1806: /backend — channel admin, as /model. A ClassicBot agent is not switched by it (it says so).
+        // /backend uses the shared staged picker for a ClassicBot room, with the same admin gate as /model.
         if (text === "/backend" || text.startsWith("/backend ") || text.startsWith("/backend@")) {
           if (!this.isModelAdmin(msg.userId, chatId, msg.adapterId)) {
             await msgAdapter?.sendText(chatId, t("permission.denied"));
@@ -20245,7 +20246,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** #1806: the web's /backend confirmations — one per question, used once, for the arguments and backend asked about. */
-  private readonly webBackendTokens = new Map<string, { instance: string; asked: string; args: string[]; from: string; target: object | undefined; deadline: number }>();
+  private readonly webBackendTokens = new Map<string, { instance: string; asked: string; args: string[]; from: string; target: BackendMenuTarget | undefined; deadline: number }>();
   /** #1269: the web's /clear confirmations — one token per question, used once, for the instance as it was asked about. */
   private readonly webClearTokens = new Map<string, { instance: string; fence: () => boolean; deadline: number }>();
 
@@ -21128,11 +21129,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       backendStep: async (instance, args, stepOpts) => {
         const refusal = this.backendCommandRefusal(instance);
         if (refusal) return { error: refusal };
+        const target = this.backendCommandTarget(instance);
         // The cached model lists, as the web's /model; an empty one is discovered once, bounded (moving to a CLI
         // never signed in at startup, or probed before it was installed, must not offer an empty list).
         const wanted = backendArgs(args)[0];
         if (wanted && KNOWN_BACKENDS.includes(wanted)) await this.ensureModelCatalog(wanted, instance);
         const step = await backendStep({ ...this.backendCommandDeps(instance, { live: false }), models: async backend => this.modelCatalogFor(backend, instance) }, instance, backendArgs(args));
+        if (!this.backendTargetIs(instance, target)) return { error: t("menu.click_stale") };
         if (step.kind === "refuse") return step.noop ? { text: step.text } : { error: step.text };
         if (step.kind === "choose") {
           const id = (token: string) => joinBackendArgs([...step.args, token]);
@@ -21150,7 +21153,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const token = randomBytes(16).toString("hex");
         this.webBackendTokens.set(token, {
           instance, asked: joinBackendArgs(backendArgs(args)), args: step.args, from: step.from,
-          target: this.fleetConfig!.instances[instance], deadline: now + CLASSIC_BACKEND_SELECTION_TIMEOUT_MS,
+          target, deadline: now + CLASSIC_BACKEND_SELECTION_TIMEOUT_MS,
         });
         return { confirm: { token, message: step.text } };
       },
@@ -27113,7 +27116,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Configured effort for an instance: per-instance, else fleet default, else none. */
   resolveInstanceEffort(instanceName: string): { effort: string | null; source: "instance" | "fleet-default" | "unset" } {
     if (isWindowsInstance(this.fleetConfig?.instances[instanceName])) return { effort: null, source: "unset" };
-    const own = (this.fleetConfig?.instances[instanceName] as { effort?: string } | undefined)?.effort;
+    const own = (this.fleetConfig?.instances[instanceName] as { effort?: string } | undefined)?.effort
+      ?? this.contactRoom(instanceName)?.effort;
     if (own) return { effort: own, source: "instance" };
     const fallback = (this.fleetConfig?.defaults as { effort?: string } | undefined)?.effort;
     if (fallback) return { effort: fallback, source: "fleet-default" };
@@ -27338,6 +27342,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   /** The steps' view of this fleet (backend-command.ts). `live`: a missing or stale model list may be probed (not on the web). */
   private backendCommandDeps(instanceName: string, opts: { live: boolean; onLiveProbe?: () => void }): BackendCommandDeps {
+    const classic = this.contactRoom(instanceName);
     return {
       currentBackend: (name) => this.backendNameForInstance(name),
       currentDisplay: (name) => `${this.backendNameForInstance(name)} · ${this.resolveInstanceModel(name).display}`,
@@ -27347,7 +27352,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       modelKnown: (backend, model) => this.backendModelVerdict(instanceName, backend, model).ok,
       effortLevels: (backend, model) => this.backendEffortLevels(instanceName, backend, model),
       inherited: (key) => {
-        const value = (getEffectiveInstanceDefaults(this.fleetConfig?.defaults) as Record<string, unknown>)[key];
+        const value = (key === "model" && classic ? this.classicChannels?.getDefaults().model : undefined)
+          ?? (getEffectiveInstanceDefaults(this.fleetConfig?.defaults) as Record<string, unknown>)[key];
         return typeof value === "string" && value ? value : undefined;
       },
       modelCompatible: (backend, model) => isModelCompatible(backend, model),
@@ -27355,7 +27361,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const status = this.getInstanceStatus(name);
         return { running: status === "running", busy: status === "running" && !this.getInstanceIdle(name), status };
       },
-      t: (key, ...args) => t(key, ...args),
+      confirmationNotice: () => classic?.restrictedMode === true ? t("classic.restricted_backend_notice") : undefined,
+      t: (key, ...args) => t(classic && key === "backend.default_inherited" ? "backend.default_classic_inherited" : key, ...args),
     };
   }
 
@@ -27626,15 +27633,26 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * #1806 review: the instance a `/backend` was asked about is still this config entry — not one deleted and created
    * again under the same name, or replaced by a Settings edit (both put a new object there), stopped or not.
    */
-  private backendTargetIs(instanceName: string, target: object | undefined): boolean {
+  private backendCommandTarget(instanceName: string): BackendMenuTarget | undefined {
     const instances = this.fleetConfig?.instances;
-    return !!target && !!instances && Object.prototype.hasOwnProperty.call(instances, instanceName) && instances[instanceName] === target;
+    const fleet = instances && Object.hasOwn(instances, instanceName) ? instances[instanceName] : undefined;
+    const rooms = (this.classicChannels?.getAll?.() ?? []).filter(room => room.instanceName === instanceName);
+    if (fleet) return rooms.length ? undefined : { value: fleet };
+    if (rooms.length !== 1) return undefined;
+    try { return { value: rooms[0]!, classicSnapshot: createHash("sha256")
+      .update(readFileSync(join(this.dataDir, "classicBot.yaml"))).update("\0")
+      .update(JSON.stringify(this.fleetConfig?.defaults ?? {})).digest("hex") }; }
+    catch { return undefined; }
   }
 
-  /** `/backend` is for fleet.yaml instances: update_instance_config does not manage a ClassicBot agent. */
+  private backendTargetIs(instanceName: string, target: BackendMenuTarget | undefined): boolean {
+    const now = this.backendCommandTarget(instanceName);
+    return !!target && now?.value === target.value && now.classicSnapshot === target.classicSnapshot;
+  }
+
+  /** An absent, ambiguous or unreadable room is never a backend-switch target. */
   private backendCommandRefusal(instanceName: string): string | null {
-    return this.fleetConfig?.instances && Object.prototype.hasOwnProperty.call(this.fleetConfig.instances, instanceName)
-      ? null : t("backend.classic_unsupported", instanceName);
+    return this.backendCommandTarget(instanceName) ? null : t("classic.no_agent");
   }
 
   /**
@@ -27654,6 +27672,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!stillCurrent()) return t("menu.click_stale");
     const { plan } = step;
     const shown = planDisplay(deps, plan);
+    const room = this.contactRoom(instanceName);
+    if (room && !Object.hasOwn(this.fleetConfig?.instances ?? {}, instanceName)) {
+      const saved = await switchClassicRoomBackend(this as unknown as import("./settings-api.js").SettingsApiContext,
+        room, plan, from, stillCurrent);
+      if (!saved.ok) return t("backend.failed", instanceName, plan.backend, saved.error);
+      return this.getInstanceStatus(instanceName) === "running"
+        ? t("backend.switched", instanceName, plan.backend, shown.model, shown.effort)
+        : t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName));
+    }
     const { value, error } = await new Promise<{ value: unknown; error?: string }>(resolve => {
       applyInstanceConfigPatch(this, instanceName, { backend: plan.backend, model: plan.model, effort: plan.effort }, (value, error) => resolve({ value, error }));
     });
@@ -27733,17 +27760,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return undefined;
   }
 
-  /** Start `/backend` for a fleet instance from Discord or Telegram; the caller has checked the channel admin. */
+  /** Start the shared `/backend` picker for a Fleet instance or ClassicBot room. */
   private async beginBackendCommand(place: BackendMenuPlace, args: string[]): Promise<void> {
     const refusal = this.backendCommandRefusal(place.instanceName);
     if (refusal) { await place.respond(refusal); return; }
     if (!place.respondChoices && !(place.adapter && place.adapterChatId)) { await place.respond(t("backend.usage")); return; }
-    place = { ...place, target: this.fleetConfig!.instances[place.instanceName] };
+    place = { ...place, target: this.backendCommandTarget(place.instanceName) };
     const deps = this.backendCommandDeps(place.instanceName, {
       live: true,
       onLiveProbe: () => { void place.respond(t("model.refreshing")).catch(() => { /* the step still follows */ }); },
     });
     const step = await backendStep(deps, place.instanceName, args);
+    if (!this.backendTargetIs(place.instanceName, place.target)) { await place.respond(t("menu.click_stale")); return; }
     if (step.kind === "refuse") { await place.respond(step.text); return; }
     await this.presentBackendStep(place, step);
   }
@@ -27771,6 +27799,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     adapter: ChannelAdapter, chatId: string, threadId?: string, adapterId?: string,
   ): Promise<void> {
     const respond = async (reply: string): Promise<string | undefined> => (await adapter.sendText(chatId, reply, { threadId })).messageId;
+    if (!this.isModelAdmin(userId, channelId, adapterId)) { await respond(t("permission.denied")); return; }
     await this.beginBackendCommand(
       { instanceName, userId, channelId, adapterId, respond, adapter, adapterChatId: chatId, adapterThreadId: threadId },
       backendArgs(text.replace(/^\/backend(@\S+)?/, "")),
@@ -27804,6 +27833,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (!choice) return true;
       if (!this.backendTargetIs(pending.instanceName, pending.target)) { await this.endBackendMenu(pending, t("menu.click_stale")).catch(() => {}); return true; }
       const next = await backendStep(this.backendCommandDeps(pending.instanceName, { live: true }), pending.instanceName, [...step.args, choice.token]);
+      if (!this.backendTargetIs(pending.instanceName, pending.target)) { await this.endBackendMenu(pending, t("menu.click_stale")).catch(() => {}); return true; }
       if (next.kind === "refuse") { await this.endBackendMenu(pending, next.text).catch(() => {}); return true; }
       await this.presentBackendStep(pending, next);
       return true;
@@ -28115,6 +28145,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       reply_completion_guard: replyCompletionGuard ?? true,
       ...(backend ? { backend } : {}),
       ...(model ? { model } : {}),
+      ...(classicIdentity?.effort ? { effort: classicIdentity.effort } : {}),
       ...(classicIdentity?.displayName ? { display_name: classicIdentity.displayName } : {}),
       ...(classicIdentity?.description ? { description: classicIdentity.description } : {}),
       ...(autoPauseAfter !== undefined ? { auto_pause_after: autoPauseAfter } : {}),
