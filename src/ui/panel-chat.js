@@ -1170,6 +1170,8 @@ function ModelMenu({ name, c, lease }) {
   return html`<div class="model-menu-scrim" onClick=${close}></div><div class="model-menu-pop" ref=${(el) => { pop.current = el; place(el); }} onKeyDown=${onKeys}>${body}</div>`;
 }
 
+const usesModelMenu = c => c?.command === "model" && (c.choices ? c.choices.step !== "backend" : c.busy && !c.error && !c.args);
+
 function CommandCard({ name, lease }) {
   const c = store.state.commands[name];
   if (!c) return null;
@@ -1182,7 +1184,7 @@ function CommandCard({ name, lease }) {
   // bottom sheet on a phone — not a card above the box. A failure, its result text and /backend stay the card.
   // The menu is /model's list: shown with its choices, or while that list loads. A model being switched to (a pick from the
   // menu, a typed "/model <id>") is the card's, as before (#4003 review).
-  if (c.command === "model" && (c.choices ? c.choices.step !== "backend" : c.busy && !c.error && !c.args)) return html`<${ModelMenu} name=${name} c=${c} lease=${lease} />`;
+  if (usesModelMenu(c)) return html`<${ModelMenu} name=${name} c=${c} lease=${lease} />`;
   const open = sub && sub.for === c.choices ? c.choices.options.find((o) => o.id === sub.id && o.effort) : null;
   const pickEffort = async (model, level) => {
     setSub(null);
@@ -1524,7 +1526,7 @@ export function SidebarChatMenu({ inst, context, onClose }) {
   const [phase, setPhase] = useState("menu");
   const [, redraw] = useState(0);
   const wide = useStore(chatWide).on;
-  useStore(themesStore); useStore(activityInfoStore); useStore(activityPrefs); useStore(chatCardPrefs);
+  useStore(themesStore); useStore(activityInfoStore); useStore(activityPrefs);
   const auth = useWebAuthorization(), card = useCard(name, inst.card_v);
   const pinCount = usePins(name).pins?.length || 0;
   useEffect(() => store?.subscribe(target => { if (target === name) redraw(n => n + 1); }), [name]);
@@ -1533,11 +1535,13 @@ export function SidebarChatMenu({ inst, context, onClose }) {
     const feed = observeActivity(name, { changed: () => feed.stop(), wantThinking: () => activityPrefs.get().thinking });
     feed.start(); return () => feed.stop();
   }, [name, phase, activityPrefs.get().on]);
+  const command = store?.state.commands[name];
+  useEffect(() => { if ((phase === "command" && !command) || (phase === "card" && !card)) setPhase(null); }, [phase, command, card]);
   useEffect(() => { if (!phase) onClose(); }, [phase]);
   const items = chatAgentMenuItems({ name, inst, wide, pinCount, onPins: () => setPhase("pins"), onDelete: () => setPhase("delete") });
   const run = command => { setPhase("command"); void store.runCommand(name, command, "", { alive: () => lease.current() && !guestPage() }); };
   const dismiss = () => setPhase(null);
-  const chat = { card: !!card, onCard: () => setChatCardOpen(!chatCardPrefs.get().open),
+  const chat = { card: !!card, onCard: () => setPhase("card"),
     ...(supportsInstanceFeature(inst, "commands") ? { onModel: () => run("model"),
       modelText: `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`,
       onBackend: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend"), backendText: backendLabel(inst.backend) } : {}) };
@@ -1549,7 +1553,10 @@ export function SidebarChatMenu({ inst, context, onClose }) {
       onDeleted=${() => { if (navStore.get().route?.instance === name) navigate("/ui"); }} />` : null}
     ${phase === "pins" ? html`<${PinsDialog} name=${name} onClose=${dismiss} onJump=${pin => { dismiss(); navigate(`${chatPath(name)}#m=${encodeURIComponent(pin.key)}`); }} />` : null}
     ${phase === "usage" ? html`<${UsageDialog} owner=${`chat:${name}`} onClose=${dismiss} />` : null}
-    ${phase === "command" ? html`<${Dialog} title=${inst.display_name || name} onClose=${dismiss}><${CommandCard} name=${name} lease=${lease} /></${Dialog}>` : null}`;
+    ${phase === "card" && card ? html`<${Dialog} title=${t("card.label", inst.display_name || name)} onClose=${dismiss}><${IdentityCard} name=${name} card=${card} compact=${true} /></${Dialog}>` : null}
+    ${phase === "command" && command ? usesModelMenu(command)
+      ? html`<${CommandCard} name=${name} lease=${lease} />`
+      : html`<${Dialog} title=${inst.display_name || name} onClose=${() => { store.dismissCommand(name); dismiss(); }}><${CommandCard} name=${name} lease=${lease} /></${Dialog}>` : null}`;
 }
 
 SidebarChatMenu.contextVersion = Menu.contextVersion === 1 && AgentSheet.sidebarTargetVersion === 1 ? 1 : 0;

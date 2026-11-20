@@ -33,3 +33,7 @@ All 16 originals were inspected; the four final phone sidebar images were re-ins
 The browser exercise caught and corrected a duplicate import rejected by Chromium, target activity-state asymmetry, and drawer-before-dialog Escape handling. Capture-only locator and test-fixture mistakes were corrected before final evidence; no failed run is presented as a pass. No destructive action was clicked in the browser.
 
 Review follows `docs/design/ui-style-guide.md` and its zh-TW copy: existing shared components/tokens, no custom CSS, visible target on touch, scoped native-menu suppression, permission fallback for retained modules. Rollback reverts these UI/gesture and skill changes; no data, configuration or server authorization migration is involved. The PR stays draft under the user's visual hold until explicitly released.
+
+## Review correction
+
+See [R1 target-card and command-dismissal proof](r1/README.md), including the new Beta-card original. Original menu images carry; the main menu layout and styles did not change.
