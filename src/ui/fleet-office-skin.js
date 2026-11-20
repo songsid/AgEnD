@@ -154,6 +154,12 @@ function drawDeskBack(ctx, d, look) {
   ctx.restore();
 }
 
+/** M-3445 (#4267): default lifted/dangling motion when a character is dragged without a custom `dragged` strip (zero sway when ms <= 0). */
+export function draggedMotion(ms) {
+  if (!(ms > 0)) return { lift: 10, tilt: 0 };
+  return { lift: 10 + Math.sin(ms * 0.011) * 1.5, tilt: Math.sin(ms * 0.009) * 0.14 };
+}
+
 function drawCharacter(ctx, d, look, ms, env) {
   if (look.pose === "away") return;
   const h = nameHash(look.name), skin = SKIN_TONES[h % SKIN_TONES.length], hair = HAIR[(h >>> 3) % HAIR.length];
@@ -168,6 +174,31 @@ function drawCharacter(ctx, d, look, ms, env) {
     art(ctx, d, 2.6, 4.6, 0.7, 0.5, "rgba(255, 120, 120, 0.45)", dy); art(ctx, d, 6.7, 4.6, 0.7, 0.5, "rgba(255, 120, 120, 0.45)", dy);
   };
   const body = (dy) => { art(ctx, d, 1, 6, 8, 5, coat, dy); art(ctx, d, 4, 6, 2, 2, shirt, dy); };
+  if (look.pose === "dragged") {
+    // M-3445 (#4267): lifted off the ground shadow, swaying gently with flailing arms and kicking legs (still when ms <= 0).
+    const sx = d.seat ? d.seat.x : d.x + CX, sy = d.seat ? d.seat.y : d.y + 53;
+    ctx.save();
+    ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+    ctx.beginPath(); ctx.ellipse(sx, sy, 12, 4.5, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    const { lift, tilt } = draggedMotion(ms);
+    const px0 = d.x + CX, py0 = d.y + TOP + 4 - lift;
+    ctx.translate(px0, py0);
+    if (tilt) ctx.rotate(tilt);
+    ctx.translate(-px0, -py0 - lift);
+    head(0, false); body(0);
+    // Surprised tiny "o" mouth & arms raised/flailing alternately.
+    art(ctx, d, 4.6, 4.7, 0.8, 0.7, eye);
+    const alt = ms > 0 && (f % 2 === 1);
+    art(ctx, d, 0, alt ? 4.5 : 6, 1, 3, coat); art(ctx, d, -0.4, alt ? 3.8 : 5.3, 1.2, 1, skin);
+    art(ctx, d, 9, alt ? 6 : 4.5, 1, 3, coat); art(ctx, d, 9.2, alt ? 5.3 : 3.8, 1.2, 1, skin);
+    // Dangling kicking legs.
+    const legs = "#3a3f4b";
+    art(ctx, d, alt ? 2.1 : 2.7, 11, 2, alt ? 2.2 : 1.7, legs);
+    art(ctx, d, alt ? 5.3 : 5.9, 11, 2, alt ? 1.7 : 2.2, legs);
+    ctx.restore();
+    return;
+  }
   if (look.pose === "working") {
     head(0, false); body(0);
     // Typing: the hands take turns on the keyboard; the screen's lines change.
@@ -268,7 +299,7 @@ function drawProp(ctx, it, ms, env) {
 }
 
 /** Frames per pose and the loop's speed (the built-in strips). */
-export const FRAMES = { working: 4, idle: 4, paused: 3, needs: 2, walk: 2 };
+export const FRAMES = { working: 4, idle: 4, paused: 3, needs: 2, walk: 2, dragged: 4 };
 export const FPS = 4;
 
 const BUBBLE_FONT = "600 11px system-ui, sans-serif";
@@ -549,8 +580,19 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     const st = own(setOf({ name }) || {}, "eat") || own(own(pack.characters, "default") || {}, "eat") || null;
     return st && ready(st) ? st : null;
   };
+  /** M-3445 (#4267): dragged strip for `name` (their set's `dragged`, else `default.dragged`, else null). */
+  const draggedStripOf = (name) => {
+    const st = own(setOf({ name }) || {}, "dragged") || own(own(pack.characters, "default") || {}, "dragged") || null;
+    return st && ready(st) ? st : null;
+  };
   /** The strip a look shows (its pose; walking, by its heading), when all its pictures are loaded. */
   const shown = (look, walking = look.pose === "walk") => {
+    if (!walking && look.pose === "dragged") {
+      const dragSt = draggedStripOf(look.name);
+      if (dragSt) return { strip: dragSt, mirror: false, customDragged: true };
+      const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
+      return fallback && ready(fallback.strip) ? { ...fallback, customDragged: false } : null;
+    }
     if (!walking && look.pose === "eat") {
       const eatSt = eatStripOf(look.name);
       if (eatSt) return { strip: eatSt, mirror: false };
@@ -614,12 +656,35 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       ctx.save();
       if (look.dim) ctx.globalAlpha = 0.35;
       const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}`, ps.strip, ms) : ms;
-      const done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
+      let done = false;
+      if (ps && look.pose === "dragged") {
+        // M-3445 (#4267): ground shadow under feet; custom `dragged` strip plays as authored, otherwise built-in lifted dangle.
+        ctx.save();
+        ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+        ctx.beginPath(); ctx.ellipse(d.seat.x, d.seat.y, Math.max(10, Math.round(ps.strip.dw * 0.24)), 4.5, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+        if (ps.customDragged) {
+          done = strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
+        } else {
+          const { lift, tilt } = draggedMotion(ms);
+          const b = stripBox(ps.strip, d.seat.x, d.seat.y);
+          const px0 = d.seat.x, py0 = b.y + Math.min(10, b.h * 0.22) - lift;
+          ctx.translate(px0, py0);
+          if (tilt) ctx.rotate(tilt);
+          ctx.scale(0.96, 1.04);
+          ctx.translate(-px0, -py0 - lift);
+          done = strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
+        }
+      } else {
+        done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
+      }
       ctx.restore();
       if (!done) base.drawCharacter(ctx, d, look.pose === "eat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
     },
     /** M-3432 (#4255): character's eating strip (set.eat → default.eat → null) when loaded. */
     eatStrip: eatStripOf,
+    /** M-3445 (#4267): character's dragged strip (set.dragged → default.dragged → null) when loaded. */
+    draggedStrip: draggedStripOf,
     /** M-3432 (#4255): draw a snack strip (placed on floor or eat overlay) at logical (x, y). */
     drawSnack(ctx, st, ms, x, y, env, clipKey = null) {
       if (!st || !ready(st)) return false;

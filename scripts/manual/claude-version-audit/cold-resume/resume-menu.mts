@@ -28,6 +28,10 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "326-menu-80": { v: "326", width: 80, flags: { tengu_gleaming_fair: true } },
   "327-menu": { v: "327", width: 160, flags: { tengu_gleaming_fair: true } },
   "327-menu-80": { v: "327", width: 80, flags: { tengu_gleaming_fair: true } },
+  // 2.1.329 audit (M-3477): from 2.1.328 the menu is gated by tengu_gleaming_fair_reuse alone (2.1.327: either flag).
+  "328-menu": { v: "328", width: 160, flags: { tengu_gleaming_fair_reuse: true } },
+  "329-menu": { v: "329", width: 160, flags: { tengu_gleaming_fair_reuse: true } },
+  "329-menu-80": { v: "329", width: 80, flags: { tengu_gleaming_fair_reuse: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 

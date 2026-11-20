@@ -1,0 +1,123 @@
+{
+  "platform": "linux-x64",
+  "versions": [
+    "0.170.0",
+    "0.171.0"
+  ],
+  "network": "user/network namespaces with loopback only (lo raised as mapped root, then mapped back to the caller's uid); external network refused",
+  "realAccounts": false,
+  "packages": "every installed @openai/codex package matched the registry dist.integrity (root and six platform packages, both versions)",
+  "cliE2e": {
+    "0.170.0": {
+      "passed": 7,
+      "skipped": 0
+    },
+    "0.171.0": {
+      "passed": 7,
+      "skipped": 0
+    }
+  },
+  "baseline": {
+    "0.170.0": {
+      "phases": 25,
+      "frames": 107,
+      "scenarios": {
+        "01-launch": 4,
+        "02-turn-ok": 3,
+        "03-turn-slow": 11,
+        "04-near-limit": 3,
+        "05-usage-limit": 2,
+        "05b-ws-credits": 2,
+        "05b2-ws-credits-esc": 1,
+        "05c-ws-spend": 2,
+        "05c2-ws-spend-esc": 1,
+        "06-e401": 13,
+        "07-e500": 31,
+        "08-capacity": 2,
+        "08b-model-not-found": 2,
+        "09-compact-args": 3,
+        "10-quit": 0,
+        "11-resume": 3,
+        "12-turn-after-resume": 3,
+        "13-app-server-killed": 1,
+        "30-trust-git": 2,
+        "31-trust-plain": 3,
+        "32-picker-launch": 3,
+        "33-picker": 4,
+        "34-picker-escaped": 1,
+        "35-picker80-launch": 3,
+        "36-picker80": 4
+      }
+    },
+    "0.171.0": {
+      "phases": 25,
+      "frames": 117,
+      "scenarios": {
+        "01-launch": 4,
+        "02-turn-ok": 5,
+        "03-turn-slow": 11,
+        "04-near-limit": 3,
+        "05-usage-limit": 2,
+        "05b-ws-credits": 3,
+        "05b2-ws-credits-esc": 2,
+        "05c-ws-spend": 3,
+        "05c2-ws-spend-esc": 2,
+        "06-e401": 13,
+        "07-e500": 32,
+        "08-capacity": 3,
+        "08b-model-not-found": 3,
+        "09-compact-args": 3,
+        "10-quit": 0,
+        "11-resume": 3,
+        "12-turn-after-resume": 4,
+        "13-app-server-killed": 1,
+        "30-trust-git": 2,
+        "31-trust-plain": 3,
+        "32-picker-launch": 3,
+        "33-picker": 4,
+        "34-picker-escaped": 2,
+        "35-picker80-launch": 3,
+        "36-picker80": 3
+      }
+    }
+  },
+  "status": {
+    "0.170.0": {
+      "states": 24,
+      "frames": 44,
+      "ansi": 24
+    },
+    "0.171.0": {
+      "states": 24,
+      "frames": 44,
+      "ansi": 24
+    }
+  },
+  "signin": {
+    "0.170.0": {
+      "40-signin-menu": 2,
+      "40b-signin-other-selected": 1,
+      "41-signin-another-way": 1
+    },
+    "0.171.0": {
+      "40-signin-menu": 2,
+      "40b-signin-other-selected": 1,
+      "41-signin-another-way": 1
+    }
+  },
+  "rollback": {
+    "new": "0.171.0",
+    "old": "0.170.0",
+    "result": "ready idle deliver-ok",
+    "recordedQuestionVisible": true
+  },
+  "modelSwitch": {
+    "outcomes": 16,
+    "sameOnBothVersions": true
+  },
+  "lastFrameReadingsEqual": true,
+  "fixtures": {
+    "files": 107,
+    "normalizationChangedReading": 0
+  }
+}

@@ -39,6 +39,30 @@ const CAROUSEL_KEY = "agend_org_office_carousel";
 const VIEW_KEY = "agend_org_office_view", VIEWS_MAX = 32;
 /** #2540: { "<office>@<style>": "cover" } — the offices whose fit fills the panel (the rest: "contain"), the last VIEWS_MAX. */
 const FIT_KEY = "agend_org_office_fit";
+/** M-3445 (#4266): { "<office>@<style>": { "<name>": { "<area>": slot } } } — per-device seat choices from dragging an agent onto another seat. */
+const SEATS_KEY = "agend_org_office_seats", SEATS_MAX = 32, SEAT_AGENTS_MAX = 500, SEAT_AREAS_MAX = 32, SEAT_SLOT_MAX = 64;
+const UNSAFE_KEY = new Set(["__proto__", "constructor", "prototype"]);
+const safeKey = (k, max = 200) => typeof k === "string" && k.length > 0 && k.length <= max && !UNSAFE_KEY.has(k);
+/** M-3445 (#4266): validate a per-office seat preference map ({ [name]: { [area]: slot } }). */
+export function seatPrefsOk(raw) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  let agents = 0;
+  for (const [name, areas] of Object.entries(raw)) {
+    if (agents >= SEAT_AGENTS_MAX) break;
+    if (!safeKey(name, 200) || !areas || typeof areas !== "object" || Array.isArray(areas)) continue;
+    const clean = {};
+    let count = 0;
+    for (const [area, slot] of Object.entries(areas)) {
+      if (count >= SEAT_AREAS_MAX) break;
+      if (!safeKey(area, 64) || !Number.isInteger(slot) || slot < 0 || slot >= SEAT_SLOT_MAX) continue;
+      clean[area] = slot;
+      count++;
+    }
+    if (count > 0) { out[name] = clean; agents++; }
+  }
+  return out;
+}
 const PACK_ID = /^[A-Za-z0-9_-]{1,40}$/;
 /** #2692: GET /ui/office-pack-changes, checked: { approval, agents: [names], pending: [views], log: [entries] } (anything odd dropped). */
 export function packChangesOk(d) {
@@ -270,6 +294,23 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
       try { const o = JSON.parse(read(FIT_KEY) || "{}"); if (o && typeof o === "object" && !Array.isArray(o)) m = o; } catch { m = {}; }
       const next = Object.entries(m).filter(([k2, v]) => k2 !== key && v === "cover").slice(-(VIEWS_MAX - 1));
       write(FIT_KEY, JSON.stringify(Object.fromEntries(fitModeOk(mode) === "cover" ? [...next, [key, "cover"]] : next)));
+    },
+    /** M-3445 (#4266): per-device seat choices for `key` (`<office>@<style>`): { [name]: { [area]: slot } }. */
+    seats: (key) => {
+      if (!safeKey(key, 100)) return {};
+      try {
+        const m = JSON.parse(read(SEATS_KEY) || "{}");
+        return m && typeof m === "object" && !Array.isArray(m) && Object.prototype.hasOwnProperty.call(m, key) ? seatPrefsOk(m[key]) : {};
+      } catch { return {}; }
+    },
+    /** M-3445 (#4266): save per-device seat choices for `key`, LRU-capped at SEATS_MAX offices. */
+    saveSeats: (key, prefs) => {
+      if (!safeKey(key, 100)) return;
+      let m = {};
+      try { const o = JSON.parse(read(SEATS_KEY) || "{}"); if (o && typeof o === "object" && !Array.isArray(o)) m = o; } catch { m = {}; }
+      const clean = seatPrefsOk(prefs);
+      const next = Object.entries(m).filter(([k2, v]) => k2 !== key && safeKey(k2, 100) && v && typeof v === "object" && !Array.isArray(v)).slice(-(SEATS_MAX - 1));
+      write(SEATS_KEY, JSON.stringify(Object.fromEntries(Object.keys(clean).length ? [...next, [key, clean]] : next)));
     },
   };
 }

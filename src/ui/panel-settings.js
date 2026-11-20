@@ -528,7 +528,7 @@ export function SettingsPanel({ route, navKey }) {
       <button type="button" class="btn btn-ghost btn-sm" disabled=${!ctx || yamlStaged(staged)} title=${ctx && yamlStaged(staged) ? tn("yamlUnsaved") : undefined} onClick=${openWizard}><${Icon} name="wand" size=${16} /><span class="hide-narrow">${tn("wizardButton")}</span></button>
       <button type="button" class="icon-btn" aria-label=${tn("helpButton")} title=${tn("helpButton")} onClick=${() => setDialog({ kind: "help", key: navKey })}><${Icon} name="info" /></button>
     </${PanelHeader}>
-    <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
+    <nav data-trust="panel-navigation" class="seg s-nav" aria-label=${tn("title")}><${SettingsSearch} schema=${ctx?.schema} /><div class="s-nav-groups">${SETTINGS_GROUPS.map((g) => html`<div key=${g.id} class="s-nav-group" role="group" aria-labelledby=${`s-grp-${g.id}`}>
       <span class="s-nav-head" id=${`s-grp-${g.id}`}>${tn(`grp_${g.id}`)}</span>
       ${g.sections.map((k) => html`<a key=${k} href=${sectionPath(k)} class=${`seg-item${k === section ? " active" : ""}`} title=${tn(`sec_${k}`)}
         aria-current=${k === section ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${tn(`sec_${k}`)}</span></a>`)}</div>`)}</div></nav>
@@ -582,10 +582,10 @@ function marked(text, query) {
  * #2347 §6: search every setting — by its name, its config key, or the words people use (both languages: "token",
  * "語言", "port") — results grouped by section with where they are; Enter or a click goes there. "/" focuses it.
  */
-function SettingsSearch() {
+function SettingsSearch({schema}) {
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
-  const hits = useMemo(() => searchSettings(q).slice(0, 40), [q]);
+  const hits = useMemo(() => searchSettings(q, schema).slice(0, 40), [q, schema]);
   // Grouped by section, the group of the best match first (its order is the ranking's): Enter takes the best.
   const groups = useMemo(() => [...new Set(hits.map((e) => e.section))].map((s) => ({ section: s, items: hits.filter((e) => e.section === s) })), [hits]);
   const flat = groups.flatMap((g) => g.items);

@@ -1,0 +1,26 @@
+[
+  {
+    "guard": "gateway-allow",
+    "failed": 6,
+    "passed": 2,
+    "restored": true
+  },
+  {
+    "guard": "page-visibility",
+    "failed": 4,
+    "passed": 11,
+    "restored": true
+  },
+  {
+    "guard": "root-launch",
+    "failed": 1,
+    "passed": 10,
+    "restored": true
+  },
+  {
+    "guard": "search-visibility",
+    "failed": 2,
+    "passed": 36,
+    "restored": true
+  }
+]

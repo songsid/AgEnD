@@ -41,6 +41,13 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "326-summary-newfocus": { v: "326", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "327-summary-newfocus": { v: "327", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "327-summary-newfocus-80": { v: "327", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  // 2.1.329 audit (M-3477): the same cases on 2.1.328 and 2.1.329.
+  "328-lookup": { v: "328", width: 160, flags: { tengu_amber_tally: TIER } },
+  "329-lookup": { v: "329", width: 160, flags: { tengu_amber_tally: TIER } },
+  "329-summary-lookup": { v: "329", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "328-summary-newfocus": { v: "328", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "329-summary-newfocus": { v: "329", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "329-summary-newfocus-80": { v: "329", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 

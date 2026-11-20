@@ -760,17 +760,47 @@ export function createThread(list, scroller, opts) {
    * a line with more than two rows always overflows (data-lines). Nothing laid out (no width): the guess it was drawn with.
    */
   function fitStatus() {
-    for (const m of list.querySelectorAll(".msg.status-line.folded")) {
-      const btn = m.querySelector(".st-more");
-      if (!btn || btn.dataset.lines) continue;
-      let measured = false, over = false;
-      for (const row of [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES)) {
-        if (!row.clientWidth) continue;
-        measured = true;
-        if (row.scrollWidth > row.clientWidth + 1) over = true;
-      }
-      if (measured && m.classList.contains("overflows") !== over) m.classList.toggle("overflows", over);
+    for (const m of list.querySelectorAll(".msg.status-line.folded")) if (!fitLine(m)) stale.add(m);
+    if (stale.size) watchStale();
+  }
+  /**
+   * One folded line; false when it was not measured because its contents are skipped. M-3486: a line whose contents the
+   * browser is skipping (content-visibility on the row while the split divider is dragged, #4277) is not measured:
+   * reading a size inside it lays that row out on its own, then locks it again — once per line, each frame (4,560 forced
+   * layouts in one drag of two real chats). It keeps its last answer until it is shown again (watchStale).
+   */
+  function fitLine(m) {
+    const btn = m.querySelector(".st-more");
+    if (!btn || btn.dataset.lines) return true;
+    const rows = [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES);
+    if (rows[0]?.checkVisibility && !rows[0].checkVisibility({ contentVisibilityAuto: true })) return false;
+    let measured = false, over = false;
+    for (const row of rows) {
+      if (!row.clientWidth) continue;
+      measured = true;
+      if (row.scrollWidth > row.clientWidth + 1) over = true;
     }
+    if (measured && m.classList.contains("overflows") !== over) m.classList.toggle("overflows", over);
+    return true;
+  }
+  /**
+   * #4295 review (Prism): a skipped line is measured as soon as it is shown again — the drag ended, or it was scrolled to —
+   * by its own check each frame (a style query, no layout) while any is waiting; nothing else is sure to come (the list's
+   * size need not change at the release). A line removed meanwhile is dropped. Stops when none waits, or the thread leaves.
+   */
+  const stale = new Set();
+  let staleFrame = null;
+  function watchStale() {
+    if (staleFrame !== null || disposed || parked || typeof requestAnimationFrame !== "function") return;
+    staleFrame = requestAnimationFrame(() => {
+      staleFrame = null;
+      for (const m of [...stale]) if (!m.isConnected || fitLine(m)) stale.delete(m);
+      if (stale.size) watchStale();
+    });
+  }
+  function unwatchStale() {
+    if (staleFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(staleFrame);
+    staleFrame = null;
   }
   let ro = typeof ResizeObserver === "function" ? new ResizeObserver(resized) : null;
   if (ro) { ro.observe(list); ro.observe(scroller); }
@@ -1064,6 +1094,7 @@ export function createThread(list, scroller, opts) {
     if (P()) P().stopAll("leave");
     for (const node of list.querySelectorAll(".html-card[data-att], .text-card[data-att]")) { const f = cardDrop.get(node); if (f) f(); }
     if (ro) { ro.disconnect(); ro = null; }
+    unwatchStale();
     if (growFrame !== null && typeof cancelAnimationFrame === "function") cancelAnimationFrame(growFrame);
     if (growTimer !== null) clearTimeout(growTimer);
     growTimer = growFrame = null;
@@ -1086,6 +1117,7 @@ export function createThread(list, scroller, opts) {
     disposed = true;
     if (!parked) watchReader(scroller, false);
     if (ro) ro.disconnect();
+    unwatchStale(); stale.clear();
     if (P()) { if (own) P().stopIn(list); else P().stopAll("leave"); }
     for (const v of nodes.values()) v.handle?.unmount();
     nodes.clear();

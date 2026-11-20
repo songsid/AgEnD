@@ -1,0 +1,129 @@
+{
+  "base": "2561cb29b1d315c358e55749c3b41d305273139f",
+  "files": [
+    {
+      "path": "changes/4293-host-monitoring-collectors.md",
+      "sha256": "ff617db59435168e52a29ab5ef7b72fc2134c0ce244a3a52dadf680d37252811"
+    },
+    {
+      "path": "changes/4293-host-monitoring-collectors.zh-TW.md",
+      "sha256": "0ecac279e0cf850a5a30b4cfb392f261d594b6e1d0bc8c190a9edba1563e0778"
+    },
+    {
+      "path": "docs/design/host-monitoring-collectors.md",
+      "sha256": "8e9e2fec57f168565c30632ef5fd70ceba128d85701671ac75deb9ae5be72a1a"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-collectors-m3454/README.md",
+      "sha256": "cd3e7d135d728fb98287e6034f45e612e3713d64e0739eb262bbe8ed340efbeb"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-collectors-m3454/phone-settings-off.png",
+      "sha256": "0dbbf2395fcabf92d4c415b2209ff5681e19a04089d25d97ea35c81bc136d84a"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-collectors-m3454/r1-reversals.json",
+      "sha256": "8e04fafe52b0952b9155e871b979ddd86d5b9defe0bc1209d8c9c721600daf1d"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-collectors-m3454/reversals.json",
+      "sha256": "23c288b9b5fbaa59d58c9e926a6d69a11f312aa3888fc2455919e5e1c9cc0870"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-settings-ui-gate.mts",
+      "sha256": "d521469eae2ff581bf33f5bcd7c03b06756ab90456f9c3384e39091755025638"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "103a49f29885d891511d53267d321edea25e3e009e936d7761651b291282b122"
+    },
+    {
+      "path": "src/host-monitoring-config.ts",
+      "sha256": "7e1faa135ba3a93cc7ae9b0be030226a612bc2d0f6a9d3236ad49bda6b317609"
+    },
+    {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "6da1939cb51d978360602438ef420b320ea7f7372104d7696a414bd58ecb88c5"
+    },
+    {
+      "path": "src/host-monitoring-runtime.ts",
+      "sha256": "c1634a842bd3e1714695a119bf574813a3a467dc2fc1c9e393e30c9897f671da"
+    },
+    {
+      "path": "src/host-monitoring.ts",
+      "sha256": "3a999493f4545749d356751ae297be7d6806c3ece8f68e36f415025ed8af8d29"
+    },
+    {
+      "path": "src/public-web-gateway.ts",
+      "sha256": "f4a141d019d8ba4db125579e665ba4b096663b84bfd0449f7d28fe7c27dc7129"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "21e6df5ad0afdde3363966d0942e52fcd881419a7e79d584986512a82c1f55a2"
+    },
+    {
+      "path": "src/settings-baseline.ts",
+      "sha256": "80ece15ed2e7ebc5670919f115a14f1e6b61fed3a0fa35ad30045083ce92354b"
+    },
+    {
+      "path": "src/settings-effect.ts",
+      "sha256": "e11cd549c66c52b755a920c3da89190ee7475cffceaa96daecaaa543c703cbf1"
+    },
+    {
+      "path": "src/ui/panel-settings.js",
+      "sha256": "86946d1294f7d8219afde1d0579a87917c149370b8023cb19e8ddaad3e90691e"
+    },
+    {
+      "path": "src/ui/search-dialog.js",
+      "sha256": "15d07ff226546a22e83193b00bf707a5782f6651b41a43b8554f772942de7709"
+    },
+    {
+      "path": "src/ui/settings-capabilities.js",
+      "sha256": "fefeb399f40cfdc8424a384465ec27afd7d41e87a11aa7770d1f7c5690375f0b"
+    },
+    {
+      "path": "src/ui/settings-host-monitoring.js",
+      "sha256": "a4c9ac6eccb2797fe1e3d5809169703f28a7d9c0dd4cce2cfbc057d79c385909"
+    },
+    {
+      "path": "src/ui/settings-registry.js",
+      "sha256": "0e45d5e51542f4aff5971a85f09cb7a0fb65c2d260cd148d1d2d8a7898c925b9"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "984046d4c89ac15171e8ce4f16ac070f1049b80b6d15dfac9b79c49904d5dde5"
+    },
+    {
+      "path": "tests/host-monitoring-api-m3454.test.ts",
+      "sha256": "fcf51a5d2c5b2bb657eb2ce67875b56462eccc04a66eaed215e1e14fa81d01dd"
+    },
+    {
+      "path": "tests/host-monitoring-fleet-m3454.test.ts",
+      "sha256": "ee328ece5a05703642cea7e27f0ad39922746110ccacbcb73a386c3e31216b66"
+    },
+    {
+      "path": "tests/host-monitoring-lifecycle-m3454.test.ts",
+      "sha256": "05a7d5f2e778e5758afb873afa4b68946a912eacbbdb4c1fc0b70fc95bd0323a"
+    },
+    {
+      "path": "tests/host-monitoring-platform-m3454.test.ts",
+      "sha256": "0cde808eaebb048a7cee3d3d0c555415ba810fceeefa2ee7177659a684b6ae09"
+    },
+    {
+      "path": "tests/host-monitoring-runtime-m3454.test.ts",
+      "sha256": "15fb7743164307983e12fa533694b72212e7502513d70f22a96be2eb158de0dc"
+    },
+    {
+      "path": "tests/host-monitoring-settings-m3454.test.ts",
+      "sha256": "055324664fbdeb190b9750e162607e3b9e79e3121d55f74e6cac93f5088a1b84"
+    },
+    {
+      "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
+      "sha256": "93dda7aae69638b87bd65f6f7f676f9909b39657927df90b5bb3099ccec31bd9"
+    },
+    {
+      "path": "tests/web-settings-search-2347.test.ts",
+      "sha256": "92d0b186312ba66c377e616392a2e8b51298c3a51e5d47be1487e9ca2c5a41ec"
+    }
+  ]
+}
