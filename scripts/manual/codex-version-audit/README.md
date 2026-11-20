@@ -139,3 +139,15 @@ accepts that pair too. A rig note: the passes do not stop when `gen-cmd.ts` fail
 “Sign in another way”; it never chooses an account login. `rollback.sh <NEW> <OLD>` writes one mock turn with NEW,
 then uses the production exact-session resume command and the same owned home with OLD. Run both inside the
 loopback-only namespace, with separate AUDIT roots and no imported account.
+
+## Codex 0.171.0
+
+The [0.170.0 → 0.171.0 audit](../../../tests/fixtures/codex-audit-0171/README.md) reran `pass1.sh`, `pass2.sh`,
+`status-layout.sh`, `signin.sh`, `rollback.sh`, the model-switch cases and the real-CLI e2e on both versions. No backend
+change was needed. 0.171 makes the workspace TUI default-on, but it still needs the owned transcript, which
+production's `--no-alt-screen` rules out.
+
+Run every pass through `netns.sh <script> [args…]`. A bare `unshare -rn` leaves `lo` down, so codex never reaches the
+mock: every turn shows `Reconnecting... waiting for network`, and the captures look plausible but contain no real
+error frames. `netns.sh` raises `lo` as mapped root, maps back to the caller's uid and refuses to run with a
+non-loopback route.
