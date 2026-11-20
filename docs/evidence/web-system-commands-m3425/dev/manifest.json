@@ -1,7 +1,11 @@
 [
   {
     "path": "README.md",
-    "sha256": "a019f63a66c8893543f207d77bbde989fb10e71cb285165f4229fc5923179591"
+    "sha256": "a12db724a9ab105b9b94aff1801cc44c4543d66512b834a95dd45e6e485c6776"
+  },
+  {
+    "path": "alpha-contracts-fixed.log",
+    "sha256": "35cf31090e234b4fe6d5a1c592e39f04116c3fe26f8516c9bc08323d12455662"
   },
   {
     "path": "captures/checks.json",

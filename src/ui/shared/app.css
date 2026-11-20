@@ -2869,7 +2869,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .cmd-report table { table-layout: fixed; width: 100%; border-collapse: collapse; }
 .cmd-report td, .cmd-report th { overflow-wrap: anywhere; }
 .cmd-metrics td, .cmd-metrics th { padding: var(--s-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .cmd-report-body { max-height: 25vh; }
   .cmd-report-tools input, .cmd-report-tools .btn { min-height: var(--tap); }
   .cmd-report-modal .dlg-x { min-width: var(--tap); min-height: var(--tap); }
