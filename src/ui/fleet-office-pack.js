@@ -182,8 +182,8 @@ export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "pau
 /** M-3293 (#4119): what a bubbles table may name — the states, and the Office's two reactions (a pat, a feed). */
 export const BUBBLE_KEYS = [...PACK_STATES, "pat", "feed"];
 const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"], PROPS = ["task", "send", "report", "broadcast"];
-/** A character set's strips: its poses, optional eat pose (M-3432 #4255), and what its people send (#2562). */
-const SET_STRIPS = [...POSES, "eat", "prop"];
+/** A character set's strips: its poses, optional eat (M-3432 #4255) and dragged (M-3445 #4267) poses, and what its people send (#2562). */
+const SET_STRIPS = [...POSES, "eat", "dragged", "prop"];
 /** A furniture item's walking strips (#2596): a character set's walking poses. */
 const WALKS = ["walk", "walkDown", "walkUp", "walkSide"];
 const BUILT_IN = new Set(["pixel", "studio"]);

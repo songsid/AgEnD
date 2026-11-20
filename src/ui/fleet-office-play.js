@@ -7,10 +7,9 @@
 //
 // Who may play: a single zones office on the dashboard itself (not All offices, not a share link's page, not while Edit
 // layout is open), with the viewer's "Drag and pat" on (per device, on by default) — and never with reduced motion.
-import { LOGICAL, SNACK_LIMITS, stripDurationMs } from "./fleet-office-pack.js";
+import { LOGICAL, SNACK_LIMITS, own, stripDurationMs } from "./fleet-office-pack.js";
 import { nameHash } from "./fleet-office-model.js";
-import { routeStaysInArea } from "./fleet-office-zones.js";
-import { WALK } from "./fleet-office-zones.js";
+import { routeStaysInArea, WALK } from "./fleet-office-zones.js";
 
 /**
  * LONG_MS: a touch held this long without moving picks a person up (a finger that moves first pans, as before); SLOP:
@@ -273,8 +272,148 @@ export function createSnacks() {
       for (const s of scatter.values()) if (t >= s.t0 && t < s.until) return true;
       return false;
     },
+    /** M-3445: stop a picked-up character's active snack race/eating so dragging takes clean priority. */
+    cancel(name) {
+      if (!name) return;
+      eating.delete(name);
+      scatter.delete(name);
+      for (const p of placed) p.racers = p.racers.filter((n) => n !== name);
+    },
     clear() { placed = []; eating.clear(); scatter.clear(); },
   };
+}
+
+/** M-3445 (#4266): logical hit radius for dropping a dragged character onto another seat in their area. */
+export const SEAT_DRAG = { DROP_RADIUS: 36 };
+
+/** M-3445 (#4266): whether `name` is allowed by #2691 reservation rules to sit on `seat`. */
+export function canSitOnSeat(seat, name) {
+  if (!seat || !name) return false;
+  return !seat.for || seat.for.includes(name) || seat.lend === true;
+}
+
+/**
+ * M-3445 (#4266): every seat in `name`'s current area that `name` can legally be dropped onto without
+ * violating #2691 seat reservations (owners keep priority over borrowers; an owner with a free/own reserved
+ * seat chooses among their reserved seats). Returns [{ area, slot, x, y, current, occupant }].
+ */
+export function seatDropTargets(pack, desks, name) {
+  if (!pack || !pack.areas || !Array.isArray(desks) || !name) return [];
+  const d = desks.find((x) => x && x.node && x.node.name === name);
+  if (!d) return [];
+  const area = own(pack.areas, d.area);
+  if (!area || !Array.isArray(area.seats) || !area.seats.length) return [];
+  const occBySlot = new Map();
+  for (const other of desks) {
+    if (!other || !other.node || other.node.name === name || other.area !== d.area || other.slot < 0) continue;
+    occBySlot.set(other.slot, other.node.name);
+  }
+  const mine = (s, who) => !!s.for && s.for.includes(who);
+  const ownedSlots = [];
+  for (let i = 0; i < area.seats.length; i++) if (mine(area.seats[i], name)) ownedSlots.push(i);
+  const hasOwnClaim = ownedSlots.some((i) => {
+    if (i === d.slot) return true;
+    const occ = occBySlot.get(i);
+    return !occ || !mine(area.seats[i], occ);
+  });
+  const out = [];
+  for (let i = 0; i < area.seats.length; i++) {
+    const s = area.seats[i], occ = occBySlot.get(i) || null;
+    if (hasOwnClaim) {
+      if (!mine(s, name)) continue;
+      if (occ && mine(s, occ)) {
+        const oldSeat = d.slot >= 0 ? area.seats[d.slot] : null;
+        if (!oldSeat || !mine(oldSeat, occ)) continue;
+      }
+    } else {
+      if (!canSitOnSeat(s, name)) continue;
+      if (occ && mine(s, occ)) continue;
+    }
+    out.push({ area: d.area, slot: i, x: s.x, y: s.y, current: i === d.slot, occupant: occ });
+  }
+  return out;
+}
+
+/** M-3445 (#4266): nearest legal seat in `name`'s current area within `radius` of logical point `at`, or null. */
+export function findSeatDropTarget(pack, desks, name, at, radius = SEAT_DRAG.DROP_RADIUS) {
+  if (!at || !Number.isFinite(at.x) || !Number.isFinite(at.y)) return null;
+  let best = null, bestDist = radius;
+  for (const cand of seatDropTargets(pack, desks, name)) {
+    const dist = Math.hypot(at.x - cand.x, at.y - cand.y);
+    if (dist <= bestDist && (!best || dist < bestDist || cand.slot < best.slot)) {
+      best = cand;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+/**
+ * M-3445 (#4266): apply dropping `name` onto `target` seat in their area.
+ * Updates live `seats` map and per-office `prefs` ({ [name]: { [area]: slot } }), swapping cleanly when the
+ * target is occupied and the vacated seat is legal for the previous occupant, and clearing stale prefs for
+ * taken slots so other agents returning to the area later do not collide.
+ */
+export function applySeatDrop({ pack, desks, seats, prefs, name, target }) {
+  const nextSeats = new Map(seats || []);
+  const nextPrefs = {};
+  for (const [k, v] of Object.entries(prefs || {})) {
+    if (v && typeof v === "object" && !Array.isArray(v)) nextPrefs[k] = { ...v };
+  }
+  const clearSlotPref = (areaName, slot, keepName) => {
+    for (const [who, byArea] of Object.entries(nextPrefs)) {
+      if (who === keepName || !byArea) continue;
+      if (own(byArea, areaName) === slot) {
+        delete byArea[areaName];
+        if (!Object.keys(byArea).length) delete nextPrefs[who];
+      }
+    }
+  };
+  const d = Array.isArray(desks) ? desks.find((x) => x && x.node && x.node.name === name) : null;
+  const area = pack && pack.areas ? own(pack.areas, target.area) : null;
+  nextSeats.set(name, { area: target.area, slot: target.slot, x: target.x, y: target.y });
+  nextPrefs[name] = { ...(nextPrefs[name] || {}), [target.area]: target.slot };
+  clearSlotPref(target.area, target.slot, name);
+  let swapped = null;
+  const occ = target.occupant;
+  if (occ && occ !== name) {
+    const oldSlot = d && d.area === target.area && d.slot >= 0 ? d.slot : -1;
+    const oldSeat = oldSlot >= 0 && area && area.seats ? area.seats[oldSlot] : null;
+    if (oldSeat && canSitOnSeat(oldSeat, occ)) {
+      nextSeats.set(occ, { area: target.area, slot: oldSlot, x: oldSeat.x, y: oldSeat.y });
+      nextPrefs[occ] = { ...(nextPrefs[occ] || {}), [target.area]: oldSlot };
+      clearSlotPref(target.area, oldSlot, occ);
+      swapped = { name: occ, slot: oldSlot, seat: { x: oldSeat.x, y: oldSeat.y } };
+    } else {
+      nextSeats.delete(occ);
+      if (nextPrefs[occ]) {
+        delete nextPrefs[occ][target.area];
+        if (!Object.keys(nextPrefs[occ]).length) delete nextPrefs[occ];
+      }
+    }
+  }
+  return { seats: nextSeats, prefs: nextPrefs, swapped };
+}
+
+/**
+ * M-3445 (#4266): when `stayInArea` is enabled and a dragged character is dropped on empty floor (not on a seat),
+ * ensure they land at a point whose walk back to `seat` stays inside `area` (clamping to the area rect, or
+ * returning straight to `seat` if no in-area route exists).
+ */
+export function clampDropForArea(at, seat, graph, area) {
+  if (!seat) return at;
+  if (!at || !graph || !graph.areas) return seat;
+  const a = own(graph.areas, area);
+  if (!a || !a.rect) return seat;
+  const r = a.rect;
+  const inArea = (p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  if (inArea(at) && routeStaysInArea(at, seat, graph, area, null)) return at;
+  const pad = Math.min(4, r.w / 2, r.h / 2);
+  const clamped = {
+    x: Math.max(r.x + pad, Math.min(r.x + r.w - pad, at.x)),
+    y: Math.max(r.y + pad, Math.min(r.y + r.h - pad, at.y)),
+  };
+  return routeStaysInArea(clamped, seat, graph, area, null) ? clamped : { x: seat.x, y: seat.y };
 }
 
 /**
