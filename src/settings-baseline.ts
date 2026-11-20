@@ -56,6 +56,7 @@ export class SettingsBaselines {
     hubBrowserCertificate?: SettingsEffectContext["hubBrowserCertificate"];
     hubMembership?(raw: unknown): { enabled: boolean };
     hubPageSharing?(raw: unknown): { enabled: boolean };
+    hostMonitoringAvailable?(): boolean;
     hubPilotTrust?(raw: unknown): { enabled: boolean };
     hubExposure?: SettingsEffectContext["hubExposure"];
     hubPairing?: SettingsEffectContext["hubPairing"];
@@ -84,7 +85,7 @@ export class SettingsBaselines {
     }
     // Classify the raw switch from the same bounded file snapshot as the confirmation fingerprint, not cached runtime config.
     const membership = this.options.hubMembership, pilotTrust = this.options.hubPilotTrust, pageSharing = this.options.hubPageSharing;
-    return { config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
+    return { hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
       fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }

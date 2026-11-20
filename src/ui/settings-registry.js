@@ -20,6 +20,7 @@ const L = (en, zh) => ({ en, "zh-TW": zh });
 const CLI_WORDS = Object.keys(CLI_CAPS).flatMap((id) => [id, id.split("-")[0]]);
 /** [id, section, target, labelKey | label, config key, words en, words zh] */
 const ROWS = [
+  ["host.monitoring", "notifications", "#host-monitoring", null, "monitoring.enabled", ["host", "health", "monitoring", "disk", "memory", "cpu", "agent footprint"], ["主機", "監測", "磁碟", "記憶體", "資源用量"], L("Host monitoring", "主機監測")],
   ["general.location", "agent-defaults", "#general-location", null, null, ["general", "windows", "paired PC", "host", "location"], ["General", "Windows", "電腦", "主機", "執行位置"], L("Run General on", "General 執行位置")],
   // alpha.6 feedback (#2): "hub" found nothing — Settings → Hub's cards. Connect to a Hub is drawn once membership is on.
   ["hub.membership", "hub", "#hubMemberEnabled", null, "hub_member.enabled", ["hub", "team hub", "membership", "connect", "join", "pair", "share agents"], ["Hub", "團隊 Hub", "成員", "連線", "加入", "配對", "分享"], L("Allow this fleet to connect to a Hub", "允許這個 Fleet 連線至 Hub")],

@@ -26,7 +26,7 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   if (path === "/api/settings/fleet/raw" && rawHold) { const held = rawHold; rawHold = null; await held; }
   const body = (() => {
     if (method !== "GET") return { ok: true };
-    if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
+    if (path === "/api/settings/schema") return { ...schema, provider_secrets: true, host_monitoring: true };
     if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: rawWeb };
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
@@ -68,7 +68,7 @@ const open = async (section: string) => {
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
-const SECTIONS = ["preferences", "look", "agents", "accounts", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
+const SECTIONS = ["preferences", "look", "agents", "accounts", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"];
 
 /** What a section draws that no entry covers, and the entries whose element it does not draw. */
 async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {

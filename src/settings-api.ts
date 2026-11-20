@@ -1,4 +1,4 @@
-import { HOST_MONITORING_COLLECTOR_AVAILABLE, monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
+import { monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { connectInstallInfo } from "./connect/install.js";
@@ -183,6 +183,7 @@ export interface SettingsApiContext extends AppShellContext {
   logger: Logger;
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
+  hostMonitoringAvailable?(): boolean;
   /** Refresh managed guidance and web clients after a committed experimental setting change. */
   lifecycle: {
     isPaused(name: string): boolean;
@@ -730,7 +731,7 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/schema") {
     json(res, 200, {
       ...buildSettingsImpactSchema(),
-      host_monitoring: HOST_MONITORING_COLLECTOR_AVAILABLE,
+      host_monitoring: ctx.hostMonitoringAvailable?.() === true,
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
@@ -1597,7 +1598,7 @@ export function handleSettingsRequest(
       const parsed = parseMonitoringSettings(body);
       if ("error" in parsed) return json(res, 400, { error: parsed.error });
       const monitoring = { ...monitoringConfig(cfg.monitoring), ...parsed.patch };
-      if (monitoring.enabled && !HOST_MONITORING_COLLECTOR_AVAILABLE) return json(res, 409, { error: "monitoring_unavailable" });
+      if (monitoring.enabled && ctx.hostMonitoringAvailable?.() !== true) return json(res, 409, { error: "monitoring_unavailable" });
       const before = validateFleet(cfg), after = validateFleet({ ...cfg, monitoring });
       if (rejectIfWorse(res, before, after)) return;
       const previous = { value: cfg.monitoring, had: Object.hasOwn(cfg, "monitoring") };
