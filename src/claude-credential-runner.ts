@@ -7,17 +7,19 @@ async function run():Promise<void>{
  const spec=readManagedClaudeSpec(path),vault=new ClaudeCredentialVault(spec.binding.home);
  let value:Buffer|undefined;
  try{
-  const credential=vault.credential(spec.binding.profile,spec.binding.id,spec.binding.revision);value=credential.value;
-  if(credential.kind!==spec.binding.kind)throw Error();
+  if(spec.binding.kind!=="subscription"){
+   const credential=vault.credential(spec.binding.profile,spec.binding.id,spec.binding.revision);value=credential.value;
+   if(credential.kind!==spec.binding.kind)throw Error();
+  }else if(!currentManagedClaude(spec.binding))throw Error();
   if(mode==="helper"){
-   if(credential.kind!=="api-key")throw Error();
+   if(spec.binding.kind!=="api-key"||!value)throw Error();
    managedClaudeAuthInputs(spec);
    // This stdout is Claude's private credential pipe, never the Fleet/chat/log output.
    await writeClaudeCredentialPipe(value,process.stdout);value=undefined;return;
   }
-  const before=managedClaudeAuthInputs(spec),env=managedClaudeEnv(process.env,spec.env,credential.kind==="setup-token"?value.toString("utf8"):undefined);
+  const before=managedClaudeAuthInputs(spec),env=managedClaudeEnv(process.env,spec.env,spec.binding.kind==="setup-token"?value!.toString("utf8"):undefined);
   if(!probeManagedClaudeSource(spec,env)||!currentManagedClaude(spec.binding)||managedClaudeAuthInputs(spec)!==before)throw Error();
-  value.fill(0);value=undefined;vault.close();
+  value?.fill(0);value=undefined;vault.close();
   const execve=(process as NodeJS.Process&{execve?:(file:string,args:string[],env:Record<string,string>)=>never}).execve;
   process.chdir(spec.cwd);
   if(execve){execve(spec.binary,[spec.binary,...spec.args],Object.fromEntries(Object.entries(env).filter((x):x is [string,string]=>typeof x[1]==="string")));}

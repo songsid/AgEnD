@@ -10,4 +10,6 @@ Four new controls fail against the merged base: explicit source/id/revision/audi
 
 Commands: `node node_modules/.bin/tsc`, `node node_modules/.bin/tsc --noEmit -p tsconfig.test.json`, and `node node_modules/vitest/vitest.mjs run tests/claude-credential-vault-m3419.test.ts tests/web-claude-credentials-m3419.test.ts tests/claude-credential-launch-m3419.test.ts`.
 
+Review correction: explicit Subscription now retains its opaque id/revision through the existing guarded launcher instead of returning the legacy sentinel. Ambient key/token/provider variables are cleared, the CLI must report first-party `claude.ai` auth, and missing or conflicting source reports refuse before the real run. The production-backend synthetic control fails on the prior null/legacy mapping because its command contains the synthetic ambient API value. Corrected subscription and untouched-legacy controls pass. No real CLI/provider/browser campaign was repeated.
+
 Rollback: stop managed consumers before downgrading, retain the vault/key and choose an explicit supported source. The added database column is not removed by rollback; older writers using positional inserts are not compatible with it. Do not remove tombstones or rows to restore an ambient source.
