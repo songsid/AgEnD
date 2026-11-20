@@ -1,0 +1,68 @@
+{
+  "headless": true,
+  "linuxBrowser": true,
+  "results": [
+    {
+      "lang": "en",
+      "device": "desk",
+      "steps": [
+        "backend",
+        "model",
+        "effort",
+        "confirm"
+      ],
+      "guardDisclosure": true,
+      "noOverflow": true,
+      "pageErrors": 0,
+      "cspViolations": 0,
+      "unchangedBeforeConfirmation": true
+    },
+    {
+      "lang": "en",
+      "device": "phone",
+      "steps": [
+        "backend",
+        "model",
+        "effort",
+        "confirm"
+      ],
+      "guardDisclosure": true,
+      "noOverflow": true,
+      "pageErrors": 0,
+      "cspViolations": 0,
+      "unchangedBeforeConfirmation": true
+    },
+    {
+      "lang": "zh-TW",
+      "device": "desk",
+      "steps": [
+        "backend",
+        "model",
+        "effort",
+        "confirm"
+      ],
+      "guardDisclosure": true,
+      "noOverflow": true,
+      "pageErrors": 0,
+      "cspViolations": 0,
+      "unchangedBeforeConfirmation": true
+    },
+    {
+      "lang": "zh-TW",
+      "device": "phone",
+      "steps": [
+        "backend",
+        "model",
+        "effort",
+        "confirm"
+      ],
+      "guardDisclosure": true,
+      "noOverflow": true,
+      "pageErrors": 0,
+      "cspViolations": 0,
+      "unchangedBeforeConfirmation": true
+    }
+  ],
+  "scratchRemoved": true,
+  "configUnchanged": true
+}

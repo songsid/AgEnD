@@ -1,5 +1,5 @@
 import { KNOWN_BACKENDS } from "../src/config-validator.js";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { registerExecutableFixture } from "./support/process-guard.js";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -23,7 +23,9 @@ vi.mock("../src/backend/factory.js", () => ({
 const { backendStep, planDisplay } = await import("../src/backend-command.js");
 const { FleetManager } = await import("../src/fleet-manager.js");
 const { runWebCommand } = await import("../src/web-commands.js");
-const { t } = await import("../src/locale.js");
+const { t, getLocale, setLocale } = await import("../src/locale.js");
+const { ClassicChannelManager } = await import("../src/classic-channel-manager.js");
+const { default: yaml } = await import("js-yaml");
 const { resetCliHelpCache } = await import("../src/backend/launch-effort.js");
 import type { BackendCommandDeps } from "../src/backend-command.js";
 
@@ -208,6 +210,182 @@ async function click(f: ReturnType<typeof fleet>, label: string): Promise<void> 
 }
 const settle = () => new Promise(r => setTimeout(r, 0));
 
+function classicRoom(adapterId: "telegram" | "discord" = "telegram") {
+  const f = fleet(), name = "classic-example-room", key = `room-id#${adapterId}`, path = join(dataDir, "classicBot.yaml");
+  const document: { defaults: Record<string, unknown>; channels: Record<string, Record<string, unknown>> } = { defaults: { backend: "claude-code", admin_users: ["admin"] }, channels: {
+    [key]: { instanceName: name, channelId: "room-id", adapterId, name: "Example room", backend: "claude-code", model: "sonnet", restricted_mode: true,
+      backend_options: { "claude-code": { credential_profile: "claude-work" }, codex: { credential_profile: "codex-work" } } },
+    "other-id#telegram": { instanceName: "classic-other-room", channelId: "other-id", adapterId: "telegram", name: "Other room", backend: "claude-code" },
+  } };
+  writeFileSync(path, `# Preserve this note\n${yaml.dump(document)}`);
+  const profile = join(dataDir, "credential-profiles", "codex", "codex-work"); mkdirSync(profile, { recursive: true });
+  writeFileSync(join(profile, "auth.json"), JSON.stringify({ OPENAI_API_KEY: "fixture-key" }));
+  const rooms = new ClassicChannelManager(dataDir, f.fm.logger); rooms.reloadFromDisk(); f.fm.classicChannels = rooms;
+  f.any.getInstanceAdapterId = vi.fn((instance: string) => instance === name ? adapterId : "telegram");
+  const restart = vi.fn(async () => { rooms.reloadFromDisk(); });
+  const restore = vi.fn(async () => "restarted" as const);
+  f.any.beginClassicSettingsRestart = vi.fn(() => ({ restart, restore, close: vi.fn() }));
+  f.any.ensureModelCatalog = vi.fn(async () => {});
+  f.any.modelCatalogFor = vi.fn((backend: string) => backend === "codex" ? [{ id: "gpt-5.5", label: "GPT-5.5" }] : []);
+  f.any.backendEffortLevels = vi.fn((_name: string, backend: string) => backend === "codex" ? ["low", "high"] : []);
+  const run = (args = "", confirm?: string) => f.fm.webCommand({ instance: name, command: "backend", args, ...(confirm ? { confirm } : {}) }, { publicLink: false });
+  const read = () => yaml.load(readFileSync(path, "utf8")) as typeof document;
+  return { ...f, name, key, path, rooms, document, restart, restore, run, read };
+}
+
+describe("ClassicBot /backend (M-3382)", () => {
+  it.each(["en", "zh-TW"] as const)("uses the shared web picker and preserves room accounts through the confirmed write in %s", async locale => {
+    const previous = getLocale(); setLocale(locale);
+    try {
+      const f = classicRoom();
+      expect((await f.run()).body.choices?.step).toBe("backend");
+      expect((await f.run("codex")).body.choices?.step).toBe("model");
+      expect((await f.run("codex gpt-5.5")).body.choices?.step).toBe("effort");
+      const confirm = (await f.run("codex gpt-5.5 high")).body.confirm!;
+      expect(confirm.message).toContain(t("classic.restricted_backend_notice"));
+      expect(f.read()).toEqual(f.document); expect(f.restart).not.toHaveBeenCalled();
+      expect((await f.run("codex gpt-5.5 high", confirm.token)).body.text).toBe(t("backend.switched", f.name, "codex", "gpt-5.5", "high"));
+      expect(f.read().channels[f.key]).toMatchObject({ backend: "codex", model: "gpt-5.5", effort: "high", backend_options: f.document.channels[f.key]!.backend_options });
+      expect(f.read().channels["other-id#telegram"]).toEqual(f.document.channels["other-id#telegram"]);
+      expect(readFileSync(f.path, "utf8")).toContain("# Preserve this note");
+      expect(f.restart).toHaveBeenCalledOnce(); expect(f.any.saveFleetConfig).not.toHaveBeenCalled(); expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
+      expect(f.fm.resolveInstanceEffort(f.name).effort).toBe("high");
+    } finally { setLocale(previous); }
+  });
+
+  it.each([["telegram", "en"], ["telegram", "zh-TW"], ["discord", "en"], ["discord", "zh-TW"]] as const)(
+    "uses the same staged choices and disclosure on %s in %s", async (platform, locale) => {
+      const previous = getLocale(); setLocale(locale);
+      try {
+        const f = classicRoom(platform), menus: Array<{ text: string; choices: Array<{ id: string; label: string }> }> = [];
+        const record = async (text: string, choices: Array<{ id: string; label: string }>) => { menus.push({ text, choices }); return `native-menu-${menus.length}`; };
+        const respond = vi.fn(async (_text: string) => "native-reply");
+        f.adapter.promptUser = vi.fn(async (_chat: string, text: string, choices: Array<{ id: string; label: string }>) => record(text, choices));
+        const start = async (userId: string) => platform === "discord"
+          ? f.any.handleBackendSlash({ command: "backend", channelId: "room-id", channelName: "Example room", userId,
+            respond, respondChoices: record, respondButtons: record, retireButtons: vi.fn(async () => {}) }, platform)
+          : f.fm.runBackendCommand(f.name, "/backend", userId, "room-id", f.adapter, "room-id", undefined, platform);
+        await start("reader");
+        expect(menus).toHaveLength(0); expect(f.restart).not.toHaveBeenCalled();
+        expect(platform === "discord" ? respond.mock.calls.at(-1)![0] : f.sendText.mock.calls.at(-1)![1]).toBe(t("permission.denied"));
+        await start("admin");
+        const pick = async (label: string, userId = "admin") => {
+          const choice = menus.at(-1)!.choices.find(item => item.label === label || item.label.startsWith(`${label} `));
+          expect(choice).toBeTruthy();
+          await f.any.handleBackendSelection({ callbackData: choice!.id, userId, chatId: "room-id", messageId: `native-menu-${menus.length}` }, platform);
+        };
+        await pick("codex"); await pick("GPT-5.5"); await pick("high");
+        expect(menus).toHaveLength(4); expect(menus.at(-1)!.text).toContain(t("classic.restricted_backend_notice"));
+        expect(f.read()).toEqual(f.document); expect(f.restart).not.toHaveBeenCalled();
+        await pick(t("backend.confirm_button"), "reader");
+        expect(f.restart).not.toHaveBeenCalled();
+        await pick(t("backend.confirm_button"));
+        await vi.waitFor(() => expect(f.restart).toHaveBeenCalledOnce());
+        expect(f.read().channels[f.key]).toMatchObject({ backend: "codex", model: "gpt-5.5", effort: "high", backend_options: f.document.channels[f.key]!.backend_options });
+        expect(f.any.saveFleetConfig).not.toHaveBeenCalled(); expect(f.any.restartSingleInstance).not.toHaveBeenCalled();
+      } finally { setLocale(previous); }
+    });
+
+  it("refuses a guest before offering any room choices", async () => {
+    const f = classicRoom(), before = readFileSync(f.path, "utf8");
+    const result = await f.fm.webCommand({ instance: f.name, command: "backend", args: "codex gpt-5.5 high" }, { publicLink: false, guest: true });
+    expect(result.status).toBe(403); expect(result.body.confirm).toBeUndefined();
+    expect(readFileSync(f.path, "utf8")).toBe(before); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("does not write after admin access is revoked while confirmation is retired", async () => {
+    const f = classicRoom(), before = readFileSync(f.path, "utf8"), admin = f.any.isModelAdmin.bind(f.fm); let allowed = true;
+    f.any.isModelAdmin = vi.fn((...args: unknown[]) => allowed && admin(...args));
+    await f.fm.runBackendCommand(f.name, "/backend codex gpt-5.5 high", "admin", "room-id", f.adapter, "room-id", undefined, "telegram");
+    const button = (f.promptUser.mock.calls.at(-1)![2] as Array<{ id: string; label: string }>).find(choice => choice.label === t("backend.confirm_button"))!;
+    f.editMessageRemoveButtons.mockImplementationOnce(async () => { allowed = false; });
+    await f.any.handleBackendSelection({ callbackData: button.id, userId: "admin", chatId: "room-id", messageId: "menu-1" }, "telegram");
+    await vi.waitFor(() => expect(f.editMessage).toHaveBeenCalled());
+    expect(f.editMessage.mock.calls.at(-1)![2]).toBe(t("menu.click_stale"));
+    expect(readFileSync(f.path, "utf8")).toBe(before); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("refuses a confirmation after an unread edit and retains that edit", async () => {
+    const f = classicRoom(), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!;
+    const next = f.read(); next.channels[f.key]!.description = "A newer owner edit"; writeFileSync(f.path, yaml.dump(next));
+    const retained = readFileSync(f.path, "utf8");
+    expect((await f.run(args, ask.token)).status).toBe(409);
+    expect(readFileSync(f.path, "utf8")).toBe(retained); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("refuses a confirmation after the room registry entry is replaced without a disk change", async () => {
+    const f = classicRoom(), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!;
+    f.rooms.reloadFromDisk();
+    expect((await f.run(args, ask.token)).status).toBe(409);
+    expect(f.read()).toEqual(f.document); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("refuses a confirmation when inherited settings change without a room edit", async () => {
+    const f = classicRoom(), args = "codex default default", ask = (await f.run(args)).body.confirm!;
+    f.fm.fleetConfig!.defaults!.model = "a-new-default";
+    expect((await f.run(args, ask.token)).status).toBe(409);
+    expect(f.read()).toEqual(f.document); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("never applies an undisclosed restriction enabled after confirmation was offered", async () => {
+    const f = classicRoom(), legacy = f.read(); legacy.channels[f.key]!.restricted_mode = false; writeFileSync(f.path, yaml.dump(legacy)); f.rooms.reloadFromDisk();
+    const args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!;
+    expect(ask.message).not.toContain(t("classic.restricted_backend_notice"));
+    const changed = f.read(); changed.channels[f.key]!.restricted_mode = true; writeFileSync(f.path, yaml.dump(changed));
+    expect((await f.run(args, ask.token)).status).toBe(409); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("retires a room menu when its disk config changes during model discovery", async () => {
+    const f = classicRoom(); let release!: () => void, entered!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { entered = resolve; });
+    f.any.modelCatalogFor.mockImplementation(async () => { entered(); await held; return [{ id: "gpt-5.5", label: "GPT-5.5" }]; });
+    const pending = f.run("codex gpt-5.5 high");
+    try { await ready; const next = f.read(); next.channels[f.key]!.description = "Changed during discovery"; writeFileSync(f.path, yaml.dump(next)); release();
+      expect((await pending).body.confirm).toBeUndefined(); expect(f.restart).not.toHaveBeenCalled();
+    } finally { release(); await pending; }
+  });
+
+  it("refuses ambiguous Fleet and Classic names instead of switching the Fleet entry", async () => {
+    const f = classicRoom(); f.fm.fleetConfig!.instances[f.name] = { ...f.worker() };
+    expect((await f.run()).body.choices).toBeUndefined(); expect(f.restart).not.toHaveBeenCalled(); expect(f.saves).toEqual([]);
+  });
+
+  it("keeps a stopped room stopped and consumes a confirmation only once", async () => {
+    const f = classicRoom(); f.any.getInstanceStatus.mockReturnValue("stopped");
+    const start = vi.spyOn(f.fm, "startInstance").mockResolvedValue(undefined), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!;
+    expect((await f.run(args, ask.token)).body.text).toBe(t("backend.switched_not_running", f.name, "codex", "gpt-5.5", "high", "stopped"));
+    expect((await f.run(args, ask.token)).status).toBe(409); expect(f.restart).toHaveBeenCalledOnce(); expect(start).not.toHaveBeenCalled();
+  });
+
+  it("refuses a signed-out target account with no write, restart or fallback to another account", async () => {
+    const f = classicRoom(), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!, before = readFileSync(f.path, "utf8");
+    rmSync(join(dataDir, "credential-profiles", "codex", "codex-work", "auth.json"));
+    expect((await f.run(args, ask.token)).body.text).toContain("codex-work");
+    expect(readFileSync(f.path, "utf8")).toBe(before); expect(f.restart).not.toHaveBeenCalled();
+  });
+
+  it("restores the exact file and owned runtime after a failed restart", async () => {
+    const f = classicRoom(), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!, before = readFileSync(f.path, "utf8");
+    f.restart.mockRejectedValue(new Error("fixture restart failure"));
+    expect((await f.run(args, ask.token)).body.text).toContain("backend choice was put back");
+    expect(readFileSync(f.path, "utf8")).toBe(before); expect(f.restore).toHaveBeenCalledOnce();
+  });
+
+  it("retains a newer conflicting backend edit and does not compensate over it", async () => {
+    const f = classicRoom(), args = "codex gpt-5.5 high", ask = (await f.run(args)).body.confirm!;
+    f.restart.mockImplementation(async () => { const next = f.read(); next.channels[f.key]!.backend = "opencode"; writeFileSync(f.path, yaml.dump(next)); throw new Error("fixture restart failure"); });
+    expect((await f.run(args, ask.token)).body.text).toContain("newer change is kept");
+    expect(f.read().channels[f.key]!.backend).toBe("opencode"); expect(f.restore).not.toHaveBeenCalled();
+  });
+
+  it("clears old model and effort overrides for the defaults without changing account mappings", async () => {
+    const f = classicRoom(), args = "codex default default", ask = (await f.run(args)).body.confirm!;
+    await f.run(args, ask.token);
+    const room = f.read().channels[f.key]!;
+    expect(room.model).toBeUndefined(); expect(room.effort).toBeUndefined(); expect(room.backend_options).toEqual(f.document.channels[f.key]!.backend_options);
+  });
+});
+
 describe("the Telegram flow", () => {
   it("backend → model → effort → confirm: one write of all three, one fresh relaunch, after the last click only", async () => {
     const f = fleet();
@@ -305,10 +483,10 @@ describe("the Telegram flow", () => {
     expect(f.promptUser).toHaveBeenCalledTimes(1);
   });
 
-  it("a ClassicBot agent is not switched by it, and says so", async () => {
+  it("an unregistered target is refused without opening a menu", async () => {
     const f = fleet();
     await f.fm.runBackendCommand("room-agent", "/backend codex", "admin", "chan", f.adapter, "chat", undefined, "telegram");
-    expect(f.sendText.mock.calls.at(-1)![1]).toBe(t("backend.classic_unsupported", "room-agent"));
+    expect(f.sendText.mock.calls.at(-1)![1]).toBe(t("classic.no_agent"));
     expect(f.promptUser).not.toHaveBeenCalled();
   });
 });
