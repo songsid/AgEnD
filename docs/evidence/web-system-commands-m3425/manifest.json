@@ -1,0 +1,122 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "98c2a9f92bf7efb1222d3c7b3564833d4014ce700b83bf8d50221658fb60e8c0"
+  },
+  {
+    "path": "captures/checks.json",
+    "sha256": "76b7bb5c73887db850080772669954f572a86f9d8d2997cf28fd3bb4c0f53abf"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status-palette.png",
+    "sha256": "8ddab456a1640c93ccf5e3effdddddeee9b7a982b6c87de56edac9e6ae08c086"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status.png",
+    "sha256": "6110b250bfd3c314a98c84a8e569eadec3f23a30efbefb4d9e15a2eb7790588b"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo-palette.png",
+    "sha256": "e18f62a0bca0c5d5ca2cf4286d873a96e9543b19be20929480a8b571f318bf16"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo.png",
+    "sha256": "f7d05ae75a16acf61807ef302316f013411829bf9152d6df384568c471b04bb7"
+  },
+  {
+    "path": "captures/desk-light-en-status-palette.png",
+    "sha256": "b4f73fe46bb1659a2c31bebf274021fc19bf156628e337a8c9e0682990d7dd27"
+  },
+  {
+    "path": "captures/desk-light-en-status.png",
+    "sha256": "bcc330d3994709d15a9c997e1fc9d06d76b29bf2d32ff9f76e74996fe88f4f20"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo-palette.png",
+    "sha256": "f364ea1fd21619d71c19d35b49062b0431fc3f41f6a337395bd3d0343b0a421e"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo.png",
+    "sha256": "b27cf1cc40a818c962d89aafbbf799198234d6b7eb03ee36448479264e7dc751"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-end.png",
+    "sha256": "d2e60fff4c93d09da40ab0f89a13b1d81d4a89a39b3efd98aaaa0fa8a5e7c033"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-palette.png",
+    "sha256": "799f29c8747f34e3b157dccc6c939f296eb6a7a16c2a0889ddc6ed6c641b6961"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status.png",
+    "sha256": "4602fcdfeaa785da896305732d5655cdf6ef3025b408ab32a683208d14186d9f"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-end.png",
+    "sha256": "216ac3266c893cfb09d6787fc1617d96450c3428d0af03234f844ca0fb037773"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-palette.png",
+    "sha256": "5b001793c1c41ebc621005c7b3457136c7af9b3cb6468ffc76e7dc1a3dcdd0dc"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo.png",
+    "sha256": "8f929571c09246b17d41c3f03c44b561e01775b66032a8f323b54fd997549ba2"
+  },
+  {
+    "path": "captures/phone-light-en-status-end.png",
+    "sha256": "a2a3631603e3de1e6e6838378385e923bffa203cea57aac59cac0c928eea04d8"
+  },
+  {
+    "path": "captures/phone-light-en-status-palette.png",
+    "sha256": "0ce9827df5eaae1b9d1b491f231e35b072378c437a2f125914261c4b8fff2912"
+  },
+  {
+    "path": "captures/phone-light-en-status.png",
+    "sha256": "ea8f77317520cc2ef272a93c798f3a845896bfccb57bc8f86cd6e733de74e8ae"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-end.png",
+    "sha256": "b0c35342c5354f5c14b51b562fd9a6b1fc63ba3f3107da2a8e5adf2d59df8723"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-palette.png",
+    "sha256": "2abfa896cdd09062aca6d95a22be597436980c36368dd71e760954953718f1e8"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo.png",
+    "sha256": "219ed42eb51ac6e71844b0150b3e8e93e8af5c7065c3060b7e0e7996dcc0d688"
+  },
+  {
+    "path": "fail-first.log",
+    "sha256": "fed36c766a8c1078b475e740d3c84f77ea488aafba55a48728976e0e92243a55"
+  },
+  {
+    "path": "final-locale-tests.log",
+    "sha256": "15e166a790e83a11d787246d7f7b2306c3b1293dee3aeed25280453ed08d62a6"
+  },
+  {
+    "path": "related.log",
+    "sha256": "67082fe4235c6119326b7117df1b630227a7089711bacf773b6e20fa9c344422"
+  },
+  {
+    "path": "reversals.log",
+    "sha256": "1326f5dd184ab1a1df03a23964d883ebee83c625d3129b695f20d2a61aec01ad"
+  },
+  {
+    "path": "test-types.log",
+    "sha256": "21cc27fd5be2f91b90d3116616c151064f39e7b20e61f2334241585a2197a1d1"
+  },
+  {
+    "path": "types.log",
+    "sha256": "272283a400fbce2b9c74902c7f23fc52a2085a39a5f8dbea1246daa71f344fe1"
+  },
+  {
+    "path": "ui-gate-base.log",
+    "sha256": "9dd3c302c2b21ac657b9cec2c26c5f284e5f7b0f8160a1b259fd1953cdeace97"
+  },
+  {
+    "path": "ui-gate.log",
+    "sha256": "a81bedb21d09e3ff363efbf794367507016349c645ba563f14a4090ca487e542"
+  }
+]

@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { setLocale } from "../src/locale.js";
+import { setLocale, getLocale } from "../src/locale.js";
 import { TopicCommands } from "../src/topic-commands.js";
 
 /**
@@ -90,4 +90,34 @@ describe("/status table (#1052)", () => {
     expect(text).toContain("✗ 已停止");
     expect(text).toContain("🔴 已當機");
   });
+});
+
+
+describe("M-3425 structured web status", () => {
+  it.each(["en", "zh-TW"] as const)("sends six columns without cost in %s, keeping the platform formatter unchanged", async locale => {
+    setLocale(locale);
+    const commands = setup({ helper: "example-model" }, { helper: { status: "running", exec: "idle" } });
+    const answer = await commands.getWebReport("status");
+    expect(answer.report.columns).toHaveLength(6);
+    expect(answer.report.rows).toEqual([["helper", "codex", "example-model", "-", "-", expect.stringContaining(locale === "en" ? "idle" : "閒置")]]);
+    expect(answer.report.columns.join(" ")).not.toMatch(/Cost|花費/);
+    expect(answer.text).not.toContain("$0.00");
+    expect(JSON.stringify(answer.report)).not.toMatch(/cost|Cost|花費/);
+    expect(await commands.getStatusText()).toContain("$0.00");
+  });
+
+  it("returns the empty-state report without inventing rows", async () => {
+    const answer = await new TopicCommands({} as any).getWebReport("status");
+    expect(answer.report.rows).toEqual([]);
+    expect(answer.report.notes).toHaveLength(1);
+    expect(answer.text).not.toContain("undefined");
+  });
+});
+
+
+it("M-3425 renders the web preference without mutating the platform locale", async () => {
+  setLocale("en");
+  const commands = setup({}, { helper: { status: "running", exec: "idle" } });
+  expect((await commands.getWebReport("status", "zh-TW")).report.title).toBe("Fleet 狀態");
+  expect(getLocale()).toBe("en");
 });

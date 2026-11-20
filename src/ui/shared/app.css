@@ -2255,6 +2255,21 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .cmd-card.bad { --lbar-color: var(--danger); padding-left: calc(var(--s-3) + 3px); }
 .cmd-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .cmd-name { font-weight: var(--fw-semibold); }
+/* Shared Usage table, scoped report layout: six status cells become labelled rows on phones. */
+.cmd-report { min-width: 0; max-height: 50vh; overflow-y: auto; }
+.cmd-report h3 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); }
+.cmd-report .note { overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd-report table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+.cmd-report td, .cmd-report th { overflow-wrap: anywhere; }
+.cmd-metrics td, .cmd-metrics th { padding: var(--s-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+@media (max-width: 899px) {
+  .cmd-report-status .us-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .cmd-report-status .us-table, .cmd-report-status .us-table tbody, .cmd-report-status .us-table tr, .cmd-report-status .us-table td { display: block; width: 100%; }
+  .cmd-report-status .us-table tr { margin-bottom: var(--s-3); padding: var(--s-2); border-bottom: 1px solid var(--border); }
+  .cmd-report-status .us-table td { display: flex; justify-content: space-between; gap: var(--s-3); border: 0; }
+  .cmd-report-status .us-table td::before { content: attr(data-label); color: var(--text-3); flex-shrink: 0; }
+
+}
 .cmd-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-ui); color: var(--text-2); }
 .cmd-phase { color: var(--text); font-weight: var(--fw-semibold); }
 .cmd-choices { display: flex; flex-wrap: wrap; gap: var(--s-1); max-height: 180px; overflow-y: auto; }

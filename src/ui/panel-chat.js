@@ -623,6 +623,16 @@ function openBackendSignIn(backend) {
   import("./backend-signin.js").then((m) => m.openSignIn({ backend }), () => toast(t("app.loadFailed"), false));
 }
 
+/** Reports contain plain strings; HTM escapes every title, header, cell and note. */
+function CommandReport({ report, command }) {
+  return html`<section class=${`cmd-report cmd-report-${command}`} aria-label=${report.title}>
+    <h3>${report.title}</h3>
+    ${report.rows.length ? html`<table class=${command === "status" ? "us-table" : "cmd-metrics"}><thead><tr>${report.columns.map(label => html`<th scope="col">${label}</th>`)}</tr></thead>
+      <tbody>${report.rows.map(row => html`<tr>${row.map((value, i) => html`<td data-label=${report.columns[i]}>${value}</td>`)}</tr>`)}</tbody></table>` : null}
+    ${report.notes.map(note => html`<p class="note">${note}</p>`)}
+  </section>`;
+}
+
 /** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
 function CommandCard({ name, lease }) {
   const c = store.state.commands[name];
@@ -637,7 +647,7 @@ function CommandCard({ name, lease }) {
       ${c.busy ? html`<span class="wait">${t("chat.cmdRunning", c.command)}</span>` : html`<button type="button" class="icon-btn" title=${t("chat.cmdDismiss")}
         aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div></div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
-    ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.report ? html`<${CommandReport} report=${c.report} command=${c.command} />` : c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
     ${c.compact ? html`<p class="cmd-text cmd-phase">${c.compact === "running" ? t("chat.compactRunning")
       : c.compact === "done" ? t("chat.compactDone") : c.compact === "timeout" ? t("chat.compactTimeout", "10")
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}

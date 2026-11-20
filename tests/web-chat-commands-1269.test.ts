@@ -23,7 +23,7 @@ describe("the palette's rules (pure)", () => {
     expect(parseCommandLine("/compact keep the notes")).toEqual({ command: "compact", args: "keep the notes" });
     expect(parseCommandLine("  /ctx  ")).toEqual({ command: "ctx", args: "" });
     expect(parseCommandLine("/steer line one\nline two")).toEqual({ command: "steer", args: "line one\nline two" });
-    for (const d of ["/raw ls", "/status", "/foo", "hello /ctx", "/ctxx", "/compact-x", "/"]) expect(parseCommandLine(d), d).toBeNull();
+    for (const d of ["/raw ls", "/foo", "hello /ctx", "/ctxx", "/compact-x", "/"]) expect(parseCommandLine(d), d).toBeNull();
     expect([needsArgument("btw"), needsArgument("steer"), needsArgument("save"), needsArgument("compact"), needsArgument("ctx")]).toEqual([true, true, true, false, false]);
   });
 });
@@ -77,6 +77,18 @@ describe("the chat's commands (the real page modules)", () => {
     const elapse = async (ms: number) => { for (const t of timers.splice(0).filter((x) => { const due = x.ms === ms; if (!due) timers.push(x); return due; })) t.fn(); await settle(); };
     return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
   }
+
+  it("M-3425 offers system commands and renders report values as safe text", async () => {
+    const c = await chatPage();
+    await c.type("/sysinfo");
+    expect(c.options().map((o: any) => o.id)).toContain("cmd-sysinfo");
+    c.fx.respond = () => ({ report: { title: "System information", columns: ["Metric", "Value"], rows: [["Example", "<img src=x onerror=alert(1)>"]], notes: ["No live processes"] } });
+    await c.key("Enter");
+    expect(c.commands().at(-1)?.body).toEqual({ instance: "w", command: "sysinfo" });
+    expect(c.card().querySelector(".cmd-report")?.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(c.card().querySelector("img")).toBeNull();
+    expect(c.sends()).toEqual([]);
+  });
 
   it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
     const asked: string[] = [];
@@ -450,7 +462,7 @@ describe("#2855: a guest's commands — the table's \"anyone\" cells, nothing el
       expect(guestWebCommands(scope, platform), `${scope} ${platform}`).toEqual(anyone(scope, platform));
       for (const c of ["clear", "compact", "model", "backend", "effort", "pause", "wake", "save"]) expect(guestWebCommands(scope, platform), `${scope} ${platform} ${c}`).not.toContain(c);
     }
-    expect(guestWebCommands("fleet", "discord")).toEqual(["ctx", "cancel", "btw", "steer"]);
+    expect(guestWebCommands("fleet", "discord")).toEqual(["sysinfo", "ctx", "cancel", "btw", "steer"]);
   });
   it("runWebCommand for a guest: an \"anyone\" command runs; any other is refused (403) before it does anything", async () => {
     const { runWebCommand } = await import("../src/web-commands.js");

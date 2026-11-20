@@ -543,7 +543,7 @@ export function createChatStore(deps) {
     const follow = r && r.follow && r.follow.kind === "compact" ? r.follow : null;
     showCommand(target, r && r.choices ? { command, busy: false, choices: r.choices }
       : r && r.error ? { command, busy: false, error: r.error, ...(opts.action ? { choices: pending.choices } : {}) }
-      : { command, busy: false, text: (r && r.text) || "", ...(r && r.sent === true ? { sent: true } : {}), ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
+      : { command, busy: false, text: (r && r.text) || "", ...(r && r.report ? { report: r.report } : {}), ...(r && r.sent === true ? { sent: true } : {}), ...(follow ? { compact: follow.id ? "running" : "unknown", watch: follow.id } : {}) });
     changed(target);
   }
   // Board 003648ac: an answer the server marks `sent` leaves by itself; a sent /compact says "compacting…" until the
