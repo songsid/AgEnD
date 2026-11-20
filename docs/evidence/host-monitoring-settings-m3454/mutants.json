@@ -1,0 +1,14 @@
+[
+  {
+    "mutant": "default-on",
+    "selectedTest": "normalizes missing settings",
+    "exitCode": 1,
+    "caught": true
+  },
+  {
+    "mutant": "no-availability-fence",
+    "selectedTest": "cannot pretend to start a collector",
+    "exitCode": 1,
+    "caught": true
+  }
+]

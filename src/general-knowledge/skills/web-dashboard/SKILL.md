@@ -810,6 +810,8 @@ other Windows PCs to pair** (`runtimes.remote_runtime`), **Agents at once on eac
 under **Manual options**, a pairing code. Each computer: its CLIs (**Install a CLI**, **Update to *version***, only while
 that PC's owner allowed it there), its accounts, and its update status. See docs/remote-runtime.md.
 
+**Notifications → Host monitoring** (「主機監測」, M-3454): **Monitor this computer** and **Include agent footprint** are both off by default. Off is explicitly saved as false. The cost hints are planning estimates. An unavailable collector is shown honestly and cannot be enabled; these settings alone never create a collector, monitoring timer or history file. Agent footprint requires monitoring as well as its own option. Turning monitoring off asks before recorded history is removed. The initial settings slice is unavailable until its collector integration ships.
+
 **Notifications** — **Quota notices** (「用量提醒」, #3302): one reminder per account at the **Remaining percentages**
 and **Periods** you choose, shared by its agents, **Send to** General.
 

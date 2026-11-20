@@ -1,0 +1,101 @@
+{
+  "task": "M-3454/S-204",
+  "files": [
+    {
+      "path": "changes/4275-host-monitoring-settings.md",
+      "sha256": "becc506c25872ac620ae8cc04b78cde90a952c1bb755b68215b6a10a68596279"
+    },
+    {
+      "path": "changes/4275-host-monitoring-settings.zh-TW.md",
+      "sha256": "788f2bc5843108487183f50cc13fa8ab57f2db1ef35bf5fed9806727b4a3f552"
+    },
+    {
+      "path": "src/config-validator.ts",
+      "sha256": "51b8bcffd058a9cfa9f23fb593471366ad211389ccc9746f09b652d897d20af1"
+    },
+    {
+      "path": "src/config.ts",
+      "sha256": "692d6ff5a35f6b1e3c06a221b5a21ce8fb8082b202f6b49b963df0f3f697790a"
+    },
+    {
+      "path": "src/fleet-level-config.ts",
+      "sha256": "872783375fc0ce040271a9a0842ba2c9fd44ece33ba6045c0efd8e76af32bc24"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "6faf6762b8bd1596fa5d383547c9c03831f151e5998575036a671bcf3175689f"
+    },
+    {
+      "path": "src/host-monitoring-config.ts",
+      "sha256": "f732592b9d913c1e4fd5ebcc313a037af442fb966eca6263acff41b0cc37a968"
+    },
+    {
+      "path": "src/public-web-gateway.ts",
+      "sha256": "2c15be4d9bd4b49c9f8e9187d41b79c1493fc5e6c41e94daf4c14f87bfc74a70"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "e0464b34f81bb1c4d6b06580cc79e263533d1822347a42873438ffff304658f5"
+    },
+    {
+      "path": "src/settings-change.ts",
+      "sha256": "4ee54e6c0ebd0efaf6bc5a591a065e5fb209a7d05895f199c6bb8e5b104e0a6b"
+    },
+    {
+      "path": "src/settings-effect.ts",
+      "sha256": "1d922f63511fbd092156e8693b2793734a120c029bc1c25c52d0de5a082276d4"
+    },
+    {
+      "path": "src/types.ts",
+      "sha256": "431d044aa1ee91a0e6af794d04a9e549fb4a9f009c50bec00bd190b828feb28e"
+    },
+    {
+      "path": "src/ui/panel-settings.js",
+      "sha256": "7d2e3b3a47508515cf8a5ff7fb671c418764540d913c3f7a760557dc41063600"
+    },
+    {
+      "path": "src/ui/settings-host-monitoring.js",
+      "sha256": "73158a4bc5ddeb6c9810159c3c9480d4d3435c722027275e6efe77401394b574"
+    },
+    {
+      "path": "src/ui/settings-layout.js",
+      "sha256": "04324cb7a901ce940cd5d4158b49e35d0d4aa0837450ad48538697ab4a5f975c"
+    },
+    {
+      "path": "src/ui/settings-registry.js",
+      "sha256": "7b9b75167694ad456e9ad2bef7d6e0c9c52054e56aeab7bf0fc3f03e8610171c"
+    },
+    {
+      "path": "tests/host-monitoring-settings-m3454.test.ts",
+      "sha256": "1339703aae40ca78ebbe3bac680c0edaf04a961dd3e48e6dafe96e07c8af0a2b"
+    },
+    {
+      "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
+      "sha256": "973e3c58dbfd16db078de86a3416e891d02bb82f1581d12a16263bec8034016d"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/README.md",
+      "sha256": "2be66d87e89de9d34dde106600e31ea058de958e57dc5c57f1c78c98855e0b18"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-checks.json",
+      "sha256": "cc00e603e6c27590bfbc2f914eca387acf0bc721e82a03479e2113871c969dff"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-desk-en.png",
+      "sha256": "5a9707724d928e8ae985fdf114265d80a2e9b8ac1855e7499593731fbf72f760"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-phone-zh.png",
+      "sha256": "c52fe36761198f09ff14a7749465d7b69c5f07158fdfa6b8b541096f9d879bb4"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/mutants.json",
+      "sha256": "3b474719062efbeea09a62817f2af6ded2dedef07bf30359683058ed39faa5e7"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-settings-m3454/validation.json",
+      "sha256": "d7dc455cfd89cf846ee1c1b9e3c92e729043df026f659473bea36d82cbdb045f"
+    }
+  ]
+}

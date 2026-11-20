@@ -1,0 +1,62 @@
+{
+  "task": "M-3454/S-204",
+  "scope": "settings foundation; no collector lifecycle yet",
+  "stages": [
+    {
+      "scope": "configuration base semantic test",
+      "files": 1,
+      "tests": 9,
+      "failed": 9,
+      "expected": "red"
+    },
+    {
+      "scope": "config/UI/layering focused",
+      "files": 4,
+      "tests": 56,
+      "passed": 56
+    },
+    {
+      "scope": "integration incl real YAML writer",
+      "files": 7,
+      "tests": 179,
+      "passed": 179
+    },
+    {
+      "scope": "transactions, confirmation, shared phone query, metadata initial",
+      "files": 5,
+      "tests": 122,
+      "passed": 120,
+      "failed": 2,
+      "causes": "missing fragment frontmatter; unnecessary concepts document append"
+    },
+    {
+      "scope": "fixed metadata only",
+      "files": 2,
+      "tests": 77,
+      "passed": 77
+    }
+  ],
+  "types": {
+    "sourceDiagnostics": 0,
+    "testDiagnostics": 0
+  },
+  "browser": {
+    "settingsGate": "ci all sections and middle width",
+    "checks": 124,
+    "passed": 124,
+    "seconds": 57,
+    "tapAllowancesChanged": false,
+    "actualProductCaptures": 2,
+    "visualPrivacy": "both individually clear"
+  },
+  "mutants": {
+    "defaultOn": "assertion expected enabled false, got true",
+    "removeAvailabilityFence": "assertion expected 409, got 200",
+    "sourceRestored": true
+  },
+  "limits": [
+    "Stage counts overlap; not a single aggregate suite.",
+    "No real host metrics or monitoring runtime in this slice.",
+    "One-hour both-options-on measurement is pending S-209."
+  ]
+}

@@ -1,3 +1,4 @@
+import { monitoringProblem } from "./host-monitoring-config.js";
 import { t } from "./locale.js";
 import { quotaNoticeProblem } from "./quota-notice-config.js";
 import { publicLinkModeProblem, publicLinkNamedHostname, publicLinkPatchShape } from "./public-web-link.js";
@@ -409,6 +410,10 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
       } else if (key !== "windows_cli" && key !== "remote_runtime") err(`runtimes.${key}`, "unknown key (windows_cli, remote_runtime, max_agents_per_machine)");
       else if (typeof value !== "boolean") err(`runtimes.${key}`, "must be a boolean");
     }
+  }
+  if (config.monitoring !== undefined) {
+    const problem = monitoringProblem(config.monitoring);
+    if (problem) err("monitoring", problem);
   }
   if (config.needs_you !== undefined && !isObj(config.needs_you)) {
     err("needs_you", "must be a mapping");
