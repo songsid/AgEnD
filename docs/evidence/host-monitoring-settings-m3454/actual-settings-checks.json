@@ -1,0 +1,34 @@
+[
+  {
+    "file": "actual-settings-desk-en.png",
+    "actualProductSource": true,
+    "configuration": "both false",
+    "collectorAvailable": false,
+    "parent": {
+      "checked": false,
+      "disabled": true
+    },
+    "agents": {
+      "checked": false,
+      "disabled": true
+    },
+    "overflow": false,
+    "text": "Host monitoringHost monitoring is not available in this version of AgEnD.Monitor this computerWhen on, samples every 30–60 seconds; estimated 2–4 MiB RAM and 1–4 MiB of local writes per hour.Include agent footprintOptional process snapshot every minute; for 32 agents, an estimated extra 2–8 MiB RAM and 1–4 MiB of writes per hour.Off by default. While off, there is no monitoring collector, timer or history file."
+  },
+  {
+    "file": "actual-settings-phone-zh.png",
+    "actualProductSource": true,
+    "configuration": "both false",
+    "collectorAvailable": false,
+    "parent": {
+      "checked": false,
+      "disabled": true
+    },
+    "agents": {
+      "checked": false,
+      "disabled": true
+    },
+    "overflow": false,
+    "text": "主機監測這個 AgEnD 版本尚未提供主機監測。監測這台電腦開啟後每 30–60 秒取樣；估計使用 2–4 MiB 記憶體，每小時本機寫入 1–4 MiB。包含 Agent 資源用量選用：每分鐘讀取行程資料；32 個 Agent 估計另用 2–8 MiB 記憶體，每小時寫入 1–4 MiB。預設關閉。關閉時沒有監測收集器、計時器或歷史檔案。"
+  }
+]

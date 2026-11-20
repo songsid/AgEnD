@@ -197,6 +197,7 @@ function isPublicPrivilegedSettingsRoute(method: string, path: string): boolean 
   if ((method === "GET" || method === "POST") && path === "/api/settings/general-location") return true;
   if (method === "GET" && path === "/api/settings/runtimes") return true;
   if (method === "PUT" && path === "/api/settings/fleet/runtimes") return true;
+  if (method === "PUT" && path === "/api/settings/fleet/monitoring") return true;
   if (method === "GET" && /^\/api\/settings\/public-tunnel-token(?:\/apply\/[A-Za-z0-9_-]+)?$/.test(path)) return true;
   if (method === "POST" && /^\/api\/settings\/public-tunnel-token\/(?:verify|apply)$/.test(path)) return true;
   return false;

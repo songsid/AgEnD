@@ -1,3 +1,4 @@
+import { HostMonitoringSettings } from "./settings-host-monitoring.js";
 import { SettingsBuildVersion } from "./settings-build-version.js";
 // #1408 step 3: the Settings panel (/settings[/<section>]) — agents, connections, ClassicBot rooms, general defaults,
 // the developer YAML. Behind the session gate (/ui/js/), loaded the first time it is opened.
@@ -436,7 +437,7 @@ export function SettingsPanel({ route, navKey }) {
     : section === "agents" ? html`<${YamlLock} staged=${staged}><${Agents} ctx=${ctx} search=${search} clearSearch=${() => setSearch("")} openDialog=${toDialog} /></${YamlLock}>${SETTINGS_SECTIONS.includes("accounts") ? html`<p class="note s-agents-accounts-link">${layoutText("agentsAccountsNote")} <a href=${settingsPath("accounts")}>${layoutText("agentsAccountsLink")}<span aria-hidden="true">→</span></a></p>` : accountsCard()}`
     : section === "accounts" ? accountsCard()
     : section === "agent-defaults" ? html`<${GeneralLocation} /><${YamlLock} staged=${staged}><${General} key=${formKey} ctx=${ctx} part="fleet" />${!SETTINGS_SECTIONS.includes("notifications") ? html`<${QuotaNoticeSettings} key=${`quota:${formKey}`} ctx=${ctx} />` : null}</${YamlLock}>`
-    : section === "notifications" ? html`<${YamlLock} staged=${staged}><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
+    : section === "notifications" ? html`<${YamlLock} staged=${staged}><${HostMonitoringSettings} key=${`monitoring:${formKey}`} ctx=${ctx} /><${QuotaNoticeSettings} key=${formKey} ctx=${ctx} /></${YamlLock}>`
     : section === "chat" ? html`<${SettingsConnector} /><${YamlLock} staged=${staged}><${Bots} ctx=${ctx} search=${search} openDialog=${toDialog} /></${YamlLock}>
         <${WebSection} key=${formKey} ctx=${ctx} staged=${staged} part="chat" />
         <div id="classicbot" class="s-anchor s-classic-area"><section class="card s-chat-classic"><h2 class="s-ap-group">ClassicBot</h2><${Classic} ctx=${ctx} search=${search} openDialog=${toDialog} /></section>

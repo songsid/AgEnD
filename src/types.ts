@@ -627,6 +627,8 @@ export interface WebTerminalConfig {
 }
 
 export interface FleetConfig {
+  /** M-3454: both options opt in explicitly; no monitoring work while disabled. */
+  monitoring?: import("./host-monitoring-config.js").HostMonitoringConfig;
   channel?: ChannelConfig;
   channels?: ChannelConfig[];
   project_roots?: string[];

@@ -1,0 +1,82 @@
+[
+  {
+    "file": "settings-desk-en-off.png",
+    "synthetic": true,
+    "cssSha256": "028fa05e0f9ebe3cc375381887ef339bbb0de4ff565013a7151294ba921e5fac",
+    "requests": 1,
+    "bound": "1",
+    "overflow": false,
+    "enabled": false,
+    "agentDisabled": true,
+    "targets": [
+      {
+        "w": 80,
+        "h": 44
+      },
+      {
+        "w": 80,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "file": "settings-desk-en-on.png",
+    "synthetic": true,
+    "cssSha256": "028fa05e0f9ebe3cc375381887ef339bbb0de4ff565013a7151294ba921e5fac",
+    "requests": 1,
+    "bound": "1",
+    "overflow": false,
+    "enabled": true,
+    "agentDisabled": false,
+    "targets": [
+      {
+        "w": 80,
+        "h": 44
+      },
+      {
+        "w": 80,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "file": "settings-phone-zh-off.png",
+    "synthetic": true,
+    "cssSha256": "028fa05e0f9ebe3cc375381887ef339bbb0de4ff565013a7151294ba921e5fac",
+    "requests": 1,
+    "bound": "1",
+    "overflow": false,
+    "enabled": false,
+    "agentDisabled": true,
+    "targets": [
+      {
+        "w": 80,
+        "h": 44
+      },
+      {
+        "w": 80,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "file": "settings-phone-zh-on.png",
+    "synthetic": true,
+    "cssSha256": "028fa05e0f9ebe3cc375381887ef339bbb0de4ff565013a7151294ba921e5fac",
+    "requests": 1,
+    "bound": "1",
+    "overflow": false,
+    "enabled": true,
+    "agentDisabled": false,
+    "targets": [
+      {
+        "w": 80,
+        "h": 44
+      },
+      {
+        "w": 80,
+        "h": 44
+      }
+    ]
+  }
+]
