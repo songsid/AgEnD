@@ -16,7 +16,14 @@ const specSchema = z.strictObject({ binding:bindingSchema, cwd:z.string().max(40
 export type ManagedClaudeSpec = z.infer<typeof specSchema>;
 const unavailable = () => new UnsupportedCliError("Managed Claude credential is unavailable or its source changed. Open Accounts on the local dashboard.");
 export function managedClaudeBinding(home: string, profile: string | null): ManagedClaudeBinding | null {
- if (!existsSync(join(home,"credential-vault","claude.sqlite"))) return null;
+ // Only proven absence of all managed state permits the legacy credential path.
+ // existsSync hides access errors and dangling links, which must never select ambient auth.
+ const present=(path:string):boolean=>{try{lstatSync(path);return true;}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return false;throw unavailable();}};
+ const directory=present(join(home,"credential-vault")),keys=present(join(home,"credential-keys"));
+ if (!present(join(home,"credential-vault","claude.sqlite"))) {
+  if(directory||keys)throw unavailable();
+  return null;
+ }
  let vault:ClaudeCredentialVault|undefined;
  try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m)return null;if(!m.kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind:m.kind};}
  catch{throw unavailable();}finally{vault?.close();}

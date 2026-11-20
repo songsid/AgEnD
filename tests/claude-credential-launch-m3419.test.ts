@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, symlinkSync } from "node:fs";
+import * as fs from "node:fs";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
@@ -13,9 +14,10 @@ import pino from "pino";
 import type { Logger } from "../src/logger.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
+vi.mock("node:fs",async importOriginal=>{const actual=await importOriginal<typeof import("node:fs")>();return {...actual,lstatSync:vi.fn(actual.lstatSync),existsSync:vi.fn(actual.existsSync)};});
 const dirs:string[]=[],vaults:ClaudeCredentialVault[]=[],actor={adapterId:"test",userId:"admin"};
 const value="synthetic-"+"x".repeat(48),ambient="synthetic-"+"y".repeat(48);
-afterEach(()=>{vi.unstubAllEnvs();for(const v of vaults.splice(0))v.close();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();for(const v of vaults.splice(0))v.close();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
 function fixture(kind:"api-key"|"setup-token"="api-key",profile:string|null="spare"){
  const root=mkdtempSync(join(tmpdir(),"claude-launch-"));dirs.push(root);const home=join(root,"state"),cwd=join(root,"work"),instance=join(root,"instance"),config=join(root,"profile");
  for(const p of [home,cwd,instance,config])mkdirSync(p,{mode:0o700});
@@ -130,4 +132,29 @@ it("rejects a mismatched profile before file effects and a changed launch refere
  expect(()=>backend.writeConfig(config)).toThrow('profile');expect(readdirSync(f.instance)).toEqual([]);
  config.backendOptions={credential_profile:'spare'};backend.writeConfig(config);
  expect(()=>backend.buildCommand({...config,managedClaudeCredential:{...f.binding,revision:2}})).toThrow('stale');
+});
+
+it("fresh selection refuses missing managed DB and dangling artifacts instead of ambient fallback",()=>{
+ const f=fixture();f.vault.close();vaults.splice(vaults.indexOf(f.vault),1);
+ rmSync(join(f.home,"credential-vault","claude.sqlite"));
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+ rmSync(join(f.home,"credential-vault"),{recursive:true});
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+ rmSync(join(f.home,"credential-keys"),{recursive:true});
+ expect(managedClaudeBinding(f.home,"spare")).toBeNull();
+ symlinkSync(join(f.root,"absent"),join(f.home,"credential-vault"));
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+ rmSync(join(f.home,"credential-vault"));mkdirSync(join(f.home,"credential-vault"));
+ symlinkSync(join(f.root,"absent"),join(f.home,"credential-vault","claude.sqlite"));
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+});
+it("selection refuses inaccessible state checks while a truly absent legacy vault stays legacy",()=>{
+ const f=fixture();expect(managedClaudeBinding(f.home,"unused")).toBeNull();
+ const exists=fs.existsSync;vi.spyOn(fs,"existsSync").mockImplementation(path=>String(path)===join(f.home,"credential-vault","claude.sqlite")?false:exists(path));
+ const original=fs.lstatSync;
+ vi.spyOn(fs,"lstatSync").mockImplementation(((path:fs.PathLike,...args:unknown[])=>{
+  if(String(path)===join(f.home,"credential-vault","claude.sqlite"))throw Object.assign(new Error("synthetic inaccessible state"),{code:"EACCES"});
+  return (original as Function)(path,...args);
+ }) as typeof fs.lstatSync);
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
 });
