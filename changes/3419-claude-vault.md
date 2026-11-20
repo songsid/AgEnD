@@ -1,0 +1,1 @@
+- Add encrypted storage and a local, verified-administrator API for managed Claude credentials, with revision checks and audit records. Dashboard selection and CLI use follow in separate changes.

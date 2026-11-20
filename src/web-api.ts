@@ -1,3 +1,4 @@
+import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
 import { pipeline } from "node:stream/promises";
 import { handleContactAuthorizationApi, type ContactApiHost } from "./contact-auth-api.js";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
@@ -409,7 +410,7 @@ export interface AccountMachine { id: string; actor: string }
 /** What an account write answers: done, or a code (and, for a computer, its own refusal sentence). */
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
-export interface WebApiContext {
+export interface WebApiContext extends ClaudeCredentialApi {
   clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
   writeContactPermissions?: ContactApiHost["writeContactPermissions"];
@@ -1590,6 +1591,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  * or a read session (M-3278: the public link's admin session may) — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
+  credential_connected: 409,
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
   unsafe: 409, default_home: 409, failed: 500, unsupported: 400, still_signed_in: 409,
   // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
@@ -3304,6 +3306,7 @@ export function handleWebRequest(
   if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || HOST_CLI_PATHS.has(path)) return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
+  if (handleClaudeCredentials(req, res, url, ctx)) return true;
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header

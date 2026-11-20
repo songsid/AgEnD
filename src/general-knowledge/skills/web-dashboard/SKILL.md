@@ -740,6 +740,8 @@ runs now. If the npm copy is still there, **Remove the npm copy** is a separate 
 runs `npm -g uninstall @anthropic-ai/claude-code` in that npm folder; the card offers it whenever Claude Code runs from the native
 install and an npm copy is still on the computer (also after a restart). This offer is only on AI accounts, not in Needs you.
 
+**Managed Claude credentials (storage foundation, M-3419)** — the separate managed-credential API is local-loopback and verified-admin only, even though ordinary Accounts actions can run over a public link. It stores encrypted API keys or setup tokens without making a model request and returns metadata only; it cannot be used through MCP/chat. This foundation does not yet offer a dashboard paste selector or change a CLI's credential source. A profile with a managed secret must have that saved secret removed before deleting the profile; removal of AgEnD's copy does not revoke it at Anthropic. Same-OS-user agents are not isolated from runtime secrets.
+
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
 before), from Settings → AI accounts & keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity
 card offers, and what it means:
