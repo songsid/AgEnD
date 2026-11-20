@@ -1,0 +1,80 @@
+{
+  "files": [
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "b7897cd0a8547f9b573ab48b2804dbd9b32ce58931456e6af044a5a85f425aa0"
+    },
+    {
+      "path": "scripts/manual/smoke/ui-gate-tap-allowlist.json",
+      "sha256": "4338af821553223b2e536e3745de122d55170215340024a67bcb7e672489b1c3"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/README.md",
+      "sha256": "736d6e3b8a29b1c4ea2e6f5e01591a48d588f8cefc6219e514c56037881cd090"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/base-dashboard.log",
+      "sha256": "e2fc195adfe7374079fedb905383b57f39b8b11bfca457776b66c341a8f245d6"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/capture-recipe.mts",
+      "sha256": "54cfe6732364b0ec1b64d89c91704b8c58306746657256dbd181e6c04bfc3434"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/checks.json",
+      "sha256": "3827c22f443b842fe5916680fbfb3518096d0fa8951c35afb2b59eed1777943f"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/label-geometry.json",
+      "sha256": "5c346d55066b16a36f26a9496949ec560dba19d0d3b658ae3da1abef1eb19edc"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/phone-access.png",
+      "sha256": "cd5b96a6461839f5d54ca064acb0c69daa81b5813167686c8ff7b061d5859485"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/phone-en-dashboard-after.png",
+      "sha256": "a29b24db75970914c3196600293ec9d9bc9a4908d6be02de99a1c45874f7a71c"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/phone-en-dashboard-before.png",
+      "sha256": "a29b24db75970914c3196600293ec9d9bc9a4908d6be02de99a1c45874f7a71c"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/phone-zh-TW-dashboard-after.png",
+      "sha256": "e4898bc9b74a71d5ff299c0456fc6a494ac14bd0868b99cf355f6c818d4b78dd"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/captures/phone-zh-TW-dashboard-before.png",
+      "sha256": "e4898bc9b74a71d5ff299c0456fc6a494ac14bd0868b99cf355f6c818d4b78dd"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/css-balance.log",
+      "sha256": "1733ac9e049a574a80bd23e3d24e0b8ede867a1ab8c91c8b012509ca4b2d181b"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/css-literals.log",
+      "sha256": "a618540227ddc36acef108a6ccb4ac83eb9da05e508c6ac5283546d0057d1122"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/fragments.log",
+      "sha256": "f011dce618d05d472319718998c6ad9f4620fae0e785d52fee79a42283c5b810"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/full-gate-result.json",
+      "sha256": "ccf6f09cb36f12038c3150468dee6fcf0e9ce2257ba52976110bd1477ba8a465"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/full-gate.log",
+      "sha256": "6ac0b6780385c7b392940d7ebbaac2f0b1a63041e2ac792e0e015e596ed86f5c"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/main-post-merge.json",
+      "sha256": "f981e1b62b17369eac33d6470c12a9274e54f4f9133a0c6f1408d2a8ba7ec7fd"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/port-proof.json",
+      "sha256": "6c0b45513e0d4333fb76e5a390953d4042e3d2a1518da3ccbc13ba356acb3dad"
+    }
+  ]
+}

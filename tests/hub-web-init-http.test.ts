@@ -1,6 +1,7 @@
 /** Real fleet HTTP/D3 cookie, verified fake LDAPS, real initializer/S1 and actual Hub HTTPS; scratch only. */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createServer, request as httpRequest, type Server } from "node:http";
+import { createServer as createNetServer } from "node:net";
 import { request as httpsRequest } from "node:https";
 import { X509Certificate } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -16,7 +17,7 @@ import { bindGatewayRequest } from "../src/web-request-context.js";
 import { directoryCertificates, directoryCaFixture } from "./support/hub-directory-ca-fixture.js";
 import { groupWirePeer, PERSON_ID } from "./support/hub-group-directory-wire.js";
 import { tempDir } from "./support/hub-init-fixtures.js";
-import { freeHubPort } from "./helpers/hub-rig.js";
+import { hubListenerPorts } from "./helpers/hub-listener-ports.js";
 
 const prefix="/api/settings/hub/setup";
 let certs:ReturnType<typeof directoryCertificates>;
@@ -27,12 +28,28 @@ function request(port:number,method:string,path:string,headers:Record<string,str
   r.on("error",reject);r.end(body);
 });}
 const cleanups:Array<()=>Promise<void>>=[];
-afterEach(async()=>{for(const close of cleanups.splice(0))await close();vi.restoreAllMocks();vi.unstubAllEnvs();});
+afterEach(async()=>{try{for(const close of cleanups.splice(0))await close();}finally{vi.restoreAllMocks();vi.unstubAllEnvs();}});
 async function fixture(){
   const home=tempDir("hub-web-http-"),path=join(home,"fleet.yaml");
+  let ports:ReturnType<typeof hubListenerPorts>|undefined,runtime:HubRuntime|undefined,internal:any;
+  let peer:Awaited<ReturnType<typeof groupWirePeer>>|undefined;
+  const close=async()=>{
+    const errors:unknown[]=[];
+    for(const dispose of [async()=>{await (await internal?.hubSetupInit)?.close();},async()=>{await (await internal?.hubDirectoryInit)?.close();},
+      async()=>{await internal?.hubRuntime?.close();},async()=>{await runtime?.close();},async()=>{
+        const server=internal?.healthServer as Server|undefined;
+        if(server){internal.healthServer=null;server.closeAllConnections();await new Promise<void>(resolve=>server.close(()=>resolve()));}
+      },()=>{internal?.webSessions?.flush?.();},async()=>{await peer?.close();},async()=>{await ports?.close();},
+      ()=>rmSync(home,{recursive:true,force:true})]){
+      try{await dispose();}catch(error){errors.push(error);}
+    }
+    if(errors.length)throw new AggregateError(errors,"Web initialization fixture cleanup failed");
+  };
+  cleanups.push(close);
+  ports=hubListenerPorts();const webPort=await ports.next(),memberPort=await ports.next();
   writeFileSync(path,"# Existing fleet settings\ninstances: {}\nweb:\n  verified_authority:\n    enabled: true\n",{mode:0o600});
   const users=[{id:PERSON_ID,login:"avery",dn:"CN=Avery,DC=example,DC=test",password:"Dummy-person-only",eligible:true}];
-  const peer=await groupWirePeer(certs.leaf,users),fm=new FleetManager(home),internal=fm as any;
+  peer=await groupWirePeer(certs.leaf,users);const fm=new FleetManager(home);internal=fm as any;
   const sink=()=>{};fm.logger={info:sink,warn:sink,error:sink,debug:sink,trace:sink,fatal:sink,child:()=>fm.logger} as any;
   vi.stubEnv("AGEND_FLEET_DATA_DIR",process.env.AGEND_FLEET_DATA_DIR);vi.stubEnv("AGEND_FLEET_CONFIG_PATH",process.env.AGEND_FLEET_CONFIG_PATH);
   fm.loadConfig(path);internal.initializeWebAuthTokens();internal.startHealthServer(0);
@@ -46,18 +63,15 @@ async function fixture(){
   const host=await signIn();
   const headers=(id=host.id)=>({origin,"content-type":"application/json",cookie:`agend_session=${id}`,[WEB_CSRF_HEADER]:csrfTokenFor(id)});
   const call=(action:string,value?:unknown,extra:Record<string,string>={},id=host.id)=>request(port,action?"POST":"GET",prefix+action,{...headers(id),...extra},value===undefined?undefined:JSON.stringify(value));
-  const webPort=await freeHubPort();let memberPort=await freeHubPort();while(memberPort===webPort)memberPort=await freeHubPort();
   const input={name:"Fictional Hub",webOrigin:`https://127.0.0.1:${webPort}`,memberOrigin:`https://127.0.0.1:${memberPort}`,
     webListen:{host:"127.0.0.1",port:webPort},memberListen:{host:"127.0.0.1",port:memberPort},
     directory:{realm:"fictional",url:`ldaps://127.0.0.1:${peer.port}`,caPem:certs.ca,baseDn:"DC=example,DC=test",bindDn:"CN=Reader,DC=example,DC=test",profile:"ad"},
     confirmedCa:[new X509Certificate(certs.ca).fingerprint256],bindPassword:"Dummy-service-only",administratorLogin:"avery",
     retention:{contentDays:30,eventDays:90},coexistence:"dedicated"};
-  let runtime:HubRuntime|undefined;
   const r={home,fm,internal,peer,users,port,origin,token,host,headers,call,input,signIn,
     async mount(){runtime=new HubRuntime({home,log:sink});await runtime.apply({hub:fm.getRawFleetConfig().hub});return runtime;},
-    async close(){await (await internal.hubSetupInit)?.close();await (await internal.hubDirectoryInit)?.close();await internal.hubRuntime?.close();await runtime?.close();const s=internal.healthServer as Server;internal.healthServer=null;
-      s.closeAllConnections();await new Promise<void>(resolve=>s.close(()=>resolve()));internal.webSessions?.flush?.();await peer.close();rmSync(home,{recursive:true,force:true});}};
-  cleanups.push(r.close);return r;
+    async releaseInitialReservations(){await ports!.release(memberPort);await ports!.release(webPort);},close};
+  return r;
 }
 
 function held() { let release!:()=>void; const promise=new Promise<void>(r=>{release=r;});return {promise,release}; }
@@ -76,6 +90,18 @@ function noSetupEffects(r:Awaited<ReturnType<typeof fixture>>) {
   expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);
   expect(readdirSync(r.home).filter(name=>name.startsWith(".hub-browser-"))).toEqual([]);
 }
+async function competeForPorts(input:{memberListen:{port:number};webListen:{port:number}}) {
+  const results:string[]=[];
+  for(const {port} of [input.memberListen,input.webListen]) {
+    const probe=createNetServer();
+    try { results.push(await new Promise<string>(resolve=>{
+      probe.once("error",error=>resolve((error as NodeJS.ErrnoException).code??"unknown"));
+      probe.listen(port,"127.0.0.1",()=>resolve("bound"));
+    })); }
+    finally { if(probe.listening)await new Promise<void>(resolve=>probe.close(()=>resolve())); }
+  }
+  return results;
+}
 
 describe("initial setup from the actual host launch session",()=>{
   it("marks setup only on the exact local host shell, without constructing the initializer",async()=>{
@@ -92,7 +118,9 @@ describe("initial setup from the actual host launch session",()=>{
   },20_000);
 
   it("completes setup through the public route, mounts HTTPS and imports setup audit before accepting browser sign-in",async()=>{
-    const r=await fixture();expect((await r.call("")).body).toMatchObject({initialized:false,existingFleet:false});
+    const r=await fixture();
+    expect(await competeForPorts(r.input)).toEqual(["EADDRINUSE","EADDRINUSE"]);
+    expect((await r.call("")).body).toMatchObject({initialized:false,existingFleet:false});
     const prepared=await r.call("/prepare",r.input);expect(prepared.status).toBe(200);expect(prepared.body.ref).toBeTypeOf("string");
     expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);
     expect((await r.call("/test",{ref:prepared.body.ref})).body).toEqual({ok:true});
@@ -100,6 +128,7 @@ describe("initial setup from the actual host launch session",()=>{
     // Saving a seal on this non-started Fleet fixture does not imply a listening Hub.
     expect((await r.call("")).body).toMatchObject({ initialized:true, runtime:{
       hubId:committed.body.hubId,webOrigin:r.input.webOrigin,state:"unavailable"} });
+    expect(await competeForPorts(r.input)).toEqual(["EADDRINUSE","EADDRINUSE"]);
     const runtime=await r.mount();expect(runtime.currentHolds()).toEqual([]);expect(runtime.serverHealth(r.fm.getRawFleetConfig().hub)).toBe("ready");
     // Expose this fixture's physically mounted HTTPS runtime through the production FleetManager read seam.
     r.internal.hubRuntime = runtime;
@@ -116,6 +145,9 @@ describe("initial setup from the actual host launch session",()=>{
     }finally{db.close();}
     expect(r.peer.bindRecords.length).toBeGreaterThan(0);expect(r.peer.bindRecords.every(b=>b.dn===r.input.directory.bindDn&&b.password==="Dummy-service-only")).toBe(true);
     expect((await r.call("/commit",{ref:prepared.body.ref})).status).toBe(410);
+    await runtime.close();
+    // Check production teardown before fixture cleanup can close the leases.
+    expect(await competeForPorts(r.input)).toEqual(["bound","bound"]);
   },20_000);
   it("rejects non-host, guest, header, wrong-origin, missing-CSRF, public and forwarded requests before constructing setup",async()=>{
     const r=await fixture(),create=vi.spyOn(r.fm,"hubSetup");const other=await r.signIn(r.fm.issueDashboardLogin()!.display);
@@ -132,6 +164,8 @@ describe("initial setup from the actual host launch session",()=>{
   },20_000);
   it("detects a newly occupied port at Save before identity or config writes",async()=>{
     const r=await fixture(),d=await r.call("/prepare",r.input),occupied=createServer();expect(d.status).toBe(200);
+    // Abandon both unclaimed reservations so commit uses the actual member and web preflight.
+    await r.releaseInitialReservations();expect(await competeForPorts(r.input)).toEqual(["bound","bound"]);
     await new Promise<void>(resolve=>occupied.listen(r.input.webListen.port,"127.0.0.1",resolve));
     try{expect((await r.call("/commit",{ref:d.body.ref})).body).toEqual({error:"network"});
       expect(r.fm.getRawFleetConfig().hub).toBeUndefined();expect(existsSync(join(r.home,"hub/keys/identity.json"))).toBe(false);

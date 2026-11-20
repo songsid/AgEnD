@@ -1,0 +1,253 @@
+{
+  "sourceBase": "6cf999237e828b9311779a1501448d736972a980",
+  "sourceUnchanged": {
+    "path": "src/backend/muse.ts",
+    "sha256": "61ecd3df6fa5374ae71f8fb7d5ed686ad5d39cba339a4ca2aa1be5936309cbb4"
+  },
+  "files": [
+    {
+      "path": "docs/design/muse-1.4.24-audit.md",
+      "sha256": "a233ed76bee5ff60a1f54e7222c1e81339e48f8e515e4e2b76d611eca45f1383"
+    },
+    {
+      "path": "docs/evidence/muse-1424-m3396/binary-analysis.json",
+      "sha256": "6bf836850d0a513729a5f047fa5756941ef57a083613ac5435e18ae2e863470f"
+    },
+    {
+      "path": "docs/evidence/muse-1424-m3396/precheck.txt",
+      "sha256": "ee5428bd22684f039c6936343a5e520cba9ccd770152766860ba61c5a636ed30"
+    },
+    {
+      "path": "docs/evidence/muse-1424-m3396/summary.json",
+      "sha256": "b1f2ccf7b27a18cca0c3e724f2ecbd8e7c0f7cb6793e49e5d0235a732e262723"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/SOURCES.md",
+      "sha256": "2fb8d4d0ffbfce1616194e4783941d6457421aa455788fcad13c76d617674c54"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/approval-escalated-after-esc.pane.txt",
+      "sha256": "62871d80ad94e82c4c7ae377369912d366f4d28b08e857e8149eccd466ef3646"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/approval-escalated.pane.txt",
+      "sha256": "ce14145199d7032d4439c4508194736367e466ac4b0fc95218a15246faafcf5b"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/approval-untrusted-active.pane.txt",
+      "sha256": "f31837b9de64cc5a486837cae288f668c6f0f46ebdad970f8522a88808034cd8"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/approval-untrusted-after-1.pane.txt",
+      "sha256": "eb0f7579e2867136e352119a96e88070fd6a3342752476a0d0e5870669ec44c8"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/approval-untrusted-staged.pane.txt",
+      "sha256": "94353b211f24e124263df49903258f39995b6c49d5d4244d3942ccf390f26ecd"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/approval-escalated-after-esc.pane.txt",
+      "sha256": "51fdd37ef04b0b38bd8a53390ce561b1bad8c515015ab0fd55be79fa4f66e59c"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/approval-escalated.pane.txt",
+      "sha256": "d382a0279f7ff6840dcc2163f5c06177e8c8f56c95cf277c71691d9b0a377aa4"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/approval-untrusted-active.pane.txt",
+      "sha256": "29c5fd4fe56dd86203231fab52c9c3d3f68ae429aa324cce7d6647958eaa58ed"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/approval-untrusted-after-1.pane.txt",
+      "sha256": "463595ae574e017cfb24a1c5c86661f7791830610a2088750441558f05e2a69b"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/approval-untrusted-staged.pane.txt",
+      "sha256": "843381a224fedde9616a779b2483c278e95878d888c65558369ccbf5397b923e"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-after-escape.pane.txt",
+      "sha256": "03bfac0ba2b51b7bbc188a730feb77f118235c26b625e5b5c379cb05361535a2"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-busy.pane.txt",
+      "sha256": "9b1b812096c4ef2881d253727865096ff858287e28208c8aab56d5b0d28c400c"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-done.pane.txt",
+      "sha256": "3e5211fb21dab7a47d5a4f0b0f2c610cb5c1f7c69fd079f1abc2754ddb981eff"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-idle.pane.txt",
+      "sha256": "4e162585df66af76420f6728c48890d4c4ad230fe3ff90ddca8c269da2ef4c4c"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-quit.pane.txt",
+      "sha256": "16b44409b4b8630ffb49d855c48296b2895d0217fcc770651a187e3df1a8f2e6"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/echo-resumed.pane.txt",
+      "sha256": "ff910d4b4f49006bafa10f63a69941697bffb499ada26cf85aa5680e61d90529"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/first-run-trust-dialog.pane.txt",
+      "sha256": "20c5170c694a4ad7e7acce809b571ce7c3f10a0d31edc77c96d959e59728d634"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/logged-out.pane.txt",
+      "sha256": "ec80f29a129508d9dd19db78dcd60817bee28d170a8c4062e23ea559c208e197"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/meta-done.pane.txt",
+      "sha256": "5db4a25be9635385e4337228dbfe94c34ef5063e850913b3370e34523c590680"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/meta-idle.pane.txt",
+      "sha256": "17dfa0143e90202e0b2d0ce32e564bd33da1a8112718fc32d56590467618e8fa"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/prod-escalation-denied.pane.txt",
+      "sha256": "c2698b814dbe5bda61caa9e5421f8cd19ea32dbf1e92d11629d676601e5d9446"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/quota-120.pane.txt",
+      "sha256": "5942beef3396eafafab3e20f8bb40160a89dc15d60428a9b9a0839d9cc47f4f6"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/quota-80.pane.txt",
+      "sha256": "30391d88622d6325eeb89a2a0992102652b8b4d05e82cb0af4b22990f98592db"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/rate-exhausted-120.pane.txt",
+      "sha256": "9ddbff23e20ad960c78c8b64f5e9783966934d427424bd8cc8ed2c6cd6fe7dac"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/rate-exhausted-80.pane.txt",
+      "sha256": "a3543a072ed77c5a785951927f82d7491a21cf21fb5826bbc348cf2970ca763e"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/rate-retrying-120.pane.txt",
+      "sha256": "da5d1e22f10d56f72e709805ac5b59faefc9e1b4a7c73f9fdd845bb963254dc5"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/rate-retrying-80.pane.txt",
+      "sha256": "e11f5b4cf277916e462f77196a8251ba60c3563d30f1f0becd773ef82a7a0395"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/resume-missing.exit",
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/resume-missing.stderr",
+      "sha256": "aa0f73622ed0fd889abda288115ae1defffb1872d81a5174610494f4391cd496"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/control/resume-missing.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-after-escape.pane.txt",
+      "sha256": "c6e7e775e6e204d39b57f5ee3f82a14d30b128e018d09d5dcf74e5fb04ad5ede"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-busy.pane.txt",
+      "sha256": "9ff5152bef9018aa906323dfa01b9a724ff761cdb01041b6fd8b073b8534bcfe"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-done.pane.txt",
+      "sha256": "6ff94cc22c660efd14ca400351fea9d2ae84f79f094bf26a5c8c8b215945d708"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-idle.pane.txt",
+      "sha256": "5769a223a5baed38e5368a7583c630482e1616080e52778148fb0f5fddd1020f"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-quit.pane.txt",
+      "sha256": "64be81db51be90274af071da259202843db389203f2f69f562749470cfd87467"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/echo-resumed.pane.txt",
+      "sha256": "11e18d7f91cb90215d9412f7a3aeae35371e428103ce67864fa73e87172fc095"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/first-run-trust-dialog.pane.txt",
+      "sha256": "20c5170c694a4ad7e7acce809b571ce7c3f10a0d31edc77c96d959e59728d634"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/logged-out.pane.txt",
+      "sha256": "33df3021ef451437967b0bc98a4936179690b5a38244bbf89432b0204d146bae"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/meta-done.pane.txt",
+      "sha256": "793bd1c126d29f3910ebe63e49e96c7bcfc1d0da3cf95fe2928786e461656dfb"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/meta-idle.pane.txt",
+      "sha256": "94dbb0dd8285ea0b79c4d94cba00d68f6853f7e0de166049fee1634c9bb2a2de"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/prod-escalation-denied.pane.txt",
+      "sha256": "c366dc24006abecea2ff0f3f931b2d3ab33601780b62de366618a3809f66ca63"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/quota-120.pane.txt",
+      "sha256": "e60b34f08154545581d3517255a56cd98c4f1ba099de1cfa35faf2099977d565"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/quota-80.pane.txt",
+      "sha256": "14fddb21d29048315025f81b3a0f8d662431e329321ca87bc380cce47f2725cb"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-between-retries-120.pane.txt",
+      "sha256": "0bca2a33888c4608cf3c83c58dcb243e10384bbdfc0a28fd666246304005a3e9"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-between-retries-80.pane.txt",
+      "sha256": "f2011cbddd8e76cafbdc49a359e3ce1138b9995f15f566f8c23de7ff4c44e8bb"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-exhausted-120.pane.txt",
+      "sha256": "9783484cf52cc20dfca5ea90f899a3196cf3a995a290dec47a5f5f8b5992305a"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-exhausted-80.pane.txt",
+      "sha256": "af39cb57df0f87a68fb048c5db4ce3a03c5baa22d9169ed09a14b009d91dc90e"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-retrying-120.pane.txt",
+      "sha256": "2f7eefc4691adaa9f7a05077b4cfb5926c57fb67f51f7e20c3c433d2e759917f"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rate-retrying-80.pane.txt",
+      "sha256": "0ae4ead5069abf354e7c1ff027ceed26a34ce8d4e5401df37ac6d0d19d023315"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/resume-missing.exit",
+      "sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/resume-missing.stderr",
+      "sha256": "aa0f73622ed0fd889abda288115ae1defffb1872d81a5174610494f4391cd496"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/resume-missing.stdout",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rig/controller.py",
+      "sha256": "4e5e9c0a6297efaf0e2c3a9768c681ae3b3097344c5a9c6cae531bd844847c31"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rig/mock.py",
+      "sha256": "6eb5ac19aee7d3ebcd80ac885a218114f02e692d0253f06edd859f22ad84f758"
+    },
+    {
+      "path": "tests/fixtures/muse-1.4.24/rig/run.sh",
+      "sha256": "22583b1b8b3df4271fda677639f094f5b44faf018984d674888e81a668f668f7"
+    },
+    {
+      "path": "tests/muse-1.4.24-audit.test.ts",
+      "sha256": "5e8d30eeec1236740038259e4e86ee7a9af82b1bc9e0b98c79bbf052b9a03494"
+    }
+  ]
+}

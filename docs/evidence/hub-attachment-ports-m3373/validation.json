@@ -1,0 +1,40 @@
+{
+  "base": "d7feed624658a100722c226780b43741a02562c7",
+  "fixtureBlob": "7c8de276f6bbc46c9b1e5f3f0555059f5472fbd7",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-attachments-e2e.test.ts -t 'both directions end to end' --maxWorkers=2",
+    "failed": 1,
+    "filtered": 3,
+    "expected": "EADDRINUSE",
+    "actual": "bound",
+    "failure": "AssertionError"
+  },
+  "initialFixed": {
+    "command": "npx vitest run tests/hub-attachments-e2e.test.ts tests/hub-compose-ports-m3338.test.ts --maxWorkers=2",
+    "passed": 6,
+    "failed": 1,
+    "reason": "existing 10000ms limit while shutdown observation was inside the transfer body",
+    "helperCasesPassed": 3
+  },
+  "finalFixture": {
+    "command": "npx vitest run tests/hub-attachments-e2e.test.ts --maxWorkers=2",
+    "passed": 4,
+    "skipped": 0,
+    "scope": "shutdown observation in original cleanup stage; unchanged deadlines"
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "scope": {
+    "sharedHelperChanged": false,
+    "productionChanged": false,
+    "timeoutsChanged": false,
+    "retriesAdded": false,
+    "mainTwin": false
+  },
+  "proofLimits": [
+    "Local synthetic HTTP/TLS/WSS fixture with existing audit/content adapters.",
+    "No real account, vendor CLI/model, live Fleet, browser or Windows operation."
+  ]
+}

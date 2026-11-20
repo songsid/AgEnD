@@ -1,0 +1,36 @@
+{
+  "scope": "Main audit evidence; no detector change. Dev twin will add the shipped audited ledger, absent on main.",
+  "versions": [
+    {
+      "version": "1.4.23-R8977.1",
+      "bytes": 466999640,
+      "sha256": "7ca9e16659f759eab3ae6c4b61c6f1e70f5f3fea1ca961ebd49044a1146956f4"
+    },
+    {
+      "version": "1.4.24-R9131.1",
+      "bytes": 471370072,
+      "sha256": "d752c45dce079ee29e118804b091d81ac2b1b89b67f317b4a162fa1af1206465"
+    }
+  ],
+  "panes": {
+    "new": 24,
+    "control": 22
+  },
+  "checks": {
+    "newAudit": "25/25",
+    "priorAudit": "65/65",
+    "sourceTypes": "0 errors",
+    "testTypes": "0 errors",
+    "precheckManifest": "current",
+    "regression": "733/733 (22 other Muse/precheck files)",
+    "distinct": "823/823 across 24 files, staged; 25 new +65 prior +733 other"
+  },
+  "changes": {
+    "productionSource": false
+  },
+  "limitations": [
+    "Offline mock-provider proof, not signed-in service validation.",
+    "Inter-retry frames and final failures are distinct.",
+    "Unrelated prior memory/workflow matrices were not rerun."
+  ]
+}

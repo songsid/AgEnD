@@ -1,0 +1,40 @@
+{
+  "savedBase": "8b7b331b7e38c1a2268059c97264b3e13ed5de09",
+  "alphaBase": "1be24d378bb179bd3812296f3a96d0bf2a135344",
+  "unchangedFixtureBlob": "6e32919602a4e67e7f999e29d92aeebbf4b4fa87",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-web-init-http.test.ts -t 'completes setup through the public route' --maxWorkers=2",
+    "failed": 1,
+    "filtered": 28,
+    "expected": [
+      "EADDRINUSE",
+      "EADDRINUSE"
+    ],
+    "actual": [
+      "bound",
+      "bound"
+    ],
+    "failure": "AssertionError"
+  },
+  "fixed": {
+    "command": "npx vitest run tests/hub-web-init-http.test.ts tests/hub-compose-ports-m3338.test.ts --maxWorkers=2",
+    "passed": 32,
+    "skipped": 0,
+    "files": 2
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "scope": {
+    "productionChanged": false,
+    "sharedHelperChanged": false,
+    "timeoutChanged": false,
+    "retriesAdded": false,
+    "mainTwin": false
+  },
+  "proofLimits": [
+    "Linux loopback fixture only; no external service or account.",
+    "Existing runtime off/on and directory replacement cases pass; no separate live or browser campaign."
+  ]
+}

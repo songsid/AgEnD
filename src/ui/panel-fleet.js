@@ -241,7 +241,7 @@ export function FleetPanel({ route, navKey }) {
          tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
     <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
     ${wide || phone ? null : tabs("seg")}
-    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
+    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
 

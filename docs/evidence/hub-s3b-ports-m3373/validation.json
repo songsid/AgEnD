@@ -1,0 +1,31 @@
+{
+  "base": "a5d109bb1826931119d8353b4f1e1b745139eb4e",
+  "fixtureBlob": "1e6bc8f7d3a29f01abd2a8df4112f624f8931ec7",
+  "failFirst": {
+    "command": "npx vitest run tests/hub-s3b-flow.test.ts --maxWorkers=2",
+    "failed": 1,
+    "failure": "AssertionError",
+    "expected": "EADDRINUSE",
+    "actual": "bound"
+  },
+  "fixed": {
+    "command": "npx vitest run tests/hub-s3b-flow.test.ts --maxWorkers=2",
+    "passed": 1,
+    "skipped": 0
+  },
+  "types": {
+    "command": "npx tsc --noEmit -p tsconfig.test.json",
+    "diagnostics": 0
+  },
+  "scope": {
+    "sharedHelperChanged": false,
+    "productionChanged": false,
+    "timeoutsChanged": false,
+    "retriesAdded": false,
+    "mainTwin": false
+  },
+  "proofLimits": [
+    "Local synthetic HTTP/TLS/WSS with existing S5 audit/content adapters.",
+    "No real account, vendor CLI/model, live Fleet, browser or Windows operation."
+  ]
+}
