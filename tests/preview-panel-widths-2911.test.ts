@@ -104,6 +104,18 @@ describe("the page's width", () => {
 });
 
 describe("full screen", () => {
+  it.each(["html", "markdown"])("M-3438: %s fullscreen is not restricted to wide screens", async kind => {
+    const doc = await opened();
+    if (kind === "markdown") {
+      pp.openMarkdown({ key: "b-1:aexample", instance: "w", msgKey: "b-1", att: { id: "1".repeat(32), name: "example.md", size: 8 }, text: "# Example", sender: "w", ts: ts(1) });
+      await settle();
+    }
+    const button = doc.querySelector(".pv-panel-fs");
+    expect(button.classList.contains("only-wide")).toBe(false);
+    await click(button);
+    expect(doc.querySelector(".pv-panel").classList.contains("pv-fs-immersive")).toBe(true);
+  });
+
   it("without the Fullscreen API: the panel goes over the window (immersive); Esc leaves full screen first, then closes", async () => {
     const doc = await opened();
     const fsBtn = () => doc.querySelector(".pv-panel-fs");

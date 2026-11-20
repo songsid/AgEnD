@@ -1,11 +1,11 @@
-// #2911 (2), M-2216: the preview panel's page widths and full screen, and the narrow panel's two-row bar, on the realistic
+// #2911 (2), M-2216: the preview panel's page widths and full screen, and the narrow panel's wrapping bar, on the realistic
 // fixture with the real preview listener.
 // - Seeded opt-in, desk light en: Phone → the frame is 390 px wide (plus its border), centred; Tablet → 768 px, the panel
 //   scrolls sideways; Full → the panel's width; the choice survives a reload. Full screen: the Fullscreen API on the
 //   panel (document.fullscreenElement is the panel, never the frame); Esc leaves it and the panel stays open; a second
 //   Esc closes the panel.
-// - Phone dark zh-TW: the bar is two rows (versions/views/width above, run controls and Download below), nothing clipped;
-//   no full screen button (the panel is already the whole screen there).
+// - Phone dark zh-TW: the bar wraps (versions/views/width above, run controls and Download below), nothing clipped;
+//   full screen remains reachable and can enter/exit at phone width too.
 // - From defaults (nothing seeded) on a phone: the width control shows Full.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2911-preview-widths.mts
@@ -14,7 +14,7 @@ import { bootFixture, shotPath } from "../smoke-fixture/index.mts";
 import { freshPage } from "../smoke-fixture/from-defaults.mts";
 
 const SMOKE = "smoke-2911-preview-widths";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48470), instances: 2 });
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48470), instances: 2, classic: false });
 const fm = fx.fm;
 const name = fx.instances.find((i: any) => !i.general)!.name;
 const PAGE = (v: number) => `<title>Counter</title>\n<style>body{font:20px sans-serif;background:#def;margin:0;padding:16px}</style>\n<h1>Counter v${v}</h1>\n<p id=ok>rendered v${v}</p><p id=w></p>\n<script>document.getElementById("w").textContent = "innerWidth " + innerWidth;</script>`;
@@ -29,7 +29,7 @@ const PROBE = `(() => {
   return { width: q(".pv-width")?.value ?? null, bodyClass: body?.className ?? null, frame: box(q(".pv-panel iframe")), panel: box(q(".pv-panel")), body: box(body),
     bodyScrolls: body ? body.scrollWidth > body.clientWidth : null, fs: q(".pv-panel")?.className ?? null,
     fsEl: document.fullscreenElement ? (document.fullscreenElement.className || document.fullscreenElement.tagName) : null,
-    fsButton: (() => { const b = q(".pv-panel-fs"); return !!b && b.offsetParent !== null; })(),
+    fsButton: (() => { const b = q(".pv-panel-fs"); return !!b && b.offsetParent !== null; })(), fsButtonBox: box(q(".pv-panel-fs")),
     rows: (() => { const cs = [...document.querySelectorAll(".pv-panel-bar > *")].filter(e => e.offsetParent !== null && !e.classList.contains("grow")).map(e => { const r = e.getBoundingClientRect(); return r.y + r.height / 2; }).sort((a, b) => a - b);
       let n = cs.length ? 1 : 0; for (let i = 1; i < cs.length; i++) if (cs[i] - cs[i - 1] > 12) n++; return n; })(),
     clipped: [...document.querySelectorAll(".pv-panel-bar > *")].some(e => { const r = e.getBoundingClientRect(), p = q(".pv-panel").getBoundingClientRect(); return e.offsetParent !== null && (r.right > p.right + 1 || r.left < p.left - 1); }),
@@ -53,7 +53,7 @@ const results: any = { browser: fx.browser.version(), cases: {} };
   const r: any = { opened: await probe(fp.page) };
   await fp.page.screenshot({ path: shotPath(SMOKE, "fresh-phone-dark-zh-TW", "1-panel") });
   r.errors = fp.errors;
-  r.pass = r.opened.width === "full" && r.opened.bodyClass === "pv-panel-body w-full" && !r.opened.fsButton && !r.opened.clipped && r.opened.overflowX <= 0 && !r.errors.length;
+  r.pass = r.opened.width === "full" && r.opened.bodyClass === "pv-panel-body w-full" && r.opened.fsButton && !r.opened.clipped && r.opened.overflowX <= 0 && !r.errors.length;
   results.cases["fresh-phone-dark-zh-TW"] = r;
   await fp.ctx.close();
 }
@@ -105,8 +105,14 @@ const results: any = { browser: fx.browser.version(), cases: {} };
   await page.screenshot({ path: shotPath(SMOKE, c, "1-two-row-bar") });
   await pick(page, "phone"); await waitFrame(page);
   r.phone = { ...(await probe(page)), page: await frameText(page) };
+  await pick(page, "full"); await waitFrame(page);
+  await page.click(".pv-panel-fs"); await page.waitForSelector(".pv-panel.pv-fs");
+  r.fs = await probe(page);
+  await page.screenshot({ path: shotPath(SMOKE, c, "2-full-screen") });
+  await page.click(".pv-panel-fs"); await page.waitForFunction('!document.querySelector(".pv-panel")?.classList.contains("pv-fs")');
+  r.fsExit = await probe(page);
   r.csp = await csp(); r.errors = errors;
-  r.pass = r.bar.rows === 2 && !r.bar.clipped && !r.bar.fsButton && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
+  r.pass = r.bar.rows <= 3 && !r.bar.clipped && r.bar.fsButton && r.bar.fsButtonBox.w >= 44 && r.bar.fsButtonBox.h >= 44 && !r.fs.bodyScrolls && /pv-fs/.test(r.fs.fs) && !/pv-fs/.test(r.fsExit.fs) && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
   results.cases["phone-dark-zh-TW"] = r;
   await ctx.close();
 }
