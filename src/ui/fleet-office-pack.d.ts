@@ -1,7 +1,19 @@
 // Types for fleet-office-pack.js: the page's module, which the host imports too (web-office-skins.ts,
 // web-office-store.ts), so both check a skin pack and an office's layout overrides by the same rules.
+/** One sheet of a multi-sheet or frame-list strip (`src` is `frames·w × h` px). */
+export interface PackStripSheet { src: string; frames: number }
 /** `dw` × `dh`: its displayed size in logical units (w·scale × h·scale unless the manifest says otherwise). */
-export interface PackStrip { src: string; frames: number; w: number; h: number; fps: number; ax: number; ay: number; dw: number; dh: number }
+export interface PackStrip {
+  src: string; frames: number; w: number; h: number; fps: number; ax: number; ay: number; dw: number; dh: number;
+  /** M-3394 (#4231): present on multi-sheet (`src: [...]`) and frame-list (`frames: [{ src, ms? }]`) strips. */
+  sheets?: PackStripSheet[];
+  /** M-3394: per-frame durations in ms (length === `frames`). */
+  durations?: number[];
+  /** M-3394: play once and hold the last frame. */
+  once?: boolean;
+  /** M-3394 (#4231): intro plays `0 .. loopFrom - 1` once, then loops `loopFrom .. frames - 1`. */
+  loopFrom?: number;
+}
 export interface PackPoint { x: number; y: number }
 /** #2691: a seat reserved for `for` (lent while they are all elsewhere when `lend`); a plain seat has neither. */
 export interface PackSeat extends PackPoint { for?: string[]; lend?: boolean }
@@ -52,10 +64,18 @@ export const LOGICAL: { w: number; h: number };
 export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
 export const BUBBLE_KEYS: string[];
+export const STRIP_LIMITS: { sheetFrames: number; sheets: number; frames: number; minMs: number; maxMs: number };
 export function own<T = unknown>(o: unknown, k: unknown): T | undefined;
 export function inherited(k: unknown): boolean;
 export function matteOk(v: unknown): v is string;
 export function checkStrip(v: unknown, at?: string, scale?: number): PackStrip;
+export function stripSheets(st: PackStrip | null | undefined): PackStripSheet[];
+export function stripImages(st: PackStrip | null | undefined): string[];
+export function stripFrameAt(st: PackStrip | null | undefined, ms: number): number;
+export function stripCell(st: PackStrip | null | undefined, frame: number): { src: string; col: number };
+export function stripMaxFps(st: PackStrip | null | undefined): number;
+export function packMaxFps(pack: CheckedPack | null | undefined): number;
+export function createClipClocks(): { elapsed(key: string, strip: PackStrip | null | undefined, ms: number): number; prune(seen: ReadonlySet<string>): void; clear(): void };
 export function checkSkinPack(x: unknown, opts?: { kept?: boolean }): { ok: true; pack: CheckedPack } | { ok: false; error: string };
 /** #3679: a fleet-wide `levels`, by a pack's rules. */
 export function checkLevels(v: unknown): { ok: true; levels: LevelWords } | { ok: false; error: string };

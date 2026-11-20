@@ -27,12 +27,12 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { checkSkinPack, own, packImages, packPortraitImages, packStrips, type CheckedPack } from "./ui/fleet-office-pack.js";
+import { checkSkinPack, own, packImages, packPortraitImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
-/** #2632: 160 files and 20 MiB a pack (was 64, 6 MiB) — room for a whole fleet's character sets. */
+/** #2632: 160 files and 20 MiB a pack (was 64, 6 MiB) — room for a whole fleet's character sets. M-3394: packPixels caps total decoded pixels per pack (64 Mpx ≈ 256 MiB RGBA) to protect phones. */
 export const SKIN_LIMITS = {
-  packs: 16, files: 160, fileBytes: 2 * MiB, packBytes: 20 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, name: 60, src: 200,
+  packs: 16, files: 160, fileBytes: 2 * MiB, packBytes: 20 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
 } as const;
 /** The most an upload's body may be: every picture's base64 (4/3) plus the manifest and the envelope. */
 export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes + 64 * 1024;
@@ -92,12 +92,14 @@ export function checkSkinPicture(name: string, bytes: Uint8Array): { ok: true; k
   return { ok: true, kept: Buffer.from(kept), width: size.width, height: size.height };
 }
 
-/** The sizes the checked manifest asks of its pictures: each STRIP exactly frames·w × h; the background and foreground 16:9. */
+/** The sizes the checked manifest asks of its pictures: each STRIP sheet exactly frames·w × h; the background and foreground 16:9. */
 function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; height: number }>): SkinRefusal | null {
   for (const { at, strip } of packStrips(pack)) {
-    const s = sizes.get(strip.src);
-    if (s && (s.width !== strip.frames * strip.w || s.height !== strip.h)) {
-      return refuse(400, "skin_strip_dimensions", `${at}: ${strip.src} is ${s.width}×${s.height} px; its strip needs ${strip.frames * strip.w}×${strip.h} (frames·w × h)`);
+    for (const sheet of stripSheets(strip)) {
+      const s = sizes.get(sheet.src);
+      if (s && (s.width !== sheet.frames * strip.w || s.height !== strip.h)) {
+        return refuse(400, "skin_strip_dimensions", `${at}: ${sheet.src} is ${s.width}×${s.height} px; its strip needs ${sheet.frames * strip.w}×${strip.h} (frames·w × h)`);
+      }
     }
   }
   const bg = pack.background ? sizes.get(pack.background) : undefined;
@@ -149,7 +151,7 @@ export function checkSkinUpload(body: unknown, by: string, now: number): SkinChe
   }
   for (const src of named) if (!sent.includes(src)) return refuse(400, "skin_file_missing", `${src}: named by the manifest, not sent`);
   const files: Record<string, SkinFile> = {}, pictures = new Map<string, Buffer>(), sizes = new Map<string, { width: number; height: number }>();
-  let total = 0;
+  let total = 0, totalPixels = 0;
   for (const src of named) {
     const b64 = own(body.files, src);
     if (typeof b64 !== "string" || b64.length % 4 !== 0 || !B64.test(b64)) return refuse(400, "skin_invalid", `files.${src}: base64`);
@@ -158,6 +160,8 @@ export function checkSkinUpload(body: unknown, by: string, now: number): SkinChe
     if (!pic.ok) return pic;
     total += pic.kept.length;
     if (total > SKIN_LIMITS.packBytes) return refuse(413, "skin_too_large", `at most ${SKIN_LIMITS.packBytes / MiB} MiB in all`);
+    totalPixels += pic.width * pic.height;
+    if (totalPixels > SKIN_LIMITS.packPixels) return refuse(400, "skin_too_many_pixels", `at most ${SKIN_LIMITS.packPixels / MiB} Mpx of pictures in all`);
     const id = hash32(pic.kept);
     files[src] = { id, bytes: pic.kept.length, width: pic.width, height: pic.height };
     pictures.set(id, pic.kept);
