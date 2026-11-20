@@ -59,6 +59,14 @@ describe("installed app chrome follows the rendered page", () => {
     b.custom("rgb(88, 32, 64)"); b.records([{ type: "childList", target: geometry }]);
     expect(b.nodes[0].content).toBe("rgb(88, 32, 64)");                                          // panes added or removed
   });
+  it("M-3486: a text box's own height (the composer's style write) never re-reads the colours; its class still does", () => {
+    const b = browser(); const box = { tagName: "TEXTAREA", classList: { contains: () => false } };
+    b.custom("rgb(23, 49, 63)");
+    b.records([{ type: "attributes", attributeName: "style", target: box }]);
+    expect(b.nodes[0].content).toBe("rgb(33, 33, 33)");                                          // typing / a divider drag
+    b.records([{ type: "attributes", attributeName: "class", target: box }]);
+    expect(b.nodes[0].content).toBe("rgb(23, 49, 63)");                                          // a class change may be a colour
+  });
   it("recovers when CSS becomes ready after boot", () => {
     const b = browser(); b.cssReady(false); b.theme.set("light"); b.flush(); expect(b.nodes[0].content).toBe("#ffffff");
     b.cssReady(true); b.event("DOMContentLoaded"); expect(b.nodes[0].content).toBe("rgb(255, 255, 255)");

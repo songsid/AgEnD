@@ -1,0 +1,71 @@
+{
+ "label": "after-w1366-t1",
+ "throttle": 1,
+ "width": 1366,
+ "domNodesPerPane": [
+  14374,
+  14389
+ ],
+ "preview": "running",
+ "content": {
+  "imgs": 80,
+  "frames": 1,
+  "codeBlocks": 120,
+  "tables": 40,
+  "reactions": 188,
+  "quotes": 80,
+  "activity": 2
+ },
+ "before": [
+  {
+   "scrollTop": 32500,
+   "first": "fleet-lead06:41 PM#101 #",
+   "firstTop": -6
+  },
+  {
+   "scrollTop": 32786,
+   "first": "core-dev06:39 PM#99 ## R",
+   "firstTop": -434
+  }
+ ],
+ "frames": {
+  "n": 365,
+  "mean": 17.1,
+  "p50": 16.7,
+  "p90": 16.7,
+  "p99": 33.3,
+  "max": 33,
+  "over33": 0,
+  "over50": 0
+ },
+ "window_ms": 6247.7,
+ "mainThreadSelf_ms": {
+  "style": 224.5,
+  "paint": 1240.7,
+  "script": 760.7,
+  "layout": 632.4
+ },
+ "layoutCount": 609,
+ "forcedLayouts": 0,
+ "styleCount": 1107,
+ "after": [
+  {
+   "scrollTop": 32500,
+   "first": "fleet-lead06:41 PM#101 #",
+   "firstTop": -6
+  },
+  {
+   "scrollTop": 32786,
+   "first": "core-dev06:39 PM#99 ## R",
+   "firstTop": -434
+  }
+ ],
+ "drafts": [
+  "draft A",
+  "draft B"
+ ],
+ "ratio": 0.5,
+ "errors": [
+  "Failed to read the 'localStorage' property from 'Window': The document is sandboxed and lacks the 'allow-same-origin' flag."
+ ]
+}

@@ -303,6 +303,32 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
       expect(many.classList.contains("overflows")).toBe(true);
     } finally { dom.restore(); }
   });
+  // M-3486: during a split-view divider drag, rows off screen are skipped (content-visibility, #4277); reading a size inside
+  // one lays it out on its own. A skipped line is not read at all and keeps its answer until it is measured again.
+  it("a line whose contents the browser is skipping is not measured; it keeps its answer until it is visible again", () => {
+    const { dom, list, th } = thread();
+    try {
+      const msgs = [status(1, "Weaver → worker:\n" + "測".repeat(80))];
+      th.render(msgs);
+      const line = list.querySelector(".msg.status-line") as any;
+      let reads = 0, skipped = false, scroll = 1200, client = 300;
+      for (const r of line.querySelectorAll(".st-ln")) {
+        Object.defineProperty(r, "clientWidth", { configurable: true, get: () => { reads++; return client; } });
+        Object.defineProperty(r, "scrollWidth", { configurable: true, get: () => { reads++; return scroll; } });
+        r.checkVisibility = (o?: { contentVisibilityAuto?: boolean }) => !(skipped && o?.contentVisibilityAuto);
+      }
+      th.render(msgs);
+      expect(line.classList.contains("overflows")).toBe(true);           // clipped at its drawn width
+      skipped = true; scroll = 300; reads = 0;                            // dragged wider while off screen: it would fit now
+      th.render(msgs);
+      expect(reads, "no size read inside a skipped row").toBe(0);
+      expect(line.classList.contains("overflows")).toBe(true);           // its last answer, unchanged
+      skipped = false;                                                    // on screen again (after the drag every row is laid out)
+      th.render(msgs);
+      expect(reads).toBeGreaterThan(0);
+      expect(line.classList.contains("overflows")).toBe(false);
+    } finally { dom.restore(); }
+  });
   it("a CRLF is one line break: no stray CR in a row, the rows' text as the message's lines (Copy keeps the message as sent)", () => {
     const { dom, list, th } = thread();
     try {

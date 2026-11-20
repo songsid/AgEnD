@@ -763,8 +763,14 @@ export function createThread(list, scroller, opts) {
     for (const m of list.querySelectorAll(".msg.status-line.folded")) {
       const btn = m.querySelector(".st-more");
       if (!btn || btn.dataset.lines) continue;
+      const rows = [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES);
+      // M-3486: a line whose contents the browser is skipping (content-visibility on the row while the split divider is
+      // dragged, #4277) is not measured: reading a size inside it lays that row out on its own, then locks it again —
+      // once per line, each frame (4,560 forced layouts in one drag of two real chats). It keeps its last answer and is
+      // measured on the resize after the drag, when every row is laid out again.
+      if (rows[0]?.checkVisibility && !rows[0].checkVisibility({ contentVisibilityAuto: true })) continue;
       let measured = false, over = false;
-      for (const row of [...m.querySelectorAll(".st-ln")].slice(0, STATUS_FOLD_LINES)) {
+      for (const row of rows) {
         if (!row.clientWidth) continue;
         measured = true;
         if (row.scrollWidth > row.clientWidth + 1) over = true;
