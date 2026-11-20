@@ -33,3 +33,7 @@ Static image inspection covered all eight report originals and both zh-TW phone 
 Synthetic snapshots prove rendering and route wiring, not real host usage accuracy or provider availability. Sysinfo reads cached CLI versions on the web path and does not initiate a probe. The existing platform send/refresh behavior is unchanged. Visual approval, exact-head review/CI, and both actual merges/post-merge checks are still required.
 
 Rollback is a normal revert of this change; it affects command availability and report rendering, with no stored-data migration.
+
+## CI correction
+
+The first exact-head CI run found one additional old guest-palette assertion in web-guest-chat-1920.test.ts. The shared command table already classifies /sysinfo as anyone-level in that Discord scope, so the advertised list intentionally gains it; /status remains absent for guests. Only that assertion/comment and this evidence changed. The complete guest integration file passes 16/16. Runtime, styles and the captured UI remain byte-identical to the source-cleared head. No source/browser campaign was repeated.

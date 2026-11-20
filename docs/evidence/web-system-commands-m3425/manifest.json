@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "98c2a9f92bf7efb1222d3c7b3564833d4014ce700b83bf8d50221658fb60e8c0"
+    "sha256": "3a1f1ce2a208d9c71efe8d5c02ab111bbd42466aa9891c9f8b414663c16ad3a5"
   },
   {
     "path": "captures/checks.json",
@@ -94,6 +94,10 @@
   {
     "path": "final-locale-tests.log",
     "sha256": "15e166a790e83a11d787246d7f7b2306c3b1293dee3aeed25280453ed08d62a6"
+  },
+  {
+    "path": "guest-integration-fix.log",
+    "sha256": "b1c90f35a2e06bdd80b99307e8449327867b618bfb0c586b8dcf266090b73502"
   },
   {
     "path": "related.log",
