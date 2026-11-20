@@ -1,0 +1,43 @@
+{
+  "scope": "S-206 only; page remains unavailable until S-207",
+  "focused": {
+    "files": 13,
+    "passed": 138,
+    "failed": 0,
+    "exit": 0
+  },
+  "testTypeScript": {
+    "diagnostics": 0,
+    "exit": 0
+  },
+  "sourceEmit": {
+    "diagnostics": 0,
+    "exit": 0
+  },
+  "postbuild": {
+    "exit": 0,
+    "environmentRepair": "Initial postbuild lacked existing locked runtime-asset packages in the reused dependency directory. Copied matching packages from this checkout and reran only postbuild; no dependency manifest change."
+  },
+  "compiledWorker": {
+    "entry": "compiled JavaScript worker",
+    "queries": 1,
+    "matchedValue": 42,
+    "stats": {
+      "bytes": 45056,
+      "rows": 6,
+      "maxBytes": 67108864,
+      "dbBudget": 31297536,
+      "trimmed": false
+    },
+    "offCleanup": true
+  },
+  "reversals": {
+    "caught": 6,
+    "restored": 6,
+    "assertionFailures": 6
+  },
+  "nativeCollectors": 0,
+  "browserRuns": 0,
+  "modelCalls": 0,
+  "finalOneHourBothOptions": "pending S-209"
+}

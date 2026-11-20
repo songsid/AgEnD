@@ -1,3 +1,4 @@
+import { HostMonitoringHistory } from './host-monitoring-history.js';
 import { HostMonitoringRuntime } from "./host-monitoring-runtime.js";
 import { NativeHostMonitoring } from "./host-monitoring-platform.js";
 import { disabledHostHealth } from "./host-monitoring.js";
@@ -1284,8 +1285,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly spawnGate: SpawnGate;
   readonly memoryPressure: MemoryPressure;
   private hostMonitor: HostMonitoringRuntime | null = null;
+  private hostHistory: HostMonitoringHistory | null = null;
   private startHostMonitoringRuntime(): void {
+    this.hostHistory ??= new HostMonitoringHistory({path:join(this.dataDir,'host-monitoring.sqlite'),unblocked:()=>this.hostMonitor?.apply()});
     this.hostMonitor ??= new HostMonitoringRuntime({
+      history:this.hostHistory,
       supported: () => process.platform === "linux" || process.platform === "darwin",
       committed: () => monitoringConfig(this.fleetConfig?.monitoring),
       raw: () => { if (!this.configPath) throw Error("config unavailable"); return {monitoring:loadRawFleetConfig(this.configPath).monitoring}; },
@@ -1294,6 +1298,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     this.hostMonitor.start();
   }
+  hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
   hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
 

@@ -30,7 +30,7 @@ export const PUBLIC_GATEWAY_WAIT_MS = 4_000;
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
-  if (method === "GET" && path === "/ui/host-health") return true; // cached only; handler requires a current admin session
+  if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if (reads && isWebIconPath(path)) return true;
   if (method === "GET" && path === "/ui/reply-preview") return true; // handler requires an admin session on every read
   if (reads && ["/", "/signin", "/signin/authenticator", "/ui", "/view", "/auth/session", "/auth/sessions", "/auth/device", "/api/fleet", "/api/profiles", "/api/sort-order", "/api/ai-usage"].includes(path)) return true;
@@ -135,7 +135,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
  */
 function isPublicPrivilegedRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
-  if (method === "GET" && path === "/ui/host-health") return true; // cached only; handler requires a current admin session
+  if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if ((reads || method === "PUT" || method === "DELETE") && path === "/ui/app-icon") return true;
   if (method === "GET" && (path === "/ui/update" || path === "/ui/update/log")) return true;
   if (method === "POST" && (path === "/ui/update/check" || path === "/ui/update/start")) return true;

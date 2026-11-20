@@ -1,0 +1,146 @@
+[
+  {
+    "name": "backing-watermark",
+    "path": "src/host-monitoring-history-policy.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history-policy.ts",
+      "sha256": "e1d3f90af5b6e47f9d126a66a958e24988b7fd1e5343f5976b6eff0499f7272f"
+    },
+    "replace": {
+      "from": "      free.push(backing.availableBytes);",
+      "to": "      // reversal: omit backing free space"
+    },
+    "test": "tests/host-monitoring-history-policy-m3454.test.ts",
+    "filter": "checks both",
+    "exit": 1,
+    "failed": [
+      "bounded history policy checks both the state and verified backing volume, never only the Linux free space"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history-policy.ts",
+      "sha256": "10010fd37b23067a1301bffc2d734537f583640f2801dbc891f33c0eb2d3ee75"
+    }
+  },
+  {
+    "name": "sqlite-quota",
+    "path": "src/host-monitoring-history-store.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history-store.ts",
+      "sha256": "faa466df1af796dac6fa51c19bc2274b626bff1129b0cd19cae8b267f7860ccd"
+    },
+    "replace": {
+      "from": "if(Number(this.db.pragma(`max_page_count = ${this.budget.maxPages}`,{simple:true}))>this.budget.maxPages)throw Error('history_cap');",
+      "to": "this.db.pragma('max_page_count = 2147483646');"
+    },
+    "test": "tests/host-monitoring-history-store-m3454.test.ts",
+    "filter": "engine refuses",
+    "exit": 1,
+    "failed": [
+      "physically capped monitoring history the SQLite engine refuses an oversized transaction before the physical budget grows"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history-store.ts",
+      "sha256": "2ad6e12c2b50a4a3c4ccb31919bd058eb3cbb66ef1cf98a8349a1d5a31078db5"
+    }
+  },
+  {
+    "name": "physical-exit",
+    "path": "src/host-monitoring-history.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "3ff6cef23b826c3733603d26cb5d54a0216fd7c2e401d2bd5ebd5a765d8d84d1"
+    },
+    "replace": {
+      "from": "try{await physical;}finally",
+      "to": "try{await Promise.resolve();}finally"
+    },
+    "test": "tests/host-monitoring-history-lifecycle-m3454.test.ts",
+    "filter": "physical exit",
+    "exit": 1,
+    "failed": [
+      "owned history persistence lifecycle revokes worker permission before close, waits for physical exit, and blocks a replacement"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "3b586ddee17ea5636c53e6e0a27054a6bd7e86bc7c1ba67206dc226644d7362e"
+    }
+  },
+  {
+    "name": "worker-write-permission",
+    "path": "src/host-monitoring-history-worker.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history-worker.ts",
+      "sha256": "c2cdeefdb1bb9522652b3ea9ca798823a16fae84cc9166ef6c196fa75b24606d"
+    },
+    "replace": {
+      "from": "if(message.op==='append'&&Atomics.load(enabled,1)!==1)",
+      "to": "if(false)"
+    },
+    "test": "tests/host-monitoring-history-worker-m3454.test.ts",
+    "filter": "withdrawn shared",
+    "exit": 1,
+    "failed": [
+      "real isolated SQLite worker a withdrawn shared write permission refuses a queued append without opening SQLite"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history-worker.ts",
+      "sha256": "d52cc73ef55de5cbcde544e4e8375965130ce3679fea4567503392e2e654c94f"
+    }
+  },
+  {
+    "name": "reply-auth",
+    "path": "src/web-api.ts",
+    "mutant": {
+      "path": "src/web-api.ts",
+      "sha256": "4d9f491028f08315ca02ba1c3a92dc9f2d5dfbce1ecb1de7d0eb2f78db467cd4"
+    },
+    "replace": {
+      "from": "if(current.kind!==\"allow\"||current.via!==\"session\"||current.session.tier!==\"admin\"||current.session.idHash!==who.session.idHash)",
+      "to": "if(false)"
+    },
+    "test": "tests/host-monitoring-history-api-m3454.test.ts",
+    "filter": "rechecks the current",
+    "exit": 1,
+    "failed": [
+      "bounded asynchronous host history boundary rechecks the current session before returning an asynchronous history answer"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/web-api.ts",
+      "sha256": "82b7796fd107ee7aa42051785c6f89ad23f6bd7c8c583963a498bf236fae3c1c"
+    }
+  },
+  {
+    "name": "query-bound",
+    "path": "src/host-monitoring-history-policy.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history-policy.ts",
+      "sha256": "283939f1fcebb03402b50a9d076c71eeee58ee1f6ae6a271cd2e57efc23ca5d6"
+    },
+    "replace": {
+      "from": "series.length>24",
+      "to": "series.length>240"
+    },
+    "test": "tests/host-monitoring-history-api-m3454.test.ts",
+    "filter": "unknown paths",
+    "exit": 1,
+    "failed": [
+      "bounded asynchronous host history boundary rejects unknown paths/SQL, extra keys, duplicate range and more than24 series"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history-policy.ts",
+      "sha256": "10010fd37b23067a1301bffc2d734537f583640f2801dbc891f33c0eb2d3ee75"
+    }
+  }
+]

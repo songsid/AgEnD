@@ -1,0 +1,96 @@
+{
+  "files": [
+    {
+      "path": "changes/3454-host-history.md",
+      "sha256": "dd8ca2fbac5eb248dd95078e8846c57fbccfe78e596b42b492431c6e9510e200"
+    },
+    {
+      "path": "changes/3454-host-history.zh-TW.md",
+      "sha256": "aadb784cee8f4c66a9029d2d6a6be2f214599286c4d8180b859b49b4ec09d46b"
+    },
+    {
+      "path": "docs/design/host-monitoring-history.md",
+      "sha256": "f30272665b403c32fc1f01d764ce607ed3e17790f018f0b38001b3a036151340"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-history-m3454/README.md",
+      "sha256": "cb0a4f69202f5a87eea451eb9562f229ce7771dec1144ce21dd6436fd9cbba37"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-history-m3454/checks.json",
+      "sha256": "fb28c17fbbabe1d7ad19bbe64318f833e1ac3e9c1bf1975a93b2c571c492c75c"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-history-m3454/reversals.json",
+      "sha256": "ec1862dae0084001a3bc47a28fe3a29e3df97b22745ccbc5e31d67e2563a8fa9"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "e5d3c0fb429741620ab649c930c747207bbf5728f240b0fd3b1159d67214a2fe"
+    },
+    {
+      "path": "src/host-monitoring-history-files.ts",
+      "sha256": "380825621cc45acb64f278531b75c614ad591713023179a9d80ff899f6d3d625"
+    },
+    {
+      "path": "src/host-monitoring-history-policy.ts",
+      "sha256": "10010fd37b23067a1301bffc2d734537f583640f2801dbc891f33c0eb2d3ee75"
+    },
+    {
+      "path": "src/host-monitoring-history-store.ts",
+      "sha256": "2ad6e12c2b50a4a3c4ccb31919bd058eb3cbb66ef1cf98a8349a1d5a31078db5"
+    },
+    {
+      "path": "src/host-monitoring-history-worker.ts",
+      "sha256": "d52cc73ef55de5cbcde544e4e8375965130ce3679fea4567503392e2e654c94f"
+    },
+    {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "3b586ddee17ea5636c53e6e0a27054a6bd7e86bc7c1ba67206dc226644d7362e"
+    },
+    {
+      "path": "src/host-monitoring-runtime.ts",
+      "sha256": "b68c28b32f58fb301c4d87fcf19537c520d8f82b2872cbd7a6b9e1679f965992"
+    },
+    {
+      "path": "src/host-monitoring.ts",
+      "sha256": "cf97ad9efe595a9fddf37b83d2f0c109620745950023bad1080844689d1bc9f7"
+    },
+    {
+      "path": "src/public-web-gateway.ts",
+      "sha256": "314dcf31bf1e0d17fc67666c6ca4fb3e574dba69aff446986b4f3de9472423e0"
+    },
+    {
+      "path": "src/web-api.ts",
+      "sha256": "82b7796fd107ee7aa42051785c6f89ad23f6bd7c8c583963a498bf236fae3c1c"
+    },
+    {
+      "path": "tests/host-monitoring-fleet-m3454.test.ts",
+      "sha256": "0512419c3244bd749a04b2fff95dfa4811ebbe4d0b4b4de06cf26cb691a4a13d"
+    },
+    {
+      "path": "tests/host-monitoring-history-api-m3454.test.ts",
+      "sha256": "fca70822072e1eb4246b0875ceed75309dcfbf1b354151d928a28a5f2515446f"
+    },
+    {
+      "path": "tests/host-monitoring-history-lifecycle-m3454.test.ts",
+      "sha256": "ca98a5230e1798474026f8720b00d38f4b1561a8686e4b80b95cdfce98f4b9de"
+    },
+    {
+      "path": "tests/host-monitoring-history-policy-m3454.test.ts",
+      "sha256": "4b57d4f6c20a1f269687a3e052b6289db795a88118fd1858b1e135002333d208"
+    },
+    {
+      "path": "tests/host-monitoring-history-store-m3454.test.ts",
+      "sha256": "33178cb2adb98659234f30d33999b1268a16e9e4701c1e5a5ac1452a5021e8a5"
+    },
+    {
+      "path": "tests/host-monitoring-history-worker-m3454.test.ts",
+      "sha256": "f06ff8d3cb58223271d5818440a6f830bf3a7fa3b8e7e67a0e3c6b722b492764"
+    },
+    {
+      "path": "tests/host-monitoring-runtime-m3454.test.ts",
+      "sha256": "e7ddd368e5c7d0d1ea7b9d40dc306b6ba7bd845289d2030e74783d0bb9368a0a"
+    }
+  ]
+}

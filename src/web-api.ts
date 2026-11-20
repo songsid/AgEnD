@@ -1,3 +1,4 @@
+import { historyQuery } from './host-monitoring-history-policy.js';
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
 import { pipeline } from "node:stream/promises";
 import { handleContactAuthorizationApi, type ContactApiHost } from "./contact-auth-api.js";
@@ -416,6 +417,7 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
   hostHealthSnapshot?(): import("./host-monitoring.js").HostHealthSnapshot;
   clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
@@ -2168,6 +2170,25 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (path === "/ui/host-history") {
+    res.setHeader("Cache-Control", "private, no-store");
+    const auth=()=>evaluateWebRequest(req as unknown as WebGateRequest,url,ctx.webToken??null,ctx.webSessions,{touch:false});
+    const who=auth();
+    if(who.kind!=="allow"||who.via!=="session"||who.session.tier!=="admin"){json(res,403,{error:"admin_session_required"});return true;}
+    const range=url.searchParams.get('range'),series=url.searchParams.getAll('series');
+    try{
+      if(method!=="GET"||url.search.length>4096||url.searchParams.getAll('range').length!==1||[...url.searchParams.keys()].some(k=>k!=='range'&&k!=='series'))throw Error();
+      historyQuery(range,series,Date.now());
+    }catch{json(res,400,{error:"invalid_history_query"});return true;}
+    if(!ctx.hostHistoryQuery){json(res,503,{error:"history_unavailable"});return true;}
+    void Promise.resolve().then(()=>ctx.hostHistoryQuery!(range,series)).then(answer=>{
+      if(res.destroyed)return;
+      const current=auth();
+      if(current.kind!=="allow"||current.via!=="session"||current.session.tier!=="admin"||current.session.idHash!==who.session.idHash){json(res,403,{error:"admin_session_required"});return;}
+      json(res,200,answer);
+    },()=>{if(!res.destroyed)json(res,503,{error:"history_unavailable"});});
+    return true;
+  }
   if (path === "/ui/host-health") {
     res.setHeader("Cache-Control", "private, no-store");
     const who = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, {touch:false});
