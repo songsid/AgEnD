@@ -90,6 +90,35 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.sends()).toEqual([]);
   });
 
+  it("M-3425 scale: counts and filters 80 entries, expands without rerunning, and keeps the filter on close", async () => {
+    const c = await chatPage();
+    c.fx.respond = () => ({ report: { title: "Fleet status", columns: ["Instance", "Backend", "Model", "Ctx", "Effort", "State"],
+      rows: Array.from({ length: 80 }, (_, i) => ["example-worker-" + i, "codex", "example-model", "-", "medium", i % 2 ? "paused" : "idle"]),
+      notes: ["Paused instances: 40"],
+    } });
+    await c.type("/status"); await c.key("Enter");
+    expect(c.card().querySelector(".cmd-report-count")?.textContent).toContain("80");
+    const search = c.card().querySelector('.cmd-report input[type="search"]');
+    expect(search).not.toBeNull();
+    search.value = "worker-79"; fire(search, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(c.card().querySelector("tbody").textContent).toContain("example-worker-79");
+    fire(c.card().querySelector("[data-report-expand]"), "click"); await settle();
+    expect(c.card().querySelector("dialog")).not.toBeNull();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
+    fire(c.card().querySelector(".dlg-x"), "click"); await settle();
+    expect(c.card().querySelector("dialog")).toBeNull();
+    const again = c.card().querySelector('.cmd-report input[type="search"]');
+    expect(again.value).toBe("worker-79");
+    again.value = "no such entry"; fire(again, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(0);
+    expect(c.card().textContent).toContain("No matching entries");
+    again.value = ""; fire(again, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(80);
+    expect(c.commands()).toHaveLength(1);
+    expect(c.sends()).toEqual([]);
+  });
+
   it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
     const asked: string[] = [];
     const realFetch = (globalThis as any).fetch;

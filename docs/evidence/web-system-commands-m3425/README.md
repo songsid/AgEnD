@@ -37,3 +37,7 @@ Rollback is a normal revert of this change; it affects command availability and 
 ## CI correction
 
 The first exact-head CI run found one additional old guest-palette assertion in web-guest-chat-1920.test.ts. The shared command table already classifies /sysinfo as anyone-level in that Discord scope, so the advertised list intentionally gains it; /status remains absent for guests. Only that assertion/comment and this evidence changed. The complete guest integration file passes 16/16. Runtime, styles and the captured UI remain byte-identical to the source-cleared head. No source/browser campaign was repeated.
+
+## Current scale adjustment
+
+The current presentation and replacement visual-decision captures are in [the synthetic 80-entry check](scale/README.md). The earlier small-roster captures above remain historical; do not use them to approve the current toolbar/dialog layout.

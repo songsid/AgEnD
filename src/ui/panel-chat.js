@@ -625,12 +625,27 @@ function openBackendSignIn(backend) {
 
 /** Reports contain plain strings; HTM escapes every title, header, cell and note. */
 function CommandReport({ report, command }) {
-  return html`<section class=${`cmd-report cmd-report-${command}`} aria-label=${report.title}>
-    <h3>${report.title}</h3>
-    ${report.rows.length ? html`<table class=${command === "status" ? "us-table" : "cmd-metrics"}><thead><tr>${report.columns.map(label => html`<th scope="col">${label}</th>`)}</tr></thead>
-      <tbody>${report.rows.map(row => html`<tr>${row.map((value, i) => html`<td data-label=${report.columns[i]}>${value}</td>`)}</tr>`)}</tbody></table>` : null}
-    ${report.notes.map(note => html`<p class="note">${note}</p>`)}
+  const [filter, setFilter] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const query = filter.trim().toLocaleLowerCase();
+  const rows = command === "status" && query
+    ? report.rows.filter(row => row.some(value => value.toLocaleLowerCase().includes(query))) : report.rows;
+  const view = html`<section class=${`cmd-report cmd-report-${command}${expanded ? " cmd-report-expanded" : ""}`} aria-label=${report.title}>
+    ${expanded ? null : html`<h3>${report.title}</h3>`}
+    <div class="cmd-report-tools">
+      ${command === "status" ? html`<label class="field"><span class="sr-only">${t("chat.cmdReportFilter")}</span>
+        <input type="search" aria-label=${t("chat.cmdReportFilter")} placeholder=${t("chat.cmdReportFilter")}
+          value=${filter} onInput=${e => setFilter(e.target.value)} /></label>` : null}
+      ${expanded ? null : html`<button type="button" class="btn btn-sm btn-ghost" data-report-expand onClick=${() => setExpanded(true)}>${t("chat.cmdReportOpen")}</button>`}
+    </div>
+    ${command === "status" ? html`<p class="note cmd-report-count">${query ? t("chat.cmdReportMatches", rows.length, report.rows.length) : t("chat.cmdReportCount", report.rows.length)}${report.notes[0] ? " · " + report.notes[0] : ""}</p>` : null}
+    <div class="cmd-report-body" tabIndex="0" aria-label=${report.title}>
+      ${rows.length ? html`<table class=${command === "status" ? "us-table" : "cmd-metrics"}><thead><tr>${report.columns.map(label => html`<th scope="col">${label}</th>`)}</tr></thead>
+        <tbody>${rows.map(row => html`<tr>${row.map((value, i) => html`<td data-label=${report.columns[i]}>${value}</td>`)}</tr>`)}</tbody></table>` : query ? html`<p class="note">${t("chat.cmdReportEmpty")}</p>` : null}
+      ${(command === "status" ? report.notes.slice(1) : report.notes).map(note => html`<p class="note">${note}</p>`)}
+    </div>
   </section>`;
+  return expanded ? html`<div class="cmd-report-modal"><${Dialog} title=${report.title} wide onClose=${() => setExpanded(false)}>${view}</${Dialog}></div>` : view;
 }
 
 /** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
