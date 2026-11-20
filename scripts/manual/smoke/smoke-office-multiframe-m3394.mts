@@ -254,32 +254,41 @@ async function openOffice(page: any, base: string, lang: string) {
 }
 
 try {
-  // 1. Desktop dark zh-TW — capture 6-frame progression + 7-second real video!
+  // 1. Desktop dark zh-TW — verify 6-frame progression across sheets (optional WebM video when RECORD_VIDEO=1 locally;
+  //    CI ui-gate runners do not install Playwright's ffmpeg binary).
   {
     const c = { device: "desk" as const, theme: "dark" as const, lang: "zh-TW" as const };
-    const stale = Object.keys(fm.webPrefs.read("operator").values ?? {}).map((k) => [k, null] as [string, null]);
-    fm.webPrefs.write("operator", new Map<string, unknown>([...stale, ["theme", c.theme], ["lang", c.lang]]));
-    const { tokenEpoch } = await import(`${process.env.REPO}/src/web-session.ts`);
-    fm.initializeWebSessions();
-    const loginCode = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display;
-    const ctx = await fx.browser.newContext({
-      viewport: VIEWPORTS.desk, deviceScaleFactor: 1, colorScheme: c.theme, locale: "zh-TW",
-      recordVideo: { dir: OUT_DIR, size: VIEWPORTS.desk },
-    });
-    await ctx.addInitScript({ content: `localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");localStorage.setItem("agend_usage_rail","0");localStorage.setItem("agend_lang","zh-TW");` });
-    const page = await ctx.newPage();
+    const recordVideo = process.env.RECORD_VIDEO === "1";
+    let ctx: any, page: any, csp: (() => Promise<string[]>) | null = null;
+    if (recordVideo) {
+      const stale = Object.keys(fm.webPrefs.read("operator").values ?? {}).map((k) => [k, null] as [string, null]);
+      fm.webPrefs.write("operator", new Map<string, unknown>([...stale, ["theme", c.theme], ["lang", c.lang]]));
+      const { tokenEpoch } = await import(`${process.env.REPO}/src/web-session.ts`);
+      fm.initializeWebSessions();
+      const loginCode = fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken) }).display;
+      ctx = await fx.browser.newContext({
+        viewport: VIEWPORTS.desk, deviceScaleFactor: 1, colorScheme: c.theme, locale: "zh-TW",
+        recordVideo: { dir: OUT_DIR, size: VIEWPORTS.desk },
+      });
+      await ctx.addInitScript({ content: `localStorage.setItem("agend_tour_done","1");localStorage.setItem("agend_firstrun_dismissed","1");localStorage.setItem("agend_usage_rail","0");localStorage.setItem("agend_lang","zh-TW");` });
+      page = await ctx.newPage();
+      await page.goto(`${fx.base}/signin`); await page.waitForSelector("#code");
+      await page.locator("#code").evaluate((el: HTMLInputElement, v: string) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); el.form!.requestSubmit(); }, loginCode);
+      await page.waitForURL(`${fx.base}/ui`);
+    } else {
+      const p = await fx.page(c);
+      ctx = p.ctx; page = p.page; csp = p.csp;
+    }
     const errors: string[] = [];
     page.on("pageerror", (e: Error) => errors.push(String(e)));
     const imgHits: string[] = [];
     page.on("response", (res: any) => { if (res.url().includes("/ui/office-skins/synth-anim/img/") && res.status() === 200) imgHits.push(res.url()); });
 
-    await page.goto(`${fx.base}/signin`); await page.waitForSelector("#code");
-    await page.locator("#code").evaluate((el: HTMLInputElement, v: string) => { el.value = v; el.dispatchEvent(new Event("input", { bubbles: true })); el.form!.requestSubmit(); }, loginCode);
-    await page.waitForURL(`${fx.base}/ui`);
     await mounted(page, 30000);
     await openOffice(page, fx.base, c.lang);
+    for (let w = 0; w < 25 && imgHits.length < 13; w++) await page.waitForTimeout(200);
 
-    // Capture 6 evenly-spaced frames over 6 seconds (crossing every sheet S1→S6!).
+    // Capture 6 evenly-spaced frames over ~6 seconds (crossing every sheet S1→S6!).
     const canvas = page.locator(".oo-canvas");
     const bufs: Buffer[] = [];
     for (let i = 0; i < 6; i++) {
@@ -288,15 +297,17 @@ try {
       bufs.push(buf);
       if (i < 5) await page.waitForTimeout(1050);
     }
-    // Also grab one full-page screenshot showing the whole Office UI cleanly.
     await page.screenshot({ path: shotPath(SMOKE, "desk-dark-zh-TW", "full") });
-    // Let video capture another 1.5 s so the loop transition is visible in the recording.
-    await page.waitForTimeout(1500);
+    if (recordVideo) await page.waitForTimeout(1500);
 
     const uniqueFrames = new Set(bufs.map((b) => b.toString("base64"))).size;
-    const videoPath = await page.video()?.path();
+    const videoPath = recordVideo ? await page.video()?.path() : null;
+    const cspViolations = csp ? await csp() : [];
     await ctx.close();
-    report.cases["desk-dark-zh-TW"] = { ok: errors.length === 0 && imgHits.length >= 13 && uniqueFrames >= 5, errors, imagesLoaded: imgHits.length, uniqueFrames, videoPath };
+    report.cases["desk-dark-zh-TW"] = {
+      ok: errors.length === 0 && cspViolations.length === 0 && imgHits.length >= 13 && uniqueFrames >= 5,
+      errors, cspViolations, imagesLoaded: imgHits.length, uniqueFrames, ...(videoPath ? { videoPath } : {}),
+    };
   }
 
   // 2. Phone (390×844) dark zh-TW — capture 4 frames across sheets to prove smooth phone playback.
