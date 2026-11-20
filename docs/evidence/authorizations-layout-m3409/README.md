@@ -1,48 +1,37 @@
-# Fleet Authorizations layout (M-3409)
+# Fleet Authorizations: house-guide correction (M-3409)
 
-The page used the narrow chat column and full-width navigation segments for filters. Its button segments inherited browser borders, card metadata inherited body size, and message padding was invisible against an identical card background.
+The [rule-by-rule audit](style-guide-audit.md) follows both versions of `docs/design/ui-style-guide.md`. The guide overrides the earlier mockup. The correction follows Fleet Usage/Cache toolbars and plain shared cards.
 
-The update follows the approved layout review:
+Fixed: shared `.card` frames, `.tag` status/verb labels, straight `.lbar` state accents, shared toolbar/select/lead classes, token-based spacing/type, readable atomic names/time phrases, phone targets/input sizes, and the empty-state history action. No custom scrollbar, extra danger border or empty-icon size remains. The approval explanation appears before its controls.
 
-1. Standard primary/quiet filter buttons and a shared segmented-button reset.
-2. The same wide column as other Fleet overview pages.
-3. A compact wrapping filter row, inline agent selector and removable person chip.
-4. Title, route, message and footer typography at distinct token sizes.
-5. A recessed, bordered message surface with a thin scrollbar.
-6. Roster display names via `labelOf()`, atomic name chips and timestamp phrases; full instance ids remain available on hover. Supplied actor labels take precedence over roster fallback.
-7. One spacing system, pending accent and a focus border with an actual border style.
-8. Lead text valid for history and pending requests; an empty-state hint and View all records action.
+Agent sources, targets, hops and selector options use `labelOf()`. People always use their server-provided `label || userId`; they are never resolved through the agent roster. A matching-person/agent-ID regression fails the reviewed version and passes this correction.
 
-Decision, permission, filtering and transport contracts are unchanged.
+## Same requested views, before and after
 
-## Rendered views
+These baseline screenshots were regenerated from alpha base `232f0fc2` with the same plain synthetic roster and ticket data. None are the user's private originals.
 
-The real application runs from the shared smoke fixture with a plain synthetic four-agent roster and stubbed contact-ticket API. Chromium is headless; no real Fleet, provider CLI, account or Windows process is started.
+| State | Before | Corrected |
+|---|---|---|
+| Desktop, sidebar open | [Before](before/desktop-zh-sidebar-open.png) | [After](screens/desktop-zh-sidebar-open.png) |
+| Sidebar collapsed | [Before](before/desktop-zh-sidebar-collapsed.png) | [After](screens/desktop-zh-sidebar-collapsed.png) |
+| Large text | [Before](before/desktop-zh-large.png) | [After](screens/desktop-zh-large.png) |
+| Phone, pending card | [Before](before/phone-zh.png) | [After](screens/phone-zh.png) |
+| Phone, decided card | [Before](before/phone-zh-decided.png) | [After](screens/phone-zh-decided.png) |
+| Phone, empty state | [Before](before/phone-zh-empty.png) | [After](screens/phone-zh-empty.png) |
 
-- [Desktop EN, sidebar open](screens/desktop-en-sidebar-open.png)
-- [Desktop zh-TW, sidebar open](screens/desktop-zh-sidebar-open.png)
-- [Desktop zh-TW, sidebar collapsed](screens/desktop-zh-sidebar-collapsed.png)
-- [Desktop zh-TW, large text](screens/desktop-zh-large.png)
-- [Phone zh-TW](screens/phone-zh.png)
-- [Phone EN](screens/phone-en.png)
-- [Phone zh-TW, decided card](screens/phone-zh-decided.png)
-- [Phone EN, decided card](screens/phone-en-decided.png)
-- [Desktop empty state](screens/desktop-zh-empty.png)
-- [Phone empty state](screens/phone-zh-empty.png)
+Additional English/light and stress views: [desktop EN](screens/desktop-en-sidebar-open.png), [phone EN](screens/phone-en.png), [desktop empty](screens/desktop-zh-empty.png), [1024px](screens/desktop-en-medium.png), [900px](screens/desktop-zh-narrow.png), [long phone names](screens/phone-zh-long.png), [long decided footer](screens/phone-zh-long-decided.png).
 
-Every populated view includes pending and decided tickets; the phone viewport can require vertical scrolling for the lower card, so two extra captures show it after scrolling. All eight principal originals were visually inspected. The phone Fleet navigation retains its existing horizontal tab scroller. No private names or chat-shaped ids appear.
-
-`render-checks.json` records wide-column selection, desktop filter alignment, recessed message contrast, footer hierarchy, phone tap sizes, no horizontal overflow, display labels and no page/CSP errors. The smoke also checks focus borders and the empty-state history action.
+The real application uses the shared smoke fixture with a synthetic four-agent roster and stubbed contact API. Chromium is headless. No real Fleet, provider CLI, account or Windows process is started. Principal and supplemental originals were inspected for layout and privacy. Phone navigation keeps its existing horizontal tab scroller; the page content does not scroll sideways.
 
 ## Verification and limits
 
-- Seven focused UI files: 161 tests pass, including contact authorization, shared tabs, Settings highlights, guest shell, header, details and org pages.
-- Four additional files: 73 tests pass (Settings regrouping, task-card menu, i18n and UI-gate discovery).
-- Final person-filter case: 1 passes; test TypeScript has zero diagnostics.
-- Segmented-control inventory: Fleet desktop/phone navigation, global Settings, agent Settings, task-card tabs and the chat/View/Search switch. Inline segments use separate button classes. Existing scoped active styles remain unchanged.
-- Full registered UI gate: **27/27 smokes pass**, including the new authorization layout checks.
-- Changelog validation: 75 tests pass.
+- Initial full registered UI gate: **27/27 smokes pass** on the initial layout revision. The unrelated pages are unchanged in this correction.
+- Corrected authorization gate: **11 cases pass**, including 390/900/1024/1366px, large text, long agent/person labels, opened grant fields, filter-chip clearing, focus outline and empty-state action.
+- Guide/identity tests: 9 files, 113 pass. Emoji/sidebar-scrollbar/contact tests: 3 files, 47 pass; contact's 37 overlap, giving 123 distinct tests across these 11 files. Existing pinned assertions are unchanged.
+- Earlier shared segmented-control consumers: 234 UI tests pass; changelog validation: 75 pass. Test TypeScript has zero diagnostics.
+- Before identity fix: collision regression fails semantically with an agent label printed as a person. Fixed contact file: 37/37 pass.
+- `render-checks.json` records final geometry, shared styles, tap/input sizes, display labels, no overflow and page/CSP status. `before-checks.json` records the baseline, whose style failures are expected.
 
-This proves rendering and fixture interactions, not a live authorization dispatch. Rollback: revert the UI/evidence commit; no data migration or permission-policy change.
+This proves local rendering and fixture interactions, not live authorization dispatch. Decision and permission contracts remain unchanged. Rollback: revert the UI commits; no migration or persistent data change.
 
-The PR remains on visual hold until the user approves these views.
+**The PR remains draft under the user visual hold until the Leader explicitly lifts it.**

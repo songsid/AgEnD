@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture } from "../smoke-fixture/index.mts";
+const BEFORE = process.env.BEFORE === "1";
 const OUT = join(process.env.OUT || ".artifacts/m3409", "authorizations-layout-m3409");
 mkdirSync(OUT, { recursive: true });
 const roster = [
@@ -28,20 +29,43 @@ const cases = [
   { name: "phone-en", device: "phone", theme: "light", lang: "en" },
   { name: "desktop-zh-empty", device: "desk", theme: "dark", lang: "zh-TW", empty: true },
   { name: "phone-zh-empty", device: "phone", theme: "dark", lang: "zh-TW", empty: true },
+  { name: "desktop-en-medium", device: "desk", theme: "light", lang: "en", width: 1024 },
+  { name: "desktop-zh-narrow", device: "desk", theme: "dark", lang: "zh-TW", width: 900 },
+  { name: "phone-zh-long", device: "phone", theme: "dark", lang: "zh-TW", long: true },
 ];
 try {
   for (const c of cases) {
     const { ctx, page, csp } = await fx.page(c as any, { storage: { agend_sidebar: c.collapsed ? "hidden" : "shown", agend_text_size: c.large ? "l" : "m" } });
+    if (c.width) await page.setViewportSize({ width: c.width, height: 900 });
     const errors: string[] = []; page.on("pageerror", (e: any) => errors.push(String(e)));
     await ctx.route("**/ui/api/contact-authorizations**", (route: any) => {
       const u = new URL(route.request().url());
-      const data = u.pathname.endsWith("/" + pending.id) ? pending : { items: c.empty ? [] : u.searchParams.get("status") === "pending" ? [pending] : [pending, decided], nextCursor: null };
+      const origin = c.long ? { ...pending.origin, people: [{ ...person, label: "Example owner with a deliberately long name for authorization review and another long phrase" }] } : pending.origin;
+      const currentPending = { ...pending, origin }, currentDecided = { ...decided, origin, decidedBy: origin.people[0] };
+      const data = u.pathname.endsWith("/" + pending.id) ? currentPending : { items: c.empty ? [] : u.searchParams.get("status") === "pending" ? [currentPending] : [currentPending, currentDecided], nextCursor: null };
       return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(data) });
     });
     await page.goto(fx.base + "/ui/fleet/authorizations");
     await page.locator(c.empty ? ".contact-auth-page .empty" : ".contact-ticket").waitFor();
-    if (!c.empty) { await page.locator(".contact-filters .seg-inline button").nth(1).click(); await page.locator('[data-state="delivered"]').waitFor(); }
+    if (!c.empty) { await page.locator(".contact-filters [role=group] button").nth(1).click(); await page.locator('[data-state="delivered"]').waitFor(); }
+    if (c.long) await page.evaluate(async () => {
+      const m: any = await import("/assets/app-store.js");
+      m.appStore.set({ instances: m.appStore.get().instances.map((i: any) => ({ ...i, display_name: "Example release planning and verification helper with a deliberately long display name · " + (i.display_name || "Example") })) });
+    });
     await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(250);
+    if (!BEFORE && !c.empty) {
+      await page.locator('.contact-toggle input').check();
+      const fields = await page.locator('.contact-allow input').evaluateAll((els: Element[]) => els.map(e => ({ font: parseFloat(getComputedStyle(e).fontSize), h: e.getBoundingClientRect().height })));
+      if (c.device === "phone" && fields.some((f: any) => f.font < 16 || f.h < 44)) throw Error("Phone grant fields are too small");
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
+      if (overflow) throw Error("Grant disclosure overflows");
+      await page.locator('.contact-toggle input').uncheck();
+      await page.locator('.contact-ticket-origin .link-btn').first().click();
+      const clear = page.locator('.contact-person-filter .chip-x'); await clear.waitFor();
+      const chip = await clear.boundingBox();
+      if (c.device === "phone" && (!chip || chip.width < 44 || chip.height < 44)) throw Error("Person filter clear target is too small");
+      await clear.click(); await page.waitForFunction(() => !document.querySelector('.contact-person-filter'));
+    }
     const metrics = await page.evaluate(`(() => {
       const root = document.querySelector(".contact-auth-page"), card = root.querySelector(".contact-ticket"), msg = root.querySelector(".contact-ticket-message"), foot = root.querySelector(".contact-ticket-times");
       const cs = (e) => e ? getComputedStyle(e) : null;
@@ -59,25 +83,31 @@ try {
         hierarchy: !msg || parseFloat(cs(foot).fontSize) < parseFloat(cs(msg).fontSize),
         cards: root.querySelectorAll(".contact-ticket").length, hiddenIds: !root.textContent.includes("example-room") && !root.textContent.includes("release-helper"),
         noPrivateIds: !/-t\d{6,}/.test(document.body.innerText), emptyHint: !!root.querySelector(".empty-hint"),
-        tap: innerWidth >= 900 || buttons.every(b => b.getBoundingClientRect().height >= 44),
+        tap: innerWidth >= 900 || [...root.querySelectorAll("button:not(:disabled), select, .contact-toggle")].every(b => { const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; }),
+        inputSize: innerWidth >= 900 || parseFloat(cs(root.querySelector("select")).fontSize) >= 16,
+        sharedCard: !card || cs(card).borderTopStyle === "none",
+        sharedStatus: !card || !!card.querySelector(".tag.contact-ticket-state"),
+        straightBar: !card || (card.classList.contains("lbar") && getComputedStyle(card, "::before").width === "3px" && getComputedStyle(card, "::before").borderTopLeftRadius === "0px"),
         large: document.documentElement.dataset.textSize === "l" };
     })()`);
-    if (!metrics.segmentReset || !metrics.segmentActive || !metrics.wide || metrics.overflow || !metrics.reset || !metrics.recessed || !metrics.hierarchy || !metrics.noPrivateIds || !metrics.tap || (!c.empty && !metrics.hiddenIds) || (c.device === "desk" && !metrics.oneRow) || (c.large && !metrics.large) || (c.empty && !metrics.emptyHint) || errors.length || (await csp()).length) throw Error(JSON.stringify({ case: c.name, metrics, errors, csp: await csp() }));
+    if (!metrics.noPrivateIds || errors.length || (await csp()).length) throw Error("Page errors, CSP or private identifier in fixture view");
+    if (!BEFORE && (!metrics.segmentReset || !metrics.segmentActive || !metrics.wide || metrics.overflow || !metrics.reset || !metrics.recessed || !metrics.hierarchy || !metrics.noPrivateIds || !metrics.tap || !metrics.inputSize || !metrics.sharedCard || !metrics.sharedStatus || !metrics.straightBar || (!c.empty && !metrics.hiddenIds) || (c.device === "desk" && !metrics.oneRow) || (c.large && !metrics.large) || (c.empty && !metrics.emptyHint) || errors.length || (await csp()).length)) throw Error(JSON.stringify({ case: c.name, metrics, errors, csp: await csp() }));
     await page.screenshot({ path: join(OUT, c.name + ".png") });
     if (!c.empty && c.device === "phone") {
       await page.locator('[data-state="delivered"]').scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(OUT, c.name + "-decided.png") });
     }
-    if (c.empty) { await page.locator(".empty button").click(); await page.waitForFunction(() => !document.querySelector(".empty button")); }
+    if (BEFORE) { /* Baseline evidence only: expected style violations are measured, not accepted. */ }
+    else if (c.empty) { await page.locator(".empty button").click(); await page.waitForFunction(() => !document.querySelector(".empty button")); }
     else {
       await page.goto(fx.base + "/ui/fleet/authorizations?ticket=" + pending.id);
       await page.locator(".contact-ticket.focus").waitFor();
-      const focus = await page.locator(".contact-ticket.focus").evaluate((e: Element) => ({ border: getComputedStyle(e).borderTopStyle, shadow: getComputedStyle(e).boxShadow }));
-      if (focus.border !== "solid" || focus.shadow === "none") throw Error("Focus border missing");
+      const focus = await page.locator(".contact-ticket.focus").evaluate((e: Element) => ({ outline: getComputedStyle(e).outlineStyle, bar: getComputedStyle(e, "::before").width }));
+      if (focus.outline !== "solid" || focus.bar !== "3px") throw Error("Focus border missing");
     }
-    results.push({ case: c.name, ...metrics, errors: 0, csp: 0 });
+    results.push({ case: c.name, ...metrics, errors: errors.length, csp: (await csp()).length });
     await ctx.close();
   }
   writeFileSync(join(OUT, "result.json"), JSON.stringify(results, null, 2) + "\n");
-  console.log(`Authorization layout: ${results.length} real-app views passed`);
+  console.log(`Authorization layout: ${results.length} real-app views: ${BEFORE ? "baseline captured" : "PASS"}`);
 } finally { await fx.close(); }

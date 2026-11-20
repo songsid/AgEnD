@@ -246,8 +246,10 @@ describe("Fleet → Authorizations", () => {
     expect([after.getAttribute("data-state"), button(after, "Approve once")]).toEqual(["delivered", undefined]);
     expect(text(after)).toContain("Forwarded means the request was delivered, not that the work is done.");
   });
-  it("uses roster display names for routes, hops and an actor without a supplied label; keeps ids on hover", async () => {
-    api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket({ state: "declined", canDecide: false, decidedAt: "2026-11-18T09:00:00Z", decidedBy: { ...ADMIN, label: "", userId: "web-dev" } })], nextCursor: null } }) });
+  it("keeps human identities separate from roster display names for routes and hops", async () => {
+    const person = { ...ADMIN, label: "", userId: "web-dev" };
+    api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket({ state: "declined", canDecide: false, decidedAt: "2026-11-18T09:00:00Z", decidedBy: person,
+      origin: { kind: "human", people: [person], receiptIds: [], chain: ["classic-ops"] } })], nextCursor: null } }) });
     const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
     const { pg } = await mountWith(ContactAuthorizations, {});
     const { appStore } = await import("/assets/app-store.js") as any;
@@ -255,7 +257,9 @@ describe("Fleet → Authorizations", () => {
     expect([...pg.root.querySelectorAll(".contact-agent-chip")].map(text)).toEqual(["Example room", "Release helper"]);
     expect(pg.root.querySelector(".contact-hop")?.getAttribute("title")).toBe("classic-ops");
     expect(text(pg.root.querySelector(".contact-hop"))).toBe("Example room");
-    expect(text(pg.root.querySelector(".contact-ticket-times"))).toContain("Release helper");
+    expect(text(pg.root.querySelector(".contact-ticket-origin .link-btn"))).toBe("web-dev");
+    expect(text(pg.root.querySelector(".contact-ticket-times"))).toContain("web-dev");
+    expect(text(pg.root.querySelector(".contact-ticket-times"))).not.toContain("Release helper");
     expect([...pg.root.querySelectorAll(".contact-agent-filter option")].map(text)).toContain("Release helper");
     expect(pg.root.querySelectorAll(".contact-time-item")).toHaveLength(2);
   });
