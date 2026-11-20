@@ -31,7 +31,7 @@ export const PROFILES_DIRECTORY = "credential-profiles";
 export interface ProfileUsers { agents: string[]; classic: string[]; fleetDefault: boolean }
 
 export type AddRefusal = "backend" | "name" | "exists" | "case_clash" | "unsafe_root";
-export type RemoveRefusal = "backend" | "name" | "confirm" | "in_use" | "users_unknown" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
+export type RemoveRefusal = "credential_connected" | "backend" | "name" | "confirm" | "in_use" | "users_unknown" | "signing_in" | "missing" | "unsafe" | "default_home" | "failed";
 
 export type AddResult = { ok: true } | { ok: false; error: AddRefusal; clash?: string };
 export type RemoveResult = { ok: true; keychainLeft?: true; identity?: { dev: number; ino: number } } | { ok: false; error: RemoveRefusal; users?: ProfileUsers };
