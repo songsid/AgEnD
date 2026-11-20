@@ -1292,7 +1292,12 @@ img.amb-p { object-fit: contain; }
   position: absolute; bottom: var(--s-3); left: 50%; transform: translateX(-50%); white-space: nowrap; display: inline-flex; align-items: center; gap: var(--s-1);
   background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-2);
   padding: 6px var(--s-4); font-size: var(--fs-xs); font-weight: var(--fw-semibold); cursor: pointer;
+  transition: opacity 200ms ease;
 }
+/* M-3492: after JUMP_IDLE_MS without a scroll it fades out and lets taps through to the bubble under it; it stays in the
+   tab order and the accessibility tree, and keyboard focus shows it again. Reduced motion: no fade, just gone. */
+.jump-latest.is-idle:not(:focus-visible) { opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .jump-latest { transition: none; } }
 .dock { flex-shrink: 0; padding: 0 max(var(--s-5), env(safe-area-inset-right)) max(var(--s-3), env(safe-area-inset-bottom)) max(var(--s-5), env(safe-area-inset-left)); }
 .dock-col { max-width: var(--col); margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-2); }
 .prompts { display: flex; flex-direction: column; gap: var(--s-2); }
