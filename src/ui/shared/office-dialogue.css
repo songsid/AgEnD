@@ -1,0 +1,12 @@
+/* The Office map, zone navigation and dialogue have independent layout rows, including cached shells. */
+.oo > .oo-zone-pills { position: relative; left: auto; bottom: auto; z-index: auto; flex: 0 0 auto; }
+.oo > .oo-zone-pills .btn { min-height: var(--tap); }
+.oo > canvas.oo-dialogue-canvas, .oo.phone > canvas.oo-dialogue-canvas { display: block; flex: 0 0 auto; width: 100%; height: clamp(120px, 20dvh, 180px); margin: 0;
+  background: var(--surface); border-top: 1px solid var(--border); touch-action: manipulation; }
+.oo.has-dialogue .oo-stage { min-height: 200px; }
+.oo-dialogue-canvas[role="button"] { cursor: pointer; }
+.oo-dialogue-canvas:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.oo.fs > canvas.oo-dialogue-canvas { display: block; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .oo.fs > .oo-zone-pills { display: flex; }
+}

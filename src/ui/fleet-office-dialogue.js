@@ -9,8 +9,8 @@
 //   later. Concurrent conversations queue, newest first; the box shows the first one it may and "+N" for the rest.
 // - On a share link (`share`: the host's `talk`, never any text): a faceless visitor, "Received a message", "Replied".
 // - Only news: a message stamped within FRESH_MS of the server's clock (a replay on reconnect, a poll's catch-up, is not).
-// - Drawn on the Office's canvas, in the stage's CSS px, after the scene (it never pans or zooms with it), so it needs no
-//   CSS rule (a tab opened before an upgrade keeps its old app.css: the box is still right).
+// - Drawn on a separate Office canvas below the map, in CSS px; it never pans or zooms with the scene. The Office
+//   loads the dock's versioned stylesheet for a cached shell as well.
 // - Reduced motion: no slide, no typing, no fade.
 // Off unless the Office bar's Dialogue box is ticked (per browser): then nothing here runs at all.
 import { own, PORTRAIT_STATES } from "./fleet-office-pack.js";

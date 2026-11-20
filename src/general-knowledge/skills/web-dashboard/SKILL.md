@@ -749,6 +749,8 @@ install and an npm copy is still on the computer (also after a restart). This of
 
 **Managed Claude credentials (M-3419)** — Accounts → Connect (also Needs you → Connect account) offers the existing subscription login, a token obtained with setup-token, or an Anthropic API key. Pasting, replacing and removing saved credentials requires the local dashboard and a current verified administrator, even though ordinary subscription login can run over a public link. Never put a key/token in chat, an agent tool call or a proposal. Values are encrypted; Save makes no model request and reports saved-unverified. Source-class checks are not provider validation. Managed profiles do not show an old subscription identity, meters or keep-alive. Used-profile changes list affected users, require idle local panes and positive old-pane retirement before commit; busy/paused/unknown consumers refuse, and failed restarts are listed. Removing the saved value leaves the profile disconnected; explicitly choosing Subscription switches back to its native login. Profile/conversation assignments stay. A managed secret must be removed before deleting its profile. Removing AgEnD's copy does not revoke it at Anthropic. The launcher clears ambient credentials and uses a private API-key helper or child-only setup-token environment. Organization-managed Claude settings are unsupported. Same-OS-user agents are not isolated from runtime secrets.
 
+For the token method, **Get a token for me** opens a private browser sign-in on the local host. It uses the same verified-admin gate, a 10-minute Connect-account deadline and an owned cleanup; only safe sign-in controls reach the page, and the printed token goes directly to encrypted storage after cleanup. Paste remains available. Cancel or expiry never changes the selected source; if saving is uncertain, read account status before retrying. No model request is made by this flow.
+
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
 before), from Settings → AI accounts & keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity
 card offers, and what it means:
@@ -816,6 +818,8 @@ other Windows PCs to pair** (`runtimes.remote_runtime`), **Agents at once on eac
 **Connect a computer** shows a one-time PowerShell install command (15 minutes, one use; treat it like a password) and,
 under **Manual options**, a pairing code. Each computer: its CLIs (**Install a CLI**, **Update to *version***, only while
 that PC's owner allowed it there), its accounts, and its update status. See docs/remote-runtime.md.
+
+**Notifications → Host monitoring** (「主機監測」, M-3454): **Monitor this computer** and **Include agent footprint** are both off by default. Off is explicitly saved as false. The cost hints are planning estimates. The card is hidden until a real collector capability is available; the settings alone never create a collector, monitoring timer or history file. Agent footprint requires monitoring as well as its own option. Turning monitoring off asks before recorded history is removed. The initial settings foundation has no visible card or search entry until its collector integration ships.
 
 **Notifications** — **Quota notices** (「用量提醒」, #3302): one reminder per account at the **Remaining percentages**
 and **Periods** you choose, shared by its agents, **Send to** General.

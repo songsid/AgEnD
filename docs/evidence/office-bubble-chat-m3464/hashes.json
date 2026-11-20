@@ -1,0 +1,38 @@
+[
+  {
+    "path": "captures/desk-light-en-bubble.png",
+    "sha256": "11c993b5bd69e01a4c05129d2b35f1413cfd0f3d53577aee56658db22e042df4"
+  },
+  {
+    "path": "captures/desk-light-en-chat.png",
+    "sha256": "049eef812b1f3a3aef4662ee6bcc85da1797576daf9f1832a24d8f15362cd934"
+  },
+  {
+    "path": "captures/desk-light-en-keyboard.png",
+    "sha256": "6f53b833559c459f431f3959afacbb5c0b105d29237f4381676484b83367a2c9"
+  },
+  {
+    "path": "captures/desk-light-en-office.png",
+    "sha256": "8cd11ddd6d880bcda8ee47ce2f66e7d10290360fdc5bf2764631a33ced5cf70b"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-bubble.png",
+    "sha256": "e8dfc584904e802137a813ae67ebe7523223518a0e747cc1ad055abdd44494cb"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-chat.png",
+    "sha256": "b4082ae4266f8937682fd16274ea495d162b24f8ba5824d3d82907d66c50bec8"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-keyboard.png",
+    "sha256": "2fba675eedbc50ad78b69919a77bf2461362aaf2b98f59e5095a115fd085ea7f"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-office.png",
+    "sha256": "368bafe6f9e2e5473847f8c1eb5eca4e62c3b1fbbb7d4feb7020e426f1988dfa"
+  },
+  {
+    "path": "validation.json",
+    "sha256": "46c1f08698b07ab74cfc9d0ac66c248fde20f659a71c23e1da50179ddb434cd4"
+  }
+]

@@ -77,14 +77,16 @@ for (const c of matrix(process.env.MATRIX ?? "quick")) {
   await page.locator(".oo-card-find").click(); await page.waitForTimeout(500);
   const after = await page.locator(".oo-zoom-pct").textContent();
   await page.screenshot({ path: shotPath(SMOKE, c, "found") });
+  const opening = page.waitForEvent("popup");
   await page.locator(".oo-card-chat").click();
-  await page.waitForURL(/\/ui\/chat\//, { timeout: 5000 }).catch(() => {});
+  const child = await opening; await child.waitForURL(/\/ui\/chat\//);
   record(`${caseName(c)} Esc closes; Find zooms in; Chat opens the chat`, {
     "Esc closed it": closed,
     "Find changed the zoom": before !== after,
-    "Chat opened the chat": new URL(page.url()).pathname === `/ui/chat/${who}`,
+    "Chat opened the chat": new URL(child.url()).pathname === `/ui/chat/${who}` && new URL(page.url()).pathname === "/ui/fleet/org",
     "no page error": errors.length === 0,
   }, { before, after, url: page.url(), errors });
+  await child.close();
   await page.context().close();
 }
 

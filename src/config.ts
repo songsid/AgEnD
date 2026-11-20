@@ -1,3 +1,4 @@
+import { monitoringConfig } from "./host-monitoring-config.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { readFileSync, existsSync, mkdirSync } from "node:fs";
@@ -188,7 +189,7 @@ export function channelWithDefaults<T extends { id?: string; type?: string; mode
 
 export function loadFleetConfig(configPath: string): FleetConfig {
   if (!existsSync(configPath)) {
-    return { defaults: {}, instances: {} };
+    return { defaults: {}, instances: {}, monitoring: monitoringConfig() };
   }
 
   return loadFleetConfigSource(readFileSync(configPath, "utf-8"));
@@ -213,6 +214,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     health_port?: number;
     web?: FleetConfig["web"];
     needs_you?: unknown;
+    monitoring?: unknown;
     runtimes?: unknown;
     hostname?: string;
     fleet_label?: string;
@@ -221,7 +223,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
   } | null;
 
   if (!parsed) {
-    return { defaults: {}, instances: {} };
+    return { defaults: {}, instances: {}, monitoring: monitoringConfig() };
   }
 
   normalizeOfficeStorage(parsed);
@@ -286,6 +288,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     health_port: parsed.health_port,
     web: parsed.web,
     needs_you: needsYouConfig(parsed.needs_you),
+    monitoring: monitoringConfig(parsed.monitoring),
     runtimes: runtimesConfig(parsed.runtimes),
     hostname: parsed.hostname,
     fleet_label: parsed.fleet_label,

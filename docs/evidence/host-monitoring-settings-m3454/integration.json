@@ -1,0 +1,16 @@
+{
+  "base": "98cfd9b77",
+  "method": "plain merge from actual dev tip; no rebase or cherry-pick stack",
+  "ownPatchSourceHead": "f6d0fd8c1",
+  "ownPatchParent": "b29e28c1c",
+  "addedRemovedLineMultisetEqual": true,
+  "paths": 18,
+  "incomingPr": 4236,
+  "overlap": [
+    "src/config-validator.ts",
+    "src/settings-api.ts",
+    "src/general-knowledge/skills/web-dashboard/SKILL.md"
+  ],
+  "preserved": "incoming Classic backend picker unchanged; own settings patch unchanged",
+  "browserEvidence": "carried from pre-merge settings stage; UI code unchanged"
+}

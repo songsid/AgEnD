@@ -107,6 +107,8 @@ export interface TerminalBackend {
     cols: number;
     rows: number;
     onOutput: (chunk: Buffer) => void;
+    /** Dedicated secret-output login: no history and no capture API. */
+    privateOutput?: boolean;
     /** Aborted by finish(): no stage may leave a resource behind once this fires. */
     signal?: AbortSignal;
   }): Promise<void>;
@@ -636,6 +638,7 @@ function safeHost(url: string): string {
  * tmux.conf cannot alter behaviour). Output: pipe-pane → FIFO held O_RDWR.
  */
 export class TmuxTerminalBackend implements TerminalBackend {
+  private readonly privateOutputs = new Set<string>();
   private readonly streams = new Map<string, { dir: string; stop: () => void }>();
   /**
    * Identity of each dedicated server, captured right after new-session: the
@@ -700,8 +703,9 @@ export class TmuxTerminalBackend implements TerminalBackend {
     });
   }
 
-  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void; signal?: AbortSignal }): Promise<void> {
+  async start(opts: { socket: string; command: string; cwd: string; cols: number; rows: number; onOutput: (chunk: Buffer) => void; privateOutput?: boolean; signal?: AbortSignal }): Promise<void> {
     const { socket, signal } = opts;
+    if(opts.privateOutput)this.privateOutputs.add(socket);
     const aborted = () => { const e = new Error("web terminal startup aborted") as Error & { name: string }; e.name = "AbortError"; return e; };
     if (signal?.aborted) throw aborted();
     // Placeholder first, pipe second, real command third — so no byte is lost.
@@ -731,8 +735,16 @@ export class TmuxTerminalBackend implements TerminalBackend {
       if (signal?.aborted) throw aborted();
       await this.tmux(socket, "set-option", ["-g", "remain-on-exit", "on"]);
       if (signal?.aborted) throw aborted();
-      await this.tmux(socket, "set-option", ["-g", "history-limit", "2000"]);
+      await this.tmux(socket, "set-option", ["-g", "history-limit", opts.privateOutput ? "0" : "2000"]);
       if (signal?.aborted) throw aborted();
+      if(opts.privateOutput){
+        // history-limit applies to new panes, not the initial placeholder.
+        await this.tmux(socket,"new-window",["-d","-n","private","-c",opts.cwd,"sleep 86400"]);
+        if(signal?.aborted)throw aborted();
+        await this.tmux(socket,"kill-window",["-t","main:0"]);
+        await this.tmux(socket,"rename-window",["-t","main:private","main"]);
+        if(signal?.aborted)throw aborted();
+      }
 
       dir = mkdtempSync(join(tmpdir(), "agend-term-"));
       const fifo = join(dir, "out");
@@ -816,6 +828,7 @@ export class TmuxTerminalBackend implements TerminalBackend {
   }
 
   async capture(socket: string): Promise<string> {
+    if(this.privateOutputs.has(socket))throw new Error("private terminal capture refused");
     return this.tmux(socket, "capture-pane", ["-p", "-J", "-t", "main", "-S", "-200"]);
   }
 

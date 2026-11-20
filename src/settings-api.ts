@@ -1,3 +1,4 @@
+import { HOST_MONITORING_COLLECTOR_AVAILABLE, monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { connectInstallInfo } from "./connect/install.js";
@@ -729,6 +730,7 @@ export function handleSettingsRequest(
   if (method === "GET" && path === "/api/settings/schema") {
     json(res, 200, {
       ...buildSettingsImpactSchema(),
+      host_monitoring: HOST_MONITORING_COLLECTOR_AVAILABLE,
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
@@ -1581,6 +1583,37 @@ export function handleSettingsRequest(
       return true;
     }
     json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  // M-3454: settings are inert until the collector slice is connected. False
+  // values are always written, including the untouched companion preference.
+  if (method === "PUT" && path === "/api/settings/fleet/monitoring") {
+    if (linkNonAdmin(req, url, ctx)) { json(res, 403, { error: "admin_required" }); return true; }
+    if (!cfg) { json(res, 503, { error: "fleet not loaded" }); return true; }
+    void readBody(req, 4096).then(buf => {
+      if (!permitWebContinuation(req, res, ctx)) return;
+      let body: unknown;
+      try { body = JSON.parse(buf.toString("utf8")); } catch { return json(res, 400, { error: "invalid JSON" }); }
+      const parsed = parseMonitoringSettings(body);
+      if ("error" in parsed) return json(res, 400, { error: parsed.error });
+      const monitoring = { ...monitoringConfig(cfg.monitoring), ...parsed.patch };
+      if (monitoring.enabled && !HOST_MONITORING_COLLECTOR_AVAILABLE) return json(res, 409, { error: "monitoring_unavailable" });
+      const before = validateFleet(cfg), after = validateFleet({ ...cfg, monitoring });
+      if (rejectIfWorse(res, before, after)) return;
+      const previous = { value: cfg.monitoring, had: Object.hasOwn(cfg, "monitoring") };
+      try {
+        settingsWrite(req, () => {
+          cfg.monitoring = monitoring;
+          ctx.saveFleetConfig(Object.entries(monitoring).map(([key, value]) => ({ path: ["monitoring", key], value })));
+        });
+      } catch (error) {
+        if (previous.had) cfg.monitoring = previous.value; else delete cfg.monitoring;
+        ctx.logger.warn({ error }, "settings: monitoring save refused");
+        return json(res, 500, { error: "monitoring_save_failed" });
+      }
+      json(res, 200, { ok: true, monitoring });
+    }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }); });
+    return true;
   }
 
   // ── M-2255: Settings → Runtime's switches — "Use this PC's Windows CLIs" (runtimes.windows_cli) and "Allow other

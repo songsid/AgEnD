@@ -1,0 +1,141 @@
+{
+  "kind": "bounded warm-cache cost proxy, not production benchmark",
+  "platform": "WSL Linux",
+  "logicalCpus": 6,
+  "host": [
+    {
+      "wallMs": 0.552002,
+      "cpuMs": 0.229,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.589153,
+      "cpuMs": 0.232,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.383981,
+      "cpuMs": 0.112,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.371545,
+      "cpuMs": 0.159,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.294082,
+      "cpuMs": 0.124,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.266454,
+      "cpuMs": 0.089,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.323345,
+      "cpuMs": 0.119,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.158895,
+      "cpuMs": 0.037,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.196978,
+      "cpuMs": 0.063,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    },
+    {
+      "wallMs": 0.131858,
+      "cpuMs": 0.039,
+      "value": {
+        "bytes": 3092,
+        "volumes": 2
+      }
+    }
+  ],
+  "processTable": [
+    {
+      "wallMs": 5.289863,
+      "cpuMs": 5.271,
+      "value": {
+        "rows": 368,
+        "bytes": 109522
+      }
+    },
+    {
+      "wallMs": 4.625032,
+      "cpuMs": 4.459,
+      "value": {
+        "rows": 368,
+        "bytes": 109522
+      }
+    },
+    {
+      "wallMs": 4.981135,
+      "cpuMs": 5.081,
+      "value": {
+        "rows": 368,
+        "bytes": 109522
+      }
+    },
+    {
+      "wallMs": 3.981665,
+      "cpuMs": 3.975,
+      "value": {
+        "rows": 368,
+        "bytes": 109522
+      }
+    },
+    {
+      "wallMs": 4.186651,
+      "cpuMs": 4.176,
+      "value": {
+        "rows": 368,
+        "bytes": 109522
+      }
+    }
+  ],
+  "limits": {
+    "processRows": 4096,
+    "hostRuns": 10,
+    "processRuns": 5
+  },
+  "notes": [
+    "No command line/environment read; no paths or PIDs retained.",
+    "Host reads Linux counters plus root and backing mounted volume counters.",
+    "Process proxy reads one stat row per process; no tree walk of files or user state.",
+    "No timers, history file, provider account or notifications.",
+    "Runtime heap/RSS not an incremental sampler measurement; omitted."
+  ]
+}

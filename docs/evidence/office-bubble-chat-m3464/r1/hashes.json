@@ -1,0 +1,50 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "8dd7e25d37d959607b860eb731a7f9d6181304b93440e1fc49f2c2aed7d3dfcd"
+  },
+  {
+    "path": "captures/desk-light-en-bubble.png",
+    "sha256": "a55a1bacd5db8ba839581f46a65de93f9109368ed67bb8fa360146637dd75e74"
+  },
+  {
+    "path": "captures/desk-light-en-chat.png",
+    "sha256": "76ca025ca560b5af1c1cb4802f08fa828eba22519fd4e01c417614b5c0916f9f"
+  },
+  {
+    "path": "captures/desk-light-en-fullscreen.png",
+    "sha256": "a6021e714070f3d1ce3ebdca79b7d67f2739b33bf2faad6308f9420845ea507b"
+  },
+  {
+    "path": "captures/desk-light-en-keyboard.png",
+    "sha256": "1fff4432bb086f0c35677a1a96fb5bfd307f3b0f85dbc271fb08a24c17d0a079"
+  },
+  {
+    "path": "captures/desk-light-en-office.png",
+    "sha256": "e8fa42d8c5d44a21cc5d70466f7a1586bca32501ab5d385247aba0171d993452"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-bubble.png",
+    "sha256": "a10c9cb03a7b146dfc6f09c507d5c995ee919706936334e33155ecf57c8cd6a0"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-chat.png",
+    "sha256": "ee5ac1a1f992a3d64975d1bd561c73c562d2eea9576b89f3087855d1c744a746"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-keyboard.png",
+    "sha256": "c437737ea98289e2e1029c1e29805718ab43613a8ae2fb312b7fad62e3123901"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-landscape.png",
+    "sha256": "69bd8ef272f82f520c959f9c0775b909fecd2072f4274ad4c2bd30351a568bf3"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-office.png",
+    "sha256": "50eba3a4b17976b98a85370e4e71ca621528a38972c010f40fca2284d20e33bb"
+  },
+  {
+    "path": "validation.json",
+    "sha256": "e29b127893ad75d92be386dfd56b3a8e4d732d329f771d3110daa8978fb93195"
+  }
+]

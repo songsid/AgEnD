@@ -1,0 +1,82 @@
+{
+  "task": "M-3441",
+  "kind": "design-only synthetic real-shell prototypes, opt-in revision",
+  "files": [
+    {
+      "path": "docs/design/host-monitoring-dashboard.md",
+      "sha256": "7cebc7778db944e8bd5e8700643aa9c111354f073bd4bea662ae0ab12c92d555"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/README.md",
+      "sha256": "61f37cf37db531ba7cdf7943a50432383f5ee43ff7d30cb6ce063c3ff276266a"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/checks.json",
+      "sha256": "a28b50c004769948680f787079da8c2c3927e1cdda1743422761251d2db7beb1"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/desk-en-mac.png",
+      "sha256": "eef43ee91ab1894c60345f176e9092ed65240e7db0cb1b893cf295213a0b8ab8"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/desk-en-ubuntu.png",
+      "sha256": "0805198d9d033af570eb1d6d20c8a71c3bb7459ee53dc4255383919aa6734d82"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/desk-en-wsl.png",
+      "sha256": "7123b30a1d8389338d0218fd766e2a689bcbbe2473418554de1fea7add1fc214"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/overhead-proxy.json",
+      "sha256": "721323f73f0a3e903256e7d01e281b2717eae82364090bb5e899d07dcf12d861"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-mac-unknown.png",
+      "sha256": "1852571184d906b55fc50fa6be92bfa55a1463c5bb9b032e1a467952cb17e032"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-mac.png",
+      "sha256": "7dbbbe1944640dd593214cf20ab3be17cae277706a744fb77beba3cb9c087e0c"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-ubuntu.png",
+      "sha256": "eea9421904366c8ea43412c00e109c320920310a5fffe5b3d44e4c62e80a59b3"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-windows-old.png",
+      "sha256": "6ae3566e222bbf294e0ad753630c81a83898c93035d99ddf115de3e9db088eb5"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-wsl-agents.png",
+      "sha256": "8156b9b3e4cd082f38782bcf3392bcaf65ef4c860e6905b97132ae2d70331ebe"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-wsl-unknown.png",
+      "sha256": "3959e63daa4e785cde6d1379c6100c0e9b2b47315a1706952ddd5da6ee27d7bb"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/phone-zh-wsl.png",
+      "sha256": "fdab8af3cf358cb0e46c0ccb49db98034edc1b57fc655a2ca7648ebdefbea7a3"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/settings-checks.json",
+      "sha256": "e077a98cb849fcd0d37351adcdc851d3f710cef982b54040fc46fc3cefa06870"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/settings-desk-en-off.png",
+      "sha256": "b0ebd26453d5463fc9048b9e89d40b75d21acc0d6e92f17249349c074f599a27"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/settings-desk-en-on.png",
+      "sha256": "5e9f55546f970df0eee24a5e3f2d64a1487fbb911a6bd1be605342e368a4fcce"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/settings-phone-zh-off.png",
+      "sha256": "3f973949a5509522200b51cc7e0b4886431181671c21fb3db0618f4a4f86bbf8"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-m3441/settings-phone-zh-on.png",
+      "sha256": "e5eab95bc08923096928f7b0b419163828e83b95aac58f90e7032e4b5c157cfe"
+    }
+  ]
+}

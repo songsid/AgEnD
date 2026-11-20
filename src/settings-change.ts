@@ -113,6 +113,8 @@ const DIRECTIONAL: ReadonlyArray<{ path: readonly string[]; def: number | boolea
   { path: ["fleet", "web", "usage_report_on_public_link"], def: true, looser: () => false },   // M-3278: on by default
   // M-2255: Settings → Runtime. Switching a Windows runtime on lets agents run more — this PC's Windows CLIs, or other
   // computers that pair with the fleet — so it waits for a General admin; switching one off applies at once.
+  { path: ["fleet", "monitoring", "enabled"], def: false, looser: () => false },
+  { path: ["fleet", "monitoring", "agent_footprint"], def: false, looser: () => false },
   { path: ["fleet", "runtimes", "windows_cli"], def: false, looser: (a, b) => b === true && a !== true },
   { path: ["fleet", "runtimes", "remote_runtime"], def: false, looser: (a, b) => b === true && a !== true },
   // #2953 1.8: how many Windows agents run at once on each computer applies at once either way — it is load, not reach

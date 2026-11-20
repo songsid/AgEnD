@@ -713,3 +713,18 @@ describe("web terminal — the page's relative asset references resolve against 
     expect((await fetch(bare, { method: "POST", redirect: "manual" })).status).toBe(405);
   });
 });
+
+it.skipIf(!tmuxAvailable)("actual scratch tmux runner accepts only a local synthetic CLI and refuses private pane capture",async()=>{
+ const {mkdtempSync,writeFileSync,rmSync,existsSync}=await import("node:fs"),{tmpdir}=await import("node:os"),{join}=await import("node:path"),{TmuxTerminalBackend}=await import("../src/web-terminal.js");
+ const fixture=mkdtempSync(join(tmpdir(),"token-child-fixture-")),script=join(fixture,"claude"),native=new TmuxTerminalBackend();let socket="",root="";
+ writeFileSync(script,"#!"+process.execPath+'\nprocess.stdout.write("https://claude.ai/oauth/authorize?fixture=1\\n");process.stdout.write(["sk","ant","oat01"].join("-")+"-"+"z".repeat(60)+"\\n");',{mode:0o700});
+ const {createClaudeSetupTokenTransport}=await import("../src/claude-setup-token-transport.js");
+ const {processGuard}=await import("./support/process-guard.js");processGuard.registerFixture(script);vi.stubEnv("PATH",fixture+":/usr/bin:/bin");
+ const transport=createClaudeSetupTokenTransport({env:{PATH:fixture+":/usr/bin:/bin"},native:{start:async opts=>{socket=opts.socket;root=opts.cwd;await native.start(opts);},capture:socket=>native.capture(socket),paneStatus:socket=>native.paneStatus(socket),sendInput:(...args)=>native.sendInput(...args),resize:(...args)=>native.resize(...args),kill:socket=>native.kill(socket)}});
+ try{await transport.start({argv:["claude","auth","login"]},new AbortController().signal);
+  await expect(native.capture(socket)).rejects.toThrow("private terminal capture refused");
+  expect(execFileSync(TMUX,["-L",socket,"display-message","-p","-t","main","#{history_limit} #{history_size}"],{encoding:"utf8"}).trim()).toBe("0 0");
+  const deadline=Date.now()+10000;while((await transport.status()).alive){if(Date.now()>deadline)throw Error("fixture completion missing");await new Promise(r=>setTimeout(r,25));}
+  expect(await transport.capture()).toBe("");expect(transport.takeToken()).toBe(["sk","ant","oat01"].join("-")+"-"+"z".repeat(60));expect(transport.takeToken()).toBeNull();await transport.close();expect(existsSync(root)).toBe(false);
+ }finally{await transport.close();rmSync(fixture,{recursive:true,force:true});vi.unstubAllEnvs();}
+});

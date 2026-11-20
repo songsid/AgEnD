@@ -53,6 +53,16 @@ function staticImports(src: string): string[] {
 }
 
 describe("module admission (#1408 §4)", () => {
+  it("serves the Office dialogue stylesheet before session admission", async () => {
+    const h = await listener();
+    try {
+      const response = await get(h.port, "/assets/office-dialogue.css");
+      expect(response.status).toBe(200);
+      expect(response.type).toContain("text/css");
+      expect(response.body).toContain(".oo.has-dialogue .oo-stage");
+    } finally { await h.stop(); }
+  });
+
   it("with no session: the entry's whole static closure loads from /assets as JavaScript, and none of it is under /ui/", async () => {
     const h = await listener();
     try {

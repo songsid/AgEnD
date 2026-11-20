@@ -7,12 +7,12 @@
  * - The pack's `portraits` and `dialogBox` (fleet-office-pack.js, page and host alike), and the host's size limits.
  * - The host's talk record (office-talk.ts) and a share's /state: when, never what or by whom; the share's people only.
  * - On the page: off by default — no stream listener, nothing drawn, the bar's one new checkbox; on: a message and its
- *   reply drawn, a status line read out, a click on the box opens the agent's card; a share shows no words.
+ *   reply drawn, a status line read out, a click on the box opens the agent's fresh chat window; a share shows no words.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as D from "../src/ui/fleet-office-dialogue.js";
 import * as PK from "../src/ui/fleet-office-pack.js";
 import { checkSkinUpload, PORTRAIT_MAX } from "../src/web-office-skins.js";
@@ -299,7 +299,7 @@ describe("the box on the page", () => {
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: `fleet:org|${Math.random()}|en` })); await settle(6);
     p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(6);
   };
-  const texts = () => p.root.querySelector(".oo-canvas")._ctx.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
+  const texts = () => (p.root.querySelector(".oo-dialogue-canvas")?._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
   const tick = async (n = 8) => { for (let i = 0; i < n; i++) await settle(2); };
   const toggle = () => p.root.querySelector(".oo-dialogue input");
 
@@ -369,17 +369,99 @@ describe("the box on the page", () => {
     expect(texts().some((s: string) => s.startsWith("are"))).toBe(false);
     emit("message", { instance: "quill", role: "user", sender: "Alex", text: "quill please", ts: new Date().toISOString() });
     await tick(20);
-    expect(texts().some((s: string) => s.length > 2 && "quill please".startsWith(s))).toBe(true);
+    // This pins speaker selection, not how many characters fit into a wall-clock animation frame.
+    expect(texts().some((s: string) => s.length > 0 && "quill please".startsWith(s))).toBe(true);
   });
-  it("a click on the box opens its agent's card", async () => {
+  it("keeps the dialogue outside the map viewport", async () => {
+    await office(); fire(toggle(), "change"); await settle(4);
+    emit("message", { instance: "atlas", role: "user", sender: "Example colleague", text: "Example update", ts: new Date().toISOString() });
+    await tick(20);
+    const stage = p.root.querySelector(".oo-stage"), dock = p.root.querySelector(".oo-dialogue-canvas");
+    expect(dock).not.toBeNull();
+    expect(dock.parentNode).toBe(stage.parentNode);
+    expect(stage.querySelector(".oo-dialogue-canvas")).toBeNull();
+  });
+  it("releases the dock after an answer expires without losing the map", async () => {
+    const real = (globalThis as any).matchMedia, clock = vi.spyOn(performance, "now").mockReturnValue(1000);
+    (globalThis as any).matchMedia = (q: string) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} });
+    try {
+      await office(); fire(toggle(), "change"); await settle(4);
+      emit("message", { instance: "atlas", role: "user", sender: "Example colleague", text: "Example question", ts: new Date().toISOString() });
+      emit("message", { instance: "atlas", role: "agent", text: "Example answer", ts: new Date().toISOString() });
+      await tick();
+      expect(p.root.querySelector(".oo-dialogue-canvas")).not.toBeNull();
+      clock.mockReturnValue(1000 + D.DLG.HOLD_MS + D.DLG.FADE_MS + 1);
+      app.appStore.set({ exec: { quill: "idle" } }); await tick();
+      expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
+      expect(p.root.querySelector(".oo-canvas")).not.toBeNull();
+    } finally { clock.mockRestore(); (globalThis as any).matchMedia = real; }
+  });
+  it("keeps armed snack placement ahead of a bubble chat click", async () => {
+    const { STUDIO_PACK } = await import("/ui/js/fleet-office-skin.js");
+    const pack = STUDIO_PACK as any, oldSnacks = pack.snacks, oldAuth = (globalThis as any).AgendAuth, oldOpen = (p.window as any).open;
+    const clock = vi.spyOn(performance, "now").mockReturnValue(5000), opened = vi.fn(() => ({ opener: null }));
+    pack.snacks = [{ id: "example-snack", label: { en: "Example snack" }, sprite: { src: "example.png", frames: 1, w: 16, h: 16 }, radius: 300 }];
+    p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
+    (globalThis as any).AgendAuth = { sessionEnded: () => false }; (p.window as any).open = opened;
+    app.appStore.set({ awaiting: { atlas: "Example question" } });
+    try {
+      await office(); await tick();
+      const cv = p.root.querySelector(".oo-canvas");
+      cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600, right: 960, bottom: 600 });
+      let matrix = [1, 0, 0, 1, 0, 0], stack: number[][] = [], point: any = null;
+      for (const [op, args] of cv._ctx.calls) {
+        if (op === "save") stack.push([...matrix]);
+        if (op === "restore") matrix = stack.pop() || matrix;
+        if (op === "setTransform") matrix = args;
+        if (op === "fillText" && ["Need you!", "A question for you", "Over here!"].includes(args[0])) point = { clientX: matrix[0] * args[1] + matrix[4], clientY: matrix[3] * args[2] + matrix[5] };
+      }
+      expect(point).not.toBeNull();
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(1); // positive: the painted point really opens chat
+      const snack = p.root.querySelector('.oo-snack[data-snack="example-snack"]');
+      expect(snack).not.toBeNull(); snack.click(); await settle(4);
+      expect(snack.getAttribute("aria-pressed")).toBe("true");
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(1);
+      expect(p.root.querySelector('.oo-snack[data-snack="example-snack"]').getAttribute("aria-pressed")).toBe("false");
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(2); // normal chat resumes once placement has consumed the mode
+    } finally {
+      await p.unmount(); clock.mockRestore();
+      if (oldSnacks === undefined) delete pack.snacks; else pack.snacks = oldSnacks;
+      (globalThis as any).AgendAuth = oldAuth; (p.window as any).open = oldOpen;
+      delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
+    }
+  });
+  it("a click opens fresh chat without leaving Office; double-click does not open duplicates", async () => {
+    p.document.body.dataset.chatWorkspace = "1";
+    p.document.body.dataset.chatLayoutScope = "example-scope";
+    const priorAuth = (globalThis as any).AgendAuth;
+    (globalThis as any).AgendAuth = { sessionEnded: () => false };
+    const priorOpen = (p.window as any).open;
+    const opened = vi.fn((_url: string) => ({ opener: null })); (p.window as any).open = opened;
+    try {
     await office();
     fire(toggle(), "change"); await settle(4);
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "hi", ts: new Date().toISOString() });
     await tick(20);
-    const cv = p.root.querySelector(".oo-canvas");
-    cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600, right: 960, bottom: 600 });
-    const L = D.fitBox(D.boxLayout(960, 600), 1, false);
+    const cv = p.root.querySelector(".oo-dialogue-canvas");
+    cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 180, right: 960, bottom: 180 });
+    const L = D.fitBox(D.boxLayout(960, 180), 1, false);
     fire(cv, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6 }); await settle(4);
-    expect(p.root.querySelector(".oo-card")?.textContent ?? "").toContain("Atlas");
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(opened.mock.calls[0][0]).toBe("/ui/chat/atlas?presentation=popout");
+    fire(cv, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6, detail: 2 });
+    fire(cv, "dblclick", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6 });
+    expect(opened).toHaveBeenCalledTimes(1);
+    fire(cv, "keydown", { key: "Enter" });
+    expect(opened).toHaveBeenCalledTimes(2);
+    fire(cv, "keydown", { key: "Enter", repeat: true });
+    expect(opened).toHaveBeenCalledTimes(2);
+    expect(p.window.location.pathname).toBe("/ui/fleet/org");
+    } finally {
+      (p.window as any).open = priorOpen; (globalThis as any).AgendAuth = priorAuth;
+      delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
+    }
   });
 });

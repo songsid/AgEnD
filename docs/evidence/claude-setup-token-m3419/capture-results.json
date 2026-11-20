@@ -1,0 +1,326 @@
+{
+  "headless": true,
+  "synthetic": true,
+  "realApi": true,
+  "noModelCalls": true,
+  "screens": [
+    {
+      "tag": "desk-light-en",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-en",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-en",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-en",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-en",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-en",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-en",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-en",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-en",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-en",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-en",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-en",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-en",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-en",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-en",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-en",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "get-token",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "waiting-overview",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "waiting",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "saved",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "name": "paste-fallback",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "paste-fallback",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "saved-details",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "saved-details",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-dark-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-light-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    }
+  ],
+  "extraCases": [
+    {
+      "tag": "desk-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    }
+  ],
+  "savedDetailsCases": [
+    {
+      "tag": "phone-light-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    }
+  ]
+}
