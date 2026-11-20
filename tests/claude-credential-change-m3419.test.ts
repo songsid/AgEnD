@@ -8,6 +8,7 @@ import { ClaudeCredentialVault } from "../src/claude-credential-vault.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { LoginWindowLock } from "../src/login-window-lock.js";
 import { Daemon } from "../src/daemon.js";
+import { TurnReplyGuard } from "../src/turn-reply-guard.js";
 const cleanup:Array<()=>void|Promise<void>>=[];
 afterEach(async()=>{vi.restoreAllMocks();vi.unstubAllEnvs();for(const fn of cleanup.splice(0).reverse())await fn();});
 const actor={adapterId:"host",userId:"operator"},value="synthetic-"+"x".repeat(48);
@@ -70,7 +71,7 @@ it("all old consumers stop before commit; a second busy pane recovers only the f
 it("daemon quiescence uses the pane lock and rejects busy or a changed spawn before fencing input",async()=>{
  const daemon:any=Object.create(Daemon.prototype);Object.defineProperty(daemon,"paneHost",{value:{getPanePid:async()=>123},writable:true,configurable:true});let generation=1;
  Object.assign(daemon,{backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,
-  tmux:{getWindowId:()=>"@fixture"},tmuxSessionName:"fixture",paneHost:{getPanePid:async()=>123},usesNativePane:()=>false,paneWriteLock:{run:vi.fn(async(fn:any)=>fn())},isPaneAuthoritativelyIdle:vi.fn(async()=>false)});
+  turnReplyGuard:new TurnReplyGuard(),tmux:{getWindowId:()=>"@fixture"},tmuxSessionName:"fixture",paneHost:{getPanePid:async()=>123},usesNativePane:()=>false,paneWriteLock:{run:vi.fn(async(fn:any)=>fn())},isPaneAuthoritativelyIdle:vi.fn(async()=>false)});
  expect(await daemon.quiesceClaudeCredential()).toBe(false);expect(daemon.deliveryWritesStopping).toBe(false);
  daemon.isPaneAuthoritativelyIdle.mockImplementation(async()=>{daemon.spawnGeneration=++generation;return true;});
  expect(await daemon.quiesceClaudeCredential()).toBe(false);expect(daemon.deliveryWritesStopping).toBe(false);
@@ -122,4 +123,36 @@ it("retirement proof rejects unreadable, same or unknown panes and accepts a mis
  expect(await daemon.claudeCredentialRetired()).toBe(false);windows.mockResolvedValue([{id:"@fixture"}] as any);expect(await daemon.claudeCredentialRetired()).toBe(false);
  pid.mockResolvedValue(null);expect(await daemon.claudeCredentialRetired()).toBe(false);pid.mockResolvedValue(456);expect(await daemon.claudeCredentialRetired()).toBe(true);
  windows.mockResolvedValue([]);expect(await daemon.claudeCredentialRetired()).toBe(true);
+});
+
+function logicalTurnDaemon(){
+ const daemon:any=Object.create(Daemon.prototype),turn=new TurnReplyGuard();
+ Object.defineProperty(daemon,"paneHost",{value:{getPanePid:vi.fn(async()=>123)},writable:true,configurable:true});
+ Object.assign(daemon,{backend:{binaryName:"claude"},spawnGeneration:1,launchFenceEpoch:1,pauseWakeState:"active",spawning:false,healthCheckPaused:false,deliveryWritesStopping:false,startupAborted:false,deliveryEpoch:0,turnReplyGuard:turn,
+  tmux:{getWindowId:()=>"@fixture"},tmuxSessionName:"fixture",usesNativePane:()=>false,paneWriteLock:{run:async(fn:any)=>fn()},isPaneAuthoritativelyIdle:vi.fn(async()=>true)});
+ return {daemon,turn};
+}
+it("idle-looking unfinished owned turns refuse credential changes before stop or commit",async()=>{
+ const r=rig(),{daemon,turn}=logicalTurnDaemon();
+ turn.arm({chatId:"fixture-room",messageId:"fixture-request"});
+ r.daemon.quiesceClaudeCredential.mockImplementation(()=>daemon.quiesceClaudeCredential());
+ await expect(r.change()).rejects.toThrow("in-use");
+ expect(r.fm.stopInstance).not.toHaveBeenCalled();expect(r.fm.startInstance).not.toHaveBeenCalled();
+ expect(r.fm.claudeCredentialMetadata(null).revision).toBe(1);expect(daemon.deliveryWritesStopping).toBe(false);
+ expect(daemon.paneHost.getPanePid).not.toHaveBeenCalled();
+});
+it("logical turn admission is fresh after both pane awaits and retains completed/cancelled positives",async()=>{
+ for(const stage of ["idle","pid"]){
+  const {daemon,turn}=logicalTurnDaemon();
+  const intervene=async()=>{turn.arm({chatId:"fixture-room"});return stage==="idle"?true:123;};
+  if(stage==="idle")daemon.isPaneAuthoritativelyIdle.mockImplementation(intervene);else daemon.paneHost.getPanePid.mockImplementation(intervene);
+  expect(await daemon.quiesceClaudeCredential()).toBe(false);expect(daemon.deliveryWritesStopping).toBe(false);
+ }
+ for(const ending of ["complete","cancel"]){
+  const {daemon,turn}=logicalTurnDaemon();const generation=turn.arm({chatId:"fixture-room"});
+  if(ending==="complete")turn.complete(generation);else turn.cancelByUser();
+  expect(await daemon.quiesceClaudeCredential()).toBe(true);expect(daemon.deliveryWritesStopping).toBe(true);
+ }
+ const {daemon}=logicalTurnDaemon();daemon.paneHost.getPanePid.mockImplementation(async()=>{daemon.deliveryEpoch++;return 123;});
+ expect(await daemon.quiesceClaudeCredential()).toBe(false);expect(daemon.deliveryWritesStopping).toBe(false);
 });

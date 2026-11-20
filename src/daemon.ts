@@ -2688,11 +2688,17 @@ export class Daemon extends EventEmitter {
   async quiesceClaudeCredential():Promise<boolean>{
     const spawn=this.spawnGeneration,fence=this.launchFenceEpoch;
     return this.paneWriteLock.run(async()=>{
+      const turn=this.turnReplyGuard.snapshot(),deliveryEpoch=this.deliveryEpoch;
+      if(turn&&!turn.cancelledByUser&&!turn.completionDelivered)return false;
       if(this.backend?.binaryName!=="claude"||this.usesNativePane()||this.spawning||this.healthCheckPaused||this.deliveryWritesStopping||this.startupAborted||this.isPaused)return false;
       if(!await this.isPaneAuthoritativelyIdle())return false;
       const windowId=this.tmux?.getWindowId();if(!windowId)return false;
       let pid:number|null=null;try{pid=await this.paneHost.getPanePid(this.tmuxSessionName,windowId);}catch{return false;}
       if(pid===null||!Number.isSafeInteger(pid)||pid<=1||windowId!==this.tmux?.getWindowId())return false;
+      // A tool pause can look idle. Re-read the owned logical turn after both
+      // pane awaits; new input or another turn must not inherit this idle proof.
+      const currentTurn=this.turnReplyGuard.snapshot();
+      if((currentTurn&&!currentTurn.cancelledByUser&&!currentTurn.completionDelivered)||currentTurn?.generation!==turn?.generation||deliveryEpoch!==this.deliveryEpoch)return false;
       if(spawn!==this.spawnGeneration||fence!==this.launchFenceEpoch||this.spawning||this.healthCheckPaused||this.deliveryWritesStopping||this.startupAborted||this.isPaused)return false;
       this.credentialChangeIncarnation={windowId,pid};this.fenceDeliveryWritesForStop();return true;
     });

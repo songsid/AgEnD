@@ -45,5 +45,28 @@
       "assertionCaught": true,
       "exit": 1
     }
-  ]
+  ],
+  "r1LogicalTurn": {
+    "base": {
+      "files": 1,
+      "passed": 12,
+      "assertionFailures": 2
+    },
+    "fixed": {
+      "files": 3,
+      "passed": 24
+    },
+    "guards": [
+      "unfinished-owned-turn-before-stop-or-commit",
+      "fresh-turn-after-idle-read",
+      "fresh-turn-after-pid-read",
+      "input-epoch-after-pid-read"
+    ],
+    "positives": [
+      "completed-turn",
+      "user-cancelled-turn"
+    ],
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  }
 }
