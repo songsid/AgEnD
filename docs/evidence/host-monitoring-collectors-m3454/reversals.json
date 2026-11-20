@@ -1,0 +1,26 @@
+[
+  {
+    "guard": "durable-pin",
+    "failed": 4,
+    "passed": 2,
+    "restored": true
+  },
+  {
+    "guard": "guess-backing",
+    "failed": 1,
+    "passed": 8,
+    "restored": true
+  },
+  {
+    "guard": "late-generation",
+    "failed": 1,
+    "passed": 6,
+    "restored": true
+  },
+  {
+    "guard": "physical-drain",
+    "failed": 1,
+    "passed": 6,
+    "restored": true
+  }
+]

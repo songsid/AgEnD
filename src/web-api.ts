@@ -416,6 +416,7 @@ export interface AccountMachine { id: string; actor: string }
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
 export interface WebApiContext extends ClaudeCredentialApi {
+  hostHealthSnapshot?(): import("./host-monitoring.js").HostHealthSnapshot;
   clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
   writeContactPermissions?: ContactApiHost["writeContactPermissions"];
@@ -2167,6 +2168,14 @@ export function handleWebRequest(
 ): boolean {
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (path === "/ui/host-health") {
+    res.setHeader("Cache-Control", "private, no-store");
+    const who = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, {touch:false});
+    if (who.kind !== "allow" || who.via !== "session" || who.session.tier !== "admin") { json(res,403,{error:"admin_session_required"}); return true; }
+    if (method !== "GET" || url.search) { json(res,400,{error:"invalid_host_health_request"}); return true; }
+    if (!ctx.hostHealthSnapshot) { json(res,503,{error:"host_monitoring_unavailable"}); return true; }
+    json(res,200,ctx.hostHealthSnapshot()); return true;
+  }
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes
   // the panel instead of comparing null against a missing credential.

@@ -1,3 +1,7 @@
+import { HostMonitoringRuntime } from "./host-monitoring-runtime.js";
+import { NativeHostMonitoring } from "./host-monitoring-platform.js";
+import { disabledHostHealth } from "./host-monitoring.js";
+import { monitoringConfig } from "./host-monitoring-config.js";
 import { ClaudeSetupTokens, type SetupTokenOwner, type SetupTokenRequest } from "./claude-setup-token.js";
 import { changeIdleClaudeCredential } from "./claude-credential-change.js";
 import { readClaudeCredentialSelection, claudeSubscriptionSuppressed } from "./claude-credential-launch.js";
@@ -1279,6 +1283,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly stormWindow: StormWindow;
   readonly spawnGate: SpawnGate;
   readonly memoryPressure: MemoryPressure;
+  private hostMonitor: HostMonitoringRuntime | null = null;
+  private startHostMonitoringRuntime(): void {
+    this.hostMonitor ??= new HostMonitoringRuntime({
+      supported: () => process.platform === "linux" || process.platform === "darwin",
+      committed: () => monitoringConfig(this.fleetConfig?.monitoring),
+      raw: () => { if (!this.configPath) throw Error("config unavailable"); return {monitoring:loadRawFleetConfig(this.configPath).monitoring}; },
+      pin: patches => this.saveFleetConfig(patches),
+      factory: () => new NativeHostMonitoring({statePath:this.dataDir,memory:()=>this.memoryPressure.snapshot(),wslDrive:this.fleetConfig?.monitoring?.wsl_drive}),
+    });
+    this.hostMonitor.start();
+  }
+  hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
+  hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
+
   /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
   readonly backendOutage = new BackendOutageTracker();
   /** Stable for this FleetManager OS-process lifetime; Daemon objects have their own boot IDs. */
@@ -3983,6 +4001,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       generalLocation: input => this.previewGeneralLocation(input),
       hubMembership: raw => hubMembershipSettings(raw),
       hubPageSharing: raw => hubPageSharingSettings(raw),
+      hostMonitoringAvailable: () => this.hostMonitoringAvailable(),
       hubPilotTrust: raw => hubPilotTrustSettings(raw, RUNNING_AGEND_VERSION),
       // S3c (S-55): a Hub exposure publish's confirmation summary, while a member composition is attached.
       hubBrowserCertificate: (input: unknown, binding: string) => {
@@ -9304,7 +9323,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
     // CLI single-instance cold starts bypass startAll. Start diagnostics before
     // any lifecycle/wake work; a shutdown must not revive the stopped sampler.
-    if (!this.shuttingDown) this.memoryPressure?.start();
+    if (!this.shuttingDown) { this.memoryPressure?.start(); this.startHostMonitoringRuntime(); }
     // Any start supersedes a pending automatic retry (it would otherwise fire
     // into a running instance — harmless, but noisy — or race this start).
     this.cancelStartupRetry(name);
@@ -11957,6 +11976,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // Must run before the first General/CLI spawn: pressure can hold startup.
     // Logs remain available even before the adapters and health listener exist.
     this.memoryPressure.start();
+    this.startHostMonitoringRuntime();
     // #2910: a web-only fleet's agents run in topic mode too (their cross-instance tools work; the dashboard is their place).
     const topicMode = daemonTopicMode(fleet);
 
@@ -17043,6 +17063,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     );
     this.observeRuntimeSwitches();                   // M-2255: a saved Windows runtime switch applies now
     this.observeHubSwitches();                       // S-51: so does a saved Hub switch
+    this.hostMonitor?.apply();
   }
 
   /** A permission tightening is effective when its save returns, independently of the later apply job or IPC. */
@@ -28350,6 +28371,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // because we asked it to. Set synchronously — doStopAll runs to its first
     // await in the same tick as the signal handler, so no event can slip in.
     this.shuttingDown = true;
+    this.hostMonitor?.stop();
     this.stopQuotaObserver?.(); this.stopQuotaObserver = null;
     const quotaNoticesStopped = this.quotaNotices?.stop();
     // Stop receive admission before the first await or any instance shutdown; outbound
@@ -28821,6 +28843,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.reregisterClassicChannels();
     this.scheduler?.reload();
     this.reconcilePreviewListener();
+    this.hostMonitor?.apply();
     this.publicWebLink?.refresh();
 
     const newInstances = this.fleetConfig!.instances;

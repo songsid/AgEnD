@@ -240,7 +240,14 @@ export function SearchDialog({ preset = {}, onClose }) {
   // While a new query runs, the last answer stays (dimmed) rather than flashing empty.
   const groups = useMemo(() => groupHits(res.hits || []), [res]);
   // #2347 §6: the settings matching the query, from the page's own registry (no request), above the messages.
-  const settings = useMemo(() => (q.trim() && !guest ? searchSettings(q).slice(0, SETTINGS_SHOWN) : []), [q]);
+  const [settingsSchema,setSettingsSchema] = useState(null);
+  useEffect(() => {
+    if (guest) {setSettingsSchema(null);return;}
+    let current=true;const ac=new AbortController();
+    fetch("/api/settings/schema",{signal:ac.signal}).then(r=>r.ok?r.json():null).then(schema=>{if(current)setSettingsSchema(schema);},()=>{if(current)setSettingsSchema(null);});
+    return ()=>{current=false;ac.abort();};
+  },[guest]);
+  const settings = useMemo(() => (q.trim() && !guest ? searchSettings(q, settingsSchema).slice(0, SETTINGS_SHOWN) : []), [q, guest, settingsSchema]);
   const flat = useMemo(() => [...settings.map((entry) => ({ setting: entry })), ...flatHits(groups)], [settings, groups]);
   const activeFilters = (f.instance ? 1 : 0) + (f.team ? 1 : 0) + (f.since !== "any" ? 1 : 0) + (!guest && f.sources.length < SOURCES.length ? 1 : 0) + (f.mine ? 1 : 0);
 

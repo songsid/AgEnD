@@ -24,9 +24,9 @@ import { prepareSettingsEffect, isSettingsMutation } from '../src/settings-effec
 import { handleSettingsRequest } from '../src/settings-api.js';
 import { bindGatewayRequest } from '../src/web-request-context.js';
 const route='/api/settings/fleet/monitoring';
-function api(fleet:any,body:unknown,{failSave=false,publicLink=false}={}) {
+function api(fleet:any,body:unknown,{failSave=false,publicLink=false,available=false}={}) {
   const save=vi.fn((_changes:any)=>{if(failSave)throw Error('disk full')});
-  const ctx:any={fleetConfig:fleet,saveFleetConfig:save,logger:{warn:vi.fn()},dataDir:'/unused'};
+  const ctx:any={fleetConfig:fleet,saveFleetConfig:save,hostMonitoringAvailable:()=>available,logger:{warn:vi.fn()},dataDir:'/unused'};
   return new Promise<{status:number,body:any,save:typeof save}>((resolve,reject)=>{
     const req:any=new EventEmitter();req.method='PUT';req.url=route;req.headers={};req.destroy=()=>{};
     if(publicLink)bindGatewayRequest(req,{surface:'gateway',exposureId:'e'.repeat(32),expectedOrigin:'https://example.test',isCurrent:()=>true});
@@ -50,6 +50,13 @@ describe('settings persistence and staged confirmation agreement',()=>{
   it('cannot pretend to start a collector before that slice is installed',async()=>{
     const r=await api({defaults:{},instances:{}},{enabled:true});expect(r.status).toBe(409);expect(r.save).not.toHaveBeenCalled();
     expect(()=>prepareSettingsEffect('PUT',route,{enabled:true},{config:{defaults:{},instances:{}},classic:{}})).toThrow('monitoring_unavailable');
+  });
+  it('enables only with real runtime capability and retains an explicitly selected mounted drive',async()=>{
+    const fleet:any={defaults:{},instances:{},monitoring:{enabled:false,agent_footprint:false,wsl_drive:'E'}};
+    const r=await api(fleet,{enabled:true},{available:true});expect(r.status).toBe(200);expect(fleet.monitoring.wsl_drive).toBe('E');
+    expect(()=>prepareSettingsEffect('PUT',route,{enabled:true},{config:fleet,classic:{},hostMonitoringAvailable:()=>true})).not.toThrow();
+    for(const drive of ['/mnt/e','e','EE',null,true])expect(parseMonitoringSettings({wsl_drive:drive})).toEqual({error:'invalid_monitoring_settings'});
+    expect(monitoringConfig({wsl_drive:'E'})).toEqual({enabled:false,agent_footprint:false,wsl_drive:'E'});
   });
   it('classifies only validated boolean changes as an immediate settings operation',()=>{
     expect(isSettingsMutation('PUT',route)).toBe(true);

@@ -121,6 +121,8 @@ const MEASURE = `(() => {
 })()`;
 
 const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 47510), instances: 12 });
+// Exercise the real runtime capability with committed default-off config. No provider/timer is started.
+fx.fm.startHostMonitoringRuntime();
 const started = Date.now();
 /**
  * #3407 review: the left-accent rule checks itself before it judges anything — controls drawn into a Settings column and
@@ -255,6 +257,7 @@ try {
   writeFileSync(join(OUT, "result.json"), JSON.stringify(r, null, 1));
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 600)}`);
   console.log(fail.length ? `UI gate FAILED (${fail.length}) in ${r.seconds}s — pictures and result.json in ${OUT}` : `UI gate passed in ${r.seconds}s (${Object.keys(r).length - 2} checks)`);
+  fx.fm.hostMonitor?.stop();
   await fx.close();
   process.exit(fail.length ? 1 : 0);
 }

@@ -14,6 +14,7 @@ let p: AppPage;
 const realFetch = (globalThis as any).fetch;
 /** #2383 review: the message search's answer (null: an empty one), and a configuration read held until it opens. */
 let searchAnswer: "404" | "throw" | null = null;
+let monitoringPageAvailable=true;
 let rawHold: Promise<void> | null = null;
 /** The fleet's `web` as read, and the authority overview's named hostname — a named tunnel draws more fields. */
 let rawWeb: Record<string, unknown> = {}, namedHost: string | null = null;
@@ -26,7 +27,7 @@ const fakeFetch = async (path: string, init: { method?: string } = {}) => {
   if (path === "/api/settings/fleet/raw" && rawHold) { const held = rawHold; rawHold = null; await held; }
   const body = (() => {
     if (method !== "GET") return { ok: true };
-    if (path === "/api/settings/schema") return { ...schema, provider_secrets: true };
+    if (path === "/api/settings/schema") return { ...schema, provider_secrets: true, host_monitoring: true, host_monitoring_page: monitoringPageAvailable };
     if (path === "/api/settings/fleet/raw") return { defaults: { locale: "en" }, instances: {}, channels: [{ id: "main", type: "discord", bot_token_env: "T", group_id: "1" }], web: rawWeb };
     if (path === "/api/settings/classic") return { defaults: {}, channels: { "c1": { name: "ops", instanceName: "ops-t1", channelId: "1" } } };
     if (path === "/api/settings/provider-secrets") return [{ id: "openai", display_name: "OpenAI", verifier: "available", token_present: false }];
@@ -57,7 +58,7 @@ beforeAll(async () => {
   nav.startRouter(p.window);
 });
 afterAll(() => { p.restore(); (globalThis as any).fetch = realFetch; delete (globalThis as any).AgendPreview; delete (globalThis as any).AgendAuth; });
-beforeEach(() => { (globalThis as any).confirm = () => true; });
+beforeEach(() => { monitoringPageAvailable=true;(globalThis as any).confirm = () => true; });
 afterEach(async () => { await p.unmount(); });
 
 const open = async (section: string) => {
@@ -68,7 +69,7 @@ const open = async (section: string) => {
   await settle(20);
   if (section === "look") for (let i = 0; i < 40 && !p.root.querySelector(".s-effects"); i++) await new Promise((r) => setTimeout(r, 25));
 };
-const SECTIONS = ["preferences", "look", "agents", "accounts", "agent-defaults", "chat", "web-dashboard", "access", "hub", "advanced"];
+const SECTIONS = ["preferences", "look", "agents", "accounts", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"];
 
 /** What a section draws that no entry covers, and the entries whose element it does not draw. */
 async function coverage(sections: string[], skipAbsent: (e: any) => boolean = () => false) {
@@ -289,7 +290,7 @@ describe("#2347 §6: Ctrl K has a Settings group", () => {
       } finally { searchAnswer = null; }
     });
   }
-  it("the settings come first, from the registry (no request); opening one goes to it", async () => {
+  it("the settings come first, from the registry; opening one goes to it", async () => {
     const m = await import("/ui/js/search-dialog.js");
     let closed = 0;
     await p.mount(h(m.SearchDialog, { preset: {}, onClose: () => { closed++; } }));
@@ -302,3 +303,17 @@ describe("#2347 §6: Ctrl K has a Settings group", () => {
     expect([closed, nav.navStore.get().route]).toEqual([1, { panel: "settings", section: "access" }]);
   });
 });
+
+ describe('host monitoring has one visibility rule in both searches',()=>{
+  for(const surface of ['Settings','Ctrl K'])it.each([false,true])('%s: '+surface+' follows the actual page capability',async enabled=>{
+   monitoringPageAvailable=enabled;
+   if(surface==='Settings'){
+    await open('look');const input:any=p.root.querySelector('#settingsSearch');input.value='monitoring';fire(input,'input');await settle(12);
+    expect([...p.root.querySelectorAll('.s-find-label')].some((n:any)=>n.textContent==='Host monitoring')).toBe(enabled);
+   }else{
+    const m=await import('/ui/js/search-dialog.js');await p.mount(h(m.SearchDialog,{preset:{q:'monitoring'},onClose(){}}));await settle(12);
+    expect(p.root.querySelector('.search-settings')?.textContent.includes('Host monitoring')??false).toBe(enabled);
+   }
+   const schema={host_monitoring:true,host_monitoring_page:enabled};expect(reg.searchSettings('monitoring',schema).some((e:any)=>e.id==='host.monitoring')).toBe(enabled);
+  });
+ });
