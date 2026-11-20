@@ -1,0 +1,214 @@
+{
+  "0.170.0": {
+    "before": [
+      {
+        "case": "gpt-6.1-sol:low",
+        "version": "0.170.0",
+        "typed": "/model gpt-6.1-sol --reasoning=low",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": ":high",
+        "version": "0.170.0",
+        "typed": "/model --reasoning=high",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      },
+      {
+        "case": "gpt-6.1-sol:",
+        "version": "0.170.0",
+        "typed": "/model gpt-6.1-sol",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": "gpt-audit-missing:low",
+        "version": "0.170.0",
+        "typed": "/model gpt-audit-missing --reasoning=low",
+        "rollout": "none yet",
+        "outcome": "mismatch",
+        "via": "pane",
+        "refused": "Model 'gpt-audit-missing' is unavailable. Use /model to see available models."
+      }
+    ],
+    "after": [
+      {
+        "case": "gpt-6.1-sol:low",
+        "version": "0.170.0",
+        "typed": "/model gpt-6.1-sol --reasoning=low",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": ":high",
+        "version": "0.170.0",
+        "typed": "/model --reasoning=high",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      },
+      {
+        "case": "gpt-6.1-sol:",
+        "version": "0.170.0",
+        "typed": "/model gpt-6.1-sol",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": "gpt-audit-missing:low",
+        "version": "0.170.0",
+        "typed": "/model gpt-audit-missing --reasoning=low",
+        "rollout": "checkpointed",
+        "outcome": "mismatch",
+        "via": "pane",
+        "refused": "Model 'gpt-audit-missing' is unavailable. Use /model to see available models."
+      }
+    ],
+    "lastRequest": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "low",
+        "context": "all_turns"
+      }
+    }
+  },
+  "0.171.0": {
+    "before": [
+      {
+        "case": "gpt-6.1-sol:low",
+        "version": "0.171.0",
+        "typed": "/model gpt-6.1-sol --reasoning=low",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": ":high",
+        "version": "0.171.0",
+        "typed": "/model --reasoning=high",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      },
+      {
+        "case": "gpt-6.1-sol:",
+        "version": "0.171.0",
+        "typed": "/model gpt-6.1-sol",
+        "rollout": "none yet",
+        "outcome": "switched",
+        "via": "pane",
+        "pane": {
+          "kind": "switched",
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": "gpt-audit-missing:low",
+        "version": "0.171.0",
+        "typed": "/model gpt-audit-missing --reasoning=low",
+        "rollout": "none yet",
+        "outcome": "mismatch",
+        "via": "pane",
+        "refused": "Model 'gpt-audit-missing' is unavailable. Use /model to see available models."
+      }
+    ],
+    "after": [
+      {
+        "case": "gpt-6.1-sol:low",
+        "version": "0.171.0",
+        "typed": "/model gpt-6.1-sol --reasoning=low",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": ":high",
+        "version": "0.171.0",
+        "typed": "/model --reasoning=high",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "high"
+        }
+      },
+      {
+        "case": "gpt-6.1-sol:",
+        "version": "0.171.0",
+        "typed": "/model gpt-6.1-sol",
+        "rollout": "checkpointed",
+        "outcome": "switched",
+        "via": "rollout",
+        "applied": {
+          "model": "gpt-6.1-sol",
+          "effort": "low"
+        }
+      },
+      {
+        "case": "gpt-audit-missing:low",
+        "version": "0.171.0",
+        "typed": "/model gpt-audit-missing --reasoning=low",
+        "rollout": "checkpointed",
+        "outcome": "mismatch",
+        "via": "pane",
+        "refused": "Model 'gpt-audit-missing' is unavailable. Use /model to see available models."
+      }
+    ],
+    "lastRequest": {
+      "model": "gpt-6.1-sol",
+      "reasoning": {
+        "effort": "low",
+        "context": "all_turns"
+      }
+    }
+  }
+}

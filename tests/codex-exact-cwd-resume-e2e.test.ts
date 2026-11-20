@@ -33,7 +33,7 @@ function codexVersion(): string | null {
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
 /** Codex versions this real-CLI test is run against before AgEnD claims support (0.161 was never run; 0.160.0 and 0.162.0 verified 2026-10-09; 0.164.0 and 0.165.0 verified 2026-10-28). */
-const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159|160|162|164|165|169|170)\.\d+\b/;
+const SUPPORTED_CODEX = /\b0\.(?:155|156|157|158|159|160|162|164|165|169|170|171)\.\d+\b/;
 const enabled = !!version && SUPPORTED_CODEX.test(version) && existsSync(AUTH);
 
 const SCHEMA = readFileSync(fileURLToPath(new URL("./fixtures/codex-0157-state5-schema.sql", import.meta.url)), "utf8");

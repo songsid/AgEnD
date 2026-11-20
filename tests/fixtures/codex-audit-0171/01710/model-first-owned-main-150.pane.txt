@@ -1,0 +1,45 @@
+
+  >_ OpenAI Codex (v0.171.0)
+     /audit/codex-0171/layout-0.171.0/run-01710/owned-model-first
+  permissions: YOLO mode
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  00000000-0000-7000-8000-000000000171 · Context 100% left · mock-model default · /audit/codex-0171/layout-0.171.0/run-01710/owned-model-
+  first · master
+  ← for agents · ? for shortcuts                                                                                             ⚠ 1 warning · f2 to view
