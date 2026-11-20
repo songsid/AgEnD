@@ -6,7 +6,7 @@ import { randomUUID, createHash } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import { homedir } from "node:os";
 import { z } from "zod";
-import { ClaudeCredentialVault, type ClaudeCredentialKind } from "./claude-credential-vault.js";
+import { ClaudeCredentialVault, type ClaudeCredentialKind, type ClaudeCredentialMetadata } from "./claude-credential-vault.js";
 import { shellQuote, UnsupportedCliError } from "./backend/types.js";
 export interface ManagedClaudeBinding { home: string; profile: string | null; id: string; revision: number; kind: ClaudeCredentialKind | "subscription"; }
 const bindingSchema = z.strictObject({ home:z.string().max(4096).refine(isAbsolute), profile:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).nullable(),
@@ -15,7 +15,7 @@ const specSchema = z.strictObject({ binding:bindingSchema, cwd:z.string().max(40
  helperCommand:z.string().max(16384), settingsPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(140), policyPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(8), ready:z.boolean(), binary:z.string().max(4096), args:z.array(z.string().max(16384)).max(256), env:z.record(z.string(),z.string().max(8192)) });
 export type ManagedClaudeSpec = z.infer<typeof specSchema>;
 const unavailable = () => new UnsupportedCliError("Managed Claude credential is unavailable or its source changed. Open Accounts on the local dashboard.");
-export function managedClaudeBinding(home: string, profile: string | null): ManagedClaudeBinding | null {
+export function readClaudeCredentialSelection(home: string, profile: string | null): ClaudeCredentialMetadata | null {
  // Only proven absence of all managed state permits the legacy credential path.
  // existsSync hides access errors and dangling links, which must never select ambient auth.
  const present=(path:string):boolean=>{try{lstatSync(path);return true;}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return false;throw unavailable();}};
@@ -25,9 +25,19 @@ export function managedClaudeBinding(home: string, profile: string | null): Mana
   return null;
  }
  let vault:ClaudeCredentialVault|undefined;
- try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m)return null;const kind=m.source==="subscription"?"subscription":m.kind;if(!kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind};}
+ try {vault=new ClaudeCredentialVault(home);return vault.metadata(profile);}
  catch{throw unavailable();}finally{vault?.close();}
 }
+export function managedClaudeBinding(home:string,profile:string|null):ManagedClaudeBinding|null{
+ const m=readClaudeCredentialSelection(home,profile);if(!m)return null;
+ const kind=m.source==="subscription"?"subscription":m.kind;if(!kind)throw unavailable();
+ return {home:resolve(home),profile,id:m.id,revision:m.revision,kind};
+}
+/** Includes disconnected managed records and unreadable state: never expose an old subscription's identity or meters. */
+export function claudeSubscriptionSuppressed(home:string,profile:string|null):boolean{
+ try{const m=readClaudeCredentialSelection(home,profile);return !!m&&m.source!=="subscription";}catch{return true;}
+}
+
 export function currentManagedClaude(binding: ManagedClaudeBinding): boolean {
  const v=new ClaudeCredentialVault(binding.home);try{const m=v.metadata(binding.profile);return !!m&&m.id===binding.id&&m.revision===binding.revision&&(binding.kind==="subscription"?m.source==="subscription"&&m.kind===null:m.source==="managed"&&m.kind===binding.kind);}finally{v.close();}
 }

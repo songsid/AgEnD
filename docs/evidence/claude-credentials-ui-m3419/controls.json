@@ -1,0 +1,83 @@
+{
+  "affected": {
+    "files": 20,
+    "passed": 312
+  },
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "baseHttp": {
+    "expected": 200,
+    "actual": 400
+  },
+  "reversals": [
+    {
+      "control": "idle",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "authority",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "retirement",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "launch-fence",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "writer-drain",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "cached-meters",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "missing-db",
+      "assertionCaught": true,
+      "exit": 1
+    }
+  ],
+  "r1LogicalTurn": {
+    "base": {
+      "files": 1,
+      "passed": 12,
+      "assertionFailures": 2
+    },
+    "fixed": {
+      "files": 3,
+      "passed": 24
+    },
+    "guards": [
+      "unfinished-owned-turn-before-stop-or-commit",
+      "fresh-turn-after-idle-read",
+      "fresh-turn-after-pid-read",
+      "input-epoch-after-pid-read"
+    ],
+    "positives": [
+      "completed-turn",
+      "user-cancelled-turn"
+    ],
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "r2CiCompatibility": {
+    "files": 7,
+    "passed": 164,
+    "changes": [
+      "rebuilt detector manifest",
+      "credential chooser then original named/default subscription routing assertions",
+      "remote machine routing retained",
+      "Preact boolean spellcheck attribute"
+    ],
+    "appearanceChanged": false
+  }
+}

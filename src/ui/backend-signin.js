@@ -5,6 +5,7 @@
 // session that started a sign-in gets its terminal link, access code and device code; every other admin page only that
 // one runs, on which device, and may cancel it. The stream's `backend_login` event carries nothing — it only says to
 // read again. Starting is two steps, as in chat: check (the server keeps what it found) and start (with its id).
+import { openClaudeCredentials } from "./claude-credentials.js";
 import { html, useEffect, useState, useRef } from "/assets/app-html.js";
 import { t, register, lang, onLang } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
@@ -231,7 +232,8 @@ export function installerSignInBackends(search) {
 export const profileSignInEndpoint = (backend, profile) => `/ui/browser-backend-signins?backend=${encodeURIComponent(backend)}&profile=${encodeURIComponent(profile)}`;
 
 /** Open the dialog for one login (a backend's default one, or a credential profile): the same dialog for both. */
-export function openSignIn({ backend, profile }) {
+export function openSignIn({ backend, profile, method, machine, subscription = false }) {
+  if(backend === "claude-code" && !machine && !subscription)return openClaudeCredentials({backend,profile,initial:method||"subscription",continueSubscription:()=>openSignIn({backend,profile,subscription:true})});
   const caps = capsOf(backend);
   if (caps?.structuredSignIn && (!profile || caps.structuredNamedSignIn)) showDialog(BrowserSignInDialog, { backend, ...(profile ? { profile } : {}) });
   else showDialog(SignInDialog, { backend, ...(profile ? { profile } : {}) });

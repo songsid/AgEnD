@@ -113,12 +113,17 @@ describe("Sign out… and Switch account… (#3212 PR 3)", () => {
     post.release(); await settle(12);
     expect(dialog()?.querySelector(".s-account-inuse") ?? null).toBe(null);
   });
-  it("Switch account: signs the default out, then opens Sign in for it", async () => {
+  it("Switch account: signs the default out, offers credential methods, then continues its subscription login", async () => {
     await mount();
     rowOf("claude-code", "default").querySelector(".s-account-switch").click(); await settle(6);
     expect(text(dialog())).toContain("Switch Claude Code's default connection?");
     btn(dialog(), "Disconnect and reconnect").click(); await settle(14);
     expect(calls).toEqual([{ method: "POST", url: "/ui/accounts/claude-code/signout", body: { profile: null, confirm: true } }]);
+    const credentials=await import("/ui/js/claude-credentials.js"),signin=await import("/ui/js/backend-signin.js");
+    expect(shell.shellStore.get().dialog?.Component).toBe(credentials.ClaudeCredentialsDialog);
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription" });
+    shell.shellStore.get().dialog.props.continueSubscription();
+    expect(shell.shellStore.get().dialog?.Component).toBe(signin.BrowserSignInDialog);
     expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code" });
   });
   it("Switch account: the person moved on while it read the view again — no Sign in", async () => {
