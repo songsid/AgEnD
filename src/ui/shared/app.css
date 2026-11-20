@@ -373,6 +373,15 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
 .ws-pane .pv-divider { display: none; }
 /* Geometry is opt-in: retained PR2 hosts keep their original two-cell grid with this CSS. */
+/* M-3455: the split size is read by the workspace's own grid only. Not inherited, so a divider drag restyles the one grid
+   container instead of every element in both chat histories (an inherited custom property invalidates all descendants). */
+@property --ws-first { syntax: "*"; inherits: false; }
+@property --thread-snap { syntax: "*"; inherits: false; }
+/* While the divider is dragged, rows off screen are not laid out or painted at each new width. Rows keep their last drawn
+   size (the browser records it under contain-intrinsic-size: auto, which does nothing else), so skipping them moves nothing;
+   on release every row is laid out once at the final width. Normal reading never skips rows. */
+.thread > .msg { contain-intrinsic-size: auto 96px; }
+.ws-resizing .thread > .msg { content-visibility: auto; }
 .chat-workspace.ws-geometry { gap: 0; }
 .ws-geometry.ws-right { grid-template-columns: var(--ws-first, minmax(360px, 1fr)) 8px minmax(360px, 1fr); }
 .ws-geometry.ws-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--ws-first, minmax(320px, 1fr)) 8px minmax(320px, 1fr); }

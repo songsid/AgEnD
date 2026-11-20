@@ -8,7 +8,7 @@ const source = readFileSync(new URL("../src/ui/shared/theme.js", import.meta.url
 function browser(stored = "dark", systemLight = true) {
   const attrs = new Map<string, string>(); const nodes: any[] = [];
   const events: Record<string, (() => void)[]> = {}; const frames: (() => void)[] = [];
-  let mutate = () => {}, mediaChange = () => {}, custom: string | null = null, ready = true;
+  let mutate = (_records?: unknown[]) => {}, mediaChange = () => {}, custom: string | null = null, ready = true;
   const root = { getAttribute: (k: string) => attrs.get(k), setAttribute: (k: string, v: string) => attrs.set(k, v), removeAttribute: (k: string) => attrs.delete(k), parentElement: null };
   const body = { parentElement: root }, header = { parentElement: body, getClientRects: () => [{}], getBoundingClientRect: () => ({ top: 0 }) };
   const make = () => ({ content: "", setAttribute(k: string, v: string) { (this as any)[k] = v; }, removeAttribute(k: string) { delete (this as any)[k]; }, remove() { nodes.splice(nodes.indexOf(this), 1); } });
@@ -22,11 +22,12 @@ function browser(stored = "dark", systemLight = true) {
     matchMedia: () => ({ get matches() { return systemLight; }, addEventListener: (_n: string, cb: () => void) => { mediaChange = cb; } }),
     addEventListener: (name: string, cb: () => void) => (events[name] ??= []).push(cb) };
   const localStorage = { getItem: (k: string) => k === "agend_theme" ? stored : null, setItem() {}, removeItem() {} };
-  class Observer { constructor(cb: () => void) { mutate = cb; } observe() {} }
+  class Observer { constructor(cb: (records?: unknown[]) => void) { mutate = cb; } observe() {} }
   vm.runInNewContext(source, { document, window, localStorage, MutationObserver: Observer });
   const flush = () => { for (let i = 0; frames.length && i < 20; i++) frames.shift()!(); expect(frames).toHaveLength(0); };
   flush();
-  return { nodes, theme: window.AgendTheme, flush, change: () => { mutate(); flush(); },
+  return { nodes, theme: window.AgendTheme, flush, change: () => { mutate(); flush(); }, frames,
+    records: (records: unknown[]) => { mutate(records); flush(); },
     custom: (v: string | null) => { custom = v; }, cssReady: (v: boolean) => { ready = v; },
     event: (name: string) => { events[name]?.forEach(f => f()); flush(); },
     system: (v: boolean) => { systemLight = v; mediaChange(); flush(); } };
@@ -46,6 +47,17 @@ describe("installed app chrome follows the rendered page", () => {
     const b = browser(); b.custom("rgb(23, 49, 63)"); b.change(); expect(b.nodes[0].content).toBe("rgb(23, 49, 63)");
     b.custom("rgb(88, 32, 64)"); b.event("load"); expect(b.nodes[0].content).toBe("rgb(88, 32, 64)");
     b.custom(null); b.change(); expect(b.nodes[0].content).toBe("rgb(33, 33, 33)");
+  });
+  it("M-3455: the split view's own size/drag writes (.ws-geometry) never re-read the colours; other changes still do", () => {
+    const b = browser(); const geometry = { classList: { contains: (c: string) => c === "ws-geometry" } };
+    const pane = { classList: { contains: () => false } };
+    b.custom("rgb(23, 49, 63)");
+    b.records([{ type: "attributes", attributeName: "style", target: geometry }, { type: "attributes", attributeName: "class", target: geometry }]);
+    expect(b.nodes[0].content).toBe("rgb(33, 33, 33)");                                          // a divider drag: colours not re-read
+    b.records([{ type: "attributes", attributeName: "style", target: geometry }, { type: "attributes", attributeName: "style", target: pane }]);
+    expect(b.nodes[0].content).toBe("rgb(23, 49, 63)");                                          // an agent page colour on a pane
+    b.custom("rgb(88, 32, 64)"); b.records([{ type: "childList", target: geometry }]);
+    expect(b.nodes[0].content).toBe("rgb(88, 32, 64)");                                          // panes added or removed
   });
   it("recovers when CSS becomes ready after boot", () => {
     const b = browser(); b.cssReady(false); b.theme.set("light"); b.flush(); expect(b.nodes[0].content).toBe("#ffffff");
