@@ -16,8 +16,10 @@ async function call(method, url, body) {
   } catch { return { ok: false, status: 0, code: "failed" }; }
   if (!r.ok) {
     let code = codeOf(r.status);
-    if (r.status === 409 || r.status === 400) {
-      try { const b = await r.json(); const c = b && (b.code || b.error); if (CONFLICTS.has(c) || c === "invalid-approver") code = c; } catch { /* no body: the status's own code */ }
+    if (r.status === 409 || r.status === 400 || r.status === 403) {
+      try { const b = await r.json(); const c = b && (b.code || b.error); if (CONFLICTS.has(c) || c === "invalid-approver" || c === "verification-required") code = c;
+        else if (c === "Write rejected — missing or wrong CSRF token (reload the page)") code = "csrf";
+        else if (c === "Cross-site request rejected") code = "cross-site"; } catch { /* no body: the status's own code */ }
     }
     return { ok: false, status: r.status, code };
   }
@@ -48,3 +50,6 @@ export const shortTicketId = (id) => { const s = String(id || ""); return /^R[a-
 /** A person's whole server identity as the server's canonical key — JSON of [platform, adapterId, userId] (ids may hold any
  * punctuation) — what the person filter takes; never a name. */
 export const personKey = (p) => (p ? JSON.stringify([p.platform, p.adapterId, p.userId]) : "");
+
+/** Reminder dismissal only; never a contact approval or a permissions write. */
+export const dismissSuggestion = (id) => call("POST", "/ui/needs/ack", { id });
