@@ -87,7 +87,7 @@ describe("+ Add account (#3212 PR 2)", () => {
     view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "newacct", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
     add.click(); await settle(12);
     expect(calls).toEqual([{ method: "POST", url: "/ui/accounts/claude-code", body: { name: "newacct" } }]);
-    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "newacct" });
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription", profile: "newacct" });
     expect(dialog()?.querySelector("#acctAddName") ?? null).toBe(null);
   });
   it("where the dashboard can't sign it in, no dialog opens (the row shows the host command); a refusal is said in words", async () => {
@@ -114,7 +114,7 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     await type(dialog().querySelector("#acctAddName"), "newacct");
     view.clis[0].rows.push({ scope: { kind: "host" }, backend: "claude-code", profile: "newacct", state: "not_signed_in", signIn: true, usedBy: { agents: [], classic: [], fleetDefault: false } });
     btn(dialog(), "Add").click(); await settle(12);
-    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "newacct" });
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription", profile: "newacct" });
     old.release(); await settle(12);                                     // the old snapshot (without newacct) answers last
     expect(!!rowOf("claude-code", "newacct")).toBe(true);
   });
@@ -165,9 +165,9 @@ describe("#3291 review (Prism): writes and the reads and dialogs around them", (
     const read = deferred(); holdGet = read.p;
     btn(dialog(), "Add").click(); await settle(8);
     rowOf("claude-code", "personal").querySelector(".s-actions button").click(); await settle(6);   // Sign in on another row
-    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "personal" });
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription", profile: "personal" });
     read.release(); await settle(12);
-    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code", profile: "personal" });
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription", profile: "personal" });
   });
   it("P2-5: a row's Sign in opened and closed meanwhile still ends the late follow-up", async () => {
     await mount();

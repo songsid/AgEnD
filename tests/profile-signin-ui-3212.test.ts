@@ -18,15 +18,15 @@ const fetchFake = async (url: string, init: any = {}) => {
   return { ok: true, status: 200, json: async () => body };
 };
 
-const ENDPOINT = "/ui/browser-backend-signins?backend=claude-code&profile=CHY";
+const ENDPOINT = "/ui/browser-backend-signins?backend=claude-code&profile=sample";
 const DEFAULT_ENDPOINT = "/ui/browser-backend-signins";
 const AUTH_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=abc&state=xyz";
 const snapshot = (over: Record<string, unknown> = {}) => ({ selected: ["claude-code"], pending: ["claude-code"], skipped: [], states: { "claude-code": "invalid" }, login: null, ready: false,
-  target: { backend: "claude-code", profile: "CHY" }, ...over });
+  target: { backend: "claude-code", profile: "sample" }, ...over });
 const waitingForCode = { id: "a".repeat(32), backend: "claude-code", revision: 3, phase: "code", mine: true, canAct: true, url: AUTH_URL };
 
 let p: AppPage;
-let S: any, shell: any, i18n: any, C: any;
+let S: any, shell: any, i18n: any, C: any, credentials: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19281/settings/agent", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
@@ -34,6 +34,7 @@ beforeAll(async () => {
   shell = await import("/assets/app-shell.js");
   i18n = await import("/assets/app-i18n.js");
   S = await import("/ui/js/backend-signin.js");
+  credentials = await import("/ui/js/claude-credentials.js");
   C = await import("/assets/ui-confirm.js");
 });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
@@ -54,18 +55,24 @@ const press = async (label: string) => { const b = btn(label) as any; expect(b, 
 const closing = () => async () => { await p.unmount(); };
 
 describe("openSignIn routes a named account to the same dialog as the default one", () => {
-  it("claude-code with a profile → BrowserSignInDialog with the name; kiro/codex profiles (never signed in from the dashboard) keep the older dialog that names the command", () => {
-    S.openSignIn({ backend: "claude-code", profile: "CHY" });
+  it("claude-code with a profile → credential methods then the named subscription dialog; kiro/codex profiles (never signed in from the dashboard) keep the older dialog that names the command", () => {
+    S.openSignIn({ backend: "claude-code", profile: "sample" });
+    expect(shell.shellStore.get().dialog.Component).toBe(credentials.ClaudeCredentialsDialog);
+    expect(shell.shellStore.get().dialog.props).toMatchObject({ backend: "claude-code", profile: "sample", initial: "subscription" });
+    shell.shellStore.get().dialog.props.continueSubscription();
     expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
-    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "CHY" });
+    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "sample" });
     for (const backend of ["kiro-cli", "codex"]) {
-      S.openSignIn({ backend, profile: "CHY" });
+      S.openSignIn({ backend, profile: "sample" });
       expect(shell.shellStore.get().dialog.Component, backend).toBe(S.SignInDialog);
-      expect(shell.shellStore.get().dialog.props).toEqual({ backend, profile: "CHY" });
+      expect(shell.shellStore.get().dialog.props).toEqual({ backend, profile: "sample" });
     }
   });
-  it("the default account is unchanged: no profile in the props", () => {
+  it("the default account offers the same methods then keeps the default subscription target", () => {
     S.openSignIn({ backend: "claude-code" });
+    expect(shell.shellStore.get().dialog.Component).toBe(credentials.ClaudeCredentialsDialog);
+    expect(shell.shellStore.get().dialog.props).toMatchObject({ backend: "claude-code", initial: "subscription" });
+    shell.shellStore.get().dialog.props.continueSubscription();
     expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
     expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code" });
   });
@@ -82,17 +89,17 @@ const TERMINAL_EN = ["temporary public link", "Open the sign-in terminal", "Acce
 describe("the named account's dialog", () => {
   it("reads the account's own endpoint; the title names the account; none of the first-install page's words, and no temporary public link, terminal or access code", async () => {
     answer = r => r.url === ENDPOINT ? snapshot() : {};
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     expect(reqs[0]).toMatchObject({ method: "GET", url: ENDPOINT });
     expect(posts(DEFAULT_ENDPOINT), "the default account's controls are not used").toEqual([]);
-    expect(p.root.querySelector(".dlg-title").textContent).toBe("Connect an AI account: Claude Code · CHY");
+    expect(p.root.querySelector(".dlg-title").textContent).toBe("Connect an AI account: Claude Code · sample");
     expect(btn("Connect account")).toBeDefined();
     for (const gone of [...SETUP_ONLY_EN, ...TERMINAL_EN]) expect(text(), gone).not.toContain(gone);
     expect(reqs.filter(r => r.url.startsWith("/ui/backend-login/")), "the terminal flow is not used").toEqual([]);
   });
   it("the buttons are only Sign in (Cancel sign-in while it runs) and Close; the console fallback is a line of small text at the bottom, made of shared classes", async () => {
     answer = r => r.url === ENDPOINT ? snapshot() : {};
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     const labels = () => p.root.querySelectorAll("dialog button").map((b: any) => b.textContent.trim()).filter(Boolean);
     expect(labels()).toEqual(["Connect account", "Use console fallback", "Close"]);
     const actions = p.root.querySelector(".signin-browser-actions");
@@ -113,8 +120,8 @@ describe("the named account's dialog", () => {
     expect(p.root.querySelector(".dlg-title").textContent).toBe("Connect an AI account: Claude Code · Default connection");
     await p.unmount(); reqs = [];
     answer = r => r.url === ENDPOINT ? snapshot() : {};
-    await open({ backend: "claude-code", profile: "CHY" });
-    expect(text()).toBe(defaultText.replace("Default connection", "CHY"));
+    await open({ backend: "claude-code", profile: "sample" });
+    expect(text()).toBe(defaultText.replace("Default connection", "sample"));
     expect(p.root.querySelectorAll("dialog button").map((b: any) => b.textContent.trim())).toEqual(defaultButtons);
     for (const gone of SETUP_ONLY_EN) expect(defaultText, gone).not.toContain(gone);
   });
@@ -133,7 +140,7 @@ it("Sign in → the link opens the provider's page → the code is pasted back i
       if (r.body?.operation === "input") login = { ...waitingForCode, revision: 4, canAct: false };
       return snapshot({ login });
     };
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     await press("Connect account");
     expect(posts(ENDPOINT, "start")[0]!.body).toEqual({ operation: "start", backend: "claude-code", relogin: false });
     // M-3238 (Argon's review): step 1, "Finish on the provider's official website": the short primary 「Open the sign-in page」
@@ -150,7 +157,7 @@ it("Sign in → the link opens the provider's page → the code is pasted back i
   });
   it("a signed-in account says so, offers Sign in again, and nothing is written to the default account's controls", async () => {
     answer = r => r.url === ENDPOINT ? snapshot({ states: { "claude-code": "valid" }, pending: [], ready: true }) : {};
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     expect(text()).toContain("Connected ✓"); expect(btn("Reconnect")).toBeDefined();
     expect(posts(DEFAULT_ENDPOINT)).toEqual([]);
   });
@@ -169,7 +176,7 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
   };
   it("Close ends the run THIS dialog started — a cancel carrying that run's id — so none is left running to refuse Remove", async () => {
     answer = server();
-    await open({ backend: "claude-code", profile: "CHY", onClose: closing() });
+    await open({ backend: "claude-code", profile: "sample", onClose: closing() });
     await press("Connect account");
     expect(posts(ENDPOINT, "start")).toHaveLength(1);
     reqs = [];
@@ -179,12 +186,12 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
   });
   it("a dialog that started nothing ends nothing when it closes — not a run another session or another tab started, which it only shows (#3418 review)", async () => {
     answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};   // a run is already going when the dialog opens
-    await open({ backend: "claude-code", profile: "CHY", onClose: closing() });
+    await open({ backend: "claude-code", profile: "sample", onClose: closing() });
     reqs = [];
     fire(btn("Close"), "click"); await settle(8);
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
     answer = r => r.url === ENDPOINT ? snapshot() : {};
-    await open({ backend: "claude-code", profile: "CHY", onClose: closing() });   // and one that opened on nothing and never pressed Sign in
+    await open({ backend: "claude-code", profile: "sample", onClose: closing() });   // and one that opened on nothing and never pressed Sign in
     reqs = [];
     fire(btn("Close"), "click"); await settle(8);
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
@@ -192,7 +199,7 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
   // M-3238 (Argon's review): the one-account dialog's Cancel connecting is in its footer (a quiet danger button on the left).
   it("the footer's Cancel connecting posts a cancel to the account's endpoint", async () => {
     answer = r => r.url === ENDPOINT ? snapshot({ login: waitingForCode }) : {};
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     const cancel = p.root.querySelectorAll(".dlg-actions button").find((b: any) => b.textContent.trim() === "Cancel connecting") as any;
     expect([cancel?.className, p.root.querySelectorAll(".signin-browser button").some((b: any) => b.textContent.trim() === "Cancel connecting")]).toEqual(["btn danger", false]);
     fire(cancel, "click"); await settle(8);
@@ -209,7 +216,7 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
   it("Use console fallback ends the run this dialog started, waits for that to be answered, then opens the older dialog for the SAME account — and closing then ends nothing more", async () => {
     const inner = server(); let release!: () => void; const held = new Promise<void>(r => { release = r; });
     answer = async r => { const out = inner(r); if (r.method === "POST" && r.body?.operation === "cancel") await held; return out; };
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     await press("Connect account");
     reqs = [];
     fire(btn("Use console fallback"), "click"); await settle(8);
@@ -217,18 +224,18 @@ describe("closing, cancelling and the console fallback end the sign-in", () => {
     expect(shell.shellStore.get().dialog?.Component, "the older dialog waits for the cancel: its Sign in cannot meet a login window still held").not.toBe(S.SignInDialog);
     release(); await settle(8);
     expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
-    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "CHY" });
+    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "sample" });
     await p.unmount(); await settle(4);   // the shell takes this dialog off the page
     expect(posts(ENDPOINT, "cancel")).toHaveLength(1);
   });
   it("Use console fallback with no run started here posts no cancel (it would end a run another tab runs) and still opens the older dialog", async () => {
     answer = server();
-    await open({ backend: "claude-code", profile: "CHY" });
+    await open({ backend: "claude-code", profile: "sample" });
     reqs = [];
     fire(btn("Use console fallback"), "click"); await settle(8);
     expect(reqs.filter(r => r.method === "POST")).toEqual([]);
     expect(shell.shellStore.get().dialog.Component).toBe(S.SignInDialog);
-    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "CHY" });
+    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "sample" });
   });
 });
 
@@ -244,7 +251,7 @@ describe("Sign in again asks in the app's own dialog (#3321 S01's words, for a n
   };
   const finish = async (pending: Promise<void>, id: number, yes: boolean) => { C.answerConfirm(id, yes); await pending; await settle(6); };
   it("Claude Code (named): the in-app question names Claude Code and does not mention Kiro; No sends nothing; Yes starts it with relogin, at the account's endpoint", async () => {
-    const { pending, question } = await ask({ backend: "claude-code", profile: "CHY" }, valid("claude-code", { target: { backend: "claude-code", profile: "CHY" } }));
+    const { pending, question } = await ask({ backend: "claude-code", profile: "sample" }, valid("claude-code", { target: { backend: "claude-code", profile: "sample" } }));
     expect(question.message).toBe("Reconnect Claude Code? The new connection replaces the account it uses now."); expect(question.message).not.toMatch(/Kiro/i);
     expect(question.title).toBe("Reconnect Claude Code"); expect(question.confirmLabel).toBe("Reconnect");   // the title names the CLI, the button says what it does
     await finish(pending, question.id, false);
@@ -265,7 +272,7 @@ describe("Sign in again asks in the app's own dialog (#3321 S01's words, for a n
   });
   it("zh-TW", async () => {
     i18n.setLang("zh-TW", { store: false });
-    const claude = await ask({ backend: "claude-code", profile: "CHY" }, valid("claude-code", { target: { backend: "claude-code", profile: "CHY" } }));
+    const claude = await ask({ backend: "claude-code", profile: "sample" }, valid("claude-code", { target: { backend: "claude-code", profile: "sample" } }));
     expect(claude.question.message).toBe("要重新連接 Claude Code 嗎？新的連接會取代目前使用的帳號。"); expect(claude.question.message).not.toMatch(/Kiro/);
     await finish(claude.pending, claude.question.id, false);
   });
@@ -275,8 +282,8 @@ describe("zh-TW", () => {
   it("the title names the account (a named one, or 預設登入), and the screen has none of the setup page's or the terminal flow's words", async () => {
     i18n.setLang("zh-TW", { store: false });
     answer = r => r.url === ENDPOINT ? snapshot() : r.url === DEFAULT_ENDPOINT ? snapshot({ target: undefined }) : {};
-    await open({ backend: "claude-code", profile: "CHY" });
-    expect(p.root.querySelector(".dlg-title").textContent).toBe("連接 AI 帳號：Claude Code · CHY");
+    await open({ backend: "claude-code", profile: "sample" });
+    expect(p.root.querySelector(".dlg-title").textContent).toBe("連接 AI 帳號：Claude Code · sample");
     for (const gone of ["臨時公開連結", "登入終端機", "存取碼", ...SETUP_ONLY_ZH]) expect(text(), gone).not.toContain(gone);
     expect(btn("改用主控台備援")).toBeDefined();
     await p.unmount();
