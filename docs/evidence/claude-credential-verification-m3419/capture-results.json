@@ -1,0 +1,305 @@
+{
+  "synthetic": true,
+  "headless": true,
+  "noModelCalls": true,
+  "screens": [
+    {
+      "tag": "desk-light-en",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-light-en",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-light-en",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "desk-light-en",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 172
+    },
+    {
+      "tag": "desk-dark-en",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-dark-en",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-dark-en",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "desk-dark-en",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 172
+    },
+    {
+      "tag": "phone-light-en",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 366.5
+    },
+    {
+      "tag": "phone-light-en",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 373.5
+    },
+    {
+      "tag": "phone-light-en",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 438.5
+    },
+    {
+      "tag": "phone-light-en",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 438.5
+    },
+    {
+      "tag": "phone-dark-en",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 366.5
+    },
+    {
+      "tag": "phone-dark-en",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 373.5
+    },
+    {
+      "tag": "phone-dark-en",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 438.5
+    },
+    {
+      "tag": "phone-dark-en",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 438.5
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 116
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 140
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 187.5
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 253.5
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 235.5
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 235.5
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "state": "saved",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 187.5
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "state": "verified",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 253.5
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "state": "auth-error",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 235.5
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "state": "unknown",
+      "overflow": false,
+      "small": [],
+      "visibleSecret": false,
+      "height": 235.5
+    }
+  ],
+  "cases": [
+    {
+      "tag": "desk-light-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-dark-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-light-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-en",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-light-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "desk-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    }
+  ]
+}

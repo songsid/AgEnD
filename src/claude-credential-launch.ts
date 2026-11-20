@@ -102,7 +102,7 @@ export function managedClaudeAuthInputs(spec:ManagedClaudeSpec):string {
  return createHash("sha256").update(JSON.stringify(hashes)).digest("hex");
 }
 export interface ManagedClaudeRuntime { runner?:string; nodeArgs?:string[]; policyPaths?:string[]; settingsPaths?:string[]; }
-export interface ManagedClaudeLaunch { binding:Readonly<ManagedClaudeBinding>; path:string; helper:string; command(args:string[], env:Record<string,string>, binary:string):string; }
+export interface ManagedClaudeLaunch { binding:Readonly<ManagedClaudeBinding>; path:string; helper:string; sourceCurrent():boolean; command(args:string[], env:Record<string,string>, binary:string):string; }
 export function prepareManagedClaudeLaunch(binding:ManagedClaudeBinding, instanceDir:string, cwd:string, configDir:string,
  runtime?:ManagedClaudeRuntime):ManagedClaudeLaunch {
  const adjacent=fileURLToPath(new URL("./claude-credential-runner.js",import.meta.url));
@@ -125,10 +125,14 @@ export function prepareManagedClaudeLaunch(binding:ManagedClaudeBinding, instanc
  const ref:ManagedClaudeSpec={settingsPaths,policyPaths,helperCommand:helper,binding:frozenBinding,cwd:resolve(cwd),configDir:resolve(configDir),ready:false,binary:"",args:[],env:{}};
  const write=(spec:ManagedClaudeSpec)=>{const temp=path+".tmp";try{writeFileSync(temp,JSON.stringify(spec),{mode:0o600,flag:"wx"});renameSync(temp,path);}finally{try{unlinkSync(temp);}catch{}}};
  write(ref);
- return {binding:frozenBinding,path,helper,command(args,env,binary){
+ let authInputs:string|undefined,specFingerprint:string|undefined;
+ const fingerprint=(spec:ManagedClaudeSpec)=>createHash("sha256").update(JSON.stringify(spec)).digest("hex");
+ return {binding:frozenBinding,path,helper,sourceCurrent(){
+  try{const spec=readManagedClaudeSpec(path);return authInputs!==undefined&&fingerprint(spec)===specFingerprint&&currentManagedClaude(frozenBinding)&&managedClaudeAuthInputs(spec)===authInputs;}catch{return false;}
+ },command(args,env,binary){
   if(!isAbsolute(binary))throw unavailable();
   const spec=specSchema.parse({...ref,ready:true,binary,args,env:{...env,CLAUDE_CONFIG_DIR:resolve(configDir)}});
-  if(!currentManagedClaude(frozenBinding))throw unavailable();managedClaudeEnv(process.env,spec.env);managedClaudeAuthInputs(spec);write(spec);
+  if(!currentManagedClaude(frozenBinding))throw unavailable();managedClaudeEnv(process.env,spec.env);authInputs=managedClaudeAuthInputs(spec);specFingerprint=fingerprint(spec);write(spec);
   return [...prefix,"launch",path].map(shellQuote).join(" ");
  }};
 }

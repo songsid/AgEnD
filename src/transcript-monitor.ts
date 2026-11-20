@@ -1,3 +1,4 @@
+import { parseClaudeRequestObservation } from "./claude-request-observation.js";
 import { claudeTranscriptRecord, claudeTranscriptLongHead } from "./transcript-records.js";
 import { readStartupTailRecords } from "./log-steps.js";
 import { parseClaudeModelRecord, type ClaudeModelLaunch } from "./claude-model-observation.js";
@@ -339,6 +340,7 @@ export class TranscriptMonitor extends EventEmitter {
       this.emit("context_reset");
     }
     this.processModelEntry(entry);
+    if(!history)this.processCredentialEntry(entry);
     claudeTranscriptRecord(entry, (...event) => {
       // A copied record with no timestamp cannot prove that its file activity belongs to this launch.
       if (event[0] === "workspace_follow" && this.historyBefore > 0 && !Number.isFinite(at)) return;
@@ -349,6 +351,17 @@ export class TranscriptMonitor extends EventEmitter {
       }
       this.emit(event[0], ...event.slice(1));
     });
+  }
+
+  private processCredentialEntry(entry:any):void {
+    const record=parseClaudeRequestObservation(entry),launch=this.modelLaunch?.();
+    if(!record||!launch||record.at<launch.startedAt||record.at<=this.modelResetAt||record.at>Date.now())return;
+    try{
+      const path=join(this.instanceDir,"statusline.json");if(statSync(path).size>65536)return;
+      const hook=JSON.parse(readFileSync(path,"utf8"));
+      if(hook._agendLaunchId!==launch.id||hook.session_id!==record.sessionId||typeof hook.transcript_path!=="string"||basename(hook.transcript_path)!==record.sessionId+".jsonl"||/[\\/]subagents[\\/]/.test(hook.transcript_path)||this.transcriptPath!==null&&this.transcriptPath!==hook.transcript_path)return;
+      this.emit("claude_request",record,launch.id);
+    }catch{/* No owned session proof, no credential promotion. */}
   }
 
   private processModelEntry(entry: any): void {

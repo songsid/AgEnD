@@ -56,7 +56,7 @@ GET metadata also returns affected users and an opaque consumer revision. A used
 
 Read/audit access cannot recreate a missing database over retained managed artifacts. The vault constructor itself keeps that failure closed, not just the launch reader. A genuine first store can still be created.
 
-Managed or unavailable source state suppresses old OAuth identities and subscription meters, including already-cached usage responses. No subscription endpoint is queried for a managed profile. Native logout, renewal and sign-in cannot pretend to change a managed source; recovery points to local Accounts. Saved-unverified is conservative: no source-class or pane-text shortcut marks provider acceptance. The approved revision-bound normal-request success stamp is a separate remaining status slice before this feature is complete.
+Managed or unavailable source state suppresses old OAuth identities and subscription meters, including already-cached usage responses. No subscription endpoint is queried for a managed profile. Native logout, renewal and sign-in cannot pretend to change a managed source; recovery points to local Accounts. Saved-unverified is conservative: no source-class or pane-text shortcut marks provider acceptance. The revision-bound normal-request status observation is described below.
 
 See [capture gallery](../evidence/claude-credentials-ui-m3419/gallery.md) and [all 13 style-guide checks](../evidence/claude-credentials-ui-m3419/style-audit.md). The user approved the revised screen set on 2026-11-20. Website publication remains held until the feature ships in a beta and the docs review is approved.
 
@@ -69,3 +69,14 @@ A private-output transport uses a fresh scratch HOME/config and clears ambient c
 The CLI briefly renders bytes in its private pane, but there is no exposed terminal, screen snapshot, history, log, chat or SSE carrying them. Same-OS-user memory/pane access is still possible. Unknown output, missing/ambiguous token, non-zero exit, cancellation or deadline does not select another credential source. An uncertain response asks the user to read account status before retrying. A failed teardown leaves the claim reserved and asks the host operator to check it. Shutdown cancels this session with the other Connect-account sessions.
 
 The browser/code journey is described in [Claude Code's authentication documentation](https://code.claude.com/docs/en/authentication#generate-a-long-lived-token). Validation uses generated fixture executables and credentials only. Any live run with a real account needs separate approval. Website help publication remains a separate held step.
+
+
+## S-210: normal-request verification
+
+Saving still returns **Saved · not verified** without a validation request. The first fresh successful normal Claude request changes the existing Accounts badge to **Verified** with its verification time. A native API error with HTTP 401 or 403 shows **Needs replacement** and points to Replace credential. A connection or other unconfirmed request shows **Unknown · request not confirmed**; it does not label the credential invalid. A later fresh successful request can verify it again. These states never enable subscription meters, keep-alive or a second source.
+
+The observer requires a main-thread completed native response with request/response identity, usage and a final stop reason. A launch-stamped statusline must bind the session and transcript to the current local launch. History, subagents, copied prose, future/old timestamps, another monitor or daemon generation, and unavailable source proof cannot promote a credential. A read-only comparison of the launch's bounded local auth inputs refuses changed or missing settings without launching the CLI. Organization-managed settings remain unsupported; this is not host-admin attestation.
+
+The Fleet accepts only its currently published daemon and interaction owner. The vault transaction checks home, profile, opaque credential id, revision, kind and managed source. An additive status table stores only state, verification time and observation order; its metadata audit contains no request id, provider output or credential material. Replayed or older records cannot replace newer status. Replacement, removal or source change clears the stamp atomically. No observation fetches a secret or makes a model/provider request. Missing native evidence stays unverified.
+
+Rollback removes observation wiring and the status rendering, preserving the encrypted vault and key. Earlier binaries ignore the additive table; their credential writes advance the revision, so an old stamp cannot apply to a replacement. A metadata failure cannot interrupt normal work, change credentials or select a fallback.

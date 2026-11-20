@@ -1,6 +1,7 @@
+import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { ClaudeSetupTokens, type SetupTokenOwner, type SetupTokenRequest } from "./claude-setup-token.js";
 import { changeIdleClaudeCredential } from "./claude-credential-change.js";
-import { readClaudeCredentialSelection, claudeSubscriptionSuppressed } from "./claude-credential-launch.js";
+import { readClaudeCredentialSelection, claudeSubscriptionSuppressed, type ManagedClaudeBinding } from "./claude-credential-launch.js";
 import { ClaudeCredentialVault, ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredentialMetadata, type CredentialActor } from "./claude-credential-vault.js";
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
@@ -5876,6 +5877,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.workingStateListeners ??= new WeakSet();
     if (this.workingStateListeners.has(daemon)) return;
     this.workingStateListeners.add(daemon);
+    daemon.on("claude_credential_request",(event:{binding:ManagedClaudeBinding;record:ClaudeRequestObservation;owner:InteractionOwner})=>{
+      try{
+        if(this.daemons.get(name)!==daemon||!sameInteractionOwner(event.owner,daemon.getInteractionSnapshot().owner)||resolvePath(event.binding.home)!==resolvePath(this.dataDir)||event.binding.kind==="subscription")return;
+        const {binding,record}=event,kind=binding.kind;if(kind==="subscription")return;
+        if(this.withClaudeVault(vault=>vault.observeRequest(binding.profile,binding.id,binding.revision,kind,record)))broadcastSseEvent(this.sseClients,"backend_login",{},()=>{});
+      }catch{/* Metadata observation never changes the source or interrupts work. */}
+    });
     daemon.on("working_state", (event: { reason: WorkingStateReason; observation: WorkingStateObservation }) => {
       try {
         if (this.daemons.get(name) !== daemon || !sameInteractionOwner(event.observation.owner, daemon.getInteractionSnapshot().owner)) return;
