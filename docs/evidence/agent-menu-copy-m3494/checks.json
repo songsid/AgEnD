@@ -1,0 +1,89 @@
+[
+  {
+    "case": "desk-light-en",
+    "splitProof": [
+      "Example Alpha",
+      "Example Beta"
+    ],
+    "headerItems": [
+      "Agent details",
+      "Split chat",
+      "Restart agent",
+      "Stop agent",
+      "Files & changes",
+      "Colour…",
+      "Lock theme",
+      "Reset theme…",
+      "Full width",
+      "Delete agent…"
+    ],
+    "contextItems": [
+      "Add to favorites",
+      "Agent details",
+      "Split chat",
+      "Restart agent",
+      "Stop agent",
+      "Files & changes",
+      "Colour…",
+      "Lock theme",
+      "Reset theme…",
+      "Full width",
+      "Delete agent…"
+    ],
+    "geometry": {
+      "overflow": false,
+      "menus": [
+        {
+          "x": 8,
+          "y": 463,
+          "width": 280,
+          "height": 404,
+          "clipped": false
+        }
+      ]
+    },
+    "csp": [],
+    "errors": [],
+    "writes": []
+  },
+  {
+    "case": "phone-dark-zh-TW",
+    "splitProof": null,
+    "headerItems": [
+      "模型與推理default · auto",
+      "CLI 後端Codex",
+      "文字大小中",
+      "外觀⌄",
+      "Agent 詳細資料",
+      "重新啟動 Agent",
+      "停止 Agent",
+      "刪除 Agent…"
+    ],
+    "contextItems": [
+      "模型與推理default · auto",
+      "CLI 後端Codex",
+      "文字大小中",
+      "外觀⌄",
+      "Agent 詳細資料",
+      "加到我的最愛",
+      "重新啟動 Agent",
+      "停止 Agent",
+      "刪除 Agent…"
+    ],
+    "geometry": {
+      "overflow": false,
+      "menus": [
+        {
+          "x": 0,
+          "y": 84.40625,
+          "width": 390,
+          "height": 759.59375,
+          "clipped": false
+        }
+      ]
+    },
+    "csp": [],
+    "errors": [],
+    "writes": []
+  }
+]

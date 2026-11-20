@@ -26,7 +26,7 @@ register("agentSheet", {
   en: { sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend",
     textSize: "Text size", textSizes: "Small,Medium,Large", look: "Appearance", agent: "This agent", details: "Agent details",
     verifiedUntil: "Verified · speaks as you until {0}" },
-  "zh-TW": { sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI backend",
+  "zh-TW": { sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI 後端",
     textSize: "文字大小", textSizes: "小,中,大", look: "外觀", agent: "這個 Agent", details: "Agent 詳細資料",
     verifiedUntil: "已驗證 · 以你的身分發言到 {0}" },
 });

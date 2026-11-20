@@ -1,0 +1,18 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "986d38aa0286ad9345ef7ac4f10f20d2b2116363fbe6df42644590b5be479b35"
+  },
+  {
+    "path": "checks.json",
+    "sha256": "383ed7efe0f9cffb6ac302eebdeee04ef4d6bd64aa4f5a478a89202c154d06f7"
+  },
+  {
+    "path": "desk-light-en-sidebar.png",
+    "sha256": "47d96256b6ebc491a18a91c7b3d72b78e0fb74b0adb0e79289ec23bd70e6a749"
+  },
+  {
+    "path": "phone-dark-zh-TW-sidebar.png",
+    "sha256": "2cb375572306fa3ebedec39eecfdf4417e2d7ae85460154e016f2d690cb1b6ae"
+  }
+]

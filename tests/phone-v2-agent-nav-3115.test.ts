@@ -38,6 +38,7 @@ afterEach(async () => {
   for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); }
   if (typeof document !== "undefined" && document.body) { delete document.body.dataset.tier; delete document.body.dataset.guestLevel; }
   chatFetch = null;
+  (await import("/assets/app-i18n.js")).setLang("en", { store: false });
   const { appStore } = await import("/assets/app-store.js");
   appStore.set({ needs: [], proposals: [], needsLoaded: false });
   auth = { state: "verified", until: Date.now() + 3_600_000 };
@@ -121,7 +122,7 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
 
   // #4002 review (P3a, P3b): the header's backend and model chips are hidden on a phone, so the sheet has both; like the
   // chips, each runs bound to this page — a reply that comes after you left this chat is dropped, never shown on return.
-  it("the sheet's Model & effort and CLI backend rows run /model and /backend, bound to the page: a reply after leaving is dropped", async () => {
+  it("the sheet's localized model/backend rows run target-bound commands and fence late replies", async () => {
     const posted: any[] = [];
     const replies: Array<(v: any) => void> = [];
     const { pg } = await app("/ui/chat/web-dev");
@@ -133,12 +134,17 @@ describe("M-3115 PR 1: inside an agent's pages a phone has no bottom tabs", () =
     };
     const rowsOf = (sheet: any) => [...sheet.querySelectorAll(".chat-sheet-row")] as any[];
     let sheet = await openSheet(pg);
-    const backend = rowsOf(sheet).find((b) => /^CLI backend/.test(b.textContent.trim()));
+    const { setLang } = await import("/assets/app-i18n.js");
+    setLang("zh-TW", { store: false }); await settle(4);
+    expect(rowsOf(sheet).some((b) => b.textContent.trim().startsWith("CLI 後端"))).toBe(true);
+    expect(rowsOf(sheet).some((b) => b.textContent.includes("CLI backend"))).toBe(false);
+    setLang("en", { store: false }); await settle(4);
+    const backend = rowsOf(sheet).find((b) => b.textContent.trim().startsWith("CLI backend"));
     expect(backend, "a CLI backend row").toBeTruthy();
     fire(backend, "click"); await settle(4);
     replies.shift()!({ text: "Backend: claude-code" }); await settle(6);   // one command at a time per chat: answer it
     sheet = await openSheet(pg);
-    fire(rowsOf(sheet).find((b) => /^Model & effort/.test(b.textContent.trim())), "click"); await settle(4);
+    fire(rowsOf(sheet).find((b) => b.textContent.trim().startsWith("Model & effort")), "click"); await settle(4);
     expect(posted.map((b) => [b.instance, b.command])).toEqual([["web-dev", "backend"], ["web-dev", "model"]]);
     // Leave this chat before the replies come; come back after.
     const { navigate } = await import("/assets/app-nav.js");
