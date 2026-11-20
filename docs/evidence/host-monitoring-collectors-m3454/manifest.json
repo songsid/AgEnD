@@ -2,6 +2,14 @@
   "base": "2561cb29b1d315c358e55749c3b41d305273139f",
   "files": [
     {
+      "path": "changes/4293-host-monitoring-collectors.md",
+      "sha256": "96bf573217a56aa181a9f317883ca6d2a22b1619f829f1cea82191cb91bffec8"
+    },
+    {
+      "path": "changes/4293-host-monitoring-collectors.zh-TW.md",
+      "sha256": "51449b78322e7adb83da9f6c162f68dd043158abbbd282ff547e6d52df114db1"
+    },
+    {
       "path": "docs/design/host-monitoring-collectors.md",
       "sha256": "9763a2d23a349cf12cfb6a430ac751f1dd5939a1c1a45be69be28366acd587ad"
     },
