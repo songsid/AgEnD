@@ -160,8 +160,9 @@ Changed, following the Fleet agent page:
 1. **Show the room office**: on or off.
 2. **Style**: the built-in zones styles, each with its number of work seats, so a manager can see whether the
    room fits. A new built-in style for large rooms, **Studio (large)**: 36 work seats (Studio has 12), with a
-   larger rest area. It is Studio's own drawing on a bigger floor, so it needs no new artwork. A room with more
-   agents than work seats suggests it.
+   larger rest area. The office guide describes Cozy, Guild and School as one picture each and Studio as a scene
+   of four areas, so I expect a larger Studio needs no new artwork; a builder should confirm that before sizing
+   it. A room with more agents than work seats suggests it.
 3. **Arrange seats…** opens the room's office with the Fleet's own layout editor.
 
 **The model is the Fleet's, reused** (captures `r4-5`, `r4-6`, the real Fleet editor today):
