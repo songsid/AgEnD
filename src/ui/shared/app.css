@@ -4890,7 +4890,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-time-item.contact-time-wait { white-space: normal; }
 .contact-decide-controls .contact-toggle { flex: 1 1 16em; min-width: 0; }
 .contact-allow-hint { margin: 0; }
-@media (max-width: 899px) { .contact-allow { flex-direction: column; align-items: stretch; } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .contact-allow { flex-direction: column; align-items: stretch; } }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-ticket-origin .link-btn, .contact-perm .icon-btn, .contact-filters .btn, .contact-person-filter .chip-x, .contact-agent-filter select, .contact-decide .btn, .contact-auth-page .empty .btn { min-height: var(--tap); min-width: var(--tap); }
   .contact-allow input { min-height: var(--tap); font-size: max(1rem, var(--fs-sm)); }
