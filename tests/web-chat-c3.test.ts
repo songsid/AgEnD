@@ -787,6 +787,29 @@ describe("the chat panel (the real page modules)", () => {
     expect(jump()).toBeNull();
   });
 
+  it("M-3492: 最新 fades out JUMP_IDLE_MS after the last scroll (taps pass through), comes back on the next scroll, and stays while focused", async () => {
+    const c = await chatPage();
+    const { JUMP_IDLE_MS } = await import("/ui/js/panel-chat.js" as string);
+    expect(JUMP_IDLE_MS, "about 2–3 s (the user)").toBe(2500);
+    c.stream.emit("status", frame(inst("w")));
+    await c.mount("w");
+    const sc = c.p.root.querySelector(".scroller");
+    Object.assign(sc, { scrollTop: 1500, clientHeight: 500, scrollHeight: 2000 });
+    fire(sc, "scroll");
+    sc.scrollTop = 0; fire(sc, "scroll");                          // scrolled up: 最新 shows
+    await settle();
+    const jump = () => c.p.root.querySelector(".jump-latest");
+    const idle = () => jump().classList.contains("is-idle");
+    const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    expect([!!jump(), idle()], "while scrolling: shown").toEqual([true, false]);
+    await wait(JUMP_IDLE_MS + 100); await settle();
+    expect([!!jump(), idle()], "at rest: still in the DOM (tab order, screen reader), faded").toEqual([true, true]);
+    sc.scrollTop = 10; fire(sc, "scroll"); await settle();
+    expect(idle(), "the next scroll brings it back").toBe(false);
+    fire(jump(), "focus"); await wait(JUMP_IDLE_MS + 100); await settle();
+    expect(idle(), "focused: it stays").toBe(false);
+  }, 15_000);
+
   it("#2053: a chat shown again puts its kept thread back — the same list, only what arrived meanwhile drawn, where the reader was; it leaves as a chat always did", async () => {
     const c = await chatPage();
     const P = (globalThis as any).AgendPreview ??= { stopIn: () => [], stopAll: () => [], onChange: () => () => {} };

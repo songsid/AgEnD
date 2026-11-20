@@ -859,11 +859,26 @@ function follow(name, thread) {
 }
 
 /** The thread's view: Preact owns the scroller and the jump pill; the kept list (chat-thread.js) is put inside it. */
+/** M-3492: how long 最新 stays after the last scroll before it fades out (the user asked for about 2–3 s). */
+export const JUMP_IDLE_MS = 2500;
 function Thread({ name, label = name, th, bindings }) {
   const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
   const scroller = useRef(null), host = useRef(null);
   const [jump, setJump] = useState({ show: false, unseen: 0 });
   const [empty, setEmpty] = useState(false);
+  // M-3492 (the user): 最新 shows while the reader scrolls and fades out JUMP_IDLE_MS after the last scroll, so it never
+  // sits over a bubble in a still view (a screenshot); the next scroll brings it back. Faded, it stays in the tab order
+  // and the accessibility tree; focus shows it again. Taps pass through it while it is faded.
+  const [jumpIdle, setJumpIdle] = useState(false);
+  const jumpTimer = useRef(0), jumpFocused = useRef(false);
+  useEffect(() => {
+    const sc = scroller.current; if (!sc) return undefined;
+    const rest = () => { clearTimeout(jumpTimer.current); jumpTimer.current = setTimeout(() => { if (!jumpFocused.current) setJumpIdle(true); }, JUMP_IDLE_MS); };
+    const wake = () => { setJumpIdle(false); rest(); };
+    sc.addEventListener("scroll", wake, { passive: true });
+    rest();
+    return () => { sc.removeEventListener("scroll", wake); clearTimeout(jumpTimer.current); };
+  }, [name]);
   useLayoutEffect(() => { keptThreads.get(name)?.list.setAttribute("aria-label",t("chat.conversationWith",label)); },[name,label]);
   useLayoutEffect(() => {
     const doc = host.current.ownerDocument;
@@ -970,7 +985,9 @@ function Thread({ name, label = name, th, bindings }) {
     <div class="thread-host" ref=${host}></div>
     ${empty === "hidden" ? html`<${Empty} icon="chat" title=${t("chat.guestAllHidden")} hint=${t("chat.guestAllHiddenHint")} />`
       : empty ? html`<${Empty} icon="chat" title=${t("chat.noMessages")} />` : null}
-    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => { const t2 = th.current; if (!t2) return; if (store.pagingState(name).detached) void store.backToLatest(name).then(() => t2.jumpLatest()); else t2.jumpLatest(); }}
+    </div><div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class=${`jump-latest${jumpIdle ? " is-idle" : ""}`} onClick=${() => { const t2 = th.current; if (!t2) return; if (store.pagingState(name).detached) void store.backToLatest(name).then(() => t2.jumpLatest()); else t2.jumpLatest(); }}
+        onFocus=${() => { jumpFocused.current = true; clearTimeout(jumpTimer.current); setJumpIdle(false); }}
+        onBlur=${() => { jumpFocused.current = false; clearTimeout(jumpTimer.current); jumpTimer.current = setTimeout(() => setJumpIdle(true), JUMP_IDLE_MS); }}
         aria-label=${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}>
       <${Icon} name="down" size=${16} /><span class="jump-text">${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</span>${
         /* The user (before 2.4.0-beta.3): no unread counts for now — a phone's round button has no badge. */ ""}</button>` : null}</div>
