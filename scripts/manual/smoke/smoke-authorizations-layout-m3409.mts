@@ -15,7 +15,8 @@ const roster = [
 const fx = await bootFixture({ port: Number(process.env.HP || 19809), roster, classic: false });
 const person = { platform: "host", adapterId: "host", userId: "operator", label: "Example owner" };
 const pending = { id: "R11111111-2222-4333-8444-555555555555", revision: 1, scope: "peer.dispatch", state: "pending", source: "example-room", target: "release-helper", sourceGeneration: "one", targetGeneration: "two", verb: "request_information",
-  origin: { kind: "mixed", people: [person], receiptIds: [], chain: ["example-room", "report-helper"] },
+  // One person: a standing grant ("also allow") is one person's; the server refuses one for any other origin (M-3385).
+  origin: { kind: "human", people: [person], receiptIds: [], chain: ["example-room", "report-helper"] },
   message: "Please summarize the release checklist and explain which checks are still pending.\n請整理發佈檢查清單，並說明還有哪些項目需要確認。",
   createdAt: "2026-11-19T08:00:00Z", expiresAt: "2026-11-26T08:00:00Z", canDecide: true };
 const decided = { ...pending, id: "R22222222-2222-4333-8444-555555555555", state: "delivered", canDecide: false, decidedAt: "2026-11-19T09:00:00Z", decidedBy: person };
