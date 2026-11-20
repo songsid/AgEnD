@@ -21,3 +21,13 @@ Before/after English and zh-TW phone originals are under `captures/`. Each langu
 - The baseline dashboard probe swaps only the CSS to the unchanged dev base; it reproduces the English thinking-switch failure. It also reports expected old button failures because the already-shrunk allowance list remains in that probe. No allowance was added to hide a failure.
 - Dev allowance diff: **35 entries removed, zero added** (17 buttons, 13 previously stale entries, 5 switch-label entries now covered).
 - Main post-merge CI, data-downgrade and Gitleaks all completed successfully on ccd566e8; exact run IDs are recorded in `main-post-merge.json`. Dev exact-head and post-merge CI remain separate release checks.
+
+## R1 capture binding correction
+
+The original recipe intercepted only `/assets/app.css`, but the shell uses `/assets/v-<version>/app.css`. It therefore delivered the candidate to both stages. The original comparison was invalid; its no-shift claim was withdrawn in PR comment7030720760 and the PR returned to draft.
+
+Only the four dashboard originals were recaptured. `capture-recipe.mts` now derives baseline CSS by removing exactly the two-line dev-only label addition, intercepts the exact plain or versioned stylesheet path for **both** stages, and asserts exactly one intercepted response with a delivered body digest equal to the intended input. `captures/label-geometry.json` records request paths, input/delivered SHA256, rule absence/presence and computed styles. Before is `display:inline`; after is `display:block`. Thinking-label height changes from43to69px in EN and44to70px in zh-TW.
+
+The correctly bound pairs are still byte-identical, and measured text/card/row/note/switch geometry is unchanged. All four corrected originals were visually inspected; no visible shift or private data was found. The earlier Access original is unchanged. The full635-check candidate gate is retained as a separate proof; runtime CSS is byte-identical to reviewed head959b5e0, so no broad suite or browser campaign was repeated.
+
+Reproduce only this bounded capture with `REPO`, `PW_DIR`, `CHROME` and `OUT` set as for the shared smoke fixture, using `tsx docs/evidence/access-tap-m3426/dev/capture-recipe.mts`. It starts and closes its own loopback fixture; no account, model or token submission is used.

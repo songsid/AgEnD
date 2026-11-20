@@ -10,11 +10,15 @@
     },
     {
       "path": "docs/evidence/access-tap-m3426/dev/README.md",
-      "sha256": "cf4fa2a03b096930ebe6680c70c22cc994dab30679c0448be71181a1c3d547a3"
+      "sha256": "736d6e3b8a29b1c4ea2e6f5e01591a48d588f8cefc6219e514c56037881cd090"
     },
     {
       "path": "docs/evidence/access-tap-m3426/dev/base-dashboard.log",
       "sha256": "e2fc195adfe7374079fedb905383b57f39b8b11bfca457776b66c341a8f245d6"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/dev/capture-recipe.mts",
+      "sha256": "54cfe6732364b0ec1b64d89c91704b8c58306746657256dbd181e6c04bfc3434"
     },
     {
       "path": "docs/evidence/access-tap-m3426/dev/captures/checks.json",
@@ -22,7 +26,7 @@
     },
     {
       "path": "docs/evidence/access-tap-m3426/dev/captures/label-geometry.json",
-      "sha256": "7af24864d3687699d8df92480b3bcc089d2da12d43729b25322077842a204045"
+      "sha256": "5c346d55066b16a36f26a9496949ec560dba19d0d3b658ae3da1abef1eb19edc"
     },
     {
       "path": "docs/evidence/access-tap-m3426/dev/captures/phone-access.png",
