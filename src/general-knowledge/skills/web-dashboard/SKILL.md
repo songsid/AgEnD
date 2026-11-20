@@ -443,9 +443,12 @@ someone and they walk back; their card's Pat/Feed show hearts and words; nothing
 **Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
 its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words, and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
-checks every rule — PNG only, each strip exactly frames·w × h, a 16:9 background, size caps — and never changes a
-pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, and a character may walk four
-ways with `walkDown`, `walkUp` and `walkSide`, the side one mirrored for left). #2692: an agent with **Office skin
+checks every rule — PNG only, each strip sheet exactly frames·w × h, a 16:9 background, size and 64 Mpx decoded-pixel caps — and never changes a
+pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, a character may walk four
+ways with `walkDown`, `walkUp` and `walkSide` (the side one mirrored for left), and (#4231) any strip may chain
+multiple sheets (`src: [...]`, up to 32 sheets / 600 frames) or list individual frames with per-frame `ms`
+(`frames: [{ src, ms? }]`) or `durations`, plus `once: true` or `loopFrom` (intro then loop), holding frame 0 under
+reduced motion). #2692: an agent with **Office skin
 packs** on (`office_pack_access`, Dashboard access) can check, upload, replace, delete and restore packs itself (one
 previous version kept per pack); **Agents changing packs** under the packs names those agents, sets whether their changes
 **Need my yes** (the default) or **Apply at once**, and approves or rejects the waiting ones (also from the notice's
