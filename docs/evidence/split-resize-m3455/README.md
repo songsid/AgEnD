@@ -5,7 +5,7 @@ FleetManager, scratch home, loopback only, IPC-stub agents) in headless Chromium
 
 The fixture has two agents side by side, each with 200 synthetic messages: prose, lists, code blocks and a table, about
 4,000 DOM nodes per pane. Each history is scrolled to its middle. The harness then drags the divider 120 px right and
-back, then left and back, with one pointer move per frame (240 moves).
+back, then left and back, with one pointer move per frame (120 moves).
 
 **Before** is `origin/release/2.3.5-alpha` 6cde6d563; **after** is this branch. The runs alternated before/after and
 started only when the host's 1-minute load was under 3. Rounds 2 and 3 of each are kept; round 1 ran under load
