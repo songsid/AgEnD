@@ -1,7 +1,9 @@
 # Offices on the Hub: visit a colleague's office, and a room's own office (M-3460)
 
-Status: design for the owner's approval, second revision (2026-11-20, after the owner's feedback: the room office is
-a tab of the chat page, with no extra row and no frame; and the member list at 12 people and 30 agents). No product
+Status: design for the owner's approval, third revision (2026-11-20). After the owner's feedback: the room office is
+a tab of the chat page with no extra row and no frame; the tabs sit where the Fleet puts Chat / View; on a phone
+the office is in the "…" menu; the room's purpose is shown as a small card with the room's picture, like an
+agent's card on its chat page; and the member list was checked at 12 people and 30 agents. No product
 code. The captures are a throwaway prototype in the real app (see "Prototype captures").
 
 Two things are asked for, and they share one drawing:
@@ -117,12 +119,33 @@ A line in the room says when it was turned on or off. See Q5 for the default.
 **The office is a tab of the room's page, the same tab bar an agent's page has** (Chat / View / Log there;
 **Chat / Office** here; `nav.inst-switch.seg`, the dashboard's own component):
 
-- On desktop the tabs sit in the room's header row, after the title. No row is added.
-- On a phone they are the row under the header, exactly as an agent's Chat / View / Log are today.
+- **Desktop:** the tabs are at the right of the room's header row, just before the header's tools, where the
+  Fleet agent page puts Chat / View / Log. No row is added.
+- **Phone:** no tabs. **Office** is the first item of the room's "…" menu. In the office, the header's second
+  line says "Office" and the back arrow returns to the chat. The office is not important enough to take a row on
+  a phone.
 - The office fills the content area the way View does: no card, no border, no inner title bar, and no message
   box under it. To ask something, a member goes back to Chat, or presses **@** on an agent's card, which
   switches to Chat with the mention already in the box.
-- With Room office off, there is no tab bar and the room looks as it does today.
+- With Room office off, there is no tab bar and no menu item.
+
+### 2.1a The room's header and its purpose (changes today's room page too)
+
+Today the room's header is three lines at the top left: the name, the purpose (or "Add a purpose"), and
+"12 people · 30 agents" (capture `r3-0`). On a phone the purpose is not in the header at all; it is only in the
+members sheet.
+
+Changed, following the Fleet agent page:
+
+- **The header is one line:** the room's name with "12 people · 30 agents" beside it, as an agent's name has its
+  state beside it. Then the tabs and the tools at the right.
+- **The purpose is a small card under the header**, the same strip an agent's chat page uses for its identity
+  card (`.chat-card` with `.id-card.card-c`): the room's picture on the left, "Purpose" and the text beside it.
+  It wraps to as many lines as it needs. A room manager has **Edit** at its right.
+- With no purpose: a manager sees the card with "Add a purpose"; a member sees no card.
+- The card is on the Chat tab only. On a phone it is the same card, so the purpose is finally visible there.
+- The room's square picture moves from the header into the card on desktop. On a phone the header keeps its
+  back arrow and two lines (name, counts) as today.
 
 ### 2.2 Who appears
 
@@ -174,7 +197,7 @@ So Atlas looks the same in its owner's office, in every room office, and in the 
 Checked in the real app with a room of 12 people and 30 agents of 6 owners.
 
 **The office** holds all 30 in the built-in style: the ones working sit at desks and the idle ones stand in the
-rest area, where their name labels start to overlap (capture `r2-4`). A style with more seats would read better
+rest area, where their name labels start to overlap (capture `r3-2`). A style with more seats would read better
 for a room this size. On a phone it is
 small until zoomed, which is the framing in this prototype; a real build fits the width.
 
@@ -231,8 +254,10 @@ In `docs/evidence/hub-office-visit-m3460/`: desktop (light) and phone (dark) in 
 | `*-4-owner-row.png` | The owner's Office row on My agents |
 | `*-5-owner-dialog.png` | The owner's share dialog |
 | `*-r2-2-visit.png` | Visiting a person's office, filling the page with no box (zh-TW) |
-| `*-r2-3-room-chat-tab.png` | The room with its Chat / Office tabs, Chat current (zh-TW) |
-| `*-r2-4-room-office-tab.png` | The Office tab: 30 agents, no extra row, no frame (zh-TW) |
+| `*-r3-0-room-today.png` | Today's room header with a purpose, unchanged app (zh-TW) |
+| `*-r3-1-room-chat.png` | The room in Chat: one-line header, tabs at the right (desktop), the purpose card (zh-TW) |
+| `*-r3-2-room-office.png` | The room in Office: 30 agents, no extra row, no frame (zh-TW) |
+| `phone-zh-TW-r3-3-room-menu.png` | The phone's "…" menu with Office first |
 | `*-r2-6-members-today.png`, `*-r2-7-members-today-expanded.png` | Today's member list with 12 people and 30 agents (zh-TW) |
 | `*-r2-8-members-proposed.png`, `*-r2-9-members-filter.png` | The proposed compact list, and the filter (zh-TW) |
 
@@ -241,8 +266,9 @@ What is real and what is not:
 - The Hub is the real one (real server, database and pages) at 98cfd9b77. The office is the real office share
   page, fed by a made-up fleet. Names are made up.
 - The Offices page, the Office row, the dialog and the compact member list are prototype code served to the
-  browser for the capture only. The room's tabs use the dashboard's real tab classes, put into the real room
-  header for the picture.
+  browser for the capture only. The room's tabs and the purpose card use the dashboard's real
+  classes (`inst-switch seg`, `chat-card`, `id-card card-c`), put into the real room page for the picture; the
+  "Office" menu item is a one-line change to the real menu, in the browser only.
 - The office is the real share page placed inside the Hub page with its own title bar and office picker hidden.
   Its row of tick boxes is the office's own bar, as on the Fleet. On a phone the office is small because the
   share page is framed; a real build draws it directly and fits the width.
@@ -291,6 +317,12 @@ R1 comes first: it needs nothing new from any Fleet, and it shows the idea to ev
 ## 給擁有者的摘要（zh-TW）
 
 **兩件事，同一種畫面：**
+
+**第三版（依你第二輪回饋）：** ① 手機不放分頁，「辦公室」收進右上「…」選單的第一項；進入後標題第二行顯示
+「辦公室」，返回鍵回到聊天。② 桌面版的「聊天／辦公室」分頁放在標題列右側、工具按鈕前面，和 Fleet 的 Agent
+頁面放「聊天／檢視」的位置一樣。③ 房間用途不再擠在左上角三行：標題列改成一行（名稱＋「12 人 · 30 個 Agent」），
+用途改成標題下方的一張小卡片（房間圖示＋「用途」＋內容），就是 Agent 聊天頁放頭像與介紹的那種卡片；管理員
+右側有「編輯」。這同時改了現在的房間頁面，手機上也終於看得到用途。
 
 **第二版（依你的回饋修改）：** 房間的辦公室改成房間頁面上的一個分頁，和 Agent 頁面的「聊天／檢視／紀錄」
 是同一種分頁列：桌面版放在標題列裡，不多一排；手機版和 Agent 頁面一樣在標題下方。辦公室直接佔滿內容區，
