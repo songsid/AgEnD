@@ -1,0 +1,6 @@
+{
+  "profiles": "every audit-owned agend and codex home (baseline, status, sign-in, rollback, model switch, e2e roots) was created under one short audit-owned parent per run and removed afterwards; none remain",
+  "discarded": "a first capture attempt ran with lo down (no mock reachable); its captures and homes were deleted and are not used",
+  "tmux": "every private tmux server was stopped by the rig; no audit process remains",
+  "hostTouched": false
+}

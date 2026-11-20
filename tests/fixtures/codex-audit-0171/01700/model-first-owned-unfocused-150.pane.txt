@@ -1,0 +1,45 @@
+                                                                                                   │                                               +
+  >_ OpenAI Codex (v0.170.0)                                                                       │
+     /audit/codex-0171/layout-0.170.0/run-01700/owned-model-first                       │ Open in sidebar
+  permissions: YOLO mode                                                                           │
+                                                                                                   │ You can start a side chat after your first
+                                                                                                   │ message in the main chat.
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+                                                                                                   │
+›                                                                                                  │
+                                                                                                   │
+  00000000-0000-7000-8000-000000000170 · Context 100% left · mock-model default · /audit/cache/codex-  │
+  audit-0171/v2/layout-0.170.0/run-01700/owned-model-first · master                                │
+                                                                                                   │ esc back · ^x - hide pane
