@@ -1,4 +1,5 @@
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
+import { HostMonitoringHistory } from './host-monitoring-history.js';
 import { HostMonitoringRuntime } from "./host-monitoring-runtime.js";
 import { NativeHostMonitoring } from "./host-monitoring-platform.js";
 import { disabledHostHealth } from "./host-monitoring.js";
@@ -307,7 +308,7 @@ import { createNativeWindowsInstance, updateNativeWindowsInstance } from "./nati
 import { NativeInstanceConfigEdit, parseNativeInstanceCreate, type NativeInstanceCreateInput } from "./native-instance-input.js";
 import { LogService, thinkingOn, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, webChatReplyRef, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore, isSafeInstanceDirName } from "./web-chat-store.js";
 import { WebChatArchive } from "./web-chat-archive.js";
@@ -1285,8 +1286,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly spawnGate: SpawnGate;
   readonly memoryPressure: MemoryPressure;
   private hostMonitor: HostMonitoringRuntime | null = null;
+  private hostHistory: HostMonitoringHistory | null = null;
   private startHostMonitoringRuntime(): void {
+    this.hostHistory ??= new HostMonitoringHistory({path:join(this.dataDir,'host-monitoring.sqlite'),unblocked:()=>this.hostMonitor?.apply()});
     this.hostMonitor ??= new HostMonitoringRuntime({
+      history:this.hostHistory,
       supported: () => process.platform === "linux" || process.platform === "darwin",
       committed: () => monitoringConfig(this.fleetConfig?.monitoring),
       raw: () => { if (!this.configPath) throw Error("config unavailable"); return {monitoring:loadRawFleetConfig(this.configPath).monitoring}; },
@@ -1295,6 +1299,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     });
     this.hostMonitor.start();
   }
+  hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
   hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
 
@@ -15323,6 +15328,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
         }
       };
+      // M-3491: a `reply_to` that names a kept web-chat message (by its web id, or a copy elsewhere) becomes that
+      // message's copy on this platform, so the reply is a native reply there; an id the chat does not know is left as
+      // it is (the adapter ignores one that is not its own: no quote, no error, as before).
+      if (typeof args.reply_to === "string" && args.reply_to && outAdapter !== WEB_ONLY_REPLY_SINK) {
+        const native = this.nativeReplyTo(instanceName, args.reply_to, ((outAdapter as { id?: unknown }).id as string | undefined) ?? contextAdapterId ?? "",
+          String(args.chat_id ?? ""), String(args.thread_id ?? threadId ?? ""));
+        if (native) args.reply_to = native;
+      }
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, { ...restrictedExtras, ...(replySet ? { replyButtons: replySet.callbacks, ...(replySet.poll ? { replyPoll: replySet.poll } : {}) } : {}) })) {
         return;
       }
@@ -15389,6 +15402,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
   }
 
+  /**
+   * M-3491: the platform message id a reply to `id` uses on `adapterId`'s chat and thread — the copy there of the kept
+   * web-chat message `id` names (#2281 posts) — or undefined when the chat keeps no such message or it has no copy there.
+   */
+  nativeReplyTo(instance: string, id: string, adapterId: string, chatId: string, threadId: string): string | undefined {
+    const row = this.webChatHistory.findByReplyId(instance, id);
+    if (!row || !adapterId) return undefined;
+    const here = this.webChatHistory.postsOf(row).filter(p => p.adapterId === adapterId && p.chatId === chatId && (p.threadId ?? "") === threadId);
+    // An id that already is one of its copies here (its buttons message, say) stays the one the agent named.
+    return here.find(p => p.messageId === id)?.messageId ?? here[0]?.messageId;
+  }
+
   captureReplyPreview(instance: string, args: Record<string, unknown>): ((result: unknown) => void) | undefined {
     if (!replyPreviews(args.previews)?.length) return undefined;
     const identity = this.webChatIdentity(instance);
@@ -15400,9 +15425,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const returned = replyResult && typeof replyResult === "object" ? (replyResult as { messageId?: unknown }).messageId : undefined;
     // #2281: where the reply is, when it landed in the instance's own place — a web reply to it is then a native reply
     // there. A reply elsewhere (another chat, the web-only sink) records none.
-    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
+    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown; buttonsMessageId?: unknown };
     const post: WebChatPost | undefined = inChannel && sentAs && typeof sent.messageId === "string" && typeof sent.chatId === "string"
       ? { adapterId: sentAs.adapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
+    // M-3491: a long reply's buttons ride its last part, a message of its own: a later `reply_to` may name that one.
+    const buttonsPost: WebChatPost | undefined = post && typeof sent.buttonsMessageId === "string" && sent.buttonsMessageId && sent.buttonsMessageId !== post.messageId
+      ? { ...post, messageId: sent.buttonsMessageId } : undefined;
+    // M-3491: what the reply quotes in the web chat — the kept message its `reply_to` names (a web id, the id an earlier
+    // reply returned, or a Discord/Telegram copy's id), taken now; an id the chat does not keep quotes nothing, as before.
+    const quotedRow = typeof args.reply_to === "string" && args.reply_to ? this.webChatHistory.findByReplyId(instanceName, args.reply_to) : undefined;
+    const quoted = quotedRow ? webChatReplyRef(quotedRow) : undefined;
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -15445,7 +15477,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(replyPreviews(args.previews)?.length ? { previews: replyPreviews(args.previews) } : {}),
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
-        ...(post ? { posts: [post] } : {}),              // #2281
+        ...(post ? { posts: buttonsPost ? [post, buttonsPost] : [post] } : {}),   // #2281 (M-3491: and its buttons message)
+        ...(quoted ? { replyTo: quoted } : {}),          // M-3491
         ...(typeof returned === "string" && returned ? { anchor: returned } : {}),   // AGEND-181: what the reply call returned
         ...(reserved !== undefined ? { reserved } : {}), // #1774
       });

@@ -26,7 +26,7 @@ register("agentSheet", {
   en: { sheet: "{0}: more", search: "Search", files: "Files & changes", card: "Card", usage: "Usage", model: "Model & effort", backend: "CLI backend",
     textSize: "Text size", textSizes: "Small,Medium,Large", look: "Appearance", agent: "This agent", details: "Agent details",
     verifiedUntil: "Verified · speaks as you until {0}" },
-  "zh-TW": { sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI backend",
+  "zh-TW": { sheet: "{0}：更多", search: "搜尋", files: "檔案與變更", card: "卡片", usage: "用量", model: "模型與推理", backend: "CLI 後端",
     textSize: "文字大小", textSizes: "小,中,大", look: "外觀", agent: "這個 Agent", details: "Agent 詳細資料",
     verifiedUntil: "已驗證 · 以你的身分發言到 {0}" },
 });
@@ -77,7 +77,7 @@ export function AgentSheetButton({ name, inst, current, items = [], extra = [], 
     ${usage ? html`<${UsageDialog} owner=${navKey} onClose=${() => setUsage(false)} />` : null}`;
 }
 
-export function AgentSheet({ name, inst, current, items = [], extra = [], chat = null, verifiedUntil = null, onUsage, onClose }) {
+export function AgentSheet({ name, inst, current, items = [], extra = [], chat = null, verifiedUntil = null, onUsage, onClose, targetLabel = null }) {
   const [look, setLook] = useState(false);
   const size = useStore(textSizeStore).size;
   const by = (key) => items.find((i) => i && i.key === key);
@@ -94,6 +94,7 @@ export function AgentSheet({ name, inst, current, items = [], extra = [], chat =
   const details = by("details") || (current !== "details" && supportsInstanceFeature(inst, "details")
     ? { key: "details", icon: "info", onSelect: () => navigate(detailsPath(name)) } : null);
   return html`<${Dialog} title=${t("agentSheet.sheet", name)} onClose=${onClose} cls="chat-sheet">
+    ${targetLabel ? html`<h3 class="menu-heading chat-sheet-head">${targetLabel}</h3>` : null}
     <div class="chat-sheet-tiles">
       ${current !== "chat" ? tile("chat", t("app.chat"), () => navigate(chatPath(name))) : null}
       ${current !== "view" && supportsInstanceFeature(inst, "view") ? tile("view", t("app.view"), () => navigate(viewPath(name))) : null}
@@ -115,3 +116,5 @@ export function AgentSheet({ name, inst, current, items = [], extra = [], chat =
     ${verifiedUntil ? html`<div class="chat-sheet-foot">✓ ${t("agentSheet.verifiedUntil", untilClock(verifiedUntil))}</div>` : null}
   </${Dialog}>`;
 }
+
+AgentSheet.sidebarTargetVersion = 1;

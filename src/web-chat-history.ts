@@ -166,7 +166,7 @@ export interface WebChatMessage {
   /**
    * #2272: the message a person's message replies to — its row (`boot`, `id`) and what the bubble quotes: who wrote it
    * and its first words, taken by the server from that row when the reply was sent (never from the page). `media`: a
-   * row with files and no text. A person's messages only.
+   * row with files and no text. A person's messages, and (M-3491) an agent's reply whose `reply_to` names a kept row.
    */
   replyTo?: WebChatReplyRef;
   /**
@@ -593,8 +593,8 @@ export class WebChatHistory {
     // #1920: only `true` marks a channel's message; only a person's message names its account.
     if (msg.channel === true) entry.channel = true;
     if (entry.role === "user" && typeof msg.from === "string" && FROM.test(msg.from)) entry.from = msg.from;
-    // #2272: only a person's message replies to another.
-    const replyTo = entry.role === "user" ? webChatReplyRefOf(msg.replyTo) : undefined;
+    // #2272: a person's message replies to another; M-3491: so does an agent's reply (its `reply_to`, resolved by the server).
+    const replyTo = entry.role === "user" || entry.role === "agent" ? webChatReplyRefOf(msg.replyTo) : undefined;
     if (replyTo) entry.replyTo = replyTo;
     // #2281: where it is on a platform, beside the row (the caller that sent or received it knows).
     const posts = webChatPosts(msg.posts);
@@ -696,6 +696,21 @@ export class WebChatHistory {
     if (!posts.length) return;
     this.posts.set(m, posts);
     this.persist(instance);
+  }
+
+  /**
+   * M-3491: the kept message an agent's `reply_to` names. An agent may quote any message it was shown: by its web
+   * `message_id` (a web message or click), by the id its own `reply` call returned (`anchor`), or by any platform copy's
+   * id (`posts`: a Discord or Telegram message, buttons message included). Newest first; undefined when none matches.
+   */
+  findByReplyId(instance: string, id: string): WebChatMessage | undefined {
+    if (!id) return undefined;
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.messageId === id || m.anchor === id || this.posts.get(m)?.some(p => p.messageId === id)) return m;
+    }
+    return undefined;
   }
 
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
@@ -1057,7 +1072,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
   if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   if (typeof r.anchor === "string" && ANCHOR_ID.test(r.anchor)) message.anchor = r.anchor;
-  const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
+  const replyTo = role === "user" || role === "agent" ? webChatReplyRefOf(r.replyTo) : undefined;
   if (replyTo) message.replyTo = replyTo;
   const reactions = webReactionsOf(r.reactions);
   if (reactions) message.reactions = reactions;

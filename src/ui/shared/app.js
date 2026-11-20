@@ -83,6 +83,7 @@ if (hubPage) {
     // The chat store this page booted — whichever import succeeded (a Retry loads ?retry=<n>) — is the page's one owner
     // of its prompts; Needs you finds it here and never imports the chat itself (#1463 review).
     appStore.set({ chatOwner: m.boot({ stream, boot }) });
+    appStore.set({ sidebarChatMenu: !guestPage() && m.SidebarChatMenu?.contextVersion === 1 ? m.SidebarChatMenu : null });
     // Loaded only after the stream opened (a Retry): the frames sent on connect never reached it — catch up once.
     if (stream.started()) stream.catchUp();
     return m;

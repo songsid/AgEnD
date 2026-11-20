@@ -320,8 +320,12 @@ describe("the Latest pill takes no room in the thread", () => {
     expect([dock.position, dock.bottom, dock.height]).toEqual(["sticky", "0", "0"]);
     expect(rule(".jump-latest").position).toBe("absolute");
   });
+  it("M-3492: faded at rest it lets taps through and keyboard focus shows it; reduced motion: no fade", () => {
+    expect([rule(".jump-latest.is-idle:not(:focus-visible)").opacity, rule(".jump-latest.is-idle:not(:focus-visible)")["pointer-events"]]).toEqual(["0", "none"]);
+    expect(CSS).toMatch(/@media \(prefers-reduced-motion: reduce\) \{ \.jump-latest \{ transition: none; \} \}/);
+  });
   it("the thread puts the pill in that dock, which stays when the pill goes", () => {
     const src = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
-    expect(src).toMatch(/<div class="jump-dock">\$\{jump\.show \? html`<button data-trust="thread-control" type="button" class="jump-latest"/);
+    expect(src).toMatch(/<div class="jump-dock">\$\{jump\.show \? html`<button data-trust="thread-control" type="button" ref=\$\{jumpBtn\} class=\$\{`jump-latest\$\{jumpIdle \? " is-idle" : ""\}`\}/);
   });
 });

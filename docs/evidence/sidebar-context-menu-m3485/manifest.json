@@ -1,0 +1,164 @@
+{
+  "baseCommit": "7477c3b54",
+  "scope": "real-app synthetic headless menu parity; provenance and limits in README",
+  "codeFiles": [
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "b20e933c6972bf7bee5b8f77ffaebd08891dbc3091ba7e8f61117bfbba34b9b4"
+    },
+    {
+      "path": "src/ui/shared/agent-sheet.js",
+      "sha256": "91181773445dcb98a7abae2878b99959c840f37564ebac1bf0dde82c80938d81"
+    },
+    {
+      "path": "src/ui/shared/app.js",
+      "sha256": "655831a54ad79a6cfa4f1b1dc2e9e79fd6ff3e8f64de21703350c06b2b26fc39"
+    },
+    {
+      "path": "src/ui/shared/instance-nav.js",
+      "sha256": "d595313f1c260475400e6fb8111908c0e522470212af5aec5d5fbd44516474ea"
+    },
+    {
+      "path": "src/ui/shared/ui-menu.js",
+      "sha256": "faa42f965aa8e61320a56aa91bcf09cfd643758ff1e5e1b98371e300f0205b3a"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "9f639ba69816eb22e8ac866647a19bdfab7792d23b2064a1e5bcb04c75777c79"
+    },
+    {
+      "path": "tests/sidebar-context-menu-m3485.test.ts",
+      "sha256": "cc231125f901352753ecb92134d756150912613e38425a370aa3f8ec577ad06f"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-sidebar-context-menu-m3485.mts",
+      "sha256": "a5b4a3dbd11939816b94076c9734d0f798b2ab2b2389f4aaa62e6a52b311caf6"
+    },
+    {
+      "path": "tests/sidebar-context-menu-r1-m3485.test.ts",
+      "sha256": "499663318c872d5eeec2af29abb36f1fdcae4b9a9934db6c3219c04bd1bdaa9c"
+    },
+    {
+      "path": "tests/web-chat-1307.test.ts",
+      "sha256": "cf54189f0aa19bbcbef1e65b13e9d0d0d1ed3582abe212a2534dd3b7d4f4e678"
+    },
+    {
+      "path": "tests/sidebar-context-favorites-m3485.test.ts",
+      "sha256": "d7aca4e8a013306304078d363ea0d1e76fbbf8e3ff15dbefb5d1d98c0b93f989"
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "9fe2e02eadd1c3d3f030aa08dd2993ee7c858551145525166c391a255aa35294"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "ad78bff6d0f72e627592c9dd83c69b5106ad588abc66fb62a46f4b9b05d1c05b"
+    },
+    {
+      "path": "desk-dark-en-header.png",
+      "sha256": "3b79bf18d3af7f50ed49025af8be391c92c324476a4d704c4a4132aeb0636b7b"
+    },
+    {
+      "path": "desk-dark-en-sidebar.png",
+      "sha256": "b85a602fc5739a5fff04fcf547b6d1d357fd7f0b62421e3df208d16c1f177c89"
+    },
+    {
+      "path": "desk-dark-zh-TW-header.png",
+      "sha256": "7a9487004b0f0b02d45eec784d1c9bd3e16c5bcbdb2a5cab455d1c90669c008e"
+    },
+    {
+      "path": "desk-dark-zh-TW-sidebar.png",
+      "sha256": "d8e221d64594b0ab823ac6a753ca81d2ebfc8644aa31a94b33e0ddca9c6e5f21"
+    },
+    {
+      "path": "desk-light-en-header.png",
+      "sha256": "ebc36ceee626bd16792cb05f5d1a38721406a8f1b0681d96624379c0aad06d28"
+    },
+    {
+      "path": "desk-light-en-sidebar.png",
+      "sha256": "8e5accc7923d3422294eee1566e0b65367ff045c62c2e01dfb7a9d17b54a3d31"
+    },
+    {
+      "path": "desk-light-zh-TW-header.png",
+      "sha256": "dcee6a8a6befe55ea2b4b709ff2c839718ed49bc613d40fdad58bb32624e0038"
+    },
+    {
+      "path": "desk-light-zh-TW-sidebar.png",
+      "sha256": "375ee277961c79bd1a663b4ba85612a54318712777febc4226fc79858e529049"
+    },
+    {
+      "path": "favorites/README.md",
+      "sha256": "d3a559c14c19eb72f82a7ccf4b2d2d0264d613a2876746e12ca5b8a2c8eeecb8"
+    },
+    {
+      "path": "favorites/checks.json",
+      "sha256": "7d6409683f985b9e4543d6a4b42e48faa75ec2538b1461c635d8bdb53bae6b79"
+    },
+    {
+      "path": "favorites/desk-dark-zh-TW-sidebar.png",
+      "sha256": "dffe4a710159e436292a82761b890a3d1d98660f0df8a2485f2ecce82bb200c4"
+    },
+    {
+      "path": "favorites/desk-light-en-favorite-on.png",
+      "sha256": "36de8e22ac1b03035df8f7d4ff8fc4c9477e4dae225e4dbbbd48be4b892aad4d"
+    },
+    {
+      "path": "favorites/desk-light-en-sidebar.png",
+      "sha256": "0203d1e377f2c5b0cef04fc887a796c5a885110350e666218e8d5accc0e48851"
+    },
+    {
+      "path": "favorites/phone-dark-zh-TW-sidebar.png",
+      "sha256": "ed1316986294889de1e5b257e41a5962596ec695479ceb90ddfd8cedee9b64cc"
+    },
+    {
+      "path": "mutations.json",
+      "sha256": "462b89bc8fbd3f9288743d5da40fdef4c321c3d012d707255af86a718c5dda8f"
+    },
+    {
+      "path": "phone-dark-en-header.png",
+      "sha256": "965a0c12405594cd86c82e47c70e800996afd172229026c5765b73e52779fccc"
+    },
+    {
+      "path": "phone-dark-en-sidebar.png",
+      "sha256": "b2b42e2eb5aff85b09e958779e53971096de143e6e12e5923ae63dcffdb1944e"
+    },
+    {
+      "path": "phone-dark-zh-TW-header.png",
+      "sha256": "dbbacb02e5a3f1ac21d12e9589a6a0a75509b2e691bac04439f7329c456dc13f"
+    },
+    {
+      "path": "phone-dark-zh-TW-sidebar.png",
+      "sha256": "07f593b1dfed06002fcf739b8ad5a4c65f861879625650b3f80ad600408ae62e"
+    },
+    {
+      "path": "phone-light-en-header.png",
+      "sha256": "bff43155355b30f8b377ad1d7fc7a40b91cbf19ea348ccb68ab98d2ed664d6eb"
+    },
+    {
+      "path": "phone-light-en-sidebar.png",
+      "sha256": "90e55205aa50973a5a24f34be11941c4bdbba686a8d90b3ee1ecac20c9037d27"
+    },
+    {
+      "path": "phone-light-zh-TW-header.png",
+      "sha256": "62d577fc9e2a7f7afdfc5197ad11e5345aedd4f6ac07588050b636b27f2562c7"
+    },
+    {
+      "path": "phone-light-zh-TW-sidebar.png",
+      "sha256": "bf1406726110f5a11fdd99b6431862c38a40c4dfe0ef7079f510f37a4552b353"
+    },
+    {
+      "path": "r1/README.md",
+      "sha256": "2eb3ade2fad71e5582868ff15b274551a24f99dccaa3855cc378d12ca12c489c"
+    },
+    {
+      "path": "r1/checks.json",
+      "sha256": "f6f836f012bd45533b026330efb7e504152c0a76c43dea6c57fb4596520e6aa4"
+    },
+    {
+      "path": "r1/phone-dark-zh-TW-target-card.png",
+      "sha256": "112b3c2c7336a62194bce36d1560cad5fab1a9eb232d0f6b70fe6f77a344e325"
+    }
+  ]
+}

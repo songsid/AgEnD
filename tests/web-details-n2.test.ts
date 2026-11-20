@@ -170,7 +170,7 @@ describe("the switch keeps the instance", () => {
   it("Chat's ⋯ → Details is the page now, not a dialog", async () => {
     const pg = await app("/ui/chat/web-dev");
     pg.root.querySelector(".p-chat .menu > button").click(); await settle();
-    pg.root.querySelectorAll(".p-chat .menu-list .menu-item").find((b: any) => b.textContent.trim() === "Instance details").click(); await settle(6);
+    pg.root.querySelectorAll(".p-chat .menu-list .menu-item").find((b: any) => b.textContent.trim() === "Agent details").click(); await settle(6);
     expect([await route(), pg.root.querySelector("dialog") ? "dialog" : null]).toEqual([{ panel: "details", instance: "web-dev" }, null]);
   });
   it("Chat's ⋯ → Full width: off by default; checked, the chat takes the panel's width (data-width), kept on this device; no item on a phone", async () => {
@@ -227,12 +227,12 @@ describe("Details (Q1 = B)", () => {
     // Carried over, none new (leader 2026-10-10): no Delete on Details — it stays in Chat's ⋯ and Settings.
     // #1629: then a person's Lock and Reset of the agent's web theme.
     const THEME = ["Colour…", "Lock theme", "Reset theme…"];   // #1958: its colour, before the theme's Lock and Reset
-    expect(await menuItems(pg)).toEqual(["Restart instance", "Stop instance", "Pause", ...THEME]);
-    await choose(pg, "Stop instance");
+    expect(await menuItems(pg)).toEqual(["Restart agent", "Stop agent", "Pause", ...THEME]);
+    await choose(pg, "Stop agent");
     await choose(pg, "Pause");
     expect(calls.filter(c => c.startsWith("POST"))).toEqual(["POST /ui/stop/web-dev", "POST /api/settings/instances/web-dev/pause"]);
     await go("/ui/fleet/agent/api-server");
-    expect(await menuItems(pg)).toEqual(["Start instance", ...THEME]);
+    expect(await menuItems(pg)).toEqual(["Start agent", ...THEME]);
     await go("/ui/fleet/agent/qa-bot");
     expect(await menuItems(pg)).toEqual(["Wake", ...THEME]);
     await choose(pg, "Wake");
@@ -290,7 +290,7 @@ describe("the Settings tab of an agent (Details & settings)", () => {
     // The Overview keeps everything Details showed (read-only), and the ⋯ menu's actions.
     expect(pg.root.querySelector("#ap-panel-overview")?.hasAttribute("hidden")).toBe(false);
     expect(pg.root.querySelector(".p-details .d-config")).not.toBeNull();
-    expect(pg.root.querySelectorAll(".p-details .d-actions button").map((b: any) => b.textContent.trim())).toEqual(["Restart instance", "Stop instance", "Pause"]);
+    expect(pg.root.querySelectorAll(".p-details .d-actions button").map((b: any) => b.textContent.trim())).toEqual(["Restart agent", "Stop agent", "Pause"]);
   });
   it("an edit is staged at once (the Settings bar, a dot on its category), the draft stays when another category opens, and Discard puts it back", async () => {
     const pg = await app("/ui/fleet/agent/web-dev?cat=basic");

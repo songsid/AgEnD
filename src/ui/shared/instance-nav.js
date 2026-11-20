@@ -25,8 +25,8 @@ import { identityClasses, identityOf, paintIdentity, useIdentityColors } from ".
 
 // Keep new copy beside its caller: a retained view-strings.js still links and renders the menu.
 register("agentRow", {
-  en: { actions: "Actions for {0}", add: "Add to favorites", remove: "Remove from favorites" },
-  "zh-TW": { actions: "{0} 的操作", add: "加入最愛", remove: "移出最愛" },
+  en: { actions: "Actions for {0}", add: "Add to favorites", remove: "Remove from favorites", contextAdd: "Add to favorites", contextRemove: "Remove from favorites" },
+  "zh-TW": { actions: "{0} 的操作", add: "加入最愛", remove: "移出最愛", contextAdd: "加到我的最愛", contextRemove: "從我的最愛移除" },
 });
 
 /** view.* text with named values. */
@@ -36,6 +36,7 @@ function tn(key, values = {}) {
   return s;
 }
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const contextNow = () => globalThis.performance?.now?.() ?? Date.now();
 /** A row's instance name: `name` (status frames) or `instance_name` (View's roster). */
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
 
@@ -593,7 +594,44 @@ function SortMenu({ sort, phone = false }) {
  */
 export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting = {}, viewOnly = false, onPick, onNew = null }) {
   const nav = useStore(navStore);
-  const workspace = useStore(appStore).chatWorkspace;
+  const app = useStore(appStore), workspace = app.chatWorkspace;
+  const [context, setContext] = useState(null);
+  const hold = useRef(null), heldClick = useRef(null), contextId = useRef(0);
+  const cancelHold = () => { if (hold.current) clearTimeout(hold.current.timer); hold.current = null; };
+  useLayoutEffect(() => {
+    const scroll = () => cancelHold();
+    window.addEventListener("scroll", scroll, true);
+    return () => { cancelHold(); window.removeEventListener("scroll", scroll, true); };
+  }, []);
+  useLayoutEffect(() => { cancelHold(); setContext(null); }, [route?.panel, route?.instance, viewOnly]);
+  const contextAllowed = () => !viewOnly && !guestPage() && typeof app.sidebarChatMenu === "function";
+  const openContext = (name, event) => {
+    if (!contextAllowed()) return false;
+    event.preventDefault(); event.stopPropagation(); cancelHold();
+    const row = event.currentTarget.closest?.("[data-agent-row]") || event.currentTarget;
+    const anchor = row.querySelector("a.inst");
+    if (!anchor) return false;
+    anchor.focus({ preventScroll: true });
+    setContext({name, anchor, id: ++contextId.current}); return true;
+  };
+  const contextEvents = name => ({
+    onContextMenu: event => openContext(name, event),
+    onKeyDown: event => { if (event.key === "Escape" && event.target.closest?.("dialog[open]")) { event.stopPropagation(); return; } if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) openContext(name, event); },
+    onPointerDown: event => {
+      cancelHold();
+      if (!contextAllowed() || event.pointerType !== "touch" || (event.button != null && event.button !== 0) || event.target.closest?.("button")) return;
+      const currentTarget = event.currentTarget, x = event.clientX, y = event.clientY;
+      hold.current = {name, x, y, pointerId:event.pointerId, timer:setTimeout(() => {
+        hold.current = null;
+        if (!currentTarget.isConnected || !contextAllowed()) return;
+        heldClick.current = {name, pointerId:event.pointerId, until:contextNow()+1000};
+        openContext(name, {currentTarget, preventDefault(){}, stopPropagation(){}});
+      }, 500)};
+    },
+    onPointerMove: event => { const h = hold.current; if (h && (Math.abs(event.clientX-h.x)>8 || Math.abs(event.clientY-h.y)>8)) cancelHold(); },
+    onPointerUp: cancelHold, onPointerCancel: cancelHold, onDragStart: cancelHold,
+    onClickCapture: event => { if (heldClick.current?.name === name && contextNow() < heldClick.current.until && (!event.target.closest?.("[role=menu],dialog") || event.pointerId === heldClick.current.pointerId)) { heldClick.current=null; event.preventDefault(); event.stopPropagation(); } },
+  });
   const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   const names = useStore(namesStore);   // #1722: which name leads
   const compact = useStore(sidebarDensityStore).value === "compact";
@@ -771,7 +809,10 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
           onSelect: () => { if (!shown.active && !favsSorted) { focusRow.current = name; moveFavorite(name, 1, known); } } },
       ] : []),
     ].filter(Boolean);
-    return html`<li key=${name} data-agent-row=${name} class=${`v-li${!compact && two ? " two-line" : ""}`}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
+    const favorite = menuItems.find(item => item.key === "favorite");
+    const contextFavorite = favorite ? { ...favorite, label: t(`agentRow.${starred ? "contextRemove" : "contextAdd"}`),
+      onSelect: () => { setContext(null); favorite.onSelect(); } } : null;
+    return html`<li key=${name} data-agent-row=${name} class=${`v-li${!compact && two ? " two-line" : ""}`} ...${contextEvents(name)}><a class=${`inst v-inst${on ? " active" : ""}${starred ? " inst-favorite" : ""}${fade > 0 ? " replied" : ""}${mins != null && mins < 1 ? " just" : ""} ${identityClasses(id)}`}
         ref=${(el) => { paintIdentity(el, id); paintReply(el, fade); }} href=${rowPath(name)} title=${instanceTooltip(it)}
         aria-label=${compact ? [...new Set([label, name, labelOf(it)])].join(" · ") : undefined}
         aria-current=${on ? "page" : undefined} onClick=${onPick} ...${dragProps({ type: "instance", name, group: g }, !fav)}>
@@ -787,7 +828,8 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
     </a>${menuItems.length ? html`<${Menu} cls=${`inst-workspace inst-row-menu agent-menu${starred ? " is-favorite" : ""}`} fit=${true} topLayer=${true}
       ownerKey=${name} label=${t("agentRow.actions", label)} items=${menuItems}
       trigger=${styledMenus ? html`<span class="inst-menu-star" aria-hidden="true">${starred ? html`<${Icon} name="star" size=${14} />` : null}</span><span class="inst-menu-more" aria-hidden="true"><${Icon} name="more" size=${16} /></span>` : undefined} />`
-      : starred ? html`<span class="inst-favorite-mark" aria-hidden="true"><${Icon} name="star" size=${14} /></span>` : null}</li>`;
+      : starred ? html`<span class="inst-favorite-mark" aria-hidden="true"><${Icon} name="star" size=${14} /></span>` : null}
+      ${contextAllowed() && context?.name === name ? html`<${app.sidebarChatMenu} key=${context.id} inst=${it} context=${context} favorite=${contextFavorite} onClose=${() => setContext(null)} />` : null}</li>`;
   };
   // #2401: an open list of two or more lines leaves room under the count for "shown" and Clear (stacked); otherwise compact.
   const facetSet = f.status.length > 0 || f.cli.length > 0;
