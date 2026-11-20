@@ -886,9 +886,10 @@ function Thread({ name, label = name, th, bindings }) {
     setJumpIdle(false);
     return () => { sc.removeEventListener("scroll", wake); clearTimeout(jumpTimer.current); };
   }, [name]);
+  // Owned by the chat as well as by "shown": a thread that shows another chat with 最新 still up (shown → shown) arms anew.
   useEffect(() => {
     if (jump.show) { setJumpIdle(false); jumpRest(); } else clearTimeout(jumpTimer.current);
-  }, [jump.show]);
+  }, [jump.show, name]);
   useLayoutEffect(() => { keptThreads.get(name)?.list.setAttribute("aria-label",t("chat.conversationWith",label)); },[name,label]);
   useLayoutEffect(() => {
     const doc = host.current.ownerDocument;

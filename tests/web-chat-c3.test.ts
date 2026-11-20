@@ -835,6 +835,12 @@ describe("the chat panel (the real page modules)", () => {
     await wait(JUMP_IDLE_MS + 100); await settle();
     expect(jump().classList.contains("is-idle"), "x's fades").toBe(true);
   }, 20_000);
+  it("M-3492 review 2: the idle timer belongs to the chat as well as to 'shown' — a thread reused for another chat with 最新 still up arms anew", () => {
+    // The Fleet chat panel gives each chat a new thread (its 最新 starts hidden, so hidden → shown arms it, covered above);
+    // a thread reused for another chat (shown → shown) re-runs the arming effect because the chat is in its deps.
+    const src = readFileSync(join(process.cwd(), "src", "ui", "panel-chat.js"), "utf8");
+    expect(src).toMatch(/if \(jump\.show\) \{ setJumpIdle\(false\); jumpRest\(\); \} else clearTimeout\(jumpTimer\.current\);\s*\}, \[jump\.show, name\]\);/);
+  });
 
   it("#2053: a chat shown again puts its kept thread back — the same list, only what arrived meanwhile drawn, where the reader was; it leaves as a chat always did", async () => {
     const c = await chatPage();
