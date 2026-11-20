@@ -13,7 +13,7 @@ import yaml from "js-yaml";
 import Database from "better-sqlite3";
 import { createHubInitializer } from "../src/hub/init/initializer.js";
 import { hubIdentityProvider } from "../src/hub/init/identity.js";
-import { HubRuntime, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
+import { HubRuntime, S3B_HTTP_ENTRY, effectiveHubView, hubSwitchesOn, type HubHold } from "../src/hub/runtime.js";
 import { createHubServerFactory, hubServerDatabasePlan, type HubHttp, type HubHttpDeps, type HubHttpEntry } from "../src/hub/compose/server.js";
 import { HubDirectoryResponseOwner, type HubDirectoryResponse } from "../src/hub/directory-response-owner.js";
 import { HubServer } from "../src/hub/server.js";
@@ -48,9 +48,12 @@ import { runtimeEnrollTokenId } from "../src/runtime-protocol.js";
 const roots: string[] = [];
 const reservations: ReturnType<typeof hubListenerPorts>[] = [];
 let sourceCerts: TestCerts;
-beforeAll(() => {
+beforeAll(async () => {
   mkdirSync(".artifacts", { recursive: true });
   sourceCerts = makeTestCerts();
+  // Compile the real lazy HTTP component during fixture setup, not the first timed root-route case.
+  // No service, database or listener is created; each case still owns its fresh initialized Hub.
+  await S3B_HTTP_ENTRY();
 }, 120_000);
 afterAll(() => { if (sourceCerts) rmSync(sourceCerts.dir, { recursive: true, force: true }); });
 afterEach(async () => {
