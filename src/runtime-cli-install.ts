@@ -73,10 +73,10 @@ export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS = Object.freeze({
   "claude-code": {
-    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.327",
+    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.329",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-QToNtikIupqVMsxRUdDHUP0nS/uv3Wc43vcbT8YNRo7FtQOE9MvYLqPLQPoVhJ2DQQVPOFMB5PkaBNJbnNYeVg==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-iOg2eIuMxvTiqIjS0rl//2iWU4ziZ6hyFzzvr/1cxNTTUH9miYNehzZaAni8chj3tB2RnQp81B1NZW3CnveuSQ==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-WQ7RY331gsODjOoDBbeG1fjMfKY1Ur9yxWAOI9SgdLZvqA9sAREaezXt7e3uNbHlgjVAZg1IqlJT1J7WKViEFA==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-BkbOTOAYvz1BNVwdRJzibhxXtZVw289ucHt1aSArGSax8C6INgf6Xtp2wxmwsSSpKk+P8LyIhj0ufvFD1VJOFA==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
@@ -88,28 +88,29 @@ export const INSTALLABLE_CLIS = Object.freeze({
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
-  // M-3176: Claude 2.1.325 (now 2.1.327, M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
-  // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.9: the windows_amd64
-  // manifest read 2026-11-15 (version 1.5.9, this url, this sha512); the file downloaded is 231726744 bytes with that sha512.
+  // M-3176: Claude 2.1.325 (now 2.1.329, M-3477; 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.13 (M-3477, was 1.5.9):
+  // the windows_amd64 manifest read 2026-11-20 (version 1.5.13, this url, this sha512); the file downloaded is 236040344 bytes with that sha512. OpenCode 1.19.6 (M-3477):
+  // the same three packages, each integrity the registry's and checked against its downloaded tarball, opencode.exe at the same path in the baseline one.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
   // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json; first read 2026-11-09 for 1.5.3, now 1.5.9: M-3176 above). Measured on 1.5.3: the file is 225159320
   // bytes, its sha512 equals the manifest's, `Get-AuthenticodeSignature` says Valid with the subject CN=Google LLC, O=Google LLC, and `agy.exe --version` prints 1.5.3 without the vendor's
   // `install` step (which only edits PATH and shell aliases, and so is not run). Windows x64 only: no arm64 pin has been measured. The CLI updates itself afterwards; the pin governs the first install.
   antigravity: {
-    id: "antigravity", kind: "download", version: "1.5.9",
-    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.9-4515810895593472/windows-x64/cli_windows_x64.exe", bytes: 231726744,
-    sha512: "539a9415a686d9ec45f5c59fe7d32c485c6fa9abaea50208ae8ede4ed3622b9fb2bfd6680c87dc52344981172a96ddacb261ff4231276b5572fb5b62a9b0221e",
+    id: "antigravity", kind: "download", version: "1.5.13",
+    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.13-5999302598852608/windows-x64/cli_windows_x64.exe", bytes: 236040344,
+    sha512: "6b80a17a2bc34a969ed9ba31500a8201b0b4aad3e7fe061374022d161fec8bd7de49b6dc069a6ac67a90632e8671bbe860a7e94309bc5adbc536d27a75a86b58",
     native: { path: "agy.exe", signer: { cn: "Google LLC", o: "Google LLC" } },
   },
   // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64
   // builds (they share os/cpu): the AVX2 one and the `-baseline` one for CPUs without AVX2; all three are pinned. The `-baseline` build is the one that runs: it works on every x64
   // CPU (OpenCode's own postinstall picks by AVX2, which a `--ignore-scripts` install does not run). Both binaries carry the same Authenticode signature (measured 2026-11-09).
   opencode: {
-    id: "opencode", kind: "npm", spec: "opencode-ai", version: "1.19.5",
+    id: "opencode", kind: "npm", spec: "opencode-ai", version: "1.19.6",
     integrity: {
-      "node_modules/opencode-ai": "sha512-tEqMvQahfhdDj8vceYpXtoIrvjPXm5XRfetWnPN5YISueU7adNx9JcUA3zZ+2GKuDVgDpGdQe1ZLtCZDjqodvA==",
-      "node_modules/opencode-windows-x64": "sha512-xCVbrA8A/qQTAdBIKyhK5tx3/mcq18yF82Mi8phry0MJb2631nnnpxF9m6FFfWAVHyer4qFGrO7hbWXesHQ1Gg==",
-      "node_modules/opencode-windows-x64-baseline": "sha512-yRHN+TsfLjfLmdQVAVWqTGfGP1yq8YtUFy9Jw33XhlPIp77slBdCJrj2PC4amuEl6BJtaIQDhDFbpJ8+a5z7Qw==",
+      "node_modules/opencode-ai": "sha512-x0yTvlq3Cyhp3z1IhsNlktLa9M/FSbpMWiDlcGljKMTlBKdHM/um/03JedJa71N2yNlHkOvOPI0H4tbyXuuGwA==",
+      "node_modules/opencode-windows-x64": "sha512-qCh34hNhX4yaNmOfXZXjxbai5Y/HXgTgWKaTk/5TfDEAs+0QWr9OFiebJU/J3tvZnCLktjsEMAXJsoYwKI2mxg==",
+      "node_modules/opencode-windows-x64-baseline": "sha512-oUE9xI2iSucbdg4agPyQZeEpR3Ma06I2cchvWi6tUujSFAiLj4WjkYfMSxNRjIwOkVhDQ3Sh840bweMzRTExNg==",
     },
     native: { path: "node_modules/opencode-windows-x64-baseline/bin/opencode.exe", signer: { cn: "Anomaly Innovations, Inc https://anoma.ly/", o: "Anomaly Innovations, Inc https://anoma.ly/" } },
   },

@@ -394,4 +394,4 @@ The binaries were 2.1.328 (sha256 `a982d38030b97e750848add2cbb2df6d9a70d5544a22c
   - new: `trust-hooks` and `trust-hooks-80`.
   - Paths are normalised to `/tmp/agend-audit/…`.
 - **Mutation check:** a trust accept row that no longer matches turns the trust tests red, including the new hooks one.
-- **Shipped ledger:** the dev branch's `src/cli-audited.ts` (with its Windows Runtime pin) moves in the dev twin; main has no shipped ledger.
+- **Shipped ledger (dev):** `src/cli-audited.ts` adds 2.1.328 (on the maintainer's ledger, not shipped until now) and 2.1.329, so the dashboard's Update for Claude goes to 2.1.329. The Windows Runtime pin (`src/runtime-cli-install.ts`) moves to 2.1.329: the same two packages, no dependencies, `claude.exe` at the same path; each integrity is the registry's and was checked against its downloaded tarball. The same change catches up the other shipped lag: Antigravity 1.5.12 and 1.5.13 (pin 1.5.13 from the windows_amd64 manifest, the 236040344-byte file checked against its sha512) and OpenCode 1.19.6 (its three packages' integrities checked the same way). Main has no shipped ledger.
