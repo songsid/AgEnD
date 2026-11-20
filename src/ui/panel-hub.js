@@ -21,6 +21,7 @@ import { createStore, useStore } from "/assets/app-store.js";
 import { navigate, navStore } from "/assets/app-nav.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { useJumpIdle } from "/assets/jump-idle.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { PairingNotices } from "./hub-quick-pairing.js";
@@ -948,6 +949,8 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
       thread.dispose(true); list.remove(); th.current = null; if (threadRef && threadRef.current === thread) threadRef.current = null;
     };
   }, [store]);
+  // M-3493: the Fleet chat's 最新 (M-3492): it fades out JUMP_IDLE_MS after the last scroll (shared/jump-idle.js).
+  const jumpIdle = useJumpIdle(scroller, jump.show, store);
   return html`<div class="scroller hub-scroller" ref=${scroller}>
     <div class="thread-host" ref=${host}></div>
     ${/* #3145: that every asker shares the agent's one conversation is said before anyone types. */ ""}
@@ -956,7 +959,8 @@ function HubThread({ store, name, panelKey, threadRef, extra = null, emptyView =
       : !loaded && store.error() ? html`<${ErrorState} message=${errText({ code: store.error() })} onRetry=${() => store.refresh()} />` : null}
     ${empty && loaded && !store.closed() && emptyView ? html`<div class="center hub-room-empty">${emptyView}</div>` : null}
     ${empty && loaded && !store.closed() && !emptyView ? html`<div class="center hub-room-empty"><${Empty} icon="chat" title=${hc("emptyRoom", name)} hint=${personalAgentQuestionHint(store.room())??`${hc("emptyRoomHint", store.room().ownerName || name)}${lang() === "zh-TW" ? "" : " "}${hw("roomShared")}`} /></div>` : null}
-    <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" class="jump-latest" onClick=${() => th.current && th.current.jumpLatest()}>
+    <div class="jump-dock">${jump.show ? html`<button data-trust="thread-control" type="button" ref=${jumpIdle.ref} class=${`jump-latest${jumpIdle.idle ? " is-idle" : ""}`}
+      onClick=${() => th.current && th.current.jumpLatest()} onFocus=${jumpIdle.onFocus} onBlur=${jumpIdle.onBlur}>
       <${Icon} name="down" size=${16} />${jump.unseen > 0 ? t("chat.newBelow", jump.unseen) : t("chat.jumpLatest")}</button>` : null}</div>
   </div>`;
 }
