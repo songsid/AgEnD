@@ -12,7 +12,7 @@ Same-OS-user processes can still read the key, call the eventual helper, or insp
 
 ## Host API
 
-`/ui/accounts/claude-code/credential`:
+`/ui/claude-credentials`:
 
 - GET, optional `?profile=<name>`: metadata only (id, profile, revision, kind, state, update time). An omitted profile means the default connection.
 - PUT `{profile, revision, kind, value}`: `api-key` or `setup-token`; strict, bounded single-line input. Save performs no provider/model request and returns `saved-unverified`.
@@ -26,6 +26,6 @@ A named profile must already exist and be owner-controlled. This storage slice r
 
 1. API key through a private `apiKeyHelper` broker; setup-token through a launcher that passes `CLAUDE_CODE_OAUTH_TOKEN` only to the child, clearing competing inherited sources and refusing fallback.
 2. Approved dashboard method/status/replace/remove views and Needs you, with local+verified errors and localized help links. Real-app captures require user review before merge.
-3. English and zh-TW website help at `/docs/claude-credentials/` and `/zh-tw/docs/claude-credentials/`. The website PR must stay on HOLD until user review and a successful local website build because merge deploys it.
+3. English and zh-TW website help at `/docs/claude-credentials/` and `/zh-tw/docs/claude-credentials/`. The website PR targets main (the deploying branch) and stays on HOLD until user review, a successful local website build and M-3419 shipping in a beta.
 
 Existing subscription login remains unchanged by this first slice. No real credential or paid/model request is used in tests. Rollback removes the new API composition while preserving the encrypted files and separate key; do not delete either as a rollback step. Earlier binaries ignore this separate store.

@@ -10,7 +10,7 @@ import { ClaudeCredentialVault } from "../src/claude-credential-vault.js";
 import { FleetManager } from "../src/fleet-manager.js";
 const clean: (()=>Promise<void>|void)[]=[];
 afterEach(async()=>{for(const f of clean.splice(0).reverse())await f();});
-const path="/ui/accounts/claude-code/credential", value="synthetic-"+"x".repeat(48), actor={platform:"host" as const,adapterId:"host",userId:"operator",label:"Operator"};
+const path="/ui/claude-credentials", value="synthetic-"+"x".repeat(48), actor={platform:"host" as const,adapterId:"host",userId:"operator",label:"Operator"};
 async function fixture(){
  const home=mkdtempSync(join(tmpdir(),"web-claude-")),vault=new ClaudeCredentialVault(home);clean.push(()=>rmSync(home,{recursive:true,force:true}),()=>vault.close());
  const token="test-web-"+"a".repeat(32),sessions=new WebSessionStore({});let verified=true,gateway=false;
@@ -26,9 +26,9 @@ async function fixture(){
   const made=sessions.create({tier,surface:gateway?"gateway":"local",...(gateway?{exposureId:"synthetic-link"}:{}),label:"Test browser",tokenEpoch:tokenEpoch(token),...(tier==="guest"?{owner:{adapterId:"test-adapter",userId:"guest"}}:{})});
   return {cookie:`${gateway?"__Host-agend_session":"agend_session"}=${made.sessionId}`,origin,"x-agend-csrf":csrfTokenFor(made.sessionId),"content-type":"application/json"};
  }
- function open(method:string,headers:Record<string,string>,query=""){
+ function open(method:string,headers:Record<string,string>,query="",target=path){
   let req:ReturnType<typeof request>;
-  const done=new Promise<{status:number;body:any}>((resolve,reject)=>{req=request(origin+path+query,{method,headers},res=>{let data="";res.on("data",c=>data+=c);res.on("end",()=>resolve({status:res.statusCode!,body:data?JSON.parse(data):null}));});req.on("error",reject);});
+  const done=new Promise<{status:number;body:any}>((resolve,reject)=>{req=request(origin+target+query,{method,headers},res=>{let data="";res.on("data",c=>data+=c);res.on("end",()=>resolve({status:res.statusCode!,body:data?JSON.parse(data):null}));});req.on("error",reject);});
   return {req:req!,done};
  }
  async function call(method:string,body?:unknown,headers:Record<string,string>=session(),query=""){
@@ -95,4 +95,10 @@ it("rechecks managed-secret ownership after an awaited sign-in cancellation",asy
  const removing=fm.removeAccountProfile("claude-code","spare","spare","test-admin",undefined,{cancelSignIn:true});await began;
  f.vault.write("spare",0,{kind:"api-key",value},actor);finish(true);
  expect(await removing).toEqual({ok:false,error:"credential_connected"});
+});
+
+it("keeps the legacy DELETE route for a profile literally named credential",async()=>{
+ const f=await fixture(),remove=vi.fn(async()=>({ok:true as const}));f.ctx.removeAccountProfile=remove;
+ const data=JSON.stringify({confirm:"credential"}),c=f.open("DELETE",{...f.session(),"content-length":String(Buffer.byteLength(data))},"","/ui/accounts/claude-code/credential");c.req.end(data);
+ expect((await c.done).status).toBe(200);expect(remove).toHaveBeenCalledWith("claude-code","credential","credential",expect.any(String));
 });

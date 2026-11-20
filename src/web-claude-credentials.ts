@@ -19,7 +19,7 @@ const removeSchema = z.strictObject({ ...base, confirm: z.literal(true) });
 const status = { invalid: 400, conflict: 409, unavailable: 503, "in-use": 409, "profile-unknown": 404 };
 const json = (res: ServerResponse, code: number, value: unknown) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
 export function handleClaudeCredentials(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext & ClaudeCredentialApi): boolean {
-  if (url.pathname !== "/ui/accounts/claude-code/credential") return false;
+  if (url.pathname !== "/ui/claude-credentials") return false;
   res.setHeader("Cache-Control", "private, no-store"); res.setHeader("X-Content-Type-Options", "nosniff");
   const method = req.method ?? "GET", action = method === "PUT" ? "set-or-replace" : method === "DELETE" ? "remove" : "read";
   const audit = (actor: CredentialActor | null, outcome: string) => { try { ctx.auditClaudeCredential?.(actor, action, outcome); } catch { /* refusal stays refused even if storage is unavailable */ } };
