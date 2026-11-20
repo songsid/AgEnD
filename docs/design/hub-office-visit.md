@@ -1,0 +1,260 @@
+# Offices on the Hub: visit a colleague's office, and a room's own office (M-3460)
+
+Status: design for the owner's approval. No product code. The captures are a throwaway prototype in the real
+app (see "Prototype captures").
+
+Two things are asked for, and they share one drawing:
+
+- **A person's office.** A colleague opens their Fleet's office to chosen people on the Hub. Visitors see the
+  owner's real office: its layout, its style, every agent in it.
+- **A room's office.** A Hub chat room has an office of its own. The agents in that room sit in it, each looking
+  the way its owner made it look.
+
+## What exists today (facts this builds on)
+
+From `docs/office.md` and `src/office-share.ts` on the development branch (98cfd9b77):
+
+- An office share link shows the live office to people outside the fleet, with no sign-in, for 15 minutes to 24
+  hours. The view is built for the share alone: names, identity colour, state and level. No chat, model, cost,
+  description, last reply or what an agent waits on. An agent with `cross_instance_visibility: hidden` is never
+  in it. An agent's own status line shows only when the sharer ticks it.
+- It updates every 5 seconds. A person's card shows name, title, state, office and level.
+- Pat, Feed and dragging are on the owner's own dashboard only, kept on that device, and are not on a share link.
+- On the Hub: owners share agents and choose who may ask (people, AD groups, teams); they can pause and stop.
+  An agent joins a room only with its owner's consent.
+
+Not checked by me: how much the Fleet-to-Hub connection can carry (skin packs are up to 20 MiB each). The slice
+plan keeps pack pictures out of the first slices for that reason; a builder should confirm before slice 4.
+
+## Part 1. Visiting a person's office
+
+### 1.1 The owner turns it on
+
+- **Where:** Hub → My agents → the Fleet's group → a new row, **Office**. It says "Not shared on this Hub" with
+  **Share office…**, or what is shared and with whom, with **Change…**.
+- **Why there and not in the Fleet's Office bar:** who may visit is chosen from Hub people, groups and teams,
+  which only the Hub knows. It also matches the decision that sharing is done from the Hub page (2101c5b2).
+- **Needs:** the Fleet's existing switch "Let me share agents from the Hub page", and the same permission as
+  sharing an agent. No new permission.
+- **The dialog asks three things:**
+  1. Which office: one stored office, or Whole fleet. One choice per Fleet.
+  2. Who may visit: "Everyone who can use this Hub", or "Only these groups, teams or people" (the picker used
+     for "Who may ask").
+  3. "Also show the status lines agents write themselves" (off unless ticked, as on a share link).
+- **It says plainly what visitors get** (the paragraph in the dialog capture).
+- **The Fleet is told:** a notice in its General with Undo, as for sharing an agent from the Hub.
+
+Off by default. Nothing is visible on the Hub until the owner does this.
+
+### 1.2 What a visitor sees
+
+Exactly what a share link shows, nothing more: the scene, each agent's name, look, state and level, and the
+letters and folders that fly between them. No words: the dialogue box says "Someone sent Atlas a message", never
+what or who. Hidden agents are absent. The owner's ticked status lines, if any.
+
+One addition, because the visitor is a known Hub member: on the card of an agent **this visitor may already
+ask**, an **Ask** button opens the Hub chat with it. For other agents the card has no button.
+
+Visitors see agents the owner has not shared on the Hub (their names and states). That is the same as a share
+link and the dialog says so. See question Q2.
+
+### 1.3 Live or a snapshot
+
+Live, every 5 seconds, **only while someone is looking**. The Hub tells the Fleet when the first visitor opens
+the office and when the last one leaves; in between the Fleet sends nothing. When the Fleet is offline the
+office is "Closed · last open 2 hours ago" and cannot be entered. No stale picture is kept: an old picture of
+who is working would be wrong and would look current.
+
+### 1.4 Stopping, and no expiry
+
+- **Stop sharing** in the same dialog: visitors' pages show "This office is closed" within 5 seconds.
+- Removing a person, group or team from the list takes effect on that person's next 5-second read.
+- It also ends when the Fleet leaves the Hub, the owner loses the right to share, or the chosen office is
+  deleted (it closes; it does not fall back to Whole fleet).
+- **No expiry.** A share link expires because the link itself is the key and can leak. Here every visitor is
+  signed in and named by the owner, so a time limit protects against nothing and would only make owners re-share.
+
+### 1.5 What visitors can do
+
+| | First build | Later, if wanted |
+|---|---|---|
+| Look, zoom, fit, full screen, open a card | Yes | |
+| Ask an agent they may already ask | Yes | |
+| Pat and Feed | No | Local only: hearts on the visitor's own screen, nothing sent to the owner or the agent |
+| Drag people around | No | No: it is the owner's room |
+| "Tell the agent" about a pat | No | No. It would put a stranger's action into an agent's next message, which costs the owner tokens and is a way to write into someone else's agent |
+
+The owner seeing who is visiting ("2 visiting: Alex, Casey" in their Office bar) is a later option; see Q4.
+
+### 1.6 Where it is on the Hub
+
+A side-bar item **Offices**, shown to a person who can visit at least one office or who has a Fleet. The page
+lists the offices open to you (owner, office name, how many agents and how many working, Open now or Closed) and
+your own office's state with a link to My agents. Opening one shows the office with a back button.
+
+### 1.7 Limits
+
+| Limit | Value | What it protects |
+|---|---|---|
+| Shared offices per Fleet | 1 | Keeps the owner's choice and the Fleet's work simple |
+| Updates | Every 5 seconds, only while watched | The Fleet's link and CPU |
+| One update's size | 256 KB | The Hub and the link |
+| Visitors at once | No limit | One stream from the Fleet serves every visitor, so a cap protects nothing |
+| Pack pictures kept by the Hub | Each picture once, by its content; a total cap set by the Hub administrator | Hub disk |
+
+A Hub administrator can turn the feature off for the Hub. An administrator cannot enter an office that was not
+opened to them.
+
+## Part 2. A room's office
+
+### 2.1 A room setting
+
+Room settings → **Room office** (on or off) and its **style** (the built-in styles). Room managers change it.
+A line in the room says when it was turned on or off. See Q5 for the default.
+
+### 2.2 Who appears
+
+Exactly the agents that are members of the room, plus the room assistant. An agent that joins or leaves the room
+appears or disappears at once. People are not drawn in the first build.
+
+No new consent is needed for an agent to appear: its owner already agreed to put it in this room, and members
+already see its name, owner and introduction. Two things are new, so each owner gets one switch per agent, on
+the agent's page: **"Show its look and whether it is working in room offices"**, on by default. Off: the agent
+sits in the room office as its initial, with no state. The threat named: "working" tells room members the agent
+is busy with something outside this room.
+
+### 2.3 How an agent's look travels
+
+When an agent is shared on the Hub, its Fleet sends a small **look card** with it, and again when the look
+changes:
+
+- its identity colour;
+- its portrait, or else its avatar (identity-card picture, bot avatar or persona emoji), or else its initial;
+- its own character pictures from the owner's skin pack, when the pack gives it some.
+
+Never sent: the pack as a whole, the owner's office layout, other agents, file names or paths, models, anything
+from the Fleet's settings. Pictures are named by their content and capped (512 KB an agent in total). The room
+itself is drawn by the Hub in a built-in style; nothing of any owner's office is in it.
+
+So Atlas looks the same in its owner's office, in every room office, and in the room's member list.
+
+### 2.4 Live state
+
+| Shown | Where it comes from |
+|---|---|
+| Answering in this room | The Hub knows: it sent the question |
+| Working (elsewhere) | The Fleet's existing presence report, one word, no detail |
+| Idle | The same |
+| Away (asleep) | The Fleet is offline, or sharing is paused |
+
+"Answering in this room" is the useful one and needs nothing new from the Fleet.
+
+### 2.5 What members can do there
+
+- Look, zoom, open an agent's card: name, owner, introduction, state.
+- **@ it** from the card: puts the mention in the room's message box.
+- The dialogue box may show words here, unlike a visit: the first ~120 characters of a question and its answer
+  **from this room**, which every member can already read in the chat.
+- The message box stays under the office, so a member can ask without leaving it.
+- Pat and Feed: later, local only, as for a visit.
+
+### 2.6 How the two relate
+
+| | A person's office | A room's office |
+|---|---|---|
+| Whose place | The owner's real office: their layout and style | The Hub's: a built-in style chosen by the room |
+| Who is in it | Every agent in that office of that Fleet | The room's agents, from any number of owners |
+| Who decides who sees it | The owner | Room membership |
+| Words | Never | Only this room's own messages |
+| What leaves the Fleet | The pruned office view, while watched | A look card per shared agent, and its one-word state |
+
+From an agent's card in a room office: "Visit {owner}'s office", shown only when that owner has opened their
+office to you. Sharing an office puts no agent in any room, and joining a room opens no office.
+
+## Fit with the Hub's decisions
+
+- **Internal Hub, company sign-in only:** every visitor is a signed-in colleague; there is no link to pass on.
+- **The owner's agents speak:** nothing here answers for an agent or acts on it. The only action is "Ask", which
+  is today's question to an agent the person may already ask.
+- **Roles:** sharing an office uses the permission for sharing agents; visiting needs none. No new role.
+- **Every gate names a threat:** opt-in (work patterns are the owner's to show), the audience list (the same),
+  no words (messages are private), the per-agent switch in rooms (activity outside the room). Left out because
+  they name none: expiry, a visitor cap, an approval step, a visit log.
+
+## Prototype captures
+
+In `docs/evidence/hub-office-visit-m3460/`: desktop (light) and phone (dark) in zh-TW, and the same in English.
+
+| File | What it shows |
+|---|---|
+| `*-1-offices.png` | The Hub's Offices page |
+| `*-2-visit.png` | Visiting a person's office |
+| `*-3-room-office.png` | A room's office, with three agents of two owners |
+| `*-4-owner-row.png` | The owner's Office row on My agents |
+| `*-5-owner-dialog.png` | The owner's share dialog |
+
+What is real and what is not:
+
+- The Hub is the real one (real server, database and pages) at 98cfd9b77. The office is the real office share
+  page, fed by a made-up fleet. Names are made up.
+- The Offices page, the Office row and the dialog are prototype code served to the browser for the capture only.
+  The office is shown by framing the share page inside the Hub page, so **its own bar is visible** ("Read-only:
+  names and states only", the office picker, the tick boxes). A real build draws the office directly: one bar,
+  and the office fits the width on a phone.
+- In the room capture the "Chat / Office" switch is drawn into the page for the picture. Everyone has the
+  default look, because the made-up fleet has no skins; carried looks are not shown.
+- Not captured: the Room office setting, the per-agent switch, a closed office's page, an agent's card.
+
+## Slice plan (after approval)
+
+| Slice | What | Size |
+|---|---|---|
+| R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, "answering in this room" | M |
+| R2 | Look cards from the Fleet (colour, portrait, character pictures), the per-agent switch, working and idle | M |
+| V1 | Visit a person's office: the owner's row and dialog, the Offices page, the live view in built-in styles, stop | L (split: Fleet side, Hub side, page) |
+| V2 | Custom skin packs in a visited office (pictures carried once, kept by the Hub) | M, after a builder confirms what the link can carry |
+| V3 | "Ask" on a card; "Visit {owner}'s office" from a room office | S |
+| Later | Pat and Feed (local), the owner seeing who is visiting, people drawn in a room office | |
+
+R1 comes first: it needs nothing new from any Fleet, and it shows the idea to everyone in a room at once.
+
+## Questions for the owner
+
+| # | Question | Recommendation |
+|---|---|---|
+| Q1 | Who may visit by default? | **Nobody until the owner chooses**, with "Everyone who can use this Hub" one click away |
+| Q2 | Should visitors see agents the owner has not shared on the Hub? | **Yes**, as on a share link, and say so in the dialog. The other choice (only shared agents) leaves most offices half empty |
+| Q3 | Pat and Feed for visitors and room members | **Not in the first build**; later, on the visitor's own screen only |
+| Q4 | Should the owner see who is visiting? | **Later, yes**: a count and names in their Office bar. Being watched without knowing is the one uncomfortable part of this feature |
+| Q5 | Is a room's office on when a room is made? | **On**, with the setting to turn it off. It shows nothing members cannot already see except the look and state, which owners control |
+| Q6 | Build order | **Room office first (R1, R2), then visiting (V1)** |
+
+## 給擁有者的摘要（zh-TW）
+
+**兩件事，同一種畫面：**
+
+1. **參觀同仁的辦公室。** 擁有者在 Hub 的「我的 Agent」→ 自己的 Fleet → 新的「辦公室」列，按「分享辦公室…」，
+   選哪一間、誰可以參觀（所有人，或指定的群組、團隊、人員）。預設不分享。參觀的人看到的和現在的辦公室分享連結
+   一樣：場景、每個 Agent 的名稱、外觀、狀態、等級；看不到任何訊息內容、模型、費用。設為隱藏的 Agent 不會出現。
+2. **房間自己的辦公室。** 每個 Hub 房間可以有一間辦公室（房間設定裡開關、選風格）。裡面坐的就是這個房間的
+   Agent，各自帶著擁有者替它設定的外觀。會顯示「正在這個房間回答」、工作中、閒置、休息。成員可以點 Agent 看
+   名片、直接 @ 它；對話框只會顯示這個房間自己的訊息。
+
+**即時還是快照：** 即時，每 5 秒更新，而且只有有人在看的時候 Fleet 才送資料。Fleet 離線時顯示「休息中」，
+不留舊畫面。
+
+**停止與期限：** 擁有者隨時可以停止，5 秒內生效。不設期限：分享連結要期限是因為連結會外流，這裡每個參觀的人
+都是登入的同仁、由擁有者指定，期限擋不到任何風險。
+
+**參觀的人能做什麼：** 第一版只能看、縮放、開名片，以及對「本來就能問」的 Agent 按「提問」。摸頭、餵食之後
+再做，而且只顯示在自己的畫面上，不會通知擁有者或 Agent。
+
+**外觀怎麼帶過來：** Agent 分享到 Hub 時，Fleet 一併送出一張小小的「外觀卡」：識別色、頭像、它自己的角色
+圖。不會送出整個外觀包、辦公室配置、其他 Agent 或任何 Fleet 設定。
+
+**要請你決定：** Q1 預設誰可以參觀（建議：擁有者選了才有）；Q2 參觀時是否看得到沒有分享到 Hub 的 Agent
+（建議：看得到，和分享連結一樣，並在對話框說明）；Q3 摸頭／餵食（建議：之後再做）；Q4 擁有者是否看得到誰在
+參觀（建議：之後做）；Q5 新房間的辦公室預設開或關（建議：開）；Q6 先做哪個（建議：先做房間辦公室）。
+
+**截圖說明：** Hub 和辦公室畫面都是真的程式跑出來的；「辦公室」頁、分享列和對話框是只為截圖寫的原型。
+辦公室是把分享頁嵌進 Hub 頁面，所以多了一排分享頁自己的工具列，正式版不會有，手機上辦公室也會放大到滿版。
