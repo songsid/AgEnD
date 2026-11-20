@@ -76,6 +76,7 @@ export interface ClassicChannel {
   instanceName: string;
   backend?: string;
   model?: string;
+  effort?: string;
   displayName?: string;
   description?: string;
   autoPauseAfter?: number;
@@ -129,6 +130,7 @@ interface ClassicBotYaml {
     name?: string;
     backend?: string;
     model?: string;
+    effort?: string;
     display_name?: string;
     description?: string;
     auto_pause_after?: number;
@@ -355,6 +357,7 @@ export class ClassicChannelManager {
               instanceName,
               backend: val.backend,
               model: val.model,
+              effort: val.effort,
               displayName: val.display_name,
               description: val.description,
               autoPauseAfter: val.auto_pause_after,
@@ -475,10 +478,11 @@ export class ClassicChannelManager {
         createdBy: ch.createdBy,
         createdAt: ch.createdAt,
       };
-      for (const key of ["adapterId", "backend", "model", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "quota_notice", "reply_triggers", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
+      for (const key of ["adapterId", "backend", "model", "effort", "display_name", "description", "auto_pause_after", "context_lines", "tool_progress", "reply_completion_guard", "quota_notice", "reply_triggers", "web_echo", "backend_options", "collab", "pre_task_command"]) delete entry[key];
       if (ch.adapterId) entry.adapterId = ch.adapterId;
       if (ch.backend) entry.backend = ch.backend;
       if (ch.model) entry.model = ch.model;
+      if (ch.effort) entry.effort = ch.effort;
       if (ch.displayName) entry.display_name = ch.displayName;
       if (ch.description) entry.description = ch.description;
       if (ch.autoPauseAfter !== undefined) entry.auto_pause_after = ch.autoPauseAfter;

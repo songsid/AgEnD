@@ -1,0 +1,48 @@
+{
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "ac750c84ad5509dfa35b19687b719e985a5e71b84a8eaccb2207184f9fd408ae"
+    },
+    {
+      "path": "capture-results.json",
+      "sha256": "516205a1272d9b96e4d6131221d6d65a20c209a15de35923fcc8229e53bfc4f9"
+    },
+    {
+      "path": "screens/en-desk-backend.png",
+      "sha256": "8de60e08db87385b9e4977a585b173e7ec5a93d5f98a73d2f3ebb5b32c32a2d7"
+    },
+    {
+      "path": "screens/en-desk-confirm.png",
+      "sha256": "828638cf7fa931cae281c2cf3db2b3f404ffc4e45f8fe5cf33926c0cd1bc010f"
+    },
+    {
+      "path": "screens/en-phone-backend.png",
+      "sha256": "8a2dd7608ff8fc25bb6c5da9a90fa7dcc1d227eb971323a91047922f267f8181"
+    },
+    {
+      "path": "screens/en-phone-confirm.png",
+      "sha256": "6dfdc0bf0f0cdee61d0c83e160c783c220ab229d54404a7646640ede44e44e36"
+    },
+    {
+      "path": "screens/zh-TW-desk-backend.png",
+      "sha256": "c886d53cd93409555ded5da2fe310ea0a6ab4430bcc3c395020a7f1ed5db4cb8"
+    },
+    {
+      "path": "screens/zh-TW-desk-confirm.png",
+      "sha256": "ecd83953775af95c109006fc0a51d498b0f411e333b8192016ec79a8afb04f01"
+    },
+    {
+      "path": "screens/zh-TW-phone-backend.png",
+      "sha256": "9838584da5216aed040a7c83398c8f4062008bb1fbc87e297221a3113ce4072c"
+    },
+    {
+      "path": "screens/zh-TW-phone-confirm.png",
+      "sha256": "310f7af11b2962a52d24833c49bdd3bab9ec7d83b8a8c490fc7ba90b49dee6e1"
+    },
+    {
+      "path": "validation.json",
+      "sha256": "2c832a87f5d341939ba9e419beb0de4b3e4ad4e79aa55acf430c07450f89a7fa"
+    }
+  ]
+}
