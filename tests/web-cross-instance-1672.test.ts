@@ -304,30 +304,43 @@ describe("#1672: the thread draws a status line muted, as plain text", () => {
     } finally { dom.restore(); }
   });
   // M-3486: during a split-view divider drag, rows off screen are skipped (content-visibility, #4277); reading a size inside
-  // one lays it out on its own. A skipped line is not read at all and keeps its answer until it is measured again.
-  it("a line whose contents the browser is skipping is not measured; it keeps its answer until it is visible again", () => {
+  // one lays it out on its own. A skipped line is not read at all; #4295 review (Prism): it is measured again as soon as it
+  // is shown — with no new message, draw or resize to prompt it — and its watch ends with the thread.
+  it("a line whose contents are skipped is not measured, and is measured once shown again without any draw or resize", () => {
     const { dom, list, th } = thread();
+    const frames: Array<() => void> = [];
+    const raf = globalThis.requestAnimationFrame, caf = globalThis.cancelAnimationFrame;
+    (globalThis as any).requestAnimationFrame = (cb: () => void) => frames.push(cb);
+    (globalThis as any).cancelAnimationFrame = (id: number) => { if (id >= 1 && frames[id - 1]) frames[id - 1] = () => {}; };
+    const flush = () => { for (let i = 0; i < 5 && frames.length; i++) frames.splice(0).forEach(f => f()); };
     try {
       const msgs = [status(1, "Weaver → worker:\n" + "測".repeat(80))];
       th.render(msgs);
       const line = list.querySelector(".msg.status-line") as any;
-      let reads = 0, skipped = false, scroll = 1200, client = 300;
+      let reads = 0, skipped = false, scroll = 300, client = 300;
       for (const r of line.querySelectorAll(".st-ln")) {
         Object.defineProperty(r, "clientWidth", { configurable: true, get: () => { reads++; return client; } });
         Object.defineProperty(r, "scrollWidth", { configurable: true, get: () => { reads++; return scroll; } });
         r.checkVisibility = (o?: { contentVisibilityAuto?: boolean }) => !(skipped && o?.contentVisibilityAuto);
       }
-      th.render(msgs);
-      expect(line.classList.contains("overflows")).toBe(true);           // clipped at its drawn width
-      skipped = true; scroll = 300; reads = 0;                            // dragged wider while off screen: it would fit now
-      th.render(msgs);
+      th.render(msgs); flush();
+      expect(line.classList.contains("overflows")).toBe(false);          // it fits at 400 px
+      skipped = true; scroll = 400; reads = 0;                             // dragged narrower while off screen: now clipped
+      th.render(msgs); flush(); flush();                                   // the drag's resizes (and frames) while it is skipped
       expect(reads, "no size read inside a skipped row").toBe(0);
-      expect(line.classList.contains("overflows")).toBe(true);           // its last answer, unchanged
-      skipped = false;                                                    // on screen again (after the drag every row is laid out)
-      th.render(msgs);
+      expect(line.classList.contains("overflows")).toBe(false);           // its last answer, for now
+      expect(frames.length, "one frame check waits for it").toBe(1);
+      skipped = false;                                                     // the release: shown again — no draw, no resize
+      flush();
       expect(reads).toBeGreaterThan(0);
-      expect(line.classList.contains("overflows")).toBe(false);
-    } finally { dom.restore(); }
+      expect(line.classList.contains("overflows")).toBe(true);            // the Open control is back
+      expect(frames.length, "nothing waits any more").toBe(0);
+      skipped = true; th.render(msgs); expect(frames.length).toBe(1);      // skipped again, then the chat is left (kept)
+      th.park(); reads = 0; skipped = false; flush();
+      expect(reads, "no check while the thread is parked").toBe(0);
+      th.dispose(); flush();
+      expect(reads, "nor after it is gone").toBe(0);
+    } finally { (globalThis as any).requestAnimationFrame = raf; (globalThis as any).cancelAnimationFrame = caf; dom.restore(); }
   });
   it("a CRLF is one line break: no stray CR in a row, the rows' text as the message's lines (Copy keeps the message as sent)", () => {
     const { dom, list, th } = thread();
