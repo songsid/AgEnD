@@ -9,6 +9,7 @@
 // layout is open), with the viewer's "Drag and pat" on (per device, on by default) — and never with reduced motion.
 import { LOGICAL, SNACK_LIMITS, stripDurationMs } from "./fleet-office-pack.js";
 import { nameHash } from "./fleet-office-model.js";
+import { routeStaysInArea } from "./fleet-office-zones.js";
 import { WALK } from "./fleet-office-zones.js";
 
 /**
@@ -145,7 +146,7 @@ export function createSnacks() {
     return busy;
   };
 
-  const pickRacers = (item, t, { desks = [], walkers = null, hidden = null, ownArea = false } = {}, cap = SNACK.MAX_RACERS) => {
+  const pickRacers = (item, t, { desks = [], walkers = null, hidden = null, ownArea = false, graph = null } = {}, cap = SNACK.MAX_RACERS) => {
     if (cap <= 0) return [];
     const busy = busySet();
     const candidates = [];
@@ -156,6 +157,7 @@ export function createSnacks() {
       if (ownArea && (item.area === null || d.area !== item.area)) continue;
       const pos = (walkers && walkers.at(name, t)) || d.seat;
       if (!pos) continue;
+      if (ownArea && graph && !routeStaysInArea(pos, { x: item.x, y: item.y }, graph, d.area, d.seat)) continue;
       const dist = Math.hypot(pos.x - item.x, pos.y - item.y);
       if (dist > item.radius) continue;
       candidates.push({ name, dist, eta: dist / racerSpeedMult(name, item.id) });
@@ -194,7 +196,7 @@ export function createSnacks() {
       return item;
     },
     step(t, ctx = {}) {
-      const { desks = [], walkers = null, hidden = null, ownArea = false, snacksById = null, charEatOf = null, onClaim = null } = ctx;
+      const { desks = [], walkers = null, hidden = null, ownArea = false, graph = null, snacksById = null, charEatOf = null, onClaim = null } = ctx;
       let changed = false;
       for (const [n, e] of [...eating]) if (t >= e.until || t < e.t0) { eating.delete(n); changed = true; }
       for (const [n, s] of [...scatter]) if (t >= s.until || t < s.t0) scatter.delete(n);
@@ -205,7 +207,13 @@ export function createSnacks() {
         const beforeLen = p.racers.length;
         p.racers = p.racers.filter((n) => {
           const d = deskByName.get(n);
-          return !!d && d.node.state === "idle" && !d.night && !eating.has(n) && !(hidden && hidden.has(n)) && (!ownArea || (p.area !== null && d.area === p.area));
+          if (!d || d.node.state !== "idle" || d.night || eating.has(n) || (hidden && hidden.has(n))) return false;
+          if (ownArea) {
+            if (p.area === null || d.area !== p.area) return false;
+            const pos = (walkers && walkers.at(n, t)) || d.seat;
+            if (graph && pos && !routeStaysInArea(pos, { x: p.x, y: p.y }, graph, d.area, d.seat)) return false;
+          }
+          return true;
         });
         if (p.racers.length !== beforeLen) changed = true;
         // Check if any racer reached CLAIM_DIST.
@@ -266,5 +274,70 @@ export function createSnacks() {
       return false;
     },
     clear() { placed = []; eating.clear(); scatter.clear(); },
+  };
+}
+
+/**
+ * M-3432 (#4255): owned snack-drag lifecycle controller.
+ * Manages the four global pointer/key listeners with a single cancellation handle and generation fence so
+ * drag replacement, play loss, Office/skin changes, and unmount immediately detach all listeners and block stale commits.
+ */
+export function createSnackDrag(win = globalThis) {
+  let gen = 0;
+  let cancelActive = null;
+  return {
+    active() { return cancelActive !== null; },
+    start({ pid, sx, sy, slop = PLAY.SLOP, onMove, onCommit, onCancel }) {
+      if (cancelActive) cancelActive();
+      const myGen = ++gen;
+      let dragging = false, lastDrop = null, live = true;
+      const detach = () => {
+        if (!live) return;
+        live = false;
+        win.removeEventListener?.("pointermove", onMoveEv, true);
+        win.removeEventListener?.("pointerup", onUpEv, true);
+        win.removeEventListener?.("pointercancel", onCancelEv, true);
+        win.removeEventListener?.("keydown", onKeyEv, true);
+        if (cancelActive === cancel) cancelActive = null;
+      };
+      const cancel = () => {
+        if (!live) return;
+        const wasDragging = dragging;
+        detach();
+        lastDrop = null;
+        if (typeof onCancel === "function") onCancel({ dragging: wasDragging });
+      };
+      const finish = (commit) => {
+        if (!live || myGen !== gen) return;
+        const drop = lastDrop, wasDragging = dragging;
+        detach();
+        lastDrop = null;
+        if (commit && wasDragging && drop) {
+          if (typeof onCommit === "function") onCommit(drop);
+        } else if (typeof onCancel === "function") {
+          onCancel({ dragging: wasDragging });
+        }
+      };
+      const onMoveEv = (ev) => {
+        if (!live || myGen !== gen || ev.pointerId !== pid) return;
+        const starting = !dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) > slop;
+        if (starting) dragging = true;
+        if (!dragging) return;
+        lastDrop = typeof onMove === "function" ? onMove(ev, { starting }) : null;
+      };
+      const onUpEv = (ev) => { if (ev.pointerId === pid) finish(true); };
+      const onCancelEv = (ev) => { if (ev.pointerId === pid) finish(false); };
+      const onKeyEv = (ev) => { if (ev.key === "Escape") { ev.preventDefault?.(); finish(false); } };
+      cancelActive = cancel;
+      win.addEventListener?.("pointermove", onMoveEv, true);
+      win.addEventListener?.("pointerup", onUpEv, true);
+      win.addEventListener?.("pointercancel", onCancelEv, true);
+      win.addEventListener?.("keydown", onKeyEv, true);
+      return cancel;
+    },
+    retire() {
+      gen++;
+      if (cancelActive) cancelActive();
+    },
   };
 }

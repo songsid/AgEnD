@@ -27,6 +27,7 @@ const ROSTER = [
 
 const fx = await bootFixture({ port: Number(process.env.HP ?? 49041), roster: ROSTER, classic: false });
 const fm = fx.fm;
+fm.lifecycle = { ...fm.lifecycle, isPaused: (n: string) => n === "bot-delta" };
 
 const origUiStatus = fm.getUiStatus.bind(fm);
 fm.getUiStatus = (...a: unknown[]) => {
@@ -74,15 +75,19 @@ async function buildSyntheticSnackPack(browser: any) {
       zone(640, 90, 590, 350, "#23302b", "#1f2b26", "#375447", "Lounge");
       zone(640, 470, 280, 200, "#35262a", "#302125", "#5c3b44", "Help");
       zone(950, 470, 280, 200, "#2b2638", "#262133", "#493e63", "Nap");
-      // Desk table in Work
-      b.fillStyle = "#8a5a30"; b.fillRect(220, 340, 160, 22);
-      b.fillStyle = "#5c3b1f"; b.fillRect(230, 362, 12, 24); b.fillRect(358, 362, 12, 24);
       // Coffee table in Lounge (below walking lane y=340)
       b.fillStyle = "#7c5534"; b.fillRect(880, 395, 80, 22);
       // Beanbag in Nap
       b.fillStyle = "#6d4c82"; b.fillRect(1055, 580, 72, 26);
 
-      const files = { "bg.png": toB64(bg.cv) };
+      // Work desk as a real depth-"y" furniture sprite so floor rings sit under it (never overlapping furniture).
+      const deskCv = mk(160, 46);
+      const dc = deskCv.ctx;
+      dc.fillStyle = "#9c6838"; dc.fillRect(0, 0, 160, 5);
+      dc.fillStyle = "#8a5a30"; dc.fillRect(0, 5, 160, 17);
+      dc.fillStyle = "#5c3b1f"; dc.fillRect(10, 22, 12, 24); dc.fillRect(138, 22, 12, 24);
+
+      const files = { "bg.png": toB64(bg.cv), "furniture/desk.png": toB64(deskCv.cv) };
 
       const drawChibi = (ctx, ox, opts) => {
         const { coat, hair, accent, bob = 0, step = 0, eat = false, sleep = false, work = false, frame = 0 } = opts;
@@ -220,20 +225,14 @@ async function buildSyntheticSnackPack(browser: any) {
         background: "bg.png",
         areas: {
           desks: { rect: [50, 90, 550, 440], seats: [[300, 340], [180, 340], [440, 340]] },
-          lounge: { rect: [640, 90, 590, 350], seats: [[740, 340], [1100, 340], [920, 405]] },
+          lounge: { rect: [640, 90, 590, 350], seats: [[740, 330], [1100, 330], [920, 405]] },
           alert: { rect: [640, 470, 280, 200], seats: [[780, 590]] },
           nap: { rect: [950, 470, 280, 200], seats: [[1090, 590]] },
         },
-        waypoints: [
-          { id: "l-left", x: 740, y: 340 },
-          { id: "l-right", x: 1100, y: 340 },
-          { id: "hall", x: 620, y: 340 },
-          { id: "w-mid", x: 300, y: 340 },
-        ],
-        edges: [
-          ["l-left", "l-right"], ["l-left", "hall"], ["hall", "w-mid"],
-        ],
         stateZones: { working: "desks", idle: "lounge", needs: "alert", crashed: "alert", stuck: "alert", paused: "nap", stopped: "nap", default: "lounge" },
+        furniture: [
+          { id: "work-desk", sprite: { src: "furniture/desk.png", frames: 1, w: 160, h: 46, fps: 0, ax: 80, ay: 6, dw: 160, dh: 46 }, x: 300, y: 344, depth: "y" },
+        ],
         characters: { default: defSet, betaSet, gammaSet },
         byInstance: { "bot-beta": "betaSet", "bot-gamma": "gammaSet" },
         snacks: [
@@ -280,7 +279,8 @@ async function openOffice(page: any, base: string, lang: string) {
   await page.goto(`${base}/ui/fleet/org`);
   await page.locator(".oc-tools .seg-inline button", { hasText: lang === "en" ? "Office" : "辦公室" }).click();
   await page.waitForSelector(".oo-canvas", { timeout: 15000 });
-  await page.waitForTimeout(2000);
+  // Wait for skin pack load and initial walkers to settle cleanly on their seats (including Delta in Nap).
+  await page.waitForTimeout(5400);
 }
 
 /** Convert logical 1280×720 coordinates into page CSS client coordinates using the office's live view transform. */
@@ -372,10 +372,10 @@ try {
     await page.mouse.up();
     await page.mouse.move(awayPt.x, awayPt.y);
     // Capture mid-race (Beta & Gamma walking toward Pudding on floor)
-    await page.waitForTimeout(380);
+    await page.waitForTimeout(340);
     const raceShot = await page.screenshot({ path: shotPath(SMOKE, "desk-dark-zh-TW", "4-placed-race") });
     // Wait for winner to claim & eat while loser scatters with "被搶先了！"
-    await page.waitForTimeout(780);
+    await page.waitForTimeout(600);
     const claimShot = await page.screenshot({ path: shotPath(SMOKE, "desk-dark-zh-TW", "5-claimed-scatter") });
     const raceChanged = !raceShot.equals(claimShot);
 

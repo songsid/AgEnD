@@ -75,7 +75,7 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, createHold, createSnacks, playAllowed, pruneReactions, reactionAt, scatterWords } from "./fleet-office-play.js";
+import { PLAY, createHold, createSnackDrag, createSnacks, playAllowed, pruneReactions, reactionAt, scatterWords } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -483,7 +483,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (!still && ms > 0 && p.snacks) {
       const changed = p.snacks.step(t, {
         desks: p.desks, walkers: p.walkers, hidden: live.hidden, ownArea: !!p.ownArea,
-        areas: p.L.areas, snacksById: p.snacksById,
+        areas: p.L.areas, graph: p.L, snacksById: p.snacksById,
         charEatOf: (n) => (sk.eatStrip ? sk.eatStrip(n) : null),
         onClaim: p.onSnackClaim,
       });
@@ -504,8 +504,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       // #2665: by day, each item's night place too (at night the items are there already).
       ...(p.ghosts && !p.night ? nightGhostsOf(sk.pack).map((n) => ({ y: n.y, k: 1, n })) : [])]
       .sort((x, y) => x.y - y.y || x.k - y.k);
-    for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
-    for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
+    // M-3432 (#4255): draw drop-target rings above the floor layer only, never over furniture or characters.
     const drop = p.snackDrop && p.snackDrop.current;
     if (drop && drop.kind === "place") {
       ctx.save();
@@ -514,7 +513,19 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
       ctx.beginPath(); ctx.ellipse(drop.x, drop.y, 16, 7, 0, 0, Math.PI * 2); ctx.stroke();
       ctx.restore();
+    } else if (drop && drop.kind === "feed") {
+      const target = people.find((q) => q.look.name === drop.name && !live.hidden.has(q.look.name));
+      if (target) {
+        ctx.save();
+        ctx.fillStyle = env.pal.accentDim;
+        ctx.beginPath(); ctx.ellipse(target.at.x, target.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(target.at.x, target.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
     }
+    for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
+    for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
     for (const { f, p: q, g, n, sn } of band) {
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
       if (sn) {
@@ -532,14 +543,6 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       if (g) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawCharacter(ctx, { x: g.x - 44, y: g.y - 53, w: 88, h: 53, seat: g }, g.look, 0, env); ctx.restore(); continue; }
       if (live.hidden.has(q.look.name)) continue;                          // #2698: drawn as the item (never while walking)
       const box = { ...q.d, x: q.at.x - 44, y: q.at.y - 53, w: 88, h: 53, seat: { x: q.at.x, y: q.at.y } };
-      if (drop && drop.kind === "feed" && drop.name === q.look.name) {
-        ctx.save();
-        ctx.fillStyle = env.pal.accentDim;
-        ctx.beginPath(); ctx.ellipse(q.at.x, q.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.fill();
-        ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.ellipse(q.at.x, q.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.stroke();
-        ctx.restore();
-      }
       // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking; M-3432: eating when fed.
       const posed = actPosed(p, q.look);
       const eating = !q.at.walking && p.snacks && ms > 0 ? p.snacks.eatingOf(q.look.name, t) : null;
@@ -1187,18 +1190,22 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
   // M-3432 (#4255): custom snacks from the active skin pack (client-local, only when play is enabled).
   const snacks = useMemo(() => createSnacks(), []);
+  const snackDragCtrl = useMemo(() => createSnackDrag(), []);
   const packSnacks = useMemo(() => (skin && skin.pack && Array.isArray(skin.pack.snacks) ? skin.pack.snacks : []), [skin]);
   const snacksById = useMemo(() => new Map(packSnacks.map((s) => [s.id, s])), [packSnacks]);
   const showSnacks = play && packSnacks.length > 0;
   const [armedSnack, setArmedSnack] = useState(null);
   const [snackDrag, setSnackDrag] = useState(null);
   const snackDropRef = useRef(null), snackGhostRef = useRef(null), snackGhostPosRef = useRef(null), snackTrayRef = useRef(null), snackSwallowRef = useRef(false);
+  const snackCtxRef = useRef({ showSnacks: false, officeKey: "", styleKey: "" });
   const onSnackClaim = (winner) => {
     reacts.current.set(winner, { kind: "feed", t0: now() });
     if (store.tellOn(winner)) void store.tell(winner, "feed");
     loop.current?.wake();
   };
-  useEffect(() => { if (!play) { hold.cancel(); reacts.current.clear(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [play]);
+  useEffect(() => { if (!play) { snackDragCtrl.retire(); hold.cancel(); reacts.current.clear(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [play]);
+  useEffect(() => { if (!showSnacks) { snackDragCtrl.retire(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [showSnacks]);
+  useEffect(() => () => { snackDragCtrl.retire(); }, []);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
@@ -1240,7 +1247,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const labelEls = useRef(new Map());                                 // #2554: the tiles' labels (tile key → element)
   // What a view is kept for: the office and its style (All offices: its own key).
   const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
-  useEffect(() => { snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); }, [officeKey, styleKey]);
+  snackCtxRef.current = { showSnacks, officeKey, styleKey };
+  useEffect(() => { snackDragCtrl.retire(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); }, [officeKey, styleKey]);
   const keyRef = useRef(officeKey), saveTimer = useRef(0);
   // The fit mode (Fit: contain; Fill: cover), kept per office and style like the view.
   const [fitRev, setFitRev] = useState(0);
@@ -1815,7 +1823,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const placeSnackAt = (snack, at) => {
     const t = now();
     const hidden = scene.current && scene.current.part ? furnitureAt(scene.current.part, t).hidden : null;
-    snacks.place(snack, at, t, { desks: desksOf(L), walkers, hidden, ownArea, areas: L.areas });
+    snacks.place(snack, at, t, { desks: desksOf(L), walkers, hidden, ownArea, areas: L.areas, graph: L });
     walkNow.current?.();
     loop.current?.wake();
   };
@@ -1845,8 +1853,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const onSnackDown = (snack, e) => {
     if (!showSnacks || e.isPrimary === false || (e.pointerType === "mouse" && e.button !== 0)) return;
     e.stopPropagation();
-    const pid = e.pointerId, sx = e.clientX, sy = e.clientY;
-    let dragging = false, lastDrop = null, lastKey = "";
+    const startOffice = officeKey, startStyle = styleKey;
+    let lastKey = "";
     const moveGhost = (cx, cy) => {
       const sr = stageRef.current ? stageRef.current.getBoundingClientRect() : null;
       if (!sr) return;
@@ -1855,55 +1863,49 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const gh = snackGhostRef.current;
       if (gh && gh.style) gh.style.setProperty("transform", `translate(${gx}px, ${gy}px)`);
     };
-    const cleanup = () => {
-      globalThis.removeEventListener?.("pointermove", onMoveSnack, true);
-      globalThis.removeEventListener?.("pointerup", onUpSnack, true);
-      globalThis.removeEventListener?.("pointercancel", onCancelSnack, true);
-      globalThis.removeEventListener?.("keydown", onEscSnack, true);
+    const swallowClick = () => {
+      snackSwallowRef.current = true;
+      setTimeout(() => { snackSwallowRef.current = false; }, 0);
     };
-    const finish = (commit) => {
-      cleanup();
-      const drop = lastDrop;
-      snackDropRef.current = null;
-      setSnackDrag(null);
-      if (dragging) {
-        snackSwallowRef.current = true;
-        setTimeout(() => { snackSwallowRef.current = false; }, 0);
-        if (commit && drop) {
+    snackDragCtrl.start({
+      pid: e.pointerId,
+      sx: e.clientX,
+      sy: e.clientY,
+      slop: PLAY.SLOP,
+      onMove: (ev, { starting }) => {
+        if (starting) { setCard(null); setTip(null); }
+        ev.preventDefault();
+        if (tipNow.current) setTip(null);
+        moveGhost(ev.clientX, ev.clientY);
+        const drop = snackTargetOf(ev);
+        snackDropRef.current = drop;
+        const k = drop ? `${drop.kind}:${drop.name || ""}` : "";
+        if (starting || k !== lastKey) {
+          lastKey = k;
+          setSnackDrag({ snack, kind: drop ? drop.kind : null, label: drop && drop.kind === "feed" ? drop.label : "" });
+        }
+        loop.current?.wake();
+        return drop;
+      },
+      onCommit: (drop) => {
+        snackDropRef.current = null;
+        setSnackDrag(null);
+        swallowClick();
+        const cur = snackCtxRef.current;
+        if (cur.showSnacks && cur.officeKey === startOffice && cur.styleKey === startStyle) {
           if (drop.kind === "feed") feedPerson(drop.name, snack, { x: drop.x, y: drop.y });
           else if (drop.kind === "place") placeSnackAt(snack, { x: drop.x, y: drop.y });
           setArmedSnack(null);
         }
-      }
-      loop.current?.wake();
-    };
-    const onMoveSnack = (ev) => {
-      if (ev.pointerId !== pid) return;
-      const starting = !dragging && Math.hypot(ev.clientX - sx, ev.clientY - sy) > PLAY.SLOP;
-      if (starting) {
-        dragging = true;
-        setCard(null); setTip(null);
-      }
-      if (!dragging) return;
-      ev.preventDefault();
-      if (tipNow.current) setTip(null);
-      moveGhost(ev.clientX, ev.clientY);
-      lastDrop = snackTargetOf(ev);
-      snackDropRef.current = lastDrop;
-      const k = lastDrop ? `${lastDrop.kind}:${lastDrop.name || ""}` : "";
-      if (starting || k !== lastKey) {
-        lastKey = k;
-        setSnackDrag({ snack, kind: lastDrop ? lastDrop.kind : null, label: lastDrop && lastDrop.kind === "feed" ? lastDrop.label : "" });
-      }
-      loop.current?.wake();
-    };
-    const onUpSnack = (ev) => { if (ev.pointerId === pid) finish(true); };
-    const onCancelSnack = (ev) => { if (ev.pointerId === pid) finish(false); };
-    const onEscSnack = (ev) => { if (ev.key === "Escape") { ev.preventDefault(); finish(false); } };
-    globalThis.addEventListener?.("pointermove", onMoveSnack, true);
-    globalThis.addEventListener?.("pointerup", onUpSnack, true);
-    globalThis.addEventListener?.("pointercancel", onCancelSnack, true);
-    globalThis.addEventListener?.("keydown", onEscSnack, true);
+        loop.current?.wake();
+      },
+      onCancel: ({ dragging }) => {
+        snackDropRef.current = null;
+        setSnackDrag(null);
+        if (dragging) swallowClick();
+        loop.current?.wake();
+      },
+    });
   };
   useEffect(() => {
     if (!armedSnack) return undefined;

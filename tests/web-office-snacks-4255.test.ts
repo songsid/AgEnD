@@ -10,11 +10,11 @@ import {
   stripDurationMs,
 } from "../src/ui/fleet-office-pack.js";
 // @ts-expect-error JS UI modules do not ship .d.ts files
-import { SNACK, createSnacks, eatDurationMs, racerSpeedMult, scatterWords } from "../src/ui/fleet-office-play.js";
+import { SNACK, createSnackDrag, createSnacks, eatDurationMs, racerSpeedMult, scatterWords } from "../src/ui/fleet-office-play.js";
 // @ts-expect-error JS UI modules do not ship .d.ts files
 import { DEFAULT_PAL, drawBadge, spriteSkin, tagBox, tagFootprint } from "../src/ui/fleet-office-skin.js";
 // @ts-expect-error JS UI modules do not ship .d.ts files
-import { WALK, createWalkers } from "../src/ui/fleet-office-zones.js";
+import { WALK, createWalkers, routeStaysInArea } from "../src/ui/fleet-office-zones.js";
 
 function crc32(buf: Buffer): number {
   let c = 0xffffffff;
@@ -263,7 +263,7 @@ describe("M-3432 (#4255) snack feeding, placing, racing & limits", () => {
     expect(item!.racers).not.toContain("i5");
   });
 
-  it("honors stayInArea (ownArea) when recruiting racers", () => {
+  it("honors stayInArea (ownArea) when recruiting racers — validates full outbound/return route, not only endpoints", () => {
     const mgr = createSnacks();
     const desks = [
       mkDesk("in-lounge", "idle", "lounge", 680, 260),
@@ -275,6 +275,89 @@ describe("M-3432 (#4255) snack feeding, placing, racing & limits", () => {
     // Dropped in corridor outside every area attracts nobody when ownArea is true.
     const corridor = mgr.place(cookie, { x: 620, y: 260 }, 1100, { desks, areas, ownArea: true });
     expect(corridor!.racers).toEqual([]);
+
+    // Negative control (Prism P2): both endpoints inside lounge, but only waypoint route cuts through foreign area `desks`.
+    const foreignGraph = {
+      areas,
+      waypoints: [
+        { id: "l1", x: 660, y: 160 },
+        { id: "d1", x: 520, y: 260 }, // inside desks [40..600, 80..520]
+        { id: "l2", x: 660, y: 360 },
+      ],
+      edges: [["l1", "d1"], ["d1", "l2"]],
+      straight: false,
+    };
+    const loungeDesks = [mkDesk("beta", "idle", "lounge", 660, 160)];
+    expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, foreignGraph, "lounge")).toBe(false);
+    expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, { ...foreignGraph, straight: true }, "lounge")).toBe(false);
+    const blocked = createSnacks().place(cookie, { x: 660, y: 360 }, 1200, { desks: loungeDesks, areas, ownArea: true, graph: foreignGraph });
+    expect(blocked!.racers).toEqual([]);
+
+    // Positive control (Prism P2): both endpoints inside lounge, waypoint route uses unassigned corridor [600..640] without entering desks.
+    const corridorGraph = {
+      areas,
+      waypoints: [
+        { id: "l1", x: 660, y: 160 },
+        { id: "c1", x: 620, y: 260 }, // corridor outside both desks (x<=600) and lounge (x>=640)
+        { id: "l2", x: 660, y: 360 },
+      ],
+      edges: [["l1", "c1"], ["c1", "l2"]],
+      straight: true,
+    };
+    expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, corridorGraph, "lounge")).toBe(true);
+    const allowed = createSnacks().place(cookie, { x: 660, y: 360 }, 1300, { desks: loungeDesks, areas, ownArea: true, graph: corridorGraph });
+    expect(allowed!.racers).toEqual(["beta"]);
+  });
+
+  it("createSnackDrag detaches all global listeners and blocks commits when context retires mid-drag (Prism P2)", () => {
+    const listeners = new Map<string, Set<(ev: any) => void>>();
+    const totalListeners = () => [...listeners.values()].reduce((n, s) => n + s.size, 0);
+    const fakeWin = {
+      addEventListener(type: string, fn: (ev: any) => void) {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener(type: string, fn: (ev: any) => void) {
+        listeners.get(type)?.delete(fn);
+      },
+      dispatch(type: string, ev: any) {
+        for (const fn of [...(listeners.get(type) || [])]) fn(ev);
+      },
+    };
+    const ctrl = createSnackDrag(fakeWin);
+    const onCommit = vi.fn();
+    const onCancel = vi.fn();
+
+    ctrl.start({
+      pid: 7, sx: 10, sy: 10, slop: 4,
+      onMove: () => ({ kind: "feed", name: "alpha", x: 100, y: 100 }),
+      onCommit,
+      onCancel,
+    });
+    expect(totalListeners()).toBe(4);
+    fakeWin.dispatch("pointermove", { pointerId: 7, clientX: 50, clientY: 50, preventDefault() {} });
+
+    // Context retires mid-drag (play disabled, office/skin changed, or unmount).
+    ctrl.retire();
+    expect(totalListeners()).toBe(0);
+    expect(ctrl.active()).toBe(false);
+    expect(onCancel).toHaveBeenCalledTimes(1);
+
+    // Subsequent release must NOT commit a feed/place/Tell.
+    fakeWin.dispatch("pointerup", { pointerId: 7 });
+    expect(onCommit).not.toHaveBeenCalled();
+
+    // Starting a new drag replaces any active drag without leaking listeners.
+    const onCancel1 = vi.fn(), onCommit2 = vi.fn();
+    ctrl.start({ pid: 1, sx: 0, sy: 0, slop: 4, onMove: () => ({ kind: "place", x: 10, y: 10 }), onCancel: onCancel1 });
+    expect(totalListeners()).toBe(4);
+    ctrl.start({ pid: 2, sx: 0, sy: 0, slop: 4, onMove: () => ({ kind: "place", x: 20, y: 20 }), onCommit: onCommit2 });
+    expect(totalListeners()).toBe(4);
+    expect(onCancel1).toHaveBeenCalledTimes(1);
+    fakeWin.dispatch("pointermove", { pointerId: 2, clientX: 30, clientY: 30, preventDefault() {} });
+    fakeWin.dispatch("pointerup", { pointerId: 2 });
+    expect(totalListeners()).toBe(0);
+    expect(onCommit2).toHaveBeenCalledWith({ kind: "place", x: 20, y: 20 });
   });
 
   it("first racer to reach CLAIM_DIST claims and eats while losers scatter; enforces MAX_PLACED = 6 and TTL_MS = 30s", () => {

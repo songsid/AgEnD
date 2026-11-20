@@ -217,6 +217,23 @@ function withinArea(near, seat, graph, home) {
   return inside.filter((w) => legs(w).every((pts) => pts.every((p, i) => !i || !others.some((r) => crosses(r, pts[i - 1], p)))));
 }
 /**
+ * M-3286 / M-3432: whether walking from `from` to `to` (and returning to `returnTo`) keeps a person in area `home`:
+ * `to` is inside `home`'s rect, and both outbound and return walks (including straightened legs on `graph.straight`)
+ * either stay inside `home`'s rect or pass through no other area's interior.
+ */
+export function routeStaysInArea(from, to, graph, home, returnTo = from) {
+  if (!graph || typeof graph !== "object") return true;
+  const areas = graph.areas || {}, a = own(areas, home);
+  if (!a || !a.rect) return false;
+  if (!inRect(a.rect, to)) return false;
+  const legs = [walkPts(graph, from, to)];
+  if (returnTo) legs.push(walkPts(graph, to, returnTo));
+  if (legs.every((pts) => pts.every((p) => inRect(a.rect, p)))) return true;
+  const others = Object.keys(areas).filter((k) => k !== home && areas[k].rect).map((k) => areas[k].rect);
+  const strictIn = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
+  return legs.every((pts) => pts.every((p, i) => !others.some((r) => strictIn(r, p) || (i > 0 && crosses(r, pts[i - 1], p)))));
+}
+/**
  * Where `name`, seated at `seat`, should be at `t` (ms) while idle: a spot near the seat, or the seat. `area` (M-3286:
  * the office keeps idle people in their own area): the id of the area they are seated in — only spots inside it, and
  * reached without going through another area (withinArea).
