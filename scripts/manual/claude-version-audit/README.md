@@ -370,3 +370,28 @@ The binaries were 2.1.326 (sha256 `b6b3647d981130dc44fc670846ae97b6cde531ffb667c
   - new: `switch-model-opus` and `bash-permission-down-past-end`.
   - Paths are normalised to `/tmp/agend-audit/…`, including the project key in "Earlier messages are saved in …".
 - **Shipped ledger:** the dev branch's `src/cli-audited.ts` (with its Windows Runtime pin) moves to 2.1.327 in the dev PR (#4183); main has no shipped ledger.
+
+## 2.1.328 → 2.1.329: no detector change (2026-11-20, M-3477)
+
+The binaries were 2.1.328 (sha256 `a982d38030b97e750848add2cbb2df6d9a70d5544a22ca9b216a349ba25865e8`) and 2.1.329 (sha256 `30e2724e2aecb1bf5dc9f3130901afb71c5fa229051c190a6d7ad9aff6378d6d`), both byte-identical to the host's `~/.local/share/claude/versions/`. The host had already self-updated to 2.1.329. The daily precheck said MAJOR (hard=10, hinted=0).
+
+- **Passes:** `OLD=328 NEW=329 PORT=18329`, pass1, extra–extra7, `danger-probe.sh` and `trust-hooks.sh` (new). The host's tmux server was never used (private sockets only).
+  - Keep `AUDIT_DIR` out of any folder whose `package.json` says `"type": "module"`: the generated `statusline.js` is CommonJS, and under such a folder it fails, so every capture loses its statusline row. A `{"type":"commonjs"}` `package.json` in `AUDIT_DIR` avoids it.
+- **Classification:** all 72 captures read alike under the production predicates on both versions, except `132-danger-fast`, the known timing race. `danger-probe.sh` shows it is the same on both: Down+Enter in one burst leaves the cursor on No, 4/4 on each; AgEnD's cadence (Down, 200 ms, Enter) declines, 4/4 on each; 8/8 after a 0.5 s or 1 s wait.
+- **The precheck's new prompt strings are not AgEnD screens:**
+  - `Press Enter to open the sign-in page in your browser, or Ctrl+C to cancel.` is a new step of the organization gateway's identity-provider sign-in (`[gateway-idp]`, `hybrid_gateway_idp_sign_in`), shown only under enterprise managed hybrid settings. A person finishes that sign-in. No startup or runtime table answers it (`Press Enter to continue` is gated by `claudeSecurityNotesActive`).
+  - `continue the conversation here. Start a new conversation.`, `resume this conversation, …`, `resume the session that created …` and `resume the session from a URL …` are multi-organization refusals (a session that ran under another organization, or a URL resume under an organization sign-in). They are messages, not prompts.
+  - `continue this conversation here. To send/teleport a new conversation, …` is `/send-to-project`'s refusal text.
+  - `retrying in ~60s` is an auth debug-log line (proactive token refresh).
+- **Literal counts (`predlits.py`):** 333 checked, 90 in the binaries, 15 counts changed. `Start a new conversation` (2 → 6) and `Cloud gateway` (97 → 101) are the strings above. `claude auth login`, `auth token` and `Not logged in` are new sign-in and gateway help. `to navigate` (18 → 19) is a question dialog's `Tab/Arrow keys to navigate`. `fresh machine` (0 → 1) is embedded changelog prose. No predicate text disappeared.
+- **Trust dialog (2.1.329 changelog: it names where a folder's hooks are declared):** `trust-hooks.sh` (new) opens a folder whose `.claude/settings.json` declares a SessionStart hook. 2.1.329 adds one line, `⚠ This folder configures hooks that can run commands without asking, declared in .claude/settings.json`. At 160 and 80 columns it is read and answered exactly as the plain trust dialog (cursor on `No, exit`: Down). The hook never ran (the folder was never trusted).
+- **Cold-resume prompt, live** (`cold-resume/live.mts`, 328 and 329 cases added): `328-lookup`, `329-lookup`, `329-summary-lookup`, `328-summary-newfocus`, `329-summary-newfocus` and `329-summary-newfocus-80` all PASS. Each time the prompt was seen, Escape was sent, the history was kept and the prompt was gone.
+- **Resume-from-summary menu:** not reached on 2.1.328 or 2.1.329. From 2.1.328 its gate is `tengu_gleaming_fair_reuse` alone, and it opens only when a precomputed summary exists (otherwise `skipped_no_summary`). The rig has none, so the backdated session resumed straight away with the history kept and nothing compacted (`resume-menu.mts`, 328 and 329 cases). `327-menu` on the same rig still PASSes. The menu's literals are unchanged, and 2.1.327's fixtures keep pinning its screen.
+- **Cloud gateway URL step:** the rig did not reach it on either version (a `gatewayUrl` in the user settings no longer opens it from `/login`). Its predicate literals are unchanged, and 2.1.327's fixtures keep pinning it.
+- **Fixtures:** `tests/fixtures/claude-2.1.329-*.pane.txt`, held by `tests/claude-2.1.329-screens.test.ts` (36 tests):
+  - the screens of the 2.1.327 set, each from the same capture of this pass, except the gateway pair, the resume-summary menu and the generic first-attempt retry row (above);
+  - `mcp-approval` from the first run of this audit, because the clean rerun's fixed 4 s wait missed the dialog on both versions;
+  - new: `trust-hooks` and `trust-hooks-80`.
+  - Paths are normalised to `/tmp/agend-audit/…`.
+- **Mutation check:** a trust accept row that no longer matches turns the trust tests red, including the new hooks one.
+- **Shipped ledger:** the dev branch's `src/cli-audited.ts` (with its Windows Runtime pin) moves in the dev twin; main has no shipped ledger.
