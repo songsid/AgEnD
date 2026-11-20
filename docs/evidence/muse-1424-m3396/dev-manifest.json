@@ -1,0 +1,38 @@
+{
+  "scope": "Dev integration additions; unchanged main fixtures/manifest preserve historical main-only proof.",
+  "mainMerge": "304d328a751ed58d61a36702f20a6acc7f4ec6de",
+  "devBase": "232f0fc2d6d896f7f27608217f2e92aa7110fd43",
+  "mainCommonPathsByteEqual": 62,
+  "checks": {
+    "failFirst": "6 failed / 34 passed before adding the ledger entry",
+    "restored": "65/65 across ledger, accounts view and imported audit",
+    "native": "Frozen main proof reused, no second campaign",
+    "types": "Main historical type proof retained; full current dev validation is exact-head CI"
+  },
+  "files": [
+    {
+      "path": "src/cli-audited.ts",
+      "sha256": "e555099dfb69abfd8968bac94d549c23936bde0fc5f64f13ec3df5cc16201613"
+    },
+    {
+      "path": "tests/cli-audited-136.test.ts",
+      "sha256": "b323bc29dd3d14978bf7d33e7e13a51ae8c27f78ea29c1cc71ebf0a6290b300d"
+    },
+    {
+      "path": "tests/accounts-update-view-136.test.ts",
+      "sha256": "ba1cb70a36b9c857a132642b48fea83a9d55e961afc61fcd1f5d395fdc3cb2bc"
+    },
+    {
+      "path": "changes/4250-muse-1424.md",
+      "sha256": "635796d598df5b0a3244a3d4f961ce7461ed43d8504b862c01e21e443e45bf32"
+    },
+    {
+      "path": "changes/4250-muse-1424.zh-TW.md",
+      "sha256": "adde76439723d6b1c699ba81c03a17a4beb67fb9f3229f0cdbd19e7651cdf030"
+    },
+    {
+      "path": "docs/evidence/muse-1424-m3396/dev-port-proof.json",
+      "sha256": "63fd368571e903b8e60661b8bf51be40b2d11990a73524c1d0de3945bfa9bef0"
+    }
+  ]
+}

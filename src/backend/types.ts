@@ -107,6 +107,8 @@ export interface BackendSessionProof {
 }
 
 export interface CliBackendConfig {
+  /** Server-owned reference only; never a secret value or accepted web/backend option. */
+  managedClaudeCredential?: import("../claude-credential-launch.js").ManagedClaudeBinding;
   /** Server-owned Classic policy only; not a field accepted from tool arguments. */
   classicRestriction?: import("../classic-cli-guard.js").ClassicRestrictedPlan;
   workingDirectory: string;

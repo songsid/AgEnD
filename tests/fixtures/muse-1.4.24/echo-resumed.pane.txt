@@ -1,0 +1,36 @@
+
+
+  Muse Code 1.4.24
+
+  resumed session 01a1f690-eaf3-7971-bd97-1a46e09ba808
+
+❯ hello echo
+
+◆ echo: hello echo
+
+  session 01a1f690-eaf3-7971-bd97-1a46e09ba808 does not record a usable model for provider echo; using the provider
+  default model
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  echo · Launch overrides   system SSH configuration projection omitted: source ownership, mode or type does not qualify
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

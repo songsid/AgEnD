@@ -1,0 +1,24 @@
+[
+  {
+    "device": "desk",
+    "controls": [
+      {
+        "text": "Refresh",
+        "width": 70.984375,
+        "height": 30,
+        "disabled": false
+      }
+    ]
+  },
+  {
+    "device": "phone",
+    "controls": [
+      {
+        "text": "重新整理",
+        "width": 78,
+        "height": 44,
+        "disabled": false
+      }
+    ]
+  }
+]

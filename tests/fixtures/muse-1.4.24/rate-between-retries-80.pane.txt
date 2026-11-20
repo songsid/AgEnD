@@ -1,0 +1,36 @@
+
+  Muse Code 1.4.24
+
+❯ do it
+
+◈ Thinking (14s · esc to interrupt)
+└ Meta Model API rate limited (HTTP 429) · attempt 8/10
+
+────────────────────────────────────────────────────────────────────────────────
+❯
+────────────────────────────────────────────────────────────────────────────────
+  mock-model · high · /home/u/work · Launch overrides
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

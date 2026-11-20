@@ -1,3 +1,4 @@
+import { ClaudeCredentialVault, ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredentialMetadata, type CredentialActor } from "./claude-credential-vault.js";
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
@@ -5706,6 +5707,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // Low-key (#4228 review): listed in the chat's Needs you, but never a new-item notification or a DM.
       since: group.since, detail: "", contactSuggestionCount: group.count, quiet: true,
     } as WebNeedsItem))];
+  }
+  /** Identity for reminder visibility/dismissal ONLY. Never a verified contact/action permit. */
+  contactSuggestionActor(req: import("node:http").IncomingMessage, url: URL): ContactPerson | null {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, this.webToken, this.webSessions, { touch: false });
+    if (verdict.kind !== "allow" || verdict.via !== "session" || verdict.session.tier !== "admin") return null;
+    const verified = this.contactActor(req, url);
+    if (verified) return verified;
+    const owner = verdict.session.owner, adapter = owner && this.adapters.get(owner.adapterId);
+    if (!owner || !adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return null;
+    return { platform: adapter.type, adapterId: owner.adapterId, userId: owner.userId, label: owner.userId };
+  }
+  /** Dismissing a reminder grants no authority: current room-admin membership is still checked below. */
+  acknowledgeContactSuggestionFromWeb(instance: string, req: import("node:http").IncomingMessage, url: URL): void {
+    const actor = this.contactSuggestionActor(req, url);
+    if (!actor) throw Error("verification-required");
+    this.acknowledgeContactSuggestion(instance, actor);
   }
   acknowledgeContactSuggestion(instance: string, actor: ContactPerson): void {
     if (!this.contactAdminOf(instance, actor) || !this.contactRoom(instance)) throw Error("forbidden");
@@ -23227,6 +23244,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { agents, classic, fleetDefaults };
   }
 
+  /** M-3419: private host credential store. No secret is logged or returned by the metadata API. */
+  private withClaudeVault<T>(fn: (vault: ClaudeCredentialVault) => T): T {
+    const vault = new ClaudeCredentialVault(this.dataDir);
+    try { return fn(vault); } finally { vault.close(); }
+  }
+  claudeCredentialMetadata(profile: string | null): ClaudeCredentialMetadata | null {
+    if (profile !== null && !accountFolderExists(this.dataDir, "claude-code", profile)) throw new ClaudeCredentialError("profile-unknown");
+    return this.withClaudeVault(vault => vault.metadata(profile));
+  }
+  auditClaudeCredential(actor: CredentialActor | null, action: string, outcome: string): void {
+    this.withClaudeVault(vault => vault.audit(actor, null, action, null, null, outcome));
+  }
+  writeClaudeCredential(profile: string | null, revision: number, change: { kind: ClaudeCredentialKind; value: string } | "subscription" | null, actor: CredentialActor): ClaudeCredentialMetadata {
+    if (profile !== null && !accountFolderExists(this.dataDir, "claude-code", profile)) throw new ClaudeCredentialError("profile-unknown");
+    // This storage slice never changes a credential underneath a current consumer or concurrent sign-in.
+    // The integration slice supplies the explicit idle/restart confirmation before replacing a used profile.
+    const uses = this.accountUses();
+    if ([...uses.agents, ...uses.classic].some(x => x.backend === "claude-code" && x.profile === profile)
+      || (profile !== null && uses.fleetDefaults.get("claude-code") === profile)
+      || this.loginWindow.holderFor("claude-code")
+      || this.keepAliveInUse("claude-code", profile)) throw new ClaudeCredentialError("in-use");
+    return this.withClaudeVault(vault => vault.write(profile, revision, change, actor));
+  }
+
   /** #3212 PR 2: Settings → Accounts → + Add account (accounts-profiles.ts). `by`: the session's label, for the fleet log. */
   addAccountProfile(backend: string, name: unknown, by: string, machine?: MachineActor): AddResult | Promise<MachineAccountResult> {
     // #3190 Part 3c: on a paired computer the profile's folder is made by its Runtime when the first sign-in starts; this only checks what can be checked first.
@@ -23254,6 +23295,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (machine) return this.machineAccounts.remove(backend, name, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime deletes its own folder
     const profile = typeof name === "string" ? name : "";
     const shown = validCredentialProfileName(name) ? name : "(invalid)";
+    // A profile name must not be recreated with an old managed secret still attached.
+    const managedRefusal = (): RemoveResult | null => {
+      if (backend === "claude-code" && validCredentialProfileName(name)
+        && existsSync(join(this.dataDir, "credential-vault", "claude.sqlite"))) {
+        try { if (this.claudeCredentialMetadata(name)?.kind) return { ok: false, error: "credential_connected" }; }
+        catch { return { ok: false, error: "unsafe" }; }
+      }
+      return null;
+    };
+    const managed = managedRefusal(); if (managed) return managed;
     // #3321 review ("Cancel sign-in and remove"): the sign-in of exactly this account is ended first — no other account's, and a start whose profile is
     // not known yet is not guessed at — and every Remove check below is then made as usual: what is still signing in refuses (`signing_in`).
     if (opts?.cancelSignIn && validCredentialProfileName(name)) {
@@ -23267,6 +23318,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (run with the folder, once every Remove check has passed) removes that item first. AgEnD never deletes it itself.
     // #3305 review: the logout holds the shared login window (no sign-in or other logout starts meanwhile), and after it
     // every check is made again — who uses it, sign-ins, ClassicBot's settings — on the same folder (its identity).
+    const afterCancel = managedRefusal(); if (afterCancel) return afterCancel;
     const signOutDeps = this.accountSignOutDeps ?? ACCOUNT_SIGN_OUT_DEPS;
     let keychainLeft = false;
     let removed: RemoveResult;
@@ -23280,6 +23332,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if (!out.ok) return { ok: false, error: out.error === "unsafe" ? "unsafe" : "failed" } as RemoveResult;
         if (!this.loginWindow.isCurrent(claim)) return { ok: false, error: "failed" } as RemoveResult;   // the fleet is stopping
         keychainLeft = out.keychainLeft === true;
+        const beforeDelete = managedRefusal(); if (beforeDelete) return beforeDelete;
         return removeAccountProfile(this.dataDir, this.removalRequest(backend, name, confirm, claim), undefined, { expect: dry.identity });
       });
       if (!step.ok) return refused(step);

@@ -1,0 +1,30 @@
+{
+  "mainMerge": "ccd566e8b6581ed7a7309f415c8e2221a8af80fa",
+  "devBase": "22af8451812b4d2153b813261631ba700d1882d2",
+  "commonCssAdditionIdentical": true,
+  "incomingDevCssPreserved": true,
+  "allowancesAdded": 0,
+  "allowancesRemoved": [
+    "access section#devicesCard.card.s-devices > div.s-dev-listhead > button#devicesRefresh.btn.btn-sm",
+    "advanced div.s-dev-bar > div.s-dev-actions > button.btn.btn-sm",
+    "advanced div.s-dev-bar > div.seg-inline > button.btn.btn-sm",
+    "agent-defaults div.chips-box > div.field-row > button.btn.btn-sm",
+    "agent-defaults div.general-location-row > div.general-location-actions > button.btn.btn-sm",
+    "agent-defaults div.model-pick > div.model-catalog-status > button.btn.btn-ghost",
+    "agents header.s-page-head > div.s-page-actions > button#newAgentBtn.btn.btn-primary",
+    "chat div.chips-box > div.field-row > button.btn.btn-sm",
+    "chat div.s-chat-section-head > div.list-head.s-list-toolbar > button#newBotBtn.btn.btn-primary",
+    "look div.s-look-disclosure-body > section.card.s-appearance > button.btn",
+    "look section.card.s-appearance > div.s-widget-actions > button.btn",
+    "preferences section.card.s-device > div.s-pref-help-row > button#tourBtn.btn",
+    "preferences section.card.s-device > div.s-pref-help-row.s-pref-shortcuts-row > button#keyboardShortcutsBtn.btn",
+    "runtimes header.runtime-heading.s-page-head > div > button.btn.btn-sm",
+    "web-dashboard section.card.s-appearance > div.s-css-actions > button.btn",
+    "web-dashboard section.card.s-appearance > div.save-row > button.btn.btn-primary",
+    "web-dashboard section.card.s-level-titles > div.s-widget-actions > button.btn"
+  ],
+  "remainingAllowanceValuesPreserved": true,
+  "devOnlyLabelHitAreaFix": true,
+  "additionalStaleNonButtonAllowancesRemoved": 13,
+  "newlyFixedLabelAllowancesRemoved": 5
+}

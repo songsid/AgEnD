@@ -1,0 +1,36 @@
+{
+  "initialFullUiGate": {
+    "head": "721956d8f672e5cd08c86363848aa104d52e35a8",
+    "passed": 27,
+    "failed": 0
+  },
+  "correctedAuthorizationSmoke": {
+    "cases": 11,
+    "passed": 11,
+    "phoneDecidedCloseups": 3
+  },
+  "guideAndIdentity": {
+    "files": 9,
+    "passed": 113
+  },
+  "cssPinsAndContact": {
+    "files": 3,
+    "passed": 47,
+    "overlapWithGuideTests": 37,
+    "assertionsWeakened": false
+  },
+  "identityCollision": {
+    "beforeFixFailed": 1,
+    "fixedContactPassed": 37
+  },
+  "earlierFocusedUi": {
+    "files": 11,
+    "passed": 234
+  },
+  "changelogPassed": 75,
+  "testTypeDiagnostics": 0,
+  "baselineRef": "232f0fc2d6d896f7f27608217f2e92aa7110fd43",
+  "privateOriginalScreenshotsCommitted": false,
+  "liveFleetOrVendorCalls": false,
+  "authorizationPolicyChanged": false
+}

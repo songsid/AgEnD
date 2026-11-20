@@ -1,0 +1,4 @@
+(node:<pid>) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+FAIL phone-dark-zh-TW:access:tap: ["access div.form.s-web > section.card > button.btn.btn-sm ×1 (allowed 0)"]
+UI gate FAILED (1) in 6s — pictures and result.json in <checkout>/.artifacts/access-tap-m3426/base/smoke-settings-ui-gate

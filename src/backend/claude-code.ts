@@ -1,3 +1,4 @@
+import { prepareManagedClaudeLaunch, type ManagedClaudeLaunch, type ManagedClaudeBinding, type ManagedClaudeRuntime } from "../claude-credential-launch.js";
 import { staticBackendVersion } from "../backend-version-static.js";
 import { CLAUDE_MINIMUM_ERROR } from "../claude-model-minimum.js";
 import { EFFORT_CAPABILITIES, parseClaudeEffortCapability } from "./effort-metadata.js";
@@ -13,7 +14,7 @@ import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome
 import { getAgendHome } from "../paths.js";
 import { t } from "../locale.js";
 import { selectedGeneralHostSession } from "../general-binding.js";
-import { ResumeBlockedError } from "./types.js";
+import { ResumeBlockedError, UnsupportedCliError } from "./types.js";
 import { claudeOneMillionOffered } from "./claude-context.js";
 import { type CliBackend, type CliBackendConfig, type ErrorPattern, type InputBox, type RuntimeDialog, type StartupDialog, CLI_PROBE_LONGEST_LEAF_MS, promptCacheTtl, resolveBinary, shellQuote, validateModel, warnIfModelMismatch } from "./types.js";
 
@@ -1594,12 +1595,13 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     const status = this.classicGuardLaunch ? classicGuardStatus(this.classicGuardLaunch, plan) : this.classicGuardPending;
     return binaryCurrent && this.classicVersion ? { ...status, version: this.classicVersion } : status;
   }
+  private managedLaunch?: ManagedClaudeLaunch;
   private observationLaunchId = randomUUID();
   private observationStartedAt = Date.now();
   private observationModel: string | undefined;
   modelObservationLaunch() { return { id: this.observationLaunchId, startedAt: this.observationStartedAt, model: this.observationModel }; }
 
-  constructor(private instanceDir: string) {
+  constructor(private instanceDir: string, private readonly managedRuntime?: ManagedClaudeRuntime) {
     super();
     this.binaryPath = resolveBinary("claude");
   }
@@ -1610,7 +1612,16 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   private quietLaunchNotes: string[] = [];
   consumeQuietLaunchNotes(): string[] { const notes = this.quietLaunchNotes; this.quietLaunchNotes = []; return notes; }
 
+  private assertManagedSelection(config: CliBackendConfig): void {
+    if (config.managedClaudeCredential && resolveCredentialProfile(config.backendOptions) !== config.managedClaudeCredential.profile)
+      throw new UnsupportedCliError("Managed Claude profile does not match the selected profile");
+  }
+
   buildCommand(config: CliBackendConfig): string {
+    this.assertManagedSelection(config);
+    if (config.managedClaudeCredential && (!this.managedLaunch || ["home", "profile", "id", "revision", "kind"].some(key =>
+      this.managedLaunch!.binding[key as keyof ManagedClaudeBinding] !== config.managedClaudeCredential![key as keyof ManagedClaudeBinding])))
+      throw new UnsupportedCliError("Managed Claude launch reference is stale or not prepared");
     this.observationModel = config.model;
     const guard = config.classicRestriction ? this.classicGuardLaunch : undefined;
     if (guard && (!this.classicPreparedBinaryStamp || this.classicPreparedBinaryStamp !== this.classicBinaryStamp()))
@@ -1629,13 +1640,13 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       linkSharedClaudeMemory(profileDir, config.workingDirectory, credentialHomeSpec("claude-code")!.sharedRoot());
       envPrefix.push(`CLAUDE_CONFIG_DIR=${shellQuote(profileDir)}`);
     }
-    if (process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
+    if (!config.managedClaudeCredential && process.env.ANTHROPIC_BASE_URL) envPrefix.push(`ANTHROPIC_BASE_URL=${shellQuote(process.env.ANTHROPIC_BASE_URL)}`);
     // #2010: an opt-in prompt-cache TTL for the main thread and its subagents. Unset: nothing added, the CLI chooses.
     const ttl = promptCacheTtl(config.backendOptions);
     if (ttl) envPrefix.push(`CLAUDE_CODE_PROMPT_CACHE_TTL=${ttl}`, `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL=${ttl}`);
     // The fleet's API key only where this instance's own config dir has no OAuth login: a key in the environment wins
     // over the login, so reading another dir here bills the wrong account (#1699).
-    if (process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
+    if (!config.managedClaudeCredential && process.env.ANTHROPIC_API_KEY && !this.hasOAuthSession(profileDir)) {
       envPrefix.push(`ANTHROPIC_API_KEY=${shellQuote(process.env.ANTHROPIC_API_KEY)}`);
     }
     if (guard) {
@@ -1643,9 +1654,17 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       envPrefix.push("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=0", "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE=0",
         "CLAUDE_CODE_DISABLE_AUTO_MEMORY=1", "ENABLE_TOOL_SEARCH=false", "NODE_OPTIONS=''", "NODE_PATH=''");
     }
+    const args = ["--settings", settingsPath, "--mcp-config", mcpConfigPath];
+    const managedEnv: Record<string, string> = { AGEND_CLAUDE_LAUNCH_ID: this.observationLaunchId,
+      CMUX_CLAUDE_HOOKS_DISABLED: "1", CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS: guard ? "0" : "1" };
+    if (profileDir) managedEnv.CLAUDE_CONFIG_DIR = profileDir;
+    if (ttl) { managedEnv.CLAUDE_CODE_PROMPT_CACHE_TTL = ttl; managedEnv.CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL = ttl; }
+    if (guard) Object.assign(managedEnv, { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: "0", CLAUDE_CODE_DISABLE_AUTO_MEMORY: "1", ENABLE_TOOL_SEARCH: "false", NODE_OPTIONS: "", NODE_PATH: "" });
     let cmd = `${envPrefix.join(" ")} ${guard ? shellQuote(this.binaryPath) : this.binaryPath} --settings ${guard ? shellQuote(settingsPath) : settingsPath} --mcp-config ${guard ? shellQuote(mcpConfigPath) : mcpConfigPath}`;
-    if (guard) cmd += ` --strict-mcp-config --setting-sources '' --disable-slash-commands --no-chrome --permission-mode dontAsk --tools ${shellQuote(guard.tools.join(","))}`;
-    else if (config.skipPermissions !== false) cmd += " --dangerously-skip-permissions";
+    if (guard) {
+      cmd += ` --strict-mcp-config --setting-sources '' --disable-slash-commands --no-chrome --permission-mode dontAsk --tools ${shellQuote(guard.tools.join(","))}`;
+      args.push("--strict-mcp-config", "--setting-sources", "", "--disable-slash-commands", "--no-chrome", "--permission-mode", "dontAsk", "--tools", guard.tools.join(","));
+    } else if (config.skipPermissions !== false) { cmd += " --dangerously-skip-permissions"; args.push("--dangerously-skip-permissions"); }
 
     const sessionIdFile = join(this.instanceDir, "session-id");
     // `session-id` belongs to the instance, not the backend. A ClassicBot can
@@ -1665,29 +1684,33 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
       const path = join(claudeConfigDirFor(profileDir), "projects", claudeProjectKey(config.workingDirectory), `${retainedGeneral}.jsonl`);
       try { if (!lstatSync(path).isFile()) throw Error("not regular"); }
       catch { throw new ResumeBlockedError(t("general_location.start_failed"), t("general_location.start_failed")); }
-      cmd += ` --resume ${shellQuote(retainedGeneral)}`;
+      cmd += ` --resume ${shellQuote(retainedGeneral)}`; args.push("--resume", retainedGeneral);
     } else if (repairSession) {
-      cmd += ` --resume ${shellQuote(repairSession)}`;
+      cmd += ` --resume ${shellQuote(repairSession)}`; args.push("--resume", repairSession);
     } else if (!config.skipResume && existsSync(sessionIdFile) && this.hasProjectSession(config.workingDirectory, profileDir)) {
-      cmd += " --continue";
+      cmd += " --continue"; args.push("--continue");
     }
 
     if (config.model) {
       const model = validateModel(config.model);
       warnIfModelMismatch("claude-code", model);
-      cmd += ` --model ${shellQuote(model)}`;
+      cmd += ` --model ${shellQuote(model)}`; args.push("--model", model);
     }
     // #1811: the configured effort, where this claude takes it (launch-effort.ts); else a quiet note.
     const effort = flagEffort("claude-code", config.effort, this.binaryPath);
-    if (effort.arg) cmd += effort.arg;
+    if (effort.arg) { cmd += effort.arg; args.push("--effort", effort.level!); }
     this.quietLaunchNotes = effort.note ? [effort.note] : [];
 
     // Additive system prompt: append fleet instructions without overriding Claude's built-in prompt
     const instrFile = join(this.instanceDir, "fleet-instructions.md");
     if (existsSync(instrFile)) {
-      cmd += ` --append-system-prompt-file ${instrFile}`;
+      cmd += ` --append-system-prompt-file ${instrFile}`; args.push("--append-system-prompt-file", instrFile);
     }
 
+    if (config.managedClaudeCredential) {
+      if (!this.managedLaunch) throw new Error("Managed Claude launch was not prepared");
+      return this.managedLaunch.command(args, managedEnv, this.binaryPath);
+    }
     return cmd;
   }
 
@@ -1705,6 +1728,7 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   }
 
   writeConfig(config: CliBackendConfig): void {
+    this.assertManagedSelection(config);
     this.observationLaunchId = randomUUID();
     this.observationStartedAt = Date.now();
     // 1. Write mcp-config.json to instance dir (loaded via --mcp-config)
@@ -1732,6 +1756,9 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     // AGEND-181: without this the interactive TUI writes empty thinking blocks to its transcript (the API returns no
     // summary unless asked); with it they carry text the chat timeline can show. Applies at the next launch.
     if (config.thinkingSummaries === true) settings.showThinkingSummaries = true;
+    this.managedLaunch = config.managedClaudeCredential ? prepareManagedClaudeLaunch(config.managedClaudeCredential,
+      this.instanceDir, config.workingDirectory, claudeConfigDirFor(claudeProfileConfigDir(config.backendOptions)), this.managedRuntime) : undefined;
+    if (config.managedClaudeCredential?.kind === "api-key") settings.apiKeyHelper = this.managedLaunch!.helper;
     this.classicGuardLaunch = undefined;
     if (config.classicRestriction) {
       const staged = stageClaudeClassicGuard({ plan: config.classicRestriction, version: this.classicVersion,
@@ -1747,7 +1774,7 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
     );
 
     // 4. Pre-approve API key to skip interactive prompt on startup
-    this.preApproveApiKey(config);
+    if (!config.managedClaudeCredential) this.preApproveApiKey(config);
 
     // 5. Write fleet instructions file (loaded via --append-system-prompt-file)
     if (config.instructions) {
@@ -1871,6 +1898,8 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   }
 
   cleanup(_config: CliBackendConfig): void {
+    // The CLI is gone before cleanup, so its helper reference can no longer be used.
+    if (this.managedLaunch) { try { unlinkSync(this.managedLaunch.path); } catch { /* metadata-only orphan */ } this.managedLaunch = undefined; }
     // mcp-config.json is in instance dir, cleaned up when instance is deleted
   }
 
