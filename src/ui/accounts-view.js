@@ -21,7 +21,7 @@ import { CompactMeter } from "/assets/usage-meter.js";   // #3321: the Usage pan
 import { CliProductMark, cliLabel } from "./cli-picker.js";
 import { identityText } from "./account-identity.js";
 import { UsageBlock } from "./usage-pool.js";   // AGEND-113: every pool and window an account reports, as the server sends them
-import { credentialText, removeClaudeCredential } from "./claude-credentials.js";
+import { credentialText, credentialRequestState, credentialStatusText, credentialVerificationTime, credentialRequestHint, removeClaudeCredential } from "./claude-credentials.js";
 import { openSignIn, refreshSignIn, signInStore } from "./backend-signin.js";
 import { capsOf } from "./cli-caps.js";
 import { toast } from "/assets/ui-toast.js";
@@ -73,7 +73,7 @@ register("accounts", {
     usedPopTitle: "Agents using this account — choose one to open its settings",
   },
   "zh-TW": {
-    title: "帳號", hint: "這台 AgEnD 主機與已配對電腦上各 CLI 的連接：預設連接與具名帳號（憑證設定檔）、誰在使用，以及每週用量。",
+    title: "帳號", hint: "這台 AgEnD 主機與已配對電腦上各 CLI 的連接：預設連接與具名帳號、誰在使用，以及每週用量。",
     loading: "正在讀取帳號…", failed: "無法讀取帳號。", empty: "這台主機上沒有安裝或被 Agent 使用的 CLI。",
     def: "預設連接", profile: "帳號「{0}」", state_usable: "已連接", state_not_signed_in: "尚未連接", state_reconnect: "需要重新連接", state_unknown: "未確認",
     state_not_installed: "未安裝", state_too_old: "版本太舊",
@@ -413,25 +413,27 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
   return html`<div class="s-row s-account-row" data-account=${row.profile || "default"}>
     <div class="s-account-title-bar">
       <div class="s-account-title-left"><strong>${rowName(row)}</strong>
-        <span class=${`tag s-auth-state is-${row.state || "unknown"}`}>${managed?(row.credential?.kind?credentialText("notChecked"):tx("state_not_signed_in")):installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(row.reconnect ? "state_reconnect" : `state_${row.state || "unknown"}`)}</span>
+        <span class=${`tag s-auth-state is-${managed?(credentialRequestState(row.credential)==="verified"?"usable":credentialRequestState(row.credential)==="needs-replacement"?"not_signed_in":"unknown"):row.state || "unknown"}`}>${managed?(row.credential?.kind?credentialStatusText(row.credential):tx("state_not_signed_in")):installingNow ? hostInstallText(installRun.mode === "update" ? "updating" : "installing") : tx(row.reconnect ? "state_reconnect" : `state_${row.state || "unknown"}`)}</span>
         ${row.usedBy.fleetDefault && cli.profiles ? html`<span class="tag s-account-default-tag">${machine ? tx("machineDefaultTag") : tx("fleetDefaultTag")}</span>` : null}</div>
       ${readOnly ? null : html`<span class="s-actions">
         ${canInstall ? html`<${InstallButton} backend=${row.backend} blocked=${running} />` : null}
         ${row.signIn && typeof onSignIn === "function" ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}), ...(machine ? { machine } : {}),...(managed?{method:row.credential?.kind==="setup-token"?"oauth":"api"}:{}) })}>${row.credential?.kind?credentialText("replace"):row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
         ${!machine && cli.profiles && row.state !== "not_signed_in" && row.state !== "not_installed" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
         ${canSignOut && !machine && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
-        ${managed&&row.credential?.kind?html`<button type="button" class="btn btn-sm btn-ghost danger" disabled=${running} onClick=${()=>removeClaudeCredential(row.profile)}>${credentialText("remove")}</button>`:null}
+        ${managed&&row.credential?.kind?html`<button type="button" class="btn btn-sm danger" disabled=${running} onClick=${()=>removeClaudeCredential(row.profile)}>${credentialText("remove")}</button>`:null}
         ${canSignOut ? html`<button type="button" class="btn btn-sm btn-ghost s-account-signout" disabled=${running} onClick=${() => onSignOut(row, "signout")}>${manageWords.signOut()}</button>` : null}
-        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
+        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
       </span>`}
     </div>
     <div class="s-account-meta-bar">
       ${managed?html`<span class="tag">${row.credential?.kind?credentialText(row.credential.kind==="setup-token"?"tokenTag":"apiTag"):tx("state_not_signed_in")}</span>`:null}
+      ${managed&&credentialVerificationTime(row.credential)?html`<small data-credential-verified-at>${credentialVerificationTime(row.credential)}</small>`:null}
       ${who ? html`<span class="tag s-account-identity">${who}</span>` : null}
       <${UsedBy} row=${row} label=${usedText(row)} openAgent=${openAgent} />
       ${machine ? html`<small class="s-account-usage is-none" title=${tx("machineNoUsageHint")}>${tx("machineNoUsage")}</small>` : null}
     </div>
     ${managed?html`<p class="note">${credentialText("usage")}</p>`:null}
+    ${managed&&credentialRequestHint(row.credential)?html`<p class="note" data-credential-request-hint>${credentialRequestHint(row.credential)}</p>`:null}
     ${usageGroups.length ? html`<${UsageBlock} groups=${usageGroups} stale=${row.usageStale === true} staleInfo=${row.usageStaleInfo} tagOf=${usageTag} label=${tx("usageLabel")} staleText=${tx("winStale")} />` : null}
     ${why ? html`<p class="note s-account-why">${why}</p>` : null}
     ${canInstall && !installRun ? html`<p class="note s-account-why">${hostInstallText("notInstalled")}</p>` : null}

@@ -575,6 +575,8 @@ export interface InputDraft {
 export interface CliBackend {
   /** Observation ownership only; never a model-selection capability. */
   modelObservationLaunch?(): import("../claude-model-observation.js").ClaudeModelLaunch;
+  /** Metadata-only proof binding for an ordinary local managed Claude launch. */
+  credentialObservationLaunch?(): {launch:import("../claude-model-observation.js").ClaudeModelLaunch;binding:Readonly<import("../claude-credential-launch.js").ManagedClaudeBinding>;sourceCurrent():boolean} | null;
   /** The CLI binary name (e.g. "claude", "codex", "agy") */
   readonly binaryName: string;
 

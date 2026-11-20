@@ -195,3 +195,14 @@ it("an untouched legacy backend still forwards its existing ambient API configur
  backend.writeConfig(config);const command=backend.buildCommand(config);
  expect(command).toContain(ambient);expect(command).toContain("https://example.invalid");
 });
+
+it("normal-request source proof is read-only and refuses changed or missing local inputs",()=>{
+ const f=fixture("api-key",null),s=stage(f);expect(s.launch.sourceCurrent()).toBe(true);
+ writeFileSync(s.settings,JSON.stringify({apiKeyHelper:"unselected-helper"}));expect(s.launch.sourceCurrent()).toBe(false);
+ writeFileSync(s.settings,JSON.stringify({apiKeyHelper:s.launch.helper}));expect(s.launch.sourceCurrent()).toBe(true);
+ writeFileSync(join(f.config,"settings.json"),JSON.stringify({env:{ANTHROPIC_API_KEY:ambient}}));expect(s.launch.sourceCurrent()).toBe(false);
+ rmSync(join(f.config,"settings.json"));expect(s.launch.sourceCurrent()).toBe(true);
+ const spec=readManagedClaudeSpec(s.launch.path);writeFileSync(s.launch.path,JSON.stringify({...spec,binding:{...spec.binding,revision:2}}));expect(s.launch.sourceCurrent()).toBe(false);
+ writeFileSync(s.launch.path,JSON.stringify(spec));expect(s.launch.sourceCurrent()).toBe(true);
+ rmSync(s.launch.path);expect(s.launch.sourceCurrent()).toBe(false);
+});

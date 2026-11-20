@@ -1605,6 +1605,8 @@ export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend
   private observationStartedAt = Date.now();
   private observationModel: string | undefined;
   modelObservationLaunch() { return { id: this.observationLaunchId, startedAt: this.observationStartedAt, model: this.observationModel }; }
+  credentialObservationLaunch(){return this.managedLaunch&&this.managedLaunch.binding.kind!=="subscription"?{launch:this.modelObservationLaunch(),binding:this.managedLaunch.binding,sourceCurrent:()=>this.managedLaunch?.sourceCurrent()===true}:null;}
+
 
   constructor(private instanceDir: string, private readonly managedRuntime?: ManagedClaudeRuntime) {
     super();

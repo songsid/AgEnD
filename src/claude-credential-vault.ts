@@ -9,7 +9,7 @@ export type ClaudeCredentialKind = "api-key" | "setup-token";
 export interface ClaudeCredentialMetadata {
   id: string; profile: string | null; revision: number; kind: ClaudeCredentialKind | null;
   source: "managed" | "subscription";
-  state: "saved-unverified" | "not-connected"; updatedAt: string | null;
+  state: "saved-unverified" | "verified" | "needs-replacement" | "unknown" | "not-connected"; verifiedAt: string | null; updatedAt: string | null;
 }
 export type CredentialActor = { adapterId: string; userId: string };
 export class ClaudeCredentialError extends Error {
@@ -74,6 +74,7 @@ export class ClaudeCredentialVault {
       // Additive migration: old removals remain managed tombstones, never implicit subscription choices.
       if (!(db.pragma("table_info(credentials)") as Array<{name:string}>).some(c=>c.name==="source"))
         db.exec("ALTER TABLE credentials ADD COLUMN source TEXT NOT NULL DEFAULT 'managed' CHECK(source IN ('managed','subscription'))");
+      db.exec("CREATE TABLE IF NOT EXISTS credential_request_status(profile TEXT PRIMARY KEY, credential_id TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL CHECK(state IN ('verified','needs-replacement','unknown')), verified_at TEXT, observed_at INTEGER NOT NULL)");
       const proof = db.prepare("SELECT proof FROM vault_meta WHERE id=1").get() as { proof: Buffer } | undefined;
       if (proof) { const value = this.open(proof.proof, "agend-claude-vault-key-v1"); try { if (value.toString() !== "managed-credential-vault") fail(); } finally { value.fill(0); } }
       else {
@@ -106,7 +107,24 @@ export class ClaudeCredentialVault {
   private aad(row: Pick<Row, "id" | "profile" | "revision" | "kind">): string { return JSON.stringify(["claude-code", row.id, row.profile, row.kind, row.revision]); }
   private row(profile: string | null): Row | undefined { this.assertPath(); return this.db.prepare("SELECT * FROM credentials WHERE profile=?").get(this.profile(profile)) as Row | undefined; }
   metadata(profile: string | null): ClaudeCredentialMetadata | null {
-    const r = this.row(profile); return r ? { id: r.id, profile, revision: r.revision, kind: r.kind, source: r.source, state: r.kind ? "saved-unverified" : "not-connected", updatedAt: r.updated_at } : null;
+    const r = this.row(profile);if(!r)return null;
+    const status=r.kind&&r.source==="managed"?this.db.prepare("SELECT state,verified_at FROM credential_request_status WHERE profile=? AND credential_id=? AND revision=?").get(r.profile,r.id,r.revision) as {state:"verified"|"needs-replacement"|"unknown";verified_at:string|null}|undefined:undefined;
+    return {id:r.id,profile,revision:r.revision,kind:r.kind,source:r.source,state:r.kind?status?.state??"saved-unverified":"not-connected",verifiedAt:status?.verified_at??null,updatedAt:r.updated_at};
+  }
+  /** Internal metadata port, only after owned native request/launch proof; never an agent or web mutation. */
+  observeRequest(profile:string|null,id:string,revision:number,kind:ClaudeCredentialKind,record:{at:number;outcome:"success"|"auth-error"|"unknown"}):boolean {
+    if(!Number.isSafeInteger(record.at)||record.at<0||!["success","auth-error","unknown"].includes(record.outcome))return false;
+    return this.db.transaction(()=>{
+      const row=this.row(profile);if(!row||row.source!=="managed"||!row.kind||row.id!==id||row.revision!==revision||row.kind!==kind)return false;
+      const prior=this.db.prepare("SELECT state,verified_at,observed_at FROM credential_request_status WHERE profile=? AND credential_id=? AND revision=?").get(row.profile,id,revision) as {state:string;verified_at:string|null;observed_at:number}|undefined;
+      if(prior&&record.at<=prior.observed_at)return false;
+      const state=record.outcome==="success"?"verified":record.outcome==="auth-error"?"needs-replacement":"unknown";
+      const verifiedAt=state==="verified"?(prior?.state==="verified"?prior.verified_at:new Date(record.at).toISOString()):null;
+      this.db.prepare("INSERT INTO credential_request_status(profile,credential_id,revision,state,verified_at,observed_at) VALUES(?,?,?,?,?,?) ON CONFLICT(profile) DO UPDATE SET credential_id=excluded.credential_id,revision=excluded.revision,state=excluded.state,verified_at=excluded.verified_at,observed_at=excluded.observed_at").run(row.profile,id,revision,state,verifiedAt,record.at);
+      const changed=prior?.state!==state||prior?.verified_at!==verifiedAt;
+      if(changed)this.audit({adapterId:"system",userId:"normal-request"},id,"request-status",revision,kind,state);
+      return changed;
+    }).immediate();
   }
   /** Internal launcher/helper port only. Never returned by a web/API metadata route. Caller must zero the Buffer. */
   credential(profile: string | null, id: string, revision: number): { kind: ClaudeCredentialKind; value: Buffer } {
@@ -122,6 +140,7 @@ export class ClaudeCredentialVault {
       const r: Row = { profile: p, id: prior?.id ?? randomUUID(), revision: expected + 1, kind: change && change!=="subscription" ? change.kind : null, source: change==="subscription" ? "subscription" : "managed", payload: null, updated_at: new Date(this.options.now?.() ?? Date.now()).toISOString() };
       if (change && change!=="subscription") { const raw = Buffer.from(change.value); try { r.payload = this.seal(raw, this.aad(r)); } finally { raw.fill(0); } }
       this.db.prepare("INSERT INTO credentials(profile,id,revision,kind,payload,updated_at,source) VALUES(@profile,@id,@revision,@kind,@payload,@updated_at,@source) ON CONFLICT(profile) DO UPDATE SET revision=excluded.revision,kind=excluded.kind,payload=excluded.payload,updated_at=excluded.updated_at,source=excluded.source").run(r);
+      this.db.prepare("DELETE FROM credential_request_status WHERE profile=?").run(p);
       this.audit(actor, r.id, change==="subscription" ? "select-subscription" : change ? prior?.kind ? "replace" : "set" : "remove", r.revision, r.kind, "ok");
       return this.metadata(profile)!;
     }).immediate();

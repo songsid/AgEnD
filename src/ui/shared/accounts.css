@@ -22,15 +22,19 @@
    curving into the row's rounded corners. Drawn here, on the row's own class, rather than by a class in the markup (#3407
    review): this sheet loads apart from the shell and its markup, so a tab holding either older half still draws one bar
    in its state's colour (older markup + this sheet: this bar; this markup is unchanged + an older sheet: the old edge),
-   never two. The 3px the bar takes is added to the row's padding. */
-.s-accounts .s-account-row { display: block; position: relative; min-height: 0; padding: var(--s-3) var(--s-4) var(--s-3) calc(var(--s-4) + 3px); background: var(--bg); overflow: visible; }
+   never two. The absolute bar does not change the shared inner padding. */
+.s-accounts .s-account-row { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); position: relative; min-height: 0; padding: var(--s-3) var(--s-4); background: var(--bg); overflow: visible; }
 .s-accounts .s-account-row::before { content: ""; position: absolute; left: 0; top: var(--s-2); bottom: var(--s-2); width: 3px; background: var(--ok); pointer-events: none; }
 .s-account-row:has(.s-auth-state.is-not_signed_in)::before { background: var(--warn); }
 .s-account-row:has(.s-auth-state:is(.is-unknown, .is-not_installed, .is-too_old))::before { background: var(--text-3); }
 .s-account-row details { margin-top: var(--s-3); }
 
-/* Layer 1: the title bar — name, state, default tag on the left; the buttons (`.s-actions`) on the right. */
-.s-account-title-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2) var(--s-3); }
+/* One spacing rhythm per box; the absolute state bar never shifts its content. */
+.s-accounts .s-account-row > * { margin: 0; }
+
+/* Layer 1: name/state, then a left-aligned wrapping action row at the same content edge. */
+.s-account-title-bar { display: flex; flex-direction: column; align-items: stretch; gap: var(--s-2); }
+.s-account-title-bar > .s-actions { margin: 0; justify-content: flex-start; gap: var(--s-2); }
 .s-account-title-left { flex: 1 1 auto; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); }
 .s-account-title-left strong { font-size: var(--fs-md); line-height: 1.4; overflow-wrap: anywhere; }
 .s-account-default-tag { background: var(--accent-dim); color: var(--accent); font-weight: var(--fw-semibold); }

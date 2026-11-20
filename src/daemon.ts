@@ -1,3 +1,4 @@
+import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
@@ -7323,6 +7324,11 @@ export class Daemon extends EventEmitter {
     this.claudeModelObserver = modelObserver;
     this.modelObservationBound = false;
     const owner = launchIdentity(this.interactionOwner());
+    const credentialLaunch=source||!this.isClaudeCodeBackend()?null:this.backend?.credentialObservationLaunch?.();
+    monitor.on("claude_request",(record:ClaudeRequestObservation,launchId:string)=>{
+      if(!credentialLaunch||credentialLaunch.binding.kind==="subscription"||this.transcriptMonitor!==monitor||owner!==launchIdentity(this.interactionOwner())||this.deliveryWritesStopping||this.startupAborted||launchId!==credentialLaunch.launch.id||this.backend?.credentialObservationLaunch?.()?.launch.id!==launchId||record.at<credentialLaunch.launch.startedAt||!credentialLaunch.sourceCurrent())return;
+      this.emit("claude_credential_request",{binding:credentialLaunch.binding,record,owner:this.interactionOwner()});
+    });
     let reminderSession = modelObserver?.checkpoint().sessionId ?? null;
     const observeReminderBoundary = (sessionId: string, before: ModelObservation, after: ModelObservation) => {
       const selected = (s: ModelObservation) => normalizeClaudeModel(s.session ?? s.launch);
