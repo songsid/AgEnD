@@ -152,7 +152,7 @@ describe("one fleet UI across runtimes",()=>{
     const status={instances:[{...nativeRow(),native_adapter:"pane",status:"stopped",native_recovery:{kind:"host-upgrade"}}],windows_cli:true};app.applyStatus(status);emit("status",status);
     await mountNative();expect(p.root.textContent).toContain("restart Windows");
     expect(p.root.querySelectorAll("button").some((button:any)=>button.textContent==="Recover saved session")).toBe(false);
-    p.root.querySelectorAll(".windows-agent-blocked button").find((button:any)=>button.textContent==="Start instance").click();await settle(6);
+    p.root.querySelectorAll(".windows-agent-blocked button").find((button:any)=>button.textContent==="Start agent").click();await settle(6);
     expect(sent.some(item=>item.path===`/ui/start/${nativeName}`)).toBe(true);expect(sent.some(item=>item.path==="/ui/send")).toBe(false);
   });
   it("keeps unsupported CLI commands as drafts instead of sending them to Linux controls",async()=>{
