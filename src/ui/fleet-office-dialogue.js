@@ -250,7 +250,7 @@ const roundRect = (ctx, x, y, w, h, r) => {
   else ctx.rect(x, y, w, h);
 };
 /** A 9-slice frame `im` over (x, y, w, h): `s` image px a side, drawn `k` CSS px an image px (unsmoothed). */
-function nineSlice(ctx, im, s, x, y, w, h, k) {
+export function nineSlice(ctx, im, s, x, y, w, h, k) {
   const iw = im.naturalWidth || im.width, ih = im.naturalHeight || im.height, d = s * k;
   if (!iw || !ih || w < 2 * d || h < 2 * d) return false;
   const sx = [0, s, iw - s, iw], sy = [0, s, ih - s, ih], dx = [x, x + d, x + w - d, x + w], dy = [y, y + d, y + h - d, y + h];

@@ -204,6 +204,46 @@ A person's line for a state comes from the first of these that has lines for it,
 - `dialogBox.frame` is a 9-slice picture up to 512×512 px with `slice` image px a side (1–128, default 8); the colours are `#rrggbb`, each defaulting to the dashboard's.
 - They're loaded only the first time the box needs them.
 
+**Agent profile card (`card`).** A pack can optionally restyle the Agent profile card (the popover beside a person, or bottom sheet on a phone) with a curated preset, colours, artwork, and layout:
+
+```json
+"card": {
+  "preset": "rpg",
+  "style": {
+    "background": "#1f1916",
+    "backgroundImage": "ui/card_bg.png",
+    "frame": "ui/card_frame.png",
+    "slice": 12,
+    "border": "#c8a165",
+    "text": "#f6ead7",
+    "muted": "#c9b69a",
+    "accent": "#e5b84b",
+    "barTrack": "#382d25",
+    "barFill": "#e5b84b",
+    "buttonBg": "#3a2c22",
+    "buttonText": "#f6ead7",
+    "buttonPrimaryBg": "#c88d2e",
+    "buttonPrimaryText": "#1a120b",
+    "radius": "sm"
+  },
+  "layout": {
+    "avatarSize": "lg",
+    "avatarSource": "portrait",
+    "headerAlign": "center",
+    "width": 340,
+    "sections": ["header", "level", "rows", "now", "tell", "actions"],
+    "rows": ["office", "model", "backend", "today", "firstSeen"],
+    "rowColumns": 2,
+    "hide": ["instance"]
+  }
+}
+```
+
+- `preset` picks a curated layout: `default`, `rpg`, `compact`, or `dossier`. Explicit `style` and `layout` keys override the preset. Packs without `card` keep the default card unchanged.
+- `style` colours are strict `#rrggbb` (never raw CSS). Explicit pairs are WCAG-checked on upload: `text`/`background`, `muted`/`background`, `buttonText`/`buttonBg`, and `buttonPrimaryText`/`buttonPrimaryBg` must be at least 4.5:1; `border`/`background` and `barFill`/`barTrack` at least 3.0:1. `backgroundImage` is a PNG up to 1024×1024 px (drawn with a readability scrim); `frame` is a 9-slice PNG up to 512×512 px with `slice` 1–128 (default 8, `slice * 2 < min(w, h)`). Both are lazy-loaded when a card opens. `radius` is `none`, `sm`, `md`, or `lg`.
+- `layout` sets `avatarSize` (`sm` 44 px, `md` 56 px, `lg` 84 px), `avatarSource` (`sprite` or `portrait` from `portraits`, falling back to the idle sprite), `headerAlign` (`left` or `center`), desktop `width` (280–400 px; ignored on phone bottom sheets), `sections` (unique ordered subset of `header`, `level`, `rows`, `now`, `tell`, `actions` — `header` and `actions` are always required if `sections` is set), `rows` (unique ordered subset of `office`, `model`, `backend`, `today`, `firstSeen`), `rowColumns` (`1` or `2`), and `hide` (unique subset of `instance`, `title`, `badge`, `level`, `xpBar`, `office`, `model`, `backend`, `today`, `firstSeen`, `now`).
+- Share links still strip `model`, `backend`, `today`, `firstSeen`, `tell`, and actions before `card.layout` runs — a pack can never reveal hidden fields on a share link.
+
 **Checking a pack.** The check is strict: an unknown key, a value out of range, or a name that refers to nothing refuses the whole pack, with where it broke. An agent with pack access can run `office_pack_check` on a folder without storing anything (see [below](#let-an-agent-manage-skin-packs)). The page and the host use the same rules.
 
 ## Arrange the layout
@@ -435,6 +475,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `room`, `desk` | ❌ | Desks layout pictures: `room.floor`, `room.wall`, `desk.back`, `desk.front`, `desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`: the levels' titles and pinned titles (see [Titles from a skin pack](#titles-from-a-skin-pack)) |
 | `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
+| `card` | ❌ | `{ preset?, style?, layout? }`: optional Agent profile card preset (`default`, `rpg`, `compact`, `dossier`), WCAG-checked `#rrggbb` colours, `backgroundImage` (≤ 1024×1024 px), 9-slice `frame` (≤ 512×512 px), and layout overrides (#4256) |
 
 A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
@@ -521,6 +562,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 ## Upgrading and rolling back
 
 - **Upgrading** keeps your offices, packs and layouts; nothing needs migrating by hand.
+- **A pack with `card` and rolling back** (#4256). An older version refuses a pack with a `card` key and draws its offices as Desks, with a note; the pack stays intact on disk until upgrading back. Remove `card` before rolling back if you need it on an older version.
 - **A pack with `portraits` or `dialogBox` and rolling back** (#2861). As with `levels`, an older version refuses such a pack and draws it as Desks, with a note. Remove the keys, or re-upload without them, before rolling back. Nothing else about the dialogue box is stored on the host.
 - **A pack with `levels` and rolling back.** A version before levels refuses a pack that has a `levels` key, so such a pack is drawn as Desks there, with a note. Remove the key, or re-upload the pack without it, if you need to roll back.
 - **Level titles for every office and rolling back.** An older version ignores the fleet's titles (`levels` in `web-offices.json`), and its next save of the offices drops them. Set them again after upgrading.

@@ -202,6 +202,17 @@ const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 204
 export const STRIP_LIMITS = { sheetFrames: 32, sheets: 32, frames: 600, minMs: 33, maxMs: 60000 };
 /** #2861: a portrait's expressions, by the state it is shown in (a missing one: idle, then any given). */
 export const PORTRAIT_STATES = ["idle", "working", "needs"];
+/** M-3433 (#4256): optional agent profile card style & layout enums and caps. */
+export const CARD_PRESETS = ["default", "rpg", "compact", "dossier"];
+export const CARD_RADII = ["none", "sm", "md", "lg"];
+export const CARD_AVATAR_SIZES = ["sm", "md", "lg"];
+export const CARD_AVATAR_SOURCES = ["sprite", "portrait"];
+export const CARD_HEADER_ALIGNS = ["left", "center"];
+export const CARD_SECTIONS = ["header", "level", "rows", "now", "tell", "actions"];
+export const CARD_ROWS = ["office", "model", "backend", "today", "firstSeen"];
+export const CARD_HIDE = ["instance", "title", "badge", "level", "xpBar", "office", "model", "backend", "today", "firstSeen", "now"];
+export const CARD_STYLE_COLORS = ["background", "border", "text", "muted", "accent", "barTrack", "barFill", "buttonBg", "buttonText", "buttonPrimaryBg", "buttonPrimaryText"];
+export const CARD_LIMITS = { widthMin: 280, widthMax: 400, sliceMax: 128, textContrast: 4.5, uiContrast: 3.0 };
 /** #2861: a person's account as the chat records it (`adapter:id`, web-chat-history.ts FROM). */
 const ACCOUNT = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
 
@@ -230,6 +241,24 @@ function list(v, max, at) { if (!Array.isArray(v)) throw new Refused(at, "a list
 
 /** Whether `v` is a pack's `matte`: a colour as #rrggbb (six hex digits, either case). */
 export const matteOk = (v) => typeof v === "string" && HEX.test(v);
+
+/** M-3433 (#4256): WCAG 2.1 relative luminance (0–1) for a #rrggbb colour, or null when invalid. */
+export function relativeLuminance(hex) {
+  if (!matteOk(hex)) return null;
+  const ch = (i) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  };
+  return 0.2126 * ch(1) + 0.7152 * ch(3) + 0.0722 * ch(5);
+}
+
+/** M-3433 (#4256): WCAG 2.1 contrast ratio (1–21) between two #rrggbb colours, or 0 when either is invalid. */
+export function contrastRatio(hexA, hexB) {
+  const a = relativeLuminance(hexA), b = relativeLuminance(hexB);
+  if (a === null || b === null) return 0;
+  const hi = Math.max(a, b), lo = Math.min(a, b);
+  return (hi + 0.05) / (lo + 0.05);
+}
 
 /** A frame strip, strictly; `scale` the pack's (its displayed size, dw × dh, is resolved here).
  * Supports three forms:
@@ -486,6 +515,99 @@ function dialogBoxOf(v) {
   return out;
 }
 
+/** M-3433 (#4256): a unique ordered list of allowed enum values. */
+function uniqueEnumList(v, allowed, at) {
+  const items = list(v, allowed.length, at), seen = new Set();
+  return items.map((s, i) => {
+    if (typeof s !== "string" || !allowed.includes(s)) throw new Refused(`${at}[${i}]`, `one of ${allowed.join(", ")}`);
+    if (seen.has(s)) throw new Refused(`${at}[${i}]`, `"${s}" listed twice`);
+    seen.add(s);
+    return s;
+  });
+}
+
+/**
+ * M-3433 (#4256): a pack's optional `card` — agent profile card preset, visual style (strict #rrggbb colours with
+ * WCAG contrast checks on explicit pairs, optional backgroundImage and 9-slice frame, corner radius), and layout
+ * (avatar size/source, header alignment, width, section/row ordering, columns, hideable fields). Null when absent.
+ */
+function cardOf(v) {
+  if (v === undefined) return null;
+  obj(v, "card");
+  keys(v, ["preset", "style", "layout"], "card");
+  const out = {};
+  if (v.preset !== undefined) {
+    if (typeof v.preset !== "string" || !CARD_PRESETS.includes(v.preset)) throw new Refused("card.preset", `one of ${CARD_PRESETS.join(", ")}`);
+    out.preset = v.preset;
+  }
+  if (v.style !== undefined) {
+    const s = obj(v.style, "card.style");
+    keys(s, [...CARD_STYLE_COLORS, "backgroundImage", "frame", "slice", "radius"], "card.style");
+    if (s.slice !== undefined && s.frame === undefined) throw new Refused("card.style.slice", "only with frame");
+    const st = {};
+    for (const k of CARD_STYLE_COLORS) {
+      if (s[k] === undefined) continue;
+      if (!matteOk(s[k])) throw new Refused(`card.style.${k}`, "a colour as #rrggbb");
+      st[k] = s[k].toLowerCase();
+    }
+    if (s.backgroundImage !== undefined) st.backgroundImage = src(s.backgroundImage, "card.style.backgroundImage");
+    if (s.frame !== undefined) {
+      st.frame = src(s.frame, "card.style.frame");
+      st.slice = s.slice === undefined ? 8 : int(s.slice, 1, CARD_LIMITS.sliceMax, "card.style.slice");
+    }
+    if (s.radius !== undefined) {
+      if (typeof s.radius !== "string" || !CARD_RADII.includes(s.radius)) throw new Refused("card.style.radius", `one of ${CARD_RADII.join(", ")}`);
+      st.radius = s.radius;
+    }
+    const pairs = [
+      ["text", "background", CARD_LIMITS.textContrast],
+      ["muted", "background", CARD_LIMITS.textContrast],
+      ["buttonText", "buttonBg", CARD_LIMITS.textContrast],
+      ["buttonPrimaryText", "buttonPrimaryBg", CARD_LIMITS.textContrast],
+      ["border", "background", CARD_LIMITS.uiContrast],
+      ["barFill", "barTrack", CARD_LIMITS.uiContrast],
+    ];
+    for (const [fg, bg, min] of pairs) {
+      if (st[fg] && st[bg]) {
+        const ratio = contrastRatio(st[fg], st[bg]);
+        if (ratio < min) throw new Refused(`card.style.${fg}`, `contrast ratio against ${bg} must be at least ${min}:1 (got ${ratio.toFixed(2)}:1)`);
+      }
+    }
+    out.style = st;
+  }
+  if (v.layout !== undefined) {
+    const l = obj(v.layout, "card.layout");
+    keys(l, ["avatarSize", "avatarSource", "headerAlign", "width", "sections", "rows", "rowColumns", "hide"], "card.layout");
+    const ly = {};
+    if (l.avatarSize !== undefined) {
+      if (typeof l.avatarSize !== "string" || !CARD_AVATAR_SIZES.includes(l.avatarSize)) throw new Refused("card.layout.avatarSize", `one of ${CARD_AVATAR_SIZES.join(", ")}`);
+      ly.avatarSize = l.avatarSize;
+    }
+    if (l.avatarSource !== undefined) {
+      if (typeof l.avatarSource !== "string" || !CARD_AVATAR_SOURCES.includes(l.avatarSource)) throw new Refused("card.layout.avatarSource", `one of ${CARD_AVATAR_SOURCES.join(", ")}`);
+      ly.avatarSource = l.avatarSource;
+    }
+    if (l.headerAlign !== undefined) {
+      if (typeof l.headerAlign !== "string" || !CARD_HEADER_ALIGNS.includes(l.headerAlign)) throw new Refused("card.layout.headerAlign", `one of ${CARD_HEADER_ALIGNS.join(", ")}`);
+      ly.headerAlign = l.headerAlign;
+    }
+    if (l.width !== undefined) ly.width = int(l.width, CARD_LIMITS.widthMin, CARD_LIMITS.widthMax, "card.layout.width");
+    if (l.sections !== undefined) {
+      const secs = uniqueEnumList(l.sections, CARD_SECTIONS, "card.layout.sections");
+      if (!secs.includes("header") || !secs.includes("actions")) throw new Refused("card.layout.sections", 'must include "header" and "actions"');
+      ly.sections = secs;
+    }
+    if (l.rows !== undefined) ly.rows = uniqueEnumList(l.rows, CARD_ROWS, "card.layout.rows");
+    if (l.rowColumns !== undefined) {
+      if (l.rowColumns !== 1 && l.rowColumns !== 2) throw new Refused("card.layout.rowColumns", "1 or 2");
+      ly.rowColumns = l.rowColumns;
+    }
+    if (l.hide !== undefined) ly.hide = uniqueEnumList(l.hide, CARD_HIDE, "card.layout.hide");
+    out.layout = ly;
+  }
+  return out;
+}
+
 /**
  * #3685: a pack's `idleVisits` — up to LIMIT.idleVisits { area, weight 1–100, minSeconds 5–600, maxSeconds minSeconds–600 },
  * each an area the pack defines, none twice; [] when it has none.
@@ -524,7 +646,7 @@ export function checkLevels(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "card"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -624,7 +746,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       bubblesByInstance[k] = bubblesOf(v, `bubblesByInstance.${k}`);
     }
     const levels = levelsOf(x.levels);
-    const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox);
+    const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox), card = cardOf(x.card);
     const room = x.room === undefined ? {} : obj(x.room, "room"), desk = x.desk === undefined ? {} : obj(x.desk, "desk");
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
@@ -637,7 +759,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       ...(Object.keys(bubblesBySet).length ? { bubblesBySet } : {}), ...(Object.keys(bubblesByInstance).length ? { bubblesByInstance } : {}),
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
       ...(levels ? { levels } : {}), ...(idleVisits.length ? { idleVisits } : {}),
-      ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}),
+      ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}), ...(card ? { card } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
@@ -646,10 +768,11 @@ export function checkSkinPack(x, { kept = false } = {}) {
 }
 /** The checked pack, or null. */
 export const skinPackOk = (x) => { const r = checkSkinPack(x); return r.ok ? r.pack : null; };
-/** #2861: the pictures only the dialogue box uses — every portrait and the box's frame (loaded when it first needs one). */
+/** #2861 / #4256: pictures loaded lazily (portraits, dialogue-box frame, card background/frame). */
 export const packPortraitImages = (pack) => {
   const p = pack.portraits, all = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)] : [];
-  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame].filter(Boolean))];
+  const cs = pack.card && pack.card.style;
+  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame, cs && cs.backgroundImage, cs && cs.frame].filter(Boolean))];
 };
 /** The sheets a strip draws from, in order: `[{ src, frames }]` (single-sheet strips have one entry). */
 export const stripSheets = (st) => (st && Array.isArray(st.sheets) ? st.sheets : st && st.src ? [{ src: st.src, frames: st.frames }] : []);
