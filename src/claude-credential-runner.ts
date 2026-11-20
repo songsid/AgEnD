@@ -1,5 +1,5 @@
 /** Internal helper/launcher process. Never import the CLI logger or dotenv loader here. */
-import { spawn } from "node:child_process";
+import { spawn } from "./child-process.js";
 import { ClaudeCredentialVault } from "./claude-credential-vault.js";
 import { currentManagedClaude, managedClaudeAuthInputs, managedClaudeEnv, probeManagedClaudeSource, readManagedClaudeSpec, writeClaudeCredentialPipe } from "./claude-credential-launch.js";
 async function run():Promise<void>{
