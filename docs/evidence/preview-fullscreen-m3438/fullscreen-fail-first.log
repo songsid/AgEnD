@@ -1,0 +1,33 @@
+RUN  v4.1.12 <checkout>
+
+ ❯ tests/preview-panel-widths-2911.test.ts (11 tests | 2 failed | 9 skipped) 853ms
+     × M-3438: html fullscreen is not restricted to wide screens 94ms
+     × M-3438: markdown fullscreen is not restricted to wide screens 39ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/preview-panel-widths-2911.test.ts > full screen > M-3438: html fullscreen is not restricted to wide screens
+ FAIL  tests/preview-panel-widths-2911.test.ts > full screen > M-3438: markdown fullscreen is not restricted to wide screens
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/preview-panel-widths-2911.test.ts:114:52
+    112|     }
+    113|     const button = doc.querySelector(".pv-panel-fs");
+    114|     expect(button.classList.contains("only-wide")).toBe(false);
+       |                                                    ^
+    115|     await click(button);
+    116|     expect(doc.querySelector(".pv-panel").classList.contains("pv-fs-im…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 9 skipped (11)
+   Start at  14:39:08
+   Duration  1.41s (transform 748ms, setup 149ms, import 160ms, tests 853ms, environment 0ms)

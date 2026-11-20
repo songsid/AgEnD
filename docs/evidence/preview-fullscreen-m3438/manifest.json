@@ -1,0 +1,98 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "0847d083651983c2760ca0fe9ccdd6652b593380159d67ad8a33475c2da9b695"
+  },
+  {
+    "path": "desk-dark-en-refused-1-immersive.png",
+    "sha256": "85a38e079715e7362c851c64de13774ffd3635f06eb8eae7856816b2909e7d27"
+  },
+  {
+    "path": "desk-dark-en-unavailable-1-immersive.png",
+    "sha256": "85a38e079715e7362c851c64de13774ffd3635f06eb8eae7856816b2909e7d27"
+  },
+  {
+    "path": "desk-light-en-1-phone-width.png",
+    "sha256": "bfc5043c2425678400ea5b56be74fc9d24b661b1fc8ba700d28ff1d222b81ff8"
+  },
+  {
+    "path": "desk-light-en-2-tablet-width.png",
+    "sha256": "d72c3da8ac2b99e1ab181714054d78413cc6193628f09ea90a505fb8d66d33f4"
+  },
+  {
+    "path": "desk-light-en-3-full-screen.png",
+    "sha256": "58596d4e2d63a76840eb5979aa431d49b4d4609dd1b37baafd1c288ad2319538"
+  },
+  {
+    "path": "fresh-phone-dark-zh-TW-1-panel.png",
+    "sha256": "d5760dce22f674e01989019ec2668f3b754487b75e310f665709a37673ad9c20"
+  },
+  {
+    "path": "fullscreen-fail-first.log",
+    "sha256": "0687ce631743efcd4025b32848e1927f3b64c62149ca337acb348c5236e640fa"
+  },
+  {
+    "path": "fullscreen-fixed.log",
+    "sha256": "0e48c39072e9a6833efd4337ec73187de7b4ce563ab935ae724ef7d0bbaad55e"
+  },
+  {
+    "path": "phone-dark-zh-TW-1-two-row-bar.png",
+    "sha256": "c8d494bc86c7bb7214706f6b9514c33a7033efd08323f277b11e389a6927ae86"
+  },
+  {
+    "path": "phone-dark-zh-TW-2-full-screen.png",
+    "sha256": "59af045f087ec01818e6d0cf6b1f1980eed59d31783b8e55cfb644ed49ae35cd"
+  },
+  {
+    "path": "r1/README.md",
+    "sha256": "89847a39b8ea6ea5ebca6ca6ad7d4c791186bcf9fcb986c7499c2a4eebf70abe"
+  },
+  {
+    "path": "r1/captures/desk-dark-en-refused-1-immersive.png",
+    "sha256": "e119536299dbd03d011fbbba2d78a33a4e8f5e38059552ba7447b344959452f8"
+  },
+  {
+    "path": "r1/captures/desk-dark-en-unavailable-1-immersive.png",
+    "sha256": "e119536299dbd03d011fbbba2d78a33a4e8f5e38059552ba7447b344959452f8"
+  },
+  {
+    "path": "r1/captures/desk-light-en-1-phone-width.png",
+    "sha256": "b0e8cc9310e80356698133a7690ba32d4101f1063a4a4f3e5c8e84a9c5902efd"
+  },
+  {
+    "path": "r1/captures/desk-light-en-2-tablet-width.png",
+    "sha256": "e29e72f660ffa36737d34dc637ebbd979bd5fe6f916a2a4f2fd24c774ec2908d"
+  },
+  {
+    "path": "r1/captures/desk-light-en-3-full-screen.png",
+    "sha256": "6b3fb7a61e2abf1c1909bf3442f71356d8f482e9ad4d148841b373b1428e2fba"
+  },
+  {
+    "path": "r1/captures/fresh-phone-dark-zh-TW-1-panel.png",
+    "sha256": "6275aed9c2a7d5cccd72021bc0eee8ae5112915139eef63846b54c21be750479"
+  },
+  {
+    "path": "r1/captures/phone-dark-zh-TW-1-two-row-bar.png",
+    "sha256": "27dd88f284c8ff411e0a5294e3d7eb9b1a67d5c40eb073127c2a4d631d003c9a"
+  },
+  {
+    "path": "r1/captures/phone-dark-zh-TW-2-full-screen.png",
+    "sha256": "029467465eec241e77de58dc00083afaa2d0a98fa778ffa6acdf77c3ce835926"
+  },
+  {
+    "path": "r1/captures/result.json",
+    "sha256": "7a743ef1caf595210a5cfa0c668ec0e3564ae076a01afb0dada06c23736a98c0"
+  },
+  {
+    "path": "r1/visual-r1-tests.log",
+    "sha256": "d7c9549e78cfb1e19dc769d7643d9e94b4c75644e2d3a11316d98b39dcf78a4a"
+  },
+  {
+    "path": "result.json",
+    "sha256": "90f8f5c45327863ca1ac9198a35d68461ac8b90db8c3c2894ec91c514c5f4c16"
+  },
+  {
+    "path": "style-tests.log",
+    "sha256": "668449fc0e7c4886447da85d1729c772f83d4c094eb0ae0d1606c33148792278"
+  }
+]
