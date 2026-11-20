@@ -20,6 +20,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 function deps(over: Partial<WebCommandDeps> = {}): WebCommandDeps & Record<string, any> {
   const d: any = {
     scope: vi.fn(() => "fleet"),
+    report: vi.fn(async () => ({ text: "Report", report: { title: "Report", columns: [], rows: [], notes: [] } })),
     ctx: vi.fn(async () => "ctx text"),
     compact: vi.fn(async (_i: string, x?: string) => ({ sent: true, text: `compact ${x ?? "-"}`, watch: "0123456789abcdef" })),
     applyModel: vi.fn(async (_i: string, m: string) => `model ${m}`),
@@ -41,6 +42,50 @@ function deps(over: Partial<WebCommandDeps> = {}): WebCommandDeps & Record<strin
 const run = (d: WebCommandDeps, command: string, args?: string, extra: Record<string, unknown> = {}, publicLink = false) =>
   runWebCommand(d, { instance: "w", command, args, ...extra }, { publicLink });
 
+describe("M-3425 system reports in web chat", () => {
+  it("runs both read-only reports only after the existing command-table and guest gates", async () => {
+    for (const command of ["sysinfo", "status"]) {
+      const d = deps() as any;
+      d.report = vi.fn(async () => ({ text: "Report", report: { title: "Report", columns: ["Metric", "Value"], rows: [["Example", "Ready"]], notes: [] } }));
+      expect(await run(d, command)).toMatchObject({ status: 200, body: { report: { title: "Report" } } });
+      expect(d.report).toHaveBeenCalledOnce();
+    }
+    const d = deps() as any; d.report = vi.fn();
+    expect((await runWebCommand(d, { instance: "w", command: "status" }, { publicLink: false, guest: true })).status).toBe(403);
+    expect(d.report).not.toHaveBeenCalled();
+  });
+  it("uses each channel platform's guest rules and preserves public-link restrictions before collecting", async () => {
+    const { commandSpec, decideCommand } = await import("../src/command-table.js");
+    for (const scope of ["general", "fleet", "classic"] as const) {
+      for (const platform of ["discord", "telegram"] as const) {
+        for (const publicLink of [false, true]) for (const guest of [false, true]) {
+          for (const command of ["sysinfo", "status"] as const) {
+            const d = deps({ scope: () => scope, platform: () => platform });
+            const allowed = !guest || decideCommand(commandSpec(command)!, scope, {
+              fleetAdmin: () => "denied", channelAdmin: () => false, classicAdmin: () => false,
+            }, platform).allow;
+            expect((await runWebCommand(d, { instance: "w", command }, { publicLink, guest })).status,
+              [scope, platform, publicLink, guest, command].join(" ")).toBe(allowed ? 200 : 403);
+            expect(d.report).toHaveBeenCalledTimes(allowed ? 1 : 0);
+          }
+        }
+      }
+    }
+    for (const command of ["sysinfo", "status"]) {
+      const missing = deps({ scope: () => null });
+      expect((await run(missing, command)).status).toBe(404);
+      expect(missing.report).not.toHaveBeenCalled();
+      const action = deps();
+      expect((await run(action, command, "", { action: "refresh" })).status).toBe(400);
+      expect(action.report).not.toHaveBeenCalled();
+    }
+    const publicSave = deps();
+    expect((await run(publicSave, "save", "example.md", {}, true)).status).toBe(403);
+    expect(publicSave.save).not.toHaveBeenCalled();
+  });
+
+});
+
 describe("runWebCommand", () => {
   it("M-2731: model actions are typed and never reach applyModel; unsupported/guest actions refuse", async () => {
     const d = deps(); const action = vi.fn(async () => ({ choices: { current: "a", options: [{ id: "a", label: "A" }], actions: ["refresh" as const] } }));
@@ -54,9 +99,9 @@ describe("runWebCommand", () => {
   });
 
   it("only the instance commands: /raw and the fleet-level ones are not commands here", async () => {
-    expect([...WEB_COMMANDS].sort()).toEqual(["backend", "btw", "cancel", "clear", "compact", "ctx", "effort", "model", "pause", "save", "steer", "wake"]);
+    expect([...WEB_COMMANDS].sort()).toEqual(["backend", "btw", "cancel", "clear", "compact", "ctx", "effort", "model", "pause", "save", "status", "steer", "sysinfo", "wake"]);
     const d = deps();
-    for (const c of ["raw", "/raw", "status", "restart", "update", "login", "collab", "tips", "__proto__", "constructor"]) {
+    for (const c of ["raw", "/raw", "restart", "update", "login", "collab", "tips", "__proto__", "constructor"]) {
       expect(await run(d, c, "x"), c).toEqual({ status: 400, body: { error: `web.command_unknown|/${c.replace(/^\//, "")}` } });
     }
   });

@@ -308,8 +308,8 @@ describe("live: a guest scoped to `a`", () => {
     const late2 = await pending;
     expect([late2.status, JSON.parse(late2.body).error]).toEqual([429, "guest_commands_rate_limited"]);
     vi.mocked(fm.webCommand).mockRestore();
-    // The status frame tells its palette which commands it may run on each agent.
-    expect(fm.getUiStatus().instances.find((i: { name: string }) => i.name === "a").guest_commands).toEqual(["ctx", "cancel", "btw", "steer"]);
+    // The status frame follows the shared table: /sysinfo is anyone-level here; /status stays admin-only.
+    expect(fm.getUiStatus().instances.find((i: { name: string }) => i.name === "a").guest_commands).toEqual(["sysinfo", "ctx", "cancel", "btw", "steer"]);
   });
   it("#2855: at most 30 saves a minute per guest account, every device of it counted together", async () => {
     scopedToA(); guestsChat(); freshLimits();

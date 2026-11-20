@@ -1,0 +1,58 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/web-chat-commands-1269.test.ts (40 tests | 1 failed | 39 skipped) 1164ms
+     × M-3425 offers system commands and renders report values as safe text 1161ms
+(node:11484) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/web-commands-1269.test.ts (22 tests | 1 failed | 21 skipped) 18ms
+     × runs both read-only reports only after the existing command-table and guest gates 16ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-commands-1269.test.ts > the chat's commands (the real page modules) > M-3425 offers system commands and renders report values as safe text
+AssertionError: expected [ '' ] to include 'cmd-sysinfo'
+ ❯ tests/web-chat-commands-1269.test.ts:84:47
+     82|     const c = await chatPage();
+     83|     await c.type("/sysinfo");
+     84|     expect(c.options().map((o: any) => o.id)).toContain("cmd-sysinfo");
+       |                                               ^
+     85|     c.fx.respond = () => ({ report: { title: "System information", col…
+     86|     await c.key("Enter");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/web-commands-1269.test.ts > M-3425 system reports in web chat > runs both read-only reports only after the existing command-table and guest gates
+AssertionError: expected { status: 400, …(1) } to match object { status: 200, …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "body": {
+-     "report": {
+-       "title": "Report",
+-     },
++     "error": "web.command_unknown|/sysinfo",
+    },
+-   "status": 200,
++   "status": 400,
+  }
+
+ ❯ tests/web-commands-1269.test.ts:49:37
+     47|       const d = deps() as any;
+     48|       d.report = vi.fn(async () => ({ text: "Report", report: { title:…
+     49|       expect(await run(d, command)).toMatchObject({ status: 200, body:…
+       |                                     ^
+     50|       expect(d.report).toHaveBeenCalledOnce();
+     51|     }
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed (2)
+      Tests  2 failed | 60 skipped (62)
+   Start at  11:45:02
+   Duration  7.41s (transform 6.24s, setup 252ms, import 7.33s, tests 1.18s, environment 0ms)
+

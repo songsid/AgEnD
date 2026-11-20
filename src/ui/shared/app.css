@@ -2850,6 +2850,37 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .cmd-card.bad { --lbar-color: var(--danger); padding-left: calc(var(--s-3) + 3px); }
 .cmd-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .cmd-name { font-weight: var(--fw-semibold); }
+/* Shared Usage table, scoped report layout: six status cells become labelled rows on phones. */
+.cmd-report { min-width: 0; }
+.cmd-report-body { max-height: 50vh; overflow-y: auto; }
+.cmd-report-modal .dlg { overflow: hidden; }
+.cmd-report-modal .dlg-box { height: 85vh; }
+.cmd-report-modal .dlg-head { flex-shrink: 0; }
+.cmd-report-modal .dlg-body { flex: 1; min-height: 0; overflow: hidden; }
+.cmd-report-expanded { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cmd-report-expanded .cmd-report-tools, .cmd-report-expanded .cmd-report-count { flex-shrink: 0; }
+.cmd-report-expanded .cmd-report-body { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.cmd-report-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
+.cmd-report-tools .field { flex: 1; min-width: 0; }
+.cmd-report-status .us-table th:first-child { width: 28%; }
+.cmd-report-status .us-table th:nth-child(3) { width: 20%; }
+.cmd-report h3 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); }
+.cmd-report .note { overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd-report table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+.cmd-report td, .cmd-report th { overflow-wrap: anywhere; }
+.cmd-metrics td, .cmd-metrics th { padding: var(--s-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+@media (max-width: 899px) {
+  .cmd-report-body { max-height: 25vh; }
+  .cmd-report-tools input, .cmd-report-tools .btn { min-height: var(--tap); }
+  .cmd-report-modal .dlg-x { min-width: var(--tap); min-height: var(--tap); }
+  .cmd-report-tools input { font-size: var(--fs-md); }
+  .cmd-report-status .us-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .cmd-report-status .us-table, .cmd-report-status .us-table tbody, .cmd-report-status .us-table tr, .cmd-report-status .us-table td { display: block; width: 100%; }
+  .cmd-report-status .us-table tr { margin-bottom: var(--s-3); padding: var(--s-2); border-bottom: 1px solid var(--border); }
+  .cmd-report-status .us-table td { display: flex; justify-content: space-between; gap: var(--s-3); border: 0; }
+  .cmd-report-status .us-table td::before { content: attr(data-label); color: var(--text-3); flex-shrink: 0; }
+
+}
 .cmd-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-ui); color: var(--text-2); }
 .cmd-phase { color: var(--text); font-weight: var(--fw-semibold); }
 .cmd-choices { display: flex; flex-wrap: wrap; gap: var(--s-1); max-height: 180px; overflow-y: auto; }
