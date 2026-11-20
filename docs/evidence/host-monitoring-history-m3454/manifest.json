@@ -1,12 +1,12 @@
 {
   "files": [
     {
-      "path": "changes/3454-host-history.md",
-      "sha256": "dd8ca2fbac5eb248dd95078e8846c57fbccfe78e596b42b492431c6e9510e200"
+      "path": "changes/4299-host-history.md",
+      "sha256": "aefea453180f4388dc4f1cbb15fb88466495965653bca8d0658713ea258b2f79"
     },
     {
-      "path": "changes/3454-host-history.zh-TW.md",
-      "sha256": "aadb784cee8f4c66a9029d2d6a6be2f214599286c4d8180b859b49b4ec09d46b"
+      "path": "changes/4299-host-history.zh-TW.md",
+      "sha256": "63ef442e313e7b5962552ad0a453f56f49b74c226b0c0c9066cb1bf2d8d479e7"
     },
     {
       "path": "docs/design/host-monitoring-history.md",

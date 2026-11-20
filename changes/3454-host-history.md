@@ -1,1 +1,0 @@
-- Host monitoring now keeps bounded local history, pauses recording when state or WSL backing storage is low, and removes its own history when monitoring is turned off. The page remains hidden until its later UI slice.
