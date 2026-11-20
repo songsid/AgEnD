@@ -72,11 +72,11 @@ import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
 import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
-import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
+import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, createHold, createSnackDrag, createSnacks, playAllowed, pruneReactions, reactionAt, scatterWords } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -495,9 +495,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // y (a tie: the item first, the person in front); furniture over them; things in the air; the pack's foreground
     // (door frames, pillars, table fronts); then what must stay readable: crowd counts and name tags (bubbles below).
     const t = ms > 0 ? ms : now(), live = furnitureAt(p, t);
+    const draggedHeld = p.hold ? p.hold.held() : null;
+    const heldName = draggedHeld ? draggedHeld.name : null;
     if (!still && ms > 0 && p.snacks) {
+      const snackHidden = heldName ? new Map(live.hidden).set(heldName, "__held__") : live.hidden;
       const changed = p.snacks.step(t, {
-        desks: p.desks, walkers: p.walkers, hidden: live.hidden, ownArea: !!p.ownArea,
+        desks: p.desks, walkers: p.walkers, hidden: snackHidden, ownArea: !!p.ownArea,
         areas: p.L.areas, graph: p.L, snacksById: p.snacksById,
         charEatOf: (n) => (sk.eatStrip ? sk.eatStrip(n) : null),
         onClaim: p.onSnackClaim,
@@ -519,7 +522,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       // #2665: by day, each item's night place too (at night the items are there already).
       ...(p.ghosts && !p.night ? nightGhostsOf(sk.pack).map((n) => ({ y: n.y, k: 1, n })) : [])]
       .sort((x, y) => x.y - y.y || x.k - y.k);
-    // M-3432 (#4255): draw drop-target rings above the floor layer only, never over furniture or characters.
+    // M-3432 (#4255) & M-3445 (#4266): draw drop-target rings above the floor layer only, never over furniture or characters.
     const drop = p.snackDrop && p.snackDrop.current;
     if (drop && drop.kind === "place") {
       ctx.save();
@@ -539,8 +542,34 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         ctx.restore();
       }
     }
+    const seatDrop = heldName && p.seatDrop ? p.seatDrop.current : null;
+    if (seatDrop && seatDrop.name === heldName && Array.isArray(seatDrop.targets)) {
+      for (const st of seatDrop.targets) {
+        if (st.current) continue;
+        const isHover = !!seatDrop.hover && seatDrop.hover.area === st.area && seatDrop.hover.slot === st.slot;
+        ctx.save();
+        if (isHover) {
+          ctx.fillStyle = env.pal.accentDim;
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 26, 11, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.38)"; ctx.lineWidth = 4.5;
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 26, 11, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 2.5;
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 26, 11, 0, 0, Math.PI * 2); ctx.stroke();
+        } else {
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = env.pal.accentDim;
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 22, 10, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.35)"; ctx.lineWidth = 3.5;
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 22, 10, 0, 0, Math.PI * 2); ctx.stroke();
+          ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 2; ctx.setLineDash([5, 3]);
+          ctx.beginPath(); ctx.ellipse(st.x, st.y, 22, 10, 0, 0, Math.PI * 2); ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
     for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
+    let heldPerson = null;
     for (const { f, p: q, g, n, sn } of band) {
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
       if (sn) {
@@ -556,6 +585,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       }
       if (n) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawFurniture(ctx, n, true, 0, env); ctx.restore(); continue; }
       if (g) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawCharacter(ctx, { x: g.x - 44, y: g.y - 53, w: 88, h: 53, seat: g }, g.look, 0, env); ctx.restore(); continue; }
+      if (heldName && q.look.name === heldName) { heldPerson = q; continue; }  // M-3445 (#4267): drawn lifted on top below
       if (live.hidden.has(q.look.name)) continue;                          // #2698: drawn as the item (never while walking)
       const box = { ...q.d, x: q.at.x - 44, y: q.at.y - 53, w: 88, h: 53, seat: { x: q.at.x, y: q.at.y } };
       // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking; M-3432: eating when fed.
@@ -574,6 +604,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       }
     }
     for (const f of furniture) if (f.depth !== "y" && f.depth >= CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
+    // M-3445 (#4267): the character currently being dragged renders lifted above furniture and other characters in its `dragged` pose.
+    if (heldPerson) {
+      const box = { ...heldPerson.d, x: heldPerson.at.x - 44, y: heldPerson.at.y - 53, w: 88, h: 53, seat: { x: heldPerson.at.x, y: heldPerson.at.y } };
+      const posed = actPosed(p, heldPerson.look);
+      sk.drawCharacter(ctx, box, { ...posed, pose: "dragged", basePose: posed.pose }, ms, env);
+    }
     for (const it of up) sk.drawProp(ctx, it, ms, env);
     for (const it of post) if (it.t > 0) sk.drawProp(ctx, it, ms, env);
     if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
@@ -588,7 +624,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const taken = [];
     const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
     for (const q of people) {
-      if (live.hidden.has(q.look.name) || !tagged(q)) continue;
+      if ((live.hidden.has(q.look.name) && q.look.name !== heldName) || !tagged(q)) continue;
       sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
       const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
       tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
@@ -599,7 +635,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // kept on the scene (`heldTags`): hitPart hits each person on theirs, past the picture's edge too (#2699 review).
     const held = [];
     for (const f of furniture) {
-      const on = people.filter((q) => live.hidden.get(q.look.name) === f.id);
+      const on = people.filter((q) => live.hidden.get(q.look.name) === f.id && q.look.name !== heldName);
       if (!on.length) {
         if (!tagsOff && f.label) {
           const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
@@ -704,7 +740,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }
   } };
   if (defer) defer.push(say); else say();
-  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current);
+  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -895,6 +931,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const flights = useMemo(() => createFlights(), []);
   const walkers = useMemo(() => createWalkers(), []);
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
+  const seatPrefsRef = useRef({}), seatKeyRef = useRef(""), seatDropRef = useRef(null);
+  const [seatRev, setSeatRev] = useState(0);
   // #2554: All offices' tiles keep their own: seats (by tile and style), walkers and flights (by tile); and the items
   // flying between tiles.
   const tileSeats = useRef(new Map()), tileWalkers = useRef(new Map()), tileFlights = useRef(new Map());
@@ -1162,17 +1200,30 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // While Edit layout is open: a faint figure on every seat, in the pose its area is for (#2558), so a seat is placed by
   // what will stand, sit or lie there, not by a dot.
   const ghosts = zones && !!layout && !layoutStale;
+  const shared = talk !== undefined || typeof onOpen !== "function";
+  // What a view and per-device seat choices are kept for: the office and its style (All offices: its own key).
+  const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
   const keep = (n) => !(hideAsleep && ASLEEP.has(n.state));
   const single = useMemo(() => {
     if (overview) return { rooms: [], width: 1, height: 1 };            // All offices: the tiles below
     const all = custom ? membersOf(custom, view) : [...new Map(officeRooms(view, filter).flatMap((r) => r.nodes).map((n) => [n.name, n])).values()];
     const nodes = all.filter(keep);
-    if (zones) { const z = zonesLayout(skin.pack, nodes, seatsRef.current, { night }); seatsRef.current = z.seats; return z; }
+    if (zones) {
+      const skKey = shared ? "" : officeKey;
+      if (seatKeyRef.current !== skKey) {
+        seatKeyRef.current = skKey;
+        seatsRef.current = new Map();
+        seatPrefsRef.current = skKey ? store.seats(skKey) : {};
+      }
+      const z = zonesLayout(skin.pack, nodes, seatsRef.current, { night, seatPrefs: skKey ? seatPrefsRef.current : null });
+      seatsRef.current = z.seats;
+      return z;
+    }
     // The desks wrap at the stage's width at the scale they open on (desksK: a pixel level near one CSS px a unit).
     const deskW = Math.max(240, Math.floor(width / desksK(ratio)));
     if (!custom) return autoLayout(officeRooms(view, filter).map((r) => (hideAsleep ? { ...r, nodes: r.nodes.filter(keep) } : r)), { width: deskW });
     return officeScene(custom, nodes, skin, false, deskW);
-  }, [overview, view, filter, custom, width, ratio, skin, hideAsleep, night]);
+  }, [overview, view, filter, custom, width, ratio, skin, hideAsleep, night, seatRev, officeKey, shared]);
   // ── #2554: All offices' tiles — each stored office (then the lobby: whoever is in no office) laid out as its own view
   // lays it out, in its own style (desks wrap at a cell's width), with its own seats, walkers and flights ──
   const lobbyAll = useMemo(() => (overview ? lobbyNodes(stored, view) : []), [overview, stored, view]);
@@ -1220,8 +1271,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const visitMemo = useMemo(() => ({ claims: new Map(), idle: null }), [skin]);
   // M-3293: play — never on a share link's page (no onOpen there, or its own `talk`), with reduced motion, in All
   // offices, the carousel or Edit layout. `hold`: the person picked up (carried where the pointer is, walked back from
-  // where they are dropped); `reacts`: pats and feeds showing (name → { kind, t0 }). The viewer's own: no request.
-  const shared = talk !== undefined || typeof onOpen !== "function";
+  // where they are dropped, or seated on another seat in their area: M-3445 #4266/#4267); `reacts`: pats and feeds showing.
   const play = playAllowed({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
   const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
   // M-3432 (#4255): custom snacks from the active skin pack (client-local, only when play is enabled).
@@ -1239,7 +1289,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (store.tellOn(winner)) void store.tell(winner, "feed");
     loop.current?.wake();
   };
-  useEffect(() => { if (!play) { snackDragCtrl.retire(); hold.cancel(); reacts.current.clear(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [play]);
+  useEffect(() => { if (!play) { const wasHeld = !!hold.held(); snackDragCtrl.retire(); hold.cancel(); seatDropRef.current = null; reacts.current.clear(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); if (wasHeld) walkNow.current?.(); } }, [play]);
   useEffect(() => { if (!showSnacks) { snackDragCtrl.retire(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [showSnacks]);
   useEffect(() => () => { snackDragCtrl.retire(); }, []);
   useEffect(() => {
@@ -1281,10 +1331,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const touched = useRef(false), fitted = useRef(false), drag = useRef(gestureState());
   const miniViewRef = useRef(null), miniRef = useRef(null), overlayEl = useRef(null), tipDeskRef = useRef(null), pctRef = useRef(null);
   const labelEls = useRef(new Map());                                 // #2554: the tiles' labels (tile key → element)
-  // What a view is kept for: the office and its style (All offices: its own key).
-  const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
   snackCtxRef.current = { showSnacks, officeKey, styleKey };
-  useEffect(() => { snackDragCtrl.retire(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); }, [officeKey, styleKey]);
+  useEffect(() => { snackDragCtrl.retire(); hold.cancel(); seatDropRef.current = null; snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); }, [officeKey, styleKey]);
   const keyRef = useRef(officeKey), saveTimer = useRef(0);
   // The fit mode (Fit: contain; Fill: cover), kept per office and style like the view.
   const [fitRev, setFitRev] = useState(0);
@@ -1544,6 +1592,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
       scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current,
+        hold: play ? hold : null, seatDrop: seatDropRef,
         snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }
     if (still) draw(0); else loop.current?.wake();
@@ -1766,12 +1815,24 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current)); } });
   /** Where a drag pans: the canvas, and Edit layout's overlay off its handles (the controls, the bar and the list: never). */
   const onScene = (el) => !!el && (el === canvasRef.current || (typeof el.closest === "function" && !!el.closest(".ol-svg") && !el.closest(".ol-handle")));
-  /** M-3293: someone picked up — their walker set down under the pointer, no card, no tooltip, the click after it swallowed. */
+  /** M-3293 / M-3445: update the floor-level seat drop targets while carrying `h` ({ name, at }). */
+  const updateSeatDrop = (h) => {
+    if (!h || !zones || !skin || !skin.pack) { seatDropRef.current = null; return; }
+    const ds = desksOf(L);
+    seatDropRef.current = {
+      name: h.name,
+      targets: seatDropTargets(skin.pack, ds, h.name),
+      hover: findSeatDropTarget(skin.pack, ds, h.name, h.at),
+    };
+  };
+  /** M-3293 / M-3445: someone picked up — enters `dragged` pose under the pointer, highlights valid seats in their area. */
   const pickedUp = (pointerId) => {
     const h = hold.held();
     if (!h) return;
     // Captured only now: a press that stays a click must reach the canvas (its card), which a capture would take away.
     try { stageRef.current.setPointerCapture(pointerId); } catch { /* gone */ }
+    snacks.cancel(h.name);
+    updateSeatDrop(h);
     walkers.place(h.name, h.at); drag.current.swallow = true;
     setTip(null); setCard(null); loop.current?.wake();
   };
@@ -1789,24 +1850,60 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     g.down(e);
     if (drag.current.pts.size === 2) raw.current = view0().k;      // a pinch starts from the zoom shown
   };
-  /** M-3293: while a press may pick someone up it is theirs (no pan); once held it carries them; a finger that moved first pans. */
+  /** M-3293 / M-3445: while a press may pick someone up it is theirs (no pan); once held it carries them; a finger that moved first pans. */
   const onStageMove = (e) => {
     if (hold.state()) {
       const w = pointOf(e), was = hold.state();
       const st = w ? hold.move(e.pointerId, w.x, w.y, now(), e.clientX, e.clientY) : hold.state();
-      if (st === "held") { if (was !== "held") pickedUp(e.pointerId); else { const h = hold.held(); walkers.place(h.name, h.at); loop.current?.wake(); } return; }
+      if (st === "held") {
+        if (was !== "held") pickedUp(e.pointerId);
+        else { const h = hold.held(); updateSeatDrop(h); walkers.place(h.name, h.at); loop.current?.wake(); }
+        return;
+      }
       if (st === "maybe" || st === "press") return;
-      if (st === "pan") { clearTimeout(holdTimer.current); hold.cancel(); }
+      if (st === "pan") { clearTimeout(holdTimer.current); hold.cancel(); seatDropRef.current = null; }
     }
     g.move(e);
+  };
+  /** M-3445 (#4266): settle a dragged character onto a valid seat in their area (or clamp/walk back to their seat). */
+  const finishHoldDrop = (r, commitSeat) => {
+    seatDropRef.current = null;
+    if (!r) return;
+    const ds = desksOf(L);
+    const target = commitSeat && zones && skin && skin.pack ? findSeatDropTarget(skin.pack, ds, r.name, r.at) : null;
+    if (target) {
+      if (!target.current) {
+        const res = applySeatDrop({ pack: skin.pack, desks: ds, seats: seatsRef.current, prefs: seatPrefsRef.current, name: r.name, target });
+        seatsRef.current = res.seats;
+        seatPrefsRef.current = res.prefs;
+        if (!shared) store.saveSeats(officeKey, res.prefs);
+        if (res.swapped) {
+          const occPos = walkers.at(res.swapped.name, now()) || { x: target.x, y: target.y };
+          if (ownArea && !routeStaysInArea(occPos, res.swapped.seat, L, target.area, null)) {
+            walkers.place(res.swapped.name, res.swapped.seat);
+          }
+        }
+        walkers.place(r.name, { x: target.x, y: target.y });
+        setSeatRev((n) => n + 1);
+      } else {
+        walkers.place(r.name, { x: target.x, y: target.y });
+        walkNow.current?.();
+      }
+    } else {
+      const d = ds.find((x) => x && x.node && x.node.name === r.name);
+      const landAt = ownArea && d ? clampDropForArea(r.at, d.seat, L, d.area) : r.at;
+      walkers.place(r.name, landAt);
+      walkNow.current?.();
+    }
+    loop.current?.wake();
   };
   const onStageUp = (e) => {
     clearTimeout(holdTimer.current);
     const r = hold.up(e.pointerId);
-    if (r) { walkers.place(r.name, r.at); drag.current.swallow = true; setTimeout(() => { if (!drag.current.pts.size) drag.current.swallow = false; }, 0); walkNow.current?.(); }
+    if (r) { finishHoldDrop(r, true); drag.current.swallow = true; setTimeout(() => { if (!drag.current.pts.size) drag.current.swallow = false; }, 0); }
     g.up(e);
   };
-  const onStageCancel = (e) => { clearTimeout(holdTimer.current); const r = hold.up(e.pointerId); if (r) walkNow.current?.(); g.up(e); };
+  const onStageCancel = (e) => { clearTimeout(holdTimer.current); const r = hold.up(e.pointerId); finishHoldDrop(r, false); g.up(e); };
   const onWheel = (e) => {
     if (!onScene(e.target) && !(typeof e.target?.closest === "function" && e.target.closest(".ol-handle, .oo-tile-label"))) return;
     e.preventDefault();
@@ -1816,6 +1913,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   const onKeyDown = (e) => {
     if (e.defaultPrevented) return;                                  // Edit layout's handles move with the arrows
+    if (e.key === "Escape" && hold.held()) {
+      e.preventDefault();
+      clearTimeout(holdTimer.current);
+      const h = hold.held();
+      hold.cancel();
+      finishHoldDrop(h, false);
+      return;
+    }
     const tag = e.target && e.target.tagName;
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
     const z = zoomKey(e);
