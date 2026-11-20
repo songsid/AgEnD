@@ -16,9 +16,10 @@ describe('monitoring Fleet lifecycle integration',()=>{
    fm=new FleetManager(root);fm.loadConfig(path);expect(readFileSync(path,'utf8')).not.toContain('monitoring:');expect(fm.hostMonitoringAvailable()).toBe(false);expect(host).not.toHaveBeenCalled();
    fm.startHostMonitoringRuntime();expect(yaml.load(readFileSync(path,'utf8'))).toMatchObject({monitoring:{enabled:false,agent_footprint:false},unknown_extension:'keep-me'});
    expect(fm.hostMonitoringAvailable()).toBe(true);expect(host).not.toHaveBeenCalled();
+   await vi.waitFor(()=>expect(fm.hostHealthSnapshot().history.state).toBe('off'));
    fm.fleetConfig.monitoring.enabled=true;fm.saveFleetConfig([{path:['monitoring','enabled'],value:true}]);expect(host).toHaveBeenCalledTimes(1);expect(disks).toHaveBeenCalledTimes(1);
-   fm.fleetConfig.monitoring.enabled=false;fm.saveFleetConfig([{path:['monitoring','enabled'],value:false}]);await Promise.resolve();expect(fm.hostHealthSnapshot().enabled).toBe(false);
+   fm.fleetConfig.monitoring.enabled=false;fm.saveFleetConfig([{path:['monitoring','enabled'],value:false}]);await vi.waitFor(()=>expect(fm.hostHealthSnapshot().history.state).toBe('off'));expect(fm.hostHealthSnapshot().enabled).toBe(false);
    expect(yaml.load(readFileSync(path,'utf8'))).toMatchObject({monitoring:{enabled:false,agent_footprint:false}});
-  }finally{fm?.hostMonitor?.stop();vi.restoreAllMocks();vi.useRealTimers();rmSync(root,{recursive:true,force:true});}
+  }finally{fm?.hostMonitor?.stop();if(fm)await vi.waitFor(()=>expect(fm.hostHistory.status().state).toBe('off'));vi.restoreAllMocks();vi.useRealTimers();rmSync(root,{recursive:true,force:true});}
  });
 });

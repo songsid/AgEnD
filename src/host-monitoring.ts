@@ -20,13 +20,14 @@ export interface HostMonitoringProvider {
 export interface HostHealthSnapshot {
   version: 1; enabled: boolean; state: 'off' | 'starting' | 'sampling' | 'stopping' | 'failed';
   platform: MonitoringPlatform | null; reason?: string;
+  history?: import('./host-monitoring-history.js').HostHistoryStatus;
   cpu: Metric<CpuReading>; memory: Metric<MemoryReading>; disks: Metric<DiskReading>;
 }
 const empty = <T>(): Metric<T> => ({ value:null, sampledAt:null, attemptedAt:null, status:'unavailable' });
 export function disabledHostHealth(): HostHealthSnapshot {
   return { version:1, enabled:false, state:'off', platform:null, cpu:empty(), memory:empty(), disks:empty() };
 }
-interface Options { factory: () => HostMonitoringProvider; now?: () => number }
+interface Options { factory: () => HostMonitoringProvider; now?: () => number; onSnapshot?:(snapshot:HostHealthSnapshot)=>void }
 
 /** No factory, probe, timer or file is touched until both the runtime and explicit opt-in are active. */
 export class HostMonitoring {
@@ -78,6 +79,8 @@ export class HostMonitoring {
       : { value:reading.value, sampledAt:reading.sampledAt ?? at, attemptedAt:at, status:'ok', ...(reading.reason ? { reason:reading.reason } : {}) };
   }
 
+  private publish(): void {try{this.options.onSnapshot?.(this.snapshot());}catch{/* History failure cannot stop the host cache. */}}
+
   private sample(epoch: number): void {
     const provider = this.provider;
     if (!provider || epoch !== this.epoch || !this.runtime || !this.desired || this.stopping) return;
@@ -91,20 +94,23 @@ export class HostMonitoring {
       this.current.memory = this.update(this.current.memory, { value:null, reason:'host_read_failed' }, at);
     }
     this.current.state = 'sampling';
+    this.publish();
     if (this.diskTicks > 0) this.diskTicks--;
     if (this.diskFlight || this.diskTicks > 0) return;
     this.diskTicks = DISK_SAMPLE_MS / HOST_SAMPLE_MS;
     const generation = ++this.diskGeneration;
     let flight: MonitoringProbe<DiskReading>;
     try { flight = provider.disks(); }
-    catch { this.current.disks = this.update(this.current.disks, { value:null, reason:'disk_read_failed' }, at); return; }
+    catch { this.current.disks = this.update(this.current.disks, { value:null, reason:'disk_read_failed' }, at); this.publish();return; }
     this.diskFlight = flight;
     void flight.result.then(value => {
       if (epoch !== this.epoch || generation !== this.diskGeneration || this.provider !== provider || !this.runtime || !this.desired) return;
       this.current.disks = this.update(this.current.disks, { value }, this.now());
+      this.publish();
     }, () => {
-      if (epoch === this.epoch && generation === this.diskGeneration && this.provider === provider && this.runtime && this.desired)
-        this.current.disks = this.update(this.current.disks, { value:null, reason:'disk_read_failed' }, this.now());
+      if (epoch === this.epoch && generation === this.diskGeneration && this.provider === provider && this.runtime && this.desired) {
+        this.current.disks = this.update(this.current.disks, { value:null, reason:'disk_read_failed' }, this.now());this.publish();
+      }
     });
     // Logical timeout/result is not physical completion. No queued catch-up batch.
     void flight.stopped.then(() => { if (this.diskFlight === flight) this.diskFlight = null; }, () => { /* fail closed: keep reservation */ });

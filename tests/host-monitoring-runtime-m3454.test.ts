@@ -1,12 +1,13 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
+import {HostMonitoringHistory} from '../src/host-monitoring-history.js';
 import {HostMonitoringRuntime} from '../src/host-monitoring-runtime.js';
 afterEach(()=>vi.useRealTimers());
-function fixture(raw:any={}) {
+function fixture(raw:any={},history?:HostMonitoringHistory) {
  const config:{enabled:boolean;agent_footprint:boolean;wsl_drive?:string}={enabled:false,agent_footprint:false},events:string[]=[];
  const provider={platform:'linux' as const,host:()=>({cpu:{value:null},memory:{value:null}}),disks:()=>({result:Promise.resolve({volumes:[]}),stopped:Promise.resolve(),cancel(){}}),stop:vi.fn(async()=>{})};
  const pin=vi.fn((patches:Array<{path:string[];value:boolean}>)=>{events.push('commit');raw.monitoring ??={};for(const patch of patches)raw.monitoring[patch.path[1]]=patch.value;});
  const read=vi.fn(()=>raw),factory=vi.fn(()=>{events.push('factory');return provider;});
- const runtime=new HostMonitoringRuntime({supported:()=>true,committed:()=>config,raw:read,pin,factory});
+ const runtime=new HostMonitoringRuntime({history,supported:()=>true,committed:()=>config,raw:read,pin,factory});
  return {runtime,config,raw,pin,read,factory,events,provider};
 }
 describe('committed host monitoring runtime bridge',()=>{
@@ -33,6 +34,22 @@ describe('committed host monitoring runtime bridge',()=>{
   vi.useFakeTimers();const f=fixture();f.runtime.start();f.config.enabled=true;f.raw.monitoring.enabled=true;f.runtime.apply();expect(f.factory).toHaveBeenCalledTimes(1);
   f.config.enabled=false;f.raw.monitoring.enabled=false;f.runtime.apply();expect(f.provider.stop).toHaveBeenCalledTimes(1);expect(vi.getTimerCount()).toBe(0);
   await Promise.resolve();f.runtime.stop();f.config.enabled=true;f.raw.monitoring.enabled=true;f.runtime.apply();expect(f.factory).toHaveBeenCalledTimes(1);expect(f.runtime.available()).toBe(false);
+ });
+ it('holds re-enable until startup/off cleanup physically completes, then reconciles',async()=>{
+  vi.useFakeTimers();let release!:()=>void;let runtime:HostMonitoringRuntime;
+  const cleanup=vi.fn(()=>new Promise<void>(r=>{release=r}));const history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup,unblocked:()=>runtime.apply()});
+  const f=fixture({},history);runtime=f.runtime;runtime.start();expect(history.status().state).toBe('stopping');await Promise.resolve();
+  f.config.enabled=true;f.raw.monitoring.enabled=true;runtime.apply();expect(f.factory).not.toHaveBeenCalled();
+  release();for(let i=0;i<12;i++)await Promise.resolve();expect(f.factory).toHaveBeenCalledTimes(1);runtime.stop();
+ });
+ it('reports failed cleanup instead of clean Off and will not start a collector',async()=>{
+  let runtime:HostMonitoringRuntime;const history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup:async()=>{throw Error('denied')},unblocked:()=>runtime.apply()});
+  const f=fixture({},history);runtime=f.runtime;runtime.start();for(let i=0;i<12;i++)await Promise.resolve();
+  expect(runtime.snapshot()).toMatchObject({state:'failed',reason:'history_cleanup_failed'});f.config.enabled=true;f.raw.monitoring.enabled=true;runtime.apply();expect(f.factory).not.toHaveBeenCalled();runtime.stop();
+ });
+ it('does fixed false cleanup even if pinning missing defaults fails, but never for a conflicting enabled edit',async()=>{
+  const cleanup=vi.fn(async()=>{}),history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup});const f=fixture({},history);f.pin.mockImplementation(()=>{throw Error('readonly')});f.runtime.start();await Promise.resolve();expect(cleanup).toHaveBeenCalledTimes(1);expect(f.factory).not.toHaveBeenCalled();
+  const conflict=vi.fn(async()=>{});fixture({monitoring:{enabled:true}},new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup:conflict})).runtime.start();expect(conflict).not.toHaveBeenCalled();await Promise.resolve();
  });
  it('drains the old provider when the explicit backing-drive selection changes',async()=>{
   vi.useFakeTimers();const f=fixture({monitoring:{enabled:true,agent_footprint:false}});f.config.enabled=true;f.runtime.start();
