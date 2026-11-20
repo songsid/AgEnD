@@ -1,0 +1,36 @@
+[
+  {
+    "device": "desk",
+    "controls": [
+      {
+        "text": "Set token",
+        "width": 688,
+        "height": 30,
+        "disabled": false
+      },
+      {
+        "text": "Clear token",
+        "width": 688,
+        "height": 30,
+        "disabled": false
+      }
+    ]
+  },
+  {
+    "device": "phone",
+    "controls": [
+      {
+        "text": "設定 token",
+        "width": 318,
+        "height": 44,
+        "disabled": false
+      },
+      {
+        "text": "清除 token",
+        "width": 318,
+        "height": 44,
+        "disabled": false
+      }
+    ]
+  }
+]
