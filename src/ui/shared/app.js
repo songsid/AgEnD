@@ -26,6 +26,7 @@ import { warmModules } from "./module-warm.js";
 
 const boot = document.body.dataset;
 const workspaceLanding = location.pathname === "/ui";
+const previewRequested = new URLSearchParams(location.search).get("presentation") === "preview";
 const popoutRequested = new URLSearchParams(location.search).get("presentation") === "popout";
 // #1523 N3: this device's text size, on the root before the first paint of any panel.
 initTextSize();
@@ -153,13 +154,18 @@ if (hubPage) {
     showDialog(m.CreateInstanceDialog);
   };
   setNewInstanceOpener(onNewInstance);
+  if (previewRequested) {
+    Promise.all([import("/ui/js/preview-popout.js"), chatBoot]).then(([preview, chat]) => {
+      return preview.installPreviewWindow({ nav: navigation, chat });
+    }).catch(() => {}); // An unavailable optional module leaves the original authenticated chat.
+  }
   // Optional alpha feature: an old server/CSS/module set keeps the original single-panel path and drafts.
   if (!guest && popoutRequested && boot.chatWorkspace === "1") {
     Promise.all([import("/ui/js/chat-popout.js"), chatBoot]).then(([popout, chat]) => {
       popout.installPopout({ nav: navigation, chat, scope: boot.chatLayoutScope });
     }).catch(() => {}); // old optional assets retain the full single-chat frame and the parent's draft
   }
-  if (!guest && !popoutRequested && boot.chatWorkspace === "1" && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-version").trim() === "1"
+  if (!guest && !popoutRequested && !previewRequested && boot.chatWorkspace === "1" && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-version").trim() === "1"
     && getComputedStyle(document.documentElement).getPropertyValue("--chat-workspace-geometry-version").trim() === "1") {
     Promise.all([import("/ui/js/chat-workspace.js"), chatBoot]).then(([workspace, chat]) => {
       workspace.installWorkspaceEntry({ nav: navigation, chat, landing: workspaceLanding, scope: boot.chatLayoutScope,

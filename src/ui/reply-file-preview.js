@@ -51,7 +51,7 @@ export function ReplyFilePanel({ open, panel, fs, enterFs, leaveFs, onKey, close
   return html`<aside data-trust="preview" class=${`pv-panel ws-panel reply-file-panel${fs ? ` pv-fs pv-fs-${fs}` : ""}`} ref=${panel} aria-label=${t("replyPreview.title")} onKeyDown=${onKey}>
     <div class="pv-panel-head">
       <div class="pv-panel-title"><strong>${t("replyPreview.title")}</strong><span class="pv-source">${open.instance}</span></div>
-      <button type="button" class="icon-btn only-wide" aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} onClick=${() => fs ? leaveFs() : enterFs()}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
+      <button type="button" class="icon-btn pv-panel-fs" aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} onClick=${() => fs ? leaveFs() : enterFs()}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
       <button type="button" class="icon-btn pv-panel-close" aria-label=${t("chat.pvClose")} onClick=${close}><${Icon} name="close" size=${18} /></button>
     </div>
     <div class="pv-note ws-readonly">${t("replyPreview.readonly")}</div>

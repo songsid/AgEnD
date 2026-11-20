@@ -1,0 +1,74 @@
+{
+  "base": "8b7b331b7e38c1a2268059c97264b3e13ed5de09",
+  "baseRegression": {
+    "command": "npx vitest run tests/backend-command-1806.test.ts -t 'uses the shared web picker and preserves room accounts' --maxWorkers=2",
+    "failed": 2,
+    "filtered": 54,
+    "reason": "Classic room refused before backend choices"
+  },
+  "focused": {
+    "command": "npx vitest run tests/backend-command-1806.test.ts tests/classic-credential-profile-1220.test.ts tests/classic-room-profile-tool-3715.test.ts tests/classic-settings-restore-2966.test.ts tests/settings-round2.test.ts tests/config-validator.test.ts tests/web-dashboard-skill-2061.test.ts --maxWorkers=2",
+    "passed": 232,
+    "skipped": 0,
+    "files": 7
+  },
+  "finalDelta": {
+    "command": "npx vitest run tests/backend-command-1806.test.ts -t 'uses the shared web picker|uses the same staged choices|undisclosed restriction|revoked while confirmation' --maxWorkers=2",
+    "passed": 8,
+    "filtered": 65,
+    "files": 1,
+    "scope": "Final guard wording and one added admin-revocation regression; seven cases overlap the focused run"
+  },
+  "types": [
+    {
+      "command": "npx tsc --noEmit",
+      "diagnostics": 0
+    },
+    {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "diagnostics": 0
+    }
+  ],
+  "mutationControls": {
+    "results": [
+      {
+        "name": "missing-disclosure",
+        "semanticFailures": 6,
+        "caught": true
+      },
+      {
+        "name": "missing-snapshot-check",
+        "semanticFailures": 4,
+        "caught": true
+      },
+      {
+        "name": "lost-account-mappings",
+        "semanticFailures": 2,
+        "caught": true
+      },
+      {
+        "name": "missing-launch-effort",
+        "semanticFailures": 1,
+        "caught": true
+      }
+    ],
+    "sourceRestored": true
+  },
+  "limits": [
+    "Vendor model discovery, authentication probes and restart operations are stubbed.",
+    "No real vendor CLI, model request or live room operation was run.",
+    "Headless captures exercise the real web app and command routes; the final switch button was not pressed.",
+    "Native Discord and Telegram flows use adapter stubs; no messages were sent to live chats."
+  ],
+  "publicContracts": {
+    "command": "npx vitest run tests/changelog-fragments.test.ts tests/cli-registry-no-literal-lists.test.ts --maxWorkers=2",
+    "passed": 79,
+    "skipped": 0,
+    "files": 2
+  },
+  "alphaSync": {
+    "base": "8f754300d5b636fef7ba6f60f35916095c54effc",
+    "ownAddedRemovedLinesUnchanged": true,
+    "addedRemovedLines": 607
+  }
+}

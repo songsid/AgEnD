@@ -178,6 +178,18 @@ describe("the fleet binds the classic channel to its profile", () => {
     expect(start.mock.calls[0]![1].backend_options).toBe(defaults.backend_options);
   });
 
+  it("launches the room's persisted effort and keeps it with its profile on a later save", async () => {
+    writeClassic({ backend: "codex", effort: "high", backend_options: PERSONAL });
+    const fm = fleet({ effort: "low" }), start = vi.spyOn(fm, "startInstance").mockResolvedValue(undefined);
+    await (fm as any).startClassicInstance("classic-codex-bot", "codex");
+    expect(start.mock.calls[0]![1]).toMatchObject({ effort: "high", backend_options: PERSONAL });
+    expect(fm.resolveInstanceEffort("classic-codex-bot")).toEqual({ effort: "high", source: "instance" });
+    fm.classicChannels!.setDisplayNameByInstance("classic-codex-bot", "Example room");
+    const reloaded = manager();
+    expect(reloaded.getAll().find(room => room.instanceName === "classic-codex-bot")?.effort).toBe("high");
+    expect(reloaded.getBackendOptionsByInstance("classic-codex-bot")).toEqual(PERSONAL);
+  });
+
   it("kiro_engine_status reports the channel's profile", () => {
     writeClassic({ backend: "kiro-cli", backend_options: { "kiro-cli": { credential_profile: "second" } } });
     const candidates = kiroEngineCandidates({ defaults: {}, instances: {} } as any, manager());

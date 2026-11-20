@@ -1,8 +1,8 @@
 /**
  * #1806: `/backend` — move an instance to another CLI backend from chat, choosing its model and effort on the way.
  *
- * backend → model → effort → confirm, then ONE config write and ONE relaunch: update_instance_config's backend switch
- * (`applyInstanceConfigPatch`), which starts the new backend fresh (#1217) and keeps its credential-profile login gate.
+ * backend → model → effort → confirm, then ONE config write and ONE relaunch: the Fleet config switch or the Classic
+ * room's Settings writer, keeping the credential-profile login gate and starting a changed backend fresh.
  * Nothing is written or restarted between the steps — a backend restarted on the old model, then again on the new
  * one, is two chances to fail instead of one.
  *
@@ -42,6 +42,8 @@ export interface BackendCommandDeps {
   modelCompatible(backend: string, model: string): boolean;
   /** Whether the instance runs now, and is in a turn. */
   state(instance: string): { running: boolean; busy: boolean; status: string };
+  /** A target-specific disclosure that must be visible before its switch is confirmed. */
+  confirmationNotice?(instance: string, plan: BackendPlan): string | undefined;
   t(key: string, ...args: string[]): string;
 }
 
@@ -203,6 +205,8 @@ export async function backendStep(deps: BackendCommandDeps, instance: string, ar
   } else {
     lines.push(t("backend.confirm_not_running", instance, state.status, backend));
   }
+  const notice = deps.confirmationNotice?.(instance, plan);
+  if (notice) lines.push("", notice);
   const confirmedArgs = [backend, model ?? BACKEND_DEFAULT, ...(levels.length ? [effort ?? BACKEND_DEFAULT] : [])];
   return { kind: "confirm", args: confirmedArgs, plan, from, text: lines.join("\n") };
 }

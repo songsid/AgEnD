@@ -1,0 +1,9 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/web-preview-popout-m3438.test.ts > M-3438 bounded preview pop-out > opens in the click stack with only an existing authenticated route; locator crosses only exact ready/ACK
+AssertionError: expected "vi.fn()" to be called with arguments: [ …(3) ]
+Received:
+ FAIL  tests/web-preview-popout-m3438.test.ts > M-3438 bounded preview pop-out > waits for the child's own asynchronous read and refuses a stale current before ACK
+ FAIL  tests/web-preview-popout-m3438.test.ts > M-3438 bounded preview pop-out > waits for the child's own asynchronous read and refuses a stale timeout before ACK
+AssertionError: expected "vi.fn()" to be called once, but got 0 times
+ Test Files  1 failed (1)
+      Tests  3 failed (3)

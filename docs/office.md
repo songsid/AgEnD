@@ -133,6 +133,23 @@ A minimal zones pack:
 
 `room.png` must be 16:9, and each strip's picture exactly `frames·w × h` pixels: 128×48 for `idle` above.
 
+**Longer and multi-image animations (#4231).** A single horizontal strip holds up to 32 frames. For longer animations (5–10 seconds or more, such as 300 frames at 30 FPS), or poses with variable frame timing, any strip can also be written in two more ways — and you can mix classic single-image strips with multi-image strips in the same pack:
+
+- **Multi-sheet sequence:** give `src` as a list of horizontal PNG strips (up to 32 sheets, up to 600 frames in all) played seamlessly end to end, with `frames` as either one count per sheet (when every sheet has the same count) or a list matching `src`:
+
+```json
+"working": {
+  "src": ["people/work_01.png", "people/work_02.png", "people/work_03.png"],
+  "frames": [32, 32, 16],
+  "w": 64, "h": 96, "fps": 12,
+  "loopFrom": 16
+}
+```
+
+- **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
+- **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
+- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 160 files, 20 MiB, and 64 Mpx of total decoded pixels so phones stay smooth.
+
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
 **Characters.** `characters.default` with at least `idle` is required. A set's poses are `working`, `idle`, `paused` and `needs`; a missing pose is drawn as `idle`. More sets (up to 64) can be given to instances by name with `byInstance: { "atlas": "fox" }`.
@@ -423,16 +440,19 @@ A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": fa
 
 ### Strips
 
-A STRIP is `{ "src", "frames", "w", "h", "fps", "ax", "ay", "dw", "dh" }`:
+A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom" }`:
 
 | Key | Range | Default |
 |---|---|---|
-| `src` | a file in the pack: letters, digits, `. _ - /`, no `..`, not starting with `/` | — |
-| `frames` | 1–32, side by side, left to right, no gaps | — |
+| `src` | a file in the pack (or a list of 1–32 horizontal strip files played in sequence; omit when `frames` is a list of `{ src, ms? }` objects). Letters, digits, `. _ - /`, no `..`, not starting with `/` | — |
+| `frames` | single `src`: 1–32; multi-`src`: 1–32 per sheet or a matching list of counts (1–600 total); without `src`: list of 1–600 `{ "src", "ms"? }` frames (`w × h` each) | — |
+| `durations` | optional list of per-frame durations in ms (33–60000, length = total frames; cannot be used with `fps` or frame-object `frames`) | — |
 | `w`, `h` | 1–512 image pixels per frame | — |
 | `fps` | 0–30; 0 shows the first frame only | 4 |
 | `ax`, `ay` | the anchor in image pixels | bottom centre |
 | `dw`, `dh` | the displayed size in logical units (1–1280, 1–720) | `w·scale`, `h·scale` |
+| `once` | `true`: play once from frame 0 and hold the last frame | `false` |
+| `loopFrom` | `0` to `totalFrames − 1`: play intro frames `0 .. loopFrom − 1` once, then loop from `loopFrom` (not with `once: true`) | `0` |
 
 ### Furniture
 
@@ -473,8 +493,9 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 |---|---|
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
 | Files in a pack | 160 |
-| One file | 2 MiB, 4096 × 4096 px, PNG only (checked by signature, every chunk read, metadata stripped) |
-| A whole pack | 20 MiB |
+| One file | 2 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
+| A whole pack | 20 MiB, 64 Mpx of decoded pixels in all |
+| One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |
 | All packs on disk | 640 MiB, previous versions included |
 | Offices | 20; saves 20 a minute per person |
@@ -535,3 +556,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 |---|---|
 | Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
+| Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |

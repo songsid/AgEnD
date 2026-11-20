@@ -82,7 +82,7 @@ import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
-import { applyOverrides, fitNight, fitSeatFor, stripBox } from "./fleet-office-pack.js";
+import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -1400,6 +1400,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // or the zoom changes, never on a pan); each frame draws the matte, the layers, the people and the items in the air ──
   const scene = useRef(null);
   const loop = useRef(null);
+  const clipClocks = useRef(null);
+  if (!clipClocks.current) clipClocks.current = createClipClocks();
   // The matte around the scene: the pack's own, else its background's edge (sampled once), else the skin's (tokens);
   // All offices: the dashboard's background (each tile is its own scene).
   const matte = overview ? pal.bg : (skin.pack && skin.pack.matte) || sampledMatte(skin.backdrop) || (skin.matte ? skin.matte({ pal, mode }) : pal.bg);
@@ -1415,7 +1417,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     cv.style.setProperty("width", `${BW / ratio}px`);
     cv.style.setProperty("height", `${BH / ratio}px`);
     const env = { pal, mode, labels: { lobby: to("lobbyRoom"), closed: to("closed"), areas: { desks: to("area_desks"), lounge: to("area_lounge"), alert: to("area_alert"), nap: to("area_nap") } } };
-    const base = { ctx, ratio, BW, BH, matte, env, dirty: true };
+    const maxPackFps = overview
+      ? Math.max(0, ...tiles.map((tl) => packMaxFps(tl.skin && tl.skin.pack)))
+      : packMaxFps(skin && skin.pack);
+    const fps = Math.max(FPS, Math.min(30, Math.ceil(maxPackFps)));
+    const base = { ctx, ratio, BW, BH, matte, env, fps, dirty: true };
     if (overview) {
       // Each tile a scene of its own, where the overview puts it (arranged.tiles, in the same order).
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
@@ -1432,13 +1438,21 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!s) return false;
     placeCard();
     const { ctx, BW, BH, env } = s;
+    const seenClips = ms > 0 ? new Set() : null;
+    const clocked = (prefix) => (seenClips
+      ? { ...env, clock: (k, st, t) => { const fk = `${prefix}${k}`; seenClips.add(fk); return clipClocks.current.elapsed(fk, st, t); } }
+      : env);
     // The view in bitmap px: a logical unit is `a` px (a whole number at a pixel level), the origin on a whole px.
     const v = view0(), a = v.k * s.ratio, ox = Math.round(v.x * s.ratio), oy = Math.round(v.y * s.ratio);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, BW, BH);
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
-    if (!s.overview) { const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, env); return drawDialogue(ctx, s, ms) || moved; }
+    if (!s.overview) {
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""));
+      if (seenClips) clipClocks.current.prune(seenClips);
+      return drawDialogue(ctx, s, ms) || moved;
+    }
     // All offices: each tile on screen drawn as its own view, scaled into it and clipped to it; one off screen is not
     // drawn (its flights still land). Then a frame round each tile, and the items flying between tiles.
     const hot = tipNow.current, on = new Set(visibleTiles(s.lay, v, sizeRef.current).map((tt) => tt.key)), said = [];
@@ -1450,7 +1464,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
-      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, env, v.k * tt.s < TAG_MIN_K, said)) moving = true;
+      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said)) moving = true;
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = env.pal.border; ctx.lineWidth = 1;
@@ -1460,11 +1474,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const up = still ? [] : cross.frame(ms, s.parts);
     // Each drawn by its sender's tile's skin (#2562: their own prop, else that pack's for its kind), at that tile's scale;
     // a sender in no tile drawn: the built-in item, in overview units.
+    const crossEnv = clocked("x:");
     for (const it of up) {
       const from = senderTile(s.parts, it.from);
-      if (from) { ctx.setTransform(a * from.tile.s, 0, 0, a * from.tile.s, ox, oy); from.skin.drawProp(ctx, { ...it, x: it.x / from.tile.s, y: it.y / from.tile.s }, ms, env); }
-      else { ctx.setTransform(a, 0, 0, a, ox, oy); skinFor("pixel").drawProp(ctx, it, ms, env); }
+      if (from) { ctx.setTransform(a * from.tile.s, 0, 0, a * from.tile.s, ox, oy); from.skin.drawProp(ctx, { ...it, x: it.x / from.tile.s, y: it.y / from.tile.s }, ms, crossEnv); }
+      else { ctx.setTransform(a, 0, 0, a, ox, oy); skinFor("pixel").drawProp(ctx, it, ms, crossEnv); }
     }
+    if (seenClips) clipClocks.current.prune(seenClips);
     return drawDialogue(ctx, s, ms) || moving || up.length > 0 || cross.size() > 0;
   }
   /**
@@ -1530,15 +1546,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // until the next frame's start instead of waking at the display's rate only to find nothing to draw.
   useEffect(() => {
     if (still || typeof requestAnimationFrame !== "function") return undefined;
-    let raf = 0, timer = 0, last = -1, air = true, gone = false;
+    let raf = 0, timer = 0, last = -1, lastFps = FPS, air = true, gone = false;
     const tick = () => {
       raf = 0;
       if (gone || globalThis.document?.hidden || !scene.current) return;
-      const ms = now(), frame = Math.floor((ms / 1000) * FPS);         // the clock the trips started on
-      if (scene.current.dirty || frame !== last || air) { scene.current.dirty = false; last = frame; air = draw(ms); }
+      const fps = scene.current.fps || FPS;
+      const ms = now(), frame = Math.floor((ms / 1000) * fps);         // the clock the trips started on
+      if (scene.current.dirty || frame !== last || fps !== lastFps || air) { scene.current.dirty = false; last = frame; lastFps = fps; air = draw(ms); }
       if (air) { raf = requestAnimationFrame(tick); return; }
-      const wait = Math.max(1, Math.ceil(((frame + 1) * 1000) / FPS - ms));   // until the next frame starts
-      timer = setTimeout(() => { timer = 0; if (!gone && !raf) raf = requestAnimationFrame(tick); }, wait);
+      const wait = Math.max(1, Math.ceil(((frame + 1) * 1000) / fps - ms));   // until the next frame starts
+      if (fps > FPS && wait <= 16) { raf = requestAnimationFrame(tick); return; }
+      const sleep = fps > FPS ? Math.max(1, wait - 14) : wait;
+      timer = setTimeout(() => { timer = 0; if (!gone && !raf) raf = requestAnimationFrame(tick); }, sleep);
     };
     const wake = () => {
       air = true;

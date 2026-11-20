@@ -244,3 +244,24 @@ describe("/sysinfo backend CLI cache", () => {
     expect(probeCLIEnv).not.toHaveBeenCalled();
   });
 });
+
+describe("M-3425 structured web sysinfo", () => {
+  it("collects one system snapshot and reads cached CLI versions without starting a refresh", async () => {
+    const getSysInfo = vi.fn(() => ({
+      uptime_seconds: 3601, memory_mb: { rss: 10, heapUsed: 5, heapTotal: 8 },
+      running_count: 1, paused_count: 0, fleet_mem_mb: null, system_mem_gb: { used: 2, total: 8 },
+    }));
+    const refreshBackendCliVersions = vi.fn();
+    const commands = new TopicCommands({
+      getSysInfo, refreshBackendCliVersions,
+      getBackendCliVersionSnapshot: () => ({ codex: { version: "example-version" } }),
+    } as any);
+    const answer = await commands.getWebReport("sysinfo");
+    expect(getSysInfo).toHaveBeenCalledOnce();
+    expect(refreshBackendCliVersions).not.toHaveBeenCalled();
+    expect(answer.report.columns).toHaveLength(2);
+    expect(answer.report.rows).toContainEqual(["Codex", "example-version"]);
+    expect(answer.report.rows).toContainEqual(["Node", process.version]);
+    expect(answer.report.rows.every(row => row.length === 2)).toBe(true);
+  });
+});

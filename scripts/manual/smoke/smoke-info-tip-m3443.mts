@@ -45,8 +45,11 @@ try {
       const b = document.querySelector(sel) as HTMLElement | null; if (!b) return null;
       const body = document.getElementById(b.getAttribute("aria-describedby") || "") as HTMLElement | null;
       const br = b.getBoundingClientRect(), r = body && !body.hidden ? body.getBoundingClientRect() : null;
+      const ir = (b.querySelector("svg") || b).getBoundingClientRect();
       return { tag: b.tagName, expanded: b.getAttribute("aria-expanded"), box: [Math.round(br.width), Math.round(br.height)],
-        open: !!r, inside: !!r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, text: body?.textContent || "" };
+        open: !!r, inside: !!r && r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, text: body?.textContent || "",
+        // By its ⓘ: just under or over it, and overlapping it sideways (its containing block may not be the window).
+        near: !!r && ((r.top >= ir.bottom && r.top - ir.bottom <= 12) || (r.bottom <= ir.top && ir.top - r.bottom <= 12)) && r.left <= ir.right && r.right >= ir.left - 8 };
     }, btnSel);
     // 1. A Settings field's ⓘ.
     await page.waitForSelector(".s-lab .info-tip-btn", { timeout: 20000 }); await page.waitForTimeout(500);
@@ -54,11 +57,25 @@ try {
     await page.locator(sBtn).first().scrollIntoViewIfNeeded();
     await page.locator(sBtn).first().click(); await page.waitForTimeout(300);
     const s1 = await state(sBtn);
-    check(`${cn}:settings-tap`, !!s1 && s1.tag === "BUTTON" && s1.expanded === "true" && s1.open && s1.inside && s1.text.length > 10, s1);
+    check(`${cn}:settings-tap`, !!s1 && s1.tag === "BUTTON" && s1.expanded === "true" && s1.open && s1.inside && s1.near && s1.text.length > 10, s1);
     check(`${cn}:settings-tap-box`, !!s1 && (phone ? s1.box[0] >= 44 && s1.box[1] >= 44 : s1.box[0] === 18), s1?.box);
     await shoot("1-settings-info-open");
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     check(`${cn}:settings-esc`, (await state(sBtn))?.open === false);
+    if (!phone) {
+      // #4274 review: a hover covers the ⓘ and its bubble (the pointer may cross into it); leaving both closes it.
+      // (The click above left the pointer on the ⓘ: away first, so the hover is a new one.)
+      await page.mouse.move(2, 2); await page.waitForTimeout(250);
+      const b = page.locator(sBtn).first(); await b.hover(); await page.waitForTimeout(200);
+      const bb = await page.evaluate((sel: string) => { const x = document.getElementById(document.querySelector(sel)!.getAttribute("aria-describedby")!)!.getBoundingClientRect(); return { x: x.left + x.width / 2, y: x.top + x.height / 2 }; }, sBtn);
+      await page.mouse.move(bb.x, bb.y, { steps: 4 }); await page.waitForTimeout(350);
+      check(`${cn}:settings-hover-into-bubble`, (await state(sBtn))?.open === true);
+      await page.mouse.move(2, 2); await page.waitForTimeout(350);
+      check(`${cn}:settings-hover-leave`, (await state(sBtn))?.open === false);
+      // #4274 review: pinned by a click, then the keyboard focus leaves: it closes (a later Esc is not taken).
+      await b.click(); await page.waitForTimeout(150); await page.keyboard.press("Tab"); await page.waitForTimeout(200);
+      check(`${cn}:settings-pinned-blur`, (await state(sBtn))?.open === false);
+    }
     // 2. The usage dialog (desk: the rail; phone: the header's usage button), the full card's ⓘ.
     await page.goto(`${fx.base}/ui/chat/${encodeURIComponent("general")}`); await page.waitForTimeout(1500);
     // A phone opens usage from the header's ⋯ sheet (M-3166); a desk shows it in the rail.
@@ -72,7 +89,7 @@ try {
     await page.locator(uBtn).first().scrollIntoViewIfNeeded();
     await page.locator(uBtn).first().click(); await page.waitForTimeout(300);
     const u1 = await state(uBtn);
-    check(`${cn}:usage-tap`, !!u1 && u1.open && u1.inside && /No agents on this profile|此帳號目前沒有 Agent/.test(u1.text), u1);
+    check(`${cn}:usage-tap`, !!u1 && u1.open && u1.inside && u1.near && /No agents on this profile|此帳號目前沒有 Agent/.test(u1.text), u1);
     await shoot("2-usage-info-open");
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     check(`${cn}:usage-esc-keeps-dialog`, (await state(uBtn))?.open === false && (phone ? await page.locator("dialog[open]").count() === 1 : true));

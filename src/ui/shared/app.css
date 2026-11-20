@@ -373,6 +373,15 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
 .ws-pane .pv-divider { display: none; }
 /* Geometry is opt-in: retained PR2 hosts keep their original two-cell grid with this CSS. */
+/* M-3455: the split size is read by the workspace's own grid only. Not inherited, so a divider drag restyles the one grid
+   container instead of every element in both chat histories (an inherited custom property invalidates all descendants). */
+@property --ws-first { syntax: "*"; inherits: false; }
+@property --thread-snap { syntax: "*"; inherits: false; }
+/* While the divider is dragged, rows off screen are not laid out or painted at each new width. Rows keep their last drawn
+   size (the browser records it under contain-intrinsic-size: auto, which does nothing else), so skipping them moves nothing;
+   on release every row is laid out once at the final width. Normal reading never skips rows. */
+.thread > .msg { contain-intrinsic-size: auto 96px; }
+.ws-resizing .thread > .msg { content-visibility: auto; }
 .chat-workspace.ws-geometry { gap: 0; }
 .ws-geometry.ws-right { grid-template-columns: var(--ws-first, minmax(360px, 1fr)) 8px minmax(360px, 1fr); }
 .ws-geometry.ws-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--ws-first, minmax(320px, 1fr)) 8px minmax(320px, 1fr); }
@@ -1142,6 +1151,9 @@ img.amb-p { object-fit: contain; }
 .pv-source:focus-visible { outline: 2px solid var(--accent); border-radius: var(--r-sm); }
 .pv-panel-bar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); flex-wrap: wrap; }
 .pv-panel-bar .grow { flex: 1; }
+.pv-toolbar-dialog .dlg-body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.pv-toolbar-dialog .field { flex-basis: 100%; }
+.pv-panel-fs[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
 .pv-panel > .pv-banner, .pv-panel > .pv-note, .pv-newer { margin: 0 var(--s-3) var(--s-2); }
 .pv-panel > .pv-note { margin-top: 0; }
 .pv-newer { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
@@ -1236,6 +1248,11 @@ img.amb-p { object-fit: contain; }
 .msg.swipe-ready { box-shadow: 3px 0 0 var(--accent); border-radius: var(--r-sm); }   /* let go now: a reply */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .only-wide { display: none; }
+  .pv-panel-bar { flex-wrap: nowrap; }
+  .pv-panel-bar > .seg-inline .btn, .pv-panel-bar > .btn, .pv-panel-bar > .icon-btn,
+  .pv-toolbar-dialog .btn, .pv-toolbar-dialog .icon-btn, .pv-toolbar-dialog .pv-width { min-width: var(--tap); min-height: var(--tap); }
+  .pv-panel-bar > .seg-inline .btn, .pv-panel-bar > .btn { padding-inline: var(--s-2); }
+  .pv-panel-fs { min-width: var(--tap); min-height: var(--tap); }
   .pv-divider { display: none; }
   .pv-panel { position: fixed; inset: 0; z-index: 37; width: auto; min-width: 0; max-width: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -1244,6 +1261,7 @@ img.amb-p { object-fit: contain; }
    names — except Preview, which the panel's note names. */
 @container (max-width: 560px) {
   .pv-panel-bar :not(.pv-panel-run) > .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .pv-panel-bar .pv-toolbar-dialog .lbl { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
 }
 /* preview feedback (M-2217, #2911): the errors chip — its count stays when a narrow bar hides the word. */
 .pv-fb-errors { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
@@ -2855,6 +2873,37 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .cmd-card.bad { --lbar-color: var(--danger); padding-left: calc(var(--s-3) + 3px); }
 .cmd-head { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .cmd-name { font-weight: var(--fw-semibold); }
+/* Shared Usage table, scoped report layout: six status cells become labelled rows on phones. */
+.cmd-report { min-width: 0; }
+.cmd-report-body { max-height: 50vh; overflow-y: auto; }
+.cmd-report-modal .dlg { overflow: hidden; }
+.cmd-report-modal .dlg-box { height: 85vh; }
+.cmd-report-modal .dlg-head { flex-shrink: 0; }
+.cmd-report-modal .dlg-body { flex: 1; min-height: 0; overflow: hidden; }
+.cmd-report-expanded { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cmd-report-expanded .cmd-report-tools, .cmd-report-expanded .cmd-report-count { flex-shrink: 0; }
+.cmd-report-expanded .cmd-report-body { flex: 1; min-height: 0; max-height: none; overflow-y: auto; }
+.cmd-report-tools { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); margin-bottom: var(--s-2); }
+.cmd-report-tools .field { flex: 1; min-width: 0; }
+.cmd-report-status .us-table th:first-child { width: 28%; }
+.cmd-report-status .us-table th:nth-child(3) { width: 20%; }
+.cmd-report h3 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); }
+.cmd-report .note { overflow-wrap: anywhere; white-space: pre-wrap; }
+.cmd-report table { table-layout: fixed; width: 100%; border-collapse: collapse; }
+.cmd-report td, .cmd-report th { overflow-wrap: anywhere; }
+.cmd-metrics td, .cmd-metrics th { padding: var(--s-2); text-align: left; vertical-align: top; border-bottom: 1px solid var(--border); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .cmd-report-body { max-height: 25vh; }
+  .cmd-report-tools input, .cmd-report-tools .btn { min-height: var(--tap); }
+  .cmd-report-modal .dlg-x { min-width: var(--tap); min-height: var(--tap); }
+  .cmd-report-tools input { font-size: var(--fs-md); }
+  .cmd-report-status .us-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .cmd-report-status .us-table, .cmd-report-status .us-table tbody, .cmd-report-status .us-table tr, .cmd-report-status .us-table td { display: block; width: 100%; }
+  .cmd-report-status .us-table tr { margin-bottom: var(--s-3); padding: var(--s-2); border-bottom: 1px solid var(--border); }
+  .cmd-report-status .us-table td { display: flex; justify-content: space-between; gap: var(--s-3); border: 0; }
+  .cmd-report-status .us-table td::before { content: attr(data-label); color: var(--text-3); flex-shrink: 0; }
+
+}
 .cmd-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--font-ui); color: var(--text-2); }
 .cmd-phase { color: var(--text); font-weight: var(--fw-semibold); }
 .cmd-choices { display: flex; flex-wrap: wrap; gap: var(--s-1); max-height: 180px; overflow-y: auto; }

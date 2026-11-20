@@ -323,7 +323,8 @@ describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3
     const tip = ka("claude-code", "work").querySelector(".info-tip"), btn = tipBtn(tip), body = () => tip.querySelector('[role="tooltip"]');
     // The mini DOM names a listener by the prop's own name (onMouseEnter → "MouseEnter"); a browser by the lower-case event.
     const enter = async () => { fire(btn, "mouseenter"); fire(btn, "MouseEnter"); await settle(2); };
-    const leave = async () => { fire(btn, "mouseleave"); fire(btn, "MouseLeave"); await settle(2); };
+    // M-3443: the hover is the whole tip's; leaving closes it a moment later (the pointer may cross into the bubble).
+    const leave = async () => { fire(btn, "mouseleave"); fire(btn, "MouseLeave"); await new Promise((r) => setTimeout(r, 200)); await settle(2); };
     await enter();
     expect(body().hidden).toBe(false);
     await leave();
