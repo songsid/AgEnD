@@ -5,7 +5,7 @@
 // desk and phone, light and dark, en and zh-TW. Checks per case:
 // - off by default: the Dialogue box unticked and, with a message published, none of its words drawn;
 // - on: the person's name and words drawn (typed out) in the bottom fifth of the stage, then the agent's reply;
-// - the screen-reader line says them; a click on the box opens the agent's card;
+// - the screen-reader line says them; a click on the box opens a fresh agent chat;
 // - reduced motion (one case): the words whole at once;
 // - no page errors, no horizontal overflow.
 // SKEW (both ways): a tab opened before this landed — the shell's assets (app.js, app-shell.js, app-stream.js, app.css,
@@ -139,9 +139,12 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phon
     const queued = (await drawn(page, t2)).some((x: any) => x.s === "+1");
     fm.emitSseEvent("message", { instance: names[1], role: "agent", sender: names[1], text: "ok", ts: new Date().toISOString() });
     await wait(1500);
+    const opening = page.waitForEvent("popup");
     await page.mouse.click(sb!.x + sb!.width / 2, sb!.y + sb!.height - 30);
-    await wait(800);
-    const card = await page.locator(".oo-card").count();
+    const child = await opening;
+    await child.locator("#msgIn").waitFor();
+    const freshChat = /\/ui\/chat\//.test(new URL(child.url()).pathname) && new URL(page.url()).pathname === "/ui/fleet/org";
+    await child.close();
     record(`${caseName(c)} ${style}`, {
       "the toggle, in the case's language": label?.trim() === labelOf(c, { en: "Dialogue", zh: "對話框" }),
       "off by default": off,
@@ -152,7 +155,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phon
       "answered: the reply drawn": said(answered, REPLY[c.lang]),
       "read out (live region)": !!live1?.includes("Alex") && !!live2?.includes(REPLY[c.lang].slice(0, 6)),
       "two at once: +1 on the box": queued,
-      "a click on the box opens the card": card === 1,
+      "a click on the box opens fresh chat and retains Office": freshChat,
       "no horizontal overflow": await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       "no page errors": errors.length === 0,
     }, { live1, live2, errors: errors.slice(0, 3) });

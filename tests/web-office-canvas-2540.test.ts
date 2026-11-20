@@ -25,7 +25,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -65,6 +65,9 @@ beforeAll(async () => {
 });
 afterAll(async () => { await p.unmount(); p.restore(); delete (globalThis as any).fetch; });   // unmounted first: no draw loop outlives the page
 beforeEach(async () => {
+  p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
+  (globalThis as any).AgendAuth = { sessionEnded: () => false };
+  (p.window as any).open = vi.fn(() => ({ opener: null }));
   await p.unmount();
   p.storage.clear();
   offices = { rev: 0, offices: [] }; skins = { rev: "", packs: [] }; manifestAnswer = null;
@@ -484,7 +487,8 @@ describe("the Office canvas on the page", () => {
     fire(cv, "click", { clientX: s.x - 300, clientY: s.y }); await settle(2);
     expect(p.root.querySelector(".oo-card")).toBeNull();                                      // off everyone: none
     fire(cv, "dblclick", { clientX: s.x, clientY: s.y }); await settle(2);
-    expect(location.pathname).toBe("/ui/chat/quill");                                         // a double-click: the chat, past the card
+    expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/quill?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");                                         // a double-click: the chat, past the card
     nav.navigate("/ui/fleet/org"); await settle(2);
     // The same logical point at the opening view's screen position is somewhere else now: nobody there.
     const old = CV.toScreen(V.fitScene(1280, 720, STAGE), seat.x, seat.y - 20);
@@ -836,7 +840,8 @@ describe("the Office canvas on the page", () => {
       fsBtn().click(); await settle(4);
       p.root.querySelector('.oo-desk[data-name="atlas"]').click(); await settle(4);
       p.root.querySelector(".oo-card-chat").click(); await settle(4);                  // #2661: the desk opens the card; its Chat
-      expect(location.pathname).toContain("atlas");
+      expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/atlas?presentation=popout");
+      expect(location.pathname).toBe("/ui/fleet/org");
       expect(cls()).toBe("oo");
       expect(D().documentElement.classList.contains("oo-immersive")).toBe(false);
     });

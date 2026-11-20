@@ -7,12 +7,12 @@
  * - The pack's `portraits` and `dialogBox` (fleet-office-pack.js, page and host alike), and the host's size limits.
  * - The host's talk record (office-talk.ts) and a share's /state: when, never what or by whom; the share's people only.
  * - On the page: off by default — no stream listener, nothing drawn, the bar's one new checkbox; on: a message and its
- *   reply drawn, a status line read out, a click on the box opens the agent's card; a share shows no words.
+ *   reply drawn, a status line read out, a click on the box opens the agent's fresh chat window; a share shows no words.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import * as D from "../src/ui/fleet-office-dialogue.js";
 import * as PK from "../src/ui/fleet-office-pack.js";
 import { checkSkinUpload, PORTRAIT_MAX } from "../src/web-office-skins.js";
@@ -371,7 +371,14 @@ describe("the box on the page", () => {
     await tick(20);
     expect(texts().some((s: string) => s.length > 2 && "quill please".startsWith(s))).toBe(true);
   });
-  it("a click on the box opens its agent's card", async () => {
+  it("a click opens fresh chat without leaving Office; double-click does not open duplicates", async () => {
+    p.document.body.dataset.chatWorkspace = "1";
+    p.document.body.dataset.chatLayoutScope = "example-scope";
+    const priorAuth = (globalThis as any).AgendAuth;
+    (globalThis as any).AgendAuth = { sessionEnded: () => false };
+    const priorOpen = (p.window as any).open;
+    const opened = vi.fn((_url: string) => ({ opener: null })); (p.window as any).open = opened;
+    try {
     await office();
     fire(toggle(), "change"); await settle(4);
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "hi", ts: new Date().toISOString() });
@@ -380,6 +387,15 @@ describe("the box on the page", () => {
     cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600, right: 960, bottom: 600 });
     const L = D.fitBox(D.boxLayout(960, 600), 1, false);
     fire(cv, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6 }); await settle(4);
-    expect(p.root.querySelector(".oo-card")?.textContent ?? "").toContain("Atlas");
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(opened.mock.calls[0][0]).toBe("/ui/chat/atlas?presentation=popout");
+    fire(cv, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6, detail: 2 });
+    fire(cv, "dblclick", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6 });
+    expect(opened).toHaveBeenCalledTimes(1);
+    expect(p.window.location.pathname).toBe("/ui/fleet/org");
+    } finally {
+      (p.window as any).open = priorOpen; (globalThis as any).AgendAuth = priorAuth;
+      delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
+    }
   });
 });

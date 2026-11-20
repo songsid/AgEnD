@@ -1,0 +1,50 @@
+{
+  "syntheticOnly": true,
+  "headlessOnly": true,
+  "tests": {
+    "focused": {
+      "files": 3,
+      "pass": 53
+    },
+    "related": {
+      "files": 6,
+      "pass": 191
+    },
+    "contracts": {
+      "files": 4,
+      "pass": 39
+    },
+    "testTypecheckExit": 0
+  },
+  "failFirst": {
+    "missingPopupHelper": 1,
+    "baseOfficeRoutingAndGeometry": 3
+  },
+  "browser": {
+    "desktop": {
+      "case": "desk-light-en",
+      "dialogue": true,
+      "stateBubble": true,
+      "keyboard": true,
+      "sourceRetained": true,
+      "noSend": true,
+      "noOverflow": true
+    },
+    "phone": {
+      "case": "phone-dark-zh-TW",
+      "dialogue": true,
+      "stateBubble": true,
+      "touchTarget": 44,
+      "keyboard": true,
+      "sourceRetained": true,
+      "noSend": true,
+      "noOverflow": true
+    }
+  },
+  "limits": [
+    "Synthetic scratch host only; no live provider, agent process, account, real chat send or OS window-manager test.",
+    "Phone still has the pre-existing room-dock overlap at the bottom-left of the dialogue; tested its clear right side and the floating speech bubble.",
+    "Guest/share refusal is covered by stubbed guard tests and the existing share-page suite; no new guest browser sign-in campaign."
+  ],
+  "rollback": "Revert presentation and fixture changes; no stored data, protocol, CLI or configuration migration."
+}

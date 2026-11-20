@@ -453,12 +453,26 @@ function paintLayers(p, env, ls, tagsOff = false) {
   });
   return { ls, tagsOff, back, front };
 }
+/** Final painted bubbles, topmost first; touch adds a 44 CSS-pixel target without changing the drawing. */
+export function officeBubbleAt(hits, x, y, minSize = 0) {
+  const reversed = [...hits].reverse();
+  const exact = reversed.find(({ box: b }) => x >= b.x && y >= b.y && x <= b.x + b.w && y <= b.y + b.h);
+  if (exact || !minSize) return exact || null;
+  let nearest = null, distance = Infinity;
+  for (const hit of reversed) {
+    const b = hit.box, dx = x - b.x - b.w / 2, dy = y - b.y - b.h / 2;
+    if (Math.abs(dx) <= Math.max(minSize, b.w) / 2 && Math.abs(dy) <= Math.max(minSize, b.h) / 2 && dx * dx + dy * dy < distance) {
+      nearest = hit; distance = dx * dx + dy * dy;
+    }
+  }
+  return nearest;
+}
 /**
  * One frame of a scene at `ms` (0: still), a logical unit `a` bitmap px, its origin at (ox, oy); `hot`: the desk key
  * hovered (its name tag shows even in a crowd); `tagsOff` (#2554: a tile too small to read them): the name tags show
  * only for the one hovered and the Find box's matches. Whether anything in it is moving (in the air, or someone walking).
  */
-export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null) {
+export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null, bubbleHits = null) {
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
   if (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff) p.layers = paintLayers(p, env, ls, tagsOff);
@@ -620,7 +634,14 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
-  const say = () => { T(); for (const { sp, b, dy } of placed) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy); };
+  const say = () => { T(); for (const { sp, b, dy } of placed) {
+    const text = [...b.text].slice(0, b.shown).join("");
+    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
+    if (bubbleHits && text) {
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
+      bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
+    }
+  } };
   if (defer) defer.push(say); else say();
   return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting;
 }
@@ -1438,6 +1459,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!s) return false;
     placeCard();
     const { ctx, BW, BH, env } = s;
+    s.bubbleHits = [];
     const seenClips = ms > 0 ? new Set() : null;
     const clocked = (prefix) => (seenClips
       ? { ...env, clock: (k, st, t) => { const fk = `${prefix}${k}`; seenClips.add(fk); return clipClocks.current.elapsed(fk, st, t); } }
@@ -1449,7 +1471,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""));
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""), false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -1464,7 +1486,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
-      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said)) moving = true;
+      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said, s.bubbleHits)) moving = true;
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = env.pal.border; ctx.lineWidth = 1;
@@ -1702,9 +1724,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const b = dlgShown.current, r = canvasRef.current ? canvasRef.current.getBoundingClientRect() : null;
     return b && r && onBox(b.L, b.stage, e.clientX - r.left, e.clientY - r.top) ? b : null;
   };
+  // Use the painted prefix and final displaced position, including bubbles outside an overview tile.
+  const bubbleAtEvent = (e) => {
+    if (shared || !onOpen) return null;
+    const s = scene.current, r = canvasRef.current?.getBoundingClientRect();
+    if (!s || !r) return null;
+    const hit = officeBubbleAt(s.bubbleHits || [], (e.clientX - r.left) * s.ratio, (e.clientY - r.top) * s.ratio, lastType.current === "touch" ? 44 * s.ratio : 0);
+    return hit && people.some(d => d.node.i && d.node.name === hit.name) ? hit : null;
+  };
   const onMove = (e) => {
     if (e.pointerType === "touch" || g.busy()) return;
-    const onDlg = !!dlgAt(e);
+    const onDlg = !!dlgAt(e) || !!bubbleAtEvent(e);
     if (onDlg !== dlgHot) setDlgHot(onDlg);
     const d = onDlg ? null : deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key);
   };
@@ -1731,6 +1761,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   const onClick = (e) => {
     const box = dlgAt(e);
+    const bubble = bubbleAtEvent(e);
+    if ((box || bubble) && !shared && onOpen) {
+      if (!(e.detail > 1)) { setCard(null); open((box || bubble).name); }
+      return;
+    }
     if (box) { focusPerson(box.key); return; }
     const d = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
     if (!d || !d.node.i) { setTip(null); setCard(null); return; }
@@ -1741,7 +1776,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
   const onDblClick = (e) => {
     const box = dlgAt(e);
-    if (box) { setCard(null); open(box.name); return; }
+    if (box || bubbleAtEvent(e)) return; // the first click already opened it
     const s = scene.current, w = pointOf(e), hit = deskOf(e);
     if (hit && hit.node.i) { setCard(null); open(hit.node.name); return; }   // #2661: a person's chat, past the card
     if (!overview || !s || !s.overview || !w || hit) return;
