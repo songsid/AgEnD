@@ -1,0 +1,40 @@
+[
+  {
+    "case": "phone-dark-zh-TW",
+    "headerItems": [
+      "模型與推理default · auto",
+      "CLI backendCodex",
+      "文字大小中",
+      "外觀⌄",
+      "Agent 詳細資料",
+      "重新啟動 Agent",
+      "停止 Agent",
+      "刪除 Agent…"
+    ],
+    "contextItems": [
+      "模型與推理default · auto",
+      "CLI backendCodex",
+      "文字大小中",
+      "外觀⌄",
+      "Agent 詳細資料",
+      "重新啟動 Agent",
+      "停止 Agent",
+      "刪除 Agent…"
+    ],
+    "geometry": {
+      "overflow": false,
+      "menus": [
+        {
+          "x": 0,
+          "y": 84.40625,
+          "width": 390,
+          "height": 759.59375,
+          "clipped": false
+        }
+      ]
+    },
+    "csp": [],
+    "errors": [],
+    "writes": []
+  }
+]
