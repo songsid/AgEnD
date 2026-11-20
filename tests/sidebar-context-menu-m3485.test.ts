@@ -27,14 +27,14 @@ describe('sidebar agent context interaction',()=>{
   const row=await mount();fire(row,'keydown',keys);await settle(4);const item=p.root.querySelector('[role="menuitem"]');expect(item).not.toBeNull();fire(item!,'click');await settle(4);expect(selected).toEqual(['beta']);
  });
  it('long press opens, cancels on movement and suppresses only its following click',async()=>{
-  const row=await mount();vi.useFakeTimers();
+  const row=await mount();vi.useFakeTimers({toFake:["setTimeout","clearTimeout","Date"]});
   fire(row,'pointerdown',{pointerType:'touch',pointerId:1,button:0,clientX:20,clientY:20});
   fire(row,'pointermove',{pointerType:'touch',pointerId:1,clientX:20,clientY:50});await vi.advanceTimersByTimeAsync(600);vi.useRealTimers();await settle(4);expect(p.root.querySelector('[role="menu"]')).toBeNull();
-  vi.useFakeTimers();fire(row,'pointerdown',{pointerType:'touch',pointerId:2,button:0,clientX:20,clientY:20});await vi.advanceTimersByTimeAsync(600);vi.useRealTimers();await settle(4);
+  vi.useFakeTimers({toFake:["setTimeout","clearTimeout","Date"]});fire(row,'pointerdown',{pointerType:'touch',pointerId:2,button:0,clientX:20,clientY:20});await vi.advanceTimersByTimeAsync(600);vi.useRealTimers();await settle(4);
   expect(p.root.querySelector('[role="menu"]')).not.toBeNull();expect(fire(row,'click').defaultPrevented).toBe(true);
  });
  it('does not swallow a fresh touch on an opened menu item when no synthetic row click arrived',async()=>{
-  const row=await mount();vi.useFakeTimers();fire(row,'pointerdown',{pointerType:'touch',pointerId:10,button:0,clientX:20,clientY:20});await vi.advanceTimersByTimeAsync(600);vi.useRealTimers();await settle(4);
+  const row=await mount();vi.useFakeTimers({toFake:["setTimeout","clearTimeout","Date"]});fire(row,'pointerdown',{pointerType:'touch',pointerId:10,button:0,clientX:20,clientY:20});await vi.advanceTimersByTimeAsync(600);vi.useRealTimers();await settle(4);
   const item=p.root.querySelector('[role="menuitem"]')!;expect(item).not.toBeNull();fire(item,'click',{pointerType:'touch',pointerId:11});await settle(4);expect(selected).toEqual(['beta']);
  });
  it.each([{viewOnly:true},{guest:true}])('does not intercept unavailable guest/read-only menus %j',async mode=>{

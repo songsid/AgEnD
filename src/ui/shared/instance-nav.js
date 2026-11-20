@@ -36,6 +36,7 @@ function tn(key, values = {}) {
   return s;
 }
 const stored = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+const contextNow = () => globalThis.performance?.now?.() ?? Date.now();
 /** A row's instance name: `name` (status frames) or `instance_name` (View's roster). */
 const nameOf = (it) => (it && (it.name != null ? it.name : it.instance_name)) || "";
 
@@ -623,13 +624,13 @@ export function InstanceNav({ route, items, loaded = true, exec = {}, awaiting =
       hold.current = {name, x, y, pointerId:event.pointerId, timer:setTimeout(() => {
         hold.current = null;
         if (!currentTarget.isConnected || !contextAllowed()) return;
-        heldClick.current = {name, pointerId:event.pointerId, until:Date.now()+1000};
+        heldClick.current = {name, pointerId:event.pointerId, until:contextNow()+1000};
         openContext(name, {currentTarget, preventDefault(){}, stopPropagation(){}});
       }, 500)};
     },
     onPointerMove: event => { const h = hold.current; if (h && (Math.abs(event.clientX-h.x)>8 || Math.abs(event.clientY-h.y)>8)) cancelHold(); },
     onPointerUp: cancelHold, onPointerCancel: cancelHold, onDragStart: cancelHold,
-    onClickCapture: event => { if (heldClick.current?.name === name && Date.now() < heldClick.current.until && (!event.target.closest?.("[role=menu],dialog") || event.pointerId === heldClick.current.pointerId)) { heldClick.current=null; event.preventDefault(); event.stopPropagation(); } },
+    onClickCapture: event => { if (heldClick.current?.name === name && contextNow() < heldClick.current.until && (!event.target.closest?.("[role=menu],dialog") || event.pointerId === heldClick.current.pointerId)) { heldClick.current=null; event.preventDefault(); event.stopPropagation(); } },
   });
   const styledMenus = typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   const names = useStore(namesStore);   // #1722: which name leads

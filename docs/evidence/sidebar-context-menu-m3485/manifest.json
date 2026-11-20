@@ -1,0 +1,116 @@
+{
+  "baseCommit": "7477c3b54",
+  "scope": "real-app synthetic headless menu parity; provenance and limits in README",
+  "codeFiles": [
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "f169160b0653c7acd14761979d2811d5140f67388d1a008697748890e7995f2d"
+    },
+    {
+      "path": "src/ui/shared/agent-sheet.js",
+      "sha256": "91181773445dcb98a7abae2878b99959c840f37564ebac1bf0dde82c80938d81"
+    },
+    {
+      "path": "src/ui/shared/app.js",
+      "sha256": "655831a54ad79a6cfa4f1b1dc2e9e79fd6ff3e8f64de21703350c06b2b26fc39"
+    },
+    {
+      "path": "src/ui/shared/instance-nav.js",
+      "sha256": "9cf1e25ada9f8113337cec9e8a3adf199fd56abf968de47b7b0dee9262f6d520"
+    },
+    {
+      "path": "src/ui/shared/ui-menu.js",
+      "sha256": "faa42f965aa8e61320a56aa91bcf09cfd643758ff1e5e1b98371e300f0205b3a"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "9280e3220d5e96970b64eaeb4d4c2dafa2928914da9da0fd3606eb5953f97dde"
+    },
+    {
+      "path": "tests/sidebar-context-menu-m3485.test.ts",
+      "sha256": "d56fcba32603a2a435cac3d182dcfb1bdda964856dbbaa25e19d03f41ee586ae"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-sidebar-context-menu-m3485.mts",
+      "sha256": "ca1ebe1b62a3625fd391450a3faa2b48a061759e8c8f8111210408c9013ad62e"
+    }
+  ],
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "3e680437b20218cc5d6e06cc449a589069dbd5dbda8b99d3b9a05ff425d7ec54"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "ad78bff6d0f72e627592c9dd83c69b5106ad588abc66fb62a46f4b9b05d1c05b"
+    },
+    {
+      "path": "desk-dark-en-header.png",
+      "sha256": "3b79bf18d3af7f50ed49025af8be391c92c324476a4d704c4a4132aeb0636b7b"
+    },
+    {
+      "path": "desk-dark-en-sidebar.png",
+      "sha256": "b85a602fc5739a5fff04fcf547b6d1d357fd7f0b62421e3df208d16c1f177c89"
+    },
+    {
+      "path": "desk-dark-zh-TW-header.png",
+      "sha256": "7a9487004b0f0b02d45eec784d1c9bd3e16c5bcbdb2a5cab455d1c90669c008e"
+    },
+    {
+      "path": "desk-dark-zh-TW-sidebar.png",
+      "sha256": "d8e221d64594b0ab823ac6a753ca81d2ebfc8644aa31a94b33e0ddca9c6e5f21"
+    },
+    {
+      "path": "desk-light-en-header.png",
+      "sha256": "ebc36ceee626bd16792cb05f5d1a38721406a8f1b0681d96624379c0aad06d28"
+    },
+    {
+      "path": "desk-light-en-sidebar.png",
+      "sha256": "8e5accc7923d3422294eee1566e0b65367ff045c62c2e01dfb7a9d17b54a3d31"
+    },
+    {
+      "path": "desk-light-zh-TW-header.png",
+      "sha256": "dcee6a8a6befe55ea2b4b709ff2c839718ed49bc613d40fdad58bb32624e0038"
+    },
+    {
+      "path": "desk-light-zh-TW-sidebar.png",
+      "sha256": "375ee277961c79bd1a663b4ba85612a54318712777febc4226fc79858e529049"
+    },
+    {
+      "path": "mutations.json",
+      "sha256": "462b89bc8fbd3f9288743d5da40fdef4c321c3d012d707255af86a718c5dda8f"
+    },
+    {
+      "path": "phone-dark-en-header.png",
+      "sha256": "965a0c12405594cd86c82e47c70e800996afd172229026c5765b73e52779fccc"
+    },
+    {
+      "path": "phone-dark-en-sidebar.png",
+      "sha256": "b2b42e2eb5aff85b09e958779e53971096de143e6e12e5923ae63dcffdb1944e"
+    },
+    {
+      "path": "phone-dark-zh-TW-header.png",
+      "sha256": "dbbacb02e5a3f1ac21d12e9589a6a0a75509b2e691bac04439f7329c456dc13f"
+    },
+    {
+      "path": "phone-dark-zh-TW-sidebar.png",
+      "sha256": "07f593b1dfed06002fcf739b8ad5a4c65f861879625650b3f80ad600408ae62e"
+    },
+    {
+      "path": "phone-light-en-header.png",
+      "sha256": "bff43155355b30f8b377ad1d7fc7a40b91cbf19ea348ccb68ab98d2ed664d6eb"
+    },
+    {
+      "path": "phone-light-en-sidebar.png",
+      "sha256": "90e55205aa50973a5a24f34be11941c4bdbba686a8d90b3ee1ecac20c9037d27"
+    },
+    {
+      "path": "phone-light-zh-TW-header.png",
+      "sha256": "62d577fc9e2a7f7afdfc5197ad11e5345aedd4f6ac07588050b636b27f2562c7"
+    },
+    {
+      "path": "phone-light-zh-TW-sidebar.png",
+      "sha256": "bf1406726110f5a11fdd99b6431862c38a40c4dfe0ef7079f510f37a4552b353"
+    }
+  ]
+}
