@@ -1,5 +1,7 @@
 # Office speech bubble → chat window
 
+The initial popup behavior was approved; the user then requested the two existing overlaps fixed in the same PR. [R1](r1/README.md) supersedes the layout limitations and captures below. These original files remain as before evidence.
+
 A private Office speech bubble now opens the existing authenticated chat in a separate window. The Office stays open. The child reads its own session and history; no draft, conversation content or credential is handed across. The native desk button → agent card → Chat path is keyboard reachable and announces the new window.
 
 Floating targets follow the actual painted text, final collision displacement, zoom and overview tile transform. Phone taps get a 44 CSS-pixel effective target; the phone smoke taps 15px below the tiny painted bubble. A double-click on a bubble opens only one window. Ordinary person/card interactions stay available.
