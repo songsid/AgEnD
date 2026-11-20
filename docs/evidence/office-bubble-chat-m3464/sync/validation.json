@@ -1,0 +1,37 @@
+{
+  "unchangedFiles": [
+    "src/ui/chat-popout.js",
+    "src/ui/fleet-canvas.js",
+    "src/ui/fleet-office-card.js",
+    "src/ui/fleet-office-dialogue.js",
+    "src/ui/shared/office-dialogue.css"
+  ],
+  "segments": {
+    "hitGeometry": true,
+    "dialoguePainter": true,
+    "dialogueActivation": true
+  },
+  "alphaTip": "f0c44125e75d9a7c05b35828cef98a8e7608f8ef",
+  "approvedCaptureHead": "9d145cff841ecbe8ea834de673016ec529fb76f9",
+  "tests": {
+    "files": 7,
+    "pass": 247,
+    "testTypesExit": 0,
+    "armedModeFailFirst": 1
+  },
+  "campaign": "offline integration only; no new browser/live campaign",
+  "source": [
+    {
+      "path": "src/ui/fleet-office.js",
+      "sha256": "d9c6f94d743272b2b3912395aa39f7f531df19ebf661a96556635cdce8043733"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "2e4c35ccf46019755efbc71784f40bb984a45c58e1a3ab3a32d7562ed0fd4e8e"
+    },
+    {
+      "path": "tests/office-dialogue-2861.test.ts",
+      "sha256": "e0f3f05c84f07b83ec2bbfcd0c36e2b8f18495c701e1e01a9fbd93c2ad52d3ec"
+    }
+  ]
+}

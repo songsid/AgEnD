@@ -12,7 +12,7 @@
  * - The skin seam: the built-in pixel skin draws every pose; a skin pack's manifest is checked and drawn from its strips.
  * - On the page: an Office button beside Canvas and List (kept per device); desks open the chat; the filter is kept.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -54,6 +54,9 @@ beforeAll(async () => {
 });
 afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
+  p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
+  (globalThis as any).AgendAuth = { sessionEnded: () => false };
+  (p.window as any).open = vi.fn(() => ({ opener: null }));
   await p.unmount();
   p.storage.clear();
   offices = { rev: 0, offices: [] };
@@ -556,7 +559,8 @@ describe("the Office view on the page", () => {
     quill.click(); await settle(2);
     expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
     p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-    expect(location.pathname).toBe("/ui/chat/quill");
+    expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/quill?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");
   });
   it("#2661: a desk opens its card — a popover, not a modal: the same again, Esc or a press elsewhere closes it, another switches; the card's level and rows", async () => {
     levels = { enabled: true, unit: 100_000, detail: true, levels: {
@@ -900,12 +904,14 @@ describe("the Office view on the page", () => {
       click(from); await settle(1);
       expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("atlas");   // #2661: a click opens the card
       p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-      expect(location.pathname).toBe("/ui/chat/atlas");   // where it is drawn, just set off
+      expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/atlas?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");   // where it is drawn, just set off
       nav.navigate("/ui/fleet/org"); await settle(3);
       click(still); await settle(1);
       expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("loner");   // #2661: a click opens the card
       p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-      expect(location.pathname).toBe("/ui/chat/loner");   // sitting still: at its seat
+      expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/loner?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");   // sitting still: at its seat
     } finally { delete proto.getContext; }
   });
   it("an accepted far-out custom layout at DPR 3: the canvas and its layers stay within a paintable bitmap (#2431 review)", async () => {
@@ -988,7 +994,8 @@ describe("the Office view on the page", () => {
       quill.click(); await settle(2);
       expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
       p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-      expect(location.pathname).toBe("/ui/chat/quill");
+      expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/quill?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");
     } finally { delete proto.getContext; }
   });
   it("on a canvas: the layers are drawn once, the people each frame; the loop stops with the view", async () => {
@@ -1010,7 +1017,8 @@ describe("the Office view on the page", () => {
       await settle(2);
       expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("tide");   // #2661: a click opens the card
       p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-      expect(location.pathname).toBe("/ui/chat/tide");
+      expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/tide?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");
       const n = main.calls.length;
       await p.unmount(); await settle(4);
       expect(main.calls.length).toBe(n);

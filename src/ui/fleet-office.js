@@ -60,6 +60,7 @@
 //   (inline ticks wrapped the bar at ~10). The offices and the interval are kept per browser; playing starts on enter
 //   and on reload. Space pauses, ← / → (and N / P, media keys) step; Pause and Next on the bar and in fullscreen.
 //   Edit offices and Edit layout wait. A share link does not offer it.
+import { assetUrl } from "/assets/asset-url.js";
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { appStore } from "/assets/app-store.js";
 import { t, lang, register } from "/assets/app-i18n.js";
@@ -115,7 +116,7 @@ register("orgo", {
     officesInCarousel: "Offices in the carousel",
     officesCount: "Carousel {0}/{1} offices ▾", selectAll: "Select all", selectNone: "Select none",
     dialogue: "Dialogue", dialogueTitle: "When a person messages someone here, show their words and the reply in a box at the bottom (this browser only)",
-    dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
+    dlgOpenChat: "Open the agent’s chat in a new window", dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
     dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
     zones: "Go to an area", zoneAll: "Whole office", zoneN: "{0} {1}",
     snacks: "Snacks", snackFeed: "Feed {0}", snackPlace: "Place here",
@@ -146,7 +147,7 @@ register("orgo", {
     officesInCarousel: "輪播的辦公室",
     officesCount: "輪播 {0}/{1} 間 ▾", selectAll: "全選", selectNone: "全不選",
     dialogue: "對話框", dialogueTitle: "有人傳訊息給這裡的成員時，在下方的對話框顯示訊息與回覆（只限這個瀏覽器）",
-    dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
+    dlgOpenChat: "在新視窗開啟這個 Agent 的聊天", dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
     dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
     zones: "移到區域", zoneAll: "總覽", zoneN: "{0} {1}",
     snacks: "零食", snackFeed: "餵給 {0}", snackPlace: "放在這裡",
@@ -457,12 +458,26 @@ function paintLayers(p, env, ls, tagsOff = false) {
   });
   return { ls, tagsOff, back, front };
 }
+/** Final painted bubbles, topmost first; touch adds a 44 CSS-pixel target without changing the drawing. */
+export function officeBubbleAt(hits, x, y, minSize = 0) {
+  const reversed = [...hits].reverse();
+  const exact = reversed.find(({ box: b }) => x >= b.x && y >= b.y && x <= b.x + b.w && y <= b.y + b.h);
+  if (exact || !minSize) return exact || null;
+  let nearest = null, distance = Infinity;
+  for (const hit of reversed) {
+    const b = hit.box, dx = x - b.x - b.w / 2, dy = y - b.y - b.h / 2;
+    if (Math.abs(dx) <= Math.max(minSize, b.w) / 2 && Math.abs(dy) <= Math.max(minSize, b.h) / 2 && dx * dx + dy * dy < distance) {
+      nearest = hit; distance = dx * dx + dy * dy;
+    }
+  }
+  return nearest;
+}
 /**
  * One frame of a scene at `ms` (0: still), a logical unit `a` bitmap px, its origin at (ox, oy); `hot`: the desk key
  * hovered (its name tag shows even in a crowd); `tagsOff` (#2554: a tile too small to read them): the name tags show
  * only for the one hovered and the Find box's matches. Whether anything in it is moving (in the air, or someone walking).
  */
-export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null) {
+export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false, defer = null, bubbleHits = null) {
   const sk = p.skin;
   const ls = layerScale(a, p.L.width, p.L.height);
   if (!p.layers || p.layers.ls !== ls || p.layers.tagsOff !== tagsOff) p.layers = paintLayers(p, env, ls, tagsOff);
@@ -680,7 +695,14 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
-  const say = () => { T(); for (const { sp, b, dy } of placed) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy); };
+  const say = () => { T(); for (const { sp, b, dy } of placed) {
+    const text = [...b.text].slice(0, b.shown).join("");
+    sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
+    if (bubbleHits && text) {
+      const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
+      bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
+    }
+  } };
   if (defer) defer.push(say); else say();
   return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current);
 }
@@ -780,9 +802,17 @@ export function OfficeKey({ pal }) {
  * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
  * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
  */
+function ensureDialogueStyle() {
+  const doc = globalThis.document;
+  if (!doc?.head || doc.querySelector('link[data-office-dialogue-css="1"]')) return;
+  const link = doc.createElement("link"); link.rel = "stylesheet";
+  link.href = assetUrl("/assets/office-dialogue.css");
+  link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
+}
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
+  useLayoutEffect(ensureDialogueStyle, []);
   const phone = useOfficePhone(), compact = phone && typeof onMore === "function";
   const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
   const [stored, setStored] = useState([]);
@@ -825,6 +855,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const dlg = useMemo(createDialogue, []);
   const faces = useMemo(() => createFaces(), []);
   const [dlgSay, setDlgSay] = useState("");
+  const [dlgVisible, setDlgVisible] = useState(false);
+  const dlgVisibleRef = useRef(false);
+  const showDialogueDock = (visible) => {
+    if (dlgVisibleRef.current !== visible) { dlgVisibleRef.current = visible; setDlgVisible(visible); }
+  };
+  const dialogueCanvasRef = useRef(null);
   const [dlgHot, setDlgHot] = useState(false);
   const dlgRef = useRef(null), dlgShown = useRef(null), dlgLines = useRef(new Map()), talkSeen = useRef(new Set());
   const [nightNow, setNightNow] = useState(() => isNight());
@@ -1519,6 +1555,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!s) return false;
     placeCard();
     const { ctx, BW, BH, env } = s;
+    s.bubbleHits = [];
     const seenClips = ms > 0 ? new Set() : null;
     const clocked = (prefix) => (seenClips
       ? { ...env, clock: (k, st, t) => { const fk = `${prefix}${k}`; seenClips.add(fk); return clipClocks.current.elapsed(fk, st, t); } }
@@ -1530,7 +1567,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""));
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""), false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -1545,7 +1582,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.beginPath(); ctx.rect(tx, ty, tw, th); ctx.clip();
-      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said)) moving = true;
+      if (drawPart(ctx, p, a * tt.s, tx, ty, ms, still, hot && hot.startsWith(p.prefix) ? hot.slice(p.prefix.length) : null, clocked(p.prefix), v.k * tt.s < TAG_MIN_K, said, s.bubbleHits)) moving = true;
       ctx.restore();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.strokeStyle = env.pal.border; ctx.lineWidth = 1;
@@ -1569,15 +1606,25 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * awake (pickFront), with their faces (the pack's portraits; else the agent's avatar, else initials), the speaker's
    * words typed out, the agent's line while it works and "+N". Nothing at all while it is off. Whether it moves.
    */
-  function drawDialogue(ctx, s, ms) {
+  function drawDialogue(_mapCtx, s, ms) {
     const d = dlgRef.current;
-    if (!d) { dlgShown.current = null; return false; }
+    if (!d) { dlgShown.current = null; showDialogueDock(false); return false; }
     const t = ms > 0 ? ms : now();
     const { front, more } = pickFront(dlg.list(), (n) => d.who.has(n), (n) => d.who.get(n).look?.pose === "paused");
-    if (!front) { dlgShown.current = null; return false; }
-    const who = d.who.get(front.instance), node = who.node, sz = sizeRef.current, L0 = boxLayout(sz.w, sz.h);
+    if (!front) { dlgShown.current = null; showDialogueDock(false); return false; }
+    const who = d.who.get(front.instance), node = who.node;
     const stage = stageOf(front, t, node.state === "working", still);
-    if (stage.done) { dlgShown.current = null; return false; }
+    if (stage.done) { dlgShown.current = null; showDialogueDock(false); return false; }
+    showDialogueDock(true);
+    const cv = dialogueCanvasRef.current;
+    if (!cv) return false; // layout commit mounts the dock, then its effect paints even with reduced motion
+    const dw = cv.clientWidth || sizeRef.current.w, dh = cv.clientHeight || (phone ? 160 : 180), L0 = boxLayout(dw, dh);
+    const BW = Math.max(1, Math.floor(dw * s.ratio)), BH = Math.max(1, Math.floor(dh * s.ratio));
+    if (cv.width !== BW) cv.width = BW;
+    if (cv.height !== BH) cv.height = BH;
+    const ctx = cv.getContext("2d");
+    if (!ctx) return false;
+    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, BW, BH);
     const skinOf = who.skin, pack = skinOf && skinOf.pack;
     const pic = (src) => (src && skinOf && typeof skinOf.picture === "function" ? skinOf.picture(src, dlgWake) : null);
     const agentName = nodeText(node).primary;
@@ -1615,12 +1662,20 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     dlgShown.current = { L, stage, key: who.key, name: front.instance };
     const frameSrc = pack && pack.dialogBox && pack.dialogBox.frame, frameIm = frameSrc ? pic(frameSrc) : null;
     return drawBox(ctx, {
-      L, stage, left: personFace(), right: stage.phase === "heard" ? null : agentFace(),
+      // A short landscape dock keeps the name and words; decorative faces need headroom above the box.
+      L, stage, left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
       name: answered ? agentName : front.person ? front.person.name || to("dlgSomeone") : to("dlgSomeone"),
       lines, status: status ? `${agentName} · ${status}` : null, more,
       colours: boxColours(pack && pack.dialogBox, s.env.pal), frame: frameIm ? { im: frameIm, slice: pack.dialogBox.slice || 8, k: pack.scale || 2 } : null,
     }, t, { ...s.env, still });
   }
+  // A newly mounted dock must paint even when reduced motion leaves the map loop asleep.
+  useLayoutEffect(() => {
+    if (!dialogueOn || !dlgVisible) return;
+    if (scene.current) drawDialogue(scene.current.ctx, scene.current, still ? 0 : now());
+    if (!still) loop.current?.wake();
+  }, [dialogueOn, dlgVisible, dlgSay, width, phone, ratio]);
+
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
   // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
   // motion is smooth); when nothing moves, the poses change at most FPS times a second, so the loop sleeps (a timer)
@@ -1780,12 +1835,29 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   /** #2861: the dialogue box under a pointer event ({ key, name }: its agent), or null. */
   const dlgAt = (e) => {
-    const b = dlgShown.current, r = canvasRef.current ? canvasRef.current.getBoundingClientRect() : null;
+    const b = dlgShown.current, r = dialogueCanvasRef.current ? dialogueCanvasRef.current.getBoundingClientRect() : null;
     return b && r && onBox(b.L, b.stage, e.clientX - r.left, e.clientY - r.top) ? b : null;
+  };
+  // Use the painted prefix and final displaced position, including bubbles outside an overview tile.
+  const bubbleAtEvent = (e) => {
+    // An armed snack owns map taps until the existing placement/feed action consumes it.
+    if (shared || !onOpen || showSnacks && armedSnack) return null;
+    const s = scene.current, r = canvasRef.current?.getBoundingClientRect();
+    if (!s || !r) return null;
+    const hit = officeBubbleAt(s.bubbleHits || [], (e.clientX - r.left) * s.ratio, (e.clientY - r.top) * s.ratio, lastType.current === "touch" ? 44 * s.ratio : 0);
+    return hit && people.some(d => d.node.i && d.node.name === hit.name) ? hit : null;
+  };
+  const openDialogue = (e) => {
+    if (shared || !onOpen || !dlgShown.current || e.detail > 1) return;
+    if (e.type === "keydown") {
+      if (e.repeat || e.key !== "Enter" && e.key !== " ") return;
+      e.preventDefault();
+    }
+    setCard(null); open(dlgShown.current.name);
   };
   const onMove = (e) => {
     if (e.pointerType === "touch" || g.busy() || snackDrag || snackDropRef.current) return;
-    const onDlg = !!dlgAt(e);
+    const onDlg = !!dlgAt(e) || !!bubbleAtEvent(e);
     if (onDlg !== dlgHot) setDlgHot(onDlg);
     const d = onDlg ? null : deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key);
   };
@@ -1923,6 +1995,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   const onClick = (e) => {
     const box = dlgAt(e);
+    const bubble = bubbleAtEvent(e);
+    if ((box || bubble) && !shared && onOpen) {
+      if (!(e.detail > 1)) { setCard(null); open((box || bubble).name); }
+      return;
+    }
     if (box) { focusPerson(box.key); return; }
     if (showSnacks && armedSnack) {
       const snack = snacksById.get(armedSnack);
@@ -1953,7 +2030,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
   const onDblClick = (e) => {
     const box = dlgAt(e);
-    if (box) { setCard(null); open(box.name); return; }
+    if (box || bubbleAtEvent(e)) return; // the first click already opened it
     const s = scene.current, w = pointOf(e), hit = deskOf(e);
     if (hit && hit.node.i) { setCard(null); open(hit.node.name); return; }   // #2661: a person's chat, past the card
     if (!overview || !s || !s.overview || !w || hit) return;
@@ -2140,7 +2217,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}`;
-  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}`} ref=${ooRef}>
+  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
     ${compact ? null : html`<div class="oo-bar">${barItems}</div>`}
     ${compact && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
       <div class="oo-sheet-tiles">
@@ -2227,10 +2304,6 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${snackDrag.kind === "feed" ? html`<span class="oo-snack-hint">${to("snackFeed", snackDrag.label)}</span>`
           : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
       </div>` : null}
-      ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
-        <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
-        ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
-      </div>` : null}
       ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
@@ -2241,5 +2314,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <rect ref=${miniViewRef} class="oc-mini-view oo-mini-view" />
       </svg>
     </div>
+    ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
+        <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
+        ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
+      </div>` : null}
+    ${dialogueOn && dlgVisible ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
+      role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
+      aria-label=${onOpen && !shared ? to("dlgOpenChat") : dlgSay} title=${onOpen && !shared ? to("dlgOpenChat") : null}
+      onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
   </div>`;
 }

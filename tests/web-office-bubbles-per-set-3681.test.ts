@@ -151,7 +151,17 @@ describe("the scene: each speaks their own line", () => {
     const part = F.partOf(L, looks, skin, true, Z.createWalkers(), { frame: () => [], size: () => 0 });
     const ctx = new Proxy({ measureText: (t: string) => ({ width: t.length * 6 }) } as any, { get(o, k) { if (k in o) return o[k]; return () => {}; }, set(o, k, v) { o[k] = v; return true; } });
     const env = { pal: { bg: "#000", surface: "#111", border: "#222", text: "#fff", focus: "#0ff" }, mode: "dark", labels: { areas: {} } };
-    F.drawPart(ctx, part, 1, 0, 0, 0, true, null, env);                // still: whole lines at once; "needs" always speaks
+    const hits: any[] = [], deferred: (() => void)[] = [];
+    F.drawPart(ctx, part, 2, 30, 40, 0, true, null, env, false, deferred, hits);
+    expect(hits).toEqual([]); // only painted bubbles are interactive, after deferred placement
+    deferred.forEach(draw => draw());
+    expect(hits).toHaveLength(said.length);
+    for (const hit of hits) {
+      expect(F.officeBubbleAt(hits, hit.box.x + hit.box.w / 2, hit.box.y + hit.box.h / 2)?.name).toBe(hit.name);
+      expect(hit.box.x).toBeGreaterThan(30);
+      expect(hit.box.y).toBeGreaterThan(40);
+    }
+    expect(F.officeBubbleAt(hits, -1, -1)).toBeNull();                // still: whole lines at once; "needs" always speaks
     const seat = (n: string) => L.seats.get(n);
     // Each bubble over its speaker (a little right of their seat): whose is the seat nearest along x.
     const whose = (x: number) => names.reduce((a, b) => (Math.abs(seat(b).x - x) < Math.abs(seat(a).x - x) ? b : a));

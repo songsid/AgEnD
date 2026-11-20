@@ -1,7 +1,7 @@
 // #3637: optional presentation/data only. Every new window boots the existing authenticated chat independently.
 import { appStore, guestPage } from "/assets/app-store.js";
 import { agentRoute } from "/assets/chat-workspace-model.js";
-import { parseRoute } from "/assets/app-route.js";
+import { parseRoute, chatPath, isSafeInstanceName } from "/assets/app-route.js";
 import { Shell, shellStore } from "/assets/app-shell.js";
 import { register, t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
@@ -16,6 +16,20 @@ register("chatPopout", {
 export const popoutText = key => t(`chatPopout.${key}`);
 const supported = chat => chat?.popoutDraftVersion === 1 && chat.popoutDraftReady?.() === true && Shell.popoutVersion === 1
   && getComputedStyle(document.documentElement).getPropertyValue("--chat-popout-version").trim() === "1";
+/** A fresh Office chat is not a pane transfer: leave the Office and every draft owner untouched. */
+export function openOfficeChatWindow(name, { win = window, notify = reason => toast(popoutText(reason), false) } = {}) {
+  const boot = globalThis.document?.body?.dataset, auth = globalThis.AgendAuth, app = appStore.get();
+  if (guestPage() || boot?.chatWorkspace !== "1" || !boot.chatLayoutScope || !app.ready
+      || typeof auth?.sessionEnded !== "function" || auth.sessionEnded() || !isSafeInstanceName(name)
+      || !app.instances.some(it => it.name === name)) return false;
+  let child;
+  // Keep the normal popup handle for reliable blocked-window feedback, then immediately detach the opener.
+  try { child = win.open(`${chatPath(name)}?presentation=popout`, "_blank", "popup,width=760,height=800"); } catch { /* blocked */ }
+  if (!child) { notify("blocked"); return false; }
+  try { child.opener = null; } catch { /* the browser may already have detached it */ }
+  return true;
+}
+
 export function createPanePopout({ scope, chat, win = window, notify = reason => toast(popoutText(reason), false) }) {
   if (!supported(chat) || guestPage() || !scope) return null;
   let alive = true;

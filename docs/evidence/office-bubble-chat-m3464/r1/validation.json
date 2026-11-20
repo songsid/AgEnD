@@ -1,0 +1,91 @@
+{
+  "scope": "overlap correction; popup/auth/draft/floating-hit logic retained",
+  "tests": {
+    "layoutAndStyles": {
+      "files": 7,
+      "pass": 71
+    },
+    "related": {
+      "files": 6,
+      "pass": 221
+    },
+    "additionalAssetHttp": {
+      "pass": 1
+    },
+    "finalDialogueAndCssSubset": {
+      "files": 2,
+      "pass": 41
+    },
+    "testTypesExit": 0
+  },
+  "failFirst": {
+    "outsideMap": 1,
+    "unregisteredStylesheet": 1
+  },
+  "browser": {
+    "desktop": {
+      "map": {
+        "top": 180,
+        "bottom": 712
+      },
+      "dialogue": {
+        "top": 720,
+        "bottom": 900
+      },
+      "fullscreen": true,
+      "popupAndKeyboard": true,
+      "noSend": true
+    },
+    "phone": {
+      "case": "phone-dark-zh-TW",
+      "dialogue": true,
+      "stateBubble": true,
+      "touchTarget": 44,
+      "keyboard": true,
+      "sourceRetained": true,
+      "noSend": true,
+      "noOverflow": true,
+      "nonOverlappingRows": {
+        "map": {
+          "top": 104,
+          "bottom": 605.203125
+        },
+        "dialogue": {
+          "top": 675.203125,
+          "bottom": 844
+        },
+        "zones": {
+          "top": 613.203125,
+          "bottom": 667.203125
+        }
+      }
+    },
+    "shortLandscape": {
+      "minMapHeight": 200,
+      "outerScrollReachable": true,
+      "decorativePortraitOmitted": true
+    }
+  },
+  "source": [
+    {
+      "path": "src/ui/fleet-office.js",
+      "sha256": "e7a118d36583922494c1600e50d61fa26cf3eddacca2561f611cfe574a9da3c6"
+    },
+    {
+      "path": "src/ui/fleet-office-dialogue.js",
+      "sha256": "c9364a6f541d6cf69a9092b6cc773c65a3b7ffd865b00706c3e4d6e746227f74"
+    },
+    {
+      "path": "src/ui/shared/office-dialogue.css",
+      "sha256": "3be6e62fc1320c4f0127ec2b2c36eed96e8809cce580bbdf191ceb10379f543d"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "00f4c653bc7c371624b1ac8d894913dcc175ec507031bfa7b65cff4cadb43250"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-office-chat-m3464.mts",
+      "sha256": "e82a6a332ae84c45795e1334c4ebaceadf412409f8182fde03fdab34e73ab05d"
+    }
+  ]
+}

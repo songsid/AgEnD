@@ -27,11 +27,13 @@ register("ocard", {
   en: {
     card: "{0}'s card", level: "Lv {0}", work: "{0} work tokens", estimated: "estimated", toNext: "{0} to Lv {1}", office: "Office", model: "Model", backend: "Backend",
     today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
+    chatWindow: "Open {0}’s chat in a new window",
     close: "Close", xp: "Progress to Lv {0}",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
     today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", find: "在辦公室找他", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
+    chatWindow: "在新視窗開啟 {0} 的聊天",
     close: "關閉", xp: "升到 Lv {0} 的進度",
   },
 });
@@ -114,7 +116,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
       ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
         <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
       ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
-      ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" onClick=${onChat}>${tc("chat")}</button>` : null}
+      ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
     </div>
   </div>`;
 }

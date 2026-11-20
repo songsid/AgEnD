@@ -63,6 +63,9 @@ beforeAll(async () => {
 });
 afterAll(async () => { await p.unmount(); p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
+  p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
+  (globalThis as any).AgendAuth = { sessionEnded: () => false };
+  (p.window as any).open = vi.fn(() => ({ opener: null }));
   await p.unmount();
   p.storage.clear();
   offices = { rev: 0, offices: [] }; skins = { rev: "", packs: [] }; manifestAnswer = null; trafficAnswer = null; fetched.length = 0;
@@ -463,7 +466,8 @@ describe("All offices on the page", () => {
     fire(cv, "click", { clientX: q.x, clientY: q.y }); await settle(2);
     expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
     p.root.querySelector(".oo-card-chat").click(); await settle(2);                         // its Chat opens the chat
-    expect(location.pathname).toBe("/ui/chat/quill");
+    expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/quill?presentation=popout");
+    expect(location.pathname).toBe("/ui/fleet/org");
   });
   it("a tile's label opens that office (kept as the pick); a double-click on a tile's empty floor too; the lobby opens nothing", async () => {
     offices = { rev: 2, offices: TWO };
