@@ -487,7 +487,8 @@ export function createWalkers() {
         if (w.to.x === to.x && w.to.y === to.y) continue;
         const here = posAt(w, now), via = routeVia(graph, { x: here.x, y: here.y }, { x: to.x, y: to.y });
         const pts = graph.straight ? straighten(via) : via;   // #2634: timed along the longer way
-        by.set(name, { pts, start: now, ms: Math.max(1, pathLength(pts) / WALK.SPEED), to });
+        const speed = to.speed > 0 ? to.speed : WALK.SPEED;
+        by.set(name, { pts, start: now, ms: Math.max(1, pathLength(pts) / speed), to });
       }
     },
     at(name, now) { const w = by.get(name); return w ? posAt(w, now) : null; },

@@ -1,10 +1,15 @@
 // M-3293 (#4119, the light version): play in the Office — pick a person up and drop them anywhere (they walk back to their
-// seat along the usual route), and pat or feed them (a few hearts rising over the head and a speech bubble). The
-// viewer's own: never stored on the host, never in a share link, never sent to an agent (no request at all), no
-// tokens. Pure — fleet-office.js wires it to the pointer, the walkers and the scene.
+// seat along the usual route), and pat or feed them (a few hearts rising over the head and a speech bubble). M-3432
+// (#4255): custom snacks from the active skin pack — drag onto a character to feed (plays optional `eat` strip), or drop
+// on empty floor so nearby idle characters race to it (first eats, others scatter). The viewer's own: never stored on the
+// host, never in a share link, never sent to an agent (unless Tell is ticked on their card). Pure — fleet-office.js wires
+// it to the pointer, the walkers and the scene.
 //
 // Who may play: a single zones office on the dashboard itself (not All offices, not a share link's page, not while Edit
 // layout is open), with the viewer's "Drag and pat" on (per device, on by default) — and never with reduced motion.
+import { LOGICAL, SNACK_LIMITS, stripDurationMs } from "./fleet-office-pack.js";
+import { nameHash } from "./fleet-office-model.js";
+import { WALK } from "./fleet-office-zones.js";
 
 /**
  * LONG_MS: a touch held this long without moving picks a person up (a finger that moves first pans, as before); SLOP:
@@ -13,6 +18,20 @@
  */
 export const PLAY = { LONG_MS: 450, SLOP: 6, REACT_MS: 1800, HEARTS: 3, RISE: 26 };
 export const PLAY_KINDS = ["pat", "feed"];
+
+/** M-3432 (#4255): limits and timing for custom snacks, eating, and placed-snack races. */
+export const SNACK = {
+  MAX_PLACED: 6,
+  MAX_RACERS: 4,
+  TTL_MS: 30_000,
+  CLAIM_DIST: 18,
+  RACE_SPEED_MULT: 1.25,
+  SPEED_VARIANCE: 0.08,
+  EAT_MIN_MS: 800,
+  EAT_MAX_MS: 10_000,
+  EAT_DEFAULT_MS: 1800,
+  SCATTER_MS: 1800,
+};
 
 /** Whether the viewer may play here: their toggle on, motion allowed, a single zones office of their own dashboard. */
 export function playAllowed({ on, still, zones, overview, layout, shared }) {
@@ -81,4 +100,171 @@ export function reactionAt(r, t, lang = "en") {
 export function pruneReactions(map, t) {
   for (const [n, r] of [...map]) if (t - r.t0 >= PLAY.REACT_MS || t < r.t0) map.delete(n);
   return map.size > 0;
+}
+
+const SCATTER_WORDS = { en: "Too slow!", "zh-TW": "被搶先了！" };
+/** M-3432 (#4255): brief bubble for a losing snack racer heading back to their seat. */
+export const scatterWords = (lang = "en") => SCATTER_WORDS[lang] || SCATTER_WORDS.en;
+
+/** M-3432 (#4255): how long a character eats (ms) — clamped to [EAT_MIN_MS, EAT_MAX_MS], or EAT_DEFAULT_MS without an eat strip. */
+export function eatDurationMs(charEatStrip = null, snackEatStrip = null) {
+  const ms = Math.max(stripDurationMs(charEatStrip), stripDurationMs(snackEatStrip));
+  return ms > 0 ? Math.max(SNACK.EAT_MIN_MS, Math.min(SNACK.EAT_MAX_MS, ms)) : SNACK.EAT_DEFAULT_MS;
+}
+
+/** M-3432 (#4255): deterministic speed multiplier for a racer chasing a placed snack (1.25× ± 8%). */
+export function racerSpeedMult(name, snackKey) {
+  const h = nameHash(`${name}\u0000${snackKey}`) % 1001;
+  const frac = h / 500 - 1;
+  return SNACK.RACE_SPEED_MULT * (1 + frac * SNACK.SPEED_VARIANCE);
+}
+
+function areaOfPoint(areas, pt) {
+  if (!areas || typeof areas !== "object") return null;
+  for (const [k, a] of Object.entries(areas)) {
+    const r = a && a.rect;
+    if (r && pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h) return k;
+  }
+  return null;
+}
+
+/**
+ * M-3432 (#4255): client-local snack manager for a single zones office.
+ * Handles direct feeds, placed snacks on the floor (max MAX_PLACED, TTL_MS expiry),
+ * nearby idle racers (max MAX_RACERS per snack, honoring stayInArea), claim → eat, and losing-racer scatter.
+ */
+export function createSnacks() {
+  let seq = 0;
+  let placed = [];
+  const eating = new Map();
+  const scatter = new Map();
+
+  const busySet = () => {
+    const busy = new Set(eating.keys());
+    for (const p of placed) for (const n of p.racers) busy.add(n);
+    return busy;
+  };
+
+  const pickRacers = (item, t, { desks = [], walkers = null, hidden = null, ownArea = false } = {}, cap = SNACK.MAX_RACERS) => {
+    if (cap <= 0) return [];
+    const busy = busySet();
+    const candidates = [];
+    for (const d of desks) {
+      const name = d && d.node && d.node.name;
+      if (!name || d.node.state !== "idle" || d.night) continue;
+      if (busy.has(name) || (hidden && hidden.has(name))) continue;
+      if (ownArea && (item.area === null || d.area !== item.area)) continue;
+      const pos = (walkers && walkers.at(name, t)) || d.seat;
+      if (!pos) continue;
+      const dist = Math.hypot(pos.x - item.x, pos.y - item.y);
+      if (dist > item.radius) continue;
+      candidates.push({ name, dist, eta: dist / racerSpeedMult(name, item.id) });
+    }
+    candidates.sort((a, b) => (a.eta - b.eta) || (a.dist - b.dist) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    return candidates.slice(0, cap).map((c) => c.name);
+  };
+
+  const feed = (name, snack, { x, y, t, charEatStrip = null }) => {
+    for (const p of placed) p.racers = p.racers.filter((n) => n !== name);
+    scatter.delete(name);
+    const durationMs = eatDurationMs(charEatStrip, snack && snack.eat);
+    eating.set(name, { snackId: snack ? snack.id : null, x, y, t0: t, until: t + durationMs });
+    return { durationMs };
+  };
+
+  return {
+    feed,
+    place(snack, at, t, ctx = {}) {
+      if (!snack || !at) return null;
+      const x = Math.max(16, Math.min(LOGICAL.w - 16, Math.round(at.x)));
+      const y = Math.max(16, Math.min(LOGICAL.h - 16, Math.round(at.y)));
+      while (placed.length >= SNACK.MAX_PLACED) placed.shift();
+      const item = {
+        id: `sn-${++seq}`,
+        snackId: snack.id,
+        x,
+        y,
+        t0: t,
+        radius: snack.radius ?? SNACK_LIMITS.defaultRadius,
+        area: areaOfPoint(ctx.areas, { x, y }),
+        racers: [],
+      };
+      item.racers = pickRacers(item, t, ctx, SNACK.MAX_RACERS);
+      placed.push(item);
+      return item;
+    },
+    step(t, ctx = {}) {
+      const { desks = [], walkers = null, hidden = null, ownArea = false, snacksById = null, charEatOf = null, onClaim = null } = ctx;
+      let changed = false;
+      for (const [n, e] of [...eating]) if (t >= e.until || t < e.t0) { eating.delete(n); changed = true; }
+      for (const [n, s] of [...scatter]) if (t >= s.until || t < s.t0) scatter.delete(n);
+      const deskByName = new Map(desks.filter((d) => d && d.node).map((d) => [d.node.name, d]));
+      const kept = [];
+      for (const p of placed) {
+        if (t - p.t0 >= SNACK.TTL_MS || t < p.t0) { changed = true; continue; }
+        const beforeLen = p.racers.length;
+        p.racers = p.racers.filter((n) => {
+          const d = deskByName.get(n);
+          return !!d && d.node.state === "idle" && !d.night && !eating.has(n) && !(hidden && hidden.has(n)) && (!ownArea || (p.area !== null && d.area === p.area));
+        });
+        if (p.racers.length !== beforeLen) changed = true;
+        // Check if any racer reached CLAIM_DIST.
+        const reached = [];
+        for (const n of p.racers) {
+          const d = deskByName.get(n);
+          const pos = (walkers && walkers.at(n, t)) || (d && d.seat);
+          if (!pos) continue;
+          const dist = Math.hypot(pos.x - p.x, pos.y - p.y);
+          if (dist <= SNACK.CLAIM_DIST) reached.push({ name: n, dist, speed: racerSpeedMult(n, p.id) });
+        }
+        if (reached.length) {
+          reached.sort((a, b) => (a.dist - b.dist) || (b.speed - a.speed) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+          const winner = reached[0].name;
+          const losers = p.racers.filter((n) => n !== winner);
+          const snack = snacksById ? snacksById.get(p.snackId) || null : null;
+          const charEat = typeof charEatOf === "function" ? charEatOf(winner) : null;
+          feed(winner, snack, { x: p.x, y: p.y, t, charEatStrip: charEat });
+          for (const loser of losers) scatter.set(loser, { t0: t, until: t + SNACK.SCATTER_MS });
+          if (typeof onClaim === "function") onClaim(winner, snack, p);
+          changed = true;
+          continue;
+        }
+        if (p.racers.length < SNACK.MAX_RACERS) {
+          const added = pickRacers(p, t, { desks, walkers, hidden, ownArea }, SNACK.MAX_RACERS - p.racers.length);
+          if (added.length) { p.racers.push(...added); changed = true; }
+        }
+        kept.push(p);
+      }
+      placed = kept;
+      return changed;
+    },
+    targets(t) {
+      const out = new Map();
+      for (const [name, e] of eating) {
+        if (t >= e.t0 && t < e.until) out.set(name, { x: e.x, y: e.y });
+      }
+      for (const p of placed) {
+        for (const name of p.racers) {
+          if (!out.has(name)) out.set(name, { x: p.x, y: p.y, speed: WALK.SPEED * racerSpeedMult(name, p.id) });
+        }
+      }
+      return out;
+    },
+    placedList() { return [...placed]; },
+    eatingOf(name, t) {
+      const e = eating.get(name);
+      return e && t >= e.t0 && t < e.until ? e : null;
+    },
+    scatterOf(name, t) {
+      const s = scatter.get(name);
+      return s && t >= s.t0 && t < s.until ? s : null;
+    },
+    active(t) {
+      if (placed.length > 0) return true;
+      for (const e of eating.values()) if (t >= e.t0 && t < e.until) return true;
+      for (const s of scatter.values()) if (t >= s.t0 && t < s.until) return true;
+      return false;
+    },
+    clear() { placed = []; eating.clear(); scatter.clear(); },
+  };
 }
