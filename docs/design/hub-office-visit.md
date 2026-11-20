@@ -1,7 +1,8 @@
 # Offices on the Hub: visit a colleague's office, and a room's own office (M-3460)
 
-Status: design for the owner's approval. No product code. The captures are a throwaway prototype in the real
-app (see "Prototype captures").
+Status: design for the owner's approval, second revision (2026-11-20, after the owner's feedback: the room office is
+a tab of the chat page, with no extra row and no frame; and the member list at 12 people and 30 agents). No product
+code. The captures are a throwaway prototype in the real app (see "Prototype captures").
 
 Two things are asked for, and they share one drawing:
 
@@ -90,7 +91,8 @@ The owner seeing who is visiting ("2 visiting: Alex, Casey" in their Office bar)
 
 A side-bar item **Offices**, shown to a person who can visit at least one office or who has a Fleet. The page
 lists the offices open to you (owner, office name, how many agents and how many working, Open now or Closed) and
-your own office's state with a link to My agents. Opening one shows the office with a back button.
+your own office's state with a link to My agents. Opening one shows the office filling the page, with no box
+around it, under a crumb back to Offices (`a.hub-crumb`, as other Hub sub-pages).
 
 ### 1.7 Limits
 
@@ -107,10 +109,20 @@ opened to them.
 
 ## Part 2. A room's office
 
-### 2.1 A room setting
+### 2.1 A room setting, and where the office is
 
 Room settings → **Room office** (on or off) and its **style** (the built-in styles). Room managers change it.
 A line in the room says when it was turned on or off. See Q5 for the default.
+
+**The office is a tab of the room's page, the same tab bar an agent's page has** (Chat / View / Log there;
+**Chat / Office** here; `nav.inst-switch.seg`, the dashboard's own component):
+
+- On desktop the tabs sit in the room's header row, after the title. No row is added.
+- On a phone they are the row under the header, exactly as an agent's Chat / View / Log are today.
+- The office fills the content area the way View does: no card, no border, no inner title bar, and no message
+  box under it. To ask something, a member goes back to Chat, or presses **@** on an agent's card, which
+  switches to Chat with the mention already in the box.
+- With Room office off, there is no tab bar and the room looks as it does today.
 
 ### 2.2 Who appears
 
@@ -152,13 +164,39 @@ So Atlas looks the same in its owner's office, in every room office, and in the 
 ### 2.5 What members can do there
 
 - Look, zoom, open an agent's card: name, owner, introduction, state.
-- **@ it** from the card: puts the mention in the room's message box.
+- **@ it** from the card: switches to the Chat tab with the mention in the message box.
 - The dialogue box may show words here, unlike a visit: the first ~120 characters of a question and its answer
   **from this room**, which every member can already read in the chat.
-- The message box stays under the office, so a member can ask without leaving it.
 - Pat and Feed: later, local only, as for a visit.
 
-### 2.6 How the two relate
+### 2.6 A large room: 12 people and 30 agents
+
+Checked in the real app with a room of 12 people and 30 agents of 6 owners.
+
+**The office** holds them: 12 desks fill and the rest stand in the rest area (capture `r2-4`). On a phone it is
+small until zoomed, which is the framing in this prototype; a real build fits the width.
+
+**The member list today** (captures `r2-6`, `r2-7`): every person takes two lines and every agent two or three,
+so the list is about 3,600 px tall, more than four desktop screens. The 12 people fill the first screen and the
+first agent is below it. Agents fold after 8 with "24 more", and unfolding gives the full length. On a phone the
+sheet shows 10 people and nothing else. It works, but nobody can find one agent in it.
+
+**Proposed** (captures `r2-8`, `r2-9`), used only when a room has more than 12 people and agents together; a
+small room keeps today's list:
+
+| Change | What it does |
+|---|---|
+| One summary line | "12 people, 7 online · 30 agents of 6 owners" at the top |
+| A filter box | Type a name or an owner; groups open and only matches show |
+| One line a row | Name on the left, state on the right. An agent's introduction and owner move into its card, which opens on a press as today |
+| People not online are folded | "Not online · 5", closed until pressed |
+| Agents grouped by owner | "Example owner · 5", closed until pressed, so 30 agents are 6 lines |
+
+The same room is then about 630 px: everything is on one desktop screen, and on a phone the people and the
+first owner's agents are on the first screen. Size S–M, and it is independent of the office, so it can ship
+on its own.
+
+### 2.7 How the two relate
 
 | | A person's office | A room's office |
 |---|---|---|
@@ -188,27 +226,46 @@ In `docs/evidence/hub-office-visit-m3460/`: desktop (light) and phone (dark) in 
 | File | What it shows |
 |---|---|
 | `*-1-offices.png` | The Hub's Offices page |
-| `*-2-visit.png` | Visiting a person's office |
-| `*-3-room-office.png` | A room's office, with three agents of two owners |
 | `*-4-owner-row.png` | The owner's Office row on My agents |
 | `*-5-owner-dialog.png` | The owner's share dialog |
+| `*-r2-2-visit.png` | Visiting a person's office, filling the page with no box (zh-TW) |
+| `*-r2-3-room-chat-tab.png` | The room with its Chat / Office tabs, Chat current (zh-TW) |
+| `*-r2-4-room-office-tab.png` | The Office tab: 30 agents, no extra row, no frame (zh-TW) |
+| `*-r2-6-members-today.png`, `*-r2-7-members-today-expanded.png` | Today's member list with 12 people and 30 agents (zh-TW) |
+| `*-r2-8-members-proposed.png`, `*-r2-9-members-filter.png` | The proposed compact list, and the filter (zh-TW) |
 
 What is real and what is not:
 
 - The Hub is the real one (real server, database and pages) at 98cfd9b77. The office is the real office share
   page, fed by a made-up fleet. Names are made up.
-- The Offices page, the Office row and the dialog are prototype code served to the browser for the capture only.
-  The office is shown by framing the share page inside the Hub page, so **its own bar is visible** ("Read-only:
-  names and states only", the office picker, the tick boxes). A real build draws the office directly: one bar,
-  and the office fits the width on a phone.
-- In the room capture the "Chat / Office" switch is drawn into the page for the picture. Everyone has the
-  default look, because the made-up fleet has no skins; carried looks are not shown.
+- The Offices page, the Office row, the dialog and the compact member list are prototype code served to the
+  browser for the capture only. The room's tabs use the dashboard's real tab classes, put into the real room
+  header for the picture.
+- The office is the real share page placed inside the Hub page with its own title bar and office picker hidden.
+  Its row of tick boxes is the office's own bar, as on the Fleet. On a phone the office is small because the
+  share page is framed; a real build draws it directly and fits the width.
+- Everyone has the default look, because the made-up fleet has no skins; carried looks are not shown.
+- The room has 12 people and 30 agents of 6 owners, all made up; 5 of the people have never signed in.
 - Not captured: the Room office setting, the per-agent switch, a closed office's page, an agent's card.
+
+## Checked against the style guide
+
+`docs/design/ui-style-guide.md` on the development branch:
+
+- **Rule 13 (the Hub's shell is the dashboard's):** Offices is a row in `HubSide` (`a.side-row` with an icon);
+  the page is named once in `PanelHeader` and opens with its lead; its cards are in the page's column; a visit
+  uses `a.hub-crumb`. The room's tabs are the dashboard's `nav.inst-switch.seg`, not a Hub-only control.
+- **Rule 1 (shared components):** the dialog is the shared `Dialog`; the list rows are `s-row hub-row`.
+- **Rule 2 (one card frame):** the office has no frame of its own, in a room or on a visit.
+- **Rule 7 (phone and desktop, no sideways scroll):** every capture is at 1366 and at 390 wide.
+- **Rules 4 and 5 (tokens, no inline styles):** the prototype breaks these in places (it is not product code);
+  the build must not.
 
 ## Slice plan (after approval)
 
 | Slice | What | Size |
 |---|---|---|
+| M1 | The compact member list for large rooms (summary, filter, one-line rows, folded groups) | S–M, independent |
 | R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, "answering in this room" | M |
 | R2 | Look cards from the Fleet (colour, portrait, character pictures), the per-agent switch, working and idle | M |
 | V1 | Visit a person's office: the owner's row and dialog, the Offices page, the live view in built-in styles, stop | L (split: Fleet side, Hub side, page) |
@@ -233,12 +290,18 @@ R1 comes first: it needs nothing new from any Fleet, and it shows the idea to ev
 
 **兩件事，同一種畫面：**
 
+**第二版（依你的回饋修改）：** 房間的辦公室改成房間頁面上的一個分頁，和 Agent 頁面的「聊天／檢視／紀錄」
+是同一種分頁列：桌面版放在標題列裡，不多一排；手機版和 Agent 頁面一樣在標題下方。辦公室直接佔滿內容區，
+沒有外框、沒有另外的標題列，下面也不再放輸入框。另外實測了 12 人、30 個 Agent 的房間：現在的成員清單長約
+3,600 px（四個畫面以上），建議超過 12 個成員時改成精簡清單——一行統計、篩選框、每人一行、不在線上的人收合、
+Agent 依擁有者分組收合——同一個房間變成約 630 px。
+
 1. **參觀同仁的辦公室。** 擁有者在 Hub 的「我的 Agent」→ 自己的 Fleet → 新的「辦公室」列，按「分享辦公室…」，
    選哪一間、誰可以參觀（所有人，或指定的群組、團隊、人員）。預設不分享。參觀的人看到的和現在的辦公室分享連結
    一樣：場景、每個 Agent 的名稱、外觀、狀態、等級；看不到任何訊息內容、模型、費用。設為隱藏的 Agent 不會出現。
 2. **房間自己的辦公室。** 每個 Hub 房間可以有一間辦公室（房間設定裡開關、選風格）。裡面坐的就是這個房間的
    Agent，各自帶著擁有者替它設定的外觀。會顯示「正在這個房間回答」、工作中、閒置、休息。成員可以點 Agent 看
-   名片、直接 @ 它；對話框只會顯示這個房間自己的訊息。
+   名片、按 @（會切回聊天分頁並帶入提及）；對話框只會顯示這個房間自己的訊息。
 
 **即時還是快照：** 即時，每 5 秒更新，而且只有有人在看的時候 Fleet 才送資料。Fleet 離線時顯示「休息中」，
 不留舊畫面。
