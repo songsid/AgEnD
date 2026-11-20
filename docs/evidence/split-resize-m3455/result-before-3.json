@@ -1,0 +1,58 @@
+{
+ "label": "before-3",
+ "throttle": 4,
+ "domNodesPerPane": [
+  3972,
+  3987
+ ],
+ "before": [
+  {
+   "scrollTop": 18481,
+   "first": "fleet-lead11/1 06:41 PM#",
+   "firstTop": 14
+  },
+  {
+   "scrollTop": 18481,
+   "first": "core-dev11/1 06:41 PM#10",
+   "firstTop": 14
+  }
+ ],
+ "frames": {
+  "n": 448,
+  "mean": 90.6,
+  "p50": 33.3,
+  "p90": 266.7,
+  "p99": 400,
+  "max": 450,
+  "over33": 206,
+  "over50": 148
+ },
+ "window_ms": 40732.1,
+ "mainThreadSelf_ms": {
+  "paint": 11353,
+  "script": 4081.9,
+  "style": 12899.8,
+  "layout": 7409.6
+ },
+ "layoutCount": 599,
+ "forcedLayouts": 0,
+ "styleCount": 865,
+ "after": [
+  {
+   "scrollTop": 18481,
+   "first": "fleet-lead11/1 06:41 PM#",
+   "firstTop": 14
+  },
+  {
+   "scrollTop": 18481,
+   "first": "core-dev11/1 06:41 PM#10",
+   "firstTop": 14
+  }
+ ],
+ "drafts": [
+  "draft A",
+  "draft B"
+ ],
+ "ratio": 0.5,
+ "errors": []
+}
