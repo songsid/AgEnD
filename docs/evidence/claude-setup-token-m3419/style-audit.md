@@ -19,4 +19,4 @@ Checked against `docs/design/ui-style-guide.md`, including its newer rule 14, in
 | 13 Hub shell | No Hub/shell change. |
 | 14 Info details | No info icon. Required private-flow and recovery text remains visible. |
 
-Layout assertions pass for all 34 captures. Static image review confirmed CJK rendering, no token value and full Cancel visibility; the paste fallback pair shows the input fully above the footer.
+Layout assertions pass for all 36 captures. Static image review confirmed CJK rendering, no token value and full Cancel visibility; the paste fallback pair shows the input fully above the footer.

@@ -241,6 +241,20 @@
       "overflow": false,
       "small": [],
       "secretVisible": false
+    },
+    {
+      "tag": "phone-light-zh-TW",
+      "name": "saved-details",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "name": "saved-details",
+      "overflow": false,
+      "small": [],
+      "secretVisible": false
     }
   ],
   "cases": [
@@ -288,6 +302,18 @@
   "extraCases": [
     {
       "tag": "desk-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    },
+    {
+      "tag": "phone-dark-zh-TW",
+      "errors": [],
+      "csp": []
+    }
+  ],
+  "savedDetailsCases": [
+    {
+      "tag": "phone-light-zh-TW",
       "errors": [],
       "csp": []
     },

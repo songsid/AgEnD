@@ -9,10 +9,12 @@ Validation:
 - Fourteen affected/policy files: 240 assertions pass; source and test TypeScript pass.
 - The complete existing real-resource terminal file: 30/30, using private scratch sockets. The new case runs a generated local fixture executable, proves history `0 0`, capture refusal, one-use consumption and directory removal. No account login or fleet is started.
 - Six assertion reversals caught: one-use consumption, private-output mode, completion-stream fence, teardown before commit, original claim and current owner. All sources restored.
-- Thirty-four real-app images: EN/zh-TW, desktop/phone, light/dark. The isolated app uses the real verified API and vault, with a synthetic login transport. All views have no overflow, undersized phone controls, exposed input, page error or CSP error. Paired overview/scrolled images demonstrate the full Cancel action and retained paste input.
+- Thirty-six real-app images: EN/zh-TW, desktop/phone, light/dark. The isolated app uses the real verified API and vault, with a synthetic login transport. All views have no overflow, undersized phone controls, exposed input, page error or CSP error. Paired overview/scrolled images demonstrate the full Cancel action and retained paste input.
 
 Commands: `node node_modules/.bin/vitest run tests/claude-setup-token-m3419.test.ts tests/web-claude-setup-token-m3419.test.ts` and the affected HTTP/lifecycle/sign-in neighbors; `AGEND_TMUX_BIN=<owned test binary> node node_modules/.bin/vitest run --config vitest.config.integration.ts tests/web-terminal-integration.test.ts`; source/test `tsc --noEmit`.
 
 [Gallery](gallery.md) · [Capture results](capture-results.json) · [Reversed controls](controls.json) · [Style audit](style-audit.md).
 
 Rollback: remove the optional fetch flow and its private-output adapter; keep paste, the encrypted vault and the guarded launcher. Never change the selected source implicitly. Website publication remains held until the feature beta and user approval of its captures.
+
+The additional saved-details pair answers a visual check about the lower disclosure: it is fully reachable by scrolling, with its full bounds above the footer. No product change was needed.

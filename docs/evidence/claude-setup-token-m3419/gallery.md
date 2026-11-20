@@ -12,3 +12,5 @@ Generated local fixture only. No token value appears. The waiting overview and s
 | Retained paste, dark | Existing paste remains available in both languages | [Desktop](screens/desk-dark-zh-TW-paste-fallback.png), [phone](screens/phone-dark-zh-TW-paste-fallback.png) |
 
 The screens directory contains every device/theme/language combination, not only the examples linked above.
+
+Saved state after scrolling: [phone light zh-TW](screens/phone-light-zh-TW-saved-details.png), [phone dark zh-TW](screens/phone-dark-zh-TW-saved-details.png). The same-user disclosure and bottom note are fully above the fixed footer; the earlier saved picture is an overview at another scroll position.
