@@ -1,0 +1,122 @@
+[
+  {
+    "case": "desk-light-en",
+    "sandbox": "allow-scripts",
+    "isolatedOrigin": true,
+    "versions": true,
+    "changes": true,
+    "pages": true,
+    "sourceDraftRetained": true,
+    "sourceClosedAfterHandoff": true,
+    "launcher": {
+      "x": 1274,
+      "y": 66,
+      "width": 36,
+      "height": 36
+    },
+    "diffScroll": {
+      "max": 0,
+      "reached": 0
+    },
+    "toolbar": {
+      "rows": 1,
+      "controls": [
+        {
+          "width": 74,
+          "height": 44
+        },
+        {
+          "width": 75,
+          "height": 44
+        },
+        {
+          "width": 69,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "focusVisible": false,
+      "outlineWidth": "3px",
+      "outlineStyle": "none",
+      "borderRadius": "8px"
+    },
+    "keyboardFocus": {
+      "visible": true,
+      "width": "2px",
+      "style": "solid"
+    },
+    "mode": "pv-panel pv-fs pv-fs-immersive",
+    "overflow": false,
+    "fs": false,
+    "frameFull": false,
+    "errors": [],
+    "sends": []
+  },
+  {
+    "case": "phone-dark-zh-TW",
+    "sandbox": "allow-scripts",
+    "isolatedOrigin": true,
+    "versions": true,
+    "changes": true,
+    "pages": true,
+    "sourceDraftRetained": true,
+    "sourceClosedAfterHandoff": true,
+    "launcher": {
+      "x": 334,
+      "y": 10,
+      "width": 44,
+      "height": 44
+    },
+    "diffScroll": {
+      "max": 343,
+      "reached": 343
+    },
+    "toolbar": {
+      "rows": 1,
+      "controls": [
+        {
+          "width": 44,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        },
+        {
+          "width": 44,
+          "height": 44
+        }
+      ],
+      "focusVisible": false,
+      "outlineWidth": "3px",
+      "outlineStyle": "none",
+      "borderRadius": "8px"
+    },
+    "keyboardFocus": {
+      "visible": true,
+      "width": "2px",
+      "style": "solid"
+    },
+    "mode": "pv-panel pv-fs pv-fs-immersive",
+    "overflow": false,
+    "fs": false,
+    "frameFull": false,
+    "errors": [],
+    "sends": []
+  }
+]

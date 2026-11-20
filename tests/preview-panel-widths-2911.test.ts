@@ -69,8 +69,8 @@ const shown = () => pp.panelStore.get().open?.key ?? null;
 
 
 const bodyClass = (doc: any) => doc.querySelector(".pv-panel-body").className;
-async function opened(storage: Record<string, string> = {}) {
-  current = page({ storage: { agend_html_preview: "on", agend_tour_done: "1", ...storage } });
+async function opened(storage: Record<string, string> = {}, narrow = false) {
+  current = page({ matchNarrow: narrow, storage: { agend_html_preview: "on", agend_tour_done: "1", ...storage } });
   panel.store.state.msgs.w = [agent(1, FENCE(PAGE(1)))];
   await current.mount(h(panel.ChatPanel, { route: { instance: "w" }, navKey: "one" }));
   (current.document.querySelector(".chat-split") as any).clientWidth = 1200;
@@ -104,6 +104,37 @@ describe("the page's width", () => {
 });
 
 describe("full screen", () => {
+  it.each(["html", "markdown"])("M-3438: %s fullscreen is not restricted to wide screens", async kind => {
+    const doc = await opened();
+    if (kind === "markdown") {
+      pp.openMarkdown({ key: "b-1:aexample", instance: "w", msgKey: "b-1", att: { id: "1".repeat(32), name: "example.md", size: 8 }, text: "# Example", sender: "w", ts: ts(1) });
+      await settle();
+    }
+    const button = doc.querySelector(".pv-panel-fs");
+    expect(button.classList.contains("only-wide")).toBe(false);
+    await click(button);
+    expect(doc.querySelector(".pv-panel").classList.contains("pv-fs-immersive")).toBe(true);
+  });
+
+  it("M-3438 phone: secondary controls use the shared options dialog; Escape returns focus without closing the preview", async () => {
+    const doc = await opened({}, true);
+    const more = doc.querySelector(".pv-toolbar-more");
+    expect(more).not.toBeNull();
+    expect(doc.querySelector(".pv-width")).toBeNull();
+    expect(doc.querySelector(".pv-panel-fs").classList.contains("icon-btn")).toBe(true);
+    more.focus(); await click(more);
+    const dialog = doc.querySelector(".pv-toolbar-dialog dialog");
+    expect(dialog).not.toBeNull();
+    expect(dialog.querySelector(".pv-width")).not.toBeNull();
+    expect(dialog.querySelector(".pv-panel-dl")).not.toBeNull();
+    await choose(doc, "phone");
+    fire(dialog, "cancel", { cancelable: true }); await settle();
+    expect(doc.querySelector("dialog")).toBeNull();
+    expect(doc.activeElement).toBe(more);
+    expect(shown()).toBe("b-1:f0");
+    expect(bodyClass(doc)).toBe("pv-panel-body w-phone");
+  });
+
   it("without the Fullscreen API: the panel goes over the window (immersive); Esc leaves full screen first, then closes", async () => {
     const doc = await opened();
     const fsBtn = () => doc.querySelector(".pv-panel-fs");

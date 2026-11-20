@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 <worktree>
+
+(node:62466) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  2 passed (2)
+      Tests  17 passed (17)
+   Start at  16:29:10
+   Duration  10.46s (transform 9.06s, setup 229ms, import 9.80s, tests 2.11s, environment 0ms)
