@@ -1,0 +1,28 @@
+
+  >_ OpenAI Codex (v0.170.0)
+     /audit/codex-0171/layout-0.170.0/run-01700/owned-context-first
+  permissions: YOLO mode
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+› Ask Codex to do anything
+
+  00000000-0000-7000-8000-000000000170 · Context 100% left · mock-model default · /audit/cache/
+  codex-0171/layout-0.170.0/run-01700/owned-context-first · master
+  ← for agents · ? for shortcuts                                     ⚠ 2 warnings · f2 to view

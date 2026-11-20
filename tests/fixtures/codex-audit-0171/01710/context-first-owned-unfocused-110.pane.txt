@@ -1,0 +1,28 @@
+                                                                         │                                 +
+  >_ OpenAI Codex (v0.171.0)                                             │
+     /audit/codex-0171/…/run-01710/owned-context-first        │ Open in sidebar
+  permissions: YOLO mode                                                 │
+                                                                         │ You can start a side chat after
+                                                                         │ your first message in the main
+                                                                         │ chat.
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+                                                                         │
+›                                                                        │
+                                                                         │
+  00000000-0000-7000-8000-000000000171 · Context 100% left · mock-model  │
+  default · /audit/codex-0171/layout-0.171.0/run-01710/owned- │
+  context-first · master                                                 │
+                                                                         │ esc back · ^x - hide pane

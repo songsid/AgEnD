@@ -81,14 +81,14 @@ export const INSTALLABLE_CLIS = Object.freeze({
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
   codex: {
-    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.170.0",
+    id: "codex", kind: "npm", spec: "@openai/codex", version: "0.171.0",
     integrity: {
-      "node_modules/@openai/codex": "sha512-dwoughgqjiik++CFaNkjQ5y6pJO6LUzu5P1z8Hy4LUeJ+aIYcX/QO1P5rOQnHmBG4agOM7Y+hc4LtVo/a4GFiw==",
-      "node_modules/@openai/codex-win32-x64": "sha512-eNlCGvSTKMegqo1R0PPfAf0jOQp8OGfWH8WX2UyTtRN6E/YOecJnz4n1X9lIb02O8Zda/Lv6/WST7+8mufTVSw==",
+      "node_modules/@openai/codex": "sha512-1IOFzL2Xg86tLdw6kDo3GoKbkQENgQi7TI6rlEvN132R7ngSw7SNOIQoTcnKzSZZ8kf9N9GynCweSoaFbqk2Eg==",
+      "node_modules/@openai/codex-win32-x64": "sha512-HKWBK25tLQxdEg6svw0CrBf+v0bQhRyF8EBVdNqeRxErqpfFa/dfSar6r3sJt6tyPqozOtgz2BH8B2G3n/+gnQ==",
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
-  // M-3176: Claude 2.1.325 (now 2.1.327, M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.170.0 (M-3337; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // M-3176: Claude 2.1.325 (now 2.1.327, M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
   // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.9: the windows_amd64
   // manifest read 2026-11-15 (version 1.5.9, this url, this sha512); the file downloaded is 231726744 bytes with that sha512.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest

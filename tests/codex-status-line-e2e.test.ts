@@ -25,7 +25,7 @@ function codexVersion(): string | null {
   } catch { return null; }
 }
 const version = process.env.AGEND_CODEX_E2E === "1" ? codexVersion() : null;
-const enabled = !!version && /\b0\.(?:157|160|162|164|165|169|170)\.\d+\b/.test(version) && existsSync(AUTH);
+const enabled = !!version && /\b0\.(?:157|160|162|164|165|169|170|171)\.\d+\b/.test(version) && existsSync(AUTH);
 
 let root = "";
 let socket = "";

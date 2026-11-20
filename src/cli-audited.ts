@@ -20,7 +20,8 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327"]),
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts. 0.169.0: tests/codex-0169-audit.test.ts (#3830).
   // 0.170.0: isolated mock-backed audit (M-3337, tests/codex-0170-audit.test.ts); no detector change.
-  codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0"]),
+  // 0.171.0: isolated mock-backed audit (M-3476, #4287, tests/codex-0171-audit.test.ts); no detector change.
+  codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0", "0.171.0"]),
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
   // 3.5.0: its chat.defaultModel warning is excluded from model_error (M-3398, tests/kiro-model-unavailable.test.ts).
   "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0"]),
