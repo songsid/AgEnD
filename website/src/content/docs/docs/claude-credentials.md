@@ -5,6 +5,8 @@ description: Choose how a Claude Code profile signs in, understand billing, and 
 
 This guide applies from the **AgEnD 2.4.0 beta that includes web credential setup**. Earlier versions may not have these controls.
 
+Organization-managed Claude settings are not supported.
+
 ## Choose a method
 
 | Method | Where it comes from | Billing and when to choose it |
