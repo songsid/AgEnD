@@ -1,0 +1,19 @@
+{
+  "merge": "ccd566e8b6581ed7a7309f415c8e2221a8af80fa",
+  "event": "push",
+  "ci": {
+    "run": 44674218766,
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "dataDowngrade": {
+    "run": 44674218588,
+    "status": "completed",
+    "conclusion": "success"
+  },
+  "gitleaks": {
+    "run": 44674218617,
+    "status": "completed",
+    "conclusion": "success"
+  }
+}

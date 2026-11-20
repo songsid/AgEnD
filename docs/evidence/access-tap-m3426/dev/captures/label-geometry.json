@@ -1,0 +1,278 @@
+[
+  {
+    "lang": "en",
+    "snapshots": [
+      {
+        "stage": "before",
+        "height": 996.25,
+        "rows": [
+          {
+            "id": "webLogTab",
+            "rowTop": 71,
+            "rowHeight": 158.546875,
+            "textTop": 73,
+            "textHeight": 19,
+            "noteTop": 100,
+            "inputTop": 131.265625,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webLogThinking",
+            "rowTop": 241.546875,
+            "rowHeight": 237.8125,
+            "textTop": 260.546875,
+            "textHeight": 43,
+            "noteTop": 311.546875,
+            "inputTop": 349.953125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 69
+          },
+          {
+            "id": "webUsagePublic",
+            "rowTop": 491.359375,
+            "rowHeight": 153.859375,
+            "textTop": 510.359375,
+            "textHeight": 19,
+            "noteTop": 537.359375,
+            "inputTop": 557.78125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webOfficeLevels",
+            "rowTop": 657.21875,
+            "rowHeight": 132.171875,
+            "textTop": 676.21875,
+            "textHeight": 19,
+            "noteTop": 703.21875,
+            "inputTop": 712.796875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webPreviewCdn",
+            "rowTop": 801.390625,
+            "rowHeight": 177.859375,
+            "textTop": 820.390625,
+            "textHeight": 43,
+            "noteTop": 871.390625,
+            "inputTop": 879.8125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 69
+          }
+        ]
+      },
+      {
+        "stage": "after",
+        "height": 996.25,
+        "rows": [
+          {
+            "id": "webLogTab",
+            "rowTop": 71,
+            "rowHeight": 158.546875,
+            "textTop": 73,
+            "textHeight": 19,
+            "noteTop": 100,
+            "inputTop": 131.265625,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webLogThinking",
+            "rowTop": 241.546875,
+            "rowHeight": 237.8125,
+            "textTop": 260.546875,
+            "textHeight": 43,
+            "noteTop": 311.546875,
+            "inputTop": 349.953125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 69
+          },
+          {
+            "id": "webUsagePublic",
+            "rowTop": 491.359375,
+            "rowHeight": 153.859375,
+            "textTop": 510.359375,
+            "textHeight": 19,
+            "noteTop": 537.359375,
+            "inputTop": 557.78125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webOfficeLevels",
+            "rowTop": 657.21875,
+            "rowHeight": 132.171875,
+            "textTop": 676.21875,
+            "textHeight": 19,
+            "noteTop": 703.21875,
+            "inputTop": 712.796875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webPreviewCdn",
+            "rowTop": 801.390625,
+            "rowHeight": 177.859375,
+            "textTop": 820.390625,
+            "textHeight": 43,
+            "noteTop": 871.390625,
+            "inputTop": 879.8125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 69
+          }
+        ]
+      }
+    ],
+    "differences": []
+  },
+  {
+    "lang": "zh-TW",
+    "snapshots": [
+      {
+        "stage": "before",
+        "height": 886.5,
+        "rows": [
+          {
+            "id": "webLogTab",
+            "rowTop": 71,
+            "rowHeight": 136.859375,
+            "textTop": 73,
+            "textHeight": 19,
+            "noteTop": 100,
+            "inputTop": 120.421875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webLogThinking",
+            "rowTop": 219.859375,
+            "rowHeight": 195.4375,
+            "textTop": 238.859375,
+            "textHeight": 43,
+            "noteTop": 290.859375,
+            "inputTop": 307.078125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 70
+          },
+          {
+            "id": "webUsagePublic",
+            "rowTop": 427.296875,
+            "rowHeight": 132.171875,
+            "textTop": 446.296875,
+            "textHeight": 19,
+            "noteTop": 473.296875,
+            "inputTop": 482.875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webOfficeLevels",
+            "rowTop": 571.46875,
+            "rowHeight": 132.171875,
+            "textTop": 590.46875,
+            "textHeight": 19,
+            "noteTop": 617.46875,
+            "inputTop": 627.046875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webPreviewCdn",
+            "rowTop": 715.640625,
+            "rowHeight": 153.859375,
+            "textTop": 734.640625,
+            "textHeight": 19,
+            "noteTop": 761.640625,
+            "inputTop": 782.0625,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          }
+        ]
+      },
+      {
+        "stage": "after",
+        "height": 886.5,
+        "rows": [
+          {
+            "id": "webLogTab",
+            "rowTop": 71,
+            "rowHeight": 136.859375,
+            "textTop": 73,
+            "textHeight": 19,
+            "noteTop": 100,
+            "inputTop": 120.421875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webLogThinking",
+            "rowTop": 219.859375,
+            "rowHeight": 195.4375,
+            "textTop": 238.859375,
+            "textHeight": 43,
+            "noteTop": 290.859375,
+            "inputTop": 307.078125,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 70
+          },
+          {
+            "id": "webUsagePublic",
+            "rowTop": 427.296875,
+            "rowHeight": 132.171875,
+            "textTop": 446.296875,
+            "textHeight": 19,
+            "noteTop": 473.296875,
+            "inputTop": 482.875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webOfficeLevels",
+            "rowTop": 571.46875,
+            "rowHeight": 132.171875,
+            "textTop": 590.46875,
+            "textHeight": 19,
+            "noteTop": 617.46875,
+            "inputTop": 627.046875,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          },
+          {
+            "id": "webPreviewCdn",
+            "rowTop": 715.640625,
+            "rowHeight": 153.859375,
+            "textTop": 734.640625,
+            "textHeight": 19,
+            "noteTop": 761.640625,
+            "inputTop": 782.0625,
+            "inputHeight": 22,
+            "labelWidth": 266,
+            "labelHeight": 45
+          }
+        ]
+      }
+    ],
+    "differences": []
+  }
+]
