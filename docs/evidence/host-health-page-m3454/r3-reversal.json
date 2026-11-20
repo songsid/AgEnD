@@ -1,0 +1,20 @@
+{
+  "original": {
+    "path": "src/ui/host-health.js",
+    "sha256": "8d574092147f82a22d896e177a7da3d217bb11c4cc0abb3db3919e1b1185d87a"
+  },
+  "mutant": {
+    "path": "src/ui/host-health.js",
+    "sha256": "f5891b5a7fa8849bea39b6b54545080c033a0ac6a4331cf0bfff65a16ab134d3"
+  },
+  "replace": {
+    "from": ",hour12:false",
+    "to": ""
+  },
+  "failed": [
+    "real Host health UI keeps compact zh dates and the load-number group intact"
+  ],
+  "exit": 1,
+  "caught": true,
+  "restored": true
+}

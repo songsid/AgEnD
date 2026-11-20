@@ -20,8 +20,12 @@
     "sha256": "12e58265c5c59e5a558b1e4d1632a26bc917f589089fcd3a2ee76fbf7bbce0b1"
   },
   {
+    "path": "docs/evidence/host-health-page-m3454/R3.md",
+    "sha256": "e9ddf63f289f22585d110c0c1e609d5dd7a1a93eb26aaa98c69f2597a4d62b43"
+  },
+  {
     "path": "docs/evidence/host-health-page-m3454/README.md",
-    "sha256": "c00cdc515ca01f90abe6be92b40ab06f47d956280950670105b74454cea1961d"
+    "sha256": "c699d22dc974f73be442b0257053bae4567c0c95c5729769b182a7718dc085e9"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/fixture-darwin-desk-light-en.png",
@@ -85,7 +89,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-phone-dark-zh-TW.png",
-    "sha256": "87f48d3aae2de3a74de87ab6dcbd0811d5cdf2b80a37c4ef85d51a202f8ba49e"
+    "sha256": "961f4bec2125f3f76e6a1d2bf88a8d1a37d8c0fc24c9426b3130baf2866b38ce"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-phone-light-en.png",
@@ -97,7 +101,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-dark-zh-TW.png",
-    "sha256": "f5ea0079c77c8a259971ae5bda58527998ef824c70ebc3a6e843b6fe11315f83"
+    "sha256": "30b6539b8820e7ffb19880b84fa60aa1212fa23d3d27bc73b5f4bb3b9f18bd4e"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-light-en.png",
@@ -133,7 +137,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/checks.json",
-    "sha256": "e6cd39692bf094916772b75e35e7f66ef37bf03b30c83f24d99d264cbcd6cad6"
+    "sha256": "f3e30566612ffccd602686cd7c18c11d3bce44a117d44015938eaaca38e26956"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/final-focused.log",
@@ -145,7 +149,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/gallery.md",
-    "sha256": "f6a69e3a15f7de598a546a881d04812d6333e7c8d09e9ca1ef1b9a718fa2495f"
+    "sha256": "2e61048ea7b67e727a49d7d3b5c92c26f6d6b7a1091bf0ec5aefc8c9d76cdd05"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/i18n-rig-green.log",
@@ -184,6 +188,22 @@
     "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
   },
   {
+    "path": "docs/evidence/host-health-page-m3454/leader-r2-assets.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r2-green.log",
+    "sha256": "9f04711120ab59e132847278968fc2eebd380784cfafee354c556e87112b00da"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r2-red.log",
+    "sha256": "7db8df10e3717261a10149899f3bcb6c68e958e0caafa04d72fd0fadfc434456"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r2-types.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+  },
+  {
     "path": "docs/evidence/host-health-page-m3454/mount-budget-green.log",
     "sha256": "1c262cdfb163833be77a55aae741486d8076df5646d9ef5b37734c6235d921c2"
   },
@@ -212,6 +232,18 @@
     "sha256": "88442a302888dd4515c6c847b4378b10138af4bc174812d04ab31703c8b017f0"
   },
   {
+    "path": "docs/evidence/host-health-page-m3454/r3-capture-inputs.json",
+    "sha256": "8f70cef08c9e5e38f2a29ec96dc58de4a1af4aba9d79768b6c11447df0cd4688"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/r3-checks.json",
+    "sha256": "aa747caa8da66a954ee3fa3e2ed55593f30b4998c0e4d0c60d59c068deeed342"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/r3-reversal.json",
+    "sha256": "0b7a203a1d0d8fae79a91d2be916dae2da4343fba81863eacdb91fba4f8aac0c"
+  },
+  {
     "path": "docs/evidence/host-health-page-m3454/restored-green.log",
     "sha256": "7bd937788469b770905dff0c52d942a145eba0cbb272591ae14db93ed7eb9851"
   },
@@ -237,7 +269,7 @@
   },
   {
     "path": "scripts/manual/host-health-page/capture.mts",
-    "sha256": "33d25e9c6a44e146a99a920ee41f8441e64f3179352bd4da8dfbda5dfb66dc0f"
+    "sha256": "b95080e21607da30176dba3cfda5c84589b25f8e7099da93d336525dd6486357"
   },
   {
     "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
@@ -265,7 +297,7 @@
   },
   {
     "path": "src/ui/host-health.js",
-    "sha256": "e16b0fffec5bb028c002a366a30165d949143f6395b26becbe16f891e82979f8"
+    "sha256": "8d574092147f82a22d896e177a7da3d217bb11c4cc0abb3db3919e1b1185d87a"
   },
   {
     "path": "src/ui/panel-fleet.js",
@@ -281,7 +313,7 @@
   },
   {
     "path": "src/ui/shared/app.css",
-    "sha256": "97eb13db06aeb3a563c7450f3afe578c1e5544b67cdd94106f7671f3a3b250b1"
+    "sha256": "3e84c0a7c178a72bc18598af7c8ba293df9abf1620a83c73eb9df2ab889ae804"
   },
   {
     "path": "src/web-shell-routes.ts",
@@ -301,7 +333,7 @@
   },
   {
     "path": "tests/host-health-ui-m3454.test.ts",
-    "sha256": "124f6ecc46b1d6a153d78e9228a965c91edc67a022e49803ae35ad7f1af88899"
+    "sha256": "26b4f03cd8b633911a8b7440ed3f4185e177163004d493a13b9ad1ac06ede49d"
   },
   {
     "path": "tests/host-monitoring-mount-budget-m3454.test.ts",

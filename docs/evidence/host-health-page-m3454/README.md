@@ -38,3 +38,5 @@ Additional style/CSP/token/input checks: six files contained134 distinct cases; 
 Leader-requested polish and four replacement real-data originals: [R1](R1.md). Core stage count is now97 distinct; prior93 results carry. No user hold release is implied.
 
 CI fixture-only correction: [R2](R2.md); dictionary + real route16/2 pass with product/UI byte-identical to R1. The initial zero-test VM collection failure is disclosed, not counted as a mutation control.
+
+Second phone polish: [R3](R3.md), two replacement originals and one added date/load control bring the core stage total to98 distinct cases. R2 dictionary controls remain separate. USER HOLD remains.

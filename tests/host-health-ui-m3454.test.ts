@@ -36,6 +36,9 @@ describe('real Host health UI',()=>{
   const draw=async()=>{await p.mount(h(HostHealthView,{health:health(),history:{series:[{id:'cpu.used',buckets}]},range:'1h',busy:false,onRange(){},onRefresh(){}}));await settle(4);};await draw();expect(p.root.querySelector('.host-chart svg')).toBeNull();expect(p.root.textContent).toContain(language==='en'?'Collecting history…':'正在累積歷史紀錄…');
   buckets[3]={average:40,min:40,max:40,count:1};await draw();expect(p.root.querySelector('.host-chart svg')).not.toBeNull();expect(p.root.textContent).toContain(language==='en'?'Peak: 40.0%':'最高：40.0%');
  });
+ it('keeps compact zh dates and the load-number group intact',async()=>{
+  const p=await view(health(),'zh-TW');const times=[...p.root.querySelectorAll('.host-sample-time')];expect(times).toHaveLength(5);for(const el of times){expect(el.textContent).toMatch(/\d+月\d+日.*\d{2}:\d{2}:\d{2}/);expect(el.textContent).not.toMatch(/上午|下午/);}expect(p.root.querySelector('.host-load-value')?.textContent).toBe('0.10 / 0.20 / 0.30');expect(p.root.textContent).toContain('配對的 Windows 電腦是另一台，不算在這裡的數字裡。');
+ });
  it('represents macOS APFS sharing and unknown pressure without a healthy substitute',async()=>{
   const s=health('darwin');s.memory.value!.pressure='unknown';s.disks.value!.volumes[0].shared=true;const p=await view(s);
   expect(p.root.textContent).toContain('Memory pressure: Unknown');expect(p.root.textContent).toContain('Shared APFS capacity');expect(p.root.textContent).toContain('Do not add their free space together');expect(p.root.textContent).not.toContain('Windows backing drive');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(1);

@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-health-ui-m3454.test.ts (19 tests | 1 failed | 18 skipped) 51ms
+     × keeps compact zh dates and the load-number group intact 49ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-health-ui-m3454.test.ts > real Host health UI > keeps compact zh dates and the load-number group intact
+AssertionError: expected [] to have a length of 5 but got +0
+
+- Expected
++ Received
+
+- 5
++ 0
+
+ ❯ tests/host-health-ui-m3454.test.ts:40:116
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  02:49:53
+   Duration  493ms (transform 210ms, setup 90ms, import 198ms, tests 51ms, environment 0ms)

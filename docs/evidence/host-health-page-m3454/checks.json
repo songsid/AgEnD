@@ -319,14 +319,14 @@
         {
           "left": 16,
           "right": 187,
-          "top": 981.390625,
-          "bottom": 1405.390625
+          "top": 933.390625,
+          "bottom": 1357.390625
         },
         {
           "left": 203,
           "right": 374,
-          "top": 981.390625,
-          "bottom": 1405.390625
+          "top": 933.390625,
+          "bottom": 1357.390625
         }
       ],
       "pressureLines": 1,
@@ -336,6 +336,38 @@
         "buttonPadding": 12,
         "gap": 8
       },
+      "keepGroups": [
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "0.62 / 0.86 / 1.20",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        }
+      ],
       "overflow": false,
       "small": [],
       "cards": 3,
@@ -397,6 +429,38 @@
         "buttonPadding": 12,
         "gap": 8
       },
+      "keepGroups": [
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "0.62 / 0.86 / 1.20",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11\u670821\u65e5 02:52:27",
+          "lines": 1,
+          "fits": true
+        }
+      ],
       "overflow": false,
       "small": [],
       "cards": 3,
@@ -638,5 +702,5 @@
   "nativeBackingIdentified": true,
   "nativeSampleCount": 2,
   "scope": "Actual WSL cache; macOS/Linux and unavailable states are synthetic UI only. No footprint/hour/model/account claim.",
-  "carry": "Four Leader R1 real-data originals/current checks replace matching b81 views;20 originals remain historical controls. See R1.md."
+  "carry": "Two R3 phone originals replace matching R1 views; two R1 desktops carry;20 b81 originals remain historical controls. See R1/R2/R3 notes."
 }
