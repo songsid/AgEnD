@@ -7,6 +7,8 @@ import type { MemoryPressureSnapshot } from './memory-pressure.js';
 import type { CpuReading, DiskReading, DiskVolume, HostMonitoringProvider, MonitoringPlatform, MonitoringProbe } from './host-monitoring.js';
 
 export const MONITOR_OUTPUT_BYTES = 32 * 1024;
+/** Kernel mount metadata can exceed helper stdout; keep its read separately bounded. */
+export const MONITOR_MOUNT_BYTES = 64 * 1024;
 export const MONITOR_DEADLINE_MS = 2_000;
 const DISCOVERY_MS = 60 * 60 * 1000;
 export interface MonitorCommand { result: Promise<string | null>; stopped: Promise<void>; kill(): void }
@@ -26,11 +28,12 @@ export const runMonitorCommand: MonitorRunner = (file, args, extra = {}, cwd) =>
 };
 
 /** Kernel inventories only; never reads a directory tree or an unbounded file. */
-export async function readMonitorKernelFile(path: string): Promise<string | null> {
+export async function readMonitorKernelFile(path: string, limit = MONITOR_OUTPUT_BYTES): Promise<string | null> {
   let fh;
   try {
+    if(!Number.isSafeInteger(limit)||limit<1||limit>MONITOR_MOUNT_BYTES)return null;
     fh = await open(path, 'r');
-    const bytes = Buffer.alloc(MONITOR_OUTPUT_BYTES + 1);
+    const bytes = Buffer.alloc(limit + 1);
     let size = 0;
     while (size < bytes.length) {
       const read = await fh.read(bytes, size, bytes.length - size, null);
@@ -45,9 +48,10 @@ export interface MonitorMount { id: string; path: string; type: string; local: b
 const unescapeMount = (s: string) => s.replace(/\\(040|011|012|134)/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
 const NETWORK = new Set(['nfs','nfs4','cifs','smbfs','sshfs','fuse.sshfs','afs','9p']);
 export function parseMonitorMounts(text: string | null): MonitorMount[] {
-  if (!text || Buffer.byteLength(text) > MONITOR_OUTPUT_BYTES) return [];
+  if (!text || Buffer.byteLength(text) > MONITOR_MOUNT_BYTES) return [];
+  const rows=text.trim().split('\n');if(rows.length>512)return [];
   const mounts: MonitorMount[] = [];
-  for (const row of text.trim().split('\n')) {
+  for (const row of rows) {
     const halves = row.split(' - '), left = halves[0]?.split(' '), right = halves[1]?.split(' ');
     if (halves.length !== 2 || left.length < 6 || !right || right.length < 3) continue;
     const path = unescapeMount(left[4]), source = unescapeMount(right[1]), type = right[0];
@@ -56,7 +60,7 @@ export function parseMonitorMounts(text: string | null): MonitorMount[] {
     const local = drive ? ['9p','drvfs'].includes(type) : !NETWORK.has(type) && !type.startsWith('fuse.');
     mounts.push({ id:left[2], path, type, local, ...(drive ? {drive} : {}) });
   }
-  return mounts.slice(0, 512);
+  return mounts;
 }
 export function monitorMountFor(mounts: MonitorMount[], path: string): MonitorMount | null {
   return mounts.filter(m => path === m.path || path.startsWith(m.path === '/' ? '/' : m.path + '/')).sort((a,b) => b.path.length - a.path.length)[0] ?? null;
@@ -162,7 +166,7 @@ export class NativeHostMonitoring implements HostMonitoringProvider {
         this.discoveryAt = this.monotonic(); this.apfs.clear(); this.backing = null;
         if (this.platform === 'darwin') this.macMounts = await call('/sbin/mount', []);
         if (this.platform !== 'darwin') {
-          this.mounts = parseMonitorMounts(await (this.options.readMounts ?? (() => readMonitorKernelFile('/proc/self/mountinfo')))());
+          this.mounts = parseMonitorMounts(await (this.options.readMounts ?? (() => readMonitorKernelFile('/proc/self/mountinfo',MONITOR_MOUNT_BYTES)))());
           if (this.platform === 'wsl') {
             if (this.options.wslDrive && /^[A-Z]$/.test(this.options.wslDrive)) this.backing = this.options.wslDrive;
             else {

@@ -1,0 +1,30 @@
+[
+  {
+    "path": "src/ui/host-health-model.js",
+    "sha256": "260dc86c2be34e7a204182e5646a917c59179a8596c4b2bff73cb47f4b037165"
+  },
+  {
+    "path": "src/ui/host-health.js",
+    "sha256": "e9053cc8385e70115042c8554f942537ee169add27980d3723a1b555cf53fcd9"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "sha256": "1d83ce3e30fe45361a53db5ce03d41810da026f83fc6a3f2ac60daec48f8f78c"
+  },
+  {
+    "path": "src/ui/panel-fleet.js",
+    "sha256": "1714a4515c35ac179270c662ce1e914358629c6e46414db83eb5539ae7ea429b"
+  },
+  {
+    "path": "src/host-monitoring-platform.ts",
+    "sha256": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08"
+  },
+  {
+    "path": "src/host-monitoring-runtime.ts",
+    "sha256": "c260f10f08a80de2a02de472c7efd95fff1b349d799e042424bb5ae379107745"
+  },
+  {
+    "path": "scripts/manual/host-health-page/capture.mts",
+    "sha256": "89c791a2953c208756406e48c872176f540915ce509d9c83d6c3384a7333d94b"
+  }
+]

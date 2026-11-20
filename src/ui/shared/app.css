@@ -551,6 +551,7 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 /* M-2542: Fleet's tabs on its title row — the title, then the tabs (scrolling sideways if they do not fit), then the
    header's tools; under 900 px a row of their own under the header, as the instance tabs. Never wider than the page. */
 .p-fleet .panel-head .panel-title:has(+ .fleet-tabs) { flex: 0 1 auto; }   /* M-2542: only when everything fits (panel-fleet) */
+.p-fleet > .fleet-tabs-row { max-width: none; } /* The full tab inventory can exceed the default content column. */
 .fleet-tabs { display: flex; gap: var(--s-1); flex: 1 1 auto; min-width: 0; overflow-x: auto; }
 .panel-head .fleet-tabs .seg-item { min-height: 36px; flex-shrink: 0; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
@@ -5098,3 +5099,31 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .credential-dialog .dlg-head, .credential-dialog .dlg-actions { flex: 0 0 auto; }
 .credential-dialog .dlg-body { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; scroll-padding-block: var(--s-4); padding-bottom: var(--s-6); }
 .credential-dialog .dlg-body > * { flex-shrink: 0; }
+
+/* M3454/S207: Host health uses the Fleet cards and shared page head. */
+.host-health { min-width: 0; }
+.host-health .host-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.host-health .host-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.host-health .host-compute { display: contents; }
+.host-health .host-storage { grid-column: 1; grid-row: 1; }
+.host-health .host-space-meter { display: block; width: 100%; height: 8px; margin: 12px 0; accent-color: var(--accent); }
+.host-health .host-chart circle { fill: var(--accent); }
+.host-health .card { min-width: 0; }
+.host-health h3, .host-health h4 { margin: 0 0 12px; }
+.host-health .host-value { margin: 8px 0; font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text); overflow-wrap: anywhere; }
+.host-health .host-range { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0; }
+.host-health .host-range .active { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.host-health .host-volume + .host-volume { border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; }
+.host-health .host-chart { min-width: 0; margin: 16px 0 0; }
+.host-health .host-chart figcaption { font-size: var(--fs-sm); color: var(--text-2); }
+.host-health .host-chart svg { display: block; width: 100%; height: auto; max-height: 150px; overflow: visible; margin: 8px 0; }
+.host-health .host-chart polyline { stroke: var(--accent); stroke-width: 2; fill: none; vector-effect: non-scaling-stroke; }
+.host-health .host-chart line { stroke: var(--border); vector-effect: non-scaling-stroke; }
+.host-health .host-chart .note { margin: 4px 0; }
+.host-health .host-no-history { padding: 20px 0; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .host-health .host-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .host-health .host-storage { grid-row: 1; grid-column: 1 / -1; }
+  .host-health .s-page-actions { width: 100%; }
+  .host-health .btn { min-height: 44px; min-width: 44px; }
+}

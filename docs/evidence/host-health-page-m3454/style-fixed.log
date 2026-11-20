@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/changelog-fragments.test.ts (75 tests | 1 failed) 8336ms
+     × changes/ in this repository passes --check 76ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/changelog-fragments.test.ts > changelog-assemble: the repository's own files > changes/ in this repository passes --check
+AssertionError: changelog-assemble: changes/3454-host-health.md: the entry must be a list item starting with `- `
+changelog-assemble: changes/3454-host-health.zh-TW.md: the entry must be a list item starting with `- `
+: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/changelog-fragments.test.ts:353:36
+    351|   it("changes/ in this repository passes --check", () => {
+    352|     const res = spawnSync(process.execPath, [ASSEMBLE, "--check"], { e…
+    353|     expect(res.status, res.stderr).toBe(0);
+       |                                    ^
+    354|   });
+    355|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 93 passed (94)
+   Start at  02:32:40
+   Duration  11.82s (transform 189ms, setup 144ms, import 451ms, tests 10.90s, environment 0ms)

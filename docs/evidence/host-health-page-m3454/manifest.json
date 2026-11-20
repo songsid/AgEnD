@@ -1,0 +1,262 @@
+[
+  {
+    "path": "changes/3454-host-health.md",
+    "sha256": "281016592da44be29383dec7c25036641501a48ef1a931cca66ef66eece86e5e"
+  },
+  {
+    "path": "changes/3454-host-health.zh-TW.md",
+    "sha256": "82e8ebe966243f33c4e8ebac6762c986fe278c063aa5c18b6e4974e0467a64fd"
+  },
+  {
+    "path": "docs/design/host-monitoring-dashboard.md",
+    "sha256": "bfcd135f86803aa919e1fdc266bd3ba8197653e297df5d3fe534d198f41e3c42"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/README.md",
+    "sha256": "7ebbe3b3041739fee64cbf598ef3787811364f1ad551539633f76fe8c8992fff"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-darwin-desk-light-en.png",
+    "sha256": "7157e6f47e7156e2ef180abe80b53cb204c1cc9a0846f0f38af66a37d334462b"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-darwin-phone-dark-zh-TW.png",
+    "sha256": "0af49a41a78a4b21c1fd51f7fab2ab1d154a7740e96ee9ecfd380aaa0ecf8822"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-linux-desk-light-en.png",
+    "sha256": "a9f24229ac6ddb83fdeb1c9202caf6ffae883b41809b5ec08445c4f905601345"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-linux-phone-dark-zh-TW.png",
+    "sha256": "1419788ffd26879956259ac4c21afd32d6b7fa5cf0d5e000ae74b7604af7a3d1"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-low-space-phone-dark-zh-TW.png",
+    "sha256": "bbe0dc11f6d9a4ab541181abc9c678a07ee3e9e8aa8ee390c1e031f738395406"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-mac-stale-phone-light-en.png",
+    "sha256": "539f01d3095eda749610d97f837a3756ebdfe3dfd19d8f2aca9e115a2edc7d5c"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-mac-stale-resources-phone-light-en.png",
+    "sha256": "be6f6af263e337e2768c6c0ff7735e83655ffeda127664716bf38638fcc13ebe"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-unsupported-phone-light-en.png",
+    "sha256": "58b6ce39969b09155295f2843baf378b0bcdd91304a2b250ad13800262a47f36"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/fixture-wsl-unknown-phone-dark-zh-TW.png",
+    "sha256": "4993ce56b43867d20c3e419dccce4c7e7b806ee4a8c532a78c5ce29dbc770a08"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-desk-dark-en.png",
+    "sha256": "67c06c46200df68491d5adff5df933adca94e43e7c31800030f7b7563fd0bf1e"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-desk-dark-zh-TW.png",
+    "sha256": "36d8a0fb2f3285145bf2ced628860641fcec80109baa73ec11a224630f83f7ad"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-desk-light-en.png",
+    "sha256": "f108918717a17e9b47e0cd3de7669d8ff4f00a5d8abd69e1372d73a9927778a8"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-desk-light-zh-TW.png",
+    "sha256": "c248c7409724a3f206755ee02c50b279224766c99678eaa8fffbb7f96f8fc6c4"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-off-phone-dark-zh-TW.png",
+    "sha256": "8afdaac1abee442c321dab0ada65982aec23ce167c2abfaa9af0d59bea9617e2"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-phone-dark-en.png",
+    "sha256": "869b56246f294531d53e574789d401f43ecc4a7bffd2e6c17b275b0842bea8f4"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-phone-dark-zh-TW.png",
+    "sha256": "80df2b638225a689e47ffa2538d8dd332a8645bd9a59316a36497d23467f3677"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-phone-light-en.png",
+    "sha256": "f5b3e287e5826c071eba34f774d1346d73a4b981a6fe2cbf3d4c65ee5c0611f0"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-phone-light-zh-TW.png",
+    "sha256": "ed5f6e7c3f58bfd59f30ff4c666796eddeb3f59259bd0bc1a324baa298218522"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-dark-zh-TW.png",
+    "sha256": "99f03f2f2e555ff4825edf4532318c531cfb0a148c5ee3fbb7d1b9abb3cb718a"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-light-en.png",
+    "sha256": "0e3187d1bea176a90c02ee823b1e47224310577a3e0334c15a9f7abd304cb782"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/settings-off-desk-light-en.png",
+    "sha256": "2d68ec5018513ad98010731f5354a5936b6dd7d9e927023483214cda2ed307a3"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/settings-off-phone-dark-zh-TW.png",
+    "sha256": "29885c42546e69f6a2f45f6262bfddff80b8106865bc9679864b7a07cb30ed5d"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/settings-on-desk-light-en.png",
+    "sha256": "f72d9bbe8c2e8c795a1329101867867e256b15257c4f088cdd82313f91ef363d"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/after/settings-on-phone-dark-zh-TW.png",
+    "sha256": "6e2897696a7114821a53743cf216d745b2740d066f2d2a7a0e5f028f134db742"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/assets-final.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/build-final.log",
+    "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/capture-inputs.json",
+    "sha256": "3dd2721fdcfe5bafa6abaaf897c970d3432d22d2d7ddb7528d31778147ab817d"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/checks.json",
+    "sha256": "24b9cb114e36a349ff8a09448a8bcb81ad2b95f7b95f46d6fb0d851b10de69c8"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/final-focused.log",
+    "sha256": "02953d2af91e3e7bf8ecc9b1768d881357cad7d424093cec13af257cfabb0afa"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/fragments-final.log",
+    "sha256": "9e6175dc74126edae5442523e2800fb3ae9e8bb153c754931ee5baec3471223d"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/gallery.md",
+    "sha256": "319f5370787a68e257598e1a578835a94c2b332bf5e9a4d92f1327aacb158df2"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/layout-green.log",
+    "sha256": "dc551ffece1da5d6417993a570032315042926fdc068446348efbbfd99f11497"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/mount-budget-green.log",
+    "sha256": "1c262cdfb163833be77a55aae741486d8076df5646d9ef5b37734c6235d921c2"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/mount-budget-red.log.gz",
+    "sha256": "51f1d1fa76f70a08fe7a17ff3fafdd094ab1ae4838b0e09f4e76d914d9266cb5"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/pressure-red.log",
+    "sha256": "71e7cadfd17163644047edbc0de4345907b409b8cf34b09e8e348ca21cd5a5c9"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/pressure-ui-green.log",
+    "sha256": "765cdf4be59a914b04ab8f1c45b53f748abe336006d8f6de58762ffbcb61e2d7"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/restored-green.log",
+    "sha256": "7bd937788469b770905dff0c52d942a145eba0cbb272591ae14db93ed7eb9851"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/reversals.json",
+    "sha256": "3f4959a8137d880579e73a29be47e4e221962eef5a15b141db53c7a456e72511"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/settings-gate.json",
+    "sha256": "a76c79df551fe9006e4afc30d36b6cc984f62b42cd880736c2d865cfb480c7de"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/style-fixed.log",
+    "sha256": "d638e7537e5bfbd8630ab7d299897bde8e8c066772f8957ac1ec9fe94efb6413"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/style-guards.log",
+    "sha256": "f17ab6eeb3a83c11b033118b7177a74bf5eb0a670d1d2b12520b33fe5a08636b"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/test-types-confirmed.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+  },
+  {
+    "path": "scripts/manual/host-health-page/capture.mts",
+    "sha256": "89c791a2953c208756406e48c872176f540915ce509d9c83d6c3384a7333d94b"
+  },
+  {
+    "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "sha256": "eba5da9fe74101405bc202c5ceb10d57877df4848d7160090becbeadd621497b"
+  },
+  {
+    "path": "src/host-monitoring-config.ts",
+    "sha256": "232b03ef0f0e9de51d2e8ea66f2349c3fa0004fe9637e4af31331b5752d80178"
+  },
+  {
+    "path": "src/host-monitoring-platform.ts",
+    "sha256": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08"
+  },
+  {
+    "path": "src/host-monitoring-runtime.ts",
+    "sha256": "c260f10f08a80de2a02de472c7efd95fff1b349d799e042424bb5ae379107745"
+  },
+  {
+    "path": "src/host-monitoring.ts",
+    "sha256": "4f1d103091f91cbae38ba07dae1a729a3cd79dc7d0696cab2c4e90c491077ab9"
+  },
+  {
+    "path": "src/ui/host-health-model.js",
+    "sha256": "260dc86c2be34e7a204182e5646a917c59179a8596c4b2bff73cb47f4b037165"
+  },
+  {
+    "path": "src/ui/host-health.js",
+    "sha256": "4475942d28deb808c701e635eee9f1afdd6a6d212d1cf476e10e93a32af54f7d"
+  },
+  {
+    "path": "src/ui/panel-fleet.js",
+    "sha256": "1714a4515c35ac179270c662ce1e914358629c6e46414db83eb5539ae7ea429b"
+  },
+  {
+    "path": "src/ui/settings-host-monitoring.js",
+    "sha256": "b4c19f810bdcdfa09bce27f8d47cf9d53321456399c636fce0b530f16f854540"
+  },
+  {
+    "path": "src/ui/shared/app-route.js",
+    "sha256": "f8cf7a4bcfc20172237e64176309bae9ccfa02b0624894495ffb6d1915d09561"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "sha256": "1d83ce3e30fe45361a53db5ce03d41810da026f83fc6a3f2ac60daec48f8f78c"
+  },
+  {
+    "path": "src/web-shell-routes.ts",
+    "sha256": "14968f08fb129fa78ad6425b9117200afd259a2b61becf76ec7d170a450476f0"
+  },
+  {
+    "path": "tests/host-health-model-m3454.test.ts",
+    "sha256": "830b68754dc11b92b2dcdc83b95582a0814444d829f5e85a791bcd944d8522c8"
+  },
+  {
+    "path": "tests/host-health-route-m3454.test.ts",
+    "sha256": "54673f14658b306cd3587fd9259b8e3866f8e367f2f20017c5653820bc6f08bb"
+  },
+  {
+    "path": "tests/host-health-ui-m3454.test.ts",
+    "sha256": "d3274a9e44eb1f189dd50e1594d102f08ebba9489c0e2ecf6e7d3738b8e31caf"
+  },
+  {
+    "path": "tests/host-monitoring-mount-budget-m3454.test.ts",
+    "sha256": "1a8dcef974608295c7bc5e29883f4d6664dc598640a20f373b1f41ddf25387de"
+  },
+  {
+    "path": "tests/host-monitoring-runtime-m3454.test.ts",
+    "sha256": "d50ea8044f4c0398afc63140801d00d4c52fda8a8b7559abcf94b1e445a7079b"
+  },
+  {
+    "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
+    "sha256": "1d3bc9bc0a8691779b41602cf8e612c7abf66295085e83d2490e9da45d1c8040"
+  }
+]

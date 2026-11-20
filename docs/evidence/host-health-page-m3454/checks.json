@@ -1,0 +1,614 @@
+{
+  "views": [
+    {
+      "name": "settings-on-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "overflow": false,
+      "small": [
+        "View host health",
+        "Refresh drive list"
+      ],
+      "cards": 0,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "settings-on-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "overflow": false,
+      "small": [],
+      "cards": 0,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "settings-off-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "overflow": false,
+      "small": [
+        "View host health"
+      ],
+      "cards": 0,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "settings-off-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "overflow": false,
+      "small": [],
+      "cards": 0,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-off-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "overflow": false,
+      "small": [],
+      "cards": 1,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-unsupported-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "source": "synthetic-platform-dto",
+      "overflow": false,
+      "small": [],
+      "cards": 1,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 996.625
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 996.625
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-desk-light-zh-TW",
+      "device": "desk",
+      "theme": "light",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 223.1875,
+          "bottom": 954.625
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 223.1875,
+          "bottom": 954.625
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "\u91cd\u65b0\u6574\u7406",
+        "\u76e3\u6e2c\u8a2d\u5b9a",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-desk-dark-en",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 996.625
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 996.625
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-desk-dark-zh-TW",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 223.1875,
+          "bottom": 954.625
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 223.1875,
+          "bottom": 954.625
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "\u91cd\u65b0\u6574\u7406",
+        "\u76e3\u6e2c\u8a2d\u5b9a",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 1122.875,
+          "bottom": 1690.890625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 1122.875,
+          "bottom": 1690.890625
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-phone-light-zh-TW",
+      "device": "phone",
+      "theme": "light",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 1076.484375,
+          "bottom": 1572.5
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 1076.484375,
+          "bottom": 1572.5
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-phone-dark-en",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 1122.875,
+          "bottom": 1690.890625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 1122.875,
+          "bottom": 1690.890625
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 1076.484375,
+          "bottom": 1572.5
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 1076.484375,
+          "bottom": 1572.5
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-resources-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 163.875,
+          "bottom": 731.890625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 163.875,
+          "bottom": 731.890625
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-resources-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 200.484375,
+          "bottom": 696.5
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 200.484375,
+          "bottom": 696.5
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 4,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-darwin-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 689.609375
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 689.609375
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-darwin-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 753.1875,
+          "bottom": 1249.203125
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 753.1875,
+          "bottom": 1249.203125
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-linux-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 689.609375
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 689.609375
+        }
+      ],
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-linux-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 717.1875,
+          "bottom": 1213.203125
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 717.1875,
+          "bottom": 1213.203125
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-wsl-unknown-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 850.890625,
+          "bottom": 1298.890625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 850.890625,
+          "bottom": 1298.890625
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-mac-stale-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 823.578125,
+          "bottom": 1391.59375
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 823.578125,
+          "bottom": 1391.59375
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-mac-stale-resources-phone-light-en",
+      "device": "phone",
+      "theme": "light",
+      "lang": "en",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 275.578125,
+          "bottom": 843.59375
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 275.578125,
+          "bottom": 843.59375
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 3,
+      "pageErrors": 0
+    },
+    {
+      "name": "fixture-low-space-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "synthetic-platform-dto",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 1023.890625,
+          "bottom": 1471.890625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 1023.890625,
+          "bottom": 1471.890625
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    }
+  ],
+  "nativePlatform": "wsl",
+  "nativeBackingIdentified": true,
+  "nativeSampleCount": 2,
+  "scope": "Actual WSL cache; macOS/Linux and unavailable states are synthetic UI only. No footprint/hour/model/account claim.",
+  "carry": "Six unchanged Settings/off/unsupported originals from first successful batch;18 affected/current originals including3 lower-resource phone views."
+}

@@ -24,8 +24,9 @@ export class HostMonitoringRuntime {
   start(): void { if (this.active) return; this.active = true; this.apply(); }
   stop(): void { this.active = false; this.pinned=false; this.collector?.setRuntimeActive(false);this.options.history?.shutdown(); }
   snapshot(): HostHealthSnapshot {
-    if (this.failure) return {...disabledHostHealth(),state:'failed',reason:this.failure};
+    if (this.failure) return {...disabledHostHealth(),platformSupported:this.options.supported(),state:'failed',reason:this.failure};
     const snapshot=this.collector?.snapshot() ?? disabledHostHealth(),history=this.options.history?.status();
+    snapshot.platformSupported=this.options.supported();
     if(history){snapshot.history=history;if(!snapshot.enabled&&(history.state==='stopping'||history.state==='failed')){snapshot.state=history.state;snapshot.reason=history.reason;}}
     return snapshot;
   }

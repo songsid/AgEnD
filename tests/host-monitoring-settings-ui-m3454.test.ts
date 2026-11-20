@@ -44,7 +44,7 @@ describe('shared Settings monitoring card',()=>{
   await p.mount(h(Component,{ctx}));await toggle('hostMonitoringEnabled',true);expect(staged.size).toBe(1);
   ctx.schema={host_monitoring:false};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(staged.size).toBe(0);
  });
- it('keeps the estimated cost and off semantics visible in Traditional Chinese',async()=>{
-  i18n.setLang('zh-TW',{store:false});await p.mount(h(Component,{ctx}));expect(p.root.textContent).toContain('估計使用 2–4 MiB');expect(p.root.textContent).toContain('沒有監測收集器、計時器或歷史檔案');
+ it('keeps the bounded storage cost, unmeasured overhead and off semantics visible in Traditional Chinese',async()=>{
+  i18n.setLang('zh-TW',{store:false});await p.mount(h(Component,{ctx}));expect(p.root.textContent).toContain('本機資料最多 64 MiB');expect(p.root.textContent).toContain('額外記憶體與寫入量仍在量測');expect(p.root.textContent).toContain('沒有監測收集器、計時器或歷史檔案');
  });
 });
