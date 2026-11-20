@@ -90,9 +90,9 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
         <button type="button" class="btn btn-sm danger" disabled=${busy} onClick=${() => void decide("decline")}>${ca("decline")}</button>
         ${/* M-3385: a standing grant is one person's — offered only for a request from exactly one person (the server refuses
             any other: invalid-grant-origin), and said in full: who, what kind, from where to where; where it lives under the row. */ ""}
-        ${grantable ? html`<label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} />
+        ${grantable ? html`<span class="contact-toggle-pair"><label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} />
           <span>${ca("alsoAllow")}</span></label><${InfoTip} cls="contact-allow-info" text=${ca("alsoAllowMore", personLabel(people[0]), ca(`verb_${tk.verb}`), agentLabel(tk.source), agentLabel(tk.target))}
-          label=${ca("alsoAllowAbout")} />` : null}</div>
+          label=${ca("alsoAllowAbout")} /></span>` : null}</div>
     </div>` : null}
   </article>`;
 }
