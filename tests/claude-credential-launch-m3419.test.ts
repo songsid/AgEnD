@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, symlinkSync } from "node:fs";
 import * as fs from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,6 +15,7 @@ import type { Logger } from "../src/logger.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
 vi.mock("node:fs",async importOriginal=>{const actual=await importOriginal<typeof import("node:fs")>();return {...actual,lstatSync:vi.fn(actual.lstatSync),existsSync:vi.fn(actual.existsSync)};});
+beforeEach(async()=>{const actual=await vi.importActual<typeof import("node:fs")>("node:fs");vi.mocked(fs.lstatSync).mockImplementation(actual.lstatSync);vi.mocked(fs.existsSync).mockImplementation(actual.existsSync);});
 const dirs:string[]=[],vaults:ClaudeCredentialVault[]=[],actor={adapterId:"test",userId:"admin"};
 const value="synthetic-"+"x".repeat(48),ambient="synthetic-"+"y".repeat(48);
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();for(const v of vaults.splice(0))v.close();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
@@ -157,4 +158,11 @@ it("selection refuses inaccessible state checks while a truly absent legacy vaul
   return (original as Function)(path,...args);
  }) as typeof fs.lstatSync);
  expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+});
+it("fresh launch uses subscription only after explicit selection, not removal",()=>{
+ const f=fixture();f.vault.write("spare",1,null,actor);
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+ f.vault.write("spare",2,"subscription",actor);expect(managedClaudeBinding(f.home,"spare")).toBeNull();
+ f.vault.write("spare",3,{kind:"api-key",value},actor);
+ expect(managedClaudeBinding(f.home,"spare")).toMatchObject({id:f.binding.id,revision:4,kind:"api-key"});
 });

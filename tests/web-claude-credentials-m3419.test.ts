@@ -102,3 +102,14 @@ it("keeps the legacy DELETE route for a profile literally named credential",asyn
  const data=JSON.stringify({confirm:"credential"}),c=f.open("DELETE",{...f.session(),"content-length":String(Buffer.byteLength(data))},"","/ui/accounts/claude-code/credential");c.req.end(data);
  expect((await c.done).status).toBe(200);expect(remove).toHaveBeenCalledWith("claude-code","credential","credential",expect.any(String));
 });
+it("selecting subscription needs explicit confirmation, current local verified authority and revision CAS",async()=>{
+ const f=await fixture();await f.call("PUT",{profile:null,revision:0,kind:"api-key",value});
+ const body={profile:null,revision:1,source:"subscription",confirm:true};
+ expect((await f.call("POST",{...body,confirm:false})).status).toBe(400);
+ f.setVerified(false);expect((await f.call("POST",body)).status).toBe(403);f.setVerified(true);
+ f.setGateway(true);expect((await f.call("POST",body)).status).toBe(403);f.setGateway(false);
+ expect((await f.call("POST",body,{...f.session(),"x-agend-csrf":"wrong"})).status).toBe(401);
+ expect((await f.call("POST",body)).body.credential).toMatchObject({source:"subscription",revision:2,kind:null});
+ expect((await f.call("POST",body)).status).toBe(409);
+ expect(f.vault.history().some((row:any)=>row.action==="select-subscription"&&row.outcome==="ok")).toBe(true);
+});

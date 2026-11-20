@@ -25,7 +25,7 @@ export function managedClaudeBinding(home: string, profile: string | null): Mana
   return null;
  }
  let vault:ClaudeCredentialVault|undefined;
- try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m)return null;if(!m.kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind:m.kind};}
+ try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m||m.source==="subscription")return null;if(!m.kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind:m.kind};}
  catch{throw unavailable();}finally{vault?.close();}
 }
 export function currentManagedClaude(binding: ManagedClaudeBinding): boolean {
