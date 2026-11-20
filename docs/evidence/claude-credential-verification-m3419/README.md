@@ -25,3 +25,9 @@ This observes fresh completed local Claude records under their launch/session an
 Rollback removes observation/status rendering and preserves the encrypted vault/key. Earlier binaries ignore the additive metadata table; id/revision matching prevents an old stamp applying to a later credential. Metadata failures do not interrupt ordinary work or select a fallback.
 
 The user reported two zh-TW typography ambiguities. Source and image checks found no duplicated character or literal padded parentheses. The redundant profile parenthesis was removed and the hint now says `錯誤碼：401/403`; all 16 zh-TW views were regenerated.
+
+## Account-row alignment correction
+
+The earlier action row wrapped with the shared auto right margin; transparent destructive buttons made visible gaps uneven. The absolute status bar also added 3px to content padding, and paragraph margins gave inconsistent vertical rhythm. The shared Accounts stylesheet now uses a stretched vertical row, a left-aligned action row, the same 16px inner padding as Fleet-default, and 8px token gaps. Remove actions use the existing outlined button style. No credential/runtime behavior changed.
+
+All 32 originals were refreshed on 2026-11-21. Their recorded geometry shows zero action-to-content offset, 16px content/default padding and 8px same-line button/vertical block gaps. The first layout candidate's inherited centered alignment was caught by these actual DOM assertions and image review; the final candidate passes. Four final desktop/phone, EN/zh-TW, light/dark originals were visually rechecked, including the reported desktop dark Unknown state. Six focused Accounts/UI/style test files pass 55 tests; the previously reviewed runtime remains unchanged.

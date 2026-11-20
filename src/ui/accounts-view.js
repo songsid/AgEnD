@@ -420,9 +420,9 @@ function Row({ cli, row, onMove, onRemove, onSignIn = openSignIn, onSignOut, ope
         ${row.signIn && typeof onSignIn === "function" ? html`<button type="button" class=${row.state === "not_signed_in" ? "btn btn-sm btn-primary" : "btn btn-sm"} disabled=${running} onClick=${() => onSignIn({ backend: row.backend, ...(row.profile ? { profile: row.profile } : {}), ...(machine ? { machine } : {}),...(managed?{method:row.credential?.kind==="setup-token"?"oauth":"api"}:{}) })}>${row.credential?.kind?credentialText("replace"):row.state === "usable" ? tx("signInAgain") : tx("signIn")}</button>` : null}
         ${!machine && cli.profiles && row.state !== "not_signed_in" && row.state !== "not_installed" && typeof onMove === "function" ? html`<button type="button" class="btn btn-sm" onClick=${() => onMove(row)}>${tx("moveHere")}</button>` : null}
         ${canSignOut && !machine && !row.profile && row.signIn ? html`<button type="button" class="btn btn-sm s-account-switch" disabled=${running} onClick=${() => onSignOut(row, "switch")}>${manageWords.switchAccount()}</button>` : null}
-        ${managed&&row.credential?.kind?html`<button type="button" class="btn btn-sm btn-ghost danger" disabled=${running} onClick=${()=>removeClaudeCredential(row.profile)}>${credentialText("remove")}</button>`:null}
+        ${managed&&row.credential?.kind?html`<button type="button" class="btn btn-sm danger" disabled=${running} onClick=${()=>removeClaudeCredential(row.profile)}>${credentialText("remove")}</button>`:null}
         ${canSignOut ? html`<button type="button" class="btn btn-sm btn-ghost s-account-signout" disabled=${running} onClick=${() => onSignOut(row, "signout")}>${manageWords.signOut()}</button>` : null}
-        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm btn-ghost danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
+        ${manageable && row.profile && typeof onRemove === "function" ? html`<button type="button" class="btn btn-sm danger s-account-remove" onClick=${() => onRemove(row)}>${manageWords.remove()}</button>` : null}
       </span>`}
     </div>
     <div class="s-account-meta-bar">

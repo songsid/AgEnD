@@ -5,12 +5,12 @@ Checked against `docs/design/ui-style-guide.md` on the development base, includi
 | Rule | Check |
 |---|---|
 | 1 Shared components | Existing Accounts Row, status tag, metadata bar and note; no new component style. |
-| 2 Card frame | Existing s-account-row/card frame unchanged. |
+| 2 Card frame | Existing Accounts frame retained; account and Fleet-default inner padding both 16px. |
 | 3 Left edge | Existing account status styling only; no new accent. |
-| 4 Theme tokens | Existing usable/not_signed_in/unknown classes in light and dark. |
+| 4 Theme tokens | Existing usable/not_signed_in/unknown classes and spacing tokens in light and dark. |
 | 5 Inline styles | None added. |
 | 6 Loading/empty/error | Existing Accounts loading/error controls retained; unknown request has an explicit note. |
-| 7 Phone/desktop | Eight cases, no horizontal overflow; phone controls at least 44px. |
+| 7 Phone/desktop | Eight cases, no horizontal overflow; phone controls at least 44px. Actions align left, wrapping with equal gaps. |
 | 8 EN/zh-TW | All new strings registered in both languages; timestamp uses the selected locale. |
 | 9 Finish in place | Status appears on the current Accounts row; existing Replace action remains beside it. |
 | 10 Plain errors | 401/403 gives replacement action; network unknown explicitly does not mean invalid. |
