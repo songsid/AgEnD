@@ -6,7 +6,7 @@
 //   phone (390×844 dark zh-TW): verifies smooth multi-sheet animation on mobile viewport and captures frame strip.
 //   desk reduced-motion: verifies canvas stays pixel-identical (frozen on frame 0) over 1.5 s.
 // Run:
-//   PW_DIR=/home/han/.cache/contrast-tools REPO=<checkout> OUT=<dir> \
+//   PW_DIR=$HOME/.cache/contrast-tools REPO=<checkout> OUT=<dir> \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-office-multiframe-m3394.mts
 // ui-gate: {"name": "Office multi-frame character animations (#4231)", "hp": 19731}
 import { mkdirSync, writeFileSync } from "node:fs";
