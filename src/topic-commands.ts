@@ -22,7 +22,7 @@ import { truncateDisplay, MODEL_DISPLAY_WIDTH_MAX } from "./ls-rows.js";
 import { detectPlatform } from "./service-installer.js";
 import { getTmuxSessionName } from "./paths.js";
 import { tmuxArgs as tmuxArgsFor, tmuxBinary, tmuxEnvOption } from "./tmux-binary.js";
-import { t, getLocale } from "./locale.js";
+import { t, getLocale, tForLocale, type Locale } from "./locale.js";
 import { commandSpec, decideCommand, telegramMenu, type TelegramMenu } from "./command-table.js";
 import { runVisibilityCommand } from "./cross-instance-notice.js";
 import type { ChannelConfig } from "./types.js";
@@ -312,17 +312,12 @@ const SYSINFO_BACKEND_LABEL_KEYS: Record<SysInfoBackendId, string> = {
   muse: "sysinfo.backend_cli_muse",
 };
 
-function backendCliLines(versions?: BackendCliVersionSnapshot): string[] {
-  return [
-    `**${t("sysinfo.backend_clis")}**`,
-    ...SYSINFO_BACKEND_IDS.map(id => {
-      const label = t(SYSINFO_BACKEND_LABEL_KEYS[id]);
-      const info = versions?.[id];
-      const version = info?.version
-        ?? (info?.probing ? t("sysinfo.cli_version_probing") : t("sysinfo.cli_version_unknown"));
-      return `- ${label}: ${version}`;
-    }),
-  ];
+function backendCliRows(versions?: BackendCliVersionSnapshot, translate: typeof t = t): string[][] {
+  return SYSINFO_BACKEND_IDS.map(id => {
+    const info = versions?.[id];
+    return [translate(SYSINFO_BACKEND_LABEL_KEYS[id]), info?.version
+      ?? (info?.probing ? translate("sysinfo.cli_version_probing") : translate("sysinfo.cli_version_unknown"))];
+  });
 }
 
 /**
@@ -1547,11 +1542,11 @@ export class TopicCommands {
     })));
   }
 
-  /** Get fleet status as markdown text (shared by chat adapters and Discord slash commands). */
-  async getStatusText(): Promise<string> {
-    if (!this.ctx.fleetConfig) return t("status.no_config");
+  /** Collect once for the platform text and the web report. */
+  private collectStatus(translate: typeof t = t): { rows: string[][]; notes: string[]; empty?: string } {
+    if (!this.ctx.fleetConfig) return { rows: [], notes: [], empty: translate("status.no_config") };
 
-    const rows: string[] = [];
+    const rows: string[][] = [];
     let pausedCount = 0;
     const fleetNames = new Set(Object.keys(this.ctx.fleetConfig.instances));
     const instances = [
@@ -1584,15 +1579,15 @@ export class TopicCommands {
       // old Status icon column duplicated it (⏸/⏸, 🟢/🟢); IPC duplicated it
       // too (✗ exactly when State is stopped/crashed/—) and stays queryable
       // via /api/fleet's per-instance `ipc` flag.
-      const stateLabel = status === "paused" || costPaused || executionState === "paused" ? `⏸ ${t("state.paused")}`
-        : status === "stopped" ? `✗ ${t("state.stopped")}`
-          : status === "crashed" ? `🔴 ${t("state.crashed")}`
-            : executionState === "idle" ? `🟢 ${t("state.idle")}`
-              : executionState === "working" ? `🔵 ${t("state.working")}`
-                : executionState === "stuck" ? `🔴 ${t("state.stuck")}`
+      const stateLabel = status === "paused" || costPaused || executionState === "paused" ? `⏸ ${translate("state.paused")}`
+        : status === "stopped" ? `✗ ${translate("state.stopped")}`
+          : status === "crashed" ? `🔴 ${translate("state.crashed")}`
+            : executionState === "idle" ? `🟢 ${translate("state.idle")}`
+              : executionState === "working" ? `🔵 ${translate("state.working")}`
+                : executionState === "stuck" ? `🔴 ${translate("state.stuck")}`
                   // Running but no execution snapshot yet: the old Status
                   // column showed 🟢 here — say running, never idle or "—".
-                  : `🟢 ${t("state.running")}`;
+                  : `🟢 ${translate("state.running")}`;
       const displayName = labels.get(name) ?? name;
       // Model: same source as /ctx — live statusline for claude-code, the
       // effective resolver otherwise — capped so one long name cannot blow
@@ -1604,25 +1599,15 @@ export class TopicCommands {
       // "-" distinguishes "backend has no effort setting" from an unset one:
       // an empty cell would read as missing data rather than not-applicable.
       const effort = this.ctx.resolveInstanceEffort?.(name).effort ?? "-";
-      rows.push(`| ${displayName} | ${backend} | ${model} | ${contextStr} | ${effort} | ${stateLabel} |`);
+      rows.push([displayName, backend, model, contextStr, effort, stateLabel]);
     }
 
-    if (rows.length === 0) return t("status.no_instances");
-
-    const lines = [
-      `## ${t("status.title")}`,
-      "",
-      t("status.table_header"),
-      "|----------|---------|-------|-----|--------|-------|",
-      ...rows,
-      "",
-      t("status.paused_count", pausedCount),
-    ];
-
+    if (rows.length === 0) return { rows: [], notes: [], empty: translate("status.no_instances") };
+    const lines = [translate("status.paused_count", pausedCount)];
     const limitCents = this.ctx.costGuard?.getLimitCents() ?? 0;
     const totalCents = this.ctx.costGuard?.getFleetTotalCents() ?? 0;
     if (limitCents > 0) {
-      lines.push("", t("status.daily_cost", formatCents(totalCents), formatCents(limitCents)));
+      lines.push("", translate("status.daily_cost", formatCents(totalCents), formatCents(limitCents)));
     }
 
     // Adapter states (only show if any are not connected)
@@ -1630,7 +1615,7 @@ export class TopicCommands {
     if (adapterStates && adapterStates.size > 0) {
       const issues = [...adapterStates.entries()].filter(([, s]) => s.status !== "connected");
       if (issues.length > 0) {
-        lines.push("", `**${t("status.adapters")}**`);
+        lines.push("", `**${translate("status.adapters")}**`);
         for (const [id, s] of adapterStates) {
           const icon = s.status === "connected" ? "✅" : s.status === "retrying" ? "🔄" : "❌";
           lines.push(`  ${icon} ${id}: ${s.status}${s.lastError ? ` (${s.lastError.slice(0, 60)})` : ""}`);
@@ -1638,7 +1623,47 @@ export class TopicCommands {
       }
     }
 
-    return lines.join("\n");
+    return { rows, notes: lines };
+  }
+
+  /** Platform text keeps its existing columns and formatting. */
+  async getStatusText(): Promise<string> {
+    const data = this.collectStatus();
+    if (data.empty) return data.empty;
+    return [
+      `## ${t("status.title")}`, "", t("status.table_header"),
+      "|----------|---------|-------|-----|--------|-------|",
+      ...data.rows.map(row => `| ${row.join(" | ")} |`), "", ...data.notes,
+    ].join("\n");
+  }
+
+  /** No Markdown parsing and no cost column in the web payload, including its text fallback. */
+  async getWebReport(command: "status" | "sysinfo", locale: Locale = getLocale()): Promise<import("./command-report.js").CommandReportAnswer> {
+    const say: typeof t = (key, ...args) => tForLocale(locale, key, ...args);
+    let report: import("./command-report.js").CommandReport;
+    if (command === "status") {
+      const data = this.collectStatus(say);
+      const headers = say("status.table_header").split("|").map(x => x.trim()).filter(Boolean);
+      report = {
+        title: say("status.title"),
+        columns: [...headers.slice(0, 5), headers[headers.length - 1]],
+        rows: data.rows.map(row => [...row.slice(0, 5), row[row.length - 1].replace(/^[⏸✗🔴🟢🔵]\s*/u, "")]),
+        notes: data.empty ? [data.empty] : data.notes.map(line => line.replace(/\*\*/g, "")),
+      };
+    } else {
+      const data = this.collectSysInfo(this.ctx.getBackendCliVersionSnapshot?.(), locale);
+      report = {
+        title: say("sysinfo.title"),
+        columns: [say("sysinfo.metric"), say("sysinfo.value")],
+        rows: [...data.metrics, ...data.backends],
+        notes: [...data.summary, ...data.resources.map(([label, url]) => `${label}: ${url}`)],
+      };
+    }
+    return { report, text: [
+      report.title, report.columns.join(" · "),
+      ...report.rows.map(row => row.join(" · ")), ...report.notes,
+    ].join("\n") };
+
   }
 
   private async handleSysInfoCommand(msg: InboundMessage): Promise<void> {
@@ -1676,68 +1701,49 @@ export class TopicCommands {
     return this.getSysInfoText({ ...opts, backendCliVersions });
   }
 
-  getSysInfoText(opts?: { platform?: "telegram" | "discord"; backendCliVersions?: BackendCliVersionSnapshot }): string {
+  private collectSysInfo(versions?: BackendCliVersionSnapshot, locale: Locale = getLocale()) {
+    const say: typeof t = (key, ...args) => tForLocale(locale, key, ...args);
     const info = this.ctx.getSysInfo();
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
     const require = createRequire(import.meta.url);
     const agendVersion = require("../package.json").version ?? "unknown";
-    const tipsLang = getLocale() === "zh-TW" ? "zh" : "en";
+    const tipsLang = locale === "zh-TW" ? "zh" : "en";
+    return {
+      metrics: [
+        ["AgEnD", `v${agendVersion}`],
+        ["OS", `${process.platform} ${osRelease()} (${process.arch})`],
+        ["Node", process.version],
+        ["tmux", tmuxVersion()],
+        [say("sysinfo.uptime"), `${upHours}h ${upMins}m`],
+        [say("sysinfo.memory"), `${info.memory_mb.rss} MB RSS`],
+        [say("sysinfo.heap"), `${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB`],
+      ],
+      backends: backendCliRows(versions, say),
+      summary: [
+        `${say("sysinfo.instances")}: ${info.running_count} ${say("sysinfo.running")}, ${info.paused_count} ${say("sysinfo.paused")}`,
+        ...(info.fleet_mem_mb !== null ? [`${say("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`] : []),
+        `${say("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`,
+      ],
+      resources: [
+        [say("sysinfo.docs"), "https://songsid.github.io/AgEnD"],
+        [say("sysinfo.tips"), `https://songsid.github.io/AgEnD/tips-${tipsLang}.html`],
+        [say("sysinfo.github"), "https://github.com/songsid/AgEnD"],
+      ],
+    };
+  }
 
-    // Fleet summary lines (multi-line for mobile readability)
-    const summaryLines = [
-      `${t("sysinfo.instances")}: ${info.running_count} ${t("sysinfo.running")}, ${info.paused_count} ${t("sysinfo.paused")}`,
-      ...(info.fleet_mem_mb !== null ? [`${t("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`] : []),
-      `${t("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`,
-    ];
-    const backendVersions = backendCliLines(opts?.backendCliVersions);
-
-    const resources = [
-      `📚 **${t("sysinfo.resources")}**`,
-      `- ${t("sysinfo.docs")}: https://songsid.github.io/AgEnD`,
-      `- ${t("sysinfo.tips")}: https://songsid.github.io/AgEnD/tips-${tipsLang}.html`,
-      `- ${t("sysinfo.github")}: https://github.com/songsid/AgEnD`,
-    ];
-
-    // Discord: plain key-value lines (Discord doesn't render markdown tables)
-    if (opts?.platform === "discord") {
-      return [
-        `## ${t("sysinfo.title")}`,
-        `AgEnD: v${agendVersion}`,
-        `OS: ${process.platform} ${osRelease()} (${process.arch})`,
-        `Node: ${process.version}`,
-        `tmux: ${tmuxVersion()}`,
-        `${t("sysinfo.uptime")}: ${upHours}h ${upMins}m`,
-        `${t("sysinfo.memory")}: ${info.memory_mb.rss} MB RSS`,
-        `${t("sysinfo.heap")}: ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB`,
-        "",
-        ...backendVersions,
-        "",
-        ...summaryLines,
-        "",
-        ...resources,
-      ].join("\n");
-    }
-
-    // Telegram (default): markdown table
+  getSysInfoText(opts?: { platform?: "telegram" | "discord"; backendCliVersions?: BackendCliVersionSnapshot }): string {
+    const data = this.collectSysInfo(opts?.backendCliVersions);
+    const metrics = opts?.platform === "discord"
+      ? data.metrics.map(([key, value]) => `${key}: ${value}`)
+      : ["", `| ${t("sysinfo.metric")} | ${t("sysinfo.value")} |`, "|--------|-------|",
+        ...data.metrics.map(row => `| ${row.join(" | ")} |`)];
     return [
-      `## ${t("sysinfo.title")}`,
-      "",
-      `| ${t("sysinfo.metric")} | ${t("sysinfo.value")} |`,
-      "|--------|-------|",
-      `| AgEnD | v${agendVersion} |`,
-      `| OS | ${process.platform} ${osRelease()} (${process.arch}) |`,
-      `| Node | ${process.version} |`,
-      `| tmux | ${tmuxVersion()} |`,
-      `| ${t("sysinfo.uptime")} | ${upHours}h ${upMins}m |`,
-      `| ${t("sysinfo.memory")} | ${info.memory_mb.rss} MB RSS |`,
-      `| ${t("sysinfo.heap")} | ${info.memory_mb.heapUsed} / ${info.memory_mb.heapTotal} MB |`,
-      "",
-      ...backendVersions,
-      "",
-      ...summaryLines,
-      "",
-      ...resources,
+      `## ${t("sysinfo.title")}`, ...metrics, "",
+      `**${t("sysinfo.backend_clis")}**`, ...data.backends.map(([key, value]) => `- ${key}: ${value}`),
+      "", ...data.summary, "", `📚 **${t("sysinfo.resources")}**`,
+      ...data.resources.map(([key, url]) => `- ${key}: ${url}`),
     ].join("\n");
   }
 

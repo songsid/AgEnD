@@ -6,7 +6,7 @@
  * - Who: a signed-in web session holds the full-fleet credential, issued only to a fleet admin (/dashboard is
  *   fleet-admin only), so the table's admin levels are met — exactly as a web click on a mirrored prompt is answered
  *   "as a fleet admin on the platform". The table can still refuse a command in a kind of channel; that stands.
- * - What: instance commands only. Fleet-level ones (/status, /restart, /update, /login, …) stay in General
+ * - What: instance commands only. The read-only /sysinfo and /status reports are also available. Other fleet-level ones (/restart, /update, /login, …) stay in General
  *   (Discord-first), and /raw is not a command here (it bypasses the [user:] envelope).
  * - The public link (a gateway request) is the outward-facing surface: /save is refused there — it makes the CLI
  *   write a file under a name the caller picks, outside the agent's own judgement. M-3278 (decision 7933bf90): an admin
@@ -16,9 +16,10 @@
  *   once its backend, model and effort are chosen.
  */
 import { commandSpec, decideCommand, type CommandChecks, type CommandScope, type Platform } from "./command-table.js";
+import type { CommandReport, CommandReportAnswer } from "./command-report.js";
 import { SAVE_FILENAME_RE } from "./topic-commands.js";
 
-export const WEB_COMMANDS = ["ctx", "compact", "clear", "model", "backend", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
+export const WEB_COMMANDS = ["sysinfo", "status", "ctx", "compact", "clear", "model", "backend", "effort", "cancel", "btw", "steer", "pause", "wake", "save"] as const;
 export type WebCommand = typeof WEB_COMMANDS[number];
 /** Refused on the public link to anyone but an admin session (see the header; M-3278). */
 export const PUBLIC_LINK_REFUSED: ReadonlySet<WebCommand> = new Set<WebCommand>(["save"]);
@@ -49,6 +50,7 @@ export interface WebCommandDeps {
   scope(instance: string): CommandScope | null;
   /** #2855: the platform the instance's channel is on (its table cell for a guest); a web-only one: Discord's. */
   platform?(instance: string): Platform;
+  report(command: "sysinfo" | "status"): Promise<CommandReportAnswer>;
   ctx(instance: string): Promise<string>;
   /** Board 003648ac: `sent` — the command went; `watch` — the id its end is followed by (null: this backend's can't be seen). */
   compact(instance: string, instructions: string | undefined): Promise<{ sent: boolean; text: string; watch: string | null }>;
@@ -78,6 +80,7 @@ export interface WebCommandInput { instance: string; command: string; args?: str
 export interface WebCommandResult {
   status: number;
   body: {
+    report?: CommandReport;
     text?: string; error?: string; choices?: WebChoices; confirm?: { token: string; message: string };
     /** A sent /compact: the status frame's `compact` with this id says when it ends; id null: its end can't be seen. */
     follow?: { kind: "compact"; id: string | null };
@@ -123,6 +126,8 @@ export async function runWebCommand(deps: WebCommandDeps, input: WebCommandInput
     return { status: "error" in result ? 400 : 200, body: result };
   }
   switch (command) {
+    case "sysinfo":
+    case "status": return { status: 200, body: await deps.report(command) };
     case "ctx": return ok(await deps.ctx(instance));
     case "compact": {
       const r = await deps.compact(instance, args || undefined);

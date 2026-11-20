@@ -996,6 +996,38 @@ function openBackendSignIn(backend) {
   import("./backend-signin.js").then((m) => m.openSignIn({ backend }), () => toast(t("app.loadFailed"), false));
 }
 
+/** Reports contain plain strings; HTM escapes every title, header, cell and note. */
+function CommandReport({ report, command }) {
+  const [filter, setFilter] = useState("");
+  const [expanded, setExpanded] = useState(false);
+  const trigger = useRef(null);
+  const wasExpanded = useRef(false);
+  // The inline trigger is recreated when the modal closes; restore focus after its ref is mounted.
+  useLayoutEffect(() => {
+    if (wasExpanded.current && !expanded) trigger.current?.focus({ preventScroll: true });
+    wasExpanded.current = expanded;
+  }, [expanded]);
+  const query = filter.trim().toLocaleLowerCase();
+  const rows = command === "status" && query
+    ? report.rows.filter(row => row.some(value => value.toLocaleLowerCase().includes(query))) : report.rows;
+  const view = html`<section class=${`cmd-report cmd-report-${command}${expanded ? " cmd-report-expanded" : ""}`} aria-label=${report.title}>
+    ${expanded ? null : html`<h3>${report.title}</h3>`}
+    <div class="cmd-report-tools">
+      ${command === "status" ? html`<label class="field"><span class="sr-only">${t("chat.cmdReportFilter")}</span>
+        <input type="search" aria-label=${t("chat.cmdReportFilter")} placeholder=${t("chat.cmdReportFilter")}
+          value=${filter} onInput=${e => setFilter(e.target.value)} /></label>` : null}
+      ${expanded ? null : html`<button type="button" class="btn btn-sm btn-ghost" ref=${trigger} data-report-expand onClick=${() => setExpanded(true)}>${t("chat.cmdReportOpen")}</button>`}
+    </div>
+    ${command === "status" ? html`<p class="note cmd-report-count">${query ? t("chat.cmdReportMatches", rows.length, report.rows.length) : t("chat.cmdReportCount", report.rows.length)}${report.notes[0] ? " · " + report.notes[0] : ""}</p>` : null}
+    <div class="cmd-report-body" tabIndex="0" aria-label=${report.title}>
+      ${rows.length ? html`<table class=${command === "status" ? "us-table" : "cmd-metrics"}><thead><tr>${report.columns.map(label => html`<th scope="col">${label}</th>`)}</tr></thead>
+        <tbody>${rows.map(row => html`<tr>${row.map((value, i) => html`<td data-label=${report.columns[i]}>${value}</td>`)}</tr>`)}</tbody></table>` : query ? html`<p class="note">${t("chat.cmdReportEmpty")}</p>` : null}
+      ${(command === "status" ? report.notes.slice(1) : report.notes).map(note => html`<p class="note">${note}</p>`)}
+    </div>
+  </section>`;
+  return expanded ? html`<div class="cmd-report-modal"><${Dialog} title=${report.title} wide onClose=${() => setExpanded(false)}>${view}</${Dialog}></div>` : view;
+}
+
 /** #1269: what the last chat command answered — its text, why it was refused, or a list to choose from. */
 // M-3166 PR 3: the model menu's words (kept beside their caller: a retained chat dictionary has no such words).
 register("modelMenu", {
@@ -1144,7 +1176,7 @@ function CommandCard({ name, lease }) {
       ${c.busy ? html`<span class="wait">${t("chat.cmdRunning", c.command)}</span>` : html`<button type="button" class="icon-btn" title=${t("chat.cmdDismiss")}
         aria-label=${t("chat.cmdDismiss")} onClick=${() => store.dismissCommand(name)}><${Icon} name="close" size=${14} /></button>`}</div></div>
     ${c.error ? html`<p class="cmd-text">${c.error}</p>` : null}
-    ${c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
+    ${c.report ? html`<${CommandReport} report=${c.report} command=${c.command} />` : c.text ? html`<pre class="cmd-text">${c.text}</pre>` : null}
     ${c.compact ? html`<p class="cmd-text cmd-phase">${c.compact === "running" ? t("chat.compactRunning")
       : c.compact === "done" ? t("chat.compactDone") : c.compact === "timeout" ? t("chat.compactTimeout", "10")
       : c.compact === "lost" ? t("chat.compactLost") : c.compact === "not_compacted" ? t("chat.compactNotCompacted") : t("chat.compactUnknown")}</p>` : null}

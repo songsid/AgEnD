@@ -1,0 +1,190 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "a12db724a9ab105b9b94aff1801cc44c4543d66512b834a95dd45e6e485c6776"
+  },
+  {
+    "path": "alpha-contracts-fixed.log",
+    "sha256": "35cf31090e234b4fe6d5a1c592e39f04116c3fe26f8516c9bc08323d12455662"
+  },
+  {
+    "path": "captures/checks.json",
+    "sha256": "130642fd1bd1967df603346b11073204cc6cf5f0b53535d4845d01aad81be94e"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status-expanded-end.png",
+    "sha256": "7afa6f8a87e03a8261cede5d1e38baf8ed9b34f57be8ff7f0c102544b0f14196"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status-expanded.png",
+    "sha256": "bfbd0600ecaef76296ff7560dde6e029edf10f68b62e1a0630d1ccbb41b888e0"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status-filtered.png",
+    "sha256": "8fe88c134500d8a7d67cabdf5e2d69415553e7121307bd901e98ba33572e99ae"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status-palette.png",
+    "sha256": "08740338ad7313840bf333fb2b3b3766a3a1a4a2db81ebdf94c14f9566d248ac"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-status.png",
+    "sha256": "1bb36a492f319cc5dea3b0c7d8a0ff10bde973393e47dc9e4a44c27c70b3295c"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo-expanded-end.png",
+    "sha256": "a9e84b95a9e575e21074d6649a62ecaf546bd4fac6a225fac357e62d79ff91a2"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo-expanded.png",
+    "sha256": "64482ff634f3ffa4da10efb8c2050a1ac9c2428bb0d18f125059829797cc2f8e"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo-palette.png",
+    "sha256": "ddc16311fddecd6c725f6ea567a2ec98932be79ed1518d0df39697e684d291f2"
+  },
+  {
+    "path": "captures/desk-dark-zh-TW-sysinfo.png",
+    "sha256": "ec1147b399478351c693656c170894a0932dbc48e9fffec29385a293d5791128"
+  },
+  {
+    "path": "captures/desk-light-en-status-expanded-end.png",
+    "sha256": "c0346eaa50838c99f33997f9d1861d085ce4355b0f3fc32851c402ddffb0c712"
+  },
+  {
+    "path": "captures/desk-light-en-status-expanded.png",
+    "sha256": "6acf927172c2ab2778331a99b825d41713d2a2bcf6256ecb172b0285fda4e591"
+  },
+  {
+    "path": "captures/desk-light-en-status-filtered.png",
+    "sha256": "abf99226a02f648b5d6a7f1f6fb9bec7bd570eeb7376c5fd7317bd3090c2acdb"
+  },
+  {
+    "path": "captures/desk-light-en-status-palette.png",
+    "sha256": "c3086ea79c75e87711218d85e79117eafdf8d237e2a0275d8b1a5dc4bc0e3316"
+  },
+  {
+    "path": "captures/desk-light-en-status.png",
+    "sha256": "c0dd7a80272923c7ea6d2ba96e81c38b33f1b8387cd7709a8b6caf5dc394674c"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo-expanded-end.png",
+    "sha256": "a77b7b1c50273d141d196575ed8367860eadcf5c24a48dff83bcbae5345c1a77"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo-expanded.png",
+    "sha256": "a012f3bd6bbcb206996491341b3010b5ab4101a2ff4e68128b2568ed346a619d"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo-palette.png",
+    "sha256": "e1e822a44c77806f0747163ea262a70024f3d7c07d1af61c339f4019ce4d6a9b"
+  },
+  {
+    "path": "captures/desk-light-en-sysinfo.png",
+    "sha256": "7a13b617a13501e7b5afb8e17cdc8583c4bf475f2eb79c5ec970d5537a03a9b0"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-end.png",
+    "sha256": "62915baa5b763b485043f95475f573e7e70b7e67bfd8187af48e84157d09d672"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-expanded-end.png",
+    "sha256": "f5537407c80b4ab32ad67bc8ae779f556e27d1ca824d11b35c173b5efbefd06a"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-expanded.png",
+    "sha256": "e44b9609f943b51ea47065e9264adfeb22bde1ab08bd867572d8337786a6a43b"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-filtered.png",
+    "sha256": "dcf84ac5214d0029ca3b60f818ec3ed553ff3c77bc04f76046be50039a7b3469"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status-palette.png",
+    "sha256": "af52fd8ec628ff3e56c9da9bb9ad10878164b8615fd948642ed997826105e666"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-status.png",
+    "sha256": "f5626b8183fdd2911d0e0eaf6e427f38958d21f0f16bc9c3571072cf24216f0f"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-end.png",
+    "sha256": "06a3a79138f3fa4a62d39d1c67691c50a02254c8c67ddcdcfc54d4cfb1ca7db7"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-expanded-end.png",
+    "sha256": "09f0927e5d29800a76cb59f77bd498c82a378ede93e574fdd1d001c7012fee9a"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-expanded.png",
+    "sha256": "97b4f0600086229151d97a628529452b6a0d9b025c6a68732b876c8a7d2602ff"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo-palette.png",
+    "sha256": "db20ad48751fc9fa8d334013527df5d7fdf8a17b25b6e57c4b20da22ad0788e6"
+  },
+  {
+    "path": "captures/phone-dark-zh-TW-sysinfo.png",
+    "sha256": "c7ec6dd74b5e3b25c7ebf52ba79485369fe3d0777726f32eac2b3539f893dcbd"
+  },
+  {
+    "path": "captures/phone-light-en-status-end.png",
+    "sha256": "14e0fa75e7f5451f9e8a91fa29c91fbeb56373caece7bf3116077a3d42527de1"
+  },
+  {
+    "path": "captures/phone-light-en-status-expanded-end.png",
+    "sha256": "55163450f061488a1748fd2fee1b77cf3b8850313366d3a66effff4d1a91dedf"
+  },
+  {
+    "path": "captures/phone-light-en-status-expanded.png",
+    "sha256": "1c9b72edcf113d0991354a56f2ce50d9560660402819b2069fa901645a49ff87"
+  },
+  {
+    "path": "captures/phone-light-en-status-filtered.png",
+    "sha256": "bbd96644ce8fbb1c5a67d1c04ad78ba3109a4241003209a73b2c30d6ed6e3a3c"
+  },
+  {
+    "path": "captures/phone-light-en-status-palette.png",
+    "sha256": "75e46e6e2f06a084ea674940f0efd9f5e95fc99cf7bc09038d757b7e65c3da86"
+  },
+  {
+    "path": "captures/phone-light-en-status.png",
+    "sha256": "0a7d450cdaf7c5388e113681543301a21dc3812e80b3b246cdd4901f4a78da71"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-end.png",
+    "sha256": "ff21ec48bb0fd0c17060434fc7a15fa7966efc9f986d8f65fcd4565471abc9a6"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-expanded-end.png",
+    "sha256": "a274aaa994cfdc30273692746998a655b4dbc7ce25c7d37a920f6bd938e2ef0a"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-expanded.png",
+    "sha256": "c647f6fb50915e9da5af872ca09b83c89f77930961b80b89fc48d9b35da795f6"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo-palette.png",
+    "sha256": "8d0a645f26c65c0833953eb7bac11196002d2c065ef7f309a3a9b00ff31cb4cb"
+  },
+  {
+    "path": "captures/phone-light-en-sysinfo.png",
+    "sha256": "f4374e4b3a6e05e3bc2a327d2dbe2f28ea0f50d49d4e28a5be94359172b42341"
+  },
+  {
+    "path": "dev-styles.log",
+    "sha256": "59a07ebf5123714fb707b75ec7d6170312200e3f679f56eb924cd9c561091e0f"
+  },
+  {
+    "path": "dev-test-types.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+  },
+  {
+    "path": "dev-tests.log",
+    "sha256": "fa640a0adc72440b5195c5c6890730e9d1de294e3a4a2505843180e3b0c00de3"
+  },
+  {
+    "path": "dev-types.log",
+    "sha256": "aa268e46f818d58516536fcec326656a48c29a59710ec60601bab337d2d47994"
+  }
+]
