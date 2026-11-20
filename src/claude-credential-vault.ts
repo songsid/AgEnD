@@ -13,7 +13,7 @@ export interface ClaudeCredentialMetadata {
 }
 export type CredentialActor = { adapterId: string; userId: string };
 export class ClaudeCredentialError extends Error {
-  constructor(readonly code: "invalid" | "conflict" | "unavailable" | "in-use" | "profile-unknown") { super(code); }
+  constructor(readonly code: "invalid" | "conflict" | "unavailable" | "in-use" | "profile-unknown" | "session-changed") { super(code); }
 }
 interface Row { id: string; profile: string; revision: number; kind: ClaudeCredentialKind | null; payload: Buffer | null; updated_at: string; source: "managed" | "subscription"; }
 function fail(): never { throw new ClaudeCredentialError("unavailable"); }
@@ -54,8 +54,12 @@ export class ClaudeCredentialVault {
     let db: Database.Database | undefined, key: Buffer | undefined;
     try {
       if (lstatSync(home).isSymbolicLink() || !lstatSync(home).isDirectory()) fail();
+      const present=(path:string)=>{try{lstatSync(path);return true;}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return false;throw error;}};
+      const hadDirectory=present(this.dir),hadKeys=present(join(home,"credential-keys"));
       privateDirectory(this.dir);
       const existed = (() => { try { lstatSync(this.path); return true; } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; } })();
+      // A read/audit must not recreate an empty database and erase the evidence of a lost managed selection.
+      if(!existed&&(hadDirectory||hadKeys))fail();
       // A lost key must never silently create a new key for an existing vault.
       if (existed && !options.key) privatePath(join(home, "credential-keys", "claude.key"), false);
       key = options.key?.() ?? claudeVaultFileKey(home); if (key.length !== 32) fail(); this.key = Buffer.from(key);

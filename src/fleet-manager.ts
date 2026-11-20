@@ -1,3 +1,5 @@
+import { changeIdleClaudeCredential } from "./claude-credential-change.js";
+import { readClaudeCredentialSelection, claudeSubscriptionSuppressed } from "./claude-credential-launch.js";
 import { ClaudeCredentialVault, ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredentialMetadata, type CredentialActor } from "./claude-credential-vault.js";
 import {withHubRoomReplyWarning} from "./hub-room-reply-warning.js";
 import { ContactAuthService } from "./contact-auth-service.js";
@@ -22756,6 +22758,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get browserBackendSignIns(): BrowserBackendSignIns {
     return this.browserBackendSignInsInstance ??= new BrowserBackendSignIns({
       dataDir: this.dataDir, lock: this.loginWindow,
+      allowed: backend=>backend!=="claude-code"||!claudeSubscriptionSuppressed(this.dataDir,null),
       current: owner => this.browserSignInOwnerCurrent(owner),
       installed: async () => {
         const found = await Promise.all(ONBOARDING_BACKENDS.map(async backend =>
@@ -22796,6 +22799,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   get profileSignIns(): ProfileSignIns {
     return this.profileSignInsInstance ??= new ProfileSignIns({
+      allowed:(backend,profile)=>backend!=="claude-code"||!claudeSubscriptionSuppressed(this.dataDir,profile),
       lock: this.loginWindow,
       current: owner => this.browserSignInOwnerCurrent(owner),
       installed: backend => this.isCliInstalledOffLoop(backend),
@@ -22885,7 +22889,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private signInIdentityGeneration = 0;
   private signInIdentitySlots = 0;
   private readonly signInIdentityWaiters: Array<() => void> = [];
-  private signInIdentity(backend: string, profile?: string): AccountIdentity | undefined { return this.signInIdentities.get(`${backend}\0${profile ?? ""}`)?.identity ?? undefined; }
+  private signInIdentity(backend: string, profile?: string): AccountIdentity | undefined { if(backend==="claude-code"&&this.dataDir&&claudeSubscriptionSuppressed(this.dataDir,profile??null))return undefined;return this.signInIdentities.get(`${backend}\0${profile ?? ""}`)?.identity ?? undefined; }
   /** A sign-in finished (or changed): forget what was read and let no read that was already running put its answer back. */
   private forgetSignInIdentities(): void { this.signInIdentityGeneration++; this.signInIdentities.clear(); this.signInIdentityReads.clear(); }
   /** At most three `claude auth status` at once across the whole host, however many requests ask. */
@@ -22896,6 +22900,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** One `claude auth status` for a sign-in (the default one, or a credential profile's folder). */
   private async readSignInIdentity(target: SignInTarget): Promise<AccountIdentity | undefined> {
+    if(target.backend==="claude-code"&&claudeSubscriptionSuppressed(this.dataDir,target.profile??null))return undefined;
     let env: Record<string, string> | undefined, launch: { args: string[]; folder: string } | undefined;
     if (target.profile) {
       const l = credentialProfileLaunch(this.dataDir, target.backend, target.profile);
@@ -22999,8 +23004,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // (Keep-alive is the host's: it is built from the host's profiles above and never given to a computer's rows.)
     let machines: Awaited<ReturnType<MachineAccounts["list"]>> = [];
     if (remoteRuntimeEnabled()) { try { machines = await this.machineAccounts.list(); } catch (err) { this.logger.debug({ err: (err as Error).message }, "Computer accounts not read"); } }
-    return buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
+    const view=buildAccountsView({ targets, diskProfiles, agents, classic, fleetDefaults, usage, keepAlive, machines, installShown: this.webHostInstalls.view()?.backend ?? null,
       versions: new Map(this.backendAvailabilityRows().map(row => [row.backend, row.version ?? null] as const)), claudeInstall: await this.claudeInstallShown() });
+    for(const cli of view.clis)for(const row of cli.rows){
+      if(row.backend!=="claude-code"||row.scope.kind!=="host")continue;
+      try{const selected=readClaudeCredentialSelection(this.dataDir,row.profile);if(selected)row.credential=selected;}
+      catch{row.credentialUnavailable=true;}
+      if(row.credentialUnavailable||row.credential?.source==="managed"){
+        delete row.identity;delete row.usageGroups;delete row.usageStale;delete row.usageStaleInfo;delete row.keepAlive;delete row.reconnect;
+        row.state=row.credential?.kind||row.credentialUnavailable?"unknown":"not_signed_in";
+      }
+    }
+    return view;
   }
 
   /**
@@ -23126,9 +23141,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async admitCredentialUse(name: string, config: InstanceConfig, backend: string, assertCurrent: () => void): Promise<{ published(): void; release(): void; current(config: InstanceConfig): boolean; unknownEnd(ended: () => Promise<boolean>): void } | null> {
     if (!isKeepAliveBackend(backend) || isWindowsInstance(config)) return null;
     let key = this.launchCredentialKey(config, backend);
-    for (let renewing = this.keepAliveRenewing.get(key); renewing; renewing = this.keepAliveRenewing.get(key)) {
-      await renewing; assertCurrent();
-      key = this.launchCredentialKey(config, backend);
+    for(;;){
+      const waiting=this.claudeCredentialChanges?.get(key)??this.keepAliveRenewing.get(key);
+      if(!waiting)break;
+      await waiting;assertCurrent();key=this.launchCredentialKey(config,backend);
     }
     const lease = { key, starting: true, backend, profile: this.launchCredentialProfile(config, backend) };
     this.credentialLeases.set(name, lease);
@@ -23183,6 +23199,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * sign-in admission reopens after a restart only once it has ended. `release()` only after its CLI has exited.
    */
   private acquireKeepAliveRun(backend: string, profile: string | null): { release(): void } | "in_use" | "busy" {
+    if (backend==="claude-code"&&claudeSubscriptionSuppressed(this.dataDir,profile))return "in_use";
     if (this.keepAliveInUse(backend, profile)) return "in_use";
     const claim = this.loginWindow.tryClaim("keepalive", backend);
     if (!claim) return "busy";
@@ -23244,6 +23261,81 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { agents, classic, fleetDefaults };
   }
 
+  private readonly claudeCredentialChanges=new Map<string,Promise<void>>();
+  claudeCredentialConsumers(profile:string|null):{users:string[];revision:string}{
+    const configured=this.accountUses(),rooms=readClassicBindingsStrict(this.dataDir);
+    if(rooms.kind==="unknown")throw new ClaudeCredentialError("unavailable");
+    const live:Array<{name:string;epoch:number;snapshot:InstanceConfig}>=[];
+    for(const [name,daemon] of this.daemons){
+      const snapshot=daemon.getConfigSnapshot();if(isWindowsInstance(snapshot))continue;
+      const backend=snapshot.backend??this.fleetConfig?.defaults?.backend??"claude-code";
+      if(backend!=="claude-code")continue;
+      if(resolveCredentialProfile(snapshot.backend_options?.[backend])===profile)live.push({name,epoch:this.lifecycle.epochOf(name),snapshot});
+    }
+    const users=[...new Set([...configured.agents.filter(a=>a.backend==="claude-code"&&a.profile===profile).map(a=>a.name),...configured.classic.filter(a=>a.backend==="claude-code"&&a.profile===profile).map(a=>a.key),...live.map(a=>a.name)])].sort();
+    return {users,revision:createHash("sha256").update(JSON.stringify([this.settingsGeneration,this.fleetConfig,rooms,live])).digest("hex")};
+  }
+  async changeClaudeCredential(profile:string|null,revision:number,change:{kind:ClaudeCredentialKind;value:string}|"subscription"|null,actor:CredentialActor,confirmation:{restart?:boolean;consumersRevision?:string},authorized:()=>boolean){
+    if(profile!==null&&!accountFolderExists(this.dataDir,"claude-code",profile))throw new ClaudeCredentialError("profile-unknown");
+    const before=this.claudeCredentialConsumers(profile);
+    if(before.users.length&&!confirmation.restart)throw new ClaudeCredentialError("in-use");
+    if(before.users.length&&confirmation.consumersRevision!==before.revision)throw new ClaudeCredentialError("conflict");
+    const targets=[...this.daemons].filter(([,d])=>{const snap=d.getConfigSnapshot();return !isWindowsInstance(snap)&&(snap.backend??this.fleetConfig?.defaults?.backend??"claude-code")==="claude-code"&&resolveCredentialProfile(snap.backend_options?.["claude-code"])===profile;}).sort(([a],[b])=>a.localeCompare(b));
+    const records=targets.map(([name,daemon])=>({name,daemon,epoch:this.lifecycle.epochOf(name),stopped:false,retired:false}));
+    const claim=this.loginWindow.tryClaim("account","claude-code");if(!claim)throw new ClaudeCredentialError("in-use");
+    let writerFinished!:()=>void;const writerLife=new Promise<void>(resolve=>{writerFinished=resolve;});this.accountWriters.add(writerLife);
+    const key=this.credentialKey("claude-code",profile);let release!:()=>void;
+    const gate=new Promise<void>(r=>{release=r;});this.claudeCredentialChanges.set(key,gate);
+    const generation=this.settingsGeneration,configImage=JSON.stringify([this.fleetConfig,readClassicBindingsStrict(this.dataDir)]);
+    let committed=false,released=false;
+    const releaseStarts=()=>{if(released)return;released=true;if(this.claudeCredentialChanges.get(key)===gate)this.claudeCredentialChanges.delete(key);release();};
+    const check=()=>{
+      if(!authorized())throw new ClaudeCredentialError("session-changed");
+      if(this.shuttingDown||this.settingsGeneration!==generation||JSON.stringify([this.fleetConfig,readClassicBindingsStrict(this.dataDir)])!==configImage||!this.loginWindow.isCurrent(claim))throw new ClaudeCredentialError("conflict");
+      for(const record of records)if(this.lifecycle.epochOf(record.name)!==record.epoch||this.daemons.get(record.name)!==(record.stopped?undefined:record.daemon))throw new ClaudeCredentialError("conflict");
+      const prior=this.claudeCredentialMetadata(profile);if((prior?.revision??0)!==revision)throw new ClaudeCredentialError("conflict");
+    };
+    const handles=new Map<string,TransitionHandle>();
+    const locked=async(index:number):Promise<Awaited<ReturnType<typeof changeIdleClaudeCredential>>>=>{
+      if(index<records.length)return this.lifecycle.runTransition(records[index]!.name,async handle=>{handles.set(handle.name,handle);return locked(index+1);});
+      check();
+      if([...this.credentialLeases.values()].some(lease=>lease.key===key&&lease.starting)||[...this.credentialOrphans.values()].some(orphan=>orphan.key===key)){this.recheckCredentialOrphans();throw new ClaudeCredentialError("in-use");}
+      if(this.claudeCredentialConsumers(profile).revision!==before.revision)throw new ClaudeCredentialError("conflict");
+      return changeIdleClaudeCredential({
+        assertCurrent:check,releaseStarts,restart:change!==null,
+        commit:()=>{check();const result=this.withClaudeVault(v=>v.write(profile,revision,change,actor));committed=true;return result;},
+        consumers:records.map(record=>({name:record.name,
+          quiesce:()=>record.daemon.quiesceClaudeCredential(),
+          stop:async()=>{const stopping=this.stopInstance(record.name,handles.get(record.name));record.epoch++;await stopping;record.stopped=true;
+            record.retired=await record.daemon.claudeCredentialRetired();
+            if(!record.retired){this.credentialOrphans.set(Symbol(record.name),{key,backend:"claude-code",profile,ended:()=>record.daemon.claudeCredentialRetired()});throw new ClaudeCredentialError("unavailable");}
+          },
+          current:()=>!this.shuttingDown&&(!record.stopped||record.retired)&&this.settingsGeneration===generation&&this.lifecycle.epochOf(record.name)===record.epoch&&this.daemons.get(record.name)===(record.stopped?undefined:record.daemon),
+          recover:async()=>{
+            if(!record.stopped){const stopping=this.stopInstance(record.name,handles.get(record.name));record.epoch++;await stopping;record.stopped=true;record.retired=await record.daemon.claudeCredentialRetired();
+              if(!record.retired){this.credentialOrphans.set(Symbol(record.name),{key,backend:"claude-code",profile,ended:()=>record.daemon.claudeCredentialRetired()});throw new ClaudeCredentialError("unavailable");}
+            }
+            const current=()=>!this.shuttingDown&&this.settingsGeneration===generation&&this.lifecycle.epochOf(record.name)===record.epoch;
+            const execution=new SettingsExecution({current,snapshot:()=>null});
+            try{
+              execution.assert();const config=this.fleetConfig?.instances[record.name];
+              if(config)await this.startInstance(record.name,config,daemonTopicMode(this.fleetConfig)??false,"fleet-topic",false,handles.get(record.name),execution);
+              else{
+                const room=this.classicChannels?.getAll().find(room=>room.instanceName===record.name);if(!room)throw new ClaudeCredentialError("conflict");
+                await this.startClassicInstance(record.name,this.classicChannels!.getBackendByInstance(record.name,this.fleetConfig?.defaults?.backend),this.classicChannels!.getPreTaskCommand(room.channelId,room.adapterId),this.classicChannels!.getModel(room.channelId,room.adapterId,this.fleetConfig?.defaults?.model),this.classicChannels!.getAutoPauseAfter(room.channelId,room.adapterId,this.fleetConfig?.defaults?.auto_pause_after),handles.get(record.name),execution);
+              }
+            }finally{execution.close();}
+          }
+        }))
+      });
+    };
+    try{return await locked(0);}
+    finally{
+      releaseStarts();this.loginWindow.release(claim);this.accountWriters.delete(writerLife);writerFinished();
+      if(committed){this.forgetSignInIdentities();this.usageAfterSignIn();broadcastSseEvent(this.sseClients,"backend_login",{},()=>{});}
+    }
+  }
+
   /** M-3419: private host credential store. No secret is logged or returned by the metadata API. */
   private withClaudeVault<T>(fn: (vault: ClaudeCredentialVault) => T): T {
     const vault = new ClaudeCredentialVault(this.dataDir);
@@ -23251,7 +23343,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   claudeCredentialMetadata(profile: string | null): ClaudeCredentialMetadata | null {
     if (profile !== null && !accountFolderExists(this.dataDir, "claude-code", profile)) throw new ClaudeCredentialError("profile-unknown");
-    return this.withClaudeVault(vault => vault.metadata(profile));
+    return readClaudeCredentialSelection(this.dataDir,profile);
   }
   auditClaudeCredential(actor: CredentialActor | null, action: string, outcome: string): void {
     this.withClaudeVault(vault => vault.audit(actor, null, action, null, null, outcome));
@@ -23441,6 +23533,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   async signOutAccount(backend: string, profile: unknown, confirm: unknown, by: string, machine?: MachineActor): Promise<SignOutResult | MachineAccountResult> {
     if (machine) return this.machineAccounts.signOut(backend, profile, confirm, machine.id, machine, by);   // #3190 Part 3c: that computer's Runtime runs the CLI's own logout
     const named = typeof profile === "string" ? profile : null;
+    if(backend==="claude-code"&&claudeSubscriptionSuppressed(this.dataDir,named))return {ok:false,error:"unsafe"};
     const shown = named === null ? "(default)" : validCredentialProfileName(named) ? named : "(invalid)";
     // #3305 review P2-3: the logout holds the shared login window from before it runs until its cleanup is done — no
     // sign-in (chat, dashboard, install) and no other logout starts meanwhile; one already running refuses this.
@@ -23551,6 +23644,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return t("login.web_dashboard_not_installed", wanted, info.install);
     }
     if (!opts.skipAuthCheck) this.recordLoginFlow(wanted, "login", chat.userId);
+    const backend=LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()]??backendArg.toLowerCase();
+    if(backend==="claude-code"&&claudeSubscriptionSuppressed(this.dataDir,opts.profile??null))return t("login.managed_credentials");
     return this.webLogin.start(backendArg, chat, opts);
   }
 
@@ -23836,6 +23931,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private async launchSignIn(backendArg: string, chat: {
     adapter: ChannelAdapter; adapterId: string; chatId: string; threadId?: string; userId?: string;
   }, opts: { skipAuthCheck?: boolean; tokenPresent?: boolean; tunnel?: boolean; profile?: string } = {}): Promise<string | null> {
+    const backend=LOGIN_BACKEND_ALIASES[backendArg.toLowerCase()]??backendArg.toLowerCase();
+    if(backend==="claude-code"&&claudeSubscriptionSuppressed(this.dataDir,opts.profile??null))return t("login.managed_credentials");
     return this.webLogin.start(backendArg, chat, opts);
   }
 

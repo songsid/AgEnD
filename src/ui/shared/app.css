@@ -4938,3 +4938,26 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   background-position: 0 0, 0 0;
   background-repeat: repeat, no-repeat;
 }
+
+/* M-3419 approved credential UI: shared controls, with touch sizing only; no new visual treatment. */
+.credential-dialog :is(p, strong, legend) { overflow-wrap: anywhere; }
+@media (max-width: 899px), (pointer: coarse) {
+  .credential-dialog :is(.check, summary, .field input, .credential-help) { min-height: var(--tap); }
+  .credential-dialog .check, .credential-dialog summary { align-items: center; }
+  .credential-dialog summary { display: flex; }
+  /* The inherited Needs you notification action is a touch target in these mockups too. */
+  .p-needs .n-notify .btn { min-height: var(--tap); }
+}
+
+.credential-method-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.credential-method-row .check { flex: 1; min-width: 0; }
+.credential-help { flex-shrink: 0; }
+.credential-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); cursor: pointer; list-style: none; }
+.credential-disclosure > summary::-webkit-details-marker { display: none; }
+.credential-disclosure > summary > .icon { flex-shrink: 0; }
+.credential-disclosure[open] > summary > .icon { transform: rotate(0deg); }
+.credential-disclosure:not([open]) > summary > .icon { transform: rotate(-90deg); }
+/* Use the shared runtime-change dialog's fixed header/footer and scrolling body pattern. */
+.credential-dialog .dlg-head, .credential-dialog .dlg-actions { flex: 0 0 auto; }
+.credential-dialog .dlg-body { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; scroll-padding-block: var(--s-4); padding-bottom: var(--s-6); }
+.credential-dialog .dlg-body > * { flex-shrink: 0; }

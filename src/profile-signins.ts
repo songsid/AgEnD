@@ -33,6 +33,7 @@ export interface ProfileSignInSnapshot {
 }
 export interface ProfileSignInDeps {
   /** The signed-in local admin session is still the one that asked. */
+  allowed?(backend:string,profile:string):boolean;
   current(owner: object): boolean;
   /** The host's own login window: the one every credential writer shares. */
   lock: LoginWindowLock;
@@ -143,6 +144,7 @@ export class ProfileSignIns {
   async begin(owner: object, target: ProfileSignInTarget, relogin = false): Promise<ProfileSignInSnapshot> {
     if (!this.current(owner)) throw new Error("signin_session_expired");
     this.valid(target);
+    if(this.deps.allowed?.(target.backend,target.profile)===false)throw new Error("signin_managed_credentials");
     const kind = this.account(target);
     const previous = this.run;
     if (this.cleanupFailed(previous)) throw new Error("signin_cleanup_failed");
@@ -152,7 +154,7 @@ export class ProfileSignIns {
     }
     const key = keyOf(target.backend, target.profile);
     const session: StructuredSignIn = new StructuredSignIn(target.backend, owner, {
-      lock: this.deps.lock, current: () => this.current(owner), transport: this.deps.transport({ backend: target.backend, profile: target.profile }), profile: target.profile,
+      lock: this.deps.lock, current: () => this.current(owner)&&this.deps.allowed?.(target.backend,target.profile)!==false, transport: this.deps.transport({ backend: target.backend, profile: target.profile }), profile: target.profile,
       checkAuth: () => this.deps.checkAuth(target.backend, target.profile),
       ...(this.deps.isolated ? { isolated: () => this.deps.isolated!(target.backend, target.profile) } : {}),
       changed: event => {

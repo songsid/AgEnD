@@ -1,0 +1,49 @@
+{
+  "affected": {
+    "files": 20,
+    "passed": 312
+  },
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "baseHttp": {
+    "expected": 200,
+    "actual": 400
+  },
+  "reversals": [
+    {
+      "control": "idle",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "authority",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "retirement",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "launch-fence",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "writer-drain",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "cached-meters",
+      "assertionCaught": true,
+      "exit": 1
+    },
+    {
+      "control": "missing-db",
+      "assertionCaught": true,
+      "exit": 1
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+# Claude credential dashboard and lifecycle evidence
+
+The dashboard previously offered only native provider sign-in, and the storage-only credential writer deliberately refused a used profile. Native OAuth identity/meter paths also knew nothing about the separate vault. This slice connects the approved method chooser, fixes those stale-display paths, and supplies a confirmed idle-consumer change path.
+
+- Final affected and rule checks: 20 files, 312/312 passed. Source and test TypeScript exit 0.
+- Fail-first real HTTP control on the merged development base: the confirmed used-profile PUT returns 400 instead of the required 200. At the corrected head it saves only after retirement; revocation during the stop returns 403 and retains the original secret.
+- Seven assertion-caught reversals: idle admission, current actor, positive retirement, source-change launch fence, shutdown writer drain, cached-meter redaction, and missing-DB history guard. Each was restored after its focused run. No transform/type error counts as a caught control.
+- Synthetic lifecycle tests cover stale confirmation, unknown old processes, storage failure, stop/config supersession, partial acquisition recovery, removal remaining stopped, explicit pending restarts, new launches waiting for commit, and the keep-alive/source-change handoff. Read-only retirement rejects unreadable, same and unknown pane identities; missing/replaced incarnations prove retirement.
+- Real app: eight desktop/phone × EN/zh-TW × light/dark cases, 76 after screens and eight baseline Accounts screens. The final set is the user-approved revised set. Empty Save is disabled, password fields clear, 44px targets/16px phone inputs have no new violations, no horizontal overflow, CSP or page errors. The phone API overview and scrolled frame show the complete last note above the footer. CJK glyphs, caret direction and representative screens were independently inspected.
+- Product web server and real local verified credential API, synthetic account/roster data and generated credential values. Capture browser is headless in WSL, isolated from external networking. HOME, AGEND_HOME and Claude config/source paths are scratch-owned. There is no real credential, provider/model request, paid call, live Fleet or Windows window in this evidence. Raw private logs and the vault/key files are not published.
+
+See [gallery](gallery.md), [style audit](style-audit.md), and the compact [control summary](controls.json). Native provider CLI observations remain those in the earlier launch slice; no vendor CLI campaign was repeated here.
+
+Pasted credentials remain saved-unverified. Local source classification is not provider acceptance; the separately tracked revision-bound normal-request stamp completes that approved status behavior later. Website publication retains its own beta/review HOLD.
+
+Rollback: stop managed-profile consumers before downgrading; retain vault/key, source history and orphan fences. A failed precommit keeps the earlier secret, but an unconfirmed retirement may leave a consumer stopped/fenced pending operator recovery. A successful commit reports failed restarts explicitly. Revoking other copies still requires Anthropic. Same-user runtime secret access remains possible; encryption is not isolation.
+
+Commands: `node node_modules/.bin/tsc`; `node node_modules/.bin/tsc --noEmit -p tsconfig.test.json`; focused Vitest files plus the affected source/Accounts/sign-in/usage/CSP/i18n/term/tap/import rules. Capture uses the shared smoke fixture with generated metadata, the actual web modules and credential API; it does not draw replacement HTML.
