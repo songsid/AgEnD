@@ -12,6 +12,7 @@ import "./settings-public-session-strings.js";   // #3708: publicSessionAbsolute
 import "./settings-access-strings.js";   // …and this one (webLoginQr), added by Access & security (#3061)
 import "/assets/chat-strings.js";
 import { GUESTS_SETTINGS } from "./settings-guests-entries.js";
+import { hostMonitoringVisible } from "./settings-capabilities.js";
 import { CLI_CAPS } from "./cli-caps.js";
 
 const L = (en, zh) => ({ en, "zh-TW": zh });
@@ -156,11 +157,12 @@ const fold = (s) => String(s || "").toLowerCase().normalize("NFKC");
  * Entries matching `query`: every word in it is found in the entry's name (either language), its config key, or its
  * words (either language). Ranked: a name that starts with it, then one that contains it, then a config key, then a word.
  */
-export function searchSettings(query) {
+export function searchSettings(query, schema = null) {
   const terms = fold(query).split(/\s+/).filter(Boolean);
   if (!terms.length) return [];
   const scored = [];
   for (const entry of SETTINGS_REGISTRY) {
+    if (entry.id === "host.monitoring" && !hostMonitoringVisible(schema)) continue;
     const names = [settingLabel(entry, "en"), settingLabel(entry, "zh-TW")].map(fold);
     const keys = fold(entry.key || "");
     const words = [...(entry.words.en || []), ...(entry.words["zh-TW"] || [])].map(fold);

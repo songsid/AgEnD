@@ -1,4 +1,4 @@
-import { monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
+import { HOST_MONITORING_PAGE_AVAILABLE, monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
 import { connectInstallInfo } from "./connect/install.js";
@@ -732,6 +732,7 @@ export function handleSettingsRequest(
     json(res, 200, {
       ...buildSettingsImpactSchema(),
       host_monitoring: ctx.hostMonitoringAvailable?.() === true,
+      host_monitoring_page: HOST_MONITORING_PAGE_AVAILABLE,
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.

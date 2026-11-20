@@ -10,14 +10,14 @@ export const MONITOR_OUTPUT_BYTES = 32 * 1024;
 export const MONITOR_DEADLINE_MS = 2_000;
 const DISCOVERY_MS = 60 * 60 * 1000;
 export interface MonitorCommand { result: Promise<string | null>; stopped: Promise<void>; kill(): void }
-export type MonitorRunner = (file: string, args: string[], env?: Record<string, string>) => MonitorCommand;
+export type MonitorRunner = (file: string, args: string[], env?: Record<string, string>, cwd?: string) => MonitorCommand;
 /** Native readers receive no account credentials, shell, project startup file or user PATH. */
-export const runMonitorCommand: MonitorRunner = (file, args, extra = {}) => {
+export const runMonitorCommand: MonitorRunner = (file, args, extra = {}, cwd) => {
   let result!: (value: string | null) => void, stopped!: () => void;
   const output = new Promise<string | null>(r => { result = r; });
   const closed = new Promise<void>(r => { stopped = r; });
   try {
-    const child = execFile(file, args, { encoding:'utf8', env:{ PATH:'/usr/bin:/bin:/usr/sbin:/sbin', LC_ALL:'C', LANG:'C', ...extra },
+    const child = execFile(file, args, { encoding:'utf8', ...(cwd ? {cwd} : {}), env:{ PATH:'/usr/bin:/bin:/usr/sbin:/sbin', LC_ALL:'C', LANG:'C', ...extra },
       timeout:1_500, killSignal:'SIGKILL', maxBuffer:MONITOR_OUTPUT_BYTES }, (error, stdout) => result(error ? null : stdout));
     child.once('close', stopped);
     child.once('error', () => result(null));
@@ -99,7 +99,7 @@ export class MonitorCpu {
 }
 
 // Constant read-only registry script; output contains a drive letter only, never the registered private path.
-export const WSL_BACKING_DRIVE_SCRIPT = String.raw`$ErrorActionPreference='Stop'; $n=$env:AGEND_MONITOR_DISTRO; if (!$n -or $n.Length -gt 128) {exit 2}; $ks=@(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss'); if ($ks.Count -gt 64) {exit 2}; $ms=@($ks | Where-Object {$_.GetValue('DistributionName') -ceq $n}); if ($ms.Count -ne 1) {exit 2}; $p=$ms[0].GetValue('BasePath'); if ($p -match '^(?:\\\\\?\\)?([A-Za-z]):\\') {$Matches[1].ToUpperInvariant()} else {exit 2}`;
+export const WSL_BACKING_DRIVE_SCRIPT = String.raw`$ErrorActionPreference='Stop'; $p=$PWD.ProviderPath; $m=[regex]::Match($p,'^\\\\wsl(?:\.localhost|\$)\\([^\\]+)(?:\\|$)',[System.Text.RegularExpressions.RegexOptions]::IgnoreCase); if (!$m.Success) {exit 2}; $n=$m.Groups[1].Value; if (!$n -or $n.Length -gt 128) {exit 2}; $ks=@(Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss'); if ($ks.Count -gt 64) {exit 2}; $ms=@($ks | Where-Object {$_.GetValue('DistributionName') -ceq $n}); if ($ms.Count -ne 1) {exit 2}; $b=$ms[0].GetValue('BasePath'); if ($b -match '^(?:\\\\\?\\)?([A-Za-z]):\\') {[Console]::WriteLine($Matches[1].ToUpperInvariant())} else {exit 2}`;
 interface Options {
   statePath: string;
   memory: () => MemoryPressureSnapshot;
@@ -110,7 +110,6 @@ interface Options {
   monotonic?: () => number;
   cpus?: typeof cpus;
   load?: typeof loadavg;
-  distro?: string;
   /** Explicit mounted drive selection takes precedence over registration discovery. */
   wslDrive?: string;
 }
@@ -150,9 +149,9 @@ export class NativeHostMonitoring implements HostMonitoringProvider {
     const cancel = () => {cancelled=true;finish(null); for (const command of this.commands) command.kill();};
     const deadline = this.monotonic() + MONITOR_DEADLINE_MS;
     const timer = setTimeout(cancel,MONITOR_DEADLINE_MS); timer.unref?.();
-    const call = async (file:string,args:string[],env?:Record<string,string>) => {
+    const call = async (file:string,args:string[],env?:Record<string,string>,cwd?:string) => {
       if (cancelled || this.closed || this.monotonic() >= deadline) return null;
-      const command = this.run(file,args,env); this.commands.add(command);
+      const command = this.run(file,args,env,cwd); this.commands.add(command);
       void command.stopped.then(() => this.commands.delete(command), () => { /* keep ownership on an unconfirmed close */ });
       const text = await command.result;
       await command.stopped;
@@ -165,13 +164,12 @@ export class NativeHostMonitoring implements HostMonitoringProvider {
         if (this.platform !== 'darwin') {
           this.mounts = parseMonitorMounts(await (this.options.readMounts ?? (() => readMonitorKernelFile('/proc/self/mountinfo')))());
           if (this.platform === 'wsl') {
-            const distro = this.options.distro ?? process.env.WSL_DISTRO_NAME;
             if (this.options.wslDrive && /^[A-Z]$/.test(this.options.wslDrive)) this.backing = this.options.wslDrive;
-            else if (distro && distro.length <= 128 && !/[\x00-\x1f]/.test(distro)) {
+            else {
               // Only one known local Windows system executable; never an arbitrary PATH helper or shell.
               const system = this.mounts.find(m => m.drive === 'C' && m.local);
               if (system) {
-                const answer = await call(system.path.replace(/\/$/,'') + '/Windows/System32/WindowsPowerShell/v1.0/powershell.exe', ['-NoLogo','-NoProfile','-NonInteractive','-Command',WSL_BACKING_DRIVE_SCRIPT], {AGEND_MONITOR_DISTRO:distro,WSLENV:'AGEND_MONITOR_DISTRO'});
+                const answer = await call(system.path.replace(/\/$/,'') + '/Windows/System32/WindowsPowerShell/v1.0/powershell.exe', ['-NoLogo','-NoProfile','-NonInteractive','-Command',WSL_BACKING_DRIVE_SCRIPT], undefined, '/');
                 if (answer && /^[A-Z]\r?\n?$/.test(answer.trim())) this.backing = answer.trim();
               }
             }

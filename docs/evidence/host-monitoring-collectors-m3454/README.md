@@ -4,7 +4,7 @@ Base: actual dev `2561cb29b1d315c358e55749c3b41d305273139f`, after S-204 merged 
 
 ## Result and scope
 
-Adds the opt-in runtime bridge, bounded Linux/WSL/macOS providers and administrator-only cached health read. Missing boolean defaults are durably stored as false before any collection. Off creates no monitoring provider/timer/history/process scan. Settings becomes available only on the real active runtime capability. Existing memory admission, cron and provider-account behavior are unchanged.
+Adds the opt-in runtime bridge, bounded Linux/WSL/macOS providers and administrator-only cached health read. Missing boolean defaults are durably stored as false before any collection. Off creates no monitoring provider/timer/history/process scan. The Settings card and both search surfaces require the real runtime and the Host health page; the page flag remains false until S-207, so this slice exposes no switch. Existing memory admission, cron and provider-account behavior are unchanged.
 
 History, Host health page, alerts and agent footprint are subsequent slices. The final hour-long measurement with both options enabled and final user-approved real-data captures have not been performed here. This is not end-to-end M-3454 acceptance.
 
@@ -31,13 +31,13 @@ Heavy runs used nice/ionice. Raw logs remain private because they include local 
 
 ## Native coverage
 
-Two bounded WSL checks used the actual readers without an account/model request or persistent monitoring service. The first had no distro/interop environment metadata and correctly reported an unknown backing drive while returning root/state counters. The second explicitly selected a mounted local drive and returned a separate backing-volume record plus the deduplicated root/state volume. The checks completed in 19 ms and 18 ms respectively; these are short warm observations, **not** a production overhead benchmark.
+Initial stage: two bounded WSL checks used the actual readers without an account/model request or persistent monitoring service. The first had no distro/interop environment metadata and correctly reported an unknown backing drive while returning root/state counters. The second explicitly selected a mounted local drive and returned a separate backing-volume record plus the deduplicated root/state volume. The checks completed in 19 ms and 18 ms respectively; these are short warm observations, **not** a production overhead benchmark.
 
 macOS APFS shared/quota cases and Ubuntu missing/network cases are synthetic offline parser/provider tests. There was no native macOS run. Existing Darwin memory tests validate the reused pressure source; monitoring reads its cache rather than launching another pressure probe.
 
 ## Original image
 
-`phone-settings-off.png`: real Fleet Settings → Notifications, phone dark zh-TW, both options off, agent option unavailable pending S-209. The image proves the current Settings layout only, not collection/history/alerts. The original was visually inspected: no company names, paths or chat identifiers. Desktop UI-gate images are private and not included in this public bundle.
+`phone-settings-off.png`: **historical, superseded by R1 hiding**, from the collector-only stage before the Leader required waiting for S-207. It shows real Fleet Settings → Notifications, phone dark zh-TW, both options off. It does not show the current hidden-card state or prove collection/history/alerts. The original was visually inspected: no company names, paths or chat identifiers. Desktop UI-gate images are private and not included in this public bundle.
 
 The fixture's browser and listeners were closed; the shared browser slot was released. There is no running collector, native command, repeat loop or history file from this evidence run.
 
@@ -46,3 +46,11 @@ The fixture's browser and listeners were closed; the shared browser slot was rel
 Automatic WSL identification requires usable current-distro/interop metadata; otherwise the DTO remains unknown and an explicit mounted drive can be selected. Network storage is not sampled. Slow/unconfirmed children retain physical ownership; this can leave monitoring stopping/unavailable instead of silently spawning replacements. Source timestamps and missing/stale states are retained. APFS shared capacities must not be summed by future readers.
 
 Rollback: persist monitoring false, allow the owned flight to close, then revert this slice. Retain explicit false values and the independent cron disk watcher. No user workspace deletion or provider action is part of rollback.
+
+## R1 scope
+
+The Leader required hiding the card until S-207 and reliable automatic backing-drive identification on this host. Before product changes, a bounded native metadata probe proved PowerShell interop works without the agent’s missing WSL variables; a fixed Linux-root launch bound its UNC location to the current distro registration. The final R1 collector then identified the backing drive automatically in 496 ms, returning root/state plus the separate Windows volume. No vhdx walk, other-distro launch, account or model request occurred. This is a bounded identification check, not an hour-long overhead measurement.
+
+Prism found that the real public gateway manifest refused the cache route before its admin handler, and that search could advertise a hidden card. R1 adds only the exact GET to that manifest, exercises an actual gateway listener for admin success/non-admin refusal, and shares the runtime-plus-page visibility rule among the card, Settings search and Ctrl K. Ctrl K loads the existing schema once when opened. The hidden Settings drive selector reads only the cached endpoint. No new browser capture campaign was run; the old phone original is explicitly historical.
+
+R1 validation: **138/138 across seven affected files**, serial terminal0; source/test TypeScript zero diagnostics, terminal0. The actual gateway route, both real search surfaces, page gating and cached-drive selection are covered. Four scoped R1 reversals are caught/restored (`r1-reversals.json`): remove gateway GET, bypass page visibility, bypass shared search filtering, drop the fixed-root native launch. Unchanged initial lifecycle/memory controls retain their earlier evidence; no repeated full suite or browser campaign is claimed.

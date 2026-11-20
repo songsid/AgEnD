@@ -3,23 +3,27 @@
   "files": [
     {
       "path": "changes/4293-host-monitoring-collectors.md",
-      "sha256": "96bf573217a56aa181a9f317883ca6d2a22b1619f829f1cea82191cb91bffec8"
+      "sha256": "ff617db59435168e52a29ab5ef7b72fc2134c0ce244a3a52dadf680d37252811"
     },
     {
       "path": "changes/4293-host-monitoring-collectors.zh-TW.md",
-      "sha256": "51449b78322e7adb83da9f6c162f68dd043158abbbd282ff547e6d52df114db1"
+      "sha256": "0ecac279e0cf850a5a30b4cfb392f261d594b6e1d0bc8c190a9edba1563e0778"
     },
     {
       "path": "docs/design/host-monitoring-collectors.md",
-      "sha256": "9763a2d23a349cf12cfb6a430ac751f1dd5939a1c1a45be69be28366acd587ad"
+      "sha256": "8e9e2fec57f168565c30632ef5fd70ceba128d85701671ac75deb9ae5be72a1a"
     },
     {
       "path": "docs/evidence/host-monitoring-collectors-m3454/README.md",
-      "sha256": "4c67403e8b0323c80cd87a501be9ea4cfbf348b1d08fa2fcfbb9d737d14d2e9b"
+      "sha256": "cd3e7d135d728fb98287e6034f45e612e3713d64e0739eb262bbe8ed340efbeb"
     },
     {
       "path": "docs/evidence/host-monitoring-collectors-m3454/phone-settings-off.png",
       "sha256": "0dbbf2395fcabf92d4c415b2209ff5681e19a04089d25d97ea35c81bc136d84a"
+    },
+    {
+      "path": "docs/evidence/host-monitoring-collectors-m3454/r1-reversals.json",
+      "sha256": "8e04fafe52b0952b9155e871b979ddd86d5b9defe0bc1209d8c9c721600daf1d"
     },
     {
       "path": "docs/evidence/host-monitoring-collectors-m3454/reversals.json",
@@ -35,11 +39,11 @@
     },
     {
       "path": "src/host-monitoring-config.ts",
-      "sha256": "6c481945d1743d0c1336d2531ae277fed1cec0a0dd06bb34ceafbc9d39c2e739"
+      "sha256": "7e1faa135ba3a93cc7ae9b0be030226a612bc2d0f6a9d3236ad49bda6b317609"
     },
     {
       "path": "src/host-monitoring-platform.ts",
-      "sha256": "62790548711e9d7bbbad4288c5b656ae4a1a2906a865a0f7fc4d7c09181ba6eb"
+      "sha256": "6da1939cb51d978360602438ef420b320ea7f7372104d7696a414bd58ecb88c5"
     },
     {
       "path": "src/host-monitoring-runtime.ts",
@@ -50,8 +54,12 @@
       "sha256": "3a999493f4545749d356751ae297be7d6806c3ece8f68e36f415025ed8af8d29"
     },
     {
+      "path": "src/public-web-gateway.ts",
+      "sha256": "f4a141d019d8ba4db125579e665ba4b096663b84bfd0449f7d28fe7c27dc7129"
+    },
+    {
       "path": "src/settings-api.ts",
-      "sha256": "8af75354692540193e3ad59e3646d3e9bb0551d1ca5672b94861dad880ca8534"
+      "sha256": "21e6df5ad0afdde3363966d0942e52fcd881419a7e79d584986512a82c1f55a2"
     },
     {
       "path": "src/settings-baseline.ts",
@@ -62,12 +70,24 @@
       "sha256": "e11cd549c66c52b755a920c3da89190ee7475cffceaa96daecaaa543c703cbf1"
     },
     {
-      "path": "src/ui/settings-layout.js",
-      "sha256": "f4bbe1819b397eea68ec4613ded83e733e20369fdc1b7a5d724c3e88d4ad0415"
+      "path": "src/ui/panel-settings.js",
+      "sha256": "86946d1294f7d8219afde1d0579a87917c149370b8023cb19e8ddaad3e90691e"
+    },
+    {
+      "path": "src/ui/search-dialog.js",
+      "sha256": "15d07ff226546a22e83193b00bf707a5782f6651b41a43b8554f772942de7709"
+    },
+    {
+      "path": "src/ui/settings-capabilities.js",
+      "sha256": "fefeb399f40cfdc8424a384465ec27afd7d41e87a11aa7770d1f7c5690375f0b"
+    },
+    {
+      "path": "src/ui/settings-host-monitoring.js",
+      "sha256": "a4c9ac6eccb2797fe1e3d5809169703f28a7d9c0dd4cce2cfbc057d79c385909"
     },
     {
       "path": "src/ui/settings-registry.js",
-      "sha256": "f8f7db64a7366e93a4da63fa66f4d2b811e6e42864ccc72a705a1b6913d19500"
+      "sha256": "0e45d5e51542f4aff5971a85f09cb7a0fb65c2d260cd148d1d2d8a7898c925b9"
     },
     {
       "path": "src/web-api.ts",
@@ -75,7 +95,7 @@
     },
     {
       "path": "tests/host-monitoring-api-m3454.test.ts",
-      "sha256": "0cc3f27df4d45c72a01ca4c7758375a824776fa5391f10b8c7ef07ab9a8d9686"
+      "sha256": "fcf51a5d2c5b2bb657eb2ce67875b56462eccc04a66eaed215e1e14fa81d01dd"
     },
     {
       "path": "tests/host-monitoring-fleet-m3454.test.ts",
@@ -87,7 +107,7 @@
     },
     {
       "path": "tests/host-monitoring-platform-m3454.test.ts",
-      "sha256": "5e2adf34475fd6b0f7beaf636dd73b39d1b61a1bd53ba0acfc317027ea2f98e9"
+      "sha256": "0cde808eaebb048a7cee3d3d0c555415ba810fceeefa2ee7177659a684b6ae09"
     },
     {
       "path": "tests/host-monitoring-runtime-m3454.test.ts",
@@ -98,8 +118,12 @@
       "sha256": "055324664fbdeb190b9750e162607e3b9e79e3121d55f74e6cac93f5088a1b84"
     },
     {
+      "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
+      "sha256": "93dda7aae69638b87bd65f6f7f676f9909b39657927df90b5bb3099ccec31bd9"
+    },
+    {
       "path": "tests/web-settings-search-2347.test.ts",
-      "sha256": "948c348326189e6761cfe66e96fc4d40ed3054bb94f85844a8b498d9629229d1"
+      "sha256": "92d0b186312ba66c377e616392a2e8b51298c3a51e5d47be1487e9ca2c5a41ec"
     }
   ]
 }

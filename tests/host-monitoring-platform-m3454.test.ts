@@ -14,6 +14,13 @@ describe('bounded host monitoring platform readers', () => {
   expect(path.exec('\\\\?\\E:\\Synthetic\\State')?.[1]).toBe('E');
   expect(path.test('\\\\server\\share')).toBe(false);expect(path.test('E:relative')).toBe(false);
  });
+ it('binds the registration query to this launch’s WSL UNC location, not an inherited distro variable',()=>{
+  const pattern=WSL_BACKING_DRIVE_SCRIPT.match(/\[regex\]::Match\(\$p,'([^']+)'/)![1],location=new RegExp(pattern,'i');
+  expect(location.exec('\\\\wsl.localhost\\Synthetic\\')?.[1]).toBe('Synthetic');
+  expect(location.exec('\\\\wsl$\\Synthetic\\')?.[1]).toBe('Synthetic');
+  expect(location.test('C:\\Windows')).toBe(false);expect(location.test('\\\\other\\Synthetic')).toBe(false);
+  expect(WSL_BACKING_DRIVE_SCRIPT).not.toContain('$env:');
+ });
  it('validates disk counters and never turns missing/malformed output into zero space', () => {
   expect(parseMonitorDf(df())).toEqual({totalBytes:1024000,availableBytes:614400,usedPercent:40});
   for(const text of [null,'',df().repeat(2),df(100,101),df().replace('1000','999999999999999999999'), 'x'.repeat(MONITOR_OUTPUT_BYTES+1)]) expect(parseMonitorDf(text)).toBeNull();
@@ -38,23 +45,23 @@ describe('bounded host monitoring platform readers', () => {
   expect(run).not.toHaveBeenCalled();expect(mem).not.toHaveBeenCalled();
   expect(provider.host().memory.value).toBeNull();expect(mem).toHaveBeenCalledTimes(1);
   const flight=provider.disks(),reading=await flight.result;await flight.stopped;
-  expect(run.mock.calls).toEqual([['/bin/df',['-Pk','/'],undefined]]);
+  expect(run.mock.calls).toEqual([['/bin/df',['-Pk','/'],undefined,undefined]]);
   expect(reading?.volumes.find(v=>v.roles.includes('state'))).toMatchObject({totalBytes:null,reason:'network_filesystem_not_sampled'});
   expect(reading?.volumes.find(v=>v.roles.includes('root'))?.availableBytes).toBe(614400);
   await provider.stop();
  });
  it('resolves only the current registered backing drive and preserves a custom mount root', async () => {
   const run=vi.fn<MonitorRunner>((file)=>command(file.endsWith('.exe')?'E\r\n':df()));
-  const provider=new NativeHostMonitoring({platform:'wsl',statePath:'/state',distro:'Synthetic',memory,readMounts:async()=>wsl,run});
+  const provider=new NativeHostMonitoring({platform:'wsl',statePath:'/state',memory,readMounts:async()=>wsl,run});
   const f=provider.disks(),reading=await f.result;await f.stopped;
   expect(reading?.backingDrive).toBe('identified');expect(reading?.availableDrives).toEqual(['C','E']);
   expect(reading?.volumes.find(v=>v.roles.includes('wsl-backing'))).toMatchObject({drive:'E',availableBytes:614400});
-  expect(run.mock.calls[0]).toEqual(['/windows/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',WSL_BACKING_DRIVE_SCRIPT],{AGEND_MONITOR_DISTRO:'Synthetic',WSLENV:'AGEND_MONITOR_DISTRO'}]);
+  expect(run.mock.calls[0]).toEqual(['/windows/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-Command',WSL_BACKING_DRIVE_SCRIPT],undefined,'/']);
   expect(run.mock.calls.some(c=>c[1].includes('/windows/e'))).toBe(true);
   expect(JSON.stringify(reading)).not.toContain('/state');expect(JSON.stringify(reading)).not.toContain('Synthetic');await provider.stop();
  });
  it('never guesses C as the backing drive when registration is unavailable', async () => {
-  const provider=new NativeHostMonitoring({platform:'wsl',statePath:'/state',distro:'Synthetic',memory,readMounts:async()=>wsl,run:file=>command(file.endsWith('.exe')?null:df())});
+  const provider=new NativeHostMonitoring({platform:'wsl',statePath:'/state',memory,readMounts:async()=>wsl,run:file=>command(file.endsWith('.exe')?null:df())});
   const f=provider.disks(),reading=await f.result;await f.stopped;
   expect(reading?.backingDrive).toBe('unknown');expect(reading?.volumes.some(v=>v.roles.includes('wsl-backing'))).toBe(false);await provider.stop();
  });
