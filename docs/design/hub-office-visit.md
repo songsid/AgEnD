@@ -147,6 +147,42 @@ Changed, following the Fleet agent page:
 - The room's square picture moves from the header into the card on desktop. On a phone the header keeps its
   back arrow and two lines (name, counts) as today.
 
+### 2.1b Who may change a room's office, and how (owner's decisions, 2026-11-20)
+
+- **Room managers** choose the scene style and arrange the seats, in Room settings. **Members cannot.**
+- **No tool for agents.** There is no MCP tool to edit a room's office; it is rare, and the tool list should not
+  grow for it. Managers do it in the page.
+- **A person's office is edited only in its owner's own Fleet.** The Hub's part is sharing: which office, who may
+  visit, stop.
+
+**Room settings → Room office** (captures `r4-1`):
+
+1. **Show the room office**: on or off.
+2. **Style**: the built-in zones styles, each with its number of work seats, so a manager can see whether the
+   room fits. A new built-in style for large rooms, **Studio (large)**: 36 work seats (Studio has 12), with a
+   larger rest area. It is Studio's own drawing on a bigger floor, so it needs no new artwork. A room with more
+   agents than work seats suggests it.
+3. **Arrange seats…** opens the room's office with the Fleet's own layout editor.
+
+**The model is the Fleet's, reused** (captures `r4-5`, `r4-6`, the real Fleet editor today):
+
+| Fleet office | Room office |
+|---|---|
+| A stored office: name, style, members, layout overrides | The same record, kept by the Hub for the room. The name is the room's; the members are the room's agents and cannot be picked separately |
+| Edit offices: style, "Idle people stay in their own area" | The Style field and the same tick box in Room settings |
+| Edit layout: drag seats, furniture, the door, the mail drop and waypoints; Save, Reset to the style's layout, Cancel | The same editor, opened by "Arrange seats…" |
+| A seat's "Reserved for" and "Lend when away" | The same, choosing from the room's agents |
+| The host checks every save: seats stay inside their area, each area keeps its seat count | The Hub runs the same check |
+| Two people saving at once: "Keep my edits" or "Load theirs" | The same, between two managers |
+| Uploaded skin packs | Not in a room office in the first builds: built-in styles only |
+
+Seats cannot be added by a manager (an area keeps its seat count, as on the Fleet); more seats come from
+choosing a larger style. When an agent leaves the room, a seat reserved for it becomes free.
+
+A line in the room says who changed the style or the seats. One thing to fix while reusing the editor: its
+"Reserved for" list is a wall of tick boxes when there are 30 agents (capture `r4-6`, phone); it needs the same
+filter box as the member list.
+
 ### 2.2 Who appears
 
 Exactly the agents that are members of the room, plus the room assistant. An agent that joins or leaves the room
@@ -258,6 +294,9 @@ In `docs/evidence/hub-office-visit-m3460/`: desktop (light) and phone (dark) in 
 | `*-r3-1-room-chat.png` | The room in Chat: one-line header, tabs at the right (desktop), the purpose card (zh-TW) |
 | `*-r3-2-room-office.png` | The room in Office: 30 agents, no extra row, no frame (zh-TW) |
 | `phone-zh-TW-r3-3-room-menu.png` | The phone's "…" menu with Office first |
+| `*-r4-1-room-office-setting.png` | Room settings with the Room office section: switch, style, Arrange seats (zh-TW) |
+| `desk-zh-TW-r4-5-fleet-edit-offices.png` | The Fleet's real Edit offices panel today (the model reused) |
+| `*-r4-6-fleet-edit-layout.png` | The Fleet's real Edit layout today, a seat selected with "Reserved for" (the editor reused) |
 | `*-r2-6-members-today.png`, `*-r2-7-members-today-expanded.png` | Today's member list with 12 people and 30 agents (zh-TW) |
 | `*-r2-8-members-proposed.png`, `*-r2-9-members-filter.png` | The proposed compact list, and the filter (zh-TW) |
 
@@ -273,6 +312,9 @@ What is real and what is not:
   Its row of tick boxes is the office's own bar, as on the Fleet. On a phone the office is small because the
   share page is framed; a real build draws it directly and fits the width.
 - Everyone has the default look, because the made-up fleet has no skins; carried looks are not shown.
+- The Room office section in Room settings is put into the real dialog for the picture. The two editor captures
+  are the Fleet dashboard's real editor on a scratch fleet with made-up agents, not a Hub page: they show what
+  would be reused, not the room's editor itself. "Studio (large)" does not exist yet and is not drawn.
 - The room has 12 people and 30 agents of 6 owners, all made up; 5 of the people have never signed in.
 - Not captured: the Room office setting, the per-agent switch, a closed office's page, an agent's card.
 
@@ -295,6 +337,8 @@ What is real and what is not:
 |---|---|---|
 | M1 | The compact member list for large rooms (summary, filter, one-line rows, folded groups) | S–M, independent |
 | R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, "answering in this room" | M |
+| R1b | The style choice with seat counts, and the "Studio (large)" style | S–M |
+| R3 | "Arrange seats…": the Fleet's layout editor on a room's office, managers only, with the Hub's save check | M |
 | R2 | Look cards from the Fleet (colour, portrait, character pictures), the per-agent switch, working and idle | M |
 | V1 | Visit a person's office: the owner's row and dialog, the Offices page, the live view in built-in styles, stop | L (split: Fleet side, Hub side, page) |
 | V2 | Custom skin packs in a visited office (pictures carried once, kept by the Hub) | M, after a builder confirms what the link can carry |
@@ -323,6 +367,13 @@ R1 comes first: it needs nothing new from any Fleet, and it shows the idea to ev
 頁面放「聊天／檢視」的位置一樣。③ 房間用途不再擠在左上角三行：標題列改成一行（名稱＋「12 人 · 30 個 Agent」），
 用途改成標題下方的一張小卡片（房間圖示＋「用途」＋內容），就是 Agent 聊天頁放頭像與介紹的那種卡片；管理員
 右側有「編輯」。這同時改了現在的房間頁面，手機上也終於看得到用途。
+
+**編輯權限（你的決定）：** 房間管理員可以在「房間設定 → 房間辦公室」選場景風格、排座位；一般成員不能改；
+不新增讓 Agent 編輯辦公室的 MCP 工具。個人辦公室只能在擁有者自己的 Fleet 編輯，Hub 只管分享。
+設計上直接沿用 Fleet 辦公室編輯器的模型：同一種「辦公室」資料（名稱、風格、座位覆寫）、同一個「編輯配置」
+畫面（拖曳座位、指定「保留給」誰、不在時借給別人）、同樣的儲存檢查。成員名單固定是房間裡的 Agent。
+另外新增一個大房間用的內建風格「工作室（大）」：36 個工作座位（現在的工作室是 12 個），30 個 Agent 的房間
+會建議用它。座位數不能自己加，要更多座位就換大的風格。
 
 **第二版（依你的回饋修改）：** 房間的辦公室改成房間頁面上的一個分頁，和 Agent 頁面的「聊天／檢視／紀錄」
 是同一種分頁列：桌面版放在標題列裡，不多一排；手機版和 Agent 頁面一樣在標題下方。辦公室直接佔滿內容區，
