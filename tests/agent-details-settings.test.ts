@@ -95,8 +95,8 @@ describe("every field of the old agent dialog is in a category, with its ⓘ", (
   });
   it("each category's settings carry an ⓘ (the shared InfoTip) and the Status emojis say what they are", async () => {
     const f = await form({ backend: "claude-code", working_directory: "/w" });
-    for (const cat of ["basic", "runtime", "work", "channel", "adv"]) expect(p.root.querySelectorAll(`[data-cat="${cat}"] .s-tipbtn`).length, cat).toBeGreaterThan(0);
-    expect(p.root.querySelectorAll(".s-tipbtn").length).toBeGreaterThanOrEqual(20);
+    for (const cat of ["basic", "runtime", "work", "channel", "adv"]) expect(p.root.querySelectorAll(`[data-cat="${cat}"] .info-tip-btn`).length, cat).toBeGreaterThan(0);
+    expect(p.root.querySelectorAll(".info-tip-btn").length).toBeGreaterThanOrEqual(20);
     expect(f.$('[data-cat="channel"]')?.textContent).toContain("What this is");
     expect(f.$('[data-cat="basic"]')?.textContent).toContain("Formerly");                   // Agent instructions: the field Settings called "System prompt"
     expect(f.$('[data-cat="adv"]')?.textContent).not.toContain("System prompt");           // one place only

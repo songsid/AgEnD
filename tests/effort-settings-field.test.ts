@@ -154,7 +154,7 @@ describe("the effort field in Runtime & model", () => {
       const text = p.root.textContent;
       expect(text, lang).toContain(label);
       expect(f.labels()[0], lang).toBe(def);
-      expect(f.$(".s-tipwrap").textContent, lang).toContain(restart);
+      expect(f.$(".info-tip").textContent, lang).toContain(restart);   // M-3443: the shared info icon
       expect(text, lang).not.toMatch(/agentPage\.|effortField\./);
       await p.unmount();
     }
