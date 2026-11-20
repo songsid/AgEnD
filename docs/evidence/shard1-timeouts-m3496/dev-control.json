@@ -1,0 +1,35 @@
+{
+  "scope": "dev six-case control; parallel3, oneCPU, four owned busy processes",
+  "cases": [
+    {
+      "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+      "status": "passed",
+      "milliseconds": 259.57127000000037
+    },
+    {
+      "name": "Hub server factory (S5b) over a really initialized Hub refuses partial or foreign state and a missing bind secret \u2014 nothing recreated, nothing left open",
+      "status": "passed",
+      "milliseconds": 1311.5625670000009
+    },
+    {
+      "name": "Hub runtime (S5b lifecycle) creates a room assistant only for a mounted Hub, passes both ports, and joins its fenced close",
+      "status": "passed",
+      "milliseconds": 783.150866
+    },
+    {
+      "name": "review #3113 round 2: a failed creation's leftover is drained on Off and Stop stop: a recoverable leftover is cleaned up; a still-failing one stays owned and held",
+      "status": "passed",
+      "milliseconds": 541.4743579999995
+    },
+    {
+      "name": "S129 mounted management factory refuses a persisted role clock settled on a mounted root route",
+      "status": "failed",
+      "milliseconds": 10253.556147000003
+    },
+    {
+      "name": "one durable directory decision allows a separately verified cosmetic rename without rebinding directory authority, but rejects a directory/secret mismatch",
+      "status": "passed",
+      "milliseconds": 773.9071760000006
+    }
+  ]
+}
