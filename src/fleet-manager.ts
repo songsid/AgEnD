@@ -1,3 +1,4 @@
+import { ClaudeSetupTokens, type SetupTokenOwner, type SetupTokenRequest } from "./claude-setup-token.js";
 import { changeIdleClaudeCredential } from "./claude-credential-change.js";
 import { readClaudeCredentialSelection, claudeSubscriptionSuppressed } from "./claude-credential-launch.js";
 import { ClaudeCredentialVault, ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredentialMetadata, type CredentialActor } from "./claude-credential-vault.js";
@@ -23306,14 +23307,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const users=[...new Set([...configured.agents.filter(a=>a.backend==="claude-code"&&a.profile===profile).map(a=>a.name),...configured.classic.filter(a=>a.backend==="claude-code"&&a.profile===profile).map(a=>a.key),...live.map(a=>a.name)])].sort();
     return {users,revision:createHash("sha256").update(JSON.stringify([this.settingsGeneration,this.fleetConfig,rooms,live])).digest("hex")};
   }
-  async changeClaudeCredential(profile:string|null,revision:number,change:{kind:ClaudeCredentialKind;value:string}|"subscription"|null,actor:CredentialActor,confirmation:{restart?:boolean;consumersRevision?:string},authorized:()=>boolean){
+  async changeClaudeCredential(profile:string|null,revision:number,change:{kind:ClaudeCredentialKind;value:string}|"subscription"|null,actor:CredentialActor,confirmation:{restart?:boolean;consumersRevision?:string},authorized:()=>boolean,ownClaim?:import("./login-window-lock.js").LoginWindowClaim){
     if(profile!==null&&!accountFolderExists(this.dataDir,"claude-code",profile))throw new ClaudeCredentialError("profile-unknown");
     const before=this.claudeCredentialConsumers(profile);
     if(before.users.length&&!confirmation.restart)throw new ClaudeCredentialError("in-use");
     if(before.users.length&&confirmation.consumersRevision!==before.revision)throw new ClaudeCredentialError("conflict");
     const targets=[...this.daemons].filter(([,d])=>{const snap=d.getConfigSnapshot();return !isWindowsInstance(snap)&&(snap.backend??this.fleetConfig?.defaults?.backend??"claude-code")==="claude-code"&&resolveCredentialProfile(snap.backend_options?.["claude-code"])===profile;}).sort(([a],[b])=>a.localeCompare(b));
     const records=targets.map(([name,daemon])=>({name,daemon,epoch:this.lifecycle.epochOf(name),stopped:false,retired:false}));
-    const claim=this.loginWindow.tryClaim("account","claude-code");if(!claim)throw new ClaudeCredentialError("in-use");
+    const claim=ownClaim??this.loginWindow.tryClaim("account","claude-code");if(!claim||!this.loginWindow.isCurrent(claim)||claim.backend!=="claude-code"||(ownClaim&&claim.kind!=="web"))throw new ClaudeCredentialError("in-use");
     let writerFinished!:()=>void;const writerLife=new Promise<void>(resolve=>{writerFinished=resolve;});this.accountWriters.add(writerLife);
     const key=this.credentialKey("claude-code",profile);let release!:()=>void;
     const gate=new Promise<void>(r=>{release=r;});this.claudeCredentialChanges.set(key,gate);
@@ -23362,9 +23363,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     };
     try{return await locked(0);}
     finally{
-      releaseStarts();this.loginWindow.release(claim);this.accountWriters.delete(writerLife);writerFinished();
+      releaseStarts();if(!ownClaim)this.loginWindow.release(claim);this.accountWriters.delete(writerLife);writerFinished();
       if(committed){this.forgetSignInIdentities();this.usageAfterSignIn();broadcastSseEvent(this.sseClients,"backend_login",{},()=>{});}
     }
+  }
+
+  private claudeSetupTokensInstance: ClaudeSetupTokens | null = null;
+  claudeSetupTokenOperation(owner: SetupTokenOwner, request: SetupTokenRequest) {
+    this.claudeSetupTokensInstance ??= new ClaudeSetupTokens({ lock:this.loginWindow,
+      metadata:profile=>this.claudeCredentialMetadata(profile),
+      commit:(profile,revision,value,actor,confirmation,current,claim)=>this.changeClaudeCredential(profile,revision,{kind:"setup-token",value},actor,confirmation,()=>!this.shuttingDown&&current(),claim),
+    });
+    return this.claudeSetupTokensInstance.operation({...owner,current:()=>!this.shuttingDown&&owner.current()},request);
   }
 
   /** M-3419: private host credential store. No secret is logged or returned by the metadata API. */
@@ -24017,6 +24027,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // "cancelled" is the detail both legacy onDone handlers keep quiet about —
     // a stopping fleet must not announce "login failed — fleet shutdown".
     await Promise.all([
+      bounded(this.claudeSetupTokensInstance?.close(), "setup-token"),
       bounded(this.browserBackendSignInsInstance?.close().then(confirmed => {
         if (confirmed) this.browserBackendSignInsInstance = null;
         else { this.structuredLoginCleanupFailed = true; this.logger.error("Structured login cleanup failed; sign-in admission remains closed until the host is restarted."); }

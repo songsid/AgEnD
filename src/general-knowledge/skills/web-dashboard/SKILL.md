@@ -610,6 +610,8 @@ metrics; read them as old. A provider never read successfully still shows its er
 profile on its own line (the API and chat call it "Claude (<profile>)"); a shared row appears only while some
 instance uses the default login. The badge is the account's plan — e.g. **Pro**, **Max ×20**, **Team ×6.25** (the
 multiplier is its rate-limit multiple; full name on hover). A setup-token login has no badge. A signed-out profile
+For the token method, **Get a token for me** opens a private browser sign-in on the local host. It uses the same verified-admin gate, a 10-minute Connect-account deadline and an owned cleanup; only safe sign-in controls reach the page, and the printed token goes directly to encrypted storage after cleanup. Paste remains available. Cancel or expiry never changes the selected source; if saving is uncertain, read account status before retrying. No model request is made by this flow.
+
 says "Not logged in — sign in with /login claude-code <profile> …". More: the `credential-profiles` skill.
 
 **The cache report** (Fleet → **Cache**; the `get_cache_report` tool). How often each instance's prompt cache

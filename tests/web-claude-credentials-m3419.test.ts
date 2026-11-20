@@ -113,3 +113,18 @@ it("selecting subscription needs explicit confirmation, current local verified a
  expect((await f.call("POST",body)).status).toBe(409);
  expect(f.vault.history().some((row:any)=>row.action==="select-subscription"&&row.outcome==="ok")).toBe(true);
 });
+
+it("setup-token controls share the real local verified/CSRF gate and reject secret-bearing or executable request fields",async()=>{
+ const f=await fixture(),operate=vi.fn(async()=>({login:{id:"a".repeat(32),revision:1,phase:"authorization",mine:true,url:"https://claude.ai/oauth/authorize?fixture=1"}}));
+ (f.ctx as any).claudeSetupTokenOperation=operate;
+ const body={operation:"start",profile:null,revision:0};
+ const call=async(headers=f.session(),data=body as any)=>{const wire=JSON.stringify(data),q=f.open("POST",{...headers,"content-length":String(Buffer.byteLength(wire))},"","/ui/claude-credentials/setup-token");q.req.end(wire);return q.done;};
+ f.setVerified(false);expect((await call()).status).toBe(403);f.setVerified(true);
+ f.setGateway(true);expect((await call()).status).toBe(403);f.setGateway(false);
+ expect((await call({...f.session(),"x-agend-csrf":"wrong"})).status).toBe(401);
+ expect((await call(f.session("read"))).status).toBeGreaterThanOrEqual(400);
+ expect((await call(f.session(),{...body,argv:["other"]})).status).toBe(400);expect(operate).not.toHaveBeenCalled();
+ const response=await call();expect(response.status).toBe(200);expect(operate).toHaveBeenCalledOnce();
+ const [owner,request]=operate.mock.calls[0] as any;expect(owner.current()).toBe(true);expect(owner.actor).toMatchObject({adapterId:"host",userId:"operator"});expect(request).toEqual(body);
+ f.setVerified(false);expect(owner.current()).toBe(false);
+});

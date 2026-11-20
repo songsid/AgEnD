@@ -1,0 +1,26 @@
+[
+  {
+    "guard": "once",
+    "assertionCaught": true
+  },
+  {
+    "guard": "private-output",
+    "assertionCaught": true
+  },
+  {
+    "guard": "completion",
+    "assertionCaught": true
+  },
+  {
+    "guard": "cleanup",
+    "assertionCaught": true
+  },
+  {
+    "guard": "claim",
+    "assertionCaught": true
+  },
+  {
+    "guard": "origin",
+    "assertionCaught": true
+  }
+]
