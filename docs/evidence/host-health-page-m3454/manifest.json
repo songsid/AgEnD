@@ -12,8 +12,12 @@
     "sha256": "bfcd135f86803aa919e1fdc266bd3ba8197653e297df5d3fe534d198f41e3c42"
   },
   {
+    "path": "docs/evidence/host-health-page-m3454/R1.md",
+    "sha256": "1901eda57709fc92d75bbbea3ecf88f91fd8571af1da0cd421411fcb0954c8cb"
+  },
+  {
     "path": "docs/evidence/host-health-page-m3454/README.md",
-    "sha256": "7ebbe3b3041739fee64cbf598ef3787811364f1ad551539633f76fe8c8992fff"
+    "sha256": "82f8430f6ea1256f0663439d16e6479e46d74b79ecdd37ebffb1802ce84fa970"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/fixture-darwin-desk-light-en.png",
@@ -53,7 +57,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-desk-dark-en.png",
-    "sha256": "67c06c46200df68491d5adff5df933adca94e43e7c31800030f7b7563fd0bf1e"
+    "sha256": "60bfe8f63af9d90d4939474ab92eccfda1abbf81b7bef25df3627fc3fc28230f"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-desk-dark-zh-TW.png",
@@ -61,7 +65,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-desk-light-en.png",
-    "sha256": "f108918717a17e9b47e0cd3de7669d8ff4f00a5d8abd69e1372d73a9927778a8"
+    "sha256": "30cfa0a2b0d1ec8d70124a51d99601e7e637bf81f974ec6a5e9a7c4e5965999d"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-desk-light-zh-TW.png",
@@ -77,7 +81,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-phone-dark-zh-TW.png",
-    "sha256": "80df2b638225a689e47ffa2538d8dd332a8645bd9a59316a36497d23467f3677"
+    "sha256": "87f48d3aae2de3a74de87ab6dcbd0811d5cdf2b80a37c4ef85d51a202f8ba49e"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-phone-light-en.png",
@@ -89,7 +93,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-dark-zh-TW.png",
-    "sha256": "99f03f2f2e555ff4825edf4532318c531cfb0a148c5ee3fbb7d1b9abb3cb718a"
+    "sha256": "f5ea0079c77c8a259971ae5bda58527998ef824c70ebc3a6e843b6fe11315f83"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/after/real-resources-phone-light-en.png",
@@ -125,7 +129,7 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/checks.json",
-    "sha256": "24b9cb114e36a349ff8a09448a8bcb81ad2b95f7b95f46d6fb0d851b10de69c8"
+    "sha256": "e6cd39692bf094916772b75e35e7f66ef37bf03b30c83f24d99d264cbcd6cad6"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/final-focused.log",
@@ -137,11 +141,35 @@
   },
   {
     "path": "docs/evidence/host-health-page-m3454/gallery.md",
-    "sha256": "319f5370787a68e257598e1a578835a94c2b332bf5e9a4d92f1327aacb158df2"
+    "sha256": "f6a69e3a15f7de598a546a881d04812d6333e7c8d09e9ca1ef1b9a718fa2495f"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/layout-green.log",
     "sha256": "dc551ffece1da5d6417993a570032315042926fdc068446348efbbfd99f11497"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-assets.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-green.log",
+    "sha256": "ae061374d71d114d598d26ed4c7c8160bb1840eab6f6b112dbebbafb412df9cc"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-red.log.gz",
+    "sha256": "ff6a081c416c5cf134bd28ac684b803cd3ba4b5534dcf88ee8316b0e87b64b09"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-restored.log",
+    "sha256": "3a9b3180b683774e61e2c80c94491abb0d3518365ad4bafac37f3add400f685e"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-style.log",
+    "sha256": "9e5dd4586238569ae34f083fec6fe163bc38a673e42c0da9f2d1d3e480fbebba"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/leader-r1-types.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/mount-budget-green.log",
@@ -158,6 +186,18 @@
   {
     "path": "docs/evidence/host-health-page-m3454/pressure-ui-green.log",
     "sha256": "765cdf4be59a914b04ab8f1c45b53f748abe336006d8f6de58762ffbcb61e2d7"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/r1-capture-inputs.json",
+    "sha256": "c96516ccff504b809e115e2c8691bccf83e731d07ff83efff3d4ae0da8334399"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/r1-checks.json",
+    "sha256": "98b73d4a136192603c33dcdc67838e89ee232ac799dacd1e60eb28bf9d2a87e3"
+  },
+  {
+    "path": "docs/evidence/host-health-page-m3454/r1-reversals.json",
+    "sha256": "88442a302888dd4515c6c847b4378b10138af4bc174812d04ab31703c8b017f0"
   },
   {
     "path": "docs/evidence/host-health-page-m3454/restored-green.log",
@@ -185,11 +225,11 @@
   },
   {
     "path": "scripts/manual/host-health-page/capture.mts",
-    "sha256": "89c791a2953c208756406e48c872176f540915ce509d9c83d6c3384a7333d94b"
+    "sha256": "33d25e9c6a44e146a99a920ee41f8441e64f3179352bd4da8dfbda5dfb66dc0f"
   },
   {
     "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
-    "sha256": "eba5da9fe74101405bc202c5ceb10d57877df4848d7160090becbeadd621497b"
+    "sha256": "d093deed2703ae87355be328e2c14d11b6894d30984c9c01b2b7f176e85b7118"
   },
   {
     "path": "src/host-monitoring-config.ts",
@@ -213,7 +253,7 @@
   },
   {
     "path": "src/ui/host-health.js",
-    "sha256": "4475942d28deb808c701e635eee9f1afdd6a6d212d1cf476e10e93a32af54f7d"
+    "sha256": "e16b0fffec5bb028c002a366a30165d949143f6395b26becbe16f891e82979f8"
   },
   {
     "path": "src/ui/panel-fleet.js",
@@ -229,7 +269,7 @@
   },
   {
     "path": "src/ui/shared/app.css",
-    "sha256": "1d83ce3e30fe45361a53db5ce03d41810da026f83fc6a3f2ac60daec48f8f78c"
+    "sha256": "97eb13db06aeb3a563c7450f3afe578c1e5544b67cdd94106f7671f3a3b250b1"
   },
   {
     "path": "src/web-shell-routes.ts",
@@ -245,7 +285,7 @@
   },
   {
     "path": "tests/host-health-ui-m3454.test.ts",
-    "sha256": "d3274a9e44eb1f189dd50e1594d102f08ebba9489c0e2ecf6e7d3738b8e31caf"
+    "sha256": "124f6ecc46b1d6a153d78e9228a965c91edc67a022e49803ae35ad7f1af88899"
   },
   {
     "path": "tests/host-monitoring-mount-budget-m3454.test.ts",

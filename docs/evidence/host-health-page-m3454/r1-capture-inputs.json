@@ -1,0 +1,14 @@
+[
+  {
+    "path": "src/ui/host-health.js",
+    "sha256": "e16b0fffec5bb028c002a366a30165d949143f6395b26becbe16f891e82979f8"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "sha256": "97eb13db06aeb3a563c7450f3afe578c1e5544b67cdd94106f7671f3a3b250b1"
+  },
+  {
+    "path": "scripts/manual/host-health-page/capture.mts",
+    "sha256": "33d25e9c6a44e146a99a920ee41f8441e64f3179352bd4da8dfbda5dfb66dc0f"
+  }
+]

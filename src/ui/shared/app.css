@@ -5102,6 +5102,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* M3454/S207: Host health uses the Fleet cards and shared page head. */
 .host-health { min-width: 0; }
+.host-health .s-page-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.host-health .host-pressure-value { white-space: nowrap; overflow-wrap: normal; }
 .host-health .host-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
 .host-health .host-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
 .host-health .host-compute { display: contents; }

@@ -1,0 +1,45 @@
+[
+  {
+    "name": "sparse-trend",
+    "original": {
+      "path": "src/ui/host-health.js",
+      "sha256": "e16b0fffec5bb028c002a366a30165d949143f6395b26becbe16f891e82979f8"
+    },
+    "mutant": {
+      "path": "src/ui/host-health.js",
+      "sha256": "3b19fb9674f66b6fce8b04106ae478ac0613321b7c7b4b470436b385b6788fee"
+    },
+    "replace": {
+      "from": "model.covered>=4?html`<svg",
+      "to": "model.covered?html`<svg"
+    },
+    "exit": 1,
+    "failed": [
+      "real Host health UI waits for four recorded buckets before drawing sparse history (en)",
+      "real Host health UI waits for four recorded buckets before drawing sparse history (zh-TW)"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "drive-repeat",
+    "original": {
+      "path": "src/ui/host-health.js",
+      "sha256": "e16b0fffec5bb028c002a366a30165d949143f6395b26becbe16f891e82979f8"
+    },
+    "mutant": {
+      "path": "src/ui/host-health.js",
+      "sha256": "be12d27886d23e323b7adb117a49a23b14efdac75840c5ed781423bff33507c1"
+    },
+    "replace": {
+      "from": "drive:'\uff08{0}:\uff09'",
+      "to": "drive:'{0}: \u78c1\u789f'"
+    },
+    "exit": 1,
+    "failed": [
+      "real Host health UI keeps the drive suffix and pressure value readable (zh-TW)"
+    ],
+    "caught": true,
+    "restored": true
+  }
+]

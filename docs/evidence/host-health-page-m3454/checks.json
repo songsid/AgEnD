@@ -89,15 +89,22 @@
           "left": 721.75,
           "right": 1025.875,
           "top": 265.1875,
-          "bottom": 996.625
+          "bottom": 855.1875
         },
         {
           "left": 1041.875,
           "right": 1346,
           "top": 265.1875,
-          "bottom": 996.625
+          "bottom": 855.1875
         }
       ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 20,
+        "colPadding": 20,
+        "buttonPadding": 12,
+        "gap": 8
+      },
       "overflow": false,
       "small": [
         "Refresh",
@@ -108,7 +115,7 @@
         "30d"
       ],
       "cards": 3,
-      "svg": 4,
+      "svg": 0,
       "pageErrors": 0
     },
     {
@@ -157,15 +164,22 @@
           "left": 721.75,
           "right": 1025.875,
           "top": 265.1875,
-          "bottom": 996.625
+          "bottom": 855.1875
         },
         {
           "left": 1041.875,
           "right": 1346,
           "top": 265.1875,
-          "bottom": 996.625
+          "bottom": 855.1875
         }
       ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 20,
+        "colPadding": 20,
+        "buttonPadding": 12,
+        "gap": 8
+      },
       "overflow": false,
       "small": [
         "Refresh",
@@ -176,7 +190,7 @@
         "30d"
       ],
       "cards": 3,
-      "svg": 4,
+      "svg": 0,
       "pageErrors": 0
     },
     {
@@ -305,20 +319,27 @@
         {
           "left": 16,
           "right": 187,
-          "top": 1076.484375,
-          "bottom": 1572.5
+          "top": 981.390625,
+          "bottom": 1405.390625
         },
         {
           "left": 203,
           "right": 374,
-          "top": 1076.484375,
-          "bottom": 1572.5
+          "top": 981.390625,
+          "bottom": 1405.390625
         }
       ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
       "overflow": false,
       "small": [],
       "cards": 3,
-      "svg": 4,
+      "svg": 0,
       "pageErrors": 0
     },
     {
@@ -359,20 +380,27 @@
         {
           "left": 16,
           "right": 187,
-          "top": 200.484375,
-          "bottom": 696.5
+          "top": 236.390625,
+          "bottom": 660.390625
         },
         {
           "left": 203,
           "right": 374,
-          "top": 200.484375,
-          "bottom": 696.5
+          "top": 236.390625,
+          "bottom": 660.390625
         }
       ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
       "overflow": false,
       "small": [],
       "cards": 3,
-      "svg": 4,
+      "svg": 0,
       "pageErrors": 0
     },
     {
@@ -610,5 +638,5 @@
   "nativeBackingIdentified": true,
   "nativeSampleCount": 2,
   "scope": "Actual WSL cache; macOS/Linux and unavailable states are synthetic UI only. No footprint/hour/model/account claim.",
-  "carry": "Six unchanged Settings/off/unsupported originals from first successful batch;18 affected/current originals including3 lower-resource phone views."
+  "carry": "Four Leader R1 real-data originals/current checks replace matching b81 views;20 originals remain historical controls. See R1.md."
 }

@@ -15,7 +15,7 @@ function health(platform:'wsl'|'linux'|'darwin'='wsl'){
  s.disks={status:'ok',sampledAt:now,attemptedAt:now,value:{backingDrive:platform==='wsl'?'identified':'not-applicable',volumes:[{id:'a'.repeat(16),roles:['root','state'],availableBytes:100*1024**3,totalBytes:200*1024**3,usedPercent:50,sampledAt:now},...(platform==='wsl'?[{id:'b'.repeat(16),roles:['wsl-backing'],drive:'D',availableBytes:40*1024**3,totalBytes:200*1024**3,usedPercent:80,sampledAt:now}]:[])]}};
  return s;
 }
-const history={series:[{id:'cpu.used',buckets:[{average:0,min:0,max:0,count:1},{average:35,min:35,max:35,count:1},{average:null,min:null,max:null,count:0},{average:20,min:20,max:20,count:1}]}]};
+const history={series:[{id:'cpu.used',buckets:[{average:0,min:0,max:0,count:1},{average:35,min:35,max:35,count:1},{average:null,min:null,max:null,count:0},{average:20,min:20,max:20,count:1},{average:25,min:25,max:25,count:1}]}]};
 async function view(snapshot=health(),language='en'){
  const p=page();pages.push(p);setLang(language);await p.mount(h(HostHealthView,{health:snapshot,history,range:'1h',busy:false,onRange(){},onRefresh(){}}));await settle(4);return p;
 }
@@ -27,6 +27,14 @@ describe('real Host health UI',()=>{
  it.each(['en','zh-TW'])('shows WSL and its separate backing drive with real numeric charts (%s)',async language=>{
   const p=await view(health(),language);const text=p.root.textContent;expect(text).toContain(language==='en'?'Windows backing drive':'存放 WSL 的 Windows 磁碟');expect(text).toContain('40.0 GiB');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(2);expect(p.root.querySelectorAll('.host-chart svg polyline')).toHaveLength(2);
   expect(text).toContain(language==='en'?'not the physical Windows computer':'不是實體 Windows 電腦');expect(text).toContain(language==='en'?'Gaps mean no sample':'缺口代表沒有記錄取樣');expect(p.root.querySelector('a[href="/settings/notifications#host-monitoring"]')).not.toBeNull();
+ });
+ it.each(['en','zh-TW'])('keeps the drive suffix and pressure value readable (%s)',async language=>{
+  const p=await view(health(),language);expect(p.root.querySelector('.host-volume h4')?.textContent).toBe(language==='en'?'Windows backing drive (D:)':'存放 WSL 的 Windows 磁碟（D:）');expect(p.root.querySelector('.host-pressure-value')?.textContent).toBe(language==='en'?'Normal':'正常');
+ });
+ it.each(['en','zh-TW'])('waits for four recorded buckets before drawing sparse history (%s)',async language=>{
+  const p=page();pages.push(p);setLang(language);const buckets=Array.from({length:120},(_,i)=>({average:i<3?35:null,min:i<3?35:null,max:i<3?35:null,count:i<3?1:0}));
+  const draw=async()=>{await p.mount(h(HostHealthView,{health:health(),history:{series:[{id:'cpu.used',buckets}]},range:'1h',busy:false,onRange(){},onRefresh(){}}));await settle(4);};await draw();expect(p.root.querySelector('.host-chart svg')).toBeNull();expect(p.root.textContent).toContain(language==='en'?'Collecting history…':'正在累積歷史紀錄…');
+  buckets[3]={average:40,min:40,max:40,count:1};await draw();expect(p.root.querySelector('.host-chart svg')).not.toBeNull();expect(p.root.textContent).toContain(language==='en'?'Peak: 40.0%':'最高：40.0%');
  });
  it('represents macOS APFS sharing and unknown pressure without a healthy substitute',async()=>{
   const s=health('darwin');s.memory.value!.pressure='unknown';s.disks.value!.volumes[0].shared=true;const p=await view(s);

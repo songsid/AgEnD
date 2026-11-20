@@ -1,6 +1,6 @@
 # Capture index
 
-These originals were visually/privacy inspected. Real WSL views contain actual cached metrics; the roster is synthetic. Fixture views demonstrate rendering only.
+Four real-data desktop EN light/dark and phone zh-TW upper/resources originals are current Leader R1 retakes. The other20 are historical b81 controls with the prior sparse chart/copy; see [R1](R1.md). All originals were visually/privacy inspected. Real WSL views contain actual cached metrics; the roster is synthetic. Fixture views demonstrate rendering only.
 
 | View | Source |
 |---|---|
