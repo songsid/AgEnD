@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { unitTestConfig } from "../vitest.config.js";
 import { pwshTestConfig } from "../vitest.config.pwsh.js";
 import { PWSH_CI_SUITES } from "./support/pwsh-ci-suites.js";
+import { DURABLE_CI_SUITES } from "./support/durable-ci-suites.js";
 import { discoverPwshSuites } from "./support/pwsh-ci-discovery.js";
 
 interface Job {
@@ -30,7 +31,7 @@ describe("PowerShell CI resource partition", () => {
       expect(unit.exclude, file).toContain(file);
       expect(pwsh.exclude, file).not.toContain(file);
     }
-    expect(unit.exclude?.filter(f => !normal.exclude?.includes(f))).toEqual(PWSH_CI_SUITES);
+    expect(unit.exclude?.filter(f => !normal.exclude?.includes(f))).toEqual([...PWSH_CI_SUITES, ...DURABLE_CI_SUITES]);
   });
   it("isolates startup from other test workers while retaining guards and all budgets", () => {
     const normal = unitTestConfig("").test!;
