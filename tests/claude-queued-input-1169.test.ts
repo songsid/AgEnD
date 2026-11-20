@@ -62,6 +62,8 @@ const QUEUED = ["busy-queued", "busy-queued-long", "long-busy-queued", "tool-que
   .concat("claude-2.1.326-busy-queued.pane.txt")
   // …and the 2.1.327 audit's (the same marker).
   .concat("claude-2.1.327-busy-queued.pane.txt")
+  // …and the 2.1.329 audit's (the same marker).
+  .concat("claude-2.1.329-busy-queued.pane.txt")
   // …and the 2.1.325 audit's.
   .concat("claude-2.1.325-busy-queued.pane.txt");
 
