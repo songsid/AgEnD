@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { request, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
+import { Server as TlsServer } from "node:tls";
 import { randomUUID } from "node:crypto";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -86,8 +87,8 @@ async function fixture() {
   const fm = new FleetManager(home), sink = () => {}; internal = fm as any;
   fm.logger = { info: sink, warn: sink, error: sink, debug: sink, trace: sink, fatal: sink, child: () => fm.logger } as any;
   vi.stubEnv("AGEND_FLEET_DATA_DIR", process.env.AGEND_FLEET_DATA_DIR); vi.stubEnv("AGEND_FLEET_CONFIG_PATH", process.env.AGEND_FLEET_CONFIG_PATH);
-  fm.loadConfig(configPath); internal.initializeWebAuthTokens(); internal.startHealthServer(0);
-  await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
+  fm.loadConfig(configPath); internal.initializeWebAuthTokens(); await internal.startHealthServer(0);
+  expect(fm.getDashboardAccess().ready).toBe(true);
   const port = internal.healthServer.address().port, origin = `http://127.0.0.1:${port}`, token = fm.getDashboardAccess().token!;
   async function signIn(code?: string) {
     code ??= (await call(port, "POST", "/auth/issue-code", { "x-agend-token": token, origin })).body.code;
@@ -106,9 +107,19 @@ async function fixture() {
 }
 
 describe.skipIf(process.platform === "win32")("host directory notices from existing held state", () => {
-  it("holds the first runtime's sockets through startup and frees them before cold host notice reads", async () => {
+  it("holds the first runtime's sockets and verifies closure without rebinding released ports", async () => {
     const factory = factoryModule.createHubServerFactory;
     const competitors: ReturnType<typeof createNetServer>[] = [], ports: number[] = [], results: string[] = [];
+    const listeners: TlsServer[] = [], closed: TlsServer[] = [];
+    const emit = TlsServer.prototype.emit;
+    vi.spyOn(TlsServer.prototype, "emit").mockImplementation(function(this: TlsServer, event: string | symbol, ...args: any[]) {
+      const address = this.address();
+      if (event === "listening" && address && typeof address !== "string" && ports.includes(address.port)) {
+        listeners.push(this);
+        this.once("close", () => { closed.push(this); });
+      }
+      return Reflect.apply(emit, this, [event, ...args]);
+    });
     vi.spyOn(factoryModule, "createHubServerFactory").mockImplementation(options => {
       const mount = factory(options);
       return Object.assign(async (...args: Parameters<typeof mount>) => {
@@ -132,13 +143,12 @@ describe.skipIf(process.platform === "win32")("host directory notices from exist
       try { r = await fixture(); }
       finally { expect(results).toEqual(["EADDRINUSE", "EADDRINUSE"]); }
       expect(new Set(ports).size).toBe(2);
-      // The fixture already closed the runtime after the replacement mount refused.
-      // Bind before lease cleanup so fixture disposal cannot mask a production leak.
-      for (const port of ports) {
-        const probe = createNetServer();
-        try { await new Promise<void>((resolve, reject) => { probe.once("error", reject); probe.listen(port, "127.0.0.1", resolve); }); }
-        finally { if (probe.listening) await new Promise<void>(resolve => probe.close(() => resolve())); }
-      }
+      // A new ephemeral listener may already own either old address. Observe the original
+      // listeners' real lifecycle instead of treating numeric-port reuse as a Hub leak.
+      expect(listeners).toHaveLength(2);
+      expect(new Set(closed)).toEqual(new Set(listeners));
+      expect(listeners.map(listener => listener.listening)).toEqual([false, false]);
+      expect(listeners.map(listener => listener.address())).toEqual([null, null]);
       expect(await r.request()).toMatchObject({ status: 200, body: { items: [{ kind: "directory", phase: "applying", acknowledged: false }] } });
       expect(r.cold).not.toHaveBeenCalled(); expect(r.internal.hubRuntime).toBeNull();
     } finally {

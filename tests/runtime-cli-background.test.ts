@@ -377,14 +377,25 @@ describe("the detached Runtime itself (run with the background switch)", () => {
     writeFileSync(join(store.directory, RUNTIME_STOP_REQUEST_FILE), JSON.stringify({ version: 1, at: 2 })); await run;
   });
   it("another Runtime already holds the profile: it says so to the launcher, writes it down and leaves the other one's marker alone", async () => {
-    const f = fixture(), store = pairTo(f.base); lockFile(store.directory, 4242); writeInstanceMarker(store.directory, 4242, 77);
-    await call(["run", "--profile", f.base], f, { env: background(f) });
-    expect(word(f)).toMatchObject({ launchId: ID, status: "already-running", pid: 4242 }); expect(world.started).not.toHaveBeenCalled();
-    expect(logOf(f)).toMatch(/already runs for this profile \(process 4242\); this one did not start/);
-    expect(JSON.parse(readFileSync(join(store.directory, RUNTIME_INSTANCE_FILE), "utf8"))).toMatchObject({ pid: 4242, startedAt: 77 });
-    world.started.mockClear(); clearBackgroundState(store.directory); rmSync(join(store.directory, "runtime.lock"));          // the lock appears only when the client starts: the race
-    world.startError = new RuntimeProfileInUseError(31, store.directory, false, join(store.directory, "runtime.lock"));
-    await call(["run", "--profile", f.base], f, { env: background(f) }); expect(word(f)).toMatchObject({ status: "already-running", pid: 31 });
+    // Force the CI collision: the test worker can itself be process 4242.
+    const originalPid = Object.getOwnPropertyDescriptor(process, "pid")!;
+    Object.defineProperty(process, "pid", { ...originalPid, value: 4242 });
+    try {
+      const holderPid = process.pid + 1;
+      const f = fixture(), store = pairTo(f.base); lockFile(store.directory, holderPid); writeInstanceMarker(store.directory, holderPid, 77);
+      const options = { env: background(f), background: seams(f, { instance: {
+        alive: (pid: number) => pid === holderPid || pid === process.pid,
+        reusedPid: async () => undefined, systemBootId: async () => undefined,
+      } }) };
+      expect(holderPid).not.toBe(process.pid);
+      await call(["run", "--profile", f.base], f, options);
+      expect(word(f)).toMatchObject({ launchId: ID, status: "already-running", pid: holderPid }); expect(world.started).not.toHaveBeenCalled();
+      expect(logOf(f)).toContain(`already runs for this profile (process ${holderPid}); this one did not start`);
+      expect(JSON.parse(readFileSync(join(store.directory, RUNTIME_INSTANCE_FILE), "utf8"))).toMatchObject({ pid: holderPid, startedAt: 77 });
+      world.started.mockClear(); clearBackgroundState(store.directory); rmSync(join(store.directory, "runtime.lock"));          // the lock appears only when the client starts: the race
+      world.startError = new RuntimeProfileInUseError(31, store.directory, false, join(store.directory, "runtime.lock"));
+      await call(["run", "--profile", f.base], f, options); expect(word(f)).toMatchObject({ status: "already-running", pid: 31 });
+    } finally { Object.defineProperty(process, "pid", originalPid); }
   });
   it("an end AgEnD caused (revoked, refused…) is written to the log and leaves a non-zero exit status", async () => {
     const f = fixture(); pairTo(f.base); world.stopReason = { kind: "revoked" }; const code = process.exitCode;

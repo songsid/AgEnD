@@ -1,0 +1,48 @@
+{
+  "files": [
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "3805a4ca8ed60fdf8cc0aaab1a796d30604f076e590305966c635974aba9ffe3"
+    },
+    {
+      "path": "scripts/manual/smoke/ui-gate-tap-allowlist.json",
+      "sha256": "ae4bda22dd929d22ca2d6046878af5419d368a77d9e0a2d7b929c0cf41dc55bb"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/README.md",
+      "sha256": "2d7cdd323fe19280ae4a6e7c69fc77396edc2648f69cccc8fab6f7d7478fa320"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/base-gate.log",
+      "sha256": "66a642c09f8cc09821507e9c8f41335f7cf943a616be7fa4b061e45b96212a75"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/captures/checks.json",
+      "sha256": "4078a82d9f8044dba13f7c56cf510effcf7003a611904789ac3ddf8fa914df5e"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/captures/phone-access.png",
+      "sha256": "651c4e80a4372816cc3f67c7eeeb4a86604248d807c6cbff2c22afdf4265215e"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/ci-gate.log",
+      "sha256": "a2e53ad1f502142d5489fd379485be9804d56a28b76ba872e5aabe8313c3c3c0"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/css-tests.log",
+      "sha256": "ef0fb7fae7367933c28cde782a798db66e8b5d92a89d7fb4186d1f07f1e5b2e9"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/fragments.log",
+      "sha256": "fe4373a198a6693ca708c73888917eecd1457fe421e959bd28c57022385f3c6c"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/full-gate-result.json",
+      "sha256": "111a7ab24d5cab7b7e40eacc00758ac2defd797107663391dbb338e36329669d"
+    },
+    {
+      "path": "docs/evidence/access-tap-m3426/full-gate.log",
+      "sha256": "46bfba1e390c860a221797196d684a3c5bf65a6d2ab36f03e0c379552d9cf689"
+    }
+  ]
+}

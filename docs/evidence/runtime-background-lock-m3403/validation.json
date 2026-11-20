@@ -1,0 +1,21 @@
+{
+  "forcedWorkerPid": 4242,
+  "base": {
+    "failed": 1,
+    "filtered": 45,
+    "actualStatus": "ready",
+    "expectedStatus": "already-running"
+  },
+  "fullFile": {
+    "passed": 46
+  },
+  "focused": {
+    "runs": 20,
+    "passed": 20,
+    "failed": 0
+  },
+  "testTypeDiagnostics": 0,
+  "productionChanged": false,
+  "retriesOrTimeoutsChanged": false,
+  "liveProcessesLaunched": false
+}

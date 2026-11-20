@@ -13,7 +13,7 @@ import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { ca } from "./contact-auth-strings.js";
-import { getPermissions, getTicket, putPermissions } from "./contact-auth-client.js";
+import { getPermissions, getTicket, putPermissions, dismissSuggestion } from "./contact-auth-client.js";
 import { TicketCard } from "./contact-authorizations.js";
 import { notCovered, wouldDisableMore, wouldDisableText } from "./contact-permissions.js";
 
@@ -59,10 +59,10 @@ function SuggestionNeed({ item }) {
   const later = async () => {
     if (busy) return;
     setBusy(true);
-    let ok = false;
-    try { const r = await fetch("/ui/needs/ack", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) }); ok = r.ok; } catch { ok = false; }
+    const r = await dismissSuggestion(item.id);
     setBusy(false);
-    if (!ok) toast(ca("saveFailed"), false);
+    if (!r.ok) toast(ca(r.status === 401 ? "laterSignedOut" : r.code === "csrf" || r.code === "cross-site" ? "laterRefresh" : r.code === "verification-required" ? "laterVerify"
+      : r.code === "forbidden" ? "laterForbidden" : r.code === "missing" ? "laterMissing" : r.status === 0 ? "laterNetwork" : "laterUnavailable"), false, { detail: true });
   };
   return html`<div class="n-title"><strong>${ca("suggestTitle")}</strong></div>
     <p class="n-detail">${name}: ${ca("suggestBody")}</p>

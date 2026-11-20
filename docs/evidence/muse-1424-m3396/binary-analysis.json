@@ -1,0 +1,64 @@
+[
+  {
+    "version": "1.4.23-R8977.1",
+    "bytes": 466999640,
+    "sha256": "7ca9e16659f759eab3ae6c4b61c6f1e70f5f3fea1ca961ebd49044a1146956f4",
+    "hits": {
+      "rate limited retry error": {
+        "offset": -1,
+        "context": null
+      },
+      "To continue this session, run": {
+        "offset": 4616152,
+        "context": "ner process exited before terminal; recovery continued in a new taskworkflow.execution.recovery_outcomeworkflow_run_idtheme hydration exceeded the 192-row boundtheme hydration returned unaligned showcase countstheme hydration returned a mismatched showcase identity\n\n\n\n\n\nbackgroundTerminal/inboxItemDrained\n  \n \n\n\n\n\n\n \n\n(\n\n\n\n\n\n\n\n\n\n\n\n\n\n \n\n estimate\n\n\nTo continue this session, run resume_reconcile:orphaned_by_process_loss~~/\n\n\n\n\n\n\n\n\n select\n\n\n collapse\n\n\n expandc cancel workflowp pause\n\n\nagentagents\n\n\n\n\n\n agent \n\n type to filter \n\n backspace edit \n\n esc back\n\n\n\n\n\n agent\n\n\n promptj/k scrollx stopr restarts savemcp__completedfailedcancelledtimed_outThe previous process terminated while this tool call was in flight, and no result was recorded. The outcome is unknown: the operation may have partially or fully applied. Verify the actual state before retrying.outcome unknown after process losstask-stream link lacks committed-batch causationcausal task-stream evidence duplicatedcausal task-stream evidence incompletecommitted tool call identity d"
+      },
+      "Usage limit reached": {
+        "offset": 5096135,
+        "context": "\n\n\n\n\n\n\nconstant.language\npunctuationpunctuation.sectionpunctuation.separatorpunctuation.terminatormeta.brace\n\nmarkup.headingmarkup.boldmarkup.italicmarkup.link\n\nmarkup.raw\n\nmarkup.quotemarkup.listentity.name.tagpunctuation.definition.tag\n\n\n\nentity.other.attribute-namemarkup.inserted\n\nmarkup.deletedmarkup.changed\n\ninvalid.illegal\n\ninvalid.deprecatedUsage limit reached\nThis turn stopped because your usage limit was reached.\nCheck /usage for details.\nSend a message to continue when usage is available.write_fileedit_fileresume_reconcile:orphaned_by_process_lossexpected <name>=<target>:<root>, where <root> is an absolute path:/crash-<$0.01 (partial)\n\n<command-name></command-name><command-args></command-args># AGENTS.md instructions<environment_context><user_instructions>jsonrpcemittedAtMsloaded_skill_invocationloaded-skill-source:loaded_skill_sourceruntime_invocationmeta-models/plugin-marketplacework_stopresult evidence missingFailedCancelledresult missing: run terminatedlegacy tool resultCompletedDeniedUnavailabletool resultmissing call c"
+      },
+      "rate_limit": {
+        "offset": 55696,
+        "context": "prompt_settledve\n\n\n\n\n\n\n\n\n\n\n\n\n\nkD\n\n8\n\n!\nT\n<j\n\n7\n\n\n\n\n\"\n1|V\nl\n\n'@close_in_progresinvocation_preapnative_result_atserve-exit.jsonlsession/approvaltool_call_updated_by_gate_runnerperformance_gatemax_regression_plaredPhasePlanV1Unknown Records:durable_compatibRollout and acti2026-10-14T18:24reminder snoozedEffectivityState\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nExclusiveMaximumrate_limit_exceeoutput_text.done\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nmxp/session/closalCommandNetworkcurrentAdmissionaaaaaaaaaaaaaaaaworkflow-child-callow_local_mcp_lect\n\n\n\n\n\n\n\n\n\n\n\nnal-\n\n\n\n\n\n\n\n\n\n\n\non job: \n\n\n\n\n\n\n\ngins.activation.plugins.activati\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n.mailbox.inboundd_real_executionbox.presentationPublicationStateUserShellCommandIndexing sessionparentSubagentIdpability-approvem-remove\n\n\n\n\n\n\n\n.text_not_landed\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nReview answers bser input neededtool.write_stdinNote (optional):\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\ntool task stream\n\n\n\n\n\n\n\n0\n\n\n\n\n\n\nills diagnosticsmessages waiting\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nFrozenDigestFeedfield_name_bytes=\n\n\n\np\n\n>d[\n\nL\n\n\n\n\n\n\n\n\n?\n\n\n\n\n\n\n?Workflow fin"
+      },
+      "Allow this command": {
+        "offset": -1,
+        "context": null
+      },
+      "Muse Code": {
+        "offset": 680248,
+        "context": "e recorded: \nD; source reconciliation remains recorded; original terminal reason: \n\n\nWorkflow owner \n' has no unique settled terminal receipt\n,workflow_resume_recovery_successor_refused: \n\n: \n\n*write context compaction runtime evidence \n\n: \n\n\ncould not list scheduled jobs: \n\n\n\ns\n\"macOS grants these permissions to \n], the app this terminal runs in. Muse Code uses them only while it's working on your request.\n)Computer Use couldn't be turned back on: \n\n. Try /cua on again.\n\nvoice mode \n\n\nModel set to \n\n\n\n\n\n\nBlocked apps that match: \n&. Type /cua unblock and the full name.\n\nplugin \n\n: \n\n \n0: denied by enterprise runtime capability policy\n\nCopied response \n\n to clipboard\n\n\n]9;\n\n\n\n\n- Recent crashes: \n\n\n\n\nretained source run \n$ is already bound to session stream \n\n, not \n\n#fork origin for the startup stamp: \n\n\nLogin credential saved to \n\n.\n\nLogged in to \n\n. Key saved to \n\n.\n\n- \n\n: send_failures=\n\n, destination_unreachable=\n\n, last_failure=\n\n\n\n\n\n(off)\n\ndecision \n\n\n (\n\n)\n\n* is a built-in block and can't be removed.\n\n\n: \n\n.\n\nCouldn't revoke Al"
+      }
+    }
+  },
+  {
+    "version": "1.4.24-R9131.1",
+    "bytes": 471370072,
+    "sha256": "d752c45dce079ee29e118804b091d81ac2b1b89b67f317b4a162fa1af1206465",
+    "hits": {
+      "rate limited retry error": {
+        "offset": -1,
+        "context": null
+      },
+      "To continue this session, run": {
+        "offset": 4028396,
+        "context": "stimateWorkflow launch acceptedOwner path: runtime command admission -> production owner loopenabledHERDR_ENVTBH_TMUX_TIMEOUT_SCALEno stored Meta credential to removelogged out: removed the stored Meta credentialAPI key must be a single lineempty API keyTBH_AUTH_BASE_URLunknown sessionMetaCode runtime context updatetui-history.jsonl and skillsskillTo continue this session, run \n\n\nABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n>\n\n\n?456789:;<=\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n !\"#$%&'()*+,-./0123\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n]52;c;\nPtmux;xclip-selection--clipboardtmux set-clipboard is offshow-options-g-vset-clipboarddisplay-message-p#{client_termfeatures}child stdin unavailableallow_local_mcp_toolallow_local_networkmanualexitedworkflow_pausedtimed_outrecord_failedcontinuing with the session in this TUI, so other clients cannot attach to it or take it over; start th"
+      },
+      "Usage limit reached": {
+        "offset": 5281859,
+        "context": "uous accepted User Intent Envelopesterminal User Intent envelope index returned a mismatched joinsuccessor input matches ambiguous accepted User Intent Envelopessuccessor User Intent envelope index returned a mismatched joinpeer admission UI projection source is incompleteruntime.session.capture_selectionruntime.session.permission_profile_committedUsage limit reached\nThis turn stopped because your usage limit was reached.\nCheck /usage for details.\nSend a message to continue when usage is available.resume_reconcile:orphaned_by_process_lossgenerated workflowNo validated capabilities.No capabilities declared., Child workflow-child-control://permission initialization unavailablestartup source budget exceededstartup source encoding failedstartup source read failedcheckpoint projection replay failedmailbox projection unavailableremote Session messaging unavailable; local Session remains availablesession worktree recordThe previous process terminated while this tool call was in flight, and no result was recorded. The outcome is unknown: the "
+      },
+      "rate_limit": {
+        "offset": 56016,
+        "context": "served_generatsubagent_not_stashell_command_ardidate_decisionscapture_observedextension_remoteve\n\n\n\n\n\n\n\n\n\n\n\n\n\nserve-exit.jsonlsession/approvaltool_call_updatedurable_compatibUnknown Records:2026-10-14T18:24reminder snoozedEffectivityStateperformance_gateRollout and actid_by_gate_runnermax_regression_plaredPhasePlanV1\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nExclusiveMaximumrate_limit_excee\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\noutput_text.donemxp/session/closalCommandNetwork\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nallow_local_mcp_\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n6\n\n\n6\n\n?g_\n\n\nApprovalResolved]\n\n\n\n\n \n\n\n\n\n\n\n\nHaaaaaaaaaaaaaaaa\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nionRebuildFailedFrozenDigestFeedparentSubagentIdinitialization_pills diagnosticsWorkflow final sNAME=TARGET:ROOT\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nauthenticated_exself_hop_limit_rcontainment_staton job: \n\n\n\n\n\n\n\npability-approve.text_not_landedd_real_executioncurrentAdmission\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nfield_name_bytespluginBindingUnaIndexing sessionlect\n\n\n\n\n\n\n\n\n\n\n\nnal-\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n?\n\n\n\n\n\n\n?m-remove\n\n\n\n\n\n\n\ntool task streamUserShellCommandTaskStreamLinkedCursorCheckpointApprovalDisa"
+      },
+      "Allow this command": {
+        "offset": -1,
+        "context": null
+      },
+      "Muse Code": {
+        "offset": 682969,
+        "context": "able=\n\n, last_failure=\n\n\n\n\n* is a built-in block and can't be removed.\n\n\n: \n\n.\n\nCouldn't revoke Always allow: \n\n.\n\nReplaced \n\n unfinished \n\n\nstatus \n\n - \n\n - hash \n\n - source \n\n\nretained source run \n$ is already bound to session stream \n\n, not \n\n\ncould not list scheduled jobs: \n\n\"macOS grants these permissions to \n], the app this terminal runs in. Muse Code uses them only while it's working on your request.\n)Computer Use couldn't be turned back on: \n\n. Try /cua on again.\n\nvoice mode \n\n\nModel set to \n\n\n\n\n\n\nBlocked apps that match: \n&. Type /cua unblock and the full name.\n!announce serve permission error: \n\n failed to write MCP stdio body: \n\n\n--description=\n\n\n\n(off)\n/stable run append lost committed source record \n\n5compaction checkpoints are refused for this session: \n\n#fork origin for the startup stamp: \n\n!strict frame preparation failed: \n\n%strict retained append is ambiguous: \n\n\nattempt \n\n/\n\n \n\n \n\n \n\n not shown\n\nMCP \n\n\n\n; the entry is ignored\n\nSaved workflow \n\n at \n\n: \n\n\n\n diagnostic\n\n- Recent crashes: \n\n\n\n\n\n\n\n +\n\n more\n\n\n \n\n\n\n\nallo"
+      }
+    }
+  }
+]

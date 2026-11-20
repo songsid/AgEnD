@@ -237,13 +237,40 @@ describe("Fleet → Authorizations", () => {
     expect(calls[0]!.url).toBe("/ui/api/contact-authorizations?status=pending");
     const card = pg.root.querySelector('.contact-ticket[data-ticket="R12"]') as any;
     const seen = [text(card.querySelector(".contact-ticket-head")), text(card.querySelector(".contact-ticket-route")), text(card.querySelector(".contact-ticket-message"))];
-    expect([...card.querySelectorAll(".contact-ticket-head > *")].map(text), JSON.stringify(seen)).toEqual(["Contact request #R12", "Waiting for approval", "message"]);
-    expect(seen.slice(1)).toEqual(["From classic-ops → To web-dev", "Please rerun the nightly report."]);
+    expect([...card.querySelectorAll(".contact-ticket-head > *")].map(text), JSON.stringify(seen)).toEqual(["Contact request", "#R12", "message", "Waiting for approval"]);
+    expect([...card.querySelectorAll(".contact-agent-chip")].map(text)).toEqual(["classic-ops", "web-dev"]);
+    expect(seen[2]).toBe("Please rerun the nightly report.");
     fire(button(card, "Approve once"), "click"); await settle(6);
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ revision: 2, decision: "approve-once" }]);
     const after = pg.root.querySelector('.contact-ticket[data-ticket="R12"]') as any;
     expect([after.getAttribute("data-state"), button(after, "Approve once")]).toEqual(["delivered", undefined]);
     expect(text(after)).toContain("Forwarded means the request was delivered, not that the work is done.");
+  });
+  it("keeps human identities separate from roster display names for routes and hops", async () => {
+    const person = { ...ADMIN, label: "", userId: "web-dev" };
+    api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket({ state: "declined", canDecide: false, decidedAt: "2026-11-18T09:00:00Z", decidedBy: person,
+      origin: { kind: "human", people: [person], receiptIds: [], chain: ["classic-ops"] } })], nextCursor: null } }) });
+    const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
+    const { pg } = await mountWith(ContactAuthorizations, {});
+    const { appStore } = await import("/assets/app-store.js") as any;
+    appStore.set({ instances: [{ name: "web-dev", display_name: "Release helper" }, { name: "classic-ops", display_name: "Example room" }] }); await settle(4);
+    expect([...pg.root.querySelectorAll(".contact-agent-chip")].map(text)).toEqual(["Example room", "Release helper"]);
+    expect(pg.root.querySelector(".contact-hop")?.getAttribute("title")).toBe("classic-ops");
+    expect(text(pg.root.querySelector(".contact-hop"))).toBe("Example room");
+    expect(text(pg.root.querySelector(".contact-ticket-origin .link-btn"))).toBe("web-dev");
+    expect(text(pg.root.querySelector(".contact-ticket-times"))).toContain("web-dev");
+    expect(text(pg.root.querySelector(".contact-ticket-times"))).not.toContain("Release helper");
+    expect([...pg.root.querySelectorAll(".contact-agent-filter option")].map(text)).toContain("Release helper");
+    expect(pg.root.querySelectorAll(".contact-time-item")).toHaveLength(2);
+  });
+  it("empty pending requests explain what appears here and offer all records", async () => {
+    const calls = api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [], nextCursor: null } }) });
+    const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
+    const { pg } = await mountWith(ContactAuthorizations, {});
+    expect(text(pg.root.querySelector(".empty-hint"))).toContain("restricted ClassicBot rooms");
+    fire(button(pg.root, "View all records"), "click"); await settle(4);
+    expect(calls.at(-1)?.url).toBe("/ui/api/contact-authorizations");
+    expect(button(pg.root, "View all records")).toBeUndefined();
   });
   it("“also allow this contact” is a separate, explicit grant: off by default; on, it sends its expiry and uses", async () => {
     const calls = api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket()], nextCursor: null } }),
@@ -280,6 +307,8 @@ describe("Fleet → Authorizations", () => {
     expect(calls.map((c) => c.url)).toEqual(["/ui/api/contact-authorizations?status=pending", "/ui/api/contact-authorizations",
       "/ui/api/contact-authorizations?agent=web-dev", `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","dc-main","1001"]')}`,
       `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","dc-main","1001"]')}&cursor=c2`]);
+    fire(pg.root.querySelector(".contact-person-filter .chip-x"), "click"); await settle(4);
+    expect(calls.at(-1)?.url).toBe("/ui/api/contact-authorizations?agent=web-dev");
   });
   it("?ticket=R7 opens that request on top (read by itself); a request the reader can't decide has no buttons", async () => {
     api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket()], nextCursor: null } }),
@@ -335,7 +364,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准或符合管理員設定的常用轉交，表示管理員對這次轉交背書。接收 Agent 的來源維持原狀，發送 Agent 仍保留自己的來源。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准或符合管理員設定的常用轉交，表示管理員對這次轉交背書。接收 Agent 的來源維持原狀，發送 Agent 仍保留自己的來源。具管理權限的管理員可在「權限」明確清除 Agent 的來源，不支援自動重設。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
@@ -343,7 +372,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     api({ "GET /ui/api/instances/classic-ops/contact-permissions": () => ({ body: roomPerm({ originRestriction: { active: true, reason: "unknown-origin", resetSupported: false } } as any) }) });
     const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
-    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approval or a matching administrator-written grant forwards this request with the administrator's endorsement. The receiving agent's origin is unchanged; the source agent keeps its own origin.");
+    expect(text(pg.root.querySelector(".contact-origin-restriction"))).toBe("This agent's retained history has an unknown origin, so this contact needs approval. Approval or a matching administrator-written grant forwards this request with the administrator's endorsement. The receiving agent's origin is unchanged; the source agent keeps its own origin. A managing administrator can explicitly clear an agent's origin in Permissions. Automatic reset is not supported.");
   });
 });
 

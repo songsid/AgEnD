@@ -1,3 +1,4 @@
+import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
 import { pipeline } from "node:stream/promises";
 import { handleContactAuthorizationApi, type ContactApiHost } from "./contact-auth-api.js";
 import { buildAgentExport, parseAgentExport } from "./agent-export.js";
@@ -258,7 +259,12 @@ const streamContactProjection = new WeakMap<ServerResponse, (event: string, data
 function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
   const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
   const actor = ctx.contactActor?.(req, url);
-  return actor && ctx.contactNeeds ? [...ordinary, ...ctx.contactNeeds(actor)] : ordinary;
+  if (actor && ctx.contactNeeds) return [...ordinary, ...ctx.contactNeeds(actor)];
+  const observer = ctx.contactSuggestionActor?.(req, url);
+  // A session identity may see benign room suggestions, never pending approval tickets.
+  const suggestions = observer && ctx.contactNeeds ? ctx.contactNeeds(observer).filter(item => item && typeof item === "object"
+    && (item as { reason?: string }).reason === "contact_restricted_suggestion") : [];
+  return [...ordinary, ...suggestions];
 }
 
 /**
@@ -409,7 +415,8 @@ export interface AccountMachine { id: string; actor: string }
 /** What an account write answers: done, or a code (and, for a computer, its own refusal sentence). */
 export type AccountWriteResult = { ok: true } | { ok: false; error: string; clash?: string; users?: unknown; message?: string };
 
-export interface WebApiContext {
+export interface WebApiContext extends ClaudeCredentialApi {
+  clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
   writeContactPermissions?: ContactApiHost["writeContactPermissions"];
   contactAuthorization?: ContactApiHost["contactAuthorization"];
@@ -418,6 +425,8 @@ export interface WebApiContext {
   contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
   acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
+  acknowledgeContactSuggestionFromWeb?(instance: string, req: IncomingMessage, url: URL): void;
+  contactSuggestionActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
@@ -1589,6 +1598,7 @@ function handleHostInstall(req: IncomingMessage, res: ServerResponse, url: URL, 
  * or a read session (M-3278: the public link's admin session may) — refused before the body is read, and again after it.
  */
 const ACCOUNT_STATUS: Readonly<Record<string, number>> = {
+  credential_connected: 409,
   backend: 400, name: 400, confirm: 400, exists: 409, case_clash: 409, unsafe_root: 409, in_use: 409, users_unknown: 409, signing_in: 409, missing: 404,
   unsafe: 409, default_home: 409, failed: 500, unsupported: 400, still_signed_in: 409,
   // #3190 Part 3c: a paired computer (the Runtime there decides; these are what the server can say before it asks, or what the computer answered).
@@ -3303,6 +3313,7 @@ export function handleWebRequest(
   if (path === "/ui/host-install" || path === "/ui/host-install/cancel" || HOST_CLI_PATHS.has(path)) return handleHostInstall(req, res, url, ctx, path, method);
   // #3292: before the accounts prefix — its Add pattern (`POST /ui/accounts/<backend>`) would read "keep-alive" as a backend.
   if (path === "/ui/accounts/keep-alive") return handleAccountKeepAlive(req, res, url, ctx, method);
+  if (handleClaudeCredentials(req, res, url, ctx)) return true;
   if (path.startsWith("/ui/accounts/")) return handleAccountWrite(req, res, url, ctx, path, method);
 
   // #1386: Acknowledge a "Needs you" delivery item — a session write (CSRF, checked by the gate) or the CLI's header
@@ -3520,10 +3531,24 @@ export function handleWebRequest(
       const id = body && typeof body === "object" ? body.id : undefined;
       if (typeof id !== "string") { json(res, 400, { error: "id required" }); return; }
       if (id.startsWith("contact-suggest:")) {
-        const actor = ctx.contactActor?.(req, url);
-        if (!actor || !ctx.acknowledgeContactSuggestion) { json(res, 403, { error: "forbidden" }); return; }
-        try { ctx.acknowledgeContactSuggestion(id.slice("contact-suggest:".length), actor); json(res, 200, { acknowledged: true }); }
-        catch { json(res, 403, { error: "forbidden" }); }
+        try {
+          if (ctx.acknowledgeContactSuggestionFromWeb) ctx.acknowledgeContactSuggestionFromWeb(id.slice("contact-suggest:".length), req, url);
+          else {
+            const actor = ctx.contactActor?.(req, url);
+            if (!actor || !ctx.acknowledgeContactSuggestion) throw Error("verification-required");
+            ctx.acknowledgeContactSuggestion(id.slice("contact-suggest:".length), actor);
+          }
+          json(res, 200, { acknowledged: true });
+        } catch (err) {
+          const code = err instanceof Error ? err.message : "";
+          if (code === "forbidden" || code === "verification-required") json(res, 403, { error: code, code });
+          else {
+            const raw = err && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+            const cause = typeof raw === "string" && /^[A-Z][A-Z0-9_]{1,48}$/.test(raw) ? raw : "unknown";
+            ctx.logger.error({ code: cause }, "Contact suggestion dismissal could not be saved");
+            json(res, 503, { error: "unavailable", code: "unavailable" });
+          }
+        }
         return;
       }
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });

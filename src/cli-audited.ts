@@ -14,7 +14,7 @@ import type { CliId } from "./cli-capability.js";
 /** Audited releases, oldest first. The last entry is the one an update goes to. A list is `readonly`: nothing at run time adds to it. */
 export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = Object.freeze({
   // The maintainer-confirmed ledger of 2026-11-15 (Taipei): Claude 2.1.325, Codex 0.169.0, Kiro 3.3.0, Grok 1.0.77, Antigravity 1.5.9, OpenCode 1.19.5 are
-  // the newest audited release of each; Muse 1.4.23-R8977.1 was added with M-3290; Grok 1.0.89 lands with its M-3335 audit evidence (2026-11-18). (Maintaining this shipped ledger is part of our audit PRs: when a version is marked audited, the maintainer who audits it adds it here.)
+  // the newest audited release of each; Muse 1.4.24-R9131.1 was added with M-3396; Grok 1.0.89 lands with its M-3335 audit evidence (2026-11-18). (Maintaining this shipped ledger is part of our audit PRs: when a version is marked audited, the maintainer who audits it adds it here.)
   // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048). 2.1.319: live-captured (tests/claude-cold-resume-2.1.319.test.ts). 2.1.325: upstream watch audit (tests/fixtures/claude-2.1.325-*).
   // 2.1.326: upstream watch audit (#4122 / #4124, tests/claude-2.1.326-*). 2.1.327: no detector change (M-3336, tests/claude-2.1.327-screens.test.ts).
   "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327"]),
@@ -22,15 +22,16 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   // 0.170.0: isolated mock-backed audit (M-3337, tests/codex-0170-audit.test.ts); no detector change.
   codex: Object.freeze(["0.165.0", "0.166.0", "0.167.0", "0.169.0", "0.170.0"]),
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
-  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0"]),
+  // 3.5.0: its chat.defaultModel warning is excluded from model_error (M-3398, tests/kiro-model-unavailable.test.ts).
+  "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0"]),
   // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3 and 1.5.9 on the maintainer's ledger.
   antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9"]),
   // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.89; 1.0.89 lands with its isolated real-binary evidence (M-3335).
   grok: Object.freeze(["1.0.52", "1.0.60", "1.0.67", "1.0.70", "1.0.77", "1.0.88", "1.0.89"]),
-  // tests/muse-1.4.*-audit.test.ts. The newest is kept with its build (`1.4.23-R8977.1`, tests/fixtures/muse-1.4.23, M-3290): an installed `1.4.23-R8500.1` is not the
-  // audited release, and the page can say so. (Older entries are the numbers, without a build: 1.4.14 was R7309.1, 1.4.15 was R8339.1, 1.4.20 was R8619.1,
-  // tests/fixtures/muse-1.4.15 and muse-1.4.20.)
-  muse: Object.freeze(["1.4.4", "1.4.6", "1.4.7", "1.4.11", "1.4.12", "1.4.13", "1.4.14", "1.4.15", "1.4.20", "1.4.23-R8977.1"]),
+  // tests/muse-1.4.*-audit.test.ts. Keep builds for the audited 1.4.23-R8977.1 (M-3290) and 1.4.24-R9131.1 (M-3396);
+  // another build of the same x.y.z is not that audited release. Older entries keep their numbers (1.4.14 was R7309.1,
+  // 1.4.15 was R8339.1, 1.4.20 was R8619.1; fixtures retain the exact provenance).
+  muse: Object.freeze(["1.4.4", "1.4.6", "1.4.7", "1.4.11", "1.4.12", "1.4.13", "1.4.14", "1.4.15", "1.4.20", "1.4.23-R8977.1", "1.4.24-R9131.1"]),
   // tests/fixtures/opencode-1.18.34-*; 1.19.5 on the maintainer's ledger.
   opencode: Object.freeze(["1.18.34", "1.19.5"]),
 });
