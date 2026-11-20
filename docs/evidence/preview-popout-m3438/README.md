@@ -26,3 +26,7 @@ The child keeps the existing chat store, stream and PreviewPanel mounted, so Ver
 ## Limits and rollback
 
 This is a scratch fixture/browser and stubbed test proof, not a live account, provider CLI/model, Fleet launch, native Windows or Safari campaign. Popup full screen used the immersive fallback; the separate main evidence covers the native fullscreen API and refusal fallback. Shared-browser popup behavior can vary by browser policy. User visual approval, designated exact-head review and green CI are required; both actual post-merge CI results remain task acceptance. Revert the change to remove the controls and optional presentation route; there is no migration or stored-data change.
+
+## Current visual correction
+
+The original captures above are historical. See [R1 toolbar correction](r1/README.md) and its retaken captures for the current user look. Secondary phone controls now use the shared options dialog; fullscreen is a standard icon button.

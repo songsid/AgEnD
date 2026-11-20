@@ -13,7 +13,7 @@ const say = (title: string, v: number) => fx.fm.emitSseEvent("message", { instan
 say("Example counter", 1); say("Example report", 1); say("Example counter", 2);
 const results: any[] = [];
 try {
-  for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {
+  for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) {
     const { ctx, page, csp } = await fx.page(c, { path: "/ui/chat/" + encodeURIComponent(name), prefs: { "preview.optIn": true } });
     const errors: string[] = [], sends: string[] = [];
     const trace = "window.__previewTrace=[];addEventListener('message',e=>{if(e.data?.channel?.includes('popout'))window.__previewTrace.push({type:e.data.type,channel:e.data.channel,originMatches:e.origin===location.origin,opener:e.source===window.opener,payloadKeys:Object.keys(e.data.payload||{})})})";
@@ -56,8 +56,13 @@ try {
     });
     if (diffScroll.max > 1 && diffScroll.reached < diffScroll.max - 1) throw new Error("diff cannot scroll");
     await popup.screenshot({ path: join(out, caseName(c) + "-changes.png") });
+    const more = popup.locator(".pv-toolbar-more");
+    if (await more.isVisible()) await more.click();
     await popup.locator(".pv-ver-prev").click();
-    await popup.locator(".pv-ver-at").filter({ hasText: "1" }).waitFor();
+    if (await more.isVisible()) { await popup.locator(".pv-toolbar-dialog").waitFor({ state: "detached" }); await more.click(); await popup.locator(".pv-ver-at").filter({ hasText: "1" }).waitFor();
+      await popup.screenshot({ path: join(out, caseName(c) + "-options.png") });
+      await popup.locator(".pv-toolbar-dialog .dlg-x").click();
+    } else await popup.locator(".pv-ver-at").filter({ hasText: "1" }).waitFor();
     await popup.locator(".pv-pages-toggle").click();
     await popup.locator(".pv-page").first().waitFor();
     if (await popup.locator(".pv-page").count() !== 2) throw new Error("page count");
@@ -67,17 +72,30 @@ try {
     await popup.locator(".pv-panel iframe").waitFor();
     await popup.locator(".pv-panel-fs").click();
     await popup.locator(".pv-panel.pv-fs").waitFor();
+    const toolbar = await popup.locator(".pv-panel-bar").evaluate((bar: any) => {
+      const controls = [...bar.querySelectorAll(":scope > button, :scope > .seg-inline > button")].filter((x: any) => x.offsetParent !== null) as any[];
+      const rows = new Set(controls.map(x => Math.round(x.getBoundingClientRect().y)));
+      const fs = bar.querySelector(".pv-panel-fs"), style = getComputedStyle(fs);
+      return { rows: rows.size, controls: controls.map(x => ({ width: x.getBoundingClientRect().width, height: x.getBoundingClientRect().height })),
+        focusVisible: fs.matches(":focus-visible"), outlineWidth: style.outlineWidth, outlineStyle: style.outlineStyle, borderRadius: style.borderRadius };
+    });
+    if (c.device === "phone" && (toolbar.rows !== 1 || toolbar.controls.some(x => x.width < 44 || x.height < 44))) throw new Error("toolbar is not one tidy accessible row");
     await popup.screenshot({ path: join(out, caseName(c) + "-fullscreen.png") });
+    // Keyboard focus keeps the shared ring; pointer captures above do not retain it.
+    await popup.locator(".pv-panel-fs").focus(); await popup.keyboard.press("Tab"); await popup.keyboard.press("Shift+Tab");
+    const keyboardFocus = await popup.locator(".pv-panel-fs").evaluate((el: any) => ({ visible: el.matches(":focus-visible"), width: getComputedStyle(el).outlineWidth, style: getComputedStyle(el).outlineStyle }));
+    if (!keyboardFocus.visible || keyboardFocus.width !== "2px" || keyboardFocus.style !== "solid") throw new Error("shared keyboard focus ring changed");
     const geometry = await popup.evaluate('({mode:document.querySelector(".pv-panel").className,overflow:document.documentElement.scrollWidth>innerWidth,fs:document.fullscreenElement?.classList.contains("pv-panel")??false,frameFull:document.fullscreenElement?.tagName==="IFRAME"})');
     if (geometry.overflow || geometry.frameFull) throw new Error("popout geometry");
     await popup.locator(".pv-panel-fs").click();
+    if (await more.isVisible()) await more.click();
     await popup.locator(".pv-fb-reply").click();
     await popup.locator('html[data-preview-window="1"]').waitFor({ state: "detached" });
     await popup.locator("#msgIn").waitFor({ state: "visible" });
     if (!(await popup.locator("#msgIn").inputValue())) throw new Error("reply did not reveal own draft");
     if (sends.length || errors.length || (await csp()).length) throw new Error("unexpected send or page error");
     results.push({ case: caseName(c), sandbox, isolatedOrigin: true, versions: true, changes: true, pages: true,
-      sourceDraftRetained: true, sourceClosedAfterHandoff: true, launcher, diffScroll, ...geometry, errors, sends });
+      sourceDraftRetained: true, sourceClosedAfterHandoff: true, launcher, diffScroll, toolbar, keyboardFocus, ...geometry, errors, sends });
     await popup.close(); await ctx.close();
   }
   writeFileSync(join(out, "checks.json"), JSON.stringify(results, null, 2) + "\n");

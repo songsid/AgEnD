@@ -6,6 +6,6 @@
 [data-preview-window="1"] .p-chat .pv-divider { display: none; }
 [data-preview-window="1"] .p-chat .chat-split { width: 100%; min-width: 0; }
 [data-preview-window="1"] .p-chat .pv-panel:not(.pv-fs) { flex: 1; width: 100%; max-width: none; min-width: 0; position: relative; inset: auto; }
-@media (max-width: 899px) {
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .pv-panel-popout { min-width: var(--tap); min-height: var(--tap); }
 }
