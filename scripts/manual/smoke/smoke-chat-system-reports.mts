@@ -91,7 +91,7 @@ try {
       if (scale) {
         if (command === "status") {
           await page.locator(".cmd-report input").fill("example-room-20");
-          await page.waitForFunction('document.querySelectorAll(".cmd-report tbody tr").length === 1');
+          await page.waitForFunction(() => document.querySelectorAll(".cmd-report tbody tr").length === 1);
           await page.screenshot({ path: join(out, caseName(c) + "-" + command + "-filtered.png") });
         }
         await page.locator("[data-report-expand]").click();
@@ -99,7 +99,7 @@ try {
         if (command === "status") {
           if (await page.locator("dialog tbody tr").count() !== 1) throw new Error("expanded filter lost");
           await page.locator("dialog input").fill("");
-          await page.waitForFunction('document.querySelectorAll("dialog tbody tr").length === 80');
+          await page.waitForFunction(() => document.querySelectorAll("dialog tbody tr").length === 80);
         }
         const modalOverflow = await page.locator("dialog").evaluate((el: any) => el.scrollWidth > el.clientWidth + 1);
         if (modalOverflow) throw new Error("expanded overflow");
