@@ -107,9 +107,9 @@ for (const tunnel of ["named", "quick"] as const) for (const mode of ["fresh", "
     check("in-effect", tunnel === "named" ? effect === "" : effect.includes(want) && effect.includes(w.publicSessionQuick!), effect || "(no in-effect line: applies as typed)");
     await page.screenshot({ path: shotPath(SMOKE, name, "edited"), fullPage: false });
     // The ⓘ opens with the trade-off text.
-    await sec.locator(".s-i .s-tipbtn").first().click();
+    await sec.locator(".s-i .info-tip-btn").first().click();
     await sleep(300);
-    const tip = ((await sec.locator(".s-i .s-tipbody").first().innerText().catch(() => "")) ?? "").replace(/\s+/g, " ");
+    const tip = ((await sec.locator(".s-i .info-tip-body").first().innerText().catch(() => "")) ?? "").replace(/\s+/g, " ");
     check("tip", tip.includes(w.publicSessionTip!.slice(0, 40)), tip.slice(0, 80));
     await page.screenshot({ path: shotPath(SMOKE, name, "tip"), fullPage: false });
     await page.keyboard.press("Escape");

@@ -195,3 +195,10 @@ it("console auth unknown or a held console writer cannot clear agy pending", asy
   expect(check).not.toHaveBeenCalled(); expect(h.c.snapshot(h.owner).pending).toEqual(["antigravity"]);
   lock.release(release); await h.c.refresh(h.owner, true); expect(h.c.snapshot(h.owner).pending).toEqual([]);
 });
+
+it("managed-source admission refuses the native default sign-in before allocating a transport",async()=>{
+ const h=rig(),transportFor=vi.fn(()=>h.transport);
+ const service=new BrowserBackendSignIns({dataDir:h.dir,selected:["claude-code"],current:()=>true,allowed:()=>false,installed:h.installed,checkAuth:h.checkAuth,transport:transportFor});coordinators.push(service);
+ await expect(service.begin(h.owner,"claude-code")).rejects.toThrow("signin_managed_credentials");
+ expect(transportFor).not.toHaveBeenCalled();expect(h.transport.start).not.toHaveBeenCalled();
+});

@@ -31,6 +31,7 @@
 | 對話框／確認 | `Dialog`／`confirmDialog` | `ui-dialog.js`／`ui-confirm.js` |
 | 簡短的結果訊息 | `toast(text, ok)` | `ui-toast.js` |
 | 圖示 | `Icon({ name, size })` | `ui-icons.js` |
+| 放次要說明的資訊圖示（ⓘ） | `InfoTip({ text, label })` | `src/ui/shared/info-tip.js`（第 14 條） |
 
 應該這樣寫：
 
@@ -188,6 +189,21 @@ Hub 頁面用 Fleet dashboard 的側邊欄和頁面外框，兩者看起來是�
 
 檢查方式：**CI** — Hub 外框關卡（`scripts/manual/smoke/smoke-hub-shell-gate.mts`）：品牌只有一行；每個導覽列高度一樣、圖示位置一樣；只有一列標成目前所在；搜尋和新對話是 side-row；通知沒有數字；清單沒有內容時只有一行；底部貼齊最下面；登入選單和設定都在畫面內、側邊欄裡打開；每個 Hub 頁面的卡片外框一致；通知卡片在頁面欄位裡、只出現在「通知」頁；每頁只有一個標題，分頁標題相同；只有一層左右留白；手機的對話首頁用側邊欄的同一份清單；登出後只顯示登入頁；頁面只向 Hub 要它自己的檔案。`tests/hub-shell-parity.test.ts` 在 mini DOM 裡檢查同樣的標記。
 
+## 14. 資訊圖示：只放次要說明，只用一個共用元件
+
+資訊圖示（ⓘ）放的是使用者可能想知道、但不一定需要的細節：欄位的用途、某個選擇不包含什麼、它新增的東西存放在哪裡、短句背後較長的說明。下列內容絕不放進去：使用者行動前必須知道的資訊（限制、期限、費用）、警告、錯誤或操作。這些都要直接顯示。
+
+- 使用 `src/ui/shared/info-tip.js` 的共用 `InfoTip({ text, label })`（設定頁的 `InfoTip` 也是包裝它）。不要另做提示框，更不要做只能滑鼠停留才看得到的：它是一個按鈕，滑鼠停留、鍵盤聚焦或點一下都會打開，點一下後會保持打開，按 Esc、點別處或捲動時關閉。在觸控螢幕上點擊範圍是 44px。它的文字也是螢幕閱讀器讀到的說明。
+- 放在它要說明的文字後面：欄位標籤、核取方塊的標籤、一句短文字。
+- `label` 說明它解釋的是什麼（「「保持連接」的說明」）。`text` 用白話寫一兩句。
+- 如果它所在的東西本身就是按鈕（例如點了會打開卡片的一列），不要在裡面再放一個按鈕：只畫出 ⓘ，把文字放進那個按鈕的名稱裡；打開的卡片中才放真正的資訊圖示。
+
+應該這樣寫：`` html`${t("x.short")} <${InfoTip} text=${t("x.more")} label=${t("x.aboutLabel")} />` ``
+
+不要這樣寫：`` html`<span role="img" aria-label=${words} onMouseEnter=${show}>ⓘ</span>` ``（只能滑鼠停留：鍵盤和觸控都用不了）
+
+檢查方式：**CI**：`tests/info-tip-m3443.test.ts`（元件本身，以及 `src/ui` 裡沒有只能滑鼠停留的標記）、UI 關卡在手機寬度的 `:tap` 檢查。放什麼內容由**審查**決定。
+
 ## Pull request 要附的證明
 
 新增或修改 UI 的 PR 要附上（決議 3536dae9）：
@@ -215,5 +231,6 @@ Hub 頁面用 Fleet dashboard 的側邊欄和頁面外框，兩者看起來是�
 | 按鈕尺寸（設定頁、Hub 頁面） | UI 關卡 `:buttons`（同一組按鈕 class 高度一致） | — |
 | 沒有頁面錯誤或 CSP 回報（設定頁、Hub 頁面） | UI 關卡 `:no-errors` | — |
 | 13. Hub 的外框就是 dashboard 的外框 | Hub 外框關卡、`hub-shell-parity` | 新的 Hub 頁面 |
+| 14. 資訊圖示：只放次要說明、只用一個元件 | `info-tip-m3443`（元件本身、沒有只能滑鼠停留的標記）、UI 關卡 `:tap` | 放什麼內容 |
 
 UI 關卡是 `scripts/manual/smoke/smoke-settings-ui-gate.mts`，由 `.github/workflows/ci.yml` 的 `ui-gate` 工作執行：在 `desk-light-en` 和 `phone-dark-zh-TW` 下逐一檢查每個設定區塊，另外加測 1024 px 的桌面寬度。同一個工作也執行 Hub 關卡 `scripts/manual/smoke/smoke-hub-ui-gate.mts`：在真正的 Hub 網頁伺服器（暫用的資料庫和目錄）上跑同樣的情境；頁面顯示讀取失敗而不是內容時也會失敗。接著 Hub 外框關卡 `scripts/manual/smoke/smoke-hub-shell-gate.mts` 在同一個伺服器上檢查規則 13（在本機用 `GATE=full` 跑完整的組合）。

@@ -208,6 +208,8 @@ const ASSETS: Readonly<Record<string, { file: string; type: string }>> = {
     "instance-switch.js", "chat-workspace-model.js", "chat-workspace-memory.js", "pane-geometry.js",
     // #1523 N3: every page's header tools (text size, usage), the usage dialog they open, and the read stream it shares with View.
     "header-tools.js", "usage-dialog.js", "usage-meter.js", "read-stream.js",
+    // M-3443: the one info icon (ⓘ), used by the usage dialog and Settings.
+    "info-tip.js",
     // M-3166: a phone's ⋯ sheet on an agent's pages (Chat, View, Log, Details) — static code, no data.
     "agent-sheet.js",
     // #2585: the docked side panel in the usage rail's place (the shell's right-hand column).

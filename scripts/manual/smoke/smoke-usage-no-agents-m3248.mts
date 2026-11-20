@@ -1,11 +1,12 @@
 // M-3248 (the user): in the AI usage panel a login no agent uses (e.g. Codex wii) said 「此帳號目前沒有 Agent」 as a line of
-// text beside its name. It is a quiet ⓘ there now (the muted text colour, never a warning's), its words on a hover, a
-// focus or a tap; a screen reader reads them as the mark's name. In the grouped view's rows (every window, and one line
-// per login: #4054's compact mode), in a login's full card (the non-grouped view), in the desk's side panel and the
+// text beside its name. It is a quiet ⓘ there now (the muted text colour, never a warning's). M-3443 (no hover-only
+// mark): in the grouped view's rows (every window, and one line per login: #4054's compact mode) the ⓘ is only drawn —
+// the row is itself a button — and its words are part of the row's name; in a login's full card (the non-grouped view)
+// it is the shared info icon, a button whose words show on a focus, a hover or a tap. In the desk's side panel and the
 // phone's Usage dialog.
 // The real app on the shared fixture (in-process FleetManager, scratch home, loopback only, fake agents); /api/ai-usage
 // answered by a route. Headless. Cases: desk light en and dark zh-TW (the side panel), phone light en and dark zh-TW (the
-// dialog). Pictured per case: 1-rows (the mark, its words shown: hover on desk, a tap on a phone), 2-one-line, 3-card.
+// dialog). Pictured per case: 1-rows (the mark), 2-one-line, 3-card (its words shown: focus on a desk, a tap on a phone).
 // Run it on the base too (SMOKE_NAME=…-before): it FAILs there (the words inline, no mark).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [MATRIX=…] scripts/manual/smoke/run.sh smoke-usage-no-agents-m3248.mts
 // ui-gate: {"name": "Usage \"no agents\" mark (rows, one line, card)", "hp": 19673}
@@ -44,53 +45,43 @@ try {
     const read = (scope: string) => page.evaluate(`(() => {
       var row = ${JSON.stringify(scope)} === "row" ? [].find.call(document.querySelectorAll(".u-crow"), function (r) { return /wii/.test((r.querySelector(".u-crow-name") || {}).textContent || ""); })
         : [].find.call(document.querySelectorAll(".u-provider"), function (s) { return /wii/.test((s.querySelector(".u-profile") || {}).textContent || ""); });
-      var m = row && row.querySelector(".u-na"), tip = document.querySelector(".u-na-tip");
+      var m = row && (${JSON.stringify(scope)} === "row" ? row.querySelector(".u-na") : row.querySelector(".u-na-tip .info-tip-btn"));
+      var icon = m && (m.querySelector("svg") || m), sr = row && row.querySelector(".sr-only");
+      var tip = [].find.call(document.querySelectorAll(".u-na-tip .info-tip-body"), function (b) { return !b.hidden; }) || null;
       var probe = document.createElement("span"); probe.style.color = "var(--text-3)"; document.body.append(probe); var muted = getComputedStyle(probe).color; probe.remove();
-      var visible = [].filter.call(document.querySelectorAll(".u-crow, .u-provider"), function (e) { return e.innerText.indexOf(${JSON.stringify(WORDS)}) >= 0 && !(tip && e.contains(tip)); }).length;
-      var rr = m && m.getBoundingClientRect(), nr = row && row.querySelector(${JSON.stringify(scope)} === "row" ? ".u-crow-name" : ".u-profile-name, .u-profile").getBoundingClientRect(), tr = tip && tip.getBoundingClientRect();
-      return { row: !!row, mark: !!m, tag: m && m.tagName, label: m && m.getAttribute("aria-label"), role: m && m.getAttribute("role"),
+      var visible = [].filter.call(document.querySelectorAll(".u-crow, .u-provider"), function (e) { var c = e.cloneNode(true); [].forEach.call(c.querySelectorAll(".sr-only, .info-tip-body"), function (x) { x.remove(); }); return (c.textContent || "").indexOf(${JSON.stringify(WORDS)}) >= 0; }).length;
+      var rr = icon && icon.getBoundingClientRect(), nr = row && row.querySelector(${JSON.stringify(scope)} === "row" ? ".u-crow-name" : ".u-profile-name, .u-profile").getBoundingClientRect(), tr = tip && tip.getBoundingClientRect();
+      return { row: !!row, mark: !!m, tag: m && m.tagName, label: m && m.getAttribute("aria-label"), role: m && m.getAttribute("role"), hidden: m && m.getAttribute("aria-hidden"),
+        srWords: sr ? sr.textContent : null, controls: row && ${JSON.stringify(scope)} === "row" ? row.querySelectorAll("button, [tabindex]").length : null,
         muted: m ? getComputedStyle(m).color === muted : false, beside: !!(rr && nr && rr.left >= nr.left && Math.abs((rr.top + rr.bottom) / 2 - (nr.top + nr.bottom) / 2) <= 4 && rr.width <= 20),
         inline: visible, tip: tip ? { text: tip.textContent, l: Math.round(tr.left), r: Math.round(tr.right), t: Math.round(tr.top), h: Math.round(tr.height),
           near: !!rr && ((tr.top >= rr.bottom && tr.top - rr.bottom <= 12) || (tr.bottom <= rr.top && rr.top - tr.bottom <= 12)) && tr.left <= rr.right && tr.right >= rr.left - 8 } : null,
         expanded: row && row.getAttribute ? row.getAttribute("aria-expanded") : null, vw: innerWidth,
         wide: document.documentElement.scrollWidth > document.documentElement.clientWidth };
     })()`) as Promise<any>;
-    const markAt = (scope: string) => (scope === "row" ? page.locator(".u-crow").filter({ has: page.locator(".u-crow-name", { hasText: "wii" }) })
-      : page.locator(".u-provider").filter({ has: page.locator(".u-profile", { hasText: "wii" }) })).locator(".u-na").first();
+    const markAt = (scope: string) => (scope === "row" ? page.locator(".u-crow").filter({ has: page.locator(".u-crow-name", { hasText: "wii" }) }).locator(".u-na")
+      : page.locator(".u-provider").filter({ has: page.locator(".u-profile", { hasText: "wii" }) }).locator(".u-na-tip .info-tip-btn")).first();
     // Hover (desk) or tap (phone) the mark, when there is one (on the base there is none: the pictures are taken anyway).
     const poke = async (scope: string, how: "hover" | "tap" | "focus") => { const m = markAt(scope); if (!(await m.count())) return; await m.scrollIntoViewIfNeeded(); await page.waitForTimeout(300); await m[how](); };   // a scroll hides the words: let it settle first
     const shown = (x: any) => x.tip && x.tip.text === WORDS && x.tip.l >= 0 && x.tip.r <= x.vw && x.tip.h > 0 && x.tip.near;   // by the mark, inside the window
     try {
       need(await mounted(page, 30000), "the app mounted");
-      // 1. The grouped view, every window: the mark beside the name, quiet; its words on a hover (desk) or a tap (phone).
+      // 1. The grouped view, every window: the mark beside the name, quiet, only drawn; its words in the row's name (M-3443).
       await show(); await page.waitForTimeout(1500);
       const a = await read("row");
       need(a.row && a.mark && a.inline === 0, `rows: no inline words, a mark instead (${JSON.stringify({ row: a.row, mark: a.mark, inline: a.inline })})`);
-      need(a.label === WORDS && a.role === "img" && a.tag === "SPAN", `rows: the mark is named by the words, not a button inside the row's button (${JSON.stringify({ label: a.label, role: a.role, tag: a.tag })})`);
-      need(a.muted && a.beside, `rows: muted (--text-3), right of the name (${JSON.stringify({ muted: a.muted, beside: a.beside })})`);
-      await poke("row", phone ? "tap" : "hover");
-      await page.waitForTimeout(250);
-      const b = await read("row");
-      need(shown(b), `rows: ${phone ? "a tap" : "a hover"} shows the words, inside the window (${JSON.stringify(b.tip)})`);
-      need(b.expanded === "false" && !b.wide, `rows: ${phone ? "the tap" : "the hover"} leaves the row closed; no sideways scroll (${JSON.stringify({ expanded: b.expanded, wide: b.wide })})`);
+      need(a.tag === "SPAN" && a.hidden === "true" && a.srWords === WORDS && a.controls === 0, `rows: the mark only drawn, the words in the row's name, no control inside the row's button (${JSON.stringify({ tag: a.tag, hidden: a.hidden, srWords: a.srWords, controls: a.controls })})`);
+      need(a.muted && a.beside && !a.wide, `rows: muted (--text-3), right of the name; no sideways scroll (${JSON.stringify({ muted: a.muted, beside: a.beside, wide: a.wide })})`);
       await page.screenshot({ path: shotPath(SMOKE, caseName(c), "1-rows") });
-      // Away: the pointer leaving (desk), a second tap (phone). Escape is the unit test's (here it would also close the dialog).
-      if (phone) await poke("row", "tap"); else await page.mouse.move(2, 2);
-      await page.waitForTimeout(200);
-      need(!(await read("row")).tip, `rows: the words go away (${phone ? "a second tap" : "the pointer leaving"})`);
-      // 2. One line per login (#4054's compact mode): the mark still beside the name.
+      // 2. One line per login (#4054's compact mode): the mark still beside the name, its words still in the row's name.
       await page.evaluate(`document.querySelector('.u-cgroup[data-group="Codex"] .u-cg-toggle').click()`); await page.waitForTimeout(400);
       const k = await read("row");
-      need(k.mark && k.muted && k.beside && k.inline === 0 && !k.wide, `one line per login: the mark beside the name (${JSON.stringify({ mark: k.mark, muted: k.muted, beside: k.beside, inline: k.inline })})`);
-      await poke("row", phone ? "tap" : "hover");
-      await page.waitForTimeout(250);
-      const l = await read("row");
-      need(shown(l), `one line per login: the words shown (${JSON.stringify(l.tip)})`);
+      need(k.mark && k.muted && k.beside && k.inline === 0 && k.srWords === WORDS && !k.wide, `one line per login: the mark beside the name (${JSON.stringify({ mark: k.mark, muted: k.muted, beside: k.beside, inline: k.inline, srWords: k.srWords })})`);
       await page.screenshot({ path: shotPath(SMOKE, caseName(c), "2-one-line") });
-      if (phone) await poke("row", "tap"); else await page.mouse.move(2, 2);
       await page.evaluate(`document.querySelector('.u-cgroup[data-group="Codex"] .u-cg-toggle').click()`); await page.waitForTimeout(200);
       await page.evaluate(`document.querySelector('.u-cgroup[data-group="Codex"] .u-cg-toggle').click()`); await page.waitForTimeout(200);   // back to every window
-      // 3. The full card (the non-grouped view): a real button there, reached with Tab; focus shows the words.
+      // 3. The full card (the non-grouped view): the shared info icon, a button reached with Tab; focus (a tap on a phone)
+      // shows the words beside it, inside the window.
       await page.evaluate(`import("/assets/usage-dialog.js").then(function (m) { m.usageViewStore.set({ compact: false }); })`); await page.waitForTimeout(800);
       const d = await read("card");
       need(d.row && d.mark && d.inline === 0 && d.tag === "BUTTON" && d.label === WORDS && d.muted && d.beside, `card: a quiet ⓘ button beside the profile's name, named by the words (${JSON.stringify({ row: d.row, mark: d.mark, inline: d.inline, tag: d.tag, label: d.label, muted: d.muted, beside: d.beside })})`);

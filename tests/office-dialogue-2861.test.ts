@@ -396,6 +396,43 @@ describe("the box on the page", () => {
       expect(p.root.querySelector(".oo-canvas")).not.toBeNull();
     } finally { clock.mockRestore(); (globalThis as any).matchMedia = real; }
   });
+  it("keeps armed snack placement ahead of a bubble chat click", async () => {
+    const { STUDIO_PACK } = await import("/ui/js/fleet-office-skin.js");
+    const pack = STUDIO_PACK as any, oldSnacks = pack.snacks, oldAuth = (globalThis as any).AgendAuth, oldOpen = (p.window as any).open;
+    const clock = vi.spyOn(performance, "now").mockReturnValue(5000), opened = vi.fn(() => ({ opener: null }));
+    pack.snacks = [{ id: "example-snack", label: { en: "Example snack" }, sprite: { src: "example.png", frames: 1, w: 16, h: 16 }, radius: 300 }];
+    p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
+    (globalThis as any).AgendAuth = { sessionEnded: () => false }; (p.window as any).open = opened;
+    app.appStore.set({ awaiting: { atlas: "Example question" } });
+    try {
+      await office(); await tick();
+      const cv = p.root.querySelector(".oo-canvas");
+      cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 600, right: 960, bottom: 600 });
+      let matrix = [1, 0, 0, 1, 0, 0], stack: number[][] = [], point: any = null;
+      for (const [op, args] of cv._ctx.calls) {
+        if (op === "save") stack.push([...matrix]);
+        if (op === "restore") matrix = stack.pop() || matrix;
+        if (op === "setTransform") matrix = args;
+        if (op === "fillText" && ["Need you!", "A question for you", "Over here!"].includes(args[0])) point = { clientX: matrix[0] * args[1] + matrix[4], clientY: matrix[3] * args[2] + matrix[5] };
+      }
+      expect(point).not.toBeNull();
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(1); // positive: the painted point really opens chat
+      const snack = p.root.querySelector('.oo-snack[data-snack="example-snack"]');
+      expect(snack).not.toBeNull(); snack.click(); await settle(4);
+      expect(snack.getAttribute("aria-pressed")).toBe("true");
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(1);
+      expect(p.root.querySelector('.oo-snack[data-snack="example-snack"]').getAttribute("aria-pressed")).toBe("false");
+      fire(cv, "click", point); await settle(4);
+      expect(opened).toHaveBeenCalledTimes(2); // normal chat resumes once placement has consumed the mode
+    } finally {
+      await p.unmount(); clock.mockRestore();
+      if (oldSnacks === undefined) delete pack.snacks; else pack.snacks = oldSnacks;
+      (globalThis as any).AgendAuth = oldAuth; (p.window as any).open = oldOpen;
+      delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
+    }
+  });
   it("a click opens fresh chat without leaving Office; double-click does not open duplicates", async () => {
     p.document.body.dataset.chatWorkspace = "1";
     p.document.body.dataset.chatLayoutScope = "example-scope";

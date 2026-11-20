@@ -603,3 +603,9 @@ describe("FleetManager", () => {
     expect(bad.fm.loginWindow.isClosed).toBe(true); expect(bad.fm.structuredLoginCleanupFailed).toBe(true); expect(bad.fm.profileSignInsInstance).toBe(bad.service);
   });
 });
+
+it("managed-source admission refuses a native profile sign-in before any transport starts",async()=>{
+ const h=rig({allowed:()=>false});
+ await expect(h.c.begin(h.owner,h.target("spare"))).rejects.toThrow("signin_managed_credentials");
+ expect(h.transport.start).not.toHaveBeenCalled();
+});

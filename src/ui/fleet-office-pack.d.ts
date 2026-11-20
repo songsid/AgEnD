@@ -41,6 +41,16 @@ export interface CheckedPack {
   dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string };
   /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */
   idleVisits?: Array<{ area: string; weight: number; minSeconds: number; maxSeconds: number }>;
+  /** M-3432 (#4255): optional custom snacks the viewer may drag-to-feed or place on the floor. */
+  snacks?: PackSnack[];
+}
+/** M-3432 (#4255): one custom snack item from a pack's `snacks` list. */
+export interface PackSnack {
+  id: string;
+  label?: string | { en?: string; "zh-TW"?: string };
+  sprite: PackStrip;
+  eat?: PackStrip;
+  radius: number;
 }
 /** #2861: a portrait's files by the state it is shown in (at least one). */
 export type PackPortrait = Partial<Record<"idle" | "working" | "needs", string>>;
@@ -65,6 +75,9 @@ export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
 export const BUBBLE_KEYS: string[];
 export const STRIP_LIMITS: { sheetFrames: number; sheets: number; frames: number; minMs: number; maxMs: number };
+export const SNACK_LIMITS: { max: number; minRadius: number; maxRadius: number; defaultRadius: number; labelMax: number };
+export function snackLabel(snack: PackSnack | null | undefined, lang?: string): string;
+export function stripDurationMs(st: PackStrip | null | undefined): number;
 export function own<T = unknown>(o: unknown, k: unknown): T | undefined;
 export function inherited(k: unknown): boolean;
 export function matteOk(v: unknown): v is string;

@@ -144,17 +144,17 @@ describe("the page", () => {
     await open();
     for (const id of IDS.filter((i) => i !== "g-hang")) {
       const head = $(`#${id}`).closest(".field")?.querySelector(".s-lab");
-      expect(text(head?.querySelector(".s-i .s-tipbody")), id).toBeTruthy();
+      expect(text(head?.querySelector(".s-i .info-tip-body")), id).toBeTruthy();
     }
-    expect(text(field("g-reply-triggers").querySelector(".s-i .s-tipbody"))).toContain("Off by default");
+    expect(text(field("g-reply-triggers").querySelector(".s-i .info-tip-body"))).toContain("Off by default");
     expect(p.root.querySelectorAll(".impact")).toHaveLength(0);
-    expect($(".s-i .s-tipbtn").getAttribute("aria-label")).toMatch(/^About /);
+    expect($(".s-i .info-tip-btn").getAttribute("aria-label")).toMatch(/^About /);
   });
 
   it("opens a tip on hover or focus, closes it on leaving, and keeps it open once tapped until Escape", async () => {
     await open();
     const head = field("g-model").querySelector(".s-i");
-    const [btn, body] = [head.querySelector(".s-tipbtn"), head.querySelector(".s-tipbody")];
+    const [btn, body] = [head.querySelector(".info-tip-btn"), head.querySelector(".info-tip-body")];
     const shown = () => !body.hidden;
     // The mini DOM names a listener by the prop's own case (onMouseLeave → "mouseLeave"); a browser by the lower-case event.
     const leave = async () => { fire(btn, "mouseleave"); fire(btn, "mouseLeave"); await settle(2); };
@@ -391,11 +391,11 @@ describe("what an edit costs", () => {
 
   it("the hang detector's tip names only what an agent can set under Agents: its minutes (the dialog has no switch)", async () => {
     await open();
-    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Raise an alert when an agent produces no output at all for this long. An individual agent can set its own minutes under Agents.");
+    expect(text(field("g-hang-on").querySelector(".s-i .info-tip-body"))).toBe("Raise an alert when an agent produces no output at all for this long. An individual agent can set its own minutes under Agents.");
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW");
     await p.unmount(); await open();
-    expect(text(field("g-hang-on").querySelector(".s-i .s-tipbody"))).toBe("Agent 超過這段時間完全沒有輸出，就發出提醒。個別 Agent 可以在 Agents 頁自己設定分鐘數。");
+    expect(text(field("g-hang-on").querySelector(".s-i .info-tip-body"))).toBe("Agent 超過這段時間完全沒有輸出，就發出提醒。個別 Agent 可以在 Agents 頁自己設定分鐘數。");
     setLang("en");
   });
 

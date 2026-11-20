@@ -14,7 +14,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { FleetConfig } from "../types.js";
 import type { Logger } from "pino";
-import { fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric, type UsageStaleCause } from "./providers.js";
+import { redactManagedClaudeUsage, fetchAllUsage, isHostLoginUsageProvider, type ProviderUsage, type UsageMetric, type UsageStaleCause } from "./providers.js";
 import { museUsageRevision } from "../muse-usage-relay.js";
 import { hostFacts } from "../cli-registry.js";
 import { readFileSync, statSync } from "node:fs";
@@ -377,6 +377,7 @@ function hasTransientEmpty(payload: UsagePayload): boolean {
 
 function json(res: ServerResponse, code: number, body: unknown): void {
   res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  if(body&&typeof body==="object"&&Array.isArray((body as UsagePayload).providers))body={...body,providers:(body as UsagePayload).providers.map(redactManagedClaudeUsage)};
   res.end(JSON.stringify(body));
 }
 
@@ -493,7 +494,8 @@ export function clearUsageSignInRefreshForTests(): void { if (signInRefreshTimer
  * second entry point that bypassed it would defeat that.
  */
 export async function getUsageSnapshot(force = false, providerIds?: Iterable<string>, opts: { allowStale?: boolean } = {}): Promise<UsagePayload> {
-  return withCapacity(filterUsageProviders(reageStale(await usage(force, opts.allowStale === true), Date.now()), providerIds, { hostLogins: true }));
+  const payload=withCapacity(filterUsageProviders(reageStale(await usage(force, opts.allowStale === true), Date.now()), providerIds, { hostLogins: true }));
+  return {...payload,providers:payload.providers.map(redactManagedClaudeUsage)};
 }
 
 // ── #3066 §1: the measured capacity of each weekly quota, attached when served (never cached or persisted) ──

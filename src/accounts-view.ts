@@ -1,3 +1,4 @@
+import type { ClaudeCredentialMetadata } from "./claude-credential-vault.js";
 /**
  * #3212 PR 1: Settings → Agents → **Accounts**, one card per CLI. Each card lists the CLI's default sign-in and its named
  * credential profiles — the ones agents use AND the ones only on disk (a profile added but not used yet) — with its
@@ -76,6 +77,8 @@ export interface AccountUsageStale { cause: "expired" | "transient" | "error"; c
 /** Everything an account reports about its limits: every pool and every window, none picked over another. `stale`: the last known numbers, the live read failed (`staleInfo`: why, and when they were read). */
 export interface AccountUsage { groups: AccountUsageGroup[]; stale?: true; staleInfo?: AccountUsageStale }
 export interface AccountRow {
+  credential?: ClaudeCredentialMetadata;
+  credentialUnavailable?: boolean;
   scope: AccountScope;
   /** AGEND-124: the computer's OWN login row of a CLI whose Runtime signs it out (Antigravity): the Sign out button is offered on it (never on Claude Code's, #3212 Q3). Only on such a row. */
   signOutOwn?: true;

@@ -1,5 +1,7 @@
 # Office speech bubble → chat window
 
+[Latest alpha integration](sync/README.md) preserves the approved R1 row layout and records the custom-snack conflict resolution.
+
 The initial popup behavior was approved; the user then requested the two existing overlaps fixed in the same PR. [R1](r1/README.md) supersedes the layout limitations and captures below. These original files remain as before evidence.
 
 A private Office speech bubble now opens the existing authenticated chat in a separate window. The Office stays open. The child reads its own session and history; no draft, conversation content or credential is handed across. The native desk button → agent card → Chat path is keyboard reachable and announces the new window.

@@ -57,7 +57,7 @@ try {
     const chosen = await effort(); await shot("3-chosen");
     // 4: the ⓘ of the field open: what it says about applying (a restart for some CLIs).
     await page.locator("#ag-effort").locator("xpath=ancestor::div[contains(@class,'field')][1]").locator(".s-lab button").click(); await page.waitForTimeout(400);
-    const tip = await page.evaluate(`(() => { const w = document.querySelector("#ag-effort").closest(".field").querySelector(".s-tipwrap"); return w ? w.textContent : null; })()`) as string | null;
+    const tip = await page.evaluate(`(() => { const w = document.querySelector("#ag-effort").closest(".field").querySelector(".info-tip"); return w ? w.textContent : null; })()`) as string | null;
     await shot("4-tip");
     const staged = await page.evaluate(`document.querySelector(".s-pending, .pending-bar, [data-pending]")?.textContent ?? ""`);
     const got = { first, moved, chosen, tip, staged, errs, csp: await csp(), pageX: await page.evaluate("document.documentElement.scrollWidth - innerWidth") };
@@ -87,7 +87,7 @@ try {
       await page.goto(`${fx.base}/ui/fleet/agent/${encodeURIComponent(agent)}?cat=runtime`); await page.waitForSelector("#ag-model", { timeout: 15000 }); await page.waitForTimeout(900);
       const card = page.locator("section.card", { has: page.locator("#ag-model") }); await card.scrollIntoViewIfNeeded();
       await card.screenshot({ path: shotPath(SMOKE, `skew-${way}`, `${LABEL}-card`) });
-      const field = await page.evaluate(`(() => { const s = document.querySelector("#ag-effort"); return s ? { options: [...s.options].map((o) => o.textContent.trim()), label: s.closest(".field").querySelector(".s-lab")?.innerText ?? "", tip: s.closest(".field").querySelector(".s-tipwrap")?.textContent ?? "", card: document.querySelector("#ag-model").closest("section.card").innerText } : null; })()`) as any;
+      const field = await page.evaluate(`(() => { const s = document.querySelector("#ag-effort"); return s ? { options: [...s.options].map((o) => o.textContent.trim()), label: s.closest(".field").querySelector(".s-lab")?.innerText ?? "", tip: s.closest(".field").querySelector(".info-tip")?.textContent ?? "", card: document.querySelector("#ag-model").closest("section.card").innerText } : null; })()`) as any;
       // old-daemon: no field; old-shell / old-strings: the field, its words READABLE (label, Model default, the timing / restart help) and no raw key.
       const words = field !== null && field.label.includes(zh ? "推理強度" : "Reasoning effort") && field.options[0] === (zh ? "模型預設" : "Model default")
         && field.tip.includes(zh ? "重啟" : "restart") && !/agentPage\.|effortField\./.test(field.card);

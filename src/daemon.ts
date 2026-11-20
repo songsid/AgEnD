@@ -2683,6 +2683,38 @@ export class Daemon extends EventEmitter {
     this.statusEmojiAvoidList = list;
   }
 
+  private credentialChangeIncarnation:{windowId:string;pid:number}|null=null;
+  /** Claim an idle local Claude pane for an account change; queued input cannot race the final capture. */
+  async quiesceClaudeCredential():Promise<boolean>{
+    const spawn=this.spawnGeneration,fence=this.launchFenceEpoch;
+    return this.paneWriteLock.run(async()=>{
+      const turn=this.turnReplyGuard.snapshot(),deliveryEpoch=this.deliveryEpoch;
+      if(turn&&!turn.cancelledByUser&&!turn.completionDelivered)return false;
+      if(this.backend?.binaryName!=="claude"||this.usesNativePane()||this.spawning||this.healthCheckPaused||this.deliveryWritesStopping||this.startupAborted||this.isPaused)return false;
+      if(!await this.isPaneAuthoritativelyIdle())return false;
+      const windowId=this.tmux?.getWindowId();if(!windowId)return false;
+      let pid:number|null=null;try{pid=await this.paneHost.getPanePid(this.tmuxSessionName,windowId);}catch{return false;}
+      if(pid===null||!Number.isSafeInteger(pid)||pid<=1||windowId!==this.tmux?.getWindowId())return false;
+      // A tool pause can look idle. Re-read the owned logical turn after both
+      // pane awaits; new input or another turn must not inherit this idle proof.
+      const currentTurn=this.turnReplyGuard.snapshot();
+      if((currentTurn&&!currentTurn.cancelledByUser&&!currentTurn.completionDelivered)||currentTurn?.generation!==turn?.generation||deliveryEpoch!==this.deliveryEpoch)return false;
+      if(spawn!==this.spawnGeneration||fence!==this.launchFenceEpoch||this.spawning||this.healthCheckPaused||this.deliveryWritesStopping||this.startupAborted||this.isPaused)return false;
+      this.credentialChangeIncarnation={windowId,pid};this.fenceDeliveryWritesForStop();return true;
+    });
+  }
+
+  /** Read-only proof for the exact pane captured above; never kill a replacement window. */
+  async claudeCredentialRetired():Promise<boolean>{
+    const inc=this.credentialChangeIncarnation;if(!inc)return false;
+    try{
+      const windows=await TmuxManager.listWindowsStrict(this.tmuxSessionName);
+      if(!windows.some(window=>window.id===inc.windowId))return true;
+      const pid=await this.paneHost.getPanePid(this.tmuxSessionName,inc.windowId);
+      return pid!==null&&pid!==inc.pid;
+    }catch{return false;}
+  }
+
   /** Fence pane writers before lifecycle captures pre-kill reconciliation evidence. */
   fenceDeliveryWritesForStop(): void {
     if (this.deliveryWritesStopping) return;

@@ -10,14 +10,16 @@ import { ClaudeCredentialError, type ClaudeCredentialKind, type ClaudeCredential
 export interface ClaudeCredentialApi {
   claudeCredentialMetadata?(profile: string | null): ClaudeCredentialMetadata | null;
   writeClaudeCredential?(profile: string | null, revision: number, change: { kind: ClaudeCredentialKind; value: string } | "subscription" | null, actor: CredentialActor): ClaudeCredentialMetadata;
+  claudeCredentialConsumers?(profile:string|null):{users:string[];revision:string};
+  changeClaudeCredential?(profile:string|null,revision:number,change:{kind:ClaudeCredentialKind;value:string}|"subscription"|null,actor:CredentialActor,confirmation:{restart?:boolean;consumersRevision?:string},authorized:()=>boolean):Promise<{credential:ClaudeCredentialMetadata;restarted:string[];pending:string[];stopped:string[]}>;
   auditClaudeCredential?(actor: CredentialActor | null, action: string, outcome: string): void;
 }
 const profileSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).nullable();
-const base = { profile: profileSchema, revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) };
+const base = { restart:z.boolean().optional(),consumersRevision:z.string().regex(/^[a-f0-9]{64}$/).optional(),profile: profileSchema, revision: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) };
 const putSchema = z.strictObject({ ...base, kind: z.enum(["api-key", "setup-token"]), value: z.string().min(16).max(16_384) });
 const subscriptionSchema = z.strictObject({ ...base, source: z.literal("subscription"), confirm: z.literal(true) });
 const removeSchema = z.strictObject({ ...base, confirm: z.literal(true) });
-const status = { invalid: 400, conflict: 409, unavailable: 503, "in-use": 409, "profile-unknown": 404 };
+const status = { invalid: 400, conflict: 409, unavailable: 503, "in-use": 409, "profile-unknown": 404, "session-changed":403 };
 const json = (res: ServerResponse, code: number, value: unknown) => { res.writeHead(code, { "Content-Type": "application/json" }); res.end(JSON.stringify(value)); };
 export function handleClaudeCredentials(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext & ClaudeCredentialApi): boolean {
   if (url.pathname !== "/ui/claude-credentials") return false;
@@ -39,7 +41,7 @@ export function handleClaudeCredentials(req: IncomingMessage, res: ServerRespons
     try {
       if ([...url.searchParams.keys()].some(k => k !== "profile") || url.searchParams.getAll("profile").length > 1) throw new ClaudeCredentialError("invalid");
       const parsed = profileSchema.safeParse(url.searchParams.get("profile")); if (!parsed.success) throw new ClaudeCredentialError("invalid");
-      json(res, 200, { credential: ctx.claudeCredentialMetadata(parsed.data) });
+      json(res, 200, { credential: ctx.claudeCredentialMetadata(parsed.data),...(ctx.claudeCredentialConsumers?{consumers:ctx.claudeCredentialConsumers(parsed.data)}:{}) });
     } catch (e) { const code = e instanceof ClaudeCredentialError ? e.code : "unavailable"; json(res, status[code], { error: "credential_" + code }); }
     return true;
   }
@@ -58,8 +60,10 @@ export function handleClaudeCredentials(req: IncomingMessage, res: ServerRespons
       let body: unknown; try { body = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)); } catch { throw new ClaudeCredentialError("invalid"); }
       const parsed = (method === "PUT" ? putSchema : method === "POST" ? subscriptionSchema : removeSchema).safeParse(body); if (!parsed.success) throw new ClaudeCredentialError("invalid");
       const p = parsed.data;
-      const result = ctx.writeClaudeCredential!(p.profile, p.revision, "kind" in p ? { kind: p.kind, value: p.value } : "source" in p ? "subscription" : null, now.actor);
-      json(res, 200, { credential: result });
+      const change="kind" in p ? {kind:p.kind,value:p.value}:"source" in p?"subscription" as const:null;
+      const authorized=()=>{const current=who();return !!current&&current.handle===first.handle&&JSON.stringify(current.actor)===JSON.stringify(first.actor);};
+      if(ctx.changeClaudeCredential){json(res,200,await ctx.changeClaudeCredential(p.profile,p.revision,change,now.actor,p,authorized));}
+      else{const result=ctx.writeClaudeCredential!(p.profile,p.revision,change,now.actor);json(res,200,{credential:result});}
     } catch (e) {
       const code = e instanceof ClaudeCredentialError ? e.code : "unavailable"; audit(first.actor, code);
       json(res, status[code], { error: "credential_" + code });

@@ -318,11 +318,12 @@ export function tagBox(ctx, x, y, label, compact = false) {
   ctx.restore();
   return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
 }
-/** #2860: what a tag covers with its level badge: on a full tag's top-left corner (half outside); left of a compact one. */
+/** #2860: what a tag covers with its level badge: on a full tag's top-left corner (clear of the first letter); left of a compact one. */
 export function tagFootprint(ctx, box, badge, compact = false) {
   if (!badge) return box;
   if (compact) { const w = badgeWidth(ctx, badge) + 1; return { x: box.x - w, y: box.y, w: box.w + w, h: box.h }; }
-  return { x: box.x - 10, y: box.y - 7, w: box.w + 10, h: box.h + 7 };
+  const left = badge.mark ? 6 : Math.max(10, badgeWidth(ctx, badge) - 3);
+  return { x: box.x - left, y: box.y - 7, w: box.w + left, h: box.h + 7 };
 }
 function badgeWidth(ctx, badge) {
   if (badge.mark) return 8;
@@ -339,13 +340,12 @@ function badgeWidth(ctx, badge) {
  */
 export function drawBadge(ctx, x, y, badge, pal, inline = false) {
   if (!badge) return;
-  // #2860 inline (a compact tag): (x, y) is the tag's left edge and middle; the badge sits just left of it, whole.
-  if (inline) { const w = badgeWidth(ctx, badge); x = x - 1 - w + (badge.mark ? w / 2 : w / 2 - 3); y = y + (badge.mark ? 0 : 1); }
   const c = tierColours(badge.tier, pal);
   ctx.save();
   ctx.globalAlpha = 1;
   if (badge.mark) {
-    ctx.translate(x, y); ctx.rotate(Math.PI / 4);
+    const mx = inline ? x - 1 - 4 : x;
+    ctx.translate(mx, y); ctx.rotate(Math.PI / 4);
     ctx.fillStyle = pal.surface; ctx.fillRect(-4, -4, 8, 8);
     ctx.fillStyle = c.bg; ctx.fillRect(-4, -4, 8, 8);
     ctx.strokeStyle = c.line; ctx.lineWidth = 1; ctx.strokeRect(-3.5, -3.5, 7, 7);
@@ -354,7 +354,9 @@ export function drawBadge(ctx, x, y, badge, pal, inline = false) {
   }
   ctx.font = BADGE_FONT;
   const w = Math.max(12, Math.ceil((ctx.measureText ? ctx.measureText(badge.text).width : badge.text.length * 5) + 6)), h = 11;
-  const bx = Math.round(x - w / 2 + 3), by = Math.round(y - h / 2 - 1);
+  // Normal tag: badge overlaps only the left border corner (right edge at x + 3), leaving the first letter at x + 5 unobstructed.
+  const bx = inline ? Math.round(x - 1 - w) : Math.round(x - w + 3);
+  const by = inline ? Math.round(y - h / 2) : Math.round(y - h / 2 - 1);
   // An opaque surface first, so a tint reads the same over any picture.
   ctx.fillStyle = pal.surface; ctx.fillRect(bx, by, w, h);
   ctx.fillStyle = c.bg; ctx.fillRect(bx, by, w, h);
@@ -542,8 +544,19 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     return true;
   };
   const setOf = (look) => own(pack.characters, own(pack.byInstance, look.name)) || own(pack.characters, "default");
+  /** M-3432 (#4255): eating strip for `name` (their set's `eat`, else `default.eat`, else null). */
+  const eatStripOf = (name) => {
+    const st = own(setOf({ name }) || {}, "eat") || own(own(pack.characters, "default") || {}, "eat") || null;
+    return st && ready(st) ? st : null;
+  };
   /** The strip a look shows (its pose; walking, by its heading), when all its pictures are loaded. */
   const shown = (look, walking = look.pose === "walk") => {
+    if (!walking && look.pose === "eat") {
+      const eatSt = eatStripOf(look.name);
+      if (eatSt) return { strip: eatSt, mirror: false };
+      const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
+      return fallback && ready(fallback.strip) ? fallback : null;
+    }
     const ps = poseStrip(setOf(look), walking ? "walk" : look.pose, look.heading);
     return ps && ready(ps.strip) ? ps : null;
   };
@@ -603,7 +616,30 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}`, ps.strip, ms) : ms;
       const done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
       ctx.restore();
-      if (!done) base.drawCharacter(ctx, d, look, ms, env);
+      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
+    },
+    /** M-3432 (#4255): character's eating strip (set.eat → default.eat → null) when loaded. */
+    eatStrip: eatStripOf,
+    /** M-3432 (#4255): draw a snack strip (placed on floor or eat overlay) at logical (x, y). */
+    drawSnack(ctx, st, ms, x, y, env, clipKey = null) {
+      if (!st || !ready(st)) return false;
+      const sms = clipKey ? clipMs(env, clipKey, st, ms) : ms;
+      return strip(ctx, st, sms, x, y);
+    },
+    /** M-3432 (#4255): draw frame 0 of a snack strip fitted cleanly inside a square tray/ghost icon canvas. */
+    drawSnackIcon(ctx, st, size) {
+      if (!st || !ready(st)) return false;
+      const cell = stripCell(st, 0), im = img(cell.src);
+      if (!im) return false;
+      const pad = 2, avail = Math.max(1, size - pad * 2);
+      const scale = Math.min(avail / st.w, avail / st.h);
+      const dw = Math.max(1, Math.round(st.w * scale)), dh = Math.max(1, Math.round(st.h * scale));
+      const dx = Math.round((size - dw) / 2), dy = Math.round((size - dh) / 2);
+      ctx.save();
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, dx, dy, dw, dh);
+      ctx.restore();
+      return true;
     },
     charBox(look, at) {
       const ps = shown({ ...look, heading: at.heading }, !!at.walking);

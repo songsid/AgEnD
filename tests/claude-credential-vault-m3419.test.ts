@@ -84,3 +84,8 @@ it("the additive source migration preserves old tombstones as managed",()=>{
  const migrated=new ClaudeCredentialVault(r.home);vaults.push(migrated);
  expect(migrated.metadata(null)).toMatchObject({revision:1,kind:null,source:"managed"});
 });
+
+it("missing DB state cannot be erased by reopening the vault for a metadata read or audit",()=>{
+ const r=rig();r.v.write(null,0,{kind:"api-key",value:secret},actor);r.v.close();vaults.splice(vaults.indexOf(r.v),1);rmSync(r.db);
+ expect(()=>new ClaudeCredentialVault(r.home)).toThrow("unavailable");expect(()=>lstatSync(r.db)).toThrow();
+});

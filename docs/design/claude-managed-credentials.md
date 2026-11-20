@@ -1,6 +1,6 @@
 # Managed Claude credentials
 
-Approved design, implemented in small development-only slices. Storage and authenticated API are followed by the host launch integration below. The dashboard paste selector is a separate slice and is not offered yet.
+Approved design, implemented in small development-only slices. Storage and authenticated API are followed by the host launch integration below. The dashboard now offers the approved host-only method chooser and lifecycle controls.
 
 ## Storage boundary
 
@@ -21,7 +21,7 @@ Same-OS-user processes can still read the key, call the eventual helper, or insp
 
 Every operation requires a direct loopback request with no public-gateway provenance or forwarding headers, an admin session and the existing current verified-actor proof. Header/MCP tokens, guest/read sessions and public links (even a verified public admin) are refused. Writes retain the ordinary session/CSRF gate and recheck session/actor after the bounded body read, immediately before the synchronous commit. Secret values are never returned or logged; errors expose fixed categories only. Set/replace/remove commit audit atomically; refused attempts record only fixed outcome, verified actor if available, and action. The audit never stores request bodies or secret fragments.
 
-A named profile must already exist and be owner-controlled. This storage slice refuses writes while the profile has configured/live consumers, an uncertain consumer, concurrent login, install or keep-alive. Profile deletion is refused until its managed secret is removed, preventing a recreated name from adopting an old secret. The later lifecycle slice will add the approved explicit confirmation/idle restart flow instead of changing a live CLI's credentials underneath it.
+A named profile must already exist and be owner-controlled. The storage-only port refuses writes while the profile has configured/live consumers, an uncertain consumer, concurrent login, install or keep-alive. The confirmed dashboard lifecycle port below is the supported path for an idle used profile. Profile deletion is refused until its managed secret is removed, preventing a recreated name from adopting an old secret. The lifecycle port never changes credentials underneath a live CLI.
 
 ## Following slices
 
@@ -46,3 +46,16 @@ Known file-based policy fragments and non-empty remote policy caches can overrid
 Evidence is Linux fake-CLI process isolation plus Claude 2.1.329 source-only commands in a network namespace with empty synthetic homes. No vendor credential/model request was used. Other native platforms or policy mechanisms were not exercised. The explicit subscription-source transition is available through the same local+verified API. An additive `source` column defaults old rows, including removals, to `managed`; only an explicit confirmed transition writes `subscription`. That explicit selection remains an id/revision-bound launch reference: the same launcher clears ambient API keys, tokens and provider selectors, and accepts only first-party `claude.ai` source status. Missing, unknown or conflicting login refuses before the normal run. A profile that has never had an explicit source choice retains its legacy behavior. Removal remains disconnected. Used/configured profiles still refuse mutation until the following lifecycle slice. The UI slice still needs used-profile restart confirmation, metadata/status and removal behavior; a normal successful model request must not be inferred from source selection.
 
 Rollback after launch integration: stop/disable consumers of managed profiles before using a binary that does not recognize the managed store. Preserve vault and key. Choose an explicit supported credential profile before resuming those consumers; simply stripping the wrapper could revive an older ambient login. Earlier storage-only rollback instructions do not authorize that fallback.
+
+
+## Dashboard and idle-profile lifecycle
+
+Accounts and Needs you use one host Claude method chooser. Named accounts are the existing credential_profile selection, not a second account registry; paired-computer controls retain their old flow. The original native provider sign-in runs after a confirmed local Subscription source selection; agents whose profiles have never had a source choice retain their legacy launch behavior. Existing public/native sign-in remains supported, but changing a managed source is local-only. Help opens the localized website page in a new tab. Pasted values are never read back, stored in browser storage, included in URLs, or emitted through SSE. The input clears on method changes, close/unmount and success; only a boolean tracks whether Save can be enabled.
+
+GET metadata also returns affected users and an opaque consumer revision. A used-profile write explicitly confirms those users. One account writer and a per-profile launch fence prevent a new launch or competing credential writer during preparation; every await is followed by actor/session, configuration, daemon and epoch checks. Under each daemon's pane-write lock, a fresh idle capture and a pinned pane identity fence later input. All old consumers stop before commit, and read-only incarnation proof must show the old pane absent or replaced. Uncertain retirement retains the old credential and an orphan fence. Storage or authority failure leaves the old secret unchanged and recovers only owned idle consumers. Removal leaves them stopped; replacing/source changes restart only the former live users. Paused/unsupported/uncertain consumers refuse; busy work is never interrupted or queued for a hidden later change. Failed restarts are explicit in the result.
+
+Read/audit access cannot recreate a missing database over retained managed artifacts. The vault constructor itself keeps that failure closed, not just the launch reader. A genuine first store can still be created.
+
+Managed or unavailable source state suppresses old OAuth identities and subscription meters, including already-cached usage responses. No subscription endpoint is queried for a managed profile. Native logout, renewal and sign-in cannot pretend to change a managed source; recovery points to local Accounts. Saved-unverified is conservative: no source-class or pane-text shortcut marks provider acceptance. The approved revision-bound normal-request success stamp is a separate remaining status slice before this feature is complete.
+
+See [capture gallery](../evidence/claude-credentials-ui-m3419/gallery.md) and [all 13 style-guide checks](../evidence/claude-credentials-ui-m3419/style-audit.md). The user approved the revised screen set on 2026-11-20. Website publication remains held until the feature ships in a beta and the docs review is approved.
