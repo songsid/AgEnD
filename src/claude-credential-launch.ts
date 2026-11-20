@@ -8,9 +8,9 @@ import { homedir } from "node:os";
 import { z } from "zod";
 import { ClaudeCredentialVault, type ClaudeCredentialKind } from "./claude-credential-vault.js";
 import { shellQuote, UnsupportedCliError } from "./backend/types.js";
-export interface ManagedClaudeBinding { home: string; profile: string | null; id: string; revision: number; kind: ClaudeCredentialKind; }
+export interface ManagedClaudeBinding { home: string; profile: string | null; id: string; revision: number; kind: ClaudeCredentialKind | "subscription"; }
 const bindingSchema = z.strictObject({ home:z.string().max(4096).refine(isAbsolute), profile:z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).nullable(),
- id:z.string().uuid(), revision:z.number().int().positive().max(Number.MAX_SAFE_INTEGER), kind:z.enum(["api-key","setup-token"]) });
+ id:z.string().uuid(), revision:z.number().int().positive().max(Number.MAX_SAFE_INTEGER), kind:z.enum(["api-key","setup-token","subscription"]) });
 const specSchema = z.strictObject({ binding:bindingSchema, cwd:z.string().max(4096).refine(isAbsolute), configDir:z.string().max(4096).refine(isAbsolute),
  helperCommand:z.string().max(16384), settingsPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(140), policyPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(8), ready:z.boolean(), binary:z.string().max(4096), args:z.array(z.string().max(16384)).max(256), env:z.record(z.string(),z.string().max(8192)) });
 export type ManagedClaudeSpec = z.infer<typeof specSchema>;
@@ -25,11 +25,11 @@ export function managedClaudeBinding(home: string, profile: string | null): Mana
   return null;
  }
  let vault:ClaudeCredentialVault|undefined;
- try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m)return null;if(!m.kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind:m.kind};}
+ try {vault=new ClaudeCredentialVault(home);const m=vault.metadata(profile);if(!m)return null;const kind=m.source==="subscription"?"subscription":m.kind;if(!kind)throw unavailable();return {home:resolve(home),profile,id:m.id,revision:m.revision,kind};}
  catch{throw unavailable();}finally{vault?.close();}
 }
 export function currentManagedClaude(binding: ManagedClaudeBinding): boolean {
- const v=new ClaudeCredentialVault(binding.home);try{const m=v.metadata(binding.profile);return !!m&&m.id===binding.id&&m.revision===binding.revision&&m.kind===binding.kind;}finally{v.close();}
+ const v=new ClaudeCredentialVault(binding.home);try{const m=v.metadata(binding.profile);return !!m&&m.id===binding.id&&m.revision===binding.revision&&(binding.kind==="subscription"?m.source==="subscription"&&m.kind===null:m.source==="managed"&&m.kind===binding.kind);}finally{v.close();}
 }
 export function competingClaudeEnv(key: string): boolean {
  return /^(?:ANTHROPIC_(?:API_KEY|AUTH_TOKEN|BASE_URL|CUSTOM_HEADERS|LOG|PROFILE|CONFIG_DIR)|CLAUDE_CODE_(?:OAUTH_.*|SESSION_ACCESS_TOKEN.*|API_KEY_HELPER.*|USE_(?:BEDROCK|VERTEX|FOUNDRY|GATEWAY|CLAUDE_GATEWAY))|NODE_OPTIONS|NODE_PATH|DEBUG|CLAUDE_CODE_DEBUG)$/.test(key);
@@ -129,7 +129,7 @@ export function probeManagedClaudeSource(spec:ManagedClaudeSpec,env:NodeJS.Proce
  const args=["--settings",settings,...(isolated>=0?["--setting-sources",spec.args[isolated+1]!]:[]),"auth","status","--json"];
  const r=spawnSync(spec.binary,args,{cwd:spec.cwd,env,encoding:"utf8",stdio:["ignore","pipe","pipe"],timeout:5000,maxBuffer:32768});
  try{const data=JSON.parse(r.stdout||"{}");return r.status===0&&data.loggedIn===true&&data.apiProvider==="firstParty"&&
-  (spec.binding.kind==="setup-token"?data.authMethod==="oauth_token":data.authMethod==="api_key_helper"&&data.apiKeySource==="apiKeyHelper");}
+  (spec.binding.kind==="subscription"?data.authMethod==="claude.ai":spec.binding.kind==="setup-token"?data.authMethod==="oauth_token":data.authMethod==="api_key_helper"&&data.apiKeySource==="apiKeyHelper");}
  catch{return false;}
 }
 

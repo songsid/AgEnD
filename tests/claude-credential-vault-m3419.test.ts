@@ -67,3 +67,20 @@ describe("managed Claude vault", () => {
   const db=new Database(r.db);expect((db.prepare("SELECT count(*) AS n FROM credential_audit").get() as any).n).toBe(1000);db.close();
  });
 });
+it("subscription selection is explicit, audited and revision-bound, and never resurrects a removed secret",()=>{
+ const r=rig(),first=r.v.write(null,0,{kind:"api-key",value:secret},actor);
+ const removed=r.v.write(null,1,null,actor);expect(removed.source).toBe("managed");
+ const selected=r.v.write(null,2,"subscription",actor);
+ expect(selected).toMatchObject({id:first.id,revision:3,kind:null,source:"subscription"});
+ expect(()=>r.v.credential(null,first.id,1)).toThrow("conflict");
+ expect(()=>r.v.write(null,2,"subscription",actor)).toThrow("conflict");
+ const next=r.v.write(null,3,{kind:"setup-token",value:other},actor);
+ expect(next).toMatchObject({id:first.id,revision:4,source:"managed"});
+ expect(r.v.history().map((row:any)=>row.action)).toEqual(["set","select-subscription","remove","set"]);
+});
+it("the additive source migration preserves old tombstones as managed",()=>{
+ const r=rig();r.v.write(null,0,null,actor);r.v.close();vaults.splice(vaults.indexOf(r.v),1);
+ const db=new Database(r.db);db.exec("ALTER TABLE credentials DROP COLUMN source");db.close();
+ const migrated=new ClaudeCredentialVault(r.home);vaults.push(migrated);
+ expect(migrated.metadata(null)).toMatchObject({revision:1,kind:null,source:"managed"});
+});

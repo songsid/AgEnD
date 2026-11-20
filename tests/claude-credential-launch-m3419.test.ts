@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, chmodSync, readdirSync, symlinkSync } from "node:fs";
 import * as fs from "node:fs";
 import { join, resolve } from "node:path";
@@ -15,6 +15,7 @@ import type { Logger } from "../src/logger.js";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
 import type { CliBackendConfig } from "../src/backend/types.js";
 vi.mock("node:fs",async importOriginal=>{const actual=await importOriginal<typeof import("node:fs")>();return {...actual,lstatSync:vi.fn(actual.lstatSync),existsSync:vi.fn(actual.existsSync)};});
+beforeEach(async()=>{const actual=await vi.importActual<typeof import("node:fs")>("node:fs");vi.mocked(fs.lstatSync).mockImplementation(actual.lstatSync);vi.mocked(fs.existsSync).mockImplementation(actual.existsSync);});
 const dirs:string[]=[],vaults:ClaudeCredentialVault[]=[],actor={adapterId:"test",userId:"admin"};
 const value="synthetic-"+"x".repeat(48),ambient="synthetic-"+"y".repeat(48);
 afterEach(()=>{vi.restoreAllMocks();vi.unstubAllEnvs();for(const v of vaults.splice(0))v.close();for(const d of dirs.splice(0))rmSync(d,{recursive:true,force:true});});
@@ -29,7 +30,10 @@ function fixture(kind:"api-key"|"setup-token"="api-key",profile:string|null="spa
 const fs=require('node:fs'),cp=require('node:child_process'),crypto=require('node:crypto');
 const a=process.argv.slice(2);if(a.includes('--help')){console.log('--effort (low, medium, high)');process.exit(0);}
 const settings=JSON.parse(fs.readFileSync(a[a.indexOf('--settings')+1],'utf8'));
+const subscriptionState=require('node:path').join(process.env.CLAUDE_CONFIG_DIR,'synthetic-subscription-state');
+if(a.includes('auth')&&a.includes('status')&&fs.existsSync(subscriptionState)){console.log(fs.readFileSync(subscriptionState,'utf8'));process.exit(0);}
 if(a.includes('auth')&&a.includes('status')){if(process.env.FAKE_VAULT_DB){const D=require(process.env.FAKE_SQLITE_MODULE),db=new D(process.env.FAKE_VAULT_DB);db.exec("UPDATE credentials SET revision=revision+1");db.close();}if(process.env.FAKE_CHANGED_SETTINGS)fs.writeFileSync(process.env.FAKE_CHANGED_SETTINGS,JSON.stringify({model:'other-model'}));console.log(JSON.stringify(process.env.FAKE_WRONG_SOURCE?{loggedIn:true,authMethod:'api_key',apiProvider:'firstParty'}:{loggedIn:true,authMethod:process.env.CLAUDE_CODE_OAUTH_TOKEN?'oauth_token':'api_key_helper',apiProvider:'firstParty',apiKeySource:'apiKeyHelper'}));process.exit(0);}
+if(fs.existsSync(subscriptionState)){console.log(JSON.stringify({api:!!process.env.ANTHROPIC_API_KEY,base:!!process.env.ANTHROPIC_BASE_URL,token:!!process.env.CLAUDE_CODE_OAUTH_TOKEN,args:a}));process.exit(0);}
 const raw=process.env.CLAUDE_CODE_OAUTH_TOKEN?Buffer.from(process.env.CLAUDE_CODE_OAUTH_TOKEN):cp.execSync(settings.apiKeyHelper,{env:process.env,stdio:['ignore','pipe','pipe']});
 const digest=crypto.createHash('sha256').update(raw).digest('hex');raw.fill(0);
 console.log(JSON.stringify({digest,api:!!process.env.ANTHROPIC_API_KEY,base:!!process.env.ANTHROPIC_BASE_URL,cloud:!!process.env.CLAUDE_CODE_USE_BEDROCK,cwd:process.cwd(),args:a}));
@@ -157,4 +161,37 @@ it("selection refuses inaccessible state checks while a truly absent legacy vaul
   return (original as Function)(path,...args);
  }) as typeof fs.lstatSync);
  expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+});
+it("fresh launch uses subscription only after explicit selection, not removal",()=>{
+ const f=fixture();f.vault.write("spare",1,null,actor);
+ expect(()=>managedClaudeBinding(f.home,"spare")).toThrow("unavailable");
+ f.vault.write("spare",2,"subscription",actor);expect(managedClaudeBinding(f.home,"spare")).toMatchObject({id:f.binding.id,revision:3,kind:"subscription"});
+ f.vault.write("spare",3,{kind:"api-key",value},actor);
+ expect(managedClaudeBinding(f.home,"spare")).toMatchObject({id:f.binding.id,revision:4,kind:"api-key"});
+});
+
+it("explicit subscription stays bound through the production launcher, clears ambient auth and refuses missing or conflicting login",()=>{
+ const f=fixture("api-key",null);f.vault.write(null,1,"subscription",actor);
+ const binding=managedClaudeBinding(f.home,null)!;
+ const backend=new ClaudeCodeBackend(f.instance,{policyPaths:[join(f.root,"policy.json")],settingsPaths:[join(f.config,"settings.json")]});backend.refreshLaunchBinary(f.binary);
+ const config:CliBackendConfig={instanceDir:f.instance,workingDirectory:f.cwd,instanceName:"helper",mcpServers:{},managedClaudeCredential:binding,skipPermissions:true};
+ vi.stubEnv("ANTHROPIC_API_KEY",ambient);vi.stubEnv("ANTHROPIC_BASE_URL","https://example.invalid");vi.stubEnv("CLAUDE_CODE_OAUTH_TOKEN",ambient);
+ backend.writeConfig(config);const command=backend.buildCommand(config);
+ expect(command).not.toContain(ambient);expect(command).not.toContain("example.invalid");
+ // No profile subscription: the fake CLI reports helper auth; the real run must never execute.
+ expect(run(command,f).status).not.toBe(0);
+ const state=join(f.config,"synthetic-subscription-state");
+ for(const report of [{loggedIn:false,authMethod:"claude.ai",apiProvider:"firstParty"},{loggedIn:true,authMethod:"api_key",apiProvider:"firstParty"},{loggedIn:true,authMethod:"oauth_token",apiProvider:"firstParty"},{loggedIn:true,authMethod:"claude.ai",apiProvider:"other"}]){
+  writeFileSync(state,JSON.stringify(report));const result=run(command,f);expect(result.status).not.toBe(0);expect(result.stdout).toBe("");
+ }
+ writeFileSync(state,JSON.stringify({loggedIn:true,authMethod:"claude.ai",apiProvider:"firstParty"}));
+ const ok=run(command,f);expect(ok.status).toBe(0);expect(JSON.parse(ok.stdout)).toMatchObject({api:false,base:false,token:false});
+ f.vault.write(null,2,null,actor);expect(run(command,f).status).not.toBe(0);
+});
+it("an untouched legacy backend still forwards its existing ambient API configuration",()=>{
+ const f=fixture("api-key",null),backend=new ClaudeCodeBackend(f.instance);backend.refreshLaunchBinary(f.binary);
+ vi.stubEnv("ANTHROPIC_API_KEY",ambient);vi.stubEnv("ANTHROPIC_BASE_URL","https://example.invalid");
+ const config:CliBackendConfig={instanceDir:f.instance,workingDirectory:f.cwd,instanceName:"legacy",mcpServers:{},skipPermissions:true};
+ backend.writeConfig(config);const command=backend.buildCommand(config);
+ expect(command).toContain(ambient);expect(command).toContain("https://example.invalid");
 });
