@@ -90,7 +90,7 @@ describe("the chat's commands (the real page modules)", () => {
     expect(c.sends()).toEqual([]);
   });
 
-  it("M-3425 scale: counts and filters 80 entries, expands without rerunning, and keeps the filter on close", async () => {
+  it.each(["close", "escape"])("M-3425 scale: filters 80 entries and restores trigger focus after %s without rerunning", async dismiss => {
     const c = await chatPage();
     c.fx.respond = () => ({ report: { title: "Fleet status", columns: ["Instance", "Backend", "Model", "Ctx", "Effort", "State"],
       rows: Array.from({ length: 80 }, (_, i) => ["example-worker-" + i, "codex", "example-model", "-", "medium", i % 2 ? "paused" : "idle"]),
@@ -103,11 +103,16 @@ describe("the chat's commands (the real page modules)", () => {
     search.value = "worker-79"; fire(search, "input"); await settle();
     expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
     expect(c.card().querySelector("tbody").textContent).toContain("example-worker-79");
-    fire(c.card().querySelector("[data-report-expand]"), "click"); await settle();
+    const trigger = c.card().querySelector("[data-report-expand]");
+    trigger.focus();
+    fire(trigger, "click"); await settle();
     expect(c.card().querySelector("dialog")).not.toBeNull();
     expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
-    fire(c.card().querySelector(".dlg-x"), "click"); await settle();
+    if (dismiss === "close") fire(c.card().querySelector(".dlg-x"), "click");
+    else fire(c.card().querySelector("dialog"), "cancel");
+    await settle();
     expect(c.card().querySelector("dialog")).toBeNull();
+    expect(c.p.root.ownerDocument.activeElement).toBe(c.card().querySelector("[data-report-expand]"));
     const again = c.card().querySelector('.cmd-report input[type="search"]');
     expect(again.value).toBe("worker-79");
     again.value = "no such entry"; fire(again, "input"); await settle();

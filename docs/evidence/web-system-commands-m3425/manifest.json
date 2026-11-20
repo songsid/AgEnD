@@ -109,7 +109,7 @@
   },
   {
     "path": "scale/README.md",
-    "sha256": "79a11aa110aadd587ae25da7b9002574afc6a2cfcdeecf700bc8790dcf5d2d3d"
+    "sha256": "52e0315f27ed1191166f831a2d805d364ae276a93d0f289a820bf5ef1954d513"
   },
   {
     "path": "scale/after/checks.json",
@@ -326,6 +326,14 @@
   {
     "path": "scale/before/phone-light-en-sysinfo.png",
     "sha256": "faf645f02214c400b6cb7c62b4096382dedf50eea4d39fa0fa386cd25bb8c8b6"
+  },
+  {
+    "path": "scale/focus-fail-first-excerpt.log",
+    "sha256": "a3204fc1a3dd7bd9671313a2c4f5f428f9a95c0abfcc5a3d89d5b10e00770117"
+  },
+  {
+    "path": "scale/focus-fixed.log",
+    "sha256": "4ed27447c9787af8ec23e7af206ece9ce187914ded820417e21036ff6581689e"
   },
   {
     "path": "scale/scale-fail-first.log",

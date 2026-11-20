@@ -42,3 +42,9 @@ Both locale/theme/device pairs and corresponding end views are retained alongsid
 This verifies synthetic collection/rendering and navigation, not model/account behavior or timing on other machines. The source collectors, admission rules and six-field web projection are unchanged by this scale adjustment. No Access settings change is included. USER VISUAL HOLD remains; a fresh exact-head review/CI and approval are required.
 
 Revert the scale adjustment to restore the earlier report presentation; no data migration or account/profile change is involved.
+
+## Focus correction
+
+Review found that opening the dialog removes its original trigger, so the shared dialog cannot restore that detached node. A local ref plus layout effect now focuses the recreated Open report trigger only after closing an expanded report. It does not change the layout or the captured report content.
+
+Both Close and Escape cases fail on the reviewed head at the activeElement identity assertion; both pass with the correction, retaining the filter, clearing/empty-result behavior and the single-command/no-message assertions. Only these two mounted cases were rerun; no broad source/browser campaign or capture replacement was needed.

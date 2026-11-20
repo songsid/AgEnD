@@ -627,6 +627,13 @@ function openBackendSignIn(backend) {
 function CommandReport({ report, command }) {
   const [filter, setFilter] = useState("");
   const [expanded, setExpanded] = useState(false);
+  const trigger = useRef(null);
+  const wasExpanded = useRef(false);
+  // The inline trigger is recreated when the modal closes; restore focus after its ref is mounted.
+  useLayoutEffect(() => {
+    if (wasExpanded.current && !expanded) trigger.current?.focus({ preventScroll: true });
+    wasExpanded.current = expanded;
+  }, [expanded]);
   const query = filter.trim().toLocaleLowerCase();
   const rows = command === "status" && query
     ? report.rows.filter(row => row.some(value => value.toLocaleLowerCase().includes(query))) : report.rows;
@@ -636,7 +643,7 @@ function CommandReport({ report, command }) {
       ${command === "status" ? html`<label class="field"><span class="sr-only">${t("chat.cmdReportFilter")}</span>
         <input type="search" aria-label=${t("chat.cmdReportFilter")} placeholder=${t("chat.cmdReportFilter")}
           value=${filter} onInput=${e => setFilter(e.target.value)} /></label>` : null}
-      ${expanded ? null : html`<button type="button" class="btn btn-sm btn-ghost" data-report-expand onClick=${() => setExpanded(true)}>${t("chat.cmdReportOpen")}</button>`}
+      ${expanded ? null : html`<button type="button" class="btn btn-sm btn-ghost" ref=${trigger} data-report-expand onClick=${() => setExpanded(true)}>${t("chat.cmdReportOpen")}</button>`}
     </div>
     ${command === "status" ? html`<p class="note cmd-report-count">${query ? t("chat.cmdReportMatches", rows.length, report.rows.length) : t("chat.cmdReportCount", report.rows.length)}${report.notes[0] ? " · " + report.notes[0] : ""}</p>` : null}
     <div class="cmd-report-body" tabIndex="0" aria-label=${report.title}>
