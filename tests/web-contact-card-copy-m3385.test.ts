@@ -50,7 +50,7 @@ describe("M-3385: the contact-request card says what each part is and does", () 
     expect(text(c.root.querySelector(".contact-toggle"))).toBe("Forward requests like this from now on");
     const more = c.root.querySelector(".contact-allow-info");
     expect([more.querySelector(".info-tip-btn")?.getAttribute("aria-label"), text(more.querySelector(".info-tip-body"))]).toEqual(["About forwarding requests like this",
-      "Alex's message requests from classic-ops to web-dev will be forwarded without asking. This adds an allowed contact to web-dev's Permissions, until the date or the number of uses below; you can remove it there at any time."]);
+      "Alex's message requests from classic-ops to web-dev will be forwarded without asking. This adds an allowed contact to web-dev's Permissions, until the date or the number of uses you set; you can remove it there at any time."]);
     expect(c.root.querySelector(".contact-toggle .info-tip"), "the ⓘ is beside the label, not inside it").toBeNull();
   });
   it("zh-TW: the same", async () => {
@@ -65,7 +65,7 @@ describe("M-3385: the contact-request card says what each part is and does", () 
       expect(text(c.root.querySelector(".contact-toggle"))).toBe("之後同樣的請求也直接轉交");
       const more = c.root.querySelector(".contact-allow-info");
       expect([more.querySelector(".info-tip-btn")?.getAttribute("aria-label"), text(more.querySelector(".info-tip-body"))]).toEqual(["「同樣的請求也直接轉交」的說明",
-        "之後 Alex 從 classic-ops 發給 web-dev 的訊息請求會直接轉交，不必再核准。這會在 web-dev 的權限頁新增一筆常用轉交，到下方的到期時間或次數用完為止；隨時可以在那裡移除。"]);
+        "之後 Alex 從 classic-ops 發給 web-dev 的訊息請求會直接轉交，不必再核准。這會在 web-dev 的權限頁新增一筆常用轉交，到你設定的到期時間或次數用完為止；隨時可以在那裡移除。"]);
     } finally { c.en(); }
   });
   it("a request from more than one person: no 'also allow' (a standing grant is one person's; the server would refuse it)", async () => {
