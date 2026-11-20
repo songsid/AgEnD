@@ -1,3 +1,4 @@
+import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
 import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
@@ -5989,7 +5990,7 @@ export class Daemon extends EventEmitter {
 
     // Clean up backend config files
     if (this.backend?.cleanup) {
-      this.backend.cleanup(this.buildBackendConfig());
+      this.backend.cleanup(this.buildBackendConfig(false));
     }
     // Clean up checked-out repos
     try { rmSync(join(this.instanceDir, "repos"), { recursive: true, force: true }); } catch { /* best effort */ }
@@ -12960,7 +12961,7 @@ export class Daemon extends EventEmitter {
   }
 
   /** Build config object for the CLI backend */
-  private buildBackendConfig(): CliBackendConfig {
+  private buildBackendConfig(forLaunch = true): CliBackendConfig {
     // Antigravity 1.1.17 has no per-workspace MCP config, but its global MCP
     // children inherit the CLI process environment. The backend installs one
     // environment-selecting launcher, so MCP is now the safe default here too.
@@ -13096,8 +13097,11 @@ export class Daemon extends EventEmitter {
 
     const backendName = this.config.backend ?? "claude-code";
     const backendOptions = this.config.backend_options?.[backendName];
+    const managedClaudeCredential = forLaunch && backendName === "claude-code"
+      ? managedClaudeBinding(resolve(this.instanceDir, "..", ".."), resolveCredentialProfile(backendOptions)) : null;
 
     return {
+      ...(managedClaudeCredential ? { managedClaudeCredential } : {}),
       ...(this.classicRestriction ? { classicRestriction: this.classicRestriction } : {}),
       workingDirectory: this.config.working_directory,
       instanceDir: this.instanceDir,
@@ -14284,7 +14288,7 @@ export class Daemon extends EventEmitter {
     this.assertSessionOomAdmission();
     admit();
     const launchFence = this.launchFenceEpoch;
-    const backendConfig = this.buildBackendConfig();
+    const backendConfig = this.buildBackendConfig(true);
     if (this.classicRestrictionFailed) throw Error("Restricted room policy is unavailable");
 
     // A compatibility refusal is not a failed resume: no configuration, pin, history or pane may change.
