@@ -1,0 +1,264 @@
+{
+  "iterations": 50,
+  "passed": 50,
+  "failed": 0,
+  "skippedUnselected": 12,
+  "workerCount": 1,
+  "freshFixturePerIteration": true,
+  "timeoutChanges": 0,
+  "retryCount": 0,
+  "runs": [
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (1/50)",
+      "status": "passed",
+      "durationMs": 1543.8075999999983
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (2/50)",
+      "status": "passed",
+      "durationMs": 625.6560600000012
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (3/50)",
+      "status": "passed",
+      "durationMs": 664.0944499999987
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (4/50)",
+      "status": "passed",
+      "durationMs": 715.0466689999994
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (5/50)",
+      "status": "passed",
+      "durationMs": 705.1891200000009
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (6/50)",
+      "status": "passed",
+      "durationMs": 851.9644420000004
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (7/50)",
+      "status": "passed",
+      "durationMs": 786.591742999999
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (8/50)",
+      "status": "passed",
+      "durationMs": 767.1683350000003
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (9/50)",
+      "status": "passed",
+      "durationMs": 909.9873420000022
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (10/50)",
+      "status": "passed",
+      "durationMs": 748.2930680000027
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (11/50)",
+      "status": "passed",
+      "durationMs": 850.488985
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (12/50)",
+      "status": "passed",
+      "durationMs": 870.6993020000009
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (13/50)",
+      "status": "passed",
+      "durationMs": 927.0048290000013
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (14/50)",
+      "status": "passed",
+      "durationMs": 896.2401910000008
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (15/50)",
+      "status": "passed",
+      "durationMs": 795.6470410000002
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (16/50)",
+      "status": "passed",
+      "durationMs": 789.1754260000016
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (17/50)",
+      "status": "passed",
+      "durationMs": 772.5797860000021
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (18/50)",
+      "status": "passed",
+      "durationMs": 796.1805669999994
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (19/50)",
+      "status": "passed",
+      "durationMs": 919.9140920000027
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (20/50)",
+      "status": "passed",
+      "durationMs": 1003.2035849999993
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (21/50)",
+      "status": "passed",
+      "durationMs": 872.3855939999994
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (22/50)",
+      "status": "passed",
+      "durationMs": 684.2121879999977
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (23/50)",
+      "status": "passed",
+      "durationMs": 887.6125759999995
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (24/50)",
+      "status": "passed",
+      "durationMs": 830.3636860000006
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (25/50)",
+      "status": "passed",
+      "durationMs": 900.1236160000008
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (26/50)",
+      "status": "passed",
+      "durationMs": 813.9236430000019
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (27/50)",
+      "status": "passed",
+      "durationMs": 954.8338100000001
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (28/50)",
+      "status": "passed",
+      "durationMs": 750.3413010000004
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (29/50)",
+      "status": "passed",
+      "durationMs": 773.7960129999956
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (30/50)",
+      "status": "passed",
+      "durationMs": 740.4656179999947
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (31/50)",
+      "status": "passed",
+      "durationMs": 797.4352530000033
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (32/50)",
+      "status": "passed",
+      "durationMs": 807.8636069999993
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (33/50)",
+      "status": "passed",
+      "durationMs": 1088.2175090000019
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (34/50)",
+      "status": "passed",
+      "durationMs": 781.4690950000004
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (35/50)",
+      "status": "passed",
+      "durationMs": 715.5480929999976
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (36/50)",
+      "status": "passed",
+      "durationMs": 745.0071210000024
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (37/50)",
+      "status": "passed",
+      "durationMs": 868.6857890000028
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (38/50)",
+      "status": "passed",
+      "durationMs": 860.6416650000028
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (39/50)",
+      "status": "passed",
+      "durationMs": 803.4747500000012
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (40/50)",
+      "status": "passed",
+      "durationMs": 740.5010970000003
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (41/50)",
+      "status": "passed",
+      "durationMs": 755.6385620000001
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (42/50)",
+      "status": "passed",
+      "durationMs": 1147.7388419999988
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (43/50)",
+      "status": "passed",
+      "durationMs": 892.6550770000031
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (44/50)",
+      "status": "passed",
+      "durationMs": 920.297716999994
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (45/50)",
+      "status": "passed",
+      "durationMs": 865.560126999997
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (46/50)",
+      "status": "passed",
+      "durationMs": 936.0328699999955
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (47/50)",
+      "status": "passed",
+      "durationMs": 1032.1661339999991
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (48/50)",
+      "status": "passed",
+      "durationMs": 766.0897800000021
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (49/50)",
+      "status": "passed",
+      "durationMs": 872.4864319999979
+    },
+    {
+      "name": "holds the first runtime's sockets and verifies closure without rebinding released ports (50/50)",
+      "status": "passed",
+      "durationMs": 952.9884549999988
+    }
+  ],
+  "sourceSha256": "33c176157195271dfd6a57263b35090e6f6a5e52478d176926a77ac2cd70e835",
+  "method": "One worker/process; 50 fresh fixture cases; temporary it.each overlay restored byte-for-byte"
+}
