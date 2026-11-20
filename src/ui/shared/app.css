@@ -1565,6 +1565,8 @@ img.amb-p { object-fit: contain; }
   .dlg-actions .btn { flex: 1; min-height: var(--tap); }
   .dlg-head .dlg-x { min-width: var(--tap); min-height: var(--tap); }
   .row-item .btn, .s-row .btn, .n-actions .btn { min-height: var(--tap); }
+  /* Settings buttons share one phone target, including compact card actions. */
+  .p-settings .btn { min-width: var(--tap); min-height: var(--tap); }
   .s-row .icon-btn { min-width: var(--tap); min-height: var(--tap); }
   .p-settings .s-company-join :is(.field input, .btn) { min-height: var(--tap); }
   /* M-3281: the archived chat files' limit (Settings → Web dashboard): its field is a phone tap target too (its Save keeps the
