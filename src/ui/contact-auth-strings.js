@@ -92,7 +92,7 @@ register("contactAuth", {
     // M-3385: what the card's parts do, said where they are.
     // M-3385 (the user, 11-20): short visible words; the detail in an ⓘ (ui-style-guide rule 14).
     alsoAllow: "Forward requests like this from now on",
-    alsoAllowMore: "{0}'s {1} requests from {2} to {3} will be forwarded without asking. This adds an allowed contact to {3}'s Permissions, until the date or the number of uses below; you can remove it there at any time.",
+    alsoAllowMore: "{0}'s {1} requests from {2} to {3} will be forwarded without asking. This adds an allowed contact to {3}'s Permissions, until the date or the number of uses you set; you can remove it there at any time.",
     alsoAllowAbout: "About forwarding requests like this",
     messageLabel: "What it asks",
     expiresPending: "Expires {0}: a request waits {1} minutes for a decision. After that nothing is forwarded, even if it was approved.",
@@ -195,7 +195,7 @@ register("contactAuth", {
     created: "{0} 提出", expires: "{0} 到期", decided: "{1} 於 {0} 處理",
     approveOnce: "核准這一次", decline: "拒絕", alsoAllowUntil: "到期時間", alsoAllowUses: "次數（留空表示不限）",
     alsoAllow: "之後同樣的請求也直接轉交",
-    alsoAllowMore: "之後 {0} 從 {2} 發給 {3} 的{1}請求會直接轉交，不必再核准。這會在 {3} 的權限頁新增一筆常用轉交，到下方的到期時間或次數用完為止；隨時可以在那裡移除。",
+    alsoAllowMore: "之後 {0} 從 {2} 發給 {3} 的{1}請求會直接轉交，不必再核准。這會在 {3} 的權限頁新增一筆常用轉交，到你設定的到期時間或次數用完為止；隨時可以在那裡移除。",
     alsoAllowAbout: "「同樣的請求也直接轉交」的說明",
     messageLabel: "請求內容",
     expiresPending: "{0} 到期：申請只等待 {1} 分鐘，逾時後即使已核准也不會轉交。",
