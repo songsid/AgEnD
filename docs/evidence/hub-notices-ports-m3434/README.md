@@ -6,7 +6,7 @@ The test now observes the original TLS servers' real `listening` and `close` eve
 
 ## Input-bound evidence
 
-`inputs.json` identifies each exact test input and the base commit. The two patches apply independently to that base in an isolated worktree:
+`inputs.json` identifies each exact test input and the base commit. Its `patches.controlledBase` and `patches.controlledFixed` strings contain complete unified diffs; extract either JSON string to a patch and apply it independently to that base in an isolated worktree:
 
 - Controlled base: force the dashboard to reuse the released member port. The old numerical bind probe fails with `EADDRINUSE` (1 red).
 - Controlled fix: the same forced reuse passes when shutdown is checked on the original listener objects (1 green).

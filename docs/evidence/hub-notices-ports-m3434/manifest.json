@@ -6,23 +6,15 @@
     },
     {
       "path": "docs/evidence/hub-notices-ports-m3434/README.md",
-      "sha256": "a01b84b2040bdb603c68c6fc6133bbcd7a6d203392991e666d4918af29fdfa98"
+      "sha256": "69f183f252a7c204baf5e18f3f7297d52d5bbfc23aab0777bb020369eb810f97"
     },
     {
       "path": "docs/evidence/hub-notices-ports-m3434/controlled-base.log",
       "sha256": "0cfec10006ff8f67632ca440833927f961e9454d4a6c6d3184f7b7f69eca8755"
     },
     {
-      "path": "docs/evidence/hub-notices-ports-m3434/controlled-base.patch",
-      "sha256": "37c341731f51d3b6486f5b41ae5c776b9ec63e9a08a8fb1f17bd10f4b932782e"
-    },
-    {
       "path": "docs/evidence/hub-notices-ports-m3434/controlled-fixed.log",
       "sha256": "fc959be5423720b96851dadbc107263bed6f653d13c13ea68d57479bfd302505"
-    },
-    {
-      "path": "docs/evidence/hub-notices-ports-m3434/controlled-fixed.patch",
-      "sha256": "48dd325abc872ceaf5c979223afd35a831c83ea90aa8e52f30a422ca9d1b1a13"
     },
     {
       "path": "docs/evidence/hub-notices-ports-m3434/focused.log",
@@ -30,7 +22,7 @@
     },
     {
       "path": "docs/evidence/hub-notices-ports-m3434/inputs.json",
-      "sha256": "be4856a4752351d275dd7512925b964a85620231328e40dca3880ed75c116853"
+      "sha256": "ce362216d078f27eadab26db006a28164653f8405bf4a715c02201a613077053"
     },
     {
       "path": "docs/evidence/hub-notices-ports-m3434/repeat-summary.json",
