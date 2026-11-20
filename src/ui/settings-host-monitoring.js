@@ -32,12 +32,17 @@ function AvailableHostMonitoringSettings({ ctx }) {
     const changed = form.enabled !== base.enabled || form.agent_footprint !== base.agent_footprint;
     syncStage(ctx, 'host-monitoring', changed ? {label:copy('title'), impact:'now', request:{method:'PUT',url:'/api/settings/fleet/monitoring',body:{enabled:form.enabled,agent_footprint:form.agent_footprint}}} : null);
   }, [form]);
-  const setEnabled = async checked => {
-    if (!checked && form.enabled && !(await confirmDialog({title:copy('stopTitle'),message:copy('stopBody'),confirmLabel:copy('stop'),danger:true}))) return;
+  const setEnabled = async (checked, control) => {
+    if (!checked && form.enabled && !(await confirmDialog({title:copy('stopTitle'),message:copy('stopBody'),confirmLabel:copy('stop'),danger:true}))) {
+      // The browser toggled its native property before the asynchronous question.
+      // Cancel leaves the draft unchanged, so restore the displayed value too.
+      control.checked = form.enabled;
+      return;
+    }
     setForm(f=>({...f,enabled:checked}));
   };
   const row = (id,key,hint,disabled,change) => html`<div class="s-setting-row"><div class="s-setting-copy"><label for=${id}>${copy(key)}</label><p class="note" id=${`${id}-hint`}>${copy(hint)}</p></div>
-    <input class="s-ui-toggle" type="checkbox" role="switch" id=${id} checked=${form[key === 'agents' ? 'agent_footprint':'enabled']} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${e=>change(e.target.checked)} /></div>`;
+    <input class="s-ui-toggle" type="checkbox" role="switch" id=${id} checked=${form[key === 'agents' ? 'agent_footprint':'enabled']} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${e=>change(e.target.checked, e.target)} /></div>`;
   return html`<section class="card s-group" id="host-monitoring"><h3>${copy('title')}</h3>
     ${row('hostMonitoringEnabled','enabled','hint',false,setEnabled)}
     ${row('hostMonitoringAgents','agents','agentHint',!agentsAvailable || !form.enabled,checked=>setForm(f=>({...f,agent_footprint:checked})))}

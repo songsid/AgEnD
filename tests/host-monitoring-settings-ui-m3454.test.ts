@@ -18,7 +18,14 @@ describe('shared Settings monitoring card',()=>{
   await p.mount(h(Component,{ctx}));await toggle('hostMonitoringEnabled',true);
   expect(staged.get('host-monitoring').request.body).toEqual({enabled:true,agent_footprint:false});
   globalThis.confirm=()=>false;await toggle('hostMonitoringEnabled',false);
-  expect(staged.get('host-monitoring').request.body.enabled).toBe(true);
+  expect(staged.get('host-monitoring').request.body.enabled).toBe(true);expect(input('hostMonitoringEnabled').checked).toBe(true);
+ });
+ it('restores the saved-on checked display on Cancel, and switches off only on confirmation',async()=>{
+  ctx.fleet.monitoring={enabled:true,agent_footprint:false};await p.mount(h(Component,{ctx}));
+  globalThis.confirm=()=>false;await toggle('hostMonitoringEnabled',false);
+  expect(input('hostMonitoringEnabled').checked).toBe(true);expect(ctx.fleet.monitoring.enabled).toBe(true);expect(staged.size).toBe(0);
+  globalThis.confirm=()=>true;await toggle('hostMonitoringEnabled',false);
+  expect(input('hostMonitoringEnabled').checked).toBe(false);expect(staged.get('host-monitoring').request.body).toEqual({enabled:false,agent_footprint:false});
  });
  it('hides even a configured-on host when the collector is absent',async()=>{
   ctx.fleet.monitoring={enabled:true,agent_footprint:true};ctx.schema={};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(staged.size).toBe(0);

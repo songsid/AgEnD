@@ -81,12 +81,27 @@
     "semanticBaseRed": 6,
     "baseOtherPassed": 3,
     "greenFiles": 4,
-    "greenTests": 106,
+    "greenTests": 107,
     "surroundingNotificationsLeadAndRegistry": "byte-equal dev98cfd9b77",
     "historicalImages": "superseded; not current UI",
     "runtimeConfigurationAndGates": "unchanged",
     "newBrowserCampaign": false,
-    "finalUiCases": 9,
-    "testTypeDiagnostics": 0
+    "finalUiCases": 10,
+    "testTypeDiagnostics": 0,
+    "finalTerminalExit": 0,
+    "finalWorkers": 1,
+    "cancelBaseRed": 2,
+    "cancelAssertions": [
+      "DOM checked display restored for staged-on",
+      "DOM checked display restored for saved-on; no staged mutation on cancel",
+      "confirm stages explicit false"
+    ],
+    "intermediateVerification": {
+      "parallelTimeouts": 2,
+      "subsequentMissingControls": 3,
+      "unchangedFailedFileSerialPassed": 43,
+      "finalFullSerialPassed": 107,
+      "timeoutChanged": false
+    }
   }
 }

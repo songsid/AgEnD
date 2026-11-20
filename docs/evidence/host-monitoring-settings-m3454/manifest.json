@@ -11,7 +11,7 @@
     },
     {
       "path": "docs/evidence/host-monitoring-settings-m3454/README.md",
-      "sha256": "b09e03b12cca862cd1058171c63d80f3a503f2f7376231677c13b43e7fd9fdcb"
+      "sha256": "abffa495d675ec2ff5fb586c32ecab34831219c753aefcffaf8eec3e024db3cf"
     },
     {
       "path": "docs/evidence/host-monitoring-settings-m3454/actual-settings-checks.json",
@@ -35,7 +35,7 @@
     },
     {
       "path": "docs/evidence/host-monitoring-settings-m3454/validation.json",
-      "sha256": "68534767e39db1ea630e7d1d999a50754dbe94adbc5debdc2b70e85f5f077e97"
+      "sha256": "3be0fd595e14c48145a04fabd73e1ac1fc6aca6537fade9fd2929755eee0d8ea"
     },
     {
       "path": "src/config-validator.ts",
@@ -83,7 +83,7 @@
     },
     {
       "path": "src/ui/settings-host-monitoring.js",
-      "sha256": "59f220ee1437724dea92a46ec5decd8882bc3ad93d62ee5d9b105173eaf574e7"
+      "sha256": "de33e5d465e11d9ebd1d9372c123fc1f44116669b113e31fc285a8ed92bd93a3"
     },
     {
       "path": "src/ui/settings-layout.js",
@@ -99,7 +99,7 @@
     },
     {
       "path": "tests/host-monitoring-settings-ui-m3454.test.ts",
-      "sha256": "03f76c2261f109c312383d3d3be6b7f291912ee267358dafad423ef21278feb4"
+      "sha256": "4664828e75452fb60b962ad4f96d5c4922b572a921dd2aed5930f49d7cb7d7d3"
     }
   ]
 }
