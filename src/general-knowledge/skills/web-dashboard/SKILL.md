@@ -543,6 +543,8 @@ every 5 s.
 
 ## Finding an instance
 
+Right-click an Agent row in the left sidebar to open that Agent's chat actions without first changing chats. On touch, hold the row; with the row focused, press Shift+F10 or the context-menu key. The same shared menu/sheet and applicable actions are used as the chat header's **⋯**. Escape or an outside press closes it. Moving or scrolling cancels a touch hold. Guests and read-only viewers do not gain these chat controls; the row's existing favorites/workspace **⋯** remains separate.
+
 **The sidebar list.** Grouped by team (an instance in `teams.<name>.members` under its first team, whatever its tags), else by
 its first tag ("#" before the heading), ClassicBot rooms under Classic, the rest under Other; Settings → Agents the same (#2172).
 Settings → Preferences → **Sidebar agent list** chooses **Detailed** or **Compact**, one for a phone's drawer and one for a

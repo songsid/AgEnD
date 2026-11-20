@@ -11,7 +11,7 @@ import { GeneralLocation } from "./general-location.js";
 // that apply to its state are offered (#1408 rough edges 4 and 7).
 import { html, Fragment, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { lang, register, t } from "/assets/app-i18n.js";
-import { AgentSheetButton } from "/assets/agent-sheet.js";
+import { AgentSheetButton, AgentSheet } from "/assets/agent-sheet.js";
 import { appStore, createStore, guestPage, guestTrusted, useStore } from "/assets/app-store.js";
 import { ComposerAuth, useWebAuthorization } from "/assets/web-authorize.js";
 import { useLease } from "/assets/app-ctx.js";
@@ -19,7 +19,7 @@ import * as paneContext from "/assets/app-ctx.js";
 import { backendLabel, modelText, namesOf, namesStore, navStore as instanceNavStore, supportsInstanceFeature } from "/assets/instance-nav.js";
 import { machineName } from "/assets/machine-name.js";
 import { PanelHeader, onPanelKey, setTitle, statusClass, statusLabel, openDrawer, requestNewInstance, needsCount, openSearch } from "/assets/app-shell.js";
-import { detailsPath, textLinkSegments, sectionPath, NEEDS_PATH, fleetEntryPath, settingsPath, viewPath, logPath } from "/assets/app-route.js";
+import { chatPath, detailsPath, textLinkSegments, sectionPath, NEEDS_PATH, fleetEntryPath, settingsPath, viewPath, logPath } from "/assets/app-route.js";
 import { InstanceSwitch } from "/assets/instance-switch.js";
 import { HeaderTools, setTextSize, textSizeStore, usageOffered, TEXT_SIZES } from "/assets/header-tools.js";
 import { UsageDialog } from "/assets/usage-dialog.js";
@@ -113,6 +113,49 @@ const needKey = (item) => String(item?.nonce || item?.id || JSON.stringify(item 
  * count), Fleet, Settings — then this chat's items, and ends with 「✓ 已驗證」 (the line under the composer no longer
  * says it). A Needs-you item that arrives meanwhile, for another agent, is a short toast. A desk's ⋯ is unchanged.
  */
+/** One target-bound action list for the header and sidebar; the server remains the authority. */
+export function chatAgentMenuItems({ name, inst, wide, pinCount = 0, onPins, onDelete,
+  onDetails = () => navigate(detailsPath(name)), onSplit = () => appStore.get().chatWorkspace?.open(name) }) {
+  if (guestPage()) return [];
+  const running = inst.status === "running";
+  const action = async (verb) => {
+    let r;
+    try { const res = await fetch(`/ui/${verb}/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" } }); r = await res.json(); }
+    catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
+    if (r && r.error) toast(r.error, false);
+    else if (r && r.held) toast(r.message);
+    else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
+  };
+  return [
+    // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
+    supportsInstanceFeature(inst,"details") ? { key: "details", label: t("chat.details"), icon: "info", onSelect: () => onDetails() } : null,
+    appStore.get().chatWorkspace ? { key: "splitChat", label: t("chatWorkspace.split"), icon: "sidebar", onSelect: () => onSplit() } : null,
+    inst.runtime === "windows" ? {key:"settings",label:t("app.settings"),icon:"settings",onSelect:() => navigate(sectionPath("agents"))} : null,
+    running || !supportsInstanceFeature(inst,"lifecycle") ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
+    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
+    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
+    // #1958: its identity colour and where it shows (the public link too, as profile edits).
+    // #3153 P1: the folder it works in, read-only — an admin only (M-3278: over the public link too), and not an
+    // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
+    inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
+      : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
+    // M-3271: the pinned list — here too, for a phone (its header shows ← title ⋯ only) and a narrow pane.
+    pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: onPins } : null,
+    colorMenuItem(name, inst),
+    // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
+    ...themeMenuItems(name),
+    // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
+    ...ambientMenuItems(name, { publicLink: false, clear: clearAmbient }),   // M-3278
+    // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
+    ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
+      { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
+      ...(activityInfo(name)?.thinking ? [{ key: "thinking", checkbox: true, checked: activityPrefs.get().thinking, disabled: !activityPrefs.get().on, label: t("act.menuThinking"), onSelect: () => setActivityThinking(!activityPrefs.get().thinking) }] : []),
+    ] : []),
+    narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
+    { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: onDelete },
+  ];
+}
+
 function ChatMoreMenu({ items, name, inst = null, card = null, navKey, lease = null }) {
   const app = useStore(appStore);
   const auth = useWebAuthorization();
@@ -596,43 +639,8 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
     e.preventDefault();
     store.cancelReply(name);
   })), [lease]);
-  const running = inst.status === "running";
-  const action = async (verb) => {
-    let r;
-    try { const res = await fetch(`/ui/${verb}/${encodeURIComponent(name)}`, { method: "POST", headers: { "Content-Type": "application/json" } }); r = await res.json(); }
-    catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
-    if (r && r.error) toast(r.error, false);
-    else if (r && r.held) toast(r.message);
-    else toast(t(verb === "start" ? "chat.started" : verb === "stop" ? "chat.stoppedInst" : "chat.restarted", name));
-  };
-  const items = [
-    // #1523 N2: Details is a page now (the Fleet side of this instance), not a dialog.
-    supportsInstanceFeature(inst,"details") ? { key: "details", label: t("chat.details"), icon: "info", onSelect: () => (paneNow.current?.navigate || navigate)(detailsPath(name)) } : null,
-    appStore.get().chatWorkspace ? { key: "splitChat", label: t("chatWorkspace.split"), icon: "sidebar", onSelect: () => appStore.get().chatWorkspace.pick() } : null,
-    inst.runtime === "windows" ? {key:"settings",label:t("app.settings"),icon:"settings",onSelect:() => navigate(sectionPath("agents"))} : null,
-    running || !supportsInstanceFeature(inst,"lifecycle") ? null : { key: "start", label: t("chat.start"), icon: "play", onSelect: () => action("start") },
-    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "restart", label: t("chat.restart"), icon: "restart", onSelect: () => action("restart") } : null,
-    running && supportsInstanceFeature(inst,"lifecycle") ? { key: "stop", label: t("chat.stopInstance"), icon: "stop", onSelect: () => action("stop") } : null,
-    // #1958: its identity colour and where it shows (the public link too, as profile edits).
-    // #3153 P1: the folder it works in, read-only — an admin only (M-3278: over the public link too), and not an
-    // agent on another machine (the server also refuses General and coordinators: their folder is the fleet's own).
-    inst.runtime === "windows" || inst.machine_id || inst.general_topic === true ? null
-      : { key: "workspace", label: t("chat.wsOpen"), icon: "file", onSelect: () => openWorkspace({ key: `ws:${name}`, instance: name }) },
-    // M-3271: the pinned list — here too, for a phone (its header shows ← title ⋯ only) and a narrow pane.
-    pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: openPins } : null,
-    colorMenuItem(name, inst),
-    // #1629: a person's control over this agent's theme — not over the public link (it only views themes).
-    ...themeMenuItems(name),
-    // #2117: its ambient — why it is not showing here (with the way to change that), and a person's Clear.
-    ...ambientMenuItems(name, { publicLink: false, clear: clearAmbient }),   // M-3278
-    // AGEND-181: the activity timeline above each reply (this browser's choice), when the Log is on.
-    ...(activityOffered() && activityInfo(name)?.level !== "off" ? [
-      { key: "activity", checkbox: true, checked: activityPrefs.get().on, label: t("act.menuActivity"), onSelect: () => setActivityOn(!activityPrefs.get().on) },
-      ...(activityInfo(name)?.thinking ? [{ key: "thinking", checkbox: true, checked: activityPrefs.get().thinking, disabled: !activityPrefs.get().on, label: t("act.menuThinking"), onSelect: () => setActivityThinking(!activityPrefs.get().thinking) }] : []),
-    ] : []),
-    narrowScreen() ? null : { key: "fullWidth", checkbox: true, checked: wide, label: t("chat.fullWidth"), onSelect: () => setChatWide(!wide) },
-    { key: "delete", label: t("chat.delete"), icon: "trash", danger: true, onSelect: () => setDialog("delete") },
-  ];
+  const items = chatAgentMenuItems({ name, inst, wide, pinCount, onPins: openPins, onDelete: () => setDialog("delete"),
+    onDetails: () => (paneNow.current?.navigate || navigate)(detailsPath(name)), onSplit: () => appStore.get().chatWorkspace.pick() });
   const cls = statusClass(inst, exec, awaiting);
   // #1920 phase 3: a guest has this chat only — no Details, View or Log to switch to, no lifecycle, colour, theme,
   // effect management or delete (a guest's status frame carries no model or effort either, so those chips do not show).
@@ -1470,7 +1478,7 @@ function FileChip({ f, i, name, bindings }) {
 
 // ── Dialogs ──
 
-function DeleteDialog({ name, inst, onClose }) {
+function DeleteDialog({ name, inst, onClose, onDeleted = () => navigate("/ui") }) {
   // The dialog's own lease: it ends when the dialog goes (closed, or the chat left for another page). The delete
   // may still finish on the server, and says so, but a dialog that is gone never closes or navigates the page the
   // person is on now (#1425 review).
@@ -1497,7 +1505,7 @@ function DeleteDialog({ name, inst, onClose }) {
     if (handedOver || !lease.current()) return;
     setBusy(false);
     onClose();
-    navigate("/ui");
+    onDeleted();
   }
   return html`<${Dialog} title=${t("chat.deleteTitle", name)} onClose=${onClose} busy=${busy}
     actions=${html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("chat.cancel")}</button>
@@ -1509,3 +1517,39 @@ function DeleteDialog({ name, inst, onClose }) {
   </${Dialog}>`;
 }
 ChatPanel.workspaceVersion = 1;
+
+/** Session-only injection: public InstanceNav never imports this module. */
+export function SidebarChatMenu({ inst, context, onClose }) {
+  const name = inst.name || inst.instance_name, lease = useLease(`sidebar-menu:${name}`);
+  const [phase, setPhase] = useState("menu");
+  const [, redraw] = useState(0);
+  const wide = useStore(chatWide).on;
+  useStore(themesStore); useStore(activityInfoStore); useStore(activityPrefs); useStore(chatCardPrefs);
+  const auth = useWebAuthorization(), card = useCard(name, inst.card_v);
+  const pinCount = usePins(name).pins?.length || 0;
+  useEffect(() => store?.subscribe(target => { if (target === name) redraw(n => n + 1); }), [name]);
+  useEffect(() => {
+    if (phase !== "menu" || !activityShown() || activityInfo(name)?.level !== undefined) return;
+    const feed = observeActivity(name, { changed: () => feed.stop(), wantThinking: () => activityPrefs.get().thinking });
+    feed.start(); return () => feed.stop();
+  }, [name, phase, activityPrefs.get().on]);
+  useEffect(() => { if (!phase) onClose(); }, [phase]);
+  const items = chatAgentMenuItems({ name, inst, wide, pinCount, onPins: () => setPhase("pins"), onDelete: () => setPhase("delete") });
+  const run = command => { setPhase("command"); void store.runCommand(name, command, "", { alive: () => lease.current() && !guestPage() }); };
+  const dismiss = () => setPhase(null);
+  const chat = { card: !!card, onCard: () => setChatCardOpen(!chatCardPrefs.get().open),
+    ...(supportsInstanceFeature(inst, "commands") ? { onModel: () => run("model"),
+      modelText: `${shortModelName(modelLabel(inst.model || modelText(inst)))}${supportsInstanceFeature(inst, "effort") && effortChip(inst) ? ` · ${effortChip(inst)}` : ""}`,
+      onBackend: () => inst.runtime === "windows" ? navigate(sectionPath("agents")) : run("backend"), backendText: backendLabel(inst.backend) } : {}) };
+  return html`${phase === "menu" ? narrowScreen()
+    ? html`<${AgentSheet} name=${name} inst=${inst} current="chat" items=${items} chat=${chat} targetLabel=${inst.display_name || name}
+        verifiedUntil=${auth.st?.state === "verified" ? auth.st.until : null} onUsage=${() => setPhase("usage")} onClose=${dismiss} />`
+    : html`<${Menu} cls="agent-menu" fit=${true} topLayer=${true} ownerKey=${name} context=${{...context, onClose: dismiss}} items=${items} label=${t("agentRow.actions", inst.display_name || name)} />` : null}
+    ${phase === "delete" ? html`<${DeleteDialog} name=${name} inst=${inst} onClose=${dismiss}
+      onDeleted=${() => { if (navStore.get().route?.instance === name) navigate("/ui"); }} />` : null}
+    ${phase === "pins" ? html`<${PinsDialog} name=${name} onClose=${dismiss} onJump=${pin => { dismiss(); navigate(`${chatPath(name)}#m=${encodeURIComponent(pin.key)}`); }} />` : null}
+    ${phase === "usage" ? html`<${UsageDialog} owner=${`chat:${name}`} onClose=${dismiss} />` : null}
+    ${phase === "command" ? html`<${Dialog} title=${inst.display_name || name} onClose=${dismiss}><${CommandCard} name=${name} lease=${lease} /></${Dialog}>` : null}`;
+}
+
+SidebarChatMenu.contextVersion = Menu.contextVersion === 1 && AgentSheet.sidebarTargetVersion === 1 ? 1 : 0;
