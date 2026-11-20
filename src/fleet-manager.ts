@@ -16834,6 +16834,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return runWebCommand({
       scope: (instance) => this.webCommandScope(instance),
       platform: (instance) => this.commandPlatform(instance),
+      report: (command) => {
+        const lang = this.webPrefs?.read("operator").values.lang;
+        return this.topicCommands.getWebReport(command, lang === "en" || lang === "zh-TW" ? lang : getLocale());
+      },
       ctx: (instance) => this.topicCommands.getCtxText(instance),
       // Board 003648ac: a watch for the paste, armed when the daemon says it was written (raw_paste_written); one
       // for a command that was not handed over is dropped.

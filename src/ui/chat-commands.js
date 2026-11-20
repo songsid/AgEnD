@@ -5,6 +5,8 @@
 
 /** The commands, in the palette's order. `arg`: the argument hint ("" = none; [..] optional, <..> required). */
 export const CHAT_COMMANDS = [
+  { name: "sysinfo", arg: "" },
+  { name: "status", arg: "" },
   { name: "ctx", arg: "" },
   { name: "compact", arg: "[instructions]" },
   { name: "clear", arg: "" },

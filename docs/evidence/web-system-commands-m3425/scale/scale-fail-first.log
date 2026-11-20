@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/web-chat-commands-1269.test.ts (41 tests | 1 failed | 40 skipped) 681ms
+     × M-3425 scale: counts and filters 80 entries, expands without rerunning, and keeps the filter on close 679ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-chat-commands-1269.test.ts > the chat's commands (the real page modules) > M-3425 scale: counts and filters 80 entries, expands without rerunning, and keeps the filter on close
+AssertionError: the given combination of arguments (undefined and string) is invalid for this assertion. You can use an array, a map, an object, a set, a string, or a weakset instead of a string
+ ❯ tests/web-chat-commands-1269.test.ts:100:70
+     98|     } });
+     99|     await c.type("/status"); await c.key("Enter");
+    100|     expect(c.card().querySelector(".cmd-report-count")?.textContent).t…
+       |                                                                      ^
+    101|     const search = c.card().querySelector('.cmd-report input[type="sea…
+    102|     expect(search).not.toBeNull();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 40 skipped (41)
+   Start at  13:24:35
+   Duration  1.02s (transform 592ms, setup 95ms, import 81ms, tests 681ms, environment 0ms)

@@ -23,7 +23,7 @@ describe("the palette's rules (pure)", () => {
     expect(parseCommandLine("/compact keep the notes")).toEqual({ command: "compact", args: "keep the notes" });
     expect(parseCommandLine("  /ctx  ")).toEqual({ command: "ctx", args: "" });
     expect(parseCommandLine("/steer line one\nline two")).toEqual({ command: "steer", args: "line one\nline two" });
-    for (const d of ["/raw ls", "/status", "/foo", "hello /ctx", "/ctxx", "/compact-x", "/"]) expect(parseCommandLine(d), d).toBeNull();
+    for (const d of ["/raw ls", "/foo", "hello /ctx", "/ctxx", "/compact-x", "/"]) expect(parseCommandLine(d), d).toBeNull();
     expect([needsArgument("btw"), needsArgument("steer"), needsArgument("save"), needsArgument("compact"), needsArgument("ctx")]).toEqual([true, true, true, false, false]);
   });
 });
@@ -77,6 +77,52 @@ describe("the chat's commands (the real page modules)", () => {
     const elapse = async (ms: number) => { for (const t of timers.splice(0).filter((x) => { const due = x.ms === ms; if (!due) timers.push(x); return due; })) t.fn(); await settle(); };
     return { p, fx, box, type, key, commands, sends, panel, stream, timers, elapse, card: () => p.root.querySelector(".cmd-card"), options: () => p.root.querySelectorAll(".cmd-palette li[role=option]") };
   }
+
+  it("M-3425 offers system commands and renders report values as safe text", async () => {
+    const c = await chatPage();
+    await c.type("/sysinfo");
+    expect(c.options().map((o: any) => o.id)).toContain("cmd-sysinfo");
+    c.fx.respond = () => ({ report: { title: "System information", columns: ["Metric", "Value"], rows: [["Example", "<img src=x onerror=alert(1)>"]], notes: ["No live processes"] } });
+    await c.key("Enter");
+    expect(c.commands().at(-1)?.body).toEqual({ instance: "w", command: "sysinfo" });
+    expect(c.card().querySelector(".cmd-report")?.textContent).toContain("<img src=x onerror=alert(1)>");
+    expect(c.card().querySelector("img")).toBeNull();
+    expect(c.sends()).toEqual([]);
+  });
+
+  it.each(["close", "escape"])("M-3425 scale: filters 80 entries and restores trigger focus after %s without rerunning", async dismiss => {
+    const c = await chatPage();
+    c.fx.respond = () => ({ report: { title: "Fleet status", columns: ["Instance", "Backend", "Model", "Ctx", "Effort", "State"],
+      rows: Array.from({ length: 80 }, (_, i) => ["example-worker-" + i, "codex", "example-model", "-", "medium", i % 2 ? "paused" : "idle"]),
+      notes: ["Paused instances: 40"],
+    } });
+    await c.type("/status"); await c.key("Enter");
+    expect(c.card().querySelector(".cmd-report-count")?.textContent).toContain("80");
+    const search = c.card().querySelector('.cmd-report input[type="search"]');
+    expect(search).not.toBeNull();
+    search.value = "worker-79"; fire(search, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
+    expect(c.card().querySelector("tbody").textContent).toContain("example-worker-79");
+    const trigger = c.card().querySelector("[data-report-expand]");
+    trigger.focus();
+    fire(trigger, "click"); await settle();
+    expect(c.card().querySelector("dialog")).not.toBeNull();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(1);
+    if (dismiss === "close") fire(c.card().querySelector(".dlg-x"), "click");
+    else fire(c.card().querySelector("dialog"), "cancel");
+    await settle();
+    expect(c.card().querySelector("dialog")).toBeNull();
+    expect(c.p.root.ownerDocument.activeElement).toBe(c.card().querySelector("[data-report-expand]"));
+    const again = c.card().querySelector('.cmd-report input[type="search"]');
+    expect(again.value).toBe("worker-79");
+    again.value = "no such entry"; fire(again, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(0);
+    expect(c.card().textContent).toContain("No matching entries");
+    again.value = ""; fire(again, "input"); await settle();
+    expect(c.card().querySelectorAll("tbody tr")).toHaveLength(80);
+    expect(c.commands()).toHaveLength(1);
+    expect(c.sends()).toEqual([]);
+  });
 
   it("M-2738 (D3): /update + Enter opens AgEnD's Update dialog — never a message or an agent command", async () => {
     const asked: string[] = [];
@@ -450,7 +496,7 @@ describe("#2855: a guest's commands — the table's \"anyone\" cells, nothing el
       expect(guestWebCommands(scope, platform), `${scope} ${platform}`).toEqual(anyone(scope, platform));
       for (const c of ["clear", "compact", "model", "backend", "effort", "pause", "wake", "save"]) expect(guestWebCommands(scope, platform), `${scope} ${platform} ${c}`).not.toContain(c);
     }
-    expect(guestWebCommands("fleet", "discord")).toEqual(["ctx", "cancel", "btw", "steer"]);
+    expect(guestWebCommands("fleet", "discord")).toEqual(["sysinfo", "ctx", "cancel", "btw", "steer"]);
   });
   it("runWebCommand for a guest: an \"anyone\" command runs; any other is refused (403) before it does anything", async () => {
     const { runWebCommand } = await import("../src/web-commands.js");

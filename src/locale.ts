@@ -3260,7 +3260,12 @@ const messages: Record<Locale, Record<string, string>> = {
 
 /** Translate a key with {0},{1},… positional args, using the active locale. */
 export function t(key: string, ...args: (string | number)[]): string {
-  const table = messages[current] ?? messages.en;
+  return tForLocale(current, key, ...args);
+}
+
+/** Translate a request-local report without changing the platform locale. */
+export function tForLocale(locale: Locale, key: string, ...args: (string | number)[]): string {
+  const table = messages[locale] ?? messages.en;
   const msg = table[key] ?? messages.en[key] ?? key;
   return msg.replace(/\{(\d+)\}/g, (_, i) => String(args[Number(i)] ?? ""));
 }
