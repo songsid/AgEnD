@@ -1321,7 +1321,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = 320, ch = el.offsetHeight || 260, gap = 12 + (w ? pt.r : pt.r);
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = 12 + (w ? pt.r : pt.r);
     let x = p.x + gap;
     if (x + cw > sz.w - 8) x = p.x - gap - cw;
     x = Math.max(8, Math.min(x, sz.w - cw - 8));
@@ -2139,12 +2139,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     setView(centreOn({ ...v, k }, size, at.x, at.y));
   };
   /** The card's picture: the person's idle frame in the office's style (pack strip or built-in figure). */
-  const drawAvatar = (cv) => {
+  const drawAvatar = (cv, sizePx = 56) => {
     const s = scene.current, c = cardOf;
     const g = cv && cv.getContext ? cv.getContext("2d") : null;
     if (!g || !c || !s || !c.skin || !c.look) return;
-    const r = deviceRatio(), W = 56;
-    if (cv.width !== W * r) { cv.width = W * r; cv.height = W * r; }
+    const r = deviceRatio(), W = Number(sizePx) || 56;
+    if (cv.width !== Math.round(W * r) || cv.height !== Math.round(W * r)) { cv.width = Math.round(W * r); cv.height = Math.round(W * r); }
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
     const look = { ...c.look, pose: "idle", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
     const at = { x: 0, y: 0 }, b = c.skin.charBox ? c.skin.charBox(look, at) : null, box = b || { x: -16, y: -48, w: 32, h: 48 };
@@ -2268,7 +2268,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           }
           reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
         } : null}
-        tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null} />` : null}
+        tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null}
+        packCard=${cardOf.skin?.pack?.card || null}
+        picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
+        portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
         return html`<li key=${d.key}>${d.node.i

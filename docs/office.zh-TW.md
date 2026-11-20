@@ -221,6 +221,46 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 - `snacks` 可放 1–12 個項目，每項有唯一 `id`、可選的 `label`（1–24 字或 `{ "en"?, "zh-TW"? }`）、必填的 `sprite`、可選的進食覆蓋影格條 `eat`，以及可選的吸引半徑 `radius`（60–1280 邏輯單位，預設 260）。所有點心圖片都計入外觀包的檔案數、容量與 64 Mpx 像素上限。
 - 沒有 `snacks` 的外觀包不顯示點心盤，名片上的內建 **餵點心** 按鈕行為完全不變。
 
+**Agent 個人名片（`card`）。** 外觀包可以選填 `card` 來客製化 Agent 個人名片（桌機旁浮卡或手機底部抽屜）的預設版型、配色、底圖／九宮格邊框與欄位排列：
+
+```json
+"card": {
+  "preset": "rpg",
+  "style": {
+    "background": "#1f1916",
+    "backgroundImage": "ui/card_bg.png",
+    "frame": "ui/card_frame.png",
+    "slice": 12,
+    "border": "#c8a165",
+    "text": "#f6ead7",
+    "muted": "#c9b69a",
+    "accent": "#e5b84b",
+    "barTrack": "#382d25",
+    "barFill": "#e5b84b",
+    "buttonBg": "#3a2c22",
+    "buttonText": "#f6ead7",
+    "buttonPrimaryBg": "#c88d2e",
+    "buttonPrimaryText": "#1a120b",
+    "radius": "sm"
+  },
+  "layout": {
+    "avatarSize": "lg",
+    "avatarSource": "portrait",
+    "headerAlign": "center",
+    "width": 340,
+    "sections": ["header", "level", "rows", "now", "tell", "actions"],
+    "rows": ["office", "model", "backend", "today", "firstSeen"],
+    "rowColumns": 2,
+    "hide": ["instance"]
+  }
+}
+```
+
+- `preset` 選擇內建版型：`default`、`rpg`、`compact` 或 `dossier`；明確填寫的 `style` 與 `layout` 欄位會覆寫預設值。不含 `card` 的外觀包維持原本的名片樣式不變。
+- `style` 顏色嚴格限定 `#rrggbb`（不接受任意 CSS）。上傳時會檢查成對色彩的 WCAG 對比度：`text`/`background`、`muted`/`background`、`accent`/`background`、`buttonText`/`buttonBg` 與 `buttonPrimaryText`/`buttonPrimaryBg` 至少 4.5:1；`border`/`background` 與 `barFill`/`barTrack` 至少 3.0:1。`backgroundImage` 為最大 1024×1024 px 的 PNG（會疊加可讀性遮罩）；`frame` 為最大 512×512 px 的九宮格 PNG，`slice` 1–128（預設 8，須符合 `slice * 2 < min(w, h)`）。兩者都在首次打開名片時才延遲載入。`radius` 為 `none`、`sm`、`md` 或 `lg`。
+- `layout` 可調整 `avatarSize`（`sm` 44 px、`md` 56 px、`lg` 84 px）、`avatarSource`（`sprite` 或使用 `portraits` 的 `portrait`，缺少時回退待機小人）、`headerAlign`（`left` 或 `center`）、桌機寬度 `width`（280–400 px；手機底部抽屜會忽略）、`sections`（從 `header`、`level`、`rows`、`now`、`tell`、`actions` 挑選不重複順序，若有指定則必須保留 `header` 與 `actions`）、`rows`（`office`、`model`、`backend`、`today`、`firstSeen` 的不重複順序）、`rowColumns`（`1` 或 `2`）與 `hide`（`instance`、`title`、`badge`、`level`、`xpBar`、`office`、`model`、`backend`、`today`、`firstSeen`、`now`）。
+- 分享連結仍會先濾除 `model`、`backend`、`today`、`firstSeen`、`tell` 與互動按鈕，才套用 `card.layout`——外觀包無法在分享連結上露出被隱藏的欄位。
+
 **檢查外觀包。** 檢查很嚴格：未知的欄位、超出範圍的值，或指向不存在的名稱，都會讓整個外觀包被拒絕，並指出在哪裡。有外觀包權限的 agent 可以對資料夾跑 `office_pack_check`，什麼都不會存（見[下方](#讓-agent-管理外觀包)）。頁面與主機用的是同一套規則。
 
 ## 安排配置
@@ -453,6 +493,7 @@ fleet 管理員也可以在 General 的通知上按 **核准**，核准等待中
 | `room`、`desk` | ❌ | 辦公桌配置的圖：`room.floor`、`room.wall`、`desk.back`、`desk.front`、`desk.lit` |
 | `levels` | ❌ | `{ titles, fixed }`：等級的頭銜與固定頭銜（見[外觀包的頭銜](#外觀包的頭銜)） |
 | `portraits`、`dialogBox` | ❌ | 對話框的臉孔與樣式（見[製作外觀包](#製作外觀包)） |
+| `card` | ❌ | `{ preset?, style?, layout? }`：選填的 Agent 個人名片預設版型（`default`、`rpg`、`compact`、`dossier`）、經 WCAG 對比檢查的 `#rrggbb` 配色、`backgroundImage`（≤ 1024×1024 px）、九宮格 `frame`（≤ 512×512 px）與版面設定（#4256） |
 
 座位是 `[x, y]` 或 `{ "x", "y", "for": [instance, …]（最多 16 個）, "lend": false }`，必須在它的區域內。座標橫向 0–1280、縱向 0–720。外觀包宣告的名稱不能是每個物件都有的名稱（`constructor`、`toString`、`__proto__` 等）。
 
@@ -539,6 +580,7 @@ STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "d
 ## 升級與降版
 
 - **升級** 會保留你的辦公室、外觀包與配置，不需要手動搬移。
+- **有 `card` 的外觀包與降版**（#4256）。較舊的版本會拒絕含 `card` 鍵的外觀包並以辦公桌顯示、附註；外觀包檔案仍完整留在磁碟上，升級回來就會恢復。若需在舊版使用，降版前請移除 `card`。
 - **有 `portraits` 或 `dialogBox` 的外觀包與降版**（#2861）。和 `levels` 一樣，較舊的版本會拒絕這種外觀包並以辦公桌顯示、附註。降版前請移除這兩個鍵，或重新上傳不含它們的外觀包。對話框的其他設定都不存在主機上。
 - **有 `levels` 的外觀包與降版。** 等級之前的版本會拒絕含 `levels` 鍵的外觀包，所以在那裡會以辦公桌顯示並附註。需要降版時，請移除這個鍵，或重新上傳不含它的外觀包。
 - **所有辦公室的等級頭銜與降版。** 舊版會忽略 fleet 的頭銜（`web-offices.json` 的 `levels`），它下一次儲存辦公室時會把它丟掉。升級後請重新設定。
