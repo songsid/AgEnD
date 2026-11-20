@@ -23256,7 +23256,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   auditClaudeCredential(actor: CredentialActor | null, action: string, outcome: string): void {
     this.withClaudeVault(vault => vault.audit(actor, null, action, null, null, outcome));
   }
-  writeClaudeCredential(profile: string | null, revision: number, change: { kind: ClaudeCredentialKind; value: string } | null, actor: CredentialActor): ClaudeCredentialMetadata {
+  writeClaudeCredential(profile: string | null, revision: number, change: { kind: ClaudeCredentialKind; value: string } | "subscription" | null, actor: CredentialActor): ClaudeCredentialMetadata {
     if (profile !== null && !accountFolderExists(this.dataDir, "claude-code", profile)) throw new ClaudeCredentialError("profile-unknown");
     // This storage slice never changes a credential underneath a current consumer or concurrent sign-in.
     // The integration slice supplies the explicit idle/restart confirmation before replacing a used profile.

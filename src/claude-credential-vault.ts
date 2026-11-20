@@ -8,13 +8,14 @@ import { isCredentialProfileName } from "./backend/credential-profile.js";
 export type ClaudeCredentialKind = "api-key" | "setup-token";
 export interface ClaudeCredentialMetadata {
   id: string; profile: string | null; revision: number; kind: ClaudeCredentialKind | null;
+  source: "managed" | "subscription";
   state: "saved-unverified" | "not-connected"; updatedAt: string | null;
 }
 export type CredentialActor = { adapterId: string; userId: string };
 export class ClaudeCredentialError extends Error {
   constructor(readonly code: "invalid" | "conflict" | "unavailable" | "in-use" | "profile-unknown") { super(code); }
 }
-interface Row { id: string; profile: string; revision: number; kind: ClaudeCredentialKind | null; payload: Buffer | null; updated_at: string; }
+interface Row { id: string; profile: string; revision: number; kind: ClaudeCredentialKind | null; payload: Buffer | null; updated_at: string; source: "managed" | "subscription"; }
 function fail(): never { throw new ClaudeCredentialError("unavailable"); }
 function privatePath(path: string, directory: boolean): void {
   const s = lstatSync(path);
@@ -66,6 +67,9 @@ export class ClaudeCredentialVault {
       db.exec(`CREATE TABLE IF NOT EXISTS vault_meta (id INTEGER PRIMARY KEY CHECK(id=1), proof BLOB NOT NULL);
         CREATE TABLE IF NOT EXISTS credentials (profile TEXT PRIMARY KEY, id TEXT NOT NULL UNIQUE, revision INTEGER NOT NULL, kind TEXT, payload BLOB, updated_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS credential_audit (sequence INTEGER PRIMARY KEY AUTOINCREMENT, at TEXT NOT NULL, actor TEXT NOT NULL, credential_id TEXT, action TEXT NOT NULL, revision INTEGER, kind TEXT, outcome TEXT NOT NULL);`);
+      // Additive migration: old removals remain managed tombstones, never implicit subscription choices.
+      if (!(db.pragma("table_info(credentials)") as Array<{name:string}>).some(c=>c.name==="source"))
+        db.exec("ALTER TABLE credentials ADD COLUMN source TEXT NOT NULL DEFAULT 'managed' CHECK(source IN ('managed','subscription'))");
       const proof = db.prepare("SELECT proof FROM vault_meta WHERE id=1").get() as { proof: Buffer } | undefined;
       if (proof) { const value = this.open(proof.proof, "agend-claude-vault-key-v1"); try { if (value.toString() !== "managed-credential-vault") fail(); } finally { value.fill(0); } }
       else {
@@ -98,23 +102,23 @@ export class ClaudeCredentialVault {
   private aad(row: Pick<Row, "id" | "profile" | "revision" | "kind">): string { return JSON.stringify(["claude-code", row.id, row.profile, row.kind, row.revision]); }
   private row(profile: string | null): Row | undefined { this.assertPath(); return this.db.prepare("SELECT * FROM credentials WHERE profile=?").get(this.profile(profile)) as Row | undefined; }
   metadata(profile: string | null): ClaudeCredentialMetadata | null {
-    const r = this.row(profile); return r ? { id: r.id, profile, revision: r.revision, kind: r.kind, state: r.kind ? "saved-unverified" : "not-connected", updatedAt: r.updated_at } : null;
+    const r = this.row(profile); return r ? { id: r.id, profile, revision: r.revision, kind: r.kind, source: r.source, state: r.kind ? "saved-unverified" : "not-connected", updatedAt: r.updated_at } : null;
   }
   /** Internal launcher/helper port only. Never returned by a web/API metadata route. Caller must zero the Buffer. */
   credential(profile: string | null, id: string, revision: number): { kind: ClaudeCredentialKind; value: Buffer } {
     const r = this.row(profile); if (!r || !r.kind || !r.payload || r.id !== id || r.revision !== revision) throw new ClaudeCredentialError("conflict");
     return { kind: r.kind, value: this.open(r.payload, this.aad(r)) };
   }
-  write(profile: string | null, expected: number, change: { kind: ClaudeCredentialKind; value: string } | null, actor: CredentialActor): ClaudeCredentialMetadata {
+  write(profile: string | null, expected: number, change: { kind: ClaudeCredentialKind; value: string } | "subscription" | null, actor: CredentialActor): ClaudeCredentialMetadata {
     if (!Number.isSafeInteger(expected) || expected < 0 || !actor.adapterId || !actor.userId) throw new ClaudeCredentialError("invalid");
-    if (change && (!(["api-key", "setup-token"] as string[]).includes(change.kind) || typeof change.value !== "string" || change.value.length < 16 || Buffer.byteLength(change.value) > 16_384 || /\s|[\x00-\x1f\x7f]/u.test(change.value))) throw new ClaudeCredentialError("invalid");
+    if (change && change!=="subscription" && (!(["api-key", "setup-token"] as string[]).includes(change.kind) || typeof change.value !== "string" || change.value.length < 16 || Buffer.byteLength(change.value) > 16_384 || /\s|[\x00-\x1f\x7f]/u.test(change.value))) throw new ClaudeCredentialError("invalid");
     const p = this.profile(profile); this.assertPath();
     return this.db.transaction(() => {
       const prior = this.row(profile); if ((prior?.revision ?? 0) !== expected) throw new ClaudeCredentialError("conflict");
-      const r: Row = { profile: p, id: prior?.id ?? randomUUID(), revision: expected + 1, kind: change?.kind ?? null, payload: null, updated_at: new Date(this.options.now?.() ?? Date.now()).toISOString() };
-      if (change) { const raw = Buffer.from(change.value); try { r.payload = this.seal(raw, this.aad(r)); } finally { raw.fill(0); } }
-      this.db.prepare("INSERT INTO credentials VALUES(@profile,@id,@revision,@kind,@payload,@updated_at) ON CONFLICT(profile) DO UPDATE SET revision=excluded.revision,kind=excluded.kind,payload=excluded.payload,updated_at=excluded.updated_at").run(r);
-      this.audit(actor, r.id, change ? prior?.kind ? "replace" : "set" : "remove", r.revision, r.kind, "ok");
+      const r: Row = { profile: p, id: prior?.id ?? randomUUID(), revision: expected + 1, kind: change && change!=="subscription" ? change.kind : null, source: change==="subscription" ? "subscription" : "managed", payload: null, updated_at: new Date(this.options.now?.() ?? Date.now()).toISOString() };
+      if (change && change!=="subscription") { const raw = Buffer.from(change.value); try { r.payload = this.seal(raw, this.aad(r)); } finally { raw.fill(0); } }
+      this.db.prepare("INSERT INTO credentials(profile,id,revision,kind,payload,updated_at,source) VALUES(@profile,@id,@revision,@kind,@payload,@updated_at,@source) ON CONFLICT(profile) DO UPDATE SET revision=excluded.revision,kind=excluded.kind,payload=excluded.payload,updated_at=excluded.updated_at,source=excluded.source").run(r);
+      this.audit(actor, r.id, change==="subscription" ? "select-subscription" : change ? prior?.kind ? "replace" : "set" : "remove", r.revision, r.kind, "ok");
       return this.metadata(profile)!;
     }).immediate();
   }
