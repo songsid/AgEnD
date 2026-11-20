@@ -81,4 +81,3 @@ Synthetic real-app Accounts views; no account/provider/model calls. `saved` is t
 ![ auth-error ](phone-light-zh-TW-auth-error.png)
 
 ![ unknown ](phone-light-zh-TW-unknown.png)
-
