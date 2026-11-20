@@ -385,10 +385,11 @@ export function boot({ stream, boot: bootData, deps = {} }) {
     clearReply: (instance) => store.clearReply(instance),
     addToDraft: (instance, line) => { feedbackInstance = instance; recordEdit(composerField(instance)); store.addToDraft(instance, line); },
     focus: (instance = feedbackInstance) => {
+      import("./preview-popout.js").then(m => m.leavePreviewWindow()).catch(() => {});
       const el = composerField(instance); if (!el) return;
       el.focus();
       // After the render that shows the line: the caret at its end.
-      setTimeout(() => { if (composerField(instance) !== el) return; try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+      setTimeout(() => { if (composerField(instance) !== el) return; el.focus(); try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
     },
   });
   // #1604: the preview opt-in and Tour live in Settings → This device now (and on each preview card's menu).
@@ -446,6 +447,7 @@ export function ChatPanel({ route, navKey }) {
   const app = useStore(appStore);
   const name = route.instance;
   const inst = name ? app.instances.find(i => i.name === name) : null;
+
   useEffect(() => {
     if (store.show) {
       if (!name || !inst) return;
@@ -501,6 +503,16 @@ function useResolvedMode(lease) {
 }
 
 function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
+  const [previewPopout, setPreviewPopout] = useState(null);
+  useEffect(() => {
+    let alive = true, owner = null; setPreviewPopout(null);
+    if (!name || !inst) return;
+    import("./preview-popout.js").then(m => m.createPreviewPopout(name)).then(value => {
+      if (!alive) { value?.close(); return; } owner = value;
+      if (owner) setPreviewPopout(() => spec => owner.open(spec));
+    }).catch(() => {});
+    return () => { alive = false; owner?.close(); };
+  }, [name, !!inst]);
   const pane = paneContext.usePane?.(), paneNow = useRef(pane); paneNow.current = pane;
   const bindings = useRef({ input: { current: null }, box: { current: null }, composing: false }).current;
   const ids = pane ? Object.fromEntries(["msgIn", "attachBtn", "stopBtn", "sendBtn", "cmdPalette"].map(key => [key, `pane-${pane.id}-${key}`])) : {};
@@ -657,7 +669,7 @@ function ChatView({ name, inst, lease, navKey, exec, awaiting }) {
         <${ChatAmbient} name=${name} surface=${effectSurface} part="front" />
       </div>
       <${PreviewPanel} name=${name} split=${split} msgs=${() => store.state.msgs[name] || []} subscribe=${(fn) => store.subscribe(fn)}
-        keyOf=${msgKey} reveal=${(k) => thread.current && thread.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
+        popout=${previewPopout} keyOf=${msgKey} reveal=${(k) => { const owner = thread.current; import("./preview-popout.js").then(m => m.leavePreviewWindow(), () => {}).then(() => { if (lease.current() && thread.current === owner) owner?.reveal(k); }); }} download=${downloadHtml} allow=${(commit) => setPreviewOptIn(true, commit)} />
     </div>
     <${LightboxHost} owner=${view} />
     ${attachmentsSupported ? html`<div data-trust="drop" class="drop-overlay" aria-hidden="true"><div class="drop-card"><${Icon} name="attach" size=${32} /><span>${t("chat.dropHere")}</span></div></div>` : null}

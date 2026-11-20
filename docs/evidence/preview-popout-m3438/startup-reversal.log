@@ -1,0 +1,28 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/web-preview-popout-m3438.test.ts (8 tests | 1 failed | 7 skipped) 1719ms
+   × M-3438 child waits for its own status and mounted preview host before sending READY 1717ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/web-preview-popout-m3438.test.ts > M-3438 child waits for its own status and mounted preview host before sending READY
+AssertionError: expected "vi.fn()" to be called with arguments: [ { …(4) }, 'https://fleet.example' ]
+
+Number of calls: 0
+
+ ❯ tests/web-preview-popout-m3438.test.ts:148:55
+    146|       reveal() {}, download() {},
+    147|     }));
+    148|     await vi.waitFor(() => expect(parent.postMessage).toHaveBeenCalled…
+       |                                                       ^
+    149|   } finally {
+    150|     owner?.close(); await pg.unmount(); pg.restore();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 skipped (8)
+   Start at  15:39:19
+   Duration  2.04s (transform 644ms, setup 113ms, import 44ms, tests 1.72s, environment 0ms)

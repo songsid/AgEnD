@@ -38,6 +38,7 @@ const P = () => globalThis.AgendPreview;
 let state = { open: null, run: 0 };
 let runs = 0, version = 0, claims = 0;
 const subs = new Set();
+export const previewHostReady = name => hosts.has(name);
 const hosts = new Map(); // instance → mounted host token; an older cleanup cannot close its successor
 
 function set(next) { state = next; version++; for (const fn of [...subs]) { try { fn(state); } catch { /* one listener's error stops no other */ } } }
@@ -181,7 +182,7 @@ const timeOf = (ts) => (ts ? chatTime(ts, { yesterday: (hm) => t("chat.yesterday
  * reveal(msgKey) (the thread shows that message), download(code).
  */
 /** allow(commit): this device's opt-in through the chat's one path (setPreviewOptIn: the confirm, then commit(setOptIn)) → the choice. */
-export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, download, allow }) {
+export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, download, allow, popout }) {
   const [st, setSt] = useState(state);
   const [view, setView] = useState("preview");
   const [run, setRun] = useState({ state: "idle", reason: "" });
@@ -470,6 +471,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           <button type="button" class="pv-source" title=${source} onClick=${() => { if (window.matchMedia && window.matchMedia("(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)").matches) closePanel(); reveal(open.msgKey); }}>${source}</button></div>
         ${pages.length > 1 ? html`<button type="button" class=${`btn btn-sm pv-pages-toggle${listing ? " on" : ""}`} aria-pressed=${listing ? "true" : "false"} title=${t("chat.pvPagesTitle")}
           onClick=${() => setListing(v => !v)}><${Icon} name="file" size=${14} />${t("chat.pvPagesCount", pages.length)}</button>` : null}
+        ${typeof popout === "function" ? html`<button type="button" class="icon-btn pv-panel-popout" aria-label=${t("chat.pvPopout")} title=${t("chat.pvPopout")} onClick=${() => popout(open)}><${Icon} name="external" size=${18} /></button>` : null}
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
       </div>
       <div class="pv-panel-bar">
@@ -490,7 +492,7 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
           : run.state === "large" ? html`<button type="button" class="btn btn-sm btn-primary pv-panel-anyway" title=${t("chat.pvAnyway")} disabled=${!a.ok} onClick=${() => start(true)}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvAnyway")}</span></button>`
           : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
-        <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+        <button type="button" class=${`btn btn-sm pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
           onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
         <${PanelActions} open=${open} name=${name} run=${run} view=${view} />
         <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
@@ -533,7 +535,7 @@ function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, 
         <button type="button" class=${`btn btn-sm${view === "source" ? " on" : ""}`} aria-pressed=${view === "source" ? "true" : "false"} title=${t("chat.pvMdSource")} onClick=${() => setView("source")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvMdSource")}</span></button>
       </div>
       <span class="grow"></span>
-      <button type="button" class=${`btn btn-sm only-wide pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+      <button type="button" class=${`btn btn-sm pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
         onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
       ${open.att ? html`<a class="btn btn-sm pv-panel-dl" href=${`/ui/file/${open.att.id}`} download=${open.att.name} title=${t("chat.pvDownload")}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></a>` : null}
     </div>

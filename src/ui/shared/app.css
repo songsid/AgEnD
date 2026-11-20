@@ -1236,6 +1236,7 @@ img.amb-p { object-fit: contain; }
 .msg.swipe-ready { box-shadow: 3px 0 0 var(--accent); border-radius: var(--r-sm); }   /* let go now: a reply */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .only-wide { display: none; }
+  .pv-panel-fs { min-width: var(--tap); min-height: var(--tap); }
   .pv-divider { display: none; }
   .pv-panel { position: fixed; inset: 0; z-index: 37; width: auto; min-width: 0; max-width: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }

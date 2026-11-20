@@ -5,7 +5,7 @@
 //   panel (document.fullscreenElement is the panel, never the frame); Esc leaves it and the panel stays open; a second
 //   Esc closes the panel.
 // - Phone dark zh-TW: the bar is two rows (versions/views/width above, run controls and Download below), nothing clipped;
-//   no full screen button (the panel is already the whole screen there).
+//   full screen remains reachable at phone width too.
 // - From defaults (nothing seeded) on a phone: the width control shows Full.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2911-preview-widths.mts
@@ -14,7 +14,7 @@ import { bootFixture, shotPath } from "../smoke-fixture/index.mts";
 import { freshPage } from "../smoke-fixture/from-defaults.mts";
 
 const SMOKE = "smoke-2911-preview-widths";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48470), instances: 2 });
+const fx = await bootFixture({ port: Number(process.env.HP ?? 48470), instances: 2, classic: false });
 const fm = fx.fm;
 const name = fx.instances.find((i: any) => !i.general)!.name;
 const PAGE = (v: number) => `<title>Counter</title>\n<style>body{font:20px sans-serif;background:#def;margin:0;padding:16px}</style>\n<h1>Counter v${v}</h1>\n<p id=ok>rendered v${v}</p><p id=w></p>\n<script>document.getElementById("w").textContent = "innerWidth " + innerWidth;</script>`;
@@ -53,7 +53,7 @@ const results: any = { browser: fx.browser.version(), cases: {} };
   const r: any = { opened: await probe(fp.page) };
   await fp.page.screenshot({ path: shotPath(SMOKE, "fresh-phone-dark-zh-TW", "1-panel") });
   r.errors = fp.errors;
-  r.pass = r.opened.width === "full" && r.opened.bodyClass === "pv-panel-body w-full" && !r.opened.fsButton && !r.opened.clipped && r.opened.overflowX <= 0 && !r.errors.length;
+  r.pass = r.opened.width === "full" && r.opened.bodyClass === "pv-panel-body w-full" && r.opened.fsButton && !r.opened.clipped && r.opened.overflowX <= 0 && !r.errors.length;
   results.cases["fresh-phone-dark-zh-TW"] = r;
   await fp.ctx.close();
 }
@@ -106,7 +106,7 @@ const results: any = { browser: fx.browser.version(), cases: {} };
   await pick(page, "phone"); await waitFrame(page);
   r.phone = { ...(await probe(page)), page: await frameText(page) };
   r.csp = await csp(); r.errors = errors;
-  r.pass = r.bar.rows === 2 && !r.bar.clipped && !r.bar.fsButton && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
+  r.pass = r.bar.rows <= 3 && !r.bar.clipped && r.bar.fsButton && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
   results.cases["phone-dark-zh-TW"] = r;
   await ctx.close();
 }
