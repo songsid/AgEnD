@@ -1,0 +1,25 @@
+{
+  "headless": true,
+  "network": "isolated loopback only",
+  "synthetic": true,
+  "cases": [
+    {
+      "stem": "desk-dark-zh-TW",
+      "status": 200,
+      "dismissed": true,
+      "errors": [],
+      "csp": [],
+      "deniedStatus": 403,
+      "toastFits": true
+    },
+    {
+      "stem": "phone-light-en",
+      "status": 200,
+      "dismissed": true,
+      "errors": [],
+      "csp": [],
+      "deniedStatus": 403,
+      "toastFits": true
+    }
+  ]
+}

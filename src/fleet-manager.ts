@@ -5708,6 +5708,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       since: group.since, detail: "", contactSuggestionCount: group.count, quiet: true,
     } as WebNeedsItem))];
   }
+  /** Identity for reminder visibility/dismissal ONLY. Never a verified contact/action permit. */
+  contactSuggestionActor(req: import("node:http").IncomingMessage, url: URL): ContactPerson | null {
+    const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, this.webToken, this.webSessions, { touch: false });
+    if (verdict.kind !== "allow" || verdict.via !== "session" || verdict.session.tier !== "admin") return null;
+    const verified = this.contactActor(req, url);
+    if (verified) return verified;
+    const owner = verdict.session.owner, adapter = owner && this.adapters.get(owner.adapterId);
+    if (!owner || !adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return null;
+    return { platform: adapter.type, adapterId: owner.adapterId, userId: owner.userId, label: owner.userId };
+  }
+  /** Dismissing a reminder grants no authority: current room-admin membership is still checked below. */
+  acknowledgeContactSuggestionFromWeb(instance: string, req: import("node:http").IncomingMessage, url: URL): void {
+    const actor = this.contactSuggestionActor(req, url);
+    if (!actor) throw Error("verification-required");
+    this.acknowledgeContactSuggestion(instance, actor);
+  }
   acknowledgeContactSuggestion(instance: string, actor: ContactPerson): void {
     if (!this.contactAdminOf(instance, actor) || !this.contactRoom(instance)) throw Error("forbidden");
     this.contactService().host.store.dismissSuggestion(instance);

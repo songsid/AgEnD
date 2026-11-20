@@ -259,7 +259,12 @@ const streamContactProjection = new WeakMap<ServerResponse, (event: string, data
 function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
   const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
   const actor = ctx.contactActor?.(req, url);
-  return actor && ctx.contactNeeds ? [...ordinary, ...ctx.contactNeeds(actor)] : ordinary;
+  if (actor && ctx.contactNeeds) return [...ordinary, ...ctx.contactNeeds(actor)];
+  const observer = ctx.contactSuggestionActor?.(req, url);
+  // A session identity may see benign room suggestions, never pending approval tickets.
+  const suggestions = observer && ctx.contactNeeds ? ctx.contactNeeds(observer).filter(item => item && typeof item === "object"
+    && (item as { reason?: string }).reason === "contact_restricted_suggestion") : [];
+  return [...ordinary, ...suggestions];
 }
 
 /**
@@ -420,6 +425,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   contactActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   contactNeeds?(actor: import("./contact-auth-types.js").ContactPerson): unknown[];
   acknowledgeContactSuggestion?(instance: string, actor: import("./contact-auth-types.js").ContactPerson): void;
+  acknowledgeContactSuggestionFromWeb?(instance: string, req: IncomingMessage, url: URL): void;
+  contactSuggestionActor?(req: IncomingMessage, url: URL): import("./contact-auth-types.js").ContactPerson | null;
   recoverNativePane?(name:string,launchId:string,authorized:()=>boolean):Promise<void>;
   startFreshNativePane?(name:string,launchId:string,sessionId:string|null,authorized:()=>boolean):Promise<void>;
   nativeInstanceRuntime?(): import("./fleet-windows-runtime.js").FleetWindowsRuntime;
@@ -3524,10 +3531,24 @@ export function handleWebRequest(
       const id = body && typeof body === "object" ? body.id : undefined;
       if (typeof id !== "string") { json(res, 400, { error: "id required" }); return; }
       if (id.startsWith("contact-suggest:")) {
-        const actor = ctx.contactActor?.(req, url);
-        if (!actor || !ctx.acknowledgeContactSuggestion) { json(res, 403, { error: "forbidden" }); return; }
-        try { ctx.acknowledgeContactSuggestion(id.slice("contact-suggest:".length), actor); json(res, 200, { acknowledged: true }); }
-        catch { json(res, 403, { error: "forbidden" }); }
+        try {
+          if (ctx.acknowledgeContactSuggestionFromWeb) ctx.acknowledgeContactSuggestionFromWeb(id.slice("contact-suggest:".length), req, url);
+          else {
+            const actor = ctx.contactActor?.(req, url);
+            if (!actor || !ctx.acknowledgeContactSuggestion) throw Error("verification-required");
+            ctx.acknowledgeContactSuggestion(id.slice("contact-suggest:".length), actor);
+          }
+          json(res, 200, { acknowledged: true });
+        } catch (err) {
+          const code = err instanceof Error ? err.message : "";
+          if (code === "forbidden" || code === "verification-required") json(res, 403, { error: code, code });
+          else {
+            const raw = err && typeof err === "object" ? (err as { code?: unknown }).code : undefined;
+            const cause = typeof raw === "string" && /^[A-Z][A-Z0-9_]{1,48}$/.test(raw) ? raw : "unknown";
+            ctx.logger.error({ code: cause }, "Contact suggestion dismissal could not be saved");
+            json(res, 503, { error: "unavailable", code: "unavailable" });
+          }
+        }
         return;
       }
       const verdict = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, { touch: false });
