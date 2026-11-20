@@ -1,0 +1,53 @@
+precheck muse (manifest scripts/manual/cli-upstream-precheck/sources.json, 67 literals)
+  old: .artifacts/muse-audit/import/old — 1 file(s), 467.0 MB
+  new: .artifacts/muse-audit/import/new — 1 file(s), 471.4 MB
+
+literals in the old artifact: 57 of 67 (the rest are AgEnD's own text, or this CLI never had them)
+
+MISSING (in old, not in new): 0
+
+COUNT CHANGED: 2
+  [idle-busy] 165 -> 164  "Muse Code"   (src/backend/muse.ts:981 MuseBackend.getReadyPattern)
+  [error] 30 -> 31  "rate_limit"   (src/backend/muse.ts:1061 MuseBackend.getErrorPatterns.type)
+
+APPEARED (not in old, in new): 0
+
+NEW PROMPT-LIKE STRINGS near a known detector literal: 1
+  [error] "rate limited retry error - To continue this session, run generated.model-chosennative-basic"   near "usage limit"
+
+NEW PROMPT-LIKE STRINGS elsewhere: 12
+  "Continue the remaining task without running that loader again.none knownn/ana; Older user mes"   hint: the old release has "Continue the remaining task without runn"… (only a neighbouring string changed?)
+  "Yes, don't ask again this sessionallow_local_prefix_abortallow_local_prefi"
+  "Yes, proceedallow_sessionYes, and don"
+  "continue this session, run"
+  "resume the Workflow, or run this step again with an agent type that exists now.tool_searchb"   hint: the old release has "resume the Workflow, or run this step ag"… (only a neighbouring string changed?)
+  "resume the parent session (presenting its config) before opening a childpluginData/unsubscr"
+  "resume the parent session or make a new fork from itclientStorecauseresume: the client stor"
+  "resume the same run; no child work startedmodel-chosenmodel-chosen generated workflowgenera"
+  "resume the session with them once no other window has it open and its turn has endedInvalid"
+  "resume this run, or start the Workflow again as a new run if you still need its work.its ear"   hint: the old release has "resume this run, or start the Workflow a"… (only a neighbouring string changed?)
+  "resume this run, or start the Workflow again as a new run if you still need its work.session"   hint: the old release has "resume this run, or start the Workflow a"… (only a neighbouring string changed?)
+  "resume this session yet; start a new run without --node to resume itsubagent_send_messageLoa"
+
+POSSIBLE NEIGHBOUR REORDERS (a run of spaces inside a new hit; evidence only, the verdict is unchanged): 1
+  "rate limited retry error - To continue this session, run generated.model-chosennative-basic"   = "rate limited retry" (old 0, new 1) | "error" (old 4387, new 4442) | "- To continue this session, run generated.model-chosennative" (old 0, new 1)
+
+PROMPT-LIKE STRINGS gone in the new artifact: 11
+  "Continue the remaining task without running that loader again.## Errors, Failed Attempts, And"
+  "Yes, don't ask again this sessionMuse Codewriteexact shell commandshell ar"
+  "Yes, proceedYes, and don"
+  "continue this session, run resume_reconcile:orphaned_by_process_loss~~/…↑↓ select⏎ col"
+  "continue this session, run runit was refusedthe runtime closed before it answeredComputer Use"
+  "resume the Workflow, or run this step again with an agent type that exists now.tool_search"
+  "resume the parent session (presenting its config) before opening a childassertion failed: e"
+  "resume the parent session or make a new fork from itno seed, or the seed-shape gate refused"
+  "resume the same run; no child work startedwithin_capstall_retrythrottle_retrystructured_out"
+  "resume this run, or start the Workflow again as a new run if you still need its work.complet"
+  "resume this session yet; start a new run without --node to resume itrun already terminalappe"
+
+REASON: 1 new prompt-like string(s) on a known surface: [error] "rate limited retry error - To continue this session, run gen"
+REASON: 2 literal count(s) changed
+REASON: 12 new prompt-like string(s) away from known literals
+BASIS-DETAIL: missing 0, incomplete 0, coverage 0, unhinted new prompts 1, hinted new prompts 0
+BASIS: hard=1; hinted=0
+PRECHECK: MAJOR
