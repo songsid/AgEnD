@@ -76,3 +76,10 @@ A new network namespace starts with `lo` down. Without raising it, codex never r
 The fixture suite fails when a 0.171 frame's reading diverges (a swapped fixture fails its comparison case). This
 audit proves Linux x64 rendering and local mock behavior. It makes no real-account, cloud-service or Windows-runtime
 claim. Mark the release audited after the main and dev changes merge.
+
+## Dev-branch release pin
+
+The dev twin appends 0.171.0 to the shipped audited ledger and moves the Windows Runtime installer pin with it.
+`alpha-install-pin.json` records the root and Windows x64 npm tarballs. Each downloaded tarball's SHA-512 matches the
+registry, and the native package holds the expected PE executable path (`MZ` header). This is a static package check,
+not Windows execution or a new Authenticode acceptance; the installer still verifies the publisher before switching.

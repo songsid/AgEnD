@@ -52,7 +52,7 @@ describe("the ledger", () => {
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
       // Current audited targets; Muse 1.4.24-R9131.1 was added with M-3396.
-      "claude-code": "2.1.327", "codex": "0.170.0", "kiro-cli": "3.5.0", "antigravity": "1.5.9", "grok": "1.0.89", "muse": "1.4.24-R9131.1", "opencode": "1.19.5",
+      "claude-code": "2.1.327", "codex": "0.171.0", "kiro-cli": "3.5.0", "antigravity": "1.5.9", "grok": "1.0.89", "muse": "1.4.24-R9131.1", "opencode": "1.19.5",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -111,7 +111,7 @@ describe("where an installed CLI stands", () => {
     expect(cliUpdateView("muse", "Muse Code 1.4.24-R9000.1", false)).toEqual({ state: "behind", audited: "1.4.24-R9131.1", installed: "1.4.24-R9000.1", button: false, latest: false });
   });
   it("at the audited release: current, no button", () => {
-    expect(cliUpdateView("codex", "codex-cli 0.170.0", true)).toEqual({ state: "current", audited: "0.170.0", installed: "0.170.0", button: false, latest: false });
+    expect(cliUpdateView("codex", "codex-cli 0.171.0", true)).toEqual({ state: "current", audited: "0.171.0", installed: "0.171.0", button: false, latest: false });
     expect(cliUpdateView("muse", "1.4.24-R9131.1", false)).toEqual({ state: "current", audited: "1.4.24-R9131.1", installed: "1.4.24-R9131.1", button: false, latest: false });
   });
   it("M-3396: the previous build stays audited and is now behind the new target", () => {
@@ -152,7 +152,7 @@ describe("the update command", () => {
     }
     expect(hostUpdatePlan("grok")).toEqual({ command: "curl -fsSL https://x.ai/cli/install.sh | bash -s 1.0.89", target: "1.0.89" });
     expect(hostUpdatePlan("claude-code")!.command).toBe("curl -fsSL https://claude.ai/install.sh | bash -s 2.1.327");
-    expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.170.0");
+    expect(hostUpdatePlan("codex")!.command).toBe("curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh -s -- --release 0.171.0");
     expect(hostUpdatePlan("kiro-cli")!.command).toBe("curl -fsSL https://cli.kiro.dev/install | bash -s -- --version 3.5.0 --force");
     expect(hostUpdatePlan("opencode")!.command).toBe("curl -fsSL https://opencode.ai/install | bash -s -- --version 1.19.5");
   });
