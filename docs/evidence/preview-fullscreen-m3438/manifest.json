@@ -1,7 +1,7 @@
 [
   {
     "path": "README.md",
-    "sha256": "4a6ac7d7abc61d911dcb5aa3aeecca10538957b459db0ddf14c4ad579a8f5f0b"
+    "sha256": "0847d083651983c2760ca0fe9ccdd6652b593380159d67ad8a33475c2da9b695"
   },
   {
     "path": "desk-dark-en-refused-1-immersive.png",
@@ -42,6 +42,50 @@
   {
     "path": "phone-dark-zh-TW-2-full-screen.png",
     "sha256": "59af045f087ec01818e6d0cf6b1f1980eed59d31783b8e55cfb644ed49ae35cd"
+  },
+  {
+    "path": "r1/README.md",
+    "sha256": "89847a39b8ea6ea5ebca6ca6ad7d4c791186bcf9fcb986c7499c2a4eebf70abe"
+  },
+  {
+    "path": "r1/captures/desk-dark-en-refused-1-immersive.png",
+    "sha256": "e119536299dbd03d011fbbba2d78a33a4e8f5e38059552ba7447b344959452f8"
+  },
+  {
+    "path": "r1/captures/desk-dark-en-unavailable-1-immersive.png",
+    "sha256": "e119536299dbd03d011fbbba2d78a33a4e8f5e38059552ba7447b344959452f8"
+  },
+  {
+    "path": "r1/captures/desk-light-en-1-phone-width.png",
+    "sha256": "b0e8cc9310e80356698133a7690ba32d4101f1063a4a4f3e5c8e84a9c5902efd"
+  },
+  {
+    "path": "r1/captures/desk-light-en-2-tablet-width.png",
+    "sha256": "e29e72f660ffa36737d34dc637ebbd979bd5fe6f916a2a4f2fd24c774ec2908d"
+  },
+  {
+    "path": "r1/captures/desk-light-en-3-full-screen.png",
+    "sha256": "6b3fb7a61e2abf1c1909bf3442f71356d8f482e9ad4d148841b373b1428e2fba"
+  },
+  {
+    "path": "r1/captures/fresh-phone-dark-zh-TW-1-panel.png",
+    "sha256": "6275aed9c2a7d5cccd72021bc0eee8ae5112915139eef63846b54c21be750479"
+  },
+  {
+    "path": "r1/captures/phone-dark-zh-TW-1-two-row-bar.png",
+    "sha256": "27dd88f284c8ff411e0a5294e3d7eb9b1a67d5c40eb073127c2a4d631d003c9a"
+  },
+  {
+    "path": "r1/captures/phone-dark-zh-TW-2-full-screen.png",
+    "sha256": "029467465eec241e77de58dc00083afaa2d0a98fa778ffa6acdf77c3ce835926"
+  },
+  {
+    "path": "r1/captures/result.json",
+    "sha256": "7a743ef1caf595210a5cfa0c668ec0e3564ae076a01afb0dada06c23736a98c0"
+  },
+  {
+    "path": "r1/visual-r1-tests.log",
+    "sha256": "d7c9549e78cfb1e19dc769d7643d9e94b4c75644e2d3a11316d98b39dcf78a4a"
   },
   {
     "path": "result.json",

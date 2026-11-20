@@ -1,0 +1,658 @@
+{
+ "browser": "158.0.8127.18",
+ "cases": {
+  "fresh-phone-dark-zh-TW": {
+   "opened": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": null,
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 390,
+     "h": 844
+    },
+    "body": {
+     "x": 0,
+     "y": 163,
+     "w": 390,
+     "h": 681
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 232,
+     "y": 73,
+     "w": 44,
+     "h": 44
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "errors": [],
+   "pass": true
+  },
+  "desk-light-en": {
+   "full": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 529,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true,
+    "page": "innerWidth 525"
+   },
+   "phone": {
+    "width": "phone",
+    "bodyClass": "pv-panel-body w-phone",
+    "frame": {
+     "x": 893,
+     "y": 319,
+     "w": 394,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true,
+    "page": "innerWidth 390 <=390"
+   },
+   "tablet": {
+    "width": "tablet",
+    "bodyClass": "pv-panel-body w-tablet",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 772,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": true,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true,
+    "page": "innerWidth 768 >=768"
+   },
+   "afterReload": {
+    "width": "tablet",
+    "bodyClass": "pv-panel-body w-tablet",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 772,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": true,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "fs": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 173,
+     "w": 1342,
+     "h": 715
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 1366,
+     "h": 900
+    },
+    "body": {
+     "x": 0,
+     "y": 173,
+     "w": 1366,
+     "h": 727
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel pv-fs pv-fs-native",
+    "fsEl": "pv-panel pv-fs pv-fs-native",
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 782,
+     "y": 73,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "fsEsc": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 529,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "fsAgain": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 173,
+     "w": 1342,
+     "h": 715
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 1366,
+     "h": 900
+    },
+    "body": {
+     "x": 0,
+     "y": 173,
+     "w": 1366,
+     "h": 727
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel pv-fs pv-fs-native",
+    "fsEl": "pv-panel pv-fs pv-fs-native",
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 782,
+     "y": 73,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "fsButtonOff": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 529,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "escCloses": {
+    "width": null,
+    "bodyClass": null,
+    "frame": null,
+    "panel": null,
+    "body": null,
+    "bodyScrolls": null,
+    "fs": null,
+    "fsEl": null,
+    "fsButton": false,
+    "fsButtonBox": null,
+    "rows": 0,
+    "clipped": false,
+    "overflowX": 0,
+    "open": false
+   },
+   "csp": [],
+   "errors": [],
+   "pass": true
+  },
+  "phone-dark-zh-TW": {
+   "bar": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 247,
+     "w": 366,
+     "h": 585
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 390,
+     "h": 844
+    },
+    "body": {
+     "x": 0,
+     "y": 247,
+     "w": 390,
+     "h": 597
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 212,
+     "y": 73,
+     "w": 44,
+     "h": 44
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "phone": {
+    "width": "phone",
+    "bodyClass": "pv-panel-body w-phone",
+    "frame": {
+     "x": 12,
+     "y": 247,
+     "w": 394,
+     "h": 585
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 390,
+     "h": 844
+    },
+    "body": {
+     "x": 0,
+     "y": 247,
+     "w": 390,
+     "h": 597
+    },
+    "bodyScrolls": true,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 212,
+     "y": 73,
+     "w": 44,
+     "h": 44
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true,
+    "page": "innerWidth 390 <=390"
+   },
+   "fs": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 247,
+     "w": 366,
+     "h": 585
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 390,
+     "h": 844
+    },
+    "body": {
+     "x": 0,
+     "y": 247,
+     "w": 390,
+     "h": 597
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel pv-fs pv-fs-native",
+    "fsEl": "pv-panel pv-fs pv-fs-native",
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 212,
+     "y": 73,
+     "w": 44,
+     "h": 44
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "fsExit": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 247,
+     "w": 366,
+     "h": 585
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 390,
+     "h": 844
+    },
+    "body": {
+     "x": 0,
+     "y": 247,
+     "w": 390,
+     "h": 597
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": "pv-panel",
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 212,
+     "y": 73,
+     "w": 44,
+     "h": 44
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "csp": [],
+   "errors": [],
+   "pass": true
+  },
+  "desk-dark-en-unavailable": {
+   "fs": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 173,
+     "w": 1342,
+     "h": 715
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 1366,
+     "h": 900
+    },
+    "body": {
+     "x": 0,
+     "y": 173,
+     "w": 1366,
+     "h": 727
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel pv-fs pv-fs-immersive",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 782,
+     "y": 73,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "style": "fixed 60",
+   "esc": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 529,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "csp": [],
+   "errors": [],
+   "pass": true
+  },
+  "desk-dark-en-refused": {
+   "fs": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 12,
+     "y": 173,
+     "w": 1342,
+     "h": 715
+    },
+    "panel": {
+     "x": 0,
+     "y": 0,
+     "w": 1366,
+     "h": 900
+    },
+    "body": {
+     "x": 0,
+     "y": 173,
+     "w": 1366,
+     "h": 727
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel pv-fs pv-fs-immersive",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 782,
+     "y": 73,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 1,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "style": "fixed 60",
+   "esc": {
+    "width": "full",
+    "bodyClass": "pv-panel-body w-full",
+    "frame": {
+     "x": 825,
+     "y": 319,
+     "w": 529,
+     "h": 569
+    },
+    "panel": {
+     "x": 813,
+     "y": 52,
+     "w": 553,
+     "h": 848
+    },
+    "body": {
+     "x": 813,
+     "y": 319,
+     "w": 553,
+     "h": 581
+    },
+    "bodyScrolls": false,
+    "fs": "pv-panel",
+    "fsEl": null,
+    "fsButton": true,
+    "fsButtonBox": {
+     "x": 1030,
+     "y": 177,
+     "w": 36,
+     "h": 36
+    },
+    "rows": 2,
+    "clipped": false,
+    "overflowX": 0,
+    "open": true
+   },
+   "csp": [],
+   "errors": [],
+   "pass": true
+  }
+ }
+}

@@ -21,3 +21,7 @@ This main fix removes that visibility restriction and gives the narrow-screen bu
 - [Fullscreen refusal fallback](desk-dark-en-refused-1-immersive.png)
 
 No live account, CLI, model, Fleet startup or Windows campaign. All labels/content are synthetic. USER VISUAL HOLD remains; joint main/dev captures will be sent before review. Revert this small presentation fix to roll back; no data change.
+
+## Current visual correction
+
+The original captures above are historical. See [R1 toolbar correction](r1/README.md) and its retaken captures for the current user look. Secondary phone controls now use the shared options dialog; fullscreen is a standard icon button.

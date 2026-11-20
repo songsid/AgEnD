@@ -14,6 +14,7 @@ import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Skeleton } from "/assets/ui-states.js";
+import { Dialog } from "/assets/ui-dialog.js";
 import "./chat-render.js";
 import "./preview.js";
 import { loadHtmlAttachment } from "./html-attachment.js";
@@ -23,6 +24,31 @@ import { htmlTitle, versionsOf, lineDiff, diffHunks, DIFF_LIMITS } from "./previ
 import { pagesOf, pageIdOf } from "./preview-pages.js";
 import { drawMarkdown, TEXT_CARD_MAX } from "./chat-thread.js";
 import "./chat-md-strings.js";   // M-2448: the Markdown panel's own words (an older cached chat-strings.js lacks them)
+
+/** Secondary phone controls use the app's focus-trapped options sheet, keeping the toolbar one row. */
+function PreviewToolbar({ owner, versions, views, width, reload, run, fullscreen, actions }) {
+  const query = "(max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
+  const [narrow, setNarrow] = useState(() => !!globalThis.matchMedia?.(query).matches);
+  const [more, setMore] = useState(false);
+  useEffect(() => {
+    const media = globalThis.matchMedia?.(query);
+    const changed = () => { setNarrow(!!media?.matches); setMore(false); };
+    media?.addEventListener?.("change", changed);
+    return () => media?.removeEventListener?.("change", changed);
+  }, []);
+  useEffect(() => { setMore(false); }, [owner]);
+  return html`<div class="pv-panel-bar">
+    ${narrow ? html`${views}${run}${fullscreen}
+      <button type="button" class="icon-btn pv-toolbar-more" title=${t("chat.pvMenu")} aria-label=${t("chat.pvMenu")}
+        aria-haspopup="dialog" aria-expanded=${more ? "true" : "false"} onClick=${() => setMore(true)}><${Icon} name="more" size=${18} /></button>
+      ${more ? html`<div class="pv-toolbar-dialog" onKeyDown=${e => e.stopPropagation()}>
+        <${Dialog} title=${t("chat.pvMenu")} onClose=${() => setMore(false)}>
+          ${versions}${width ? html`<label class="field"><span>${t("chat.pvWidth")}</span>${width}</label>` : null}
+          ${reload}${actions}
+        </${Dialog}>
+      </div>` : null}` : html`${versions}${views}<span class="grow"></span>${width}${reload}${run}${fullscreen}${actions}`}
+  </div>`;
+}
 
 export { htmlTitle };
 
@@ -443,29 +469,27 @@ export function PreviewPanel({ name, split, msgs, subscribe, keyOf, reveal, down
           onClick=${() => setListing(v => !v)}><${Icon} name="file" size=${14} />${t("chat.pvPagesCount", pages.length)}</button>` : null}
         <button type="button" class="icon-btn only-wide pv-panel-close" title=${t("chat.pvClose")} aria-label=${t("chat.pvClose")} onClick=${closePanel}><${Icon} name="close" size=${18} /></button>
       </div>
-      <div class="pv-panel-bar">
-        ${vers.list.length > 1 && vers.index >= 0 ? html`<div class="pv-ver" role="group" aria-label=${t("chat.pvVersions")}>
+      <${PreviewToolbar} owner=${open.key}
+        versions=${html`${vers.list.length > 1 && vers.index >= 0 ? html`<div class="pv-ver" role="group" aria-label=${t("chat.pvVersions")}>
           <button type="button" class="icon-btn pv-ver-prev" title=${t("chat.pvVerPrev")} aria-label=${t("chat.pvVerPrev")} disabled=${vers.index === 0} onClick=${() => step(-1)}><${Icon} name="prev" size=${16} /></button>
           <span class="pv-ver-at" aria-live="polite" title=${t("chat.pvVerLong", vers.index + 1, vers.list.length)} aria-label=${t("chat.pvVerLong", vers.index + 1, vers.list.length)}>${t("chat.pvVer", vers.index + 1, vers.list.length)}</span>
           <button type="button" class="icon-btn pv-ver-next" title=${t("chat.pvVerNext")} aria-label=${t("chat.pvVerNext")} disabled=${vers.index === vers.list.length - 1} onClick=${() => step(1)}><${Icon} name="next" size=${16} /></button>
-        </div>` : null}
-        <div class="seg-inline" role="group" aria-label=${t("chat.pvPanel")}>
+        </div>` : null}`}
+        views=${html`<div class="seg-inline" role="group" aria-label=${t("chat.pvPanel")}>
           <button type="button" class=${`btn btn-sm${shown === "preview" ? " on" : ""}`} aria-pressed=${shown === "preview" ? "true" : "false"} title=${t("chat.pvPage")} onClick=${() => pickView("preview")}><${Icon} name="eye" size=${14} /><span class="lbl">${t("chat.pvPage")}</span></button>
           <button type="button" class=${`btn btn-sm${shown === "code" ? " on" : ""}`} aria-pressed=${shown === "code" ? "true" : "false"} title=${t("chat.pvCode")} onClick=${() => pickView("code")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvCode")}</span></button>
           ${prev ? html`<button type="button" class=${`btn btn-sm pv-changes${shown === "changes" ? " on" : ""}`} aria-pressed=${shown === "changes" ? "true" : "false"} title=${t("chat.pvChanges")} onClick=${() => pickView("changes")}><${Icon} name="diff" size=${14} /><span class="lbl">${t("chat.pvChanges")}</span></button>` : null}
-        </div>
-        <span class="grow"></span>
-        ${shown === "preview" ? html`<select class="pv-width" aria-label=${t("chat.pvWidth")} title=${t("chat.pvWidth")} value=${device} onChange=${(e) => setDevice(e.currentTarget.value)}>
-          <option value="full">${t("chat.pvWidthFull")}</option><option value="tablet">${t("chat.pvWidthTablet")}</option><option value="phone">${t("chat.pvWidthPhone")}</option></select>` : null}
-        ${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>
-          <button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
+        </div>`}
+        width=${html`${shown === "preview" ? html`<select class="pv-width" aria-label=${t("chat.pvWidth")} title=${t("chat.pvWidth")} value=${device} onChange=${(e) => setDevice(e.currentTarget.value)}>
+          <option value="full">${t("chat.pvWidthFull")}</option><option value="tablet">${t("chat.pvWidthTablet")}</option><option value="phone">${t("chat.pvWidthPhone")}</option></select>` : null}`}
+        reload=${html`${going ? html`<button type="button" class="btn btn-sm pv-panel-reload" title=${t("chat.pvReload")} onClick=${() => { stop(); start(true); }}><${Icon} name="restart" size=${14} /><span class="lbl">${t("chat.pvReload")}</span></button>` : null}`}
+        run=${html`${going ? html`<button type="button" class="btn btn-sm pv-panel-stop" title=${t("chat.pvStop")} onClick=${stop}><${Icon} name="stop" size=${14} /><span class="lbl">${t("chat.pvStop")}</span></button>`
           : run.state === "large" ? html`<button type="button" class="btn btn-sm btn-primary pv-panel-anyway" title=${t("chat.pvAnyway")} disabled=${!a.ok} onClick=${() => start(true)}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvAnyway")}</span></button>`
-          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}
-        <button type="button" class=${`btn btn-sm pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
-          onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
-        <${PanelActions} open=${open} name=${name} run=${run} view=${view} />
-        <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>
-      </div>
+          : html`<button type="button" class="btn btn-sm btn-primary pv-panel-run" title=${t("chat.pvPreview")} disabled=${!a.ok} onClick=${() => start()}><${Icon} name="play" size=${14} /><span class="lbl">${t("chat.pvPreview")}</span></button>`}`}
+        fullscreen=${html`<button type="button" class=${`icon-btn pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+          onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>`}
+        actions=${html`<${PanelActions} open=${open} name=${name} run=${run} view=${view} />
+        <button type="button" class="btn btn-sm pv-panel-dl" title=${t("chat.pvDownload")} onClick=${() => download(open.code, fileName)}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></button>`} />
       ${newer && newer.key !== open.key ? html`<div class="pv-newer" role="status"><span>${t("chat.pvNewer", timeOf(newer.ts))}</span>
         <button type="button" class="btn btn-sm pv-newer-show" onClick=${showNewer}>${t("chat.pvNewerShow")}</button>${newerNote ? newerNote.loading
           ? html`<${Skeleton} variant="inline" lines=${1} label=${t("chat.pvLoading")} />` : html`<span class="pv-newer-note">${newerNote}</span>` : null}</div>` : null}
@@ -504,7 +528,7 @@ function MarkdownPanel({ open, name, md, view, setView, plain, body, panel, fs, 
         <button type="button" class=${`btn btn-sm${view === "source" ? " on" : ""}`} aria-pressed=${view === "source" ? "true" : "false"} title=${t("chat.pvMdSource")} onClick=${() => setView("source")}><${Icon} name="code" size=${14} /><span class="lbl">${t("chat.pvMdSource")}</span></button>
       </div>
       <span class="grow"></span>
-      <button type="button" class=${`btn btn-sm pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
+      <button type="button" class=${`icon-btn pv-panel-fs${fs ? " on" : ""}`} aria-pressed=${fs ? "true" : "false"} title=${t(fs ? "chat.pvFsExit" : "chat.pvFs")} aria-label=${t(fs ? "chat.pvFsExit" : "chat.pvFs")}
         onClick=${() => (fs ? leaveFs() : enterFs())}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${14} /></button>
       ${open.att ? html`<a class="btn btn-sm pv-panel-dl" href=${`/ui/file/${open.att.id}`} download=${open.att.name} title=${t("chat.pvDownload")}><${Icon} name="download" size=${14} /><span class="lbl">${t("chat.pvDownload")}</span></a>` : null}
     </div>

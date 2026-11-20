@@ -6,7 +6,7 @@
 //   Esc closes the panel.
 // - Phone dark zh-TW: the bar wraps (versions/views/width above, run controls and Download below), nothing clipped;
 //   full screen remains reachable and can enter/exit at phone width too.
-// - From defaults (nothing seeded) on a phone: the width control shows Full.
+// - From defaults (nothing seeded) on a phone: the page uses Full width.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf \
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-2911-preview-widths.mts
 import { writeFileSync } from "node:fs";
@@ -26,7 +26,7 @@ say("v2:\n```html\n" + PAGE(2) + "\n```");
 const PROBE = `(() => {
   const q = (s) => document.querySelector(s), box = (e) => { if (!e) return null; const r = e.getBoundingClientRect(); return { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.width), h: Math.round(r.height) }; };
   const body = q(".pv-panel-body");
-  return { width: q(".pv-width")?.value ?? null, bodyClass: body?.className ?? null, frame: box(q(".pv-panel iframe")), panel: box(q(".pv-panel")), body: box(body),
+  return { width: q(".pv-width")?.value || body?.className.match(/w-(full|phone|tablet)/)?.[1] || null, bodyClass: body?.className ?? null, frame: box(q(".pv-panel iframe")), panel: box(q(".pv-panel")), body: box(body),
     bodyScrolls: body ? body.scrollWidth > body.clientWidth : null, fs: q(".pv-panel")?.className ?? null,
     fsEl: document.fullscreenElement ? (document.fullscreenElement.className || document.fullscreenElement.tagName) : null,
     fsButton: (() => { const b = q(".pv-panel-fs"); return !!b && b.offsetParent !== null; })(), fsButtonBox: box(q(".pv-panel-fs")),
@@ -43,7 +43,13 @@ async function frameText(page: any) {
 }
 const waitFrame = async (page: any) => { for (let i = 0; i < 50; i++) { if (await frameText(page)) return; await page.waitForTimeout(100); } };
 const openIn = async (page: any, nth: number) => { await page.waitForSelector(".html-card .pv-open"); await page.evaluate(`document.querySelectorAll(".html-card .pv-open")[${nth}].click()`); await page.waitForTimeout(800); };
-const pick = async (page: any, v: string) => { await page.selectOption(".pv-width", v); await page.waitForTimeout(500); };
+const pick = async (page: any, v: string) => {
+  const more = page.locator(".pv-toolbar-more");
+  if (await more.isVisible()) await more.click();
+  await page.selectOption(".pv-width", v);
+  if (await page.locator(".pv-toolbar-dialog .dlg-x").isVisible()) await page.locator(".pv-toolbar-dialog .dlg-x").click();
+  await page.waitForTimeout(500);
+};
 const results: any = { browser: fx.browser.version(), cases: {} };
 
 // From defaults first (the seeded cases set host-wide prefs).
@@ -112,7 +118,7 @@ const results: any = { browser: fx.browser.version(), cases: {} };
   await page.click(".pv-panel-fs"); await page.waitForFunction('!document.querySelector(".pv-panel")?.classList.contains("pv-fs")');
   r.fsExit = await probe(page);
   r.csp = await csp(); r.errors = errors;
-  r.pass = r.bar.rows <= 3 && !r.bar.clipped && r.bar.fsButton && r.bar.fsButtonBox.w >= 44 && r.bar.fsButtonBox.h >= 44 && !r.fs.bodyScrolls && /pv-fs/.test(r.fs.fs) && !/pv-fs/.test(r.fsExit.fs) && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
+  r.pass = r.bar.rows === 1 && !r.bar.clipped && r.bar.fsButton && r.bar.fsButtonBox.w >= 44 && r.bar.fsButtonBox.h >= 44 && !r.fs.bodyScrolls && /pv-fs/.test(r.fs.fs) && !/pv-fs/.test(r.fsExit.fs) && r.bar.overflowX <= 0 && r.phone.page === "innerWidth 390 <=390" && !r.errors.length && !r.csp.length;
   results.cases["phone-dark-zh-TW"] = r;
   await ctx.close();
 }
