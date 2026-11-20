@@ -148,20 +148,21 @@ describe("/ui/send with replyTo", () => {
 });
 
 describe("the quote kept and shown", () => {
-  it("on disk and back; a stored quote that fails a check is dropped; only a person's message keeps one", () => {
+  it("on disk and back; a stored quote that fails a check is dropped; a person's message and (M-3491) an agent's reply keep one, a status line none", () => {
     const h = new WebChatHistory();
     const q = h.record({ instance: "a", sender: "atlas", role: "agent", text: "plan", ts: now() });
     const ref = webChatReplyRef(q);
     const reply = h.record({ instance: "a", sender: "Ops", role: "user", text: "ok", ts: now(), replyTo: ref });
-    const agentTry = h.record({ instance: "a", sender: "atlas", role: "agent", text: "x", ts: now(), replyTo: ref });
-    expect([reply.replyTo, agentTry.replyTo]).toEqual([ref, undefined]);
+    const agentReply = h.record({ instance: "a", sender: "atlas", role: "agent", text: "x", ts: now(), replyTo: ref });
+    const statusTry = h.record({ instance: "a", sender: "atlas", role: "status", text: "s", ts: now(), replyTo: ref });
+    expect([reply.replyTo, agentReply.replyTo, statusTry.replyTo]).toEqual([ref, ref, undefined]);
     const stored = (h as any).stored(reply);
     expect(stored.replyTo).toEqual(ref);
     const back = new WebChatHistory();
     const variants = [stored, { ...stored, id: 12, replyTo: { ...ref, boot: "NOT-HEX" } }, { ...stored, id: 13, replyTo: { ...ref, id: -1 } }, { ...stored, id: 14, replyTo: { ...ref, sender: 5 } },
-      { ...stored, id: 15, replyTo: { ...ref, text: "a\nb", media: "video" } }, { ...stored, id: 16, role: "agent" }];
+      { ...stored, id: 15, replyTo: { ...ref, text: "a\nb", media: "video" } }, { ...stored, id: 16, role: "agent" }, { ...stored, id: 17, role: "status" }];
     back.restore("a", variants);
-    expect(back.list("a").map(m => m.replyTo)).toEqual([ref, undefined, undefined, undefined, { ...ref, text: "a b" }, undefined]);
+    expect(back.list("a").map(m => m.replyTo)).toEqual([ref, undefined, undefined, undefined, { ...ref, text: "a b" }, ref, undefined]);
   });
   it("a guest sees a reply's quote only when it may see the quoted row; otherwise 'an earlier message'", () => {
     const h = new WebChatHistory();
