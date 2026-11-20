@@ -173,7 +173,9 @@ So Atlas looks the same in its owner's office, in every room office, and in the 
 
 Checked in the real app with a room of 12 people and 30 agents of 6 owners.
 
-**The office** holds them: 12 desks fill and the rest stand in the rest area (capture `r2-4`). On a phone it is
+**The office** holds all 30 in the built-in style: the ones working sit at desks and the idle ones stand in the
+rest area, where their name labels start to overlap (capture `r2-4`). A style with more seats would read better
+for a room this size. On a phone it is
 small until zoomed, which is the framing in this prototype; a real build fits the width.
 
 **The member list today** (captures `r2-6`, `r2-7`): every person takes two lines and every agent two or three,
