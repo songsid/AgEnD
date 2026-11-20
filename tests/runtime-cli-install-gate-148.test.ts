@@ -135,7 +135,7 @@ describe("AGEND-153: Antigravity's update to the vendor's latest goes through th
     const r = await h.install(s, "antigravity", true);
     await vi.waitFor(() => expect(h.stateOf(r, s)).toBe("applied"));
     const text = h.store.get(r.body.pending_change.id, s.record.idHash)!.summary.join(" ");
-    expect(text).toMatch(/Install antigravity 1\.5\.9 on the paired Windows computer/);
+    expect(text).toMatch(/Install antigravity 1\.5\.13 on the paired Windows computer/);
     expect(text).toMatch(/If antigravity is already on the paired Windows computer .*updates it to the vendor's LATEST release \(not audited by AgEnD\)/);
     // a CLI whose update is the pinned install carries no such sentence
     const other = await h.install(s, "codex");
