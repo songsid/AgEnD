@@ -877,13 +877,18 @@ function Thread({ name, label = name, th, bindings }) {
     clearTimeout(jumpTimer.current);
     jumpTimer.current = setTimeout(() => { const b = jumpBtn.current; if (!b || b.ownerDocument.activeElement !== b) setJumpIdle(true); }, JUMP_IDLE_MS);
   };
+  // A timer only while 最新 is shown: a chat with none holds no timer of its own for it.
+  const jumpShown = useRef(false); jumpShown.current = jump.show;
   useEffect(() => {
     const sc = scroller.current; if (!sc) return undefined;
-    const wake = () => { setJumpIdle(false); jumpRest(); };
+    const wake = () => { setJumpIdle(false); if (jumpShown.current) jumpRest(); };
     sc.addEventListener("scroll", wake, { passive: true });
-    setJumpIdle(false); jumpRest();
+    setJumpIdle(false);
     return () => { sc.removeEventListener("scroll", wake); clearTimeout(jumpTimer.current); };
   }, [name]);
+  useEffect(() => {
+    if (jump.show) { setJumpIdle(false); jumpRest(); } else clearTimeout(jumpTimer.current);
+  }, [jump.show]);
   useLayoutEffect(() => { keptThreads.get(name)?.list.setAttribute("aria-label",t("chat.conversationWith",label)); },[name,label]);
   useLayoutEffect(() => {
     const doc = host.current.ownerDocument;
