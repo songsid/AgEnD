@@ -24,7 +24,9 @@ export function InfoTip({ text, label, cls = "" }) {
   const btn = useRef(null), bubble = useRef(null), id = useRef(null);
   if (!id.current) id.current = `info-tip-${++seq}`;
   const show = () => {
-    const r = btn.current && btn.current.getBoundingClientRect ? btn.current.getBoundingClientRect() : null;
+    // Beside the ⓘ as drawn (on a touch screen the button's box is the larger tap target around it).
+    const mark = btn.current && (btn.current.querySelector?.("svg") || btn.current);
+    const r = mark && mark.getBoundingClientRect ? mark.getBoundingClientRect() : null;
     const w = (typeof window !== "undefined" && window.innerWidth) || 0, h = (typeof window !== "undefined" && window.innerHeight) || 0;
     if (!r || !w) { setAt({ x: 8, y: 8, above: false }); return; }
     const above = !!h && r.bottom + 120 > h;
