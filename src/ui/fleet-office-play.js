@@ -238,7 +238,7 @@ export function createSnacks() {
           continue;
         }
         if (p.racers.length < SNACK.MAX_RACERS) {
-          const added = pickRacers(p, t, { desks, walkers, hidden, ownArea }, SNACK.MAX_RACERS - p.racers.length);
+          const added = pickRacers(p, t, { desks, walkers, hidden, ownArea, graph }, SNACK.MAX_RACERS - p.racers.length);
           if (added.length) { p.racers.push(...added); changed = true; }
         }
         kept.push(p);

@@ -290,8 +290,15 @@ describe("M-3432 (#4255) snack feeding, placing, racing & limits", () => {
     const loungeDesks = [mkDesk("beta", "idle", "lounge", 660, 160)];
     expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, foreignGraph, "lounge")).toBe(false);
     expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, { ...foreignGraph, straight: true }, "lounge")).toBe(false);
-    const blocked = createSnacks().place(cookie, { x: 660, y: 360 }, 1200, { desks: loungeDesks, areas, ownArea: true, graph: foreignGraph });
-    expect(blocked!.racers).toEqual([]);
+    for (const g of [foreignGraph, { ...foreignGraph, straight: true }]) {
+      const m = createSnacks();
+      const blocked = m.place(cookie, { x: 660, y: 360 }, 1200, { desks: loungeDesks, areas, ownArea: true, graph: g });
+      expect(blocked!.racers).toEqual([]);
+      // Next step() refill must ALSO keep the unsafe racer excluded and expose no target.
+      m.step(1300, { desks: loungeDesks, areas, ownArea: true, graph: g });
+      expect(m.placedList()[0]!.racers).toEqual([]);
+      expect(m.targets(1300).has("beta")).toBe(false);
+    }
 
     // Positive control (Prism P2): both endpoints inside lounge, waypoint route uses unassigned corridor [600..640] without entering desks.
     const corridorGraph = {
@@ -305,8 +312,12 @@ describe("M-3432 (#4255) snack feeding, placing, racing & limits", () => {
       straight: true,
     };
     expect(routeStaysInArea({ x: 660, y: 160 }, { x: 660, y: 360 }, corridorGraph, "lounge")).toBe(true);
-    const allowed = createSnacks().place(cookie, { x: 660, y: 360 }, 1300, { desks: loungeDesks, areas, ownArea: true, graph: corridorGraph });
+    const mOk = createSnacks();
+    const allowed = mOk.place(cookie, { x: 660, y: 360 }, 1300, { desks: loungeDesks, areas, ownArea: true, graph: corridorGraph });
     expect(allowed!.racers).toEqual(["beta"]);
+    mOk.step(1400, { desks: loungeDesks, areas, ownArea: true, graph: corridorGraph });
+    expect(mOk.placedList()[0]!.racers).toEqual(["beta"]);
+    expect(mOk.targets(1400).get("beta")).toMatchObject({ x: 660, y: 360 });
   });
 
   it("createSnackDrag detaches all global listeners and blocks commits when context retires mid-drag (Prism P2)", () => {
