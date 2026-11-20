@@ -8,24 +8,28 @@ import { t } from "./app-i18n.js";
  * items: [{ key, label, icon?, onSelect, danger?, disabled? }] (falsy entries are skipped). `checked` makes a radio item;
  * `checkbox: true` with `checked` a checkbox item (#2217 hotfix: the chat's card menu), which toggles and keeps the menu
  * open. `active`: the button shows a pressed look (what it controls is on), without changing its role.
+ * `context`: optional {id, anchor, onClose}; opens without a second button and returns focus to that row.
  * Optional `trigger` and `triggerClass` customize the button content and styling; `label` remains its accessible name.
  */
-export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false, topLayer = false, ownerKey, inactive = false, onOpen, leading }) {
+export function Menu({ items, label, icon = "more", cls = "", active = false, trigger, triggerClass = "icon-btn", disabled = false, fit = false, topLayer = false, ownerKey, inactive = false, onOpen, leading, context }) {
   const [open, setOpen] = useState(false);
   const [placement,setPlacement] = useState("");
   const btn = useRef(null), list = useRef(null);
   const shown = (items || []).filter(Boolean);
+  const anchor = () => context?.anchor || btn.current;
+  const close = () => { setOpen(false); context?.onClose?.(); };
   const anchored = topLayer && open && typeof getComputedStyle === "function" && getComputedStyle(document.documentElement).getPropertyValue?.("--agent-menu-version")?.trim() === "1";
   useLayoutEffect(() => { setOpen(false); }, [ownerKey]);
+  useLayoutEffect(() => { if (context) setOpen(true); }, [context?.id]);
   useLayoutEffect(() => { if (inactive) setOpen(false); }, [inactive]);
   useLayoutEffect(() => {
-    if (!open || !fit || !btn.current?.getBoundingClientRect || !list.current) return;
+    if (!open || !fit || !anchor()?.getBoundingClientRect || !list.current) return;
     const menu = list.current;
     if (anchored) menu.showPopover?.(); // escape the sidebar's scrolling clip; the same Menu keeps focus/ownership
     const place = () => {
-      if (!btn.current || !list.current) return;
-      const rect = btn.current.getBoundingClientRect();
-      const boundary = btn.current.closest?.(".dlg-body")?.getBoundingClientRect();
+      if (!anchor() || !list.current) return;
+      const rect = anchor().getBoundingClientRect();
+      const boundary = anchor().closest?.(".dlg-body")?.getBoundingClientRect();
       const top = Math.max(0,boundary?.top || 0), bottom = Math.min(window.innerHeight,boundary?.bottom || window.innerHeight);
       const above = rect.top-top-8, below = bottom-rect.bottom-8;
       const up = below < Math.min(list.current.scrollHeight || 280,280) && above > below;
@@ -52,7 +56,7 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
     if (!open || disabled) { if (open && disabled) setOpen(false); return undefined; }
     const first = list.current && list.current.querySelector("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])");
     if (first) first.focus({ preventScroll: true });
-    const outside = (e) => { if (list.current && !list.current.contains(e.target) && btn.current && !btn.current.contains(e.target)) setOpen(false); };
+    const outside = (e) => { if (list.current && !list.current.contains(e.target) && anchor() && !anchor().contains(e.target)) close(); };
     document.addEventListener("pointerdown", outside, true);
     return () => document.removeEventListener("pointerdown", outside, true);
   }, [open, disabled]);
@@ -61,19 +65,19 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
     if (e.target.closest?.("[role=menu]") !== list.current) return; // a nested card menu owns its own keys
     const all = [...list.current.querySelectorAll("[role=menuitem]:not([disabled]), [role=menuitemradio]:not([disabled]), [role=menuitemcheckbox]:not([disabled])")];
     const i = all.indexOf(document.activeElement);
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); }
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); anchor()?.focus({ preventScroll: true }); close(); }
     else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); document.activeElement?.click(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); (all[(i + 1) % all.length] || all[0])?.focus(); }
     else if (e.key === "ArrowUp") { e.preventDefault(); (all[(i - 1 + all.length) % all.length] || all[0])?.focus(); }
     else if (e.key === "Home") { e.preventDefault(); all[0]?.focus(); }
     else if (e.key === "End") { e.preventDefault(); all[all.length - 1]?.focus(); }
-    else if (e.key === "Tab") setOpen(false);
+    else if (e.key === "Tab") close();
   }
-  function choose(item) { if (disabled || item.disabled) return; setOpen(false); btn.current && btn.current.focus({ preventScroll: true }); item.onSelect(); }
+  function choose(item) { if (disabled || item.disabled) return; anchor()?.focus({ preventScroll: true }); close(); item.onSelect(); }
   return html`<div class=${`menu ${cls}`}>
-    <button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
+    ${context ? null : html`<button ref=${btn} type="button" class=${`${triggerClass}${active ? " active" : ""}`} aria-haspopup="menu" aria-expanded=${open ? "true" : "false"} disabled=${disabled}
       aria-label=${label || t("app.more")} title=${label || t("app.more")} onClick=${() => { if (!disabled) { if (!open) onOpen?.(); setOpen(!open); } }}
-      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); onOpen?.(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>
+      onKeyDown=${(e) => { if (!disabled && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); onOpen?.(); setOpen(true); } }}>${trigger === undefined ? html`<${Icon} name=${icon} />` : trigger}</button>`}
     ${open && !disabled ? html`<div data-trust="menu" ref=${list} popover=${anchored ? "manual" : undefined} class=${`menu-list${anchored ? " menu-anchored" : ""}${fit ? placement : ""}`} role="menu" aria-label=${label || t("app.more")} onKeyDown=${onKey}>
       ${leading || null}
       ${shown.map(item => item.heading
@@ -91,3 +95,5 @@ export function Menu({ items, label, icon = "more", cls = "", active = false, tr
   </div>`;
 }
 Menu.workspaceVersion = 1;
+
+Menu.contextVersion = 1;

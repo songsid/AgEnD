@@ -140,13 +140,17 @@
   window.addEventListener("pageshow", schedule);
   // Page palettes are applied to the shell; routes replace headers. Coalesce paints and
   // ignore content attributes so updating this meta element cannot trigger itself.
-  // M-3455: the split view's grid (.ws-geometry) changes only its size and drag state on these attributes — never a colour.
+  // M-3455: the split view's grid (.ws-geometry) changes only its size and drag state on these attributes — never a colour;
+  // M-3486: nor does a text box's height.
   // A divider drag writes them every frame; re-reading the header colours then forced a layout and style walk per frame.
   function relevant(records) {
     if (!records || !records.length) return true;
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
-      if (r.type !== "attributes" || !r.target.classList || !r.target.classList.contains("ws-geometry")) return true;
+      if (r.type !== "attributes") return true;
+      // M-3486: a text box's own height (the composer grows with its text: a style write each time it is measured).
+      if (r.attributeName === "style" && r.target.tagName === "TEXTAREA") continue;
+      if (!r.target.classList || !r.target.classList.contains("ws-geometry")) return true;
     }
     return false;
   }

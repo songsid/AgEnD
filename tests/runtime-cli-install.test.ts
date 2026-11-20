@@ -39,19 +39,19 @@ describe("managed CLI install (#3190 3b)", () => {
   });
   it("installs with a fixed argv and no shell, checks integrity, signatures and publisher, then points current.json at it", async () => {
     const { run, calls } = fakeRun("claude-code"), steps: string[] = [];
-    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.327.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
+    const root = join(home, "cli"), staging = join(root, "claude-code", "2.1.329.staging"), user = join(staging, "agend-user.npmrc"), global = join(staging, "agend-global.npmrc");
     // Private configuration and local mode, on the command line as well as in the environment: no user or global `.npmrc` is read, and nothing is installed globally.
     const local = ["--userconfig", user, "--globalconfig", global, "--global=false", "--prefix", staging, "--registry", "https://registry.npmjs.org/"];
     const result = await installManagedCli("claude-code", { root, nodePath: node, run, signerOf: signed, report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.327", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
+    expect(calls[0].slice(1)).toEqual([expect.stringMatching(/npm-cli\.js$/), "install", "@anthropic-ai/claude-code@2.1.329", "--save-exact", "--ignore-scripts", "--no-audit", "--no-fund", ...local]);
     expect(calls[1].slice(2)).toEqual(["audit", "signatures", ...local]);
-    expect(result.version).toBe("2.1.327");
-    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.327" });
-    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.327" });
+    expect(result.version).toBe("2.1.329");
+    expect(JSON.parse(readFileSync(join(root, "claude-code", "current.json"), "utf8"))).toEqual({ version: "2.1.329" });
+    expect(managedCliExecutable(root, "claude-code")).toMatchObject({ command: result.command, args: [], version: "2.1.329" });
   });
   // AGEND-133 (#3521): OpenCode — an unscoped package, three pinned packages (both Windows x64 builds land), the baseline build is the one that runs, and its own signer.
-  it("OpenCode: pinned opencode-ai@1.19.5 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
+  it("OpenCode: pinned opencode-ai@1.19.6 with both Windows x64 builds, the baseline one runs, and the publisher is Anomaly Innovations (measured Authenticode subject)", async () => {
     const cli = INSTALLABLE_CLIS.opencode;
     expect(cli.spec).toBe("opencode-ai");
     expect(Object.keys(cli.integrity)).toEqual(["node_modules/opencode-ai", "node_modules/opencode-windows-x64", "node_modules/opencode-windows-x64-baseline"]);
@@ -62,9 +62,9 @@ describe("managed CLI install (#3190 3b)", () => {
     const { run, calls } = fakeRun("opencode"), steps: string[] = [], root = join(home, "cli");
     const result = await installManagedCli("opencode", { root, nodePath: node, run, signerOf: async () => ({ status: "Valid", subject }), report: s => steps.push(s) });
     expect(steps).toEqual(["installing", "checking-integrity", "checking-signatures", "checking-publisher", "ready"]);
-    expect(calls[0].slice(3, 7)).toEqual(["opencode-ai@1.19.5", "--save-exact", "--ignore-scripts", "--no-audit"]);
-    expect(result.version).toBe("1.19.5");
-    expect(managedCliExecutable(root, "opencode")).toMatchObject({ command: result.command, version: "1.19.5" });
+    expect(calls[0].slice(3, 7)).toEqual(["opencode-ai@1.19.6", "--save-exact", "--ignore-scripts", "--no-audit"]);
+    expect(result.version).toBe("1.19.6");
+    expect(managedCliExecutable(root, "opencode")).toMatchObject({ command: result.command, version: "1.19.6" });
     expect(result.command.endsWith(join("node_modules", "opencode-windows-x64-baseline", "bin", "opencode.exe"))).toBe(true);
   });
   it("OpenCode: a registry hash that is not the pinned one, or a binary signed by someone else, installs nothing", async () => {
@@ -188,7 +188,7 @@ describe("N3: the signer is compared exactly, as CN and O (#3190 3b)", () => {
   });
   it("installs when the subject is exactly right", async () => {
     const root = join(home, "cli");
-    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.327" });
+    await expect(installManagedCli("claude-code", { root, nodePath: node, run: fakeRun("claude-code").run, signerOf: async () => ({ status: "Valid", subject: CLAUDE }) })).resolves.toMatchObject({ version: "2.1.329" });
   });
 });
 
@@ -391,7 +391,7 @@ describe("pinned download (Antigravity, #3521)", () => {
   it("the pin is one exact file: a versioned Google storage address, its size and sha512, and Google LLC as the signer; the real subject Windows printed is accepted, a lookalike is not", () => {
     expect(real.kind).toBe("download");
     expect(real.version).toMatch(/^\d+\.\d+\.\d+$/);
-    expect(real.url).toBe(`https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.9-4515810895593472/windows-x64/cli_windows_x64.exe`);
+    expect(real.url).toBe(`https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.13-5999302598852608/windows-x64/cli_windows_x64.exe`);
     expect(real.url).toContain(`/${real.version}-`);
     expect(Number.isInteger(real.bytes) && real.bytes > 0).toBe(true);
     expect(real.sha512).toMatch(/^[0-9a-f]{128}$/);
@@ -410,13 +410,13 @@ describe("pinned download (Antigravity, #3521)", () => {
     expect(calls[0].args.join(" ")).not.toMatch(/https?:|agy\.exe|install\.ps1/);
     expect(DOWNLOAD_COMMAND).not.toMatch(/\biex\b|Invoke-Expression|Start-Process|&\s/i);
     expect(calls[0].env.AGEND_DOWNLOAD_URL).toBe(real.url);                       // ours: nothing the caller's environment had named the address
-    expect(calls[0].env.AGEND_DOWNLOAD_FILE).toBe(join(root, "antigravity", "1.5.9.staging", "agy.exe"));
+    expect(calls[0].env.AGEND_DOWNLOAD_FILE).toBe(join(root, "antigravity", "1.5.13.staging", "agy.exe"));
     expect(calls[0].env.GITHUB_TOKEN).toBeUndefined();
-    expect(result.version).toBe("1.5.9");
-    expect(JSON.parse(readFileSync(join(root, "antigravity", "current.json"), "utf8"))).toEqual({ version: "1.5.9" });
-    expect(managedCliExecutable(root, "antigravity")).toMatchObject({ command: join(root, "antigravity", "1.5.9", "agy.exe"), args: [], version: "1.5.9" });
-    expect(readFileSync(join(root, "antigravity", "1.5.9", "agy.exe"))).toEqual(body);
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(result.version).toBe("1.5.13");
+    expect(JSON.parse(readFileSync(join(root, "antigravity", "current.json"), "utf8"))).toEqual({ version: "1.5.13" });
+    expect(managedCliExecutable(root, "antigravity")).toMatchObject({ command: join(root, "antigravity", "1.5.13", "agy.exe"), args: [], version: "1.5.13" });
+    expect(readFileSync(join(root, "antigravity", "1.5.13", "agy.exe"))).toEqual(body);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
   });
   it("a file of the right size with a different sha512 is refused, and nothing is installed", async () => {
     const root = join(home, "cli"), other = Buffer.from(body.map(b => b ^ 1));
@@ -424,8 +424,8 @@ describe("pinned download (Antigravity, #3521)", () => {
     await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ content: other }).run }))).rejects.toMatchObject({ reason: "integrity-mismatch", message: expect.stringContaining("checksum") });
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
     expect(existsSync(join(root, "antigravity", "current.json"))).toBe(false);
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
-    expect(existsSync(join(root, "antigravity", "1.5.9"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13"))).toBe(false);
   });
   it("a file of a different size is refused (before it is even hashed)", async () => {
     const root = join(home, "cli");
@@ -439,7 +439,7 @@ describe("pinned download (Antigravity, #3521)", () => {
       await expect(installManagedCli("antigravity", deps({ run: fakeDownload().run, signerOf: async () => answer }))).rejects.toMatchObject({ reason: "publisher-mismatch" });
     }
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
   });
   it("a download that fails, times out or leaves no file installs nothing, with a reason", async () => {
     const root = join(home, "cli");
@@ -455,10 +455,10 @@ describe("pinned download (Antigravity, #3521)", () => {
     await expect(installManagedCli("antigravity", deps({ run: complete.run }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("could not be completed") });
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
     expect(existsSync(join(root, "antigravity", "current.json"))).toBe(false);
-    expect(existsSync(join(root, "antigravity", "1.5.9"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13"))).toBe(false);
     // Exit 1 with a file cut short: named for the download, not for a size nobody asked about.
     await expect(installManagedCli("antigravity", deps({ run: fakeDownload({ code: 1, savesAnyway: true, content: body.subarray(0, 5) }).run }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("could not be completed") });
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
   });
   it("a symlink or a folder where the download should be is refused as not-a-file, before the size or the checksum is looked at", async () => {
     const root = join(home, "cli"), other = join(home, "elsewhere.exe");
@@ -472,7 +472,7 @@ describe("pinned download (Antigravity, #3521)", () => {
     expect(signerAsked).toBe(0);
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
     expect(existsSync(join(root, "antigravity", "current.json"))).toBe(false);
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
     expect(readFileSync(other)).toEqual(body);
   });
   it("the owner switching install off while the file downloads stops it before the checksum is read (the Runtime's gate is asked once more after the download)", async () => {
@@ -484,7 +484,7 @@ describe("pinned download (Antigravity, #3521)", () => {
     await expect(installManagedCli("antigravity", deps({ run, gate }))).rejects.toMatchObject({ reason: "install-failed", message: expect.stringContaining("turned this off") });
     expect(asks).toBeGreaterThanOrEqual(2);
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
   });
   it("a download that keeps growing past the pinned size is stopped while it runs, not at the deadline", async () => {
     const root = join(home, "cli");
@@ -494,7 +494,7 @@ describe("pinned download (Antigravity, #3521)", () => {
     });
     await expect(installManagedCli("antigravity", deps({ run }))).rejects.toMatchObject({ reason: "integrity-mismatch", message: expect.stringContaining("larger") });
     expect(managedCliExecutable(root, "antigravity")).toBeNull();
-    expect(existsSync(join(root, "antigravity", "1.5.9.staging"))).toBe(false);
+    expect(existsSync(join(root, "antigravity", "1.5.13.staging"))).toBe(false);
   }, 15_000);
   it("the Runtime's own gate (switch off, connection replaced) stops it before anything is downloaded, and a stop while it runs is `cancelled`", async () => {
     const root = join(home, "cli"), { run, calls } = fakeDownload();

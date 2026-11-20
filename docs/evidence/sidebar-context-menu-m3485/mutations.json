@@ -1,0 +1,22 @@
+[
+  {
+    "control": "movement",
+    "failedTests": 1,
+    "compile": "pass"
+  },
+  {
+    "control": "guest-view",
+    "failedTests": 3,
+    "compile": "pass"
+  },
+  {
+    "control": "target",
+    "failedTests": 7,
+    "compile": "pass"
+  },
+  {
+    "control": "escape",
+    "failedTests": 1,
+    "compile": "pass"
+  }
+]
