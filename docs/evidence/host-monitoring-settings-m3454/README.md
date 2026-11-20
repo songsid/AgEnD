@@ -1,42 +1,34 @@
 # M-3454 / S-204 — opt-in settings foundation
 
-This first standalone dev slice converts design draft #4275 into the settings foundation. The approved M-3441 note and its fourteen inert design images remain historical design evidence; they do not claim this build has live metrics.
+Current scope: configuration, persistence and gates only. **The monitoring card is not rendered until the collector capability is exactly true.** The actual server capability remains false in this slice. The Notifications lead and search registry match dev98cfd9b77 byte-for-byte, so a beta cut between slices has no dead feature to click. The Leader removed this slice's user-capture gate; final real-data UI approval remains S-207/S-209.
 
 ## Behavior and boundary
 
-- Both options normalize to literal false without an environment/default override. An explicit Settings save writes both booleans to fleet.yaml, including false; repeated real writer saves retain them and unrelated configuration.
-- Strict parsers reject null, arrays, unknown fields and non-booleans. The confirmation projection uses the same parser as the handler; public-link writes retain the admin-session gate and continuation checks. Memory rolls back if persistence fails.
-- Settings → Notifications uses the existing card, setting rows, switch, hints, drafts and Save bar. The child option requires the parent and its own capability. Turning off asks before changing the draft; cancellation stages no disabling change.
-- **Collection is unavailable in this slice.** The schema says so, the actual UI disables enabling and states it plainly, and both the request planner and handler refuse enabling. No provider, timer, worker, history file or monitoring notification is created. This is a conservative partial rollout, not a working collector claim.
-- S-205 connects platform collectors and the availability gate only after S-204 actually merges. It must pin absent settings durably before provider startup, apply hot changes and drain/cancel work. S-206 supplies the dedicated history store/cleanup; S-207 page; S-208 alerts; S-209 agent sampler and final measurement. No stacked PRs.
-- The cron disk watcher is untouched. The real one-hour both-options-on measurement and real-data dashboard/user acceptance remain pending for the final implementation; the old read-cost proxy is only design evidence.
+- Missing flags normalize to literal false; explicit saves write both booleans to fleet.yaml, retaining false across repeated real writer saves and preserving unknown configuration.
+- Strict parser rejects null, arrays, unknown fields and non-booleans. Planner and handler share it; admin/continuation/transaction rules remain. A failed save restores memory.
+- The dormant card uses shared Settings rows, switches, hints, drafts and off confirmation. Its capability wrapper returns null without a collector and unstages hidden edits; the controls mount in a separate child so hook order stays stable. No unsupported-version warning or placeholder card is drawn.
+- Both planner and handler refuse enabling while the collector is unavailable. No monitoring provider, timer, worker, history file, notification sender or host probe is installed. Existing cron is untouched.
+- S-205 connects bounded platform lifecycle only after S-204 actually merges; it must pin absent defaults durably before provider startup. S-206 history/cleanup, S-207 page, S-208 alerts, S-209 agent sampler and required one-hour measurement follow in unstacked PRs.
 
-## Actual product captures
+## Current R1 proof
 
-| View | Original |
+The Leader requested hiding the dormant feature rather than shipping disabled-looking switches. Six semantic UI cases failed on f8ac18faa: unavailable/missing/malformed capability values, a configured-on host without capability, and capability loss with a staged edit. After the scoped repair,106tests in4files pass (UI, configuration/API/persistence, Settings integration and search). The final hook-dependency adjustment is checked by the9UI cases (all pass) and test type checker (zero diagnostics). Notifications lead and registry are byte-equal to the actual dev base. Config/parser/API/planner implementation is unchanged from f8ac18faa.
+
+No new browser campaign is needed for a hidden card with unchanged surrounding DOM/styles. Previous original images below are **superseded** and cannot be treated as the current UI. User approval will cover the actual functioning page at the later slices, per the Leader.
+
+## Historical source-stage evidence
+
+| Superseded f8ac18faa view | Original |
 | --- | --- |
-| Desktop EN, light | [Actual Settings](actual-settings-desk-en.png) |
-| Phone zh-TW, dark | [Actual Settings](actual-settings-phone-zh.png) |
+| Desktop EN, light — card was still visible | [Historical Settings](actual-settings-desk-en.png) |
+| Phone zh-TW, dark — card was still visible | [Historical Settings](actual-settings-phone-zh.png) |
 
-Scratch FleetManager served the actual modified app and effective configuration, with one synthetic General and no agents started. No DOM/CSS/metrics overrides. The private harness supplied only the tsx function-name helper used by browser-evaluated measurement code. Both contexts asserted unchecked/disabled master and child, no horizontal overflow, no page error. Both originals were individually inspected and are public-safe. The raw fixture starts without a monitoring section; these are its real effective false settings, not proof of a persisted key or real host telemetry. Explicit false persistence is established by the separate real YAML writer test. They are sent to the Leader before any merge; the implementation PR remains HOLD for user capture approval.
+These two blobs remain unchanged and were individually inspected public-safe at that source stage. Scratch FleetManager served the actual app with one synthetic General, no agents started and no DOM/CSS/metrics overrides. The raw fixture lacked a monitoring section; its effective settings were false. Explicit persisted false is proven separately by the real YAML writer test. They are not current hidden-card captures or real host telemetry. The fourteen original M-3441 design images in the other evidence directory are also historical/inert.
 
-## Validation
+Earlier checks carry only their unchanged scopes: configuration base9red then9green; focused56/4; integration179/7; metadata77/2 after frontmatter correction and reverting an unnecessary concepts edit; two caught faults and restored25/2; source/test TypeScript0diagnostics. Plain-merged actual dev98cfd9b77 (#4236), preserving its Classic picker. The pre-R1 eighteen-path added/removed multiset matched the original implementation patch; R1 intentionally changes UI visibility and reverts two files to base. Current hashes are refreshed rather than claiming whole-file equality across that repair.
 
-- Base semantic test: all9 new configuration cases fail; implementation9/9 green.
-- Focused controls/configuration/layering set:56/4 pass.
-- Integration set including real YAML persistence, UI, loader, validator, settings authority and search:179/7 pass (overlaps earlier set).
-- Transactions/confirmation/phone-query and metadata checks:120 passed with2 metadata failures; fixed only fragment frontmatter and the unnecessary concepts-doc edit. Both metadata files then77/77 pass. No unrelated source repair or allowance change.
-- Two fault injections are caught: default-on changes false to true; dropping the availability fence returns200 instead of409. Source is restored and the two new files rerun green.
-- Source and test TypeScript checks: zero diagnostics.
-- All-section Settings browser gate, CI matrix/1024 width:124 checks pass,57s, headless serial. No tap allowance changed.
-- Source fixtures never start a model, CLI agent or live tmux server. Browser fixtures/owned listeners closed and browser slot released.
+The merged source stage completed72/3 tests with terminal0 and the Settings CI matrix124/124 in44s with terminal0, no allowance changes. Earlier background runners reported all assertions passed then returned143; their signal origin was not established. Foreground/non-login runs resolved terminal uncertainty without a product fix, timeout increase or native campaign. R1 has its separate current tests above.
 
-Rollback this foundation by reverting its code/config/UI additions; false values remain inert for older versions. No history cleanup or cron replacement is performed here.
+## Pending acceptance and rollback
 
-## Actual dev-tip integration
-
-Plain-merged actual dev tip98cfd9b77 (#4236) after the first settings commit. The added/removed-line multiset of all18 owned implementation paths matches the pre-merge patch exactly. Incoming Classic picker changes are preserved. Three whole files gained reviewed incoming hunks (validator, Settings API, dashboard skill); the manifest is refreshed rather than claiming their old whole-file hashes. Actual Settings captures and124browser checks carry from the source stage because its UI/behavior hunks are unchanged; no browser recampaign. The two new tests and validator are checked on the merged tree.
-
-Terminal-result check: two background-runner post-merge commands reported all72 tests passed but later returned SIGTERM143; the signal origin was not established. A foreground non-login invocation then completed72/72 with exit0. The initial124-check browser log also needed a terminal-result recheck; no product repair or timeout increase was made.
-
-The unchanged merged tree then completed the full CI Settings matrix again:124/124 checks,44s, terminal exit0 with the non-login runner. Browser/fixture/listeners closed. This resolves the terminal-result uncertainty; the original two inspected capture blobs stay unchanged.
+Prism exact-head review, current CI, coordinator merge and post-merge green remain required. Full runtime behavior, native platform acceptance, the one-hour both-options-on measurement and final real-data captures are later slices. This foundation creates no history and does not replace the cron watcher. Revert its source additions to roll back; saved false remains inert in older builds.

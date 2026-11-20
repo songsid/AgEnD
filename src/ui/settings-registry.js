@@ -26,7 +26,6 @@ const ROWS = [
   ["hub.page-sharing", "hub", "#hubShareFromHub", null, "hub_member.share_from_hub", ["hub", "share agents", "undo", "owner", "agent list"], ["Hub", "分享 Agent", "復原", "擁有者", "清單"], L("Let me share agents from the Hub page", "允許我從 Hub 頁面分享 Agent")],
   ["hub.company-address", "hub", "#hubCompanyAddress", null, null, ["hub", "company account", "company link", "sign in", "connect", "join"], ["Hub", "公司帳號", "公司連結", "登入", "連接", "加入"], L("Hub address", "Hub 位址")],
   ["hub.connect", "hub", "#hub-connect", null, null, ["hub", "connect to a hub", "pairing code", "hub address", "fingerprint", "pair", "unpair", "disconnect", "join"], ["Hub", "連線至 Hub", "配對碼", "Hub 位址", "指紋", "配對", "解除配對", "中斷連線", "加入"], L("Connect to a Hub", "連線至 Hub")],
-  ["host.monitoring", "notifications", "#host-monitoring", null, "monitoring", ["host", "monitoring", "disk", "cpu", "memory"], ["主機", "監測", "磁碟", "記憶體"], L("Host monitoring", "主機監測")],
   ["quota.notices", "notifications", "#quota-notices", null, "defaults.quota_notice", ["usage", "quota", "notifications", "remaining", "weekly"], ["用量", "額度", "提醒", "通知", "剩餘"], L("Quota notices", "用量提醒")],
   // You · Preferences
   ["profile.name", "preferences", "#profile-name", "settings.profileTitle", null, ["name", "display name", "who agents see", "profile"], ["名字", "名稱", "顯示名稱", "個人資料"]],

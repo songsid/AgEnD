@@ -11,8 +11,8 @@ describe('shared Settings monitoring card',()=>{
  it('starts both off with agent sampling disabled; opening Settings stages nothing',async()=>{
   await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled').checked).toBe(false);expect(input('hostMonitoringAgents').checked).toBe(false);expect(input('hostMonitoringAgents').disabled).toBe(true);expect(staged.size).toBe(0);expect(p.root.textContent).toContain('no monitoring collector, timer or history file');
  });
- it('cannot claim collection is available on an old or disconnected build',async()=>{
-  ctx.schema={};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled').disabled).toBe(true);expect(p.root.textContent).toContain('not available in this version');expect(staged.size).toBe(0);
+ it.each([undefined,false,null,'true'])('renders no card or staged write without a real capability: %j',async capability=>{
+  ctx.schema={host_monitoring:capability};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(p.root.textContent).not.toContain('Host monitoring');expect(staged.size).toBe(0);
  });
  it('stages two explicit booleans; cancels disabling before the draft changes',async()=>{
   await p.mount(h(Component,{ctx}));await toggle('hostMonitoringEnabled',true);
@@ -20,9 +20,12 @@ describe('shared Settings monitoring card',()=>{
   globalThis.confirm=()=>false;await toggle('hostMonitoringEnabled',false);
   expect(staged.get('host-monitoring').request.body.enabled).toBe(true);
  });
- it('lets an unavailable configured-on build turn off, preserving its saved agent choice',async()=>{
-  ctx.fleet.monitoring={enabled:true,agent_footprint:true};ctx.schema={};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled').disabled).toBe(false);await toggle('hostMonitoringEnabled',false);
-  expect(staged.get('host-monitoring').request.body).toEqual({enabled:false,agent_footprint:true});
+ it('hides even a configured-on host when the collector is absent',async()=>{
+  ctx.fleet.monitoring={enabled:true,agent_footprint:true};ctx.schema={};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(staged.size).toBe(0);
+ });
+ it('unstages an edit when collection capability disappears',async()=>{
+  await p.mount(h(Component,{ctx}));await toggle('hostMonitoringEnabled',true);expect(staged.size).toBe(1);
+  ctx.schema={host_monitoring:false};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(staged.size).toBe(0);
  });
  it('keeps the estimated cost and off semantics visible in Traditional Chinese',async()=>{
   i18n.setLang('zh-TW',{store:false});await p.mount(h(Component,{ctx}));expect(p.root.textContent).toContain('估計使用 2–4 MiB');expect(p.root.textContent).toContain('沒有監測收集器、計時器或歷史檔案');

@@ -74,5 +74,19 @@
     "sourceDiagnostics": 0,
     "testDiagnostics": 0,
     "earlierBackgroundAttempts": "all72 reported pass but later exit143; origin unknown"
+  },
+  "r1": {
+    "scope": "hide dormant card; no current visible Settings change",
+    "baseHead": "f8ac18faaaafa102e0167e8870d4d9093d0fceb0",
+    "semanticBaseRed": 6,
+    "baseOtherPassed": 3,
+    "greenFiles": 4,
+    "greenTests": 106,
+    "surroundingNotificationsLeadAndRegistry": "byte-equal dev98cfd9b77",
+    "historicalImages": "superseded; not current UI",
+    "runtimeConfigurationAndGates": "unchanged",
+    "newBrowserCampaign": false,
+    "finalUiCases": 9,
+    "testTypeDiagnostics": 0
   }
 }
