@@ -4629,12 +4629,36 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (this.cancelButtonIdleRetireTimers.get(name) !== timer) return;
       this.cancelButtonIdleRetireTimers.delete(name);
       if (this.getInstanceExecutionState(name) === "idle") {
+        // #4270: a pause between tool calls can read as idle mid-turn, and nothing re-shows the bubble when the turn
+        // goes back to working. While the turn is still open (no completion delivered, not cancelled), check again
+        // after another grace instead of retiring. The turn's close, or the 5-minute idle backstop for a turn that
+        // never closes, still retires it.
+        if (this.instanceTurnOpen(name) && this.instanceHasCancelButton(name)) {
+          this.scheduleIdleButtonRetirement(name);
+          return;
+        }
         this.markCancelButtonPublicationForRetirement(name, publication);
         this.retireInstanceButtons(name);
       }
     }, CANCEL_BTN_IDLE_RETIRE_GRACE_MS);
     timer.unref?.();
     this.cancelButtonIdleRetireTimers.set(name, timer);
+  }
+
+  /** #4270: the daemon's turn is still open (turn_started seen, no turn_closed, no completion delivered, not cancelled). */
+  private instanceTurnOpen(name: string): boolean {
+    const daemon = this.daemons.get(name);
+    if (!daemon || typeof daemon.getWorkingStateObservation !== "function") return false;
+    try {
+      const turn = daemon.getWorkingStateObservation().turn;
+      return !!turn && !turn.cancelled && !turn.completionDelivered;
+    } catch { return false; }
+  }
+
+  private instanceHasCancelButton(name: string): boolean {
+    if (this.cancelButtonPublications.get(name)?.inFlight) return true;
+    for (const entry of this.cancelButtons.values()) if (entry.instanceName === name) return true;
+    return false;
   }
 
   private cacheInstanceProcessStatus(name: string, status: unknown): void {
