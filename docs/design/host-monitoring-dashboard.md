@@ -1,0 +1,86 @@
+# Host health in the Fleet web dashboard — proposal
+
+**Design only; awaiting user approval.** This note implements no collector, API, alert sender or product UI. Captures use the real Fleet shell with an inert prototype and synthetic snapshots.
+
+## The page
+
+Add **Fleet → Host health / 主機狀態**. Answer: “Is this computer running out of something, what changed, and which agents are contributing?”
+
+Reuse PageHead, cards, tabs, buttons, status tags and existing colour/spacing/type tokens. Desktop has adjacent CPU/memory trends and storage; phone puts storage first and pairs CPU/memory summary cards, with the active alert and lowest-space disk first. Ranges: 1h, 24h, 7d, 30d. Charts include units, peaks/minima and accessible text; missing samples remain gaps. Agent CPU, estimated memory and known managed-file bytes follow below, as cards on a phone.
+
+The reference is a sampled resource overview with history, like the [GHES monitor dashboards](https://docs.github.com/en/enterprise-server@3.19/admin/monitoring-and-managing-your-instance/monitoring-your-instance/about-the-monitor-dashboards). Delivery uses Fleet UI and bounded local snapshots.
+
+Show computer/platform, last successful sample and coverage beside the title. WSL figures mean **WSL**, not physical Windows CPU/RAM. A paired Windows Runtime is a separate computer, never added to local totals.
+
+## Platform collection
+
+| Platform | Storage | Memory | CPU/load and agents |
+| --- | --- | --- | --- |
+| WSL 2 | Linux root and Fleet-state filesystem; **separate Windows drive holding the current distribution's vhdx**. Read filesystem counters or bounded df on the identified drive mount, normally /mnt/&lt;drive&gt;. | Existing Linux available-RAM/swap/PSI snapshot, labelled “WSL memory”. Physical Windows memory is unavailable without a separate host collector. | Delta CPU counters, logical CPU count, load averages; one bounded process snapshot for known agent roots and children. |
+| Native Ubuntu | Relevant local filesystems; deduplicate by filesystem identity. Available bytes, used %, optionally inode availability. No directory-size scans. | Existing /proc/meminfo and memory PSI reader. Unavailable PSI is unknown while RAM data remains useful. | OS CPU deltas/load, bounded PID/start-time process attribution. |
+| macOS | Relevant APFS volumes. Cache volume/container identity; group System/Data aliases and **never sum shared free space**. Respect reported volume quotas. | Reuse bounded Darwin probe: vm_stat, swap and validated native pressure. Pressure is the headline; available RAM is labelled an estimate. Missing pressure is unavailable, never Normal. | OS CPU deltas/load and known-agent process counters. No recursive file or APFS snapshot enumeration. |
+| Windows Runtime | Capability-negotiated native volume samples. Older/offline Runtime is unavailable/stale. | Native physical/commit counters; no invented macOS pressure or Linux PSI. | Native CPU/process-time deltas. Unix load is unavailable, never zero. This extension cannot block the required three local platforms. |
+
+APFS shares container space ([Apple](https://support.apple.com/en-gb/guide/security/seca6147599e/web)). Linux PSI measures resource stalls, not simply RAM used ([kernel interface](https://docs.kernel.org/accounting/psi.html)). Windows free-space calls distinguish caller-available bytes from total free space ([Microsoft](https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getdiskfreespaceexa)). Windows has no Unix load equivalent in [Node's OS API](https://nodejs.org/api/os.html#osloadavg).
+
+**Agent footprint:** CPU is a percentage of the selected computer's total CPU capacity. Memory is an RSS estimate including descendants; shared pages may be counted twice. Shared services have a separate overhead row. No command lines, environments, prompts or credentials enter telemetry. Managed-file size uses existing accounting/known-file metadata only. Workspace size is **Not measured** without cheap accounting. No periodic du, Docker size query or recursive Fleet-state scan.
+
+### WSL backing drive
+
+Linux free space alone is insufficient: virtual disk maximum capacity can exceed the Windows disk's capacity. [Microsoft documents the distinction and locating a distribution's vhdx through registered BasePath](https://learn.microsoft.com/en-us/windows/wsl/disk-space#how-to-locate-the-vhdx-file-and-disk-path-for-your-linux-distribution).
+
+At startup, after a path/config change and at most hourly, perform a bounded constant-script read of the current distribution's registration. Resolve its Windows volume and mounted Linux path, honouring custom automount roots. Cache mapping and volume identity. Never search user directories or enumerate vhdx files. Sampling reads filesystem counters; it does not open/traverse/repair/resize the vhdx or shut down WSL.
+
+If interop, registration, mount or identity is unavailable, show **Windows drive not identified / 尚未確認 Windows 磁碟** with **Choose drive / 選擇磁碟**. The owner can select a mounted local drive explicitly. Never guess the system drive or call WSL healthy from Linux root alone. Ambiguous/network mappings stay unavailable. Vhdx logical size is neither free nor reclaimable space, so it is outside the initial headline metrics.
+
+## Sampling, bounds and low-water behaviour
+
+One sampler per computer; no probes per browser or request.
+
+- CPU and existing memory snapshot every 30s; filesystem counters every 60s, prioritising Fleet state and WSL backing drive; agent footprint every 60s.
+- Reuse host-memory.ts, memory-pressure.ts and DarwinMemoryProbe without changing admission/spawn policy. The on-demand directory-size probes in resource-report.ts are **not** a periodic source.
+- Ubuntu uses kernel counters. macOS caches container metadata and reuses its current pressure probe; an occasional bounded diskutil info on known volumes is acceptable, a filesystem/snapshot walk is not. Windows Runtime uses native counters rather than wildcard performance queries.
+- Slow filesystem/interop/process reads stay off the Fleet request loop: one in-flight collection/provider, 2s deadline, 32KiB discovery output and 512KiB process output. Never spawn a replacement before the old worker physically exits. Timeout means unavailable data and a later sample, not a retry loop.
+- Caps: 8 computers, 8 volumes each, 128 agent roots across Fleet, 4096 process rows/computer. Extra coverage is explicitly reported. Network mounts are opt-in and cannot delay local readings.
+- Host raw history up to 24h; 5-minute rollups up to 30d. Agent 1-minute samples for 6h, 5-minute rollups for 7d. Up to 500 resolved alert events/30d; active incidents separately capped at 64.
+- **64MiB total monitoring storage**, including journals/indexes/emergency state. Prune oldest history at 56MiB down to 48MiB; stop appending at the hard cap. Retention windows are maxima under this cap. Rollups preserve minimum disk availability, maximum CPU/pressure and coverage as well as averages.
+- Below 2GiB available on the state volume **or verified WSL backing volume**, pause history writes and retain current snapshots in RAM. Resume after both exceed 4GiB for 10min. Minimal incident/delivery state has a preallocated bounded reserve inside the same budget. ENOSPC/read-only never crashes Fleet or starts repeated writes.
+- Log transitions and bounded diagnostics, not every sample. Never automatically delete workspaces, compact disks or kill agents.
+
+Handlers, Needs you and /sysinfo read the same cache. Refresh reloads that cache without launching probes. Return at most 240 chart buckets/series and 50 agent rows/page; do not allow a history reader to pin an unbounded journal. Collection runs even with the web closed.
+
+After two missed intervals, show **Stale / 資料已過期** and last-good time. Expected but unreadable metrics show **Not available / 無法取得** and a reason. Unknown is never zero or green; no-data gaps break lines. Unsuitable fields, such as APFS on Ubuntu, are omitted rather than treated as failures.
+
+## Alerts
+
+Current stopgap, reviewed without copying credentials/host identifiers: checks every 30min; Windows backing-drive free space below 60GiB warns, below 30GiB is urgent; WSL root usage at 85% warns. Warnings repeat after 6h, urgent alerts after 1h, recovery once. Successful delivery advances the sent timestamp; a failure does not. The worst overall level governs that script.
+
+**Proposed product defaults for approval:**
+
+| Rule | Warning | Urgent |
+| --- | --- | --- |
+| WSL backing drive | Below 60GiB for 2 samples | Below 30GiB at next valid sample |
+| Relevant Linux/APFS filesystem | Used ≥85% for 2 samples | Used ≥95% for 2 samples |
+| Memory | Existing elevated pressure for 2min | Existing critical pressure for 1min |
+| CPU | ≥90% for 5min | ≥98% for 10min |
+
+Compare byte counters, not rounded display values. Owners can edit thresholds per computer/volume, with ordering/capacity validation. Inode exhaustion uses 85/95% when available. Load and agent rankings provide context, not independent urgent triggers.
+
+Track one durable incident per computer/resource/volume, rather than the stopgap's single worst level. Coalesce simultaneous chat changes into one host summary. Escalate when its hold period is met. Recovery uses hysteresis: backing free ≥65GiB, filesystem use ≤80%, CPU <80%, or existing memory state Normal; hold for 10min (2min memory, 5min CPU). De-escalation updates the item; one recovery message follows full clearance. Missing data never resolves an incident.
+
+Keep 6h warning/1h urgent reminders measured from **successful delivery**, persisted across restart. One pending notification/incident with bounded delivery backoff. Acknowledge records who saw it without hiding/resolving the problem. Snooze is explicit and bounded; escalation bypasses warning snooze.
+
+- **Needs you:** one live item with value, threshold, duration, sample age and View host health. Acknowledged problems remain visible.
+- **General:** concise initial/escalation/reminder/recovery summaries to the existing owner/admin destination, with a web link. No broadcasts to every agent or new webhook discovery.
+- **/sysinfo:** cached summary, incidents, coverage and sample age; no monitoring disk/process/model probes.
+- **Settings → Notifications → Host health:** thresholds/destinations/snooze with existing administrator and confirmation rules. Detailed metrics and changes are administrator-only on supported listeners; no guest access.
+
+Do not change cron/webhook during design. After implementation, the operator explicitly chooses notification handoff to avoid duplicate senders. A collector inside WSL cannot notify while WSL/the host is down; an independent Windows-side watchdog is a separate follow-up.
+
+## Approval and later delivery
+
+Approve/reject the page, platform-specific views, defaults and bounded policy before implementation. First delivery must support **WSL, macOS and native Ubuntu**. Windows Runtime adds negotiated coverage and honest unknowns for older versions.
+
+Later slices: collector/cache and bounded history; incident/delivery integration; Fleet UI. Validate parsers/missing states offline, storage caps/low-water deterministically, then native acceptance on each platform. Prototype captures prove layout only, not native collection or alert delivery.
+
+A future rollback disables the sampler/notifications and removes bounded history while leaving Fleet work and the current stopgap untouched. This design implements none of those operations.

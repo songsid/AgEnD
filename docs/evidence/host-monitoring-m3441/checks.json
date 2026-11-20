@@ -1,0 +1,422 @@
+[
+  {
+    "filename": "desk-en-wsl.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "wsl",
+    "state": "known",
+    "css": "1",
+    "width": 1106,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "Alert settings",
+        "w": 118.359375,
+        "h": 44
+      },
+      {
+        "text": "This computer · WSL 2",
+        "w": 208,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 53.484375,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 53.921875,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-wsl.png",
+    "theme": "dark",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "wsl",
+    "state": "known",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · WSL 2",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-wsl-agents.png",
+    "synthetic": true,
+    "view": "agent-cards"
+  },
+  {
+    "filename": "desk-en-mac.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "mac",
+    "state": "known",
+    "css": "1",
+    "width": 1106,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "Alert settings",
+        "w": 118.359375,
+        "h": 44
+      },
+      {
+        "text": "This computer · macOS",
+        "w": 213,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 53.484375,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 53.921875,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-mac.png",
+    "theme": "dark",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "mac",
+    "state": "known",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · macOS",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "desk-en-ubuntu.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "ubuntu",
+    "state": "known",
+    "css": "1",
+    "width": 1106,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "Alert settings",
+        "w": 118.359375,
+        "h": 44
+      },
+      {
+        "text": "This computer · Ubuntu Linux",
+        "w": 256,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 53.484375,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 44,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 53.921875,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-ubuntu.png",
+    "theme": "dark",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "ubuntu",
+    "state": "known",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · Ubuntu Linux",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-wsl-unknown.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "wsl-unknown",
+    "state": "unknown-drive",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · WSL 2",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "選擇磁碟",
+        "w": 326,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-mac-unknown.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "mac-unknown",
+    "state": "unknown-pressure",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · macOS",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      }
+    ]
+  },
+  {
+    "filename": "phone-zh-windows-old.png",
+    "theme": "light",
+    "synthetic": true,
+    "cssSha256": "617982d24bbdc50d45c7c0321ff202d01759b78c27791bb36c466280be4055bd",
+    "requests": 1,
+    "platform": "windows-old",
+    "state": "old-runtime",
+    "css": "1",
+    "width": 390,
+    "pageOverflow": false,
+    "scrollOverflow": false,
+    "controls": [
+      {
+        "text": "通知設定",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "這台電腦 · Windows Runtime",
+        "w": 358,
+        "h": 44
+      },
+      {
+        "text": "1h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "24h",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "7d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "30d",
+        "w": 86.5,
+        "h": 44
+      },
+      {
+        "text": "更新 Runtime",
+        "w": 326,
+        "h": 44
+      }
+    ]
+  }
+]
