@@ -1,0 +1,19 @@
+
+ RUN  v4.1.12 <checkout>
+
+(node:<pid>) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/hub-directory-host-notices.test.ts (13 tests | 1 failed | 12 skipped) 1476ms
+     × holds the first runtime's sockets through startup and frees them before cold host notice reads 1474ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-directory-host-notices.test.ts > host directory notices from existing held state > holds the first runtime's sockets through startup and frees them before cold host notice reads
+Error: listen EADDRINUSE: address already in use 127.0.0.1:46729
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 12 skipped (13)
+   Start at  13:49:31
+   Duration  11.55s (transform 7.95s, setup 94ms, import 9.83s, tests 1.48s, environment 0ms)
