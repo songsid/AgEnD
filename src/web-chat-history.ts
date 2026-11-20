@@ -521,7 +521,7 @@ export class WebChatHistory {
     if (msg.channel === true) entry.channel = true;
     if (entry.role === "user" && typeof msg.from === "string" && FROM.test(msg.from)) entry.from = msg.from;
     // #2272: only a person's message replies to another.
-    const replyTo = entry.role === "user" ? webChatReplyRefOf(msg.replyTo) : undefined;
+    const replyTo = entry.role === "user" || entry.role === "agent" ? webChatReplyRefOf(msg.replyTo) : undefined;
     if (replyTo) entry.replyTo = replyTo;
     // #2281: where it is on a platform, beside the row (the caller that sent or received it knows).
     const posts = webChatPosts(msg.posts);
@@ -621,6 +621,20 @@ export class WebChatHistory {
     if (!posts.length) return;
     this.posts.set(m, posts);
     this.persist(instance);
+  }
+
+  /**
+   * M-3491: the kept message an agent's `reply_to` names — by its web `message_id` (a web message or click) or by any
+   * platform copy's id (`posts`: a Discord or Telegram message, a reply's buttons message included). Newest first.
+   */
+  findByReplyId(instance: string, id: string): WebChatMessage | undefined {
+    if (!id) return undefined;
+    const messages = this.byInstance.get(instance)?.messages ?? [];
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i]!;
+      if (m.messageId === id || this.posts.get(m)?.some(p => p.messageId === id)) return m;
+    }
+    return undefined;
   }
 
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
@@ -811,7 +825,7 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
   if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
-  const replyTo = role === "user" ? webChatReplyRefOf(r.replyTo) : undefined;
+  const replyTo = role === "user" || role === "agent" ? webChatReplyRefOf(r.replyTo) : undefined;
   if (replyTo) message.replyTo = replyTo;
   const reactions = webReactionsOf(r.reactions);
   if (reactions) message.reactions = reactions;

@@ -244,7 +244,7 @@ export function applyTaskListCap<T extends { updated_at: string }>(
 import { handleWebRequest, webPeerOf, broadcastSseEvent, broadcastToGuests, SSE_HEARTBEAT_MS, type PublicPreviewForUi } from "./web-api.js";
 import { LogService, type LogAnswer, type LogQuery, type LogSource } from "./log-service.js";
 import { viewHistory, type ViewHistoryAnswer, type ViewHistoryQuery } from "./view-history.js";
-import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
+import { WebChatHistory, WEB_CHAT_TEXT_MAX, isWebMessageId, newWebMessageId, webChatFrom, webChatReplyRef, type WebChatAttachment, type WebChatPost } from "./web-chat-history.js";
 import { WEB_ECHO_COPIES_MAX, WEB_MIRROR_TIMEOUT_MS, webReactionEmoji, webReactionProblem, type WebEchoCopy } from "./web-reactions.js";
 import { WebChatDiskStore } from "./web-chat-store.js";
 import { SeenUsers, resolveMentions, type MentionNames, type MentionQuery, type MentionSource } from "./web-mentions.js";
@@ -11782,6 +11782,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           });
         }
       };
+      // M-3491: a `reply_to` that names a kept web-chat message (by its web id, or a copy elsewhere) becomes that
+      // message's copy on this platform, so the reply is a native reply there; an id the chat does not know is left as
+      // it is (the adapter ignores one that is not its own: no quote, no error, as before).
+      if (typeof args.reply_to === "string" && args.reply_to && outAdapter !== WEB_ONLY_REPLY_SINK) {
+        const native = this.nativeReplyTo(instanceName, args.reply_to, ((outAdapter as { id?: unknown }).id as string | undefined) ?? contextAdapterId ?? "",
+          String(args.chat_id ?? ""), String(args.thread_id ?? threadId ?? ""));
+        if (native) args.reply_to = native;
+      }
       if (routeToolCall(outAdapter, tool, args, threadId, respondAndRecord, replySet ? { replyButtons: replySet.callbacks, ...(replySet.poll ? { replyPoll: replySet.poll } : {}) } : {})) {
         return;
       }
@@ -11843,6 +11851,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return cfg.topic_id == null ? thread === null : thread === String(cfg.topic_id);
   }
 
+  /**
+   * M-3491: the platform message id a reply to `id` uses on `adapterId`'s chat and thread — the copy there of the kept
+   * web-chat message `id` names (#2281 posts) — or undefined when the chat keeps no such message or it has no copy there.
+   */
+  nativeReplyTo(instance: string, id: string, adapterId: string, chatId: string, threadId: string): string | undefined {
+    const row = this.webChatHistory.findByReplyId(instance, id);
+    if (!row || !adapterId) return undefined;
+    const here = this.webChatHistory.postsOf(row).filter(p => p.adapterId === adapterId && p.chatId === chatId && (p.threadId ?? "") === threadId);
+    // An id that already is one of its copies here (its buttons message, say) stays the one the agent named.
+    return here.find(p => p.messageId === id)?.messageId ?? here[0]?.messageId;
+  }
+
   /** #1920 §5.2 (#2085 review): a platform click's buttons are in the instance's own place — else not its channel's. */
   private clickInOwnChannel(set: { instance: string; adapterId: string; chatId: string; threadId: string }): boolean {
     try { return this.landedInOwnChannel(set.instance, set.adapterId, { chatId: set.chatId, threadId: set.threadId || undefined }); } catch { return false; }
@@ -11851,9 +11871,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private afterReplyRouted(instanceName: string, args: Record<string, unknown>, senderSessionName?: string, buttons: ReplyButtonsView | null = null, inChannel = false, sentAs?: { adapterId: string; result: unknown }, identity: WebChatIdentity = this.webChatIdentity(instanceName)): Promise<void> {
     // #2281: where the reply is, when it landed in the instance's own place — a web reply to it is then a native reply
     // there. A reply elsewhere (another chat, the web-only sink) records none.
-    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown };
+    const sent = (sentAs?.result && typeof sentAs.result === "object" ? sentAs.result : {}) as { messageId?: unknown; chatId?: unknown; threadId?: unknown; buttonsMessageId?: unknown };
     const post: WebChatPost | undefined = inChannel && sentAs && typeof sent.messageId === "string" && typeof sent.chatId === "string"
       ? { adapterId: sentAs.adapterId, chatId: sent.chatId, ...(typeof sent.threadId === "string" && sent.threadId ? { threadId: sent.threadId } : {}), messageId: sent.messageId } : undefined;
+    // M-3491: a long reply's buttons ride its last part, a message of its own: a later `reply_to` may name that one.
+    const buttonsPost: WebChatPost | undefined = post && typeof sent.buttonsMessageId === "string" && sent.buttonsMessageId && sent.buttonsMessageId !== post.messageId
+      ? { ...post, messageId: sent.buttonsMessageId } : undefined;
+    // M-3491: what the reply quotes in the web chat — the kept message its `reply_to` names (a web id, or a Discord/Telegram
+    // copy's id), taken now; an id the chat does not keep quotes nothing, as before.
+    const quotedRow = typeof args.reply_to === "string" && args.reply_to ? this.webChatHistory.findByReplyId(instanceName, args.reply_to) : undefined;
+    const quoted = quotedRow ? webChatReplyRef(quotedRow) : undefined;
     // A reply is NOT proof the turn is over (#410) — but it is not proof of
     // more work either. Split the difference: an instance that is clearly
     // idle loses the button now; one that looks busy keeps it (re-posted
@@ -11895,7 +11922,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ...(attachments.length ? { attachments } : {}),
         ...(buttons ? { buttons } : {}),                 // #1266
         ...(inChannel ? { channel: true } : {}),         // #1920 §5.2
-        ...(post ? { posts: [post] } : {}),              // #2281
+        ...(post ? { posts: buttonsPost ? [post, buttonsPost] : [post] } : {}),   // #2281 (M-3491: and its buttons message)
+        ...(quoted ? { replyTo: quoted } : {}),          // M-3491
         ...(reserved !== undefined ? { reserved } : {}), // #1774
       });
     };
