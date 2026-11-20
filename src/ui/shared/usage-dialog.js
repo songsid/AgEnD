@@ -10,6 +10,7 @@ import { readStream } from "./read-stream.js";
 import { Dialog } from "./ui-dialog.js";
 import { ErrorState, Skeleton } from "./ui-states.js";
 import { Icon } from "./ui-icons.js";
+import { InfoTip } from "./info-tip.js";
 import "./view-strings.js";
 import { CompactMeter, level, resetClock, resetText, tn, usageClock, usageDuration, usageText, windowTag } from "./usage-meter.js";
 // What this file exported before the meter moved out of it (#3321), for what imports it from here.
@@ -203,43 +204,17 @@ function rowNote(p) {
 }
 /**
  * M-3248 (the user): a login no agent uses said 「此帳號目前沒有 Agent」 as a line of text beside its name. It is a quiet ⓘ
- * there now (the muted text colour, never a warning's), its words on a hover, a focus or a tap, in the settings pages' tip
- * bubble (.s-tipbody). The bubble is fixed to the window, so the group's rounded clip (.u-cgroup, overflow: hidden) never
- * cuts it, and is only in the page while shown. In a compact row (itself a button that opens the login's card) the mark
- * is not a second button: an image named by the words — the row reads "wii, No agents on this profile" — and a tap on it
- * shows them without opening the row. In the full card it is a button, reached with Tab.
+ * there now (the muted text colour, never a warning's). In the full card it is the shared info icon (info-tip.js: its words
+ * on a hover, a focus or a tap, in a bubble fixed to the window, so the group's rounded clip never cuts it). In a compact
+ * row (itself a button that opens the login's card) the mark is only drawn and its words are part of the row's name — the
+ * row reads "wii, No agents on this profile" — and a tap opens the card, where the ⓘ is (M-3443: no hover-only mark).
  */
 function NoAgentsMark({ inRow = false }) {
   const words = tn("usage.no_agents");
-  const [at, setAt] = useState(null);
-  const [pinned, setPinned] = useState(false);
-  const mark = useRef(null), bubble = useRef(null);
-  const show = () => {
-    const r = mark.current && mark.current.getBoundingClientRect ? mark.current.getBoundingClientRect() : null;
-    const w = window.innerWidth || 0, hgt = window.innerHeight || 0;
-    if (!r || !w) { setAt({ x: 8, y: 8, above: false }); return; }
-    const above = r.bottom + 72 > hgt;
-    // Pushed sideways to stay inside the window (a custom property: the page allows no style attribute).
-    setAt({ x: Math.round(Math.max(8, Math.min(r.left - 8, w - Math.min(260, w - 16) - 8))), y: Math.round(above ? hgt - r.top + 6 : r.bottom + 6), above });
-  };
-  const hide = () => { setAt(null); setPinned(false); };
-  useLayoutEffect(() => {
-    const b = bubble.current;
-    if (b && b.style && at) { b.style.setProperty("--tip-x", `${at.x}px`); b.style.setProperty("--tip-y", `${at.y}px`); }
-  }, [at]);
-  useEffect(() => {
-    if (!at) return undefined;
-    const esc = (e) => { if (e.key === "Escape") { e.stopPropagation(); hide(); } };
-    const away = (e) => { if (mark.current && !mark.current.contains(e.target)) hide(); };
-    document.addEventListener("keydown", esc, true); document.addEventListener("click", away); window.addEventListener("scroll", hide, true);
-    return () => { document.removeEventListener("keydown", esc, true); document.removeEventListener("click", away); window.removeEventListener("scroll", hide, true); };
-  }, [!!at]);
-  const tap = (e) => { e.stopPropagation(); e.preventDefault(); if (pinned) hide(); else { show(); setPinned(true); } };
-  const leave = () => { if (!pinned) hide(); };
-  const tip = at ? html`<span ref=${bubble} class=${`s-tipbody u-na-tip${at.above ? " above" : ""}`} aria-hidden="true">${words}</span>` : null;
-  return inRow
-    ? html`<span ref=${mark} class="u-na" role="img" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</span>`
-    : html`<button ref=${mark} type="button" class="u-na" aria-label=${words} onMouseEnter=${show} onMouseLeave=${leave} onFocus=${show} onBlur=${hide} onClick=${tap}><${Icon} name="info" size=${14} />${tip}</button>`;
+  // M-3443: the full card's ⓘ is the shared info icon (a button: hover, focus, tap). A compact row is itself a button that
+  // opens that card, so there it is no second control: the words are in the row's name (read with it), the mark only drawn.
+  if (inRow) return html`<span class="u-na" aria-hidden="true"><${Icon} name="info" size=${14} /></span><span class="sr-only">${words}</span>`;
+  return html`<${InfoTip} text=${words} label=${words} cls="u-na-tip" />`;
 }
 /**
  * A login in three short lines, under its provider's name (the user's pick, 2026-10-22): its name and plan; then its

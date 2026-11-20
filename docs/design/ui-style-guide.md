@@ -35,6 +35,7 @@ Use the existing shared components and classes. Don't add a one-off style for so
 | A dialog / a confirmation | `Dialog` / `confirmDialog` | `ui-dialog.js` / `ui-confirm.js` |
 | A short result message | `toast(text, ok)` | `ui-toast.js` |
 | Icons | `Icon({ name, size })` | `ui-icons.js` |
+| An info icon (ⓘ) with secondary detail | `InfoTip({ text, label })` | `src/ui/shared/info-tip.js` (rule 14) |
 
 Do:
 
@@ -248,6 +249,28 @@ Notices page only, one title per page and the tab named the same, one gutter, a 
 roster, a signed-out page showing the sign-in alone, and the page asking the Hub for nothing but its own files.
 `tests/hub-shell-parity.test.ts` checks the same markup in a mini DOM.
 
+## 14. Info icons: secondary detail only, one shared component
+
+An info icon (ⓘ) holds detail a person may want but doesn't need: what a field is for, what a choice leaves out, where
+something it creates is kept, the longer explanation behind a short line. Never put these in one: information the person
+needs before acting (a limit, a deadline, a cost), a warning, an error, or an action. Those stay visible.
+
+- Use the shared `InfoTip({ text, label })` from `src/ui/shared/info-tip.js` (Settings' `InfoTip` wraps it). Don't build
+  another tooltip, and never a hover-only one: it is a button that opens on hover, keyboard focus or tap, stays open on a
+  tap, and closes on Esc, a click elsewhere or a scroll. On a touch screen its target is 44px. Its words are its
+  description for a screen reader.
+- Place it right after the words it explains: a field's label, a checkbox's label, a short line.
+- `label` names what it explains ("About Keep connection alive"). `text` is one or two sentences in plain words.
+- Inside something that is itself a button (a row that opens a card), don't nest another button: draw the ⓘ only, and put
+  its words in that button's name; the card it opens has the real info icon.
+
+Do: `` html`${t("x.short")} <${InfoTip} text=${t("x.more")} label=${t("x.aboutLabel")} />` ``
+
+Don't: `` html`<span role="img" aria-label=${words} onMouseEnter=${show}>ⓘ</span>` `` (hover-only: no keyboard, no tap)
+
+Checked by: **CI**: `tests/info-tip-m3443.test.ts` (the component, and no hover-only mark in `src/ui`), the UI gate's
+`:tap` check at phone width. **Review** for what goes in one.
+
 ## Evidence in the pull request
 
 A PR that adds or changes UI includes (decision 3536dae9):
@@ -275,6 +298,7 @@ A PR that adds or changes UI includes (decision 3536dae9):
 | Button sizes (Settings, Hub pages) | UI gate `:buttons` (one height per button class combination) | — |
 | No page errors or CSP reports (Settings, Hub pages) | UI gate `:no-errors` | — |
 | 13. The Hub's shell is the dashboard's | Hub shell gate, `hub-shell-parity` | new Hub places |
+| 14. Info icons: secondary detail, one component | `info-tip-m3443` (the component, no hover-only mark), UI gate `:tap` | what goes in one |
 
 The UI gate is `scripts/manual/smoke/smoke-settings-ui-gate.mts`, run by the `ui-gate` job in
 `.github/workflows/ci.yml` on every Settings section at `desk-light-en` and `phone-dark-zh-TW`, plus a 1024 px desktop
