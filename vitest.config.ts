@@ -1,5 +1,6 @@
 import { defineConfig } from "vitest/config";
 import { PWSH_CI_SUITES } from "./tests/support/pwsh-ci-suites.js";
+import { DURABLE_CI_SUITES } from "./tests/support/durable-ci-suites.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -96,7 +97,7 @@ export function unitTestConfig(partition = process.env.AGEND_CI_TEST_PARTITION) 
     ...baseConfig,
     test: {
       ...baseConfig.test,
-      exclude: [...(baseConfig.test?.exclude ?? []), ...(partition === "unit" ? PWSH_CI_SUITES : [])],
+      exclude: [...(baseConfig.test?.exclude ?? []), ...(partition === "unit" ? [...PWSH_CI_SUITES, ...DURABLE_CI_SUITES] : [])],
     },
   });
 }

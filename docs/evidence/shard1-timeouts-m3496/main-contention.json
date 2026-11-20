@@ -1,0 +1,77 @@
+[
+  {
+    "run": 1,
+    "mode": "serial",
+    "cpu": 1,
+    "busyProcesses": 4,
+    "seconds": 31.249,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+        "status": "passed",
+        "milliseconds": 278.2724159999998
+      }
+    ]
+  },
+  {
+    "run": 2,
+    "mode": "serial",
+    "cpu": 1,
+    "busyProcesses": 4,
+    "seconds": 26.976,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+        "status": "passed",
+        "milliseconds": 260.5708530000011
+      }
+    ]
+  },
+  {
+    "run": 3,
+    "mode": "serial",
+    "cpu": 1,
+    "busyProcesses": 4,
+    "seconds": 27.138,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+        "status": "passed",
+        "milliseconds": 308.92283899999893
+      }
+    ]
+  },
+  {
+    "run": 4,
+    "mode": "serial",
+    "cpu": 1,
+    "busyProcesses": 4,
+    "seconds": 27.506,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+        "status": "passed",
+        "milliseconds": 232.9975599999998
+      }
+    ]
+  },
+  {
+    "run": 5,
+    "mode": "serial",
+    "cpu": 1,
+    "busyProcesses": 4,
+    "seconds": 27.837,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "FleetManager deterministic adapter binding keeps the raw inbound adapter in Classic reply context",
+        "status": "passed",
+        "milliseconds": 229.18955099999948
+      }
+    ]
+  }
+]

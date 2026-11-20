@@ -149,6 +149,11 @@ jobs:
           npm ci
           npm run build
           npx vitest run --shard=${{ matrix.shard }}/4
+      # Run the durable suites exactly once, with no other unit worker competing.
+      # Their real SQLite/FULL, fsync, crypto and original 10s case budget remain.
+      - name: Run serial durable fixtures
+        if: needs.detect-changes.outputs.text-only != 'true' && matrix.shard == 1
+        run: npx vitest run --config vitest.config.durable.ts
 
   # ── integration tests (serial, real-resource) ────────────────────────────────
   # Always runs; skips heavy work for text-only PRs.
