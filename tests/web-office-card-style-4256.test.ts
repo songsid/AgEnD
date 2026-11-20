@@ -232,6 +232,23 @@ describe("resolveCardSpec, auto-foreground contrast & share-link security (#4256
     expect(PK.contrastRatio(rpgTint.cssVars["--oo-card-muted"], "#141110")).toBeGreaterThanOrEqual(4.5);
     expect(PK.contrastRatio(rpgTint.cssVars["--oo-card-muted"], "#413830")).toBeGreaterThanOrEqual(4.5);
 
+    // Prism R1 extreme partial-override control: opposite-polarity barTrack (#ffffff on dark #181614, or #000000 on light #f7f4ee)
+    // must keep BOTH muted & text >= 4.5:1 against BOTH card background AND RPG tile surfaces, while barFill >= 3.0:1 against barTrack.
+    for (const [bg, track] of [["#181614", "#ffffff"], ["#f7f4ee", "#000000"]] as const) {
+      const extreme = C.resolveCardSpec({ preset: "rpg", style: { background: bg, barTrack: track } });
+      const tileBase = extreme.cssVars["--oo-card-tile-bg"] || track;
+      const mix = (a: string, b: string, t: number) => {
+        const ch = (i: number) => Math.round(parseInt(a.slice(i, i + 2), 16) * t + parseInt(b.slice(i, i + 2), 16) * (1 - t)).toString(16).padStart(2, "0");
+        return `#${ch(1)}${ch(3)}${ch(5)}`;
+      };
+      const xpBg = mix(tileBase, bg, 0.65), rowBg = mix(tileBase, bg, 0.45);
+      for (const surf of [bg, xpBg, rowBg]) {
+        expect(PK.contrastRatio(extreme.cssVars["--oo-card-muted"], surf)).toBeGreaterThanOrEqual(4.5);
+        expect(PK.contrastRatio(extreme.cssVars["--oo-card-text"], surf)).toBeGreaterThanOrEqual(4.5);
+      }
+      expect(PK.contrastRatio(extreme.cssVars["--oo-card-bar-fill"], track)).toBeGreaterThanOrEqual(3.0);
+    }
+
     // Prism P2 partial-override controls: derived defaults must contrast with supplied counterparts.
     const goldTrack = C.resolveCardSpec({ style: { background: "#181614", barTrack: "#e5b84b" } });
     expect(PK.contrastRatio(goldTrack.cssVars["--oo-card-bar-fill"], "#e5b84b")).toBeGreaterThanOrEqual(3.0);

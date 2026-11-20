@@ -95,7 +95,7 @@ const AVATAR_PX = { sm: 44, md: 56, lg: 84 };
 const RADIUS_VAR = { none: "0px", sm: "var(--r-sm)", md: "var(--r-md)", lg: "var(--r-lg)" };
 const CARD_CSS_PROPS = [
   "--oo-card-bg", "--oo-card-border", "--oo-card-text", "--oo-card-muted", "--oo-card-accent",
-  "--oo-card-bar-track", "--oo-card-bar-fill", "--oo-card-btn-bg", "--oo-card-btn-text",
+  "--oo-card-bar-track", "--oo-card-bar-fill", "--oo-card-tile-bg", "--oo-card-btn-bg", "--oo-card-btn-text",
   "--oo-card-btn-primary-bg", "--oo-card-btn-primary-text", "--oo-card-radius", "--oo-card-w",
   "--oo-card-avatar", "--oo-card-frame-pad",
 ];
@@ -150,6 +150,7 @@ export function resolveCardSpec(packCard) {
   let accent = s.accent || null;
   let barTrack = s.barTrack || null;
   let barFill = s.barFill || null;
+  let tileBgBase = null;
   let buttonBg = s.buttonBg || null;
   let buttonText = s.buttonText || null;
   let buttonPrimaryBg = s.buttonPrimaryBg || null;
@@ -171,15 +172,30 @@ export function resolveCardSpec(packCard) {
         ? pickContrast(barFill, 3.0, [dark ? "#342f2a" : "#d4d4d8", "#27272a", "#e4e4e7"])
         : (dark ? "#342f2a" : "#d4d4d8");
     }
-    // Ensure muted labels achieve >= 4.5:1 against both the card background and RPG stat/XP tile tint.
-    const tileBg = preset === "rpg" && barTrack ? mixHex(barTrack, bgRef, 0.65) : bgRef;
-    const mutedOk = (c) => contrastRatio(c, bgRef) >= 4.5 && contrastRatio(c, tileBg) >= 4.5;
-    if (!muted || !mutedOk(muted)) {
-      const cand = dark ? "#d6d0c6" : "#374151";
-      muted = mutedOk(cand) ? cand : fgFor(tileBg, 4.5, "#e7e5e0", "#1f2937");
-    }
     if (!barFill || contrastRatio(barFill, barTrack) < 3.0) {
       barFill = pickContrast(barTrack, 3.0, [s.accent, accent, dark ? "#e5b84b" : "#4f46e5"]);
+    }
+    // Dual-surface safety for RPG tiles (XP box = 65%, stat tile = 45% tint over bgRef):
+    // both text and muted must stay >= 4.5:1 against bgRef AND the tinted tiles simultaneously.
+    // If an extreme barTrack (e.g. #ffffff on dark #181614) would break dual-surface contrast,
+    // decouple --oo-card-tile-bg from barTrack so the progress bar keeps barTrack while tiles stay readable.
+    const mutedPool = [s.muted, dark ? "#d6d0c6" : "#374151", dark ? "#e7e5e0" : "#1f2937", text, "#ffffff", "#000000"].filter(Boolean);
+    const surfacesFor = (tb) => (preset === "rpg" && tb ? [bgRef, mixHex(tb, bgRef, 0.65), mixHex(tb, bgRef, 0.45)] : [bgRef]);
+    const okOnAll = (c, surfs) => surfs.every((sf) => contrastRatio(c, sf) >= 4.5);
+    const pickDualMuted = (surfs) => mutedPool.find((c) => okOnAll(c, surfs)) || null;
+    if (preset === "rpg") {
+      const tileCandidates = [barTrack, dark ? "#342f2a" : "#d4d4d8", bgRef];
+      let chosen = bgRef, chosenMuted = null;
+      for (const tb of tileCandidates) {
+        const surfs = surfacesFor(tb);
+        if (!okOnAll(text, surfs)) continue;
+        const m = pickDualMuted(surfs);
+        if (m) { chosen = tb; chosenMuted = m; break; }
+      }
+      tileBgBase = chosen;
+      muted = chosenMuted || text;
+    } else {
+      muted = pickDualMuted([bgRef]) || text;
     }
     if (!buttonBg) {
       buttonBg = buttonText
@@ -224,6 +240,7 @@ export function resolveCardSpec(packCard) {
   if (accent) cssVars["--oo-card-accent"] = accent;
   if (barTrack) cssVars["--oo-card-bar-track"] = barTrack;
   if (barFill) cssVars["--oo-card-bar-fill"] = barFill;
+  if (tileBgBase) cssVars["--oo-card-tile-bg"] = tileBgBase;
   if (buttonBg) cssVars["--oo-card-btn-bg"] = buttonBg;
   if (buttonText) cssVars["--oo-card-btn-text"] = buttonText;
   if (buttonPrimaryBg) cssVars["--oo-card-btn-primary-bg"] = buttonPrimaryBg;

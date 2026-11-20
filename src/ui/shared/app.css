@@ -2601,10 +2601,10 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-center .oo-card-close { position: absolute; top: 0; right: 0; margin: 0; }
 .oo-card-center.sheet .oo-card-close { margin: -4px -6px 0 0; }
 .oo-card-rpg .oo-card-xp { padding: var(--s-2); border-radius: var(--oo-card-radius, var(--r-sm));
-  background: color-mix(in srgb, var(--oo-card-bar-track, var(--surface-2)) 65%, transparent);
+  background: color-mix(in srgb, var(--oo-card-tile-bg, var(--oo-card-bar-track, var(--surface-2))) 65%, transparent);
   border: 1px solid color-mix(in srgb, var(--oo-card-border, var(--border)) 55%, transparent); }
 .oo-card-rpg .oo-card-rows > div { padding: var(--s-1) var(--s-2); border-radius: var(--oo-card-radius, var(--r-sm));
-  background: color-mix(in srgb, var(--oo-card-bar-track, var(--surface-2)) 45%, transparent);
+  background: color-mix(in srgb, var(--oo-card-tile-bg, var(--oo-card-bar-track, var(--surface-2))) 45%, transparent);
   border: 1px solid color-mix(in srgb, var(--oo-card-border, var(--border)) 40%, transparent); }
 .oo-card-rpg .oo-card-bar { height: 8px; }
 .oo-card-compact .oo-card-body { padding: var(--oo-card-frame-pad, var(--s-3)); }
