@@ -4894,7 +4894,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-ticket-label { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: var(--fw-semibold); color: var(--text-2); }
 .contact-time-item.contact-time-wait { white-space: normal; }
 /* The label and its ⓘ are one run of text: when the label wraps, the ⓘ follows its last word (never alone at the edge). */
-.contact-toggle-pair { display: block; flex: 1 1 12em; min-width: 0; }
+.contact-toggle-pair { display: block; flex: 1 1 12em; min-width: 0; text-wrap: balance; }
 .contact-toggle-pair .contact-toggle { display: inline; }
 .contact-toggle-pair .contact-toggle input { vertical-align: middle; margin: 0 var(--s-2) 0 0; }
 .contact-toggle-pair .info-tip { margin-left: var(--s-1); vertical-align: middle; }

@@ -47,7 +47,7 @@ describe("M-3385: the contact-request card says what each part is and does", () 
     expect(text(note).startsWith("Approve = forward this request once.")).toBe(true);
     expect([note.querySelector(".info-tip-btn")?.getAttribute("aria-label"), text(note.querySelector(".info-tip-body"))]).toEqual(["About approving",
       "The receiving agent's later contacts are judged by its own history only; this approval doesn't carry the requester's origin forward. So if its own history allows it, the receiving agent may pass the approved content on to other agents without another approval."]);
-    expect(text(c.root.querySelector(".contact-toggle"))).toBe("Also forward requests like this from now on");
+    expect(text(c.root.querySelector(".contact-toggle"))).toBe("Forward requests like this from now on");
     const more = c.root.querySelector(".contact-allow-info");
     expect([more.querySelector(".info-tip-btn")?.getAttribute("aria-label"), text(more.querySelector(".info-tip-body"))]).toEqual(["About forwarding requests like this",
       "Alex's message requests from classic-ops to web-dev will be forwarded without asking. This adds an allowed contact to web-dev's Permissions, until the date or the number of uses below; you can remove it there at any time."]);

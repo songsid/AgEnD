@@ -91,7 +91,7 @@ register("contactAuth", {
     approveOnce: "Approve once", decline: "Decline", alsoAllowUntil: "Until", alsoAllowUses: "Uses (empty: no limit)",
     // M-3385: what the card's parts do, said where they are.
     // M-3385 (the user, 11-20): short visible words; the detail in an ⓘ (ui-style-guide rule 14).
-    alsoAllow: "Also forward requests like this from now on",
+    alsoAllow: "Forward requests like this from now on",
     alsoAllowMore: "{0}'s {1} requests from {2} to {3} will be forwarded without asking. This adds an allowed contact to {3}'s Permissions, until the date or the number of uses below; you can remove it there at any time.",
     alsoAllowAbout: "About forwarding requests like this",
     messageLabel: "What it asks",
