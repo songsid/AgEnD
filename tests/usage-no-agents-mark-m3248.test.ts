@@ -1,11 +1,13 @@
 /**
  * M-3248 (the user): in the AI usage panel a login no agent uses said 「此帳號目前沒有 Agent」 as a line of text beside its
- * name. It is a quiet ⓘ there now, its words on a hover, a focus or a tap; a screen reader reads them as its name.
- * - A compact row (itself a button that opens the login's card): an image named by the words, never a second button; a
- *   tap shows the words and leaves the row closed; a second tap, Escape or a click elsewhere hides them.
- * - The full card: a button beside the profile's name (or the provider's, for the default login), reached with Tab.
+ * name. It is a quiet ⓘ there now. M-3443: no hover-only mark —
+ * - A compact row (itself a button that opens the login's card): the ⓘ only drawn (aria-hidden), never a second control;
+ *   its words are part of the row's name (read with it); a tap on the row opens the card.
+ * - The full card: the shared info icon (info-tip.js) beside the profile's name (or the provider's, for the default
+ *   login) — a button reached with Tab: its words on a focus, a hover or a tap; a second tap, Escape (this bubble only) or a
+ *   click elsewhere hides them.
  * - Every mode of #4054's groups that shows rows: every window, and one line per login.
- * The words are in the page only while shown. /api/ai-usage is a scripted fake: no server, no vendor call.
+ * /api/ai-usage is a scripted fake: no server, no vendor call.
  */
 import { afterEach, beforeAll, expect, it } from "vitest";
 import { page, settle, type AppPage } from "./helpers/app-harness.js";
@@ -45,68 +47,62 @@ async function mount(lang: "en" | "zh-TW", compact: boolean) {
   return pg;
 }
 const rowOf = (p: AppPage, name: string) => [...p.root.querySelectorAll(".u-crow")].find((r: any) => r.querySelector(".u-crow-name")?.textContent === name) as any;
-const cardOf = (p: AppPage, name: string) => [...p.root.querySelectorAll(".u-provider")].find((s: any) => (s.querySelector(".u-profile") ?? s.querySelector(".u-head strong"))?.textContent === name) as any;
-const tip = (p: AppPage) => p.root.querySelector(".u-na-tip");
+const cardOf = (p: AppPage, name: string) => [...p.root.querySelectorAll(".u-provider")].find((s: any) => (s.querySelector(".u-profile-name") ?? s.querySelector(".u-profile") ?? s.querySelector(".u-head strong"))?.textContent === name) as any;
+const bubble = (p: AppPage) => p.root.querySelector(".u-na-tip .info-tip-body") as any;
+const shown = (p: AppPage) => { const b = bubble(p); return b && !b.hasAttribute("hidden") ? b.textContent : null; };
 // The mini DOM names a listener by the prop's own name (onMouseEnter → "MouseEnter"); a browser by the lower-case event.
 const pointer = (el: any, type: "enter" | "leave") => { fire(el, `mouse${type}`, { bubbles: false }); fire(el, `Mouse${type[0].toUpperCase()}${type.slice(1)}`, { bubbles: false }); };
 
-it.each(["en", "zh-TW"] as const)("compact rows (%s): a quiet image named by the words, beside the name; no line of text", async (lang) => {
+it.each(["en", "zh-TW"] as const)("compact rows (%s): the ⓘ only drawn beside the name, its words in the row's name; no second control", async (lang) => {
   const p = await mount(lang, true);
   const wii = rowOf(p, "wii"), mark = wii.querySelector(".u-na");
-  expect([mark.tagName, mark.getAttribute("role"), mark.getAttribute("aria-label")]).toEqual(["SPAN", "img", WORDS[lang]]);
+  expect([mark.tagName, mark.getAttribute("aria-hidden"), mark.getAttribute("role")]).toEqual(["SPAN", "true", null]);
   expect(mark.previousSibling?.className, "right of the name").toBe("u-crow-name");
-  expect(p.root.textContent, "the words are not in the page while hidden").not.toContain(WORDS[lang]);
+  expect(wii.querySelector(".sr-only")?.textContent, "read with the row").toBe(WORDS[lang]);
+  expect(wii.querySelectorAll("button").length, "no control inside the row's button").toBe(0);
   expect(p.root.querySelector(".u-crow .note"), "the old inline note").toBeNull();
   expect(rowOf(p, "yanxian").querySelector(".u-na"), "a login an agent uses has none").toBeNull();
   // One line per login (#4054): still there.
   usage.setGroupMode("Codex", "compact"); await settle(10);
   expect(rowOf(p, "wii").classList.contains("is-one")).toBe(true);
-  expect(rowOf(p, "wii").querySelector(".u-na")?.getAttribute("aria-label")).toBe(WORDS[lang]);
+  expect(rowOf(p, "wii").querySelector(".sr-only")?.textContent).toBe(WORDS[lang]);
 });
 
-it("compact row: a hover shows the words and leaving hides them; a tap shows them without opening the row, a second tap, Escape or a click elsewhere hides them", async () => {
+it("compact row: a tap on the row (its ⓘ too) opens the card, where the ⓘ is the shared info icon", async () => {
   const p = await mount("en", true);
-  let mark = rowOf(p, "wii").querySelector(".u-na");
-  pointer(mark, "enter"); await settle();
-  expect(tip(p)?.textContent).toBe(WORDS.en);
-  expect(tip(p)?.getAttribute("aria-hidden"), "the mark's name already says it").toBe("true");
-  pointer(mark, "leave"); await settle();
-  expect(tip(p)).toBeNull();
-
-  const click = fire(mark, "click"); await settle();
-  expect([tip(p)?.textContent, click.defaultPrevented], "a tap: the words").toEqual([WORDS.en, true]);
-  expect(rowOf(p, "wii").getAttribute("aria-expanded"), "the row stays closed (no card)").toBe("false");
-  expect(cardOf(p, "wii")).toBeUndefined();
-  pointer(mark, "leave"); await settle();
-  expect(tip(p), "pinned by the tap: the pointer leaving keeps it").not.toBeNull();
-  fire(mark, "click"); await settle();
-  expect(tip(p), "a second tap").toBeNull();
-
-  fire(mark, "click"); await settle();
-  const esc = fire(p.document, "keydown", { key: "Escape" }); await settle();
-  expect([tip(p), esc.propagationStopped], "Escape closes the words, not the dialog around them").toEqual([null, true]);
-  mark = rowOf(p, "wii").querySelector(".u-na");
-  fire(mark, "click"); await settle();
-  fire(p.root.querySelector(".u-foot"), "click"); await settle();
-  expect(tip(p), "a click elsewhere").toBeNull();
-  // The row itself still opens the card.
-  fire(rowOf(p, "wii"), "click"); await settle();
-  expect(cardOf(p, "wii")?.querySelector(".u-na")?.tagName).toBe("BUTTON");
+  fire(rowOf(p, "wii").querySelector(".u-na"), "click"); await settle();
+  expect(cardOf(p, "wii")?.querySelector(".u-na-tip .info-tip-btn")?.tagName).toBe("BUTTON");
 });
 
-it.each(["en", "zh-TW"] as const)("full card (%s): a button beside the profile's name (the provider's for a default login); focus shows the words, blur hides them", async (lang) => {
+it.each(["en", "zh-TW"] as const)("full card (%s): the shared info icon beside the profile's name (the provider's for a default login); focus shows the words, blur hides them", async (lang) => {
   const p = await mount(lang, false);
   const wii = cardOf(p, "wii");
-  const mark = wii.querySelector(".u-profile .u-na");
-  expect([mark.tagName, mark.getAttribute("type"), mark.getAttribute("aria-label")]).toEqual(["BUTTON", "button", WORDS[lang]]);
+  const btn = wii.querySelector(".u-profile .u-na-tip .info-tip-btn");
+  expect([btn.tagName, btn.getAttribute("type"), btn.getAttribute("aria-label"), btn.getAttribute("aria-expanded")]).toEqual(["BUTTON", "button", WORDS[lang], "false"]);
   expect(wii.querySelector(".u-profile-name")?.textContent).toBe("wii");
-  expect(wii.querySelector(".u-profile").textContent, "the profile line is the name alone").toBe("wii");
   expect(wii.querySelector("p.note"), "no line of text under the name").toBeNull();
-  expect(cardOf(p, "Kiro").querySelector(".u-head .u-na")?.getAttribute("aria-label"), "a default login: beside the provider's name").toBe(WORDS[lang]);
-  expect(cardOf(p, "yanxian").querySelector(".u-na")).toBeNull();
-  expect(cardOf(p, "yanxian").querySelector(".u-profile").textContent).toBe("yanxian");
-  fire(mark, "focus", { bubbles: false }); await settle();
-  expect(tip(p)?.textContent).toBe(WORDS[lang]);
-  fire(mark, "blur", { bubbles: false }); await settle();
-  expect(tip(p)).toBeNull();
+  expect(cardOf(p, "Kiro").querySelector(".u-head .u-na-tip .info-tip-btn")?.getAttribute("aria-label"), "a default login: beside the provider's name").toBe(WORDS[lang]);
+  expect(cardOf(p, "yanxian").querySelector(".u-na-tip")).toBeNull();
+  expect(shown(p), "closed").toBeNull();
+  fire(btn, "focus", { bubbles: false }); await settle();
+  expect([shown(p), btn.getAttribute("aria-expanded")]).toEqual([WORDS[lang], "true"]);
+  fire(btn, "blur", { bubbles: false }); await settle();
+  expect(shown(p)).toBeNull();
+});
+
+it("full card: a tap keeps it open (the pointer leaving keeps it); a second tap, Escape (the bubble only) or a click elsewhere hides it", async () => {
+  const p = await mount("en", false);
+  const btn = () => cardOf(p, "wii").querySelector(".u-na-tip .info-tip-btn");
+  const click = fire(btn(), "click"); await settle();
+  expect([shown(p), click.defaultPrevented]).toEqual([WORDS.en, true]);
+  pointer(btn(), "leave"); await settle();
+  expect(shown(p), "pinned by the tap").toBe(WORDS.en);
+  fire(btn(), "click"); await settle();
+  expect(shown(p), "a second tap").toBeNull();
+  fire(btn(), "click"); await settle();
+  const esc = fire(p.document, "keydown", { key: "Escape" }); await settle();
+  expect([shown(p), esc.propagationStopped], "Escape closes the words, not the dialog around them").toEqual([null, true]);
+  fire(btn(), "click"); await settle();
+  fire(p.root.querySelector(".u-foot"), "click"); await settle();
+  expect(shown(p), "a click elsewhere").toBeNull();
 });

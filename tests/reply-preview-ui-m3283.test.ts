@@ -35,6 +35,14 @@ describe("inert reply preview controls", () => {
     expect(pp.panelStore.get().open).toMatchObject({ kind: "reply-file", instance: "agent-alpha", spec: message().previews[0] });
     expect(fetch).toHaveBeenCalledWith(previews.replyPreviewUrl("agent-alpha", "src/<example>.ts"), expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
   });
+  it("M-3438 exposes reply-file fullscreen without a wide-only restriction", async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => ({ kind: "text", path: "example.ts", text: "example", size: 7 }) })) as any;
+    const doc = await chat(); fire(doc.querySelector('[data-reply-preview="0"]'), "click"); await settle();
+    const button = doc.querySelector(".reply-file-panel .pv-panel-fs");
+    expect(button).not.toBeNull(); expect(button.classList.contains("only-wide")).toBe(false);
+    fire(button, "click"); await settle();
+    expect(doc.querySelector(".reply-file-panel").classList.contains("pv-fs")).toBe(true);
+  });
   it("offers no file button to guests or on a human message", async () => {
     let doc = await chat(true); expect(doc.querySelector("[data-reply-preview]")).toBeNull();
     await current!.unmount(); current!.restore(); current = null;

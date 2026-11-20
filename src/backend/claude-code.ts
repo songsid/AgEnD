@@ -1567,6 +1567,11 @@ export class ClaudePaneDetectors {
 }
 
 export class ClaudeCodeBackend extends ClaudePaneDetectors implements CliBackend {
+  override getErrorPatterns():ErrorPattern[]{
+    const patterns=super.getErrorPatterns();
+    return this.managedLaunch?patterns.map(pattern=>pattern.message.includes("ANTHROPIC_API_KEY / apiKeyHelper")?{...pattern,message:t("login.managed_credentials")}:pattern):patterns;
+  }
+
   private binaryPath: string;
   private classicVersion: string | null = null;
   private classicPreparedBinaryStamp: string | null = null;

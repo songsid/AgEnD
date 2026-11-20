@@ -136,7 +136,7 @@ describe("Sign in on a computer", () => {
     expect(shell.shellStore.get().dialog?.props).toEqual({ machine: { id: "m1", name: "Desk PC" }, profile: "work" });
     shell.shellStore.set({ dialog: null });
     btn(card().querySelector('.s-account-rows .s-account-row[data-account="default"]'), "Reconnect").click(); await settle(6);
-    expect(shell.shellStore.get().dialog?.props).toEqual({ backend: "claude-code" });
+    expect(shell.shellStore.get().dialog?.props).toMatchObject({ backend: "claude-code", initial: "subscription" });
   });
   // The dialog itself, mounted as the shell would show it (showDialog needs the whole shell; the dialog is a component of its own).
   const mountDialog = async () => { await p.unmount(); await p.mount(h(M.MachineSignInDialog, { machine: { id: "m1", name: "Desk PC" }, profile: "work", onClose: () => {} })); await settle(12); };

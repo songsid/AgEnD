@@ -1,3 +1,4 @@
+import { claudeSubscriptionSuppressed, readClaudeCredentialSelection } from "../claude-credential-launch.js";
 /**
  * AI subscription usage providers — read the credentials the CLI backends
  * already saved on this machine and fetch live plan usage from each vendor's
@@ -468,7 +469,16 @@ export interface ClaudeUsageScope { profile?: string; besideProfiles?: boolean; 
  * with the line that signs it in, and never shows the shared account's numbers. Without it: the shared login as
  * always; beside profiles (`besideProfiles`), its statusline fallback leaves the profiles' instances out.
  */
+export function redactManagedClaudeUsage(provider:ProviderUsage):ProviderUsage{
+ if(provider.id!=="claude"&&!provider.id.startsWith("claude:"))return provider;
+ const profile=provider.profile??(provider.id.startsWith("claude:")?provider.id.slice(7):null);
+ if(!claudeSubscriptionSuppressed(getAgendHome(),profile))return provider;
+ return {id:provider.id,name:provider.name,...(provider.profile?{profile:provider.profile}:{}),...(provider.defaultLogin?{defaultLogin:true}:{}),status:"ok",hint:"Saved credentials have no subscription meters. Manage this connection in Settings → AI accounts & keys → Accounts.",hintI18n:i18n("usage.hint.claude_managed_source"),metrics:[]};
+}
 export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageScope = {}): Promise<Omit<ProviderUsage, "id" | "name">> {
+ const profile=scope.profile??null;
+ if(claudeSubscriptionSuppressed(getAgendHome(),profile))return redactManagedClaudeUsage({id:"claude"+(profile?":"+profile:""),name:"Claude",...(profile?{profile}:{}),status:"ok",metrics:[]});
+ const explicitSubscription=readClaudeCredentialSelection(getAgendHome(),profile)?.source==="subscription";
   const profileHome = storeHome !== undefined ? resolve(storeHome) : null;
   const file = profileHome !== null
     ? await readClaudeProfileLogin(profileHome)
@@ -484,7 +494,7 @@ export async function fetchClaudeUsage(storeHome?: string, scope: ClaudeUsageSco
     ? (envTokenReachesClaude() ? null : readStatuslineRateLimits(undefined, undefined, (path) => path !== null && isWithin(path, join(profileHome, "projects"))))
     : readStatuslineRateLimits(undefined, undefined, scope.besideProfiles ? (path) => path === null || !isWithin(path, profilesRoot) : undefined);
 
-  const auth = profileHome !== null ? resolveClaudeAuth(file, {}, () => null) : resolveClaudeAuth(file);
+  const auth = profileHome !== null ? resolveClaudeAuth(file, {}, () => null) : explicitSubscription?resolveClaudeAuth(file,{}):resolveClaudeAuth(file);
   if (auth === null) {
     // No token anywhere — but the CLI itself is logged in somehow (including an
     // API key, which the usage endpoint rejects outright), and it wrote its

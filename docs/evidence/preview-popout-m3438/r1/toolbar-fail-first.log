@@ -1,0 +1,25 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/preview-panel-widths-2911.test.ts (12 tests | 1 failed | 11 skipped) 2030ms
+     × M-3438 phone: secondary controls use the shared options dialog; Escape returns focus without closing the preview 79ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/preview-panel-widths-2911.test.ts > full screen > M-3438 phone: secondary controls use the shared options dialog; Escape returns focus without closing the preview
+AssertionError: expected null not to be null
+ ❯ tests/preview-panel-widths-2911.test.ts:122:22
+    120|     const doc = await opened({}, true);
+    121|     const more = doc.querySelector(".pv-toolbar-more");
+    122|     expect(more).not.toBeNull();
+       |                      ^
+    123|     expect(doc.querySelector(".pv-width")).toBeNull();
+    124|     expect(doc.querySelector(".pv-panel-fs").classList.contains("icon-…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 11 skipped (12)
+   Start at  15:48:01
+   Duration  2.50s (transform 1.79s, setup 134ms, import 175ms, tests 2.03s, environment 0ms)

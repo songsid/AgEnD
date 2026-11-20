@@ -9,6 +9,7 @@ import { ONBOARDING_BROWSER_BACKENDS, ONBOARDING_CONSOLE_BACKENDS, onboardingBac
 export interface BrowserBackendSignInDeps {
   dataDir: string;
   selected?: readonly OnboardingBackend[];
+  allowed?(backend:string):boolean;
   current(owner: object): boolean;
   installed(): Promise<readonly string[]>;
   checkAuth(backend: StructuredBackend): Promise<AuthCheckResult>;
@@ -130,10 +131,11 @@ export class BrowserBackendSignIns {
     const offered = (ONBOARDING_BROWSER_BACKENDS as readonly string[]).includes(requested) || (this.deps.accountsPage === true && structuredSignInSupported(requested));
     if (!offered || !this.record.selected.includes(requested as OnboardingBackend)) throw new Error("signin_console_only");
     const backend = requested as OnboardingBackend & StructuredBackend;
+    if(this.deps.allowed?.(backend)===false)throw new Error("signin_managed_credentials");
     if (this.run?.session.view(this.run.owner).reason === "cleanup_failed") throw new Error("signin_cleanup_failed");
     if (this.run && !this.terminal(this.run)) return this.snapshot(owner); // refresh/double click joins
     const session = new StructuredSignIn(backend, owner, {
-      lock: this.lock, current: () => this.current(owner), transport: this.deps.transport(backend),
+      lock: this.lock, current: () => this.current(owner)&&this.deps.allowed?.(backend)!==false, transport: this.deps.transport(backend),
       checkAuth: () => this.deps.checkAuth(backend),
       changed: event => {
         if ((event.phase === "done" || (event.phase === "failed" && event.reason))

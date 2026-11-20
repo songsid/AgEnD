@@ -10,6 +10,7 @@
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { settingsPath } from "/assets/app-route.js";
+import { InfoTip as SharedInfoTip } from "/assets/info-tip.js";
 import "./settings-strings.js";
 import "./settings-shared-strings.js";   // the words this page added: a tab that already ran an older settings-strings.js has none of them (#3087)
 import {
@@ -225,9 +226,9 @@ export function Tip({ text, cls = "", ariaLabel, children }) {
       onClick=${(e) => { e.stopPropagation(); if (pinned) hide(); else { show(); setPinned(true); } }}>${children}</button>
     <span id=${idRef.current} ref=${body} class=${`s-tipbody${at && at.above ? " above" : ""}`} role="tooltip" hidden=${!at}>${text}</span></span>`;
 }
-/** The ⓘ beside a label: what the field is for, when it matters, what its default means. */
+/** The ⓘ beside a label: what the field is for, when it matters, what its default means. M-3443: the shared info icon. */
 export function InfoTip({ text, name }) {
-  return html`<${Tip} text=${text} cls="s-i" ariaLabel=${tn("tipLabel", name)}>i</${Tip}>`;
+  return html`<${SharedInfoTip} text=${text} label=${tn("tipLabel", name)} cls="s-i" />`;
 }
 /**
  * "6/7 in use · artist custom" at a field's right: how many agents use this page's value; hover lists the ones that set their own.

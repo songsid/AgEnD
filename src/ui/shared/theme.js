@@ -140,7 +140,17 @@
   window.addEventListener("pageshow", schedule);
   // Page palettes are applied to the shell; routes replace headers. Coalesce paints and
   // ignore content attributes so updating this meta element cannot trigger itself.
-  new MutationObserver(schedule).observe(document.documentElement, {
+  // M-3455: the split view's grid (.ws-geometry) changes only its size and drag state on these attributes — never a colour.
+  // A divider drag writes them every frame; re-reading the header colours then forced a layout and style walk per frame.
+  function relevant(records) {
+    if (!records || !records.length) return true;
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      if (r.type !== "attributes" || !r.target.classList || !r.target.classList.contains("ws-geometry")) return true;
+    }
+    return false;
+  }
+  new MutationObserver(function (records) { if (relevant(records)) schedule(); }).observe(document.documentElement, {
     subtree: true, childList: true, attributes: true, attributeFilter: ["class", "style", "data-theme", "data-palette", "data-agent"],
   });
 })();

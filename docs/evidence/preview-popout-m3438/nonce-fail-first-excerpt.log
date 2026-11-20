@@ -1,0 +1,8 @@
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  tests/web-preview-popout-m3438.test.ts > M-3438 bounded preview pop-out > keeps a cryptographic nonce on an HTTP LAN browser without randomUUID
+AssertionError: expected [Function] to not throw an error but 'TypeError: win.crypto.randomUUID is n…' was thrown
+- Expected:
++ Received:
+"TypeError: win.crypto.randomUUID is not a function"
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 skipped (6)

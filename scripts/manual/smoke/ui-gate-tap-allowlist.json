@@ -16,7 +16,6 @@
  "agent-defaults div.grid2 > div.field > select#gl-general-target": 1,
  "agent-defaults div.s-checks > label.check > input": 3,
  "agent-defaults div.s-hang-row > label.s-switch > input#g-hang-on": 1,
- "agent-defaults div.s-lab > span.s-tipwrap.s-i > button.s-tipbtn": 17,
  "agent-defaults div.s-lab > span.s-tipwrap.s-use > button.s-tipbtn": 11,
  "agent-defaults div#g-am.s-seg > label.s-seg-opt > input": 1,
  "agent-defaults div#g-am.s-seg > label.s-seg-opt.on > input": 1,

@@ -75,14 +75,14 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, createHold, playAllowed, pruneReactions, reactionAt } from "./fleet-office-play.js";
+import { PLAY, createHold, createSnackDrag, createSnacks, playAllowed, pruneReactions, reactionAt, scatterWords } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
-import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, stripBox } from "./fleet-office-pack.js";
+import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -118,6 +118,8 @@ register("orgo", {
     dlgWorking: "Working…", dlgSomeone: "Someone", dlgHeardShare: "Sent {0} a message.", dlgAnsweredShare: "Replied.", dlgFile: "(sent a file)", dlgSays: "{0}: {1}",
     dlgBox: "Dialogue: {0}. Click for their card, double-click for their chat.",
     zones: "Go to an area", zoneAll: "Whole office", zoneN: "{0} {1}",
+    snacks: "Snacks", snackFeed: "Feed {0}", snackPlace: "Place here",
+    snackArm: "{0}: drag onto someone to feed, or onto the floor to place; click to select",
   },
   "zh-TW": {
     label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
@@ -147,6 +149,8 @@ register("orgo", {
     dlgWorking: "處理中…", dlgSomeone: "有人", dlgHeardShare: "傳了一則訊息給 {0}。", dlgAnsweredShare: "已回覆。", dlgFile: "（傳了一個檔案）", dlgSays: "{0}：{1}",
     dlgBox: "對話框：{0}。點一下看資料卡，點兩下開啟聊天。",
     zones: "移到區域", zoneAll: "總覽", zoneN: "{0} {1}",
+    snacks: "零食", snackFeed: "餵給 {0}", snackPlace: "放在這裡",
+    snackArm: "{0}：拖到成員身上餵食，或放到空地讓閒置成員過來搶；點一下可選取",
   },
 });
 const to = (k, ...v) => t(`orgo.${k}`, ...v);
@@ -476,6 +480,15 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // y (a tie: the item first, the person in front); furniture over them; things in the air; the pack's foreground
     // (door frames, pillars, table fronts); then what must stay readable: crowd counts and name tags (bubbles below).
     const t = ms > 0 ? ms : now(), live = furnitureAt(p, t);
+    if (!still && ms > 0 && p.snacks) {
+      const changed = p.snacks.step(t, {
+        desks: p.desks, walkers: p.walkers, hidden: live.hidden, ownArea: !!p.ownArea,
+        areas: p.L.areas, graph: p.L, snacksById: p.snacksById,
+        charEatOf: (n) => (sk.eatStrip ? sk.eatStrip(n) : null),
+        onClaim: p.onSnackClaim,
+      });
+      if (changed && typeof p.onSnacksChanged === "function") p.onSnacksChanged();
+    }
     const people = p.desks.map((d) => {
       const at = p.walkers.at(d.node.name, t) || { ...d.seat, walking: false };
       if (at.walking) walking = true;
@@ -483,24 +496,67 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     }).sort((x, y) => x.at.y - y.at.y);
     const furniture = strollFurniture(p.night ? nightFurniture(sk.pack.furniture) : sk.pack.furniture, (k) => p.walkers.at(k, t));
     if (furniture.some((f) => f.walking)) walking = true;
-    const band = [...furniture.filter((f) => f.depth === "y").map((f) => ({ y: f.y, k: 0, f })), ...people.map((q) => ({ y: q.at.y, k: 1, p: q })),
+    const placedSnacks = p.snacks ? p.snacks.placedList() : [];
+    const band = [...furniture.filter((f) => f.depth === "y").map((f) => ({ y: f.y, k: 0, f })),
+      ...placedSnacks.map((sn) => ({ y: sn.y, k: 0.5, sn })),
+      ...people.map((q) => ({ y: q.at.y, k: 1, p: q })),
       ...(p.ghosts ? ghostsOf(sk.pack, people).map((g) => ({ y: g.y, k: 1, g })) : []),
       // #2665: by day, each item's night place too (at night the items are there already).
       ...(p.ghosts && !p.night ? nightGhostsOf(sk.pack).map((n) => ({ y: n.y, k: 1, n })) : [])]
       .sort((x, y) => x.y - y.y || x.k - y.k);
+    // M-3432 (#4255): draw drop-target rings above the floor layer only, never over furniture or characters.
+    const drop = p.snackDrop && p.snackDrop.current;
+    if (drop && drop.kind === "place") {
+      ctx.save();
+      ctx.fillStyle = "rgba(0, 0, 0, 0.16)";
+      ctx.beginPath(); ctx.ellipse(drop.x, drop.y, 16, 7, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+      ctx.beginPath(); ctx.ellipse(drop.x, drop.y, 16, 7, 0, 0, Math.PI * 2); ctx.stroke();
+      ctx.restore();
+    } else if (drop && drop.kind === "feed") {
+      const target = people.find((q) => q.look.name === drop.name && !live.hidden.has(q.look.name));
+      if (target) {
+        ctx.save();
+        ctx.fillStyle = env.pal.accentDim;
+        ctx.beginPath(); ctx.ellipse(target.at.x, target.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = env.pal.accent; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.ellipse(target.at.x, target.at.y, 24, 10, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+    }
     for (const f of furniture) if (f.depth !== "y" && f.depth < CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of post) if (it.t === 0) sk.drawProp(ctx, it, ms, env);        // a letter on the floor: under the people
-    for (const { f, p: q, g, n } of band) {
+    for (const { f, p: q, g, n, sn } of band) {
       if (f) { sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env); continue; }
+      if (sn) {
+        const sdef = p.snacksById && p.snacksById.get(sn.snackId);
+        if (sdef && sk.drawSnack) {
+          ctx.save();
+          ctx.fillStyle = "rgba(0, 0, 0, 0.22)";
+          ctx.beginPath(); ctx.ellipse(sn.x, sn.y + 1, Math.max(8, Math.round(sdef.sprite.dw * 0.38)), 4, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.restore();
+          sk.drawSnack(ctx, sdef.sprite, ms, sn.x, sn.y, env, `sn:${sn.id}`);
+        }
+        continue;
+      }
       if (n) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawFurniture(ctx, n, true, 0, env); ctx.restore(); continue; }
       if (g) { ctx.save(); ctx.globalAlpha = GHOST_ALPHA; sk.drawCharacter(ctx, { x: g.x - 44, y: g.y - 53, w: 88, h: 53, seat: g }, g.look, 0, env); ctx.restore(); continue; }
       if (live.hidden.has(q.look.name)) continue;                          // #2698: drawn as the item (never while walking)
       const box = { ...q.d, x: q.at.x - 44, y: q.at.y - 53, w: 88, h: 53, seat: { x: q.at.x, y: q.at.y } };
-      // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking.
+      // An agent's own pose (office_set, #2578) while its act lasts and nothing calls it; walking is walking; M-3432: eating when fed.
       const posed = actPosed(p, q.look);
-      const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading } : posed;
+      const eating = !q.at.walking && p.snacks && ms > 0 ? p.snacks.eatingOf(q.look.name, t) : null;
+      const canEat = !!eating && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
+        : canEat ? { ...posed, pose: "eat", basePose: posed.pose } : posed;
       sk.drawCharacter(ctx, box, look, ms, env);
-      if (!q.at.walking) speakers.push({ look: q.look, ...speakerAt(sk, look, q.at), area: q.d.area });
+      if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
+        const sdef = p.snacksById.get(eating.snackId);
+        if (sdef && sdef.eat) sk.drawSnack(ctx, sdef.eat, Math.max(0, t - eating.t0), q.at.x, q.at.y, env);
+      }
+      if (!q.at.walking || (p.snacks && ms > 0 && p.snacks.scatterOf(q.look.name, t))) {
+        speakers.push({ look: q.look, ...speakerAt(sk, look, q.at), area: q.d.area });
+      }
     }
     for (const f of furniture) if (f.depth !== "y" && f.depth >= CHAR_DEPTH) sk.drawFurniture(ctx, f, f.asleep || live.active.has(f.id), ms, env);
     for (const it of up) sk.drawProp(ctx, it, ms, env);
@@ -613,8 +669,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const packSays = ra ? linesFor(reacting.get(sp.look.name).kind, p.lang, sk.pack, null, sp.look.name) : [];
     const raSays = ra ? (packSays.length ? packSays[Math.floor(reacting.get(sp.look.name).t0) % packSays.length] : ra.say) : null;
     const own = raSays ? raSays : actLive(act, says, Date.now(), p.actSeen) && act.say ? act.say : null;
-    const b = own ? { text: own, shown: [...own].length } : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
-    if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
+    const sc = !own && p.snacks && ms > 0 ? p.snacks.scatterOf(sp.look.name, t0) : null;
+    const scText = sc ? scatterWords(p.lang) : null;
+    const b = own ? { text: own, shown: [...own].length }
+      : scText ? { text: scText, shown: [...scText].length }
+      : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
+    if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
@@ -622,7 +682,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
   const say = () => { T(); for (const { sp, b, dy } of placed) sk.drawBubble(ctx, sp.x, sp.y, [...b.text].slice(0, b.shown).join(""), env, -dy); };
   if (defer) defer.push(say); else say();
-  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting;
+  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current);
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -1128,7 +1188,24 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const shared = talk !== undefined || typeof onOpen !== "function";
   const play = playAllowed({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
   const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
-  useEffect(() => { if (!play) { hold.cancel(); reacts.current.clear(); } }, [play]);
+  // M-3432 (#4255): custom snacks from the active skin pack (client-local, only when play is enabled).
+  const snacks = useMemo(() => createSnacks(), []);
+  const snackDragCtrl = useMemo(() => createSnackDrag(), []);
+  const packSnacks = useMemo(() => (skin && skin.pack && Array.isArray(skin.pack.snacks) ? skin.pack.snacks : []), [skin]);
+  const snacksById = useMemo(() => new Map(packSnacks.map((s) => [s.id, s])), [packSnacks]);
+  const showSnacks = play && packSnacks.length > 0;
+  const [armedSnack, setArmedSnack] = useState(null);
+  const [snackDrag, setSnackDrag] = useState(null);
+  const snackDropRef = useRef(null), snackGhostRef = useRef(null), snackGhostPosRef = useRef(null), snackTrayRef = useRef(null), snackSwallowRef = useRef(false);
+  const snackCtxRef = useRef({ showSnacks: false, officeKey: "", styleKey: "" });
+  const onSnackClaim = (winner) => {
+    reacts.current.set(winner, { kind: "feed", t0: now() });
+    if (store.tellOn(winner)) void store.tell(winner, "feed");
+    loop.current?.wake();
+  };
+  useEffect(() => { if (!play) { snackDragCtrl.retire(); hold.cancel(); reacts.current.clear(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [play]);
+  useEffect(() => { if (!showSnacks) { snackDragCtrl.retire(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); } }, [showSnacks]);
+  useEffect(() => () => { snackDragCtrl.retire(); }, []);
   useEffect(() => {
     if (!zones || overview) return undefined;
     const go = () => {
@@ -1136,6 +1213,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       // An act's walk; not someone in bed for the night (#2568: bedtime wins, as for mail).
       for (const d of desksOf(L)) { const a = actsHere.get(d.node.name), at = !d.night && actLive(a, d.node.state, Date.now(), actSeen.current) ? actTarget(a, L, walkers, t) : null; if (at) to.set(d.node.name, at); }
       for (const [name, at] of mail.targets(L, t)) to.set(name, at);
+      for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
       walkers.sync(to, t, L, still);
@@ -1169,6 +1247,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const labelEls = useRef(new Map());                                 // #2554: the tiles' labels (tile key → element)
   // What a view is kept for: the office and its style (All offices: its own key).
   const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
+  snackCtxRef.current = { showSnacks, officeKey, styleKey };
+  useEffect(() => { snackDragCtrl.retire(); snacks.clear(); snackDropRef.current = null; setArmedSnack(null); setSnackDrag(null); }, [officeKey, styleKey]);
   const keyRef = useRef(officeKey), saveTimer = useRef(0);
   // The fit mode (Fit: contain; Fill: cover), kept per office and style like the view.
   const [fitRev, setFitRev] = useState(0);
@@ -1427,10 +1507,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const parts = tiles.map((tl, i) => ({ ...partOf(tl.L, tileLooks[i], tl.skin, tl.zones, tl.walkers, tl.flights), night, key: tl.key, prefix: tl.prefix, tile: arranged.tiles[i], ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(tl.skin) }));
       scene.current = { ...base, overview: true, parts, lay: arranged };
     } else {
-      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current } };
+      scene.current = { ...base, overview: false, part: { ...partOf(L, looks, skin, zones, walkers, flights), ghosts, night, mail, acts: actsHere, actSeen: actSeen.current, ups: ups.current, levelsOn: !!(lv && lv.enabled), levels: wordsOf(skin), reacts: reacts.current,
+        snacks: play ? snacks : null, snacksById, ownArea, snackDrop: snackDropRef, onSnackClaim, onSnacksChanged: () => walkNow.current?.() } };
     }
     if (still) draw(0); else loop.current?.wake();
-  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf]);
+  }, [L, looks, skin, pal, size.w, size.h, ratio, matte, overview, tiles, tileLooks, arranged, ghosts, night, mail, actsHere, lv, wordsOf, play, snacksById, ownArea]);
 
   /** One frame at `ms` (0: still); whether anything is moving (in the air, or someone walking). */
   function draw(ms) {
@@ -1703,7 +1784,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return b && r && onBox(b.L, b.stage, e.clientX - r.left, e.clientY - r.top) ? b : null;
   };
   const onMove = (e) => {
-    if (e.pointerType === "touch" || g.busy()) return;
+    if (e.pointerType === "touch" || g.busy() || snackDrag || snackDropRef.current) return;
     const onDlg = !!dlgAt(e);
     if (onDlg !== dlgHot) setDlgHot(onDlg);
     const d = onDlg ? null : deskOf(e); const key = d ? d.key : null; if (key !== tip) setTip(key);
@@ -1729,9 +1810,140 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     });
     return nearestPerson(list, w.x, w.y, TAP_R / Math.max(OK_MIN, view0().k));
   };
+  /** M-3432 (#4255): feed an awake person a snack (plays eat animation + hearts + feed bubble + optional Tell). */
+  const feedPerson = (name, snack, at) => {
+    const t = now();
+    snacks.feed(name, snack, { x: at.x, y: at.y, t, charEatStrip: skin.eatStrip ? skin.eatStrip(name) : null });
+    reacts.current.set(name, { kind: "feed", t0: t });
+    if (store.tellOn(name)) void store.tell(name, "feed");
+    walkNow.current?.();
+    loop.current?.wake();
+  };
+  /** M-3432 (#4255): drop a snack on the floor so nearby idle characters race to it. */
+  const placeSnackAt = (snack, at) => {
+    const t = now();
+    const hidden = scene.current && scene.current.part ? furnitureAt(scene.current.part, t).hidden : null;
+    snacks.place(snack, at, t, { desks: desksOf(L), walkers, hidden, ownArea, areas: L.areas, graph: L });
+    walkNow.current?.();
+    loop.current?.wake();
+  };
+  /** M-3432 (#4255): classify a pointer position while dragging a snack (awake person → feed, floor → place, tray/asleep/outside → cancel). */
+  const snackTargetOf = (e) => {
+    const tray = snackTrayRef.current;
+    if (tray && typeof tray.getBoundingClientRect === "function") {
+      const tr = tray.getBoundingClientRect();
+      if (e.clientX >= tr.left && e.clientX <= tr.right && e.clientY >= tr.top && e.clientY <= tr.bottom) return null;
+    }
+    const st = stageRef.current;
+    if (st && typeof st.getBoundingClientRect === "function") {
+      const sr = st.getBoundingClientRect();
+      if (e.clientX < sr.left || e.clientX > sr.right || e.clientY < sr.top || e.clientY > sr.bottom) return null;
+    }
+    const d = deskOf(e) || (e.pointerType === "touch" ? nearOf(e) : null);
+    if (d && d.node && d.node.i) {
+      if (ASLEEP.has(d.node.state) || d.night) return null;
+      const at = (zones && walkers.at(d.node.name, now())) || d.seat || { x: d.x + d.w / 2, y: d.y + d.h };
+      return { kind: "feed", name: d.node.name, label: nodeText(d.node).primary, x: at.x, y: at.y };
+    }
+    const w = pointOf(e);
+    if (!w || w.x < 0 || w.x > L.width || w.y < 0 || w.y > L.height) return null;
+    return { kind: "place", x: w.x, y: w.y };
+  };
+  /** M-3432 (#4255): drag a snack from the tray onto a character or empty floor; a short tap is left to onClick (tap-to-arm). */
+  const onSnackDown = (snack, e) => {
+    if (!showSnacks || e.isPrimary === false || (e.pointerType === "mouse" && e.button !== 0)) return;
+    e.stopPropagation();
+    const startOffice = officeKey, startStyle = styleKey;
+    let lastKey = "";
+    const moveGhost = (cx, cy) => {
+      const sr = stageRef.current ? stageRef.current.getBoundingClientRect() : null;
+      if (!sr) return;
+      const gx = Math.round(cx - sr.left + 12), gy = Math.round(cy - sr.top - 40);
+      snackGhostPosRef.current = { x: gx, y: gy };
+      const gh = snackGhostRef.current;
+      if (gh && gh.style) gh.style.setProperty("transform", `translate(${gx}px, ${gy}px)`);
+    };
+    const swallowClick = () => {
+      snackSwallowRef.current = true;
+      setTimeout(() => { snackSwallowRef.current = false; }, 0);
+    };
+    snackDragCtrl.start({
+      pid: e.pointerId,
+      sx: e.clientX,
+      sy: e.clientY,
+      slop: PLAY.SLOP,
+      onMove: (ev, { starting }) => {
+        if (starting) { setCard(null); setTip(null); }
+        ev.preventDefault();
+        if (tipNow.current) setTip(null);
+        moveGhost(ev.clientX, ev.clientY);
+        const drop = snackTargetOf(ev);
+        snackDropRef.current = drop;
+        const k = drop ? `${drop.kind}:${drop.name || ""}` : "";
+        if (starting || k !== lastKey) {
+          lastKey = k;
+          setSnackDrag({ snack, kind: drop ? drop.kind : null, label: drop && drop.kind === "feed" ? drop.label : "" });
+        }
+        loop.current?.wake();
+        return drop;
+      },
+      onCommit: (drop) => {
+        snackDropRef.current = null;
+        setSnackDrag(null);
+        swallowClick();
+        const cur = snackCtxRef.current;
+        if (cur.showSnacks && cur.officeKey === startOffice && cur.styleKey === startStyle) {
+          if (drop.kind === "feed") feedPerson(drop.name, snack, { x: drop.x, y: drop.y });
+          else if (drop.kind === "place") placeSnackAt(snack, { x: drop.x, y: drop.y });
+          setArmedSnack(null);
+        }
+        loop.current?.wake();
+      },
+      onCancel: ({ dragging }) => {
+        snackDropRef.current = null;
+        setSnackDrag(null);
+        if (dragging) swallowClick();
+        loop.current?.wake();
+      },
+    });
+  };
+  useEffect(() => {
+    if (!armedSnack) return undefined;
+    const onEsc = (e) => { if (e.key === "Escape" && !e.defaultPrevented) { e.preventDefault(); setArmedSnack(null); } };
+    globalThis.document?.addEventListener?.("keydown", onEsc, true);
+    return () => globalThis.document?.removeEventListener?.("keydown", onEsc, true);
+  }, [armedSnack]);
+  const paintSnackIcon = (st, pxSize = 28) => (cv) => {
+    const g = cv && typeof cv.getContext === "function" ? cv.getContext("2d") : null;
+    if (!g || !st || !skin || typeof skin.drawSnackIcon !== "function") return;
+    const r = deviceRatio(), S = pxSize;
+    if (cv.width !== Math.round(S * r) || cv.height !== Math.round(S * r)) { cv.width = Math.round(S * r); cv.height = Math.round(S * r); }
+    g.setTransform(r, 0, 0, r, 0, 0); g.clearRect(0, 0, S, S);
+    skin.drawSnackIcon(g, st, S);
+  };
   const onClick = (e) => {
     const box = dlgAt(e);
     if (box) { focusPerson(box.key); return; }
+    if (showSnacks && armedSnack) {
+      const snack = snacksById.get(armedSnack);
+      if (snack) {
+        const hit = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
+        if (hit && hit.node && hit.node.i) {
+          if (!ASLEEP.has(hit.node.state) && !hit.night) {
+            const at = (zones && walkers.at(hit.node.name, now())) || hit.seat || { x: hit.x + hit.w / 2, y: hit.y + hit.h };
+            feedPerson(hit.node.name, snack, at);
+          }
+          setArmedSnack(null);
+          return;
+        }
+        const w = pointOf(e);
+        if (w && w.x >= 0 && w.x <= L.width && w.y >= 0 && w.y <= L.height) {
+          placeSnackAt(snack, w);
+          setArmedSnack(null);
+          return;
+        }
+      }
+    }
     const d = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
     if (!d || !d.node.i) { setTip(null); setCard(null); return; }
     if (lastType.current === "touch") setTip(null);
@@ -1967,7 +2179,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
-        onReact=${play ? (kind) => { const n = cardOf.node.name; reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind); } : null}
+        onReact=${play ? (kind) => {
+          const n = cardOf.node.name;
+          if (kind === "feed" && !ASLEEP.has(cardOf.node.state) && !cardOf.box.night) {
+            const sn = (armedSnack && snacksById.get(armedSnack)) || packSnacks[0] || null;
+            if (sn || (skin.eatStrip && skin.eatStrip(n))) {
+              const at = (zones && walkers.at(n, now())) || cardOf.box.seat || { x: cardOf.box.x + cardOf.box.w / 2, y: cardOf.box.y + cardOf.box.h };
+              snacks.feed(n, sn, { x: at.x, y: at.y, t: now(), charEatStrip: skin.eatStrip ? skin.eatStrip(n) : null });
+              walkNow.current?.();
+            }
+          }
+          reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
+        } : null}
         tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null}
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
@@ -1989,6 +2212,25 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
       </div>
+      ${showSnacks ? html`<div ref=${snackTrayRef} class="oo-snacks" role="toolbar" aria-label=${to("snacks")}>
+        ${packSnacks.map((sn) => {
+          const lb = snackLabel(sn, lang());
+          return html`<button key=${sn.id} type="button" class="icon-btn oo-snack" data-snack=${sn.id}
+            aria-label=${to("snackArm", lb)} title=${lb} aria-pressed=${armedSnack === sn.id ? "true" : "false"}
+            onPointerDown=${(e) => onSnackDown(sn, e)}
+            onClick=${(e) => { e.stopPropagation(); if (snackSwallowRef.current) return; setArmedSnack((cur) => (cur === sn.id ? null : sn.id)); }}>
+            <canvas class="oo-snack-icon" width="28" height="28" aria-hidden="true" ref=${paintSnackIcon(sn.sprite, 28)}></canvas>
+          </button>`;
+        })}
+      </div>` : null}
+      ${snackDrag ? html`<div class="oo-snack-ghost" aria-hidden="true" ref=${(el) => {
+        snackGhostRef.current = el;
+        if (el && el.style && snackGhostPosRef.current) el.style.setProperty("transform", `translate(${snackGhostPosRef.current.x}px, ${snackGhostPosRef.current.y}px)`);
+      }}>
+        <canvas class="oo-snack-icon" width="28" height="28" ref=${paintSnackIcon(snackDrag.snack.sprite, 28)}></canvas>
+        ${snackDrag.kind === "feed" ? html`<span class="oo-snack-hint">${to("snackFeed", snackDrag.label)}</span>`
+          : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
+      </div>` : null}
       ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
         ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}

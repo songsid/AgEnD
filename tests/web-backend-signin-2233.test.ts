@@ -24,7 +24,7 @@ const TERMINAL = { id: "r1", backend: "claude-code", phase: "running", ok: null,
   hint: null, terminal: { url: "http://localhost:40001/t/abab/", ttlMinutes: 10, command: "claude auth login", loopback: true, public: false }, accessCode: CODE };
 
 let p: AppPage;
-let S: any, app: any, shell: any, N: any, nav: any;
+let S: any, app: any, shell: any, N: any, nav: any, credentials: any;
 beforeAll(async () => {
   p = page({ url: "http://127.0.0.1:19281/settings/agents", storage: { agend_tour_done: "1" } });
   (globalThis as any).fetch = fetchFake;
@@ -33,6 +33,7 @@ beforeAll(async () => {
   shell = await import("/assets/app-shell.js");
   nav = await import("/assets/app-nav.js");
   S = await import("/ui/js/backend-signin.js");
+  credentials = await import("/ui/js/claude-credentials.js");
   N = await import("/ui/js/panel-needs.js");
   nav.startRouter(p.window);
 });
@@ -46,6 +47,13 @@ beforeEach(async () => {
 const text = () => p.root.textContent.replace(/\s+/g, " ");
 const btn = (label: string) => p.root.querySelectorAll("button, a").find((b: any) => b.textContent.trim() === label);
 const dialog = async (props: Record<string, unknown>) => { await p.mount(h(S.SignInDialog, props)); await settle(6); };
+const claudeMethodsThenSubscription = (profile?: string) => {
+  expect(shell.shellStore.get().dialog.Component).toBe(credentials.ClaudeCredentialsDialog);
+  expect(shell.shellStore.get().dialog.props).toMatchObject({ backend: "claude-code", initial: "subscription", ...(profile ? { profile } : {}) });
+  shell.shellStore.get().dialog.props.continueSubscription();
+  expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog);
+  expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", ...(profile ? { profile } : {}) });
+};
 
 describe("#2233 the Sign in dialog", () => {
   it("terminal flow: the pre-check's question, then the starter's terminal link and access code; the start carries only the confirm id", async () => {
@@ -268,7 +276,7 @@ describe("#2233 where Sign in is offered", () => {
       if (help) expect(help.getAttribute("open")).toBeNull();       // host commands are available without cluttering every row
     }
     fire(p.root.querySelectorAll(".s-row")[5].querySelector("button"), "click"); await settle(2);
-    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
+    claudeMethodsThenSubscription("work");
     S.signInStore.set({ login: { ...TERMINAL, mine: false } }); await settle(4);
     expect(p.root.querySelectorAll(".s-row button").every((b: any) => b.disabled)).toBe(true);
   });
@@ -282,16 +290,16 @@ describe("#2233 where Sign in is offered", () => {
     const items = p.root.querySelectorAll(".n-item");
     expect(items.map((i: any) => i.querySelectorAll("button").map((b: any) => b.textContent.trim()))).toEqual([["Connect account"], []]);
     fire(items[0].querySelector("button"), "click"); await settle(2);
-    expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
+    claudeMethodsThenSubscription("work");
   });
 });
 
 
 describe("#2599 shared browser controls", () => {
-  it("default Kiro/Claude/Codex use browser cards; so does a named Claude account (#3212), carrying its name", () => {
-    for (const backend of ["kiro-cli", "claude-code", "codex"]) { S.openSignIn({ backend }); expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); }
-    S.openSignIn({ backend: "claude-code", profile: "work" });
-    expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); expect(shell.shellStore.get().dialog.props).toEqual({ backend: "claude-code", profile: "work" });
+  it("Kiro/Codex keep browser cards; Claude methods continue the default or named subscription target", () => {
+    for (const backend of ["kiro-cli", "codex"]) { S.openSignIn({ backend }); expect(shell.shellStore.get().dialog.Component).toBe(S.BrowserSignInDialog); }
+    S.openSignIn({ backend: "claude-code" });claudeMethodsThenSubscription();
+    S.openSignIn({ backend: "claude-code", profile: "work" });claudeMethodsThenSubscription("work");
   });
   it("the real shared cards use the closed API, with an explicit console fallback", async () => {
     const snapshot = { selected: ["codex"], pending: ["codex"], skipped: [], states: { codex: "invalid" }, login: null, ready: false };

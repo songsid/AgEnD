@@ -296,34 +296,35 @@ describe("the usage block: the account's windows, as CompactMeter (#3212, #3321)
 
 describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3212, #3321)", () => {
   const ka = (backend: string, acct: string) => rowOf(backend, acct).querySelector(".s-account-keepalive");
-  const tipBtn = (tip: any) => tip.querySelector(".s-tipbtn");
+  const tipBtn = (tip: any) => tip.querySelector(".info-tip-btn");
   it("the explanation is the shared InfoTip beside its switch (a button described by a tooltip); the fallback switch has its own", async () => {
     view.clis[0].rows[1].keepAlive.fallback = false;
     await mount();
     const work = ka("claude-code", "work");
-    const tips = work.querySelectorAll(".s-tipwrap");
+    const tips = work.querySelectorAll(".info-tip");
     expect(tips).toHaveLength(2);
     for (const tip of tips) {
       const btn = tipBtn(tip), body = tip.querySelector('[role="tooltip"]');
-      expect([text(btn), btn.tagName, btn.getAttribute("aria-describedby") === body.getAttribute("id"), body.hidden]).toEqual(["i", "BUTTON", true, true]);
+      expect([text(btn), btn.tagName, btn.getAttribute("aria-describedby") === body.getAttribute("id"), body.hidden]).toEqual(["", "BUTTON", true, true]);   // M-3443: the ⓘ icon
       expect(tip.className).toContain("s-i");
     }
     expect(text(tips[0].querySelector('[role="tooltip"]'))).toBe("Once a day, if no agent is using it, AgEnD renews this connection with Claude Code's own status check. No model request.");
     expect(tipBtn(tips[0]).getAttribute("aria-label")).toBe("About “Keep connection alive”");
     expect(text(work.querySelector(".s-keepalive-fallback label"))).toBe("Backup renewal (a tiny request if the status check doesn't renew)");
-    expect(text(work.querySelector(".s-keepalive-fallback .s-tipwrap [role=\"tooltip\"]"))).toBe("When the regular status check can't extend the sign-in, allow one very short request on the smallest model (a few dozen tokens) to keep it connected.");
-    expect(ka("claude-code", "personal").querySelectorAll(".s-tipwrap")).toHaveLength(1);       // off: no fallback switch
-    expect(ka("codex", "default").querySelectorAll(".s-tipwrap")).toHaveLength(1);              // Codex has no fallback
+    expect(text(work.querySelector(".s-keepalive-fallback .info-tip [role=\"tooltip\"]"))).toBe("When the regular status check can't extend the sign-in, allow one very short request on the smallest model (a few dozen tokens) to keep it connected.");
+    expect(ka("claude-code", "personal").querySelectorAll(".info-tip")).toHaveLength(1);       // off: no fallback switch
+    expect(ka("codex", "default").querySelectorAll(".info-tip")).toHaveLength(1);              // Codex has no fallback
     const ids = p.root.querySelectorAll('.s-account-keepalive [role="tooltip"]').map((x: any) => x.getAttribute("id"));
     expect(new Set(ids).size).toBe(ids.length);                                                 // every tooltip has its own id
   });
 
   it("hover shows the words, a tap pins them (a phone has no hover), Esc or a click elsewhere closes them", async () => {
     await mount();
-    const tip = ka("claude-code", "work").querySelector(".s-tipwrap"), btn = tipBtn(tip), body = () => tip.querySelector('[role="tooltip"]');
+    const tip = ka("claude-code", "work").querySelector(".info-tip"), btn = tipBtn(tip), body = () => tip.querySelector('[role="tooltip"]');
     // The mini DOM names a listener by the prop's own name (onMouseEnter → "MouseEnter"); a browser by the lower-case event.
     const enter = async () => { fire(btn, "mouseenter"); fire(btn, "MouseEnter"); await settle(2); };
-    const leave = async () => { fire(btn, "mouseleave"); fire(btn, "MouseLeave"); await settle(2); };
+    // M-3443: the hover is the whole tip's; leaving closes it a moment later (the pointer may cross into the bubble).
+    const leave = async () => { fire(btn, "mouseleave"); fire(btn, "MouseLeave"); await new Promise((r) => setTimeout(r, 200)); await settle(2); };
     await enter();
     expect(body().hidden).toBe(false);
     await leave();
@@ -343,7 +344,7 @@ describe("Keep sign-in alive: one foot line, an InfoTip for each explanation (#3
     const work = ka("claude-code", "work");
     expect(text(work.querySelector(".s-keepalive-fallback label"))).toBe("備援續期（狀態檢查未續期時改送極小請求）");
     expect(text(work.querySelector('.s-keepalive-fallback [role="tooltip"]'))).toBe("當一般狀態檢查未能延長登入效期時，允許改用最小模型送一次極短請求（約數十 token）來維持連接。");
-    expect(tipBtn(work.querySelector(".s-tipwrap")).getAttribute("aria-label")).toBe("「保持連接」的說明");
+    expect(tipBtn(work.querySelector(".info-tip")).getAttribute("aria-label")).toBe("「保持連接」的說明");
   });
 });
 

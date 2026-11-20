@@ -182,8 +182,8 @@ export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "pau
 /** M-3293 (#4119): what a bubbles table may name — the states, and the Office's two reactions (a pat, a feed). */
 export const BUBBLE_KEYS = [...PACK_STATES, "pat", "feed"];
 const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"], PROPS = ["task", "send", "report", "broadcast"];
-/** A character set's strips: its poses, and what its people send (#2562). */
-const SET_STRIPS = [...POSES, "prop"];
+/** A character set's strips: its poses, optional eat pose (M-3432 #4255), and what its people send (#2562). */
+const SET_STRIPS = [...POSES, "eat", "prop"];
 /** A furniture item's walking strips (#2596): a character set's walking poses. */
 const WALKS = ["walk", "walkDown", "walkUp", "walkSide"];
 const BUILT_IN = new Set(["pixel", "studio"]);
@@ -200,6 +200,8 @@ const LIMIT = { areas: 32, seats: 64, furniture: 128, waypoints: 512, edges: 204
   portraitInstances: 500, portraitUsers: 200, portraitNpcs: 128, slice: 128, idleVisits: 8 };
 /** M-3394 (#4231): strip animation caps — per-sheet frames, multi-sheet count, total frames, and per-frame duration (ms). */
 export const STRIP_LIMITS = { sheetFrames: 32, sheets: 32, frames: 600, minMs: 33, maxMs: 60000 };
+/** M-3432 (#4255): snack manifest caps — entries per pack, attraction radius (logical units), and label length. */
+export const SNACK_LIMITS = { max: 12, minRadius: 60, maxRadius: 1280, defaultRadius: 260, labelMax: 24 };
 /** #2861: a portrait's expressions, by the state it is shown in (a missing one: idle, then any given). */
 export const PORTRAIT_STATES = ["idle", "working", "needs"];
 /** M-3433 (#4256): optional agent profile card style & layout enums and caps. */
@@ -626,6 +628,52 @@ function idleVisitsOf(v, areas) {
   });
 }
 
+/** M-3432 (#4255): a snack's label — string (1–24 chars) or `{ en?, "zh-TW"? }`. */
+function snackLabelOf(v, at) {
+  const ok = (s, here) => {
+    if (typeof s !== "string" || !s.trim() || [...s.trim()].length > SNACK_LIMITS.labelMax || /[\u0000-\u001f\u007f]/.test(s)) {
+      throw new Refused(here, `1–${SNACK_LIMITS.labelMax} characters`);
+    }
+    return s.trim();
+  };
+  if (typeof v === "string") return ok(v, at);
+  obj(v, at);
+  keys(v, ["en", "zh-TW"], at);
+  const out = {};
+  if (v.en !== undefined) out.en = ok(v.en, `${at}.en`);
+  if (v["zh-TW"] !== undefined) out["zh-TW"] = ok(v["zh-TW"], `${at}.zh-TW`);
+  if (!Object.keys(out).length) throw new Refused(at, 'a string, or { "en"?, "zh-TW"? }');
+  return out;
+}
+
+/** M-3432 (#4255): a pack's optional `snacks` list — 1–12 snack items with sprites, optional eat overlay, and attraction radius. */
+function snacksOf(v, scale) {
+  if (v === undefined) return [];
+  const items = list(v, SNACK_LIMITS.max, "snacks");
+  if (!items.length) throw new Refused("snacks", "at least 1 snack");
+  const seen = new Set();
+  return items.map((e, i) => {
+    const at = `snacks[${i}]`;
+    obj(e, at);
+    keys(e, ["id", "label", "sprite", "eat", "radius"], at);
+    if (!nameOk(e.id) || seen.has(e.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or - (not an inherited one)");
+    seen.add(e.id);
+    const label = e.label === undefined ? null : snackLabelOf(e.label, `${at}.label`);
+    const sprite = checkStrip(e.sprite, `${at}.sprite`, scale);
+    const eat = e.eat === undefined ? null : checkStrip(e.eat, `${at}.eat`, scale);
+    const radius = e.radius === undefined ? SNACK_LIMITS.defaultRadius : num(e.radius, SNACK_LIMITS.minRadius, SNACK_LIMITS.maxRadius, `${at}.radius`);
+    return { id: e.id, ...(label !== null ? { label } : {}), sprite, ...(eat ? { eat } : {}), radius };
+  });
+}
+
+/** M-3432 (#4255): display label for a checked snack in `lang` ("en" or "zh-TW"), falling back to its id. */
+export function snackLabel(snack, lang = "en") {
+  if (!snack) return "";
+  if (typeof snack.label === "string") return snack.label;
+  if (snack.label && typeof snack.label === "object") return own(snack.label, lang) || own(snack.label, "en") || own(snack.label, "zh-TW") || snack.id;
+  return snack.id;
+}
+
 /**
  * #3679: the fleet-wide `levels` (Settings → Web dashboard → Level titles, kept in web-offices.json) checked by the very
  * rules a pack's are (levelsOf): { ok: true, levels } or { ok: false, error: "<where>: <why>" }. `v` must be an object.
@@ -647,7 +695,7 @@ export function checkLevels(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "card"], "pack");
+    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
@@ -748,6 +796,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
     }
     const levels = levelsOf(x.levels);
     const portraits = portraitsOf(x.portraits, fids), dialogBox = dialogBoxOf(x.dialogBox), card = cardOf(x.card);
+    const snacks = snacksOf(x.snacks, scale);
     const room = x.room === undefined ? {} : obj(x.room, "room"), desk = x.desk === undefined ? {} : obj(x.desk, "desk");
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
@@ -760,7 +809,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
       ...(Object.keys(bubblesBySet).length ? { bubblesBySet } : {}), ...(Object.keys(bubblesByInstance).length ? { bubblesByInstance } : {}),
       room: { floor: opt(room.floor, "room.floor"), wall: opt(room.wall, "room.wall") }, desk: { back: opt(desk.back, "desk.back"), front: opt(desk.front, "desk.front"), lit: opt(desk.lit, "desk.lit") },
       ...(levels ? { levels } : {}), ...(idleVisits.length ? { idleVisits } : {}),
-      ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}), ...(card ? { card } : {}),
+      ...(portraits ? { portraits } : {}), ...(dialogBox ? { dialogBox } : {}),
+      ...(snacks.length ? { snacks } : {}), ...(card ? { card } : {}),
     } };
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
@@ -799,6 +849,10 @@ export function packStrips(pack) {
   }
   for (const [k, set] of Object.entries(pack.characters || {})) for (const [pose, st] of Object.entries(set)) out.push({ at: `characters.${k}.${pose}`, strip: st });
   for (const [k, st] of Object.entries(pack.props || {})) out.push({ at: `props.${k}`, strip: st });
+  for (const sn of pack.snacks || []) {
+    if (sn.sprite) out.push({ at: `snacks.${sn.id}.sprite`, strip: sn.sprite });
+    if (sn.eat) out.push({ at: `snacks.${sn.id}.eat`, strip: sn.eat });
+  }
   return out;
 }
 
@@ -1122,6 +1176,16 @@ export function stripMaxFps(st) {
     return minMs > 0 && Number.isFinite(minMs) ? 1000 / minMs : 0;
   }
   return st.fps > 0 ? st.fps : 0;
+}
+
+/** M-3432 (#4255): total duration (ms) of one full pass through `st`; 0 when static or invalid. */
+export function stripDurationMs(st) {
+  if (!st || !(st.frames >= 1)) return 0;
+  if (Array.isArray(st.durations) && st.durations.length === st.frames) {
+    return durationIndex(st).total;
+  }
+  if (st.frames <= 1 || !(st.fps > 0)) return 0;
+  return Math.round((st.frames / st.fps) * 1000);
 }
 
 /** The highest frame rate any strip in `pack` needs; 0 for built-ins without animated strips. */

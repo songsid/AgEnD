@@ -373,6 +373,15 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .ws-pane .pv-panel { position: absolute; inset: 0; width: auto; min-width: 0; max-width: none; z-index: 5; }
 .ws-pane .pv-divider { display: none; }
 /* Geometry is opt-in: retained PR2 hosts keep their original two-cell grid with this CSS. */
+/* M-3455: the split size is read by the workspace's own grid only. Not inherited, so a divider drag restyles the one grid
+   container instead of every element in both chat histories (an inherited custom property invalidates all descendants). */
+@property --ws-first { syntax: "*"; inherits: false; }
+@property --thread-snap { syntax: "*"; inherits: false; }
+/* While the divider is dragged, rows off screen are not laid out or painted at each new width. Rows keep their last drawn
+   size (the browser records it under contain-intrinsic-size: auto, which does nothing else), so skipping them moves nothing;
+   on release every row is laid out once at the final width. Normal reading never skips rows. */
+.thread > .msg { contain-intrinsic-size: auto 96px; }
+.ws-resizing .thread > .msg { content-visibility: auto; }
 .chat-workspace.ws-geometry { gap: 0; }
 .ws-geometry.ws-right { grid-template-columns: var(--ws-first, minmax(360px, 1fr)) 8px minmax(360px, 1fr); }
 .ws-geometry.ws-stack { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--ws-first, minmax(320px, 1fr)) 8px minmax(320px, 1fr); }
@@ -1142,6 +1151,9 @@ img.amb-p { object-fit: contain; }
 .pv-source:focus-visible { outline: 2px solid var(--accent); border-radius: var(--r-sm); }
 .pv-panel-bar { display: flex; align-items: center; gap: var(--s-2); padding: var(--s-2) var(--s-3); flex-wrap: wrap; }
 .pv-panel-bar .grow { flex: 1; }
+.pv-toolbar-dialog .dlg-body { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-3); }
+.pv-toolbar-dialog .field { flex-basis: 100%; }
+.pv-panel-fs[aria-pressed="true"] { background: var(--surface-2); color: var(--text); }
 .pv-panel > .pv-banner, .pv-panel > .pv-note, .pv-newer { margin: 0 var(--s-3) var(--s-2); }
 .pv-panel > .pv-note { margin-top: 0; }
 .pv-newer { display: flex; align-items: center; gap: var(--s-2); flex-wrap: wrap; padding: var(--s-2) var(--s-3); border-radius: var(--r-sm);
@@ -1236,6 +1248,11 @@ img.amb-p { object-fit: contain; }
 .msg.swipe-ready { box-shadow: 3px 0 0 var(--accent); border-radius: var(--r-sm); }   /* let go now: a reply */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .only-wide { display: none; }
+  .pv-panel-bar { flex-wrap: nowrap; }
+  .pv-panel-bar > .seg-inline .btn, .pv-panel-bar > .btn, .pv-panel-bar > .icon-btn,
+  .pv-toolbar-dialog .btn, .pv-toolbar-dialog .icon-btn, .pv-toolbar-dialog .pv-width { min-width: var(--tap); min-height: var(--tap); }
+  .pv-panel-bar > .seg-inline .btn, .pv-panel-bar > .btn { padding-inline: var(--s-2); }
+  .pv-panel-fs { min-width: var(--tap); min-height: var(--tap); }
   .pv-divider { display: none; }
   .pv-panel { position: fixed; inset: 0; z-index: 37; width: auto; min-width: 0; max-width: none;
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
@@ -1244,6 +1261,7 @@ img.amb-p { object-fit: contain; }
    names — except Preview, which the panel's note names. */
 @container (max-width: 560px) {
   .pv-panel-bar :not(.pv-panel-run) > .lbl { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .pv-panel-bar .pv-toolbar-dialog .lbl { position: static; width: auto; height: auto; margin: 0; overflow: visible; clip: auto; white-space: normal; }
 }
 /* preview feedback (M-2217, #2911): the errors chip — its count stays when a narrow bar hides the word. */
 .pv-fb-errors { color: var(--warn); border-color: var(--warn-line); background: var(--warn-bg); }
@@ -1797,18 +1815,11 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
    muted line under the head (one line in the rail, whole in the dialog). */
 .u-profile { margin-top: calc(-1 * var(--s-2) + 2px); color: var(--text-3); font-size: var(--fs-xs); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dlg .u-profile { white-space: normal; overflow-wrap: anywhere; }
-/* M-3248: "No agents on this profile" — a quiet ⓘ right of the login's name (the muted text colour, never a warning's);
-   its words in the settings tip's bubble, fixed to the window (usage-dialog.js NoAgentsMark sets --tip-x / --tip-y). */
+/* M-3248: "No agents on this profile" — a quiet ⓘ right of the login's name (the muted text colour, never a warning's). In the
+   full card it is the shared info icon (.info-tip); in a compact row only drawn (the row's name carries the words: M-3443). */
 .u-profile.has-na { display: flex; align-items: center; gap: 6px; }
 .u-profile.has-na .u-profile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.u-na { position: relative; flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0; padding: 0; border: 0; border-radius: var(--r-full);
-  background: none; color: var(--text-3); font: inherit; cursor: help; }
-.u-na:focus-visible { color: var(--text-2); }
-@media (hover: hover) { .u-na:hover { color: var(--text-2); } }
-.u-na:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-@media (pointer: coarse) { .u-na::after { content: ""; position: absolute; inset: calc((18px - var(--tap)) / 2); } }
-.s-tipbody.u-na-tip { position: fixed; top: var(--tip-y); left: var(--tip-x); max-width: min(260px, calc(100vw - 16px)); white-space: normal; text-align: left; cursor: default; }
-.s-tipbody.u-na-tip.above { top: auto; bottom: var(--tip-y); }
+.u-na { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; color: var(--text-3); }
 .u-order { margin-left: auto; display: flex; gap: 2px; flex: none; }
 .u-order .icon-btn { width: 28px; height: 28px; }
 .u-order .icon-btn:disabled { opacity: 0.3; }
@@ -1990,9 +2001,6 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
 .s-tipwrap.s-use { margin-left: auto; flex: 0 1 auto; min-width: 0; }
 .s-use .s-tipbtn { min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .s-tipbtn { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: help; text-align: inherit; }
-.s-i .s-tipbtn { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: var(--r-full); border: 1px solid var(--border-strong);
-  color: var(--text-3); font: var(--fw-semibold) var(--fs-2xs)/1 var(--font-ui); }
-.s-i .s-tipbtn:hover, .s-i .s-tipbtn:focus-visible { color: var(--accent); border-color: var(--accent); }
 .s-use .s-tipbtn { font-size: var(--fs-2xs); font-weight: var(--fw-regular); color: var(--text-3); padding: 1px var(--s-2); border-radius: var(--r-full); border: 1px solid var(--border); white-space: nowrap; }
 .s-use .s-tipbtn:hover, .s-use .s-tipbtn:focus-visible { color: var(--text); border-color: var(--text-3); }
 .s-tipbtn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
@@ -2000,6 +2008,21 @@ body.side-resizing, body.side-resizing * { cursor: col-resize !important; user-s
   background: var(--surface-2); color: var(--text); font-size: var(--fs-xs); line-height: 1.5; box-shadow: var(--shadow-2); pointer-events: none; text-transform: none; letter-spacing: 0; font-weight: var(--fw-regular); }
 .s-tipbody[hidden] { display: none; }
 .s-tipbody.above { top: auto; bottom: calc(100% + 6px); }
+/* M-3443: the one info icon (ⓘ, src/ui/shared/info-tip.js; the style guide's "Info icons"): 18px drawn, the --tap box on a
+   touch screen (negative margins keep the row's layout); its bubble fixed to the window, shown on hover, focus or tap. */
+.info-tip { position: relative; display: inline-flex; flex: none; vertical-align: middle; }
+.info-tip-btn { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; margin: 0; padding: 0; border: 0;
+  border-radius: var(--r-full); background: none; color: var(--text-3); font: inherit; cursor: help; }
+@media (hover: hover) { .info-tip-btn:hover { color: var(--text-2); } }
+.info-tip-btn[aria-expanded="true"] { color: var(--accent); }
+.info-tip-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+@media (pointer: coarse) { .info-tip-btn { width: var(--tap); height: var(--tap); margin: calc((18px - var(--tap)) / 2); } }
+.info-tip-body { position: fixed; z-index: 70; top: var(--tip-y); left: var(--tip-x); width: max-content; max-width: min(280px, calc(100vw - 16px));
+  padding: var(--s-2) var(--s-3); border-radius: var(--r-sm); border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--text);
+  font-size: var(--fs-xs); line-height: 1.5; font-weight: var(--fw-regular); text-transform: none; letter-spacing: 0; white-space: normal; text-align: left;
+  box-shadow: var(--shadow-2); cursor: default; }
+.info-tip-body[hidden] { display: none; }
+.info-tip-body.above { top: auto; bottom: var(--tip-y); }
 .s-shared .field { container-type: inline-size; }
 .s-shared .field:has(.s-tipbody:not([hidden])) { position: relative; z-index: 5; }
 /* A field in a narrow column has no room for its name, marks and usage pill on one line: the pill goes under them, in every field of the column alike (the controls below stay level). */
@@ -2523,6 +2546,16 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
   border-bottom: 1px solid var(--border); user-select: none; }
 .oo-zoom .oo-fill { font-size: var(--fs-2xs); font-weight: var(--fw-semibold); }
 .oo-zoom .oo-fill.on { background: var(--accent-dim); color: var(--text); }
+/* M-3432 (#4255): floating snack tray for packs with `snacks` — bottom-left on desktop, above zone pills on phone, 44 px tap targets. */
+.oo-snacks { position: absolute; z-index: 6; left: var(--s-3); bottom: var(--s-3); display: flex; align-items: center; gap: var(--s-1);
+  max-width: calc(100% - 2 * var(--s-3)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
+.oo-snack { flex: none; min-width: var(--tap); min-height: var(--tap); padding: var(--s-1); border: 1px solid transparent; border-radius: var(--r-md); touch-action: none; }
+.oo-snack[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-dim); }
+.oo-snack-icon { width: 28px; height: 28px; display: block; image-rendering: pixelated; pointer-events: none; }
+.oo-snack-ghost { position: absolute; left: 0; top: 0; z-index: 9; pointer-events: none; display: inline-flex; align-items: center; gap: var(--s-1);
+  padding: var(--s-1); border-radius: var(--r-md); background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--shadow-2); }
+.oo-snack-hint { font-size: var(--fs-xs); color: var(--text); white-space: nowrap; padding-right: var(--s-1); }
 .oo-stage.editing .oo-mini { display: none; }
 /* #2737: a single office all in view (the page sets data-whole): the overview would repeat the panel. */
 .oo-mini[data-whole] { display: none; }
@@ -2749,6 +2782,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
     max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
   .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
+  .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
+  .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
 /* M-3253: the Office's ⋯ sheet (a Dialog: a bottom sheet on a phone) — Fit, Fill and Fullscreen as tiles, then Live and
    the Office bar's own controls, one per row, each at least 44 px; a select's text from --fs-md (16 px in a field on a phone: tokens.css). */
@@ -4965,6 +5000,20 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-agent-filter select { min-width: 0; max-width: min(16em, 100%); }
 .contact-auth-page > .s-page-lead, .contact-filters { margin: 0; }
 .contact-allow { flex-wrap: wrap; }
+/* M-3385: the request's text says what it is; a waiting request's line says how long it waits (it wraps, never cut off);
+   "also allow" is a short label beside the buttons with its detail (who, what, where it lives) in the ⓘ right after it;
+   on a phone the date-and-time field gets the row's whole width (side by side it was cut off). */
+.contact-ticket-message-box { display: flex; flex-direction: column; gap: var(--s-1); }
+.contact-ticket-label { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: var(--fw-semibold); color: var(--text-2); }
+.contact-time-item.contact-time-wait { white-space: normal; }
+/* The label and its ⓘ are one run of text: when the label wraps, the ⓘ follows its last word (never alone at the edge). */
+.contact-toggle-pair { display: block; flex: 1 1 12em; min-width: 0; text-wrap: balance; }
+.contact-toggle-pair .contact-toggle { display: inline; }
+.contact-toggle-pair .contact-toggle input { vertical-align: middle; margin: 0 var(--s-2) 0 0; }
+.contact-toggle-pair .info-tip { margin-left: var(--s-1); vertical-align: middle; }
+/* On a phone the label's tap target is the --tap height: vertical padding on the inline label (its hit area, not the line). */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .contact-toggle-pair .contact-toggle { padding-block: 14px; } }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .contact-allow { flex-direction: column; align-items: stretch; } }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-ticket-origin .link-btn, .contact-perm .icon-btn, .contact-filters .btn, .contact-person-filter .chip-x, .contact-agent-filter select, .contact-decide .btn, .contact-auth-page .empty .btn { min-height: var(--tap); min-width: var(--tap); }
   .contact-allow input { min-height: var(--tap); font-size: max(1rem, var(--fs-sm)); }
@@ -5021,3 +5070,26 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   background-position: 0 0, 0 0;
   background-repeat: repeat, no-repeat;
 }
+
+/* M-3419 approved credential UI: shared controls, with touch sizing only; no new visual treatment. */
+.credential-dialog :is(p, strong, legend) { overflow-wrap: anywhere; }
+@media (max-width: 899px), (pointer: coarse) {
+  .credential-dialog :is(.check, summary, .field input, .credential-help) { min-height: var(--tap); }
+  .credential-dialog .check, .credential-dialog summary { align-items: center; }
+  .credential-dialog summary { display: flex; }
+  /* The inherited Needs you notification action is a touch target in these mockups too. */
+  .p-needs .n-notify .btn { min-height: var(--tap); }
+}
+
+.credential-method-row { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.credential-method-row .check { flex: 1; min-width: 0; }
+.credential-help { flex-shrink: 0; }
+.credential-disclosure > summary { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); cursor: pointer; list-style: none; }
+.credential-disclosure > summary::-webkit-details-marker { display: none; }
+.credential-disclosure > summary > .icon { flex-shrink: 0; }
+.credential-disclosure[open] > summary > .icon { transform: rotate(0deg); }
+.credential-disclosure:not([open]) > summary > .icon { transform: rotate(-90deg); }
+/* Use the shared runtime-change dialog's fixed header/footer and scrolling body pattern. */
+.credential-dialog .dlg-head, .credential-dialog .dlg-actions { flex: 0 0 auto; }
+.credential-dialog .dlg-body { flex: 1 1 auto; min-height: 0; overscroll-behavior: contain; scroll-padding-block: var(--s-4); padding-bottom: var(--s-6); }
+.credential-dialog .dlg-body > * { flex-shrink: 0; }
