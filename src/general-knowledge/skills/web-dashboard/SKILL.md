@@ -610,8 +610,6 @@ metrics; read them as old. A provider never read successfully still shows its er
 profile on its own line (the API and chat call it "Claude (<profile>)"); a shared row appears only while some
 instance uses the default login. The badge is the account's plan — e.g. **Pro**, **Max ×20**, **Team ×6.25** (the
 multiplier is its rate-limit multiple; full name on hover). A setup-token login has no badge. A signed-out profile
-For the token method, **Get a token for me** opens a private browser sign-in on the local host. It uses the same verified-admin gate, a 10-minute Connect-account deadline and an owned cleanup; only safe sign-in controls reach the page, and the printed token goes directly to encrypted storage after cleanup. Paste remains available. Cancel or expiry never changes the selected source; if saving is uncertain, read account status before retrying. No model request is made by this flow.
-
 says "Not logged in — sign in with /login claude-code <profile> …". More: the `credential-profiles` skill.
 
 **The cache report** (Fleet → **Cache**; the `get_cache_report` tool). How often each instance's prompt cache
@@ -750,6 +748,8 @@ runs `npm -g uninstall @anthropic-ai/claude-code` in that npm folder; the card o
 install and an npm copy is still on the computer (also after a restart). This offer is only on AI accounts, not in Needs you.
 
 **Managed Claude credentials (M-3419)** — Accounts → Connect (also Needs you → Connect account) offers the existing subscription login, a token obtained with setup-token, or an Anthropic API key. Pasting, replacing and removing saved credentials requires the local dashboard and a current verified administrator, even though ordinary subscription login can run over a public link. Never put a key/token in chat, an agent tool call or a proposal. Values are encrypted; Save makes no model request and reports saved-unverified. Source-class checks are not provider validation. Managed profiles do not show an old subscription identity, meters or keep-alive. Used-profile changes list affected users, require idle local panes and positive old-pane retirement before commit; busy/paused/unknown consumers refuse, and failed restarts are listed. Removing the saved value leaves the profile disconnected; explicitly choosing Subscription switches back to its native login. Profile/conversation assignments stay. A managed secret must be removed before deleting its profile. Removing AgEnD's copy does not revoke it at Anthropic. The launcher clears ambient credentials and uses a private API-key helper or child-only setup-token environment. Organization-managed Claude settings are unsupported. Same-OS-user agents are not isolated from runtime secrets.
+
+For the token method, **Get a token for me** opens a private browser sign-in on the local host. It uses the same verified-admin gate, a 10-minute Connect-account deadline and an owned cleanup; only safe sign-in controls reach the page, and the printed token goes directly to encrypted storage after cleanup. Paste remains available. Cancel or expiry never changes the selected source; if saving is uncertain, read account status before retrying. No model request is made by this flow.
 
 **Antigravity (agy) in Accounts (#3771; AGEND-224)** — agy **can** be connected from the dashboard now (it could not
 before), from Settings → AI accounts & keys → Accounts, admin sessions only (the public link's too, M-3278). What the Antigravity

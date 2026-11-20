@@ -22,5 +22,19 @@
   {
     "guard": "origin",
     "assertionCaught": true
+  },
+  {
+    "guard": "profile-context",
+    "assertionCaught": true,
+    "basePassed": 3,
+    "baseAssertionFailures": 2,
+    "fixedFiles": 3,
+    "fixedPassed": 13,
+    "cases": [
+      "named-to-named",
+      "default-to-named-default",
+      "late-owned-id-cancel-only",
+      "current-profile-success"
+    ]
   }
 ]

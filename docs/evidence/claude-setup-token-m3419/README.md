@@ -18,3 +18,5 @@ Commands: `node node_modules/.bin/vitest run tests/claude-setup-token-m3419.test
 Rollback: remove the optional fetch flow and its private-output adapter; keep paste, the encrypted vault and the guarded launcher. Never change the selected source implicitly. Website publication remains held until the feature beta and user approval of its captures.
 
 The additional saved-details pair answers a visual check about the lower disclosure: it is fully reachable by scrolling, with its full bounds above the footer. No product change was needed.
+
+R1 profile-context control: reuse the mounted account sheet for another profile while the first token start is delayed. Named-to-named and default-to-named-default both fail by assertion on the reviewed head (3 pass, 2 fail). Keying the token child by normalized profile retires the old lifetime: a late owned ID is cancelled only for that old run, never saved into the new form. The new profile still submits its own revision and saves successfully. Three UI/skill files pass 13/13; no visual or native/provider change.
