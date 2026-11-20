@@ -13,6 +13,7 @@ import { appStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState, Empty } from "/assets/ui-states.js";
 import { labelOf } from "/assets/instance-nav.js";
+import { InfoTip } from "/assets/info-tip.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
 
@@ -80,7 +81,8 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html` ${ca("resetNote")}` : null}</p>` : null}
     </div>
     ${tk.canDecide && st === "pending" ? html`<div class="contact-decide">
-      <p class="note">${ca("decidedNote")}</p>
+      ${/* M-3385 (the user, 11-20: easy to read but too long): one short visible line; what an approval means onward is in its ⓘ. */ ""}
+      <p class="note contact-decided-note">${ca("decidedNote")} <${InfoTip} text=${ca("decidedNoteMore")} label=${ca("decidedNoteAbout")} /></p>
       ${allow && grantable ? html`<div class="field-row contact-allow">
         <label class="field"><span>${ca("alsoAllowUntil")}</span><input class="input" type="datetime-local" value=${until} disabled=${busy} onInput=${(e) => setUntil(e.currentTarget.value)} /></label>
         <label class="field"><span>${ca("alsoAllowUses")}</span><input class="input" type="number" min="1" inputmode="numeric" value=${uses} disabled=${busy} onInput=${(e) => setUses(e.currentTarget.value)} /></label></div>` : null}
@@ -89,8 +91,8 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
         ${/* M-3385: a standing grant is one person's — offered only for a request from exactly one person (the server refuses
             any other: invalid-grant-origin), and said in full: who, what kind, from where to where; where it lives under the row. */ ""}
         ${grantable ? html`<label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} />
-          <span>${ca("alsoAllow", personLabel(people[0]), ca(`verb_${tk.verb}`), agentLabel(tk.source), agentLabel(tk.target))}</span></label>` : null}</div>
-      ${grantable ? html`<p class="note contact-allow-hint">${ca("alsoAllowHint", agentLabel(tk.target))}</p>` : null}
+          <span>${ca("alsoAllow")}</span></label><${InfoTip} cls="contact-allow-info" text=${ca("alsoAllowMore", personLabel(people[0]), ca(`verb_${tk.verb}`), agentLabel(tk.source), agentLabel(tk.target))}
+          label=${ca("alsoAllowAbout")} />` : null}</div>
     </div>` : null}
   </article>`;
 }

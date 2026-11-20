@@ -125,6 +125,14 @@ try {
     await page.locator(`.contact-ticket[data-ticket="${R12}"] .contact-decide`).evaluate((el: Element) => el.scrollIntoView({ block: "center" }));
     await page.waitForTimeout(200);
     await shoot("3-authorizations");
+    // M-3385 (the user, 11-20): the long explanations are in ⓘs now — each opened by a tap, pictured, then closed with Esc.
+    for (const [sel, name] of [[".contact-decided-note .info-tip-btn", "3c-info-approve"], [".contact-allow-info .info-tip-btn", "3d-info-allow"]] as const) {
+      const b = page.locator(`.contact-ticket[data-ticket="${R12}"] ${sel}`);
+      await b.click(); await page.waitForTimeout(250);
+      check(`${cn}:${name}`, (await b.getAttribute("aria-expanded")) === "true");
+      await shoot(name);
+      await page.keyboard.press("Escape"); await page.waitForTimeout(150);
+    }
     await page.locator(`.contact-ticket[data-ticket="${R12}"] input[type=checkbox]`).uncheck();
     await page.locator(`.contact-ticket[data-ticket="${R12}"] .btn-primary`).click(); await page.waitForTimeout(500);
     check(`${cn}:authorizations`, tabs >= 1 && calls.some(([m, p, b]: any) => m === "POST" && p === `/ui/api/contact-authorizations/${R12}/decision` && b?.decision === "approve-once" && b?.revision === 2 && !b?.grant)

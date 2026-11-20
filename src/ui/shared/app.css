@@ -4888,13 +4888,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-auth-page > .s-page-lead, .contact-filters { margin: 0; }
 .contact-allow { flex-wrap: wrap; }
 /* M-3385: the request's text says what it is; a waiting request's line says how long it waits (it wraps, never cut off);
-   "also allow" names who and what (its label wraps beside the buttons), with where it lives under them; on a phone the
-   date-and-time field gets the row's whole width (side by side it was cut off). */
+   "also allow" is a short label beside the buttons with its detail (who, what, where it lives) in the ⓘ right after it;
+   on a phone the date-and-time field gets the row's whole width (side by side it was cut off). */
 .contact-ticket-message-box { display: flex; flex-direction: column; gap: var(--s-1); }
 .contact-ticket-label { margin: 0; font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: var(--fw-semibold); color: var(--text-2); }
 .contact-time-item.contact-time-wait { white-space: normal; }
-.contact-decide-controls .contact-toggle { flex: 1 1 16em; min-width: 0; }
-.contact-allow-hint { margin: 0; }
+.contact-decide-controls .contact-toggle { min-width: 0; }
+.contact-decide-controls .contact-allow-info { margin-left: calc(-1 * var(--s-2)); }   /* right after its label */
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .contact-allow { flex-direction: column; align-items: stretch; } }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-ticket-origin .link-btn, .contact-perm .icon-btn, .contact-filters .btn, .contact-person-filter .chip-x, .contact-agent-filter select, .contact-decide .btn, .contact-auth-page .empty .btn { min-height: var(--tap); min-width: var(--tap); }
