@@ -10,19 +10,19 @@
     },
     {
       "path": "docs/design/host-monitoring-history.md",
-      "sha256": "f30272665b403c32fc1f01d764ce607ed3e17790f018f0b38001b3a036151340"
+      "sha256": "24381d7b0ed779cd90f2f4f8a5fcd5aa193d5624ecc3f839ee13cd7dec0694bc"
     },
     {
       "path": "docs/evidence/host-monitoring-history-m3454/README.md",
-      "sha256": "cb0a4f69202f5a87eea451eb9562f229ce7771dec1144ce21dd6436fd9cbba37"
+      "sha256": "97794b15ce3c747ffe6c2719a90c4e77ae70e7fb311d49ecfa4a96bd6ecc60ab"
     },
     {
       "path": "docs/evidence/host-monitoring-history-m3454/checks.json",
-      "sha256": "fb28c17fbbabe1d7ad19bbe64318f833e1ac3e9c1bf1975a93b2c571c492c75c"
+      "sha256": "945542645e4690c5419454815e58b10e6cea6a1746b2e1f3a7e3e698393c6423"
     },
     {
       "path": "docs/evidence/host-monitoring-history-m3454/reversals.json",
-      "sha256": "ec1862dae0084001a3bc47a28fe3a29e3df97b22745ccbc5e31d67e2563a8fa9"
+      "sha256": "17104e97bc2e0f7e5cb0b66fce9c676f43d4e623629da82695c0afd8e134dada"
     },
     {
       "path": "src/fleet-manager.ts",
@@ -46,7 +46,7 @@
     },
     {
       "path": "src/host-monitoring-history.ts",
-      "sha256": "3b586ddee17ea5636c53e6e0a27054a6bd7e86bc7c1ba67206dc226644d7362e"
+      "sha256": "c8d5d6f218a5f27671eca053f8b516314a8e68dc8ef20f58a1f629626d564a01"
     },
     {
       "path": "src/host-monitoring-runtime.ts",
@@ -74,7 +74,7 @@
     },
     {
       "path": "tests/host-monitoring-history-lifecycle-m3454.test.ts",
-      "sha256": "ca98a5230e1798474026f8720b00d38f4b1561a8686e4b80b95cdfce98f4b9de"
+      "sha256": "f3de4cb4fc226cdec7de631dbe24363659e79b190eb6f1fe9fd53000ed1eef9b"
     },
     {
       "path": "tests/host-monitoring-history-policy-m3454.test.ts",
@@ -90,7 +90,7 @@
     },
     {
       "path": "tests/host-monitoring-runtime-m3454.test.ts",
-      "sha256": "e7ddd368e5c7d0d1ea7b9d40dc306b6ba7bd845289d2030e74783d0bb9368a0a"
+      "sha256": "66517a0d205058953c7672b569feac11aa1fd2c31162f09fee9e578e1f19f9ff"
     }
   ]
 }

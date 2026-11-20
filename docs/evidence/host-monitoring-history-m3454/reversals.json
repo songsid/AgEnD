@@ -48,30 +48,6 @@
     }
   },
   {
-    "name": "physical-exit",
-    "path": "src/host-monitoring-history.ts",
-    "mutant": {
-      "path": "src/host-monitoring-history.ts",
-      "sha256": "3ff6cef23b826c3733603d26cb5d54a0216fd7c2e401d2bd5ebd5a765d8d84d1"
-    },
-    "replace": {
-      "from": "try{await physical;}finally",
-      "to": "try{await Promise.resolve();}finally"
-    },
-    "test": "tests/host-monitoring-history-lifecycle-m3454.test.ts",
-    "filter": "physical exit",
-    "exit": 1,
-    "failed": [
-      "owned history persistence lifecycle revokes worker permission before close, waits for physical exit, and blocks a replacement"
-    ],
-    "caught": true,
-    "restored": true,
-    "original": {
-      "path": "src/host-monitoring-history.ts",
-      "sha256": "3b586ddee17ea5636c53e6e0a27054a6bd7e86bc7c1ba67206dc226644d7362e"
-    }
-  },
-  {
     "name": "worker-write-permission",
     "path": "src/host-monitoring-history-worker.ts",
     "mutant": {
@@ -141,6 +117,30 @@
     "original": {
       "path": "src/host-monitoring-history-policy.ts",
       "sha256": "10010fd37b23067a1301bffc2d734537f583640f2801dbc891f33c0eb2d3ee75"
+    }
+  },
+  {
+    "name": "physical-exit",
+    "path": "src/host-monitoring-history.ts",
+    "mutant": {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "6255579da46077c06b3ddd8a178a77706172eb5bafbb8af64638ce11882801b1"
+    },
+    "replace": {
+      "from": "try{await physical;}finally",
+      "to": "try{await Promise.resolve();}finally"
+    },
+    "test": "tests/host-monitoring-history-lifecycle-m3454.test.ts",
+    "filter": "physical exit",
+    "exit": 1,
+    "failed": [
+      "owned history persistence lifecycle revokes worker permission before close, waits for physical exit, and blocks a replacement"
+    ],
+    "caught": true,
+    "restored": true,
+    "original": {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "c8d5d6f218a5f27671eca053f8b516314a8e68dc8ef20f58a1f629626d564a01"
     }
   }
 ]

@@ -43,6 +43,11 @@ describe('owned history persistence lifecycle',()=>{
   f.history.configure(true);f.history.ingest(sample());expect(f.factory).toHaveBeenCalledTimes(1);await vi.advanceTimersByTimeAsync(2000);expect(f.worker.terminate).toHaveBeenCalledTimes(1);expect(f.cleanup).not.toHaveBeenCalled();
   f.worker.emit('exit');await tick();expect(f.cleanup).toHaveBeenCalledTimes(1);expect(f.history.status().state).toBe('waiting');expect(f.history.blocked()).toBe(false);
  });
+ it('an off request upgrades an in-progress retaining shutdown to deletion',async()=>{
+  vi.useFakeTimers();const f=fixture();f.history.configure(true);f.history.ingest(sample());f.worker.ready();
+  f.history.shutdown();f.history.configure(false);expect(f.cleanup).not.toHaveBeenCalled();f.worker.emit('exit');await tick();
+  expect(f.cleanup).toHaveBeenCalledTimes(1);expect(f.history.status().state).toBe('off');expect(vi.getTimerCount()).toBe(0);
+ });
  it('cleanup failure is explicit and prevents re-enabling or replacement',async()=>{
   const f=fixture(vi.fn(async()=>{throw Error('fixture denied')}));f.history.configure(false);await tick();expect(f.history.status()).toMatchObject({state:'failed',reason:'history_cleanup_failed'});
   f.history.configure(true);f.history.ingest(sample());expect(f.factory).not.toHaveBeenCalled();expect(f.history.blocked()).toBe(true);

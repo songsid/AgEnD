@@ -38,6 +38,7 @@ export class HostMonitoringHistory {
   private ready=false;
   private exit:Promise<void>|null=null;
   private closing:Promise<void>|null=null;
+  private removeOnClose=false;
   private startupTimer:ReturnType<typeof setTimeout>|null=null;
   private flight:Flight|null=null;
   private sequence=0;
@@ -126,21 +127,26 @@ export class HostMonitoringHistory {
     return answer.ok?{ok:true,value:answer.value}:{ok:false,reason:'history_unavailable'};
   }
   private finish(remove:boolean):Promise<void> {
+    // An Off edit can arrive while shutdown is already retaining enabled history.
+    this.removeOnClose ||= remove;
     if(this.closing)return this.closing;
     this.permitted=false;if(this.control)Atomics.store(this.control,1,0);this.permitGeneration++;this.pending.clear();this.clearStartup();this.complete({ok:false,reason:'history_unavailable'});
     if(this.control)Atomics.store(this.control,0,0);
     const worker=this.worker,physical=this.exit;
     this.current={state:'stopping'};
-    const closing=this.closing=(async()=>{
+    this.closing=(async()=>{
+      // Assign ownership before a no-worker close can finish.
+      await Promise.resolve();
       if(worker){try{worker.postMessage({op:'close'});}catch{void worker.terminate();}
         const timer=setTimeout(()=>{void worker.terminate();},2000);timer.unref?.();
         try{await physical;}finally{clearTimeout(timer);}
       }
-      if(remove)await(this.options.cleanup??cleanupHistory)(this.options.path);
-    })().then(()=>{
-      if(this.closing!==closing)return;this.closing=null;this.control=null;this.exit=null;this.cleanupFailed=false;
+      if(this.removeOnClose)await(this.options.cleanup??cleanupHistory)(this.options.path);
+      // With no await between the decision above and releasing ownership, a late
+      // Off request either upgrades this close or starts its own cleanup.
+      this.closing=null;this.removeOnClose=false;this.control=null;this.exit=null;this.cleanupFailed=false;
       this.current={state:this.enabled&&!this.stopped?'waiting':'off'};this.options.unblocked?.();
-    },()=>{this.closing=null;this.cleanupFailed=true;this.current={state:'failed',reason:'history_cleanup_failed'};this.options.unblocked?.();});
-    return closing;
+    })().catch(()=>{this.closing=null;this.cleanupFailed=true;this.current={state:'failed',reason:'history_cleanup_failed'};this.options.unblocked?.();});
+    return this.closing;
   }
 }

@@ -38,7 +38,7 @@ describe('committed host monitoring runtime bridge',()=>{
  it('holds re-enable until startup/off cleanup physically completes, then reconciles',async()=>{
   vi.useFakeTimers();let release!:()=>void;let runtime:HostMonitoringRuntime;
   const cleanup=vi.fn(()=>new Promise<void>(r=>{release=r}));const history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup,unblocked:()=>runtime.apply()});
-  const f=fixture({},history);runtime=f.runtime;runtime.start();expect(history.status().state).toBe('stopping');
+  const f=fixture({},history);runtime=f.runtime;runtime.start();expect(history.status().state).toBe('stopping');await Promise.resolve();
   f.config.enabled=true;f.raw.monitoring.enabled=true;runtime.apply();expect(f.factory).not.toHaveBeenCalled();
   release();for(let i=0;i<12;i++)await Promise.resolve();expect(f.factory).toHaveBeenCalledTimes(1);runtime.stop();
  });
@@ -48,7 +48,7 @@ describe('committed host monitoring runtime bridge',()=>{
   expect(runtime.snapshot()).toMatchObject({state:'failed',reason:'history_cleanup_failed'});f.config.enabled=true;f.raw.monitoring.enabled=true;runtime.apply();expect(f.factory).not.toHaveBeenCalled();runtime.stop();
  });
  it('does fixed false cleanup even if pinning missing defaults fails, but never for a conflicting enabled edit',async()=>{
-  const cleanup=vi.fn(async()=>{}),history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup});const f=fixture({},history);f.pin.mockImplementation(()=>{throw Error('readonly')});f.runtime.start();expect(cleanup).toHaveBeenCalledTimes(1);expect(f.factory).not.toHaveBeenCalled();
+  const cleanup=vi.fn(async()=>{}),history=new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup});const f=fixture({},history);f.pin.mockImplementation(()=>{throw Error('readonly')});f.runtime.start();await Promise.resolve();expect(cleanup).toHaveBeenCalledTimes(1);expect(f.factory).not.toHaveBeenCalled();
   const conflict=vi.fn(async()=>{});fixture({monitoring:{enabled:true}},new HostMonitoringHistory({path:'/fixture/history.sqlite',cleanup:conflict})).runtime.start();expect(conflict).not.toHaveBeenCalled();await Promise.resolve();
  });
  it('drains the old provider when the explicit backing-drive selection changes',async()=>{
