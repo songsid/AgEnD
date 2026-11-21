@@ -11,7 +11,11 @@ export const CLAUDE_MODEL_USAGE_LIMIT = /^You['’]ve reached your ([A-Za-z0-9][
  * #2834 (#816): the `system` / `informational` note Claude writes when it pauses itself until its usage window opens
  * (2.1.312: "Usage limit reached · continuing automatically at 6:53pm · esc to cancel"; "again" when re-armed).
  */
-export const CLAUDE_USAGE_LIMIT_PAUSE = /^Usage limit reached(?: again)? · continuing automatically (.+?) · esc to cancel$/i;
+/**
+ * M-3501: 2.1.330 writes "Usage limit reached · set to continue automatically {when}" (and "again"), with no " · esc to
+ * cancel" tail; to 2.1.329 it was "· continuing automatically {when} · esc to cancel". Both are read; {when} is group 1.
+ */
+export const CLAUDE_USAGE_LIMIT_PAUSE = /^Usage limit reached(?: again)? · (?:continuing|set to continue) automatically (.+?)(?: · esc to cancel)?$/i;
 
 /**
  * #2834: an `isApiErrorMessage` 400 whose `error` is `billing_error` — the account is out of API credits. 2.1.312 records

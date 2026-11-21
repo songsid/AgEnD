@@ -1014,7 +1014,9 @@ export const CLAUDE_FILE_SEND_PATTERN = /Do\s+you\s+want\s+to\s+proceed\?|Choose
 // 2.1.319+ (2.1.322 audit): an ordinary name's row is plain `"<path>" (<size>)` — only a look-alike name is `* `-marked —
 // so the card's own lead row, "This call sends <N> file(s) from this computer", is a mark too; and 2.1.322 reworded the
 // look-alike warning to "Name may use look-alike characters." (2.1.317's wording kept).
-const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\.|^[ \t│┃]*\* Name may use look-alike characters\.|^[ \t│┃]*This call sends \d+ files?\b/;
+// M-3501 (2.1.330): the lead row now reads "Allowing this sends a copy of 1 file / copies of <N> files … through Anthropic"
+// (2.1.319–2.1.329: "This call sends <N> file(s) from this computer"); both are the card's own mark for an ordinary name.
+const FILE_SEND_MARK = /^[ \t│┃]*\* (?:the file at )?"|^[ \t│┃]*\* Name may not be what it looks like\.|^[ \t│┃]*\* Name may use look-alike characters\.|^[ \t│┃]*This call sends \d+ files?\b|^[ \t│┃]*Allowing this sends (?:a copy of|copies of \d+ files)\b/;
 const FILE_SEND_OPTION = /^[ \t]*[❯›]?[ \t]*(?:\d{1,2}\.[ \t]+)?(Yes|No)\b/;
 export function claudeFileSendCardActive(pane: string): boolean {
   const rows = claudeRows(pane).filter(row => row.trim() !== "");
