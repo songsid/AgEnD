@@ -2,7 +2,7 @@
   "scope": "Current review inputs. These are post-window hashes, not an invented pre-launch receipt. The measured pre-ceiling identity module is reconstructed from the one arithmetic patch; source/timing delta is disclosed separately.",
   "sha256": {
     "src/host-monitoring-footprint-policy.ts": "dedd99c61befc59c2a61a02772e191e750d88a007787b52eb3c68da9ac9061b1",
-    "src/host-monitoring-footprint.ts": "a42a38b75e3382ad781132fe30e62749a6039d16c0b3c9eca7ab6b4e5cd61241",
+    "src/host-monitoring-footprint.ts": "c0197005106e51615a6a51b9b7f3eccbfd7e5090ca6165528fa2394f757cda64",
     "src/host-monitoring-process-identity.ts": "2bcd9f782c0a49b1c9acf0ca616079d009b0d8eaf63e7b432722478016fca2ff",
     "src/host-monitoring-runtime.ts": "36e133106d6148d3a0597975363131dd4925b30c8dd2b409703a2bd0b8c9a3a1",
     "src/host-monitoring-platform.ts": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08",
@@ -13,6 +13,7 @@
     "scripts/manual/host-footprint/capture.mts": "f845a50a3a0e3b7eb03501f43b254732bc71d42fedfd9070e2fedd7c02dc80f1",
     "src/ui/host-footprint.js": "0ad33bdf1ce60b78995fc1d2b9df54de738111f66caba3f66939260fd1cc5f62",
     "src/ui/settings-host-monitoring.js": "ac3c4e5f00a7a9ab1b73686d1e943909ccb596b0d82490fbc13e43fb1c96885a",
-    "src/ui/shared/app.css": "2aedbbd86c3dc87656f7cc556d50b0ff8e58773cef99a790f05d157e69b66c8b"
+    "src/ui/shared/app.css": "2aedbbd86c3dc87656f7cc556d50b0ff8e58773cef99a790f05d157e69b66c8b",
+    "src/child-process.ts": "5a818685fee14492149679c830fb54589e613beb968e6b803d698392131d5688"
   }
 }

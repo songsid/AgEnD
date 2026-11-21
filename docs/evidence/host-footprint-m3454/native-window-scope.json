@@ -24,5 +24,6 @@
       "status": "superseded and owned processes stopped"
     }
   ],
-  "arithmeticDelta": "Final birth-age ceiling added after R5 began. All 60 frames replayed against final production binder/policy with identical admission; no I/O/cadence/history delta. Not a byte-identical final-source measurement."
+  "arithmeticDelta": "Final birth-age ceiling added after R5 began. All 60 frames replayed against final production binder/policy with identical admission; no I/O/cadence/history delta. Not a byte-identical final-source measurement.",
+  "postWindowGuardWiring": "Direct spawn import switched to existing guarded spawn after the hour. Adds pipe-error listeners/error cancellation; healthy command/admission/cadence/history unchanged. Listener overhead not remeasured."
 }

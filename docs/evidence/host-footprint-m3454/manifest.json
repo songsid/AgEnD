@@ -1,5 +1,5 @@
 {
-  "README.md": "bd1ecfb0d593246f230c8d44a138949029334433b251d3fbdaddd2b5f9f2c4b0",
+  "README.md": "5df4ff481b7c4d11ff968d072658bd6716ea5cc4ab6610ee51443d915ee68181",
   "after/real-health-desk-light-en-footprint.png": "6601d90e3c774f550d43add5e63d303b080a3d41e74bffae7c2fac3562a5cdeb",
   "after/real-health-desk-light-en.png": "e856618158c25a0a27329421cd98543abb1ddd6299a9f00084935c1a362146b6",
   "after/real-health-phone-dark-zh-TW-alerts-empty.png": "e787d2ba9e35cd9e76e0a97cfcf3a04ea81cdee08fa7d6f134c7e313c15d2bb3",
@@ -19,10 +19,13 @@
   "final-assets.log": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
   "final-ui-time.log": "b4472e92ee557c46cafbe797cb84a23398bef65a5352b112721260acc512531d",
   "gallery.md": "102865a0a323b257f2624291208ad7788d57f0f90098f222de3b767bf96cd925",
+  "guarded-import-after.log": "2d9a32b29a7c96fa5e54060604f3d5a8e4dd582e16d52c214fe63b783cd8b7fd",
+  "guarded-import-before.log": "37db9f9a27e994af614ef41bbafd52934175288c898746996f2ccbd23f1ca181",
+  "guarded-import-types.log": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "kernel-epoch-mutant.log": "52e74060ff70c4708a8c8bd1e6b2bcc4af39d245f7f76cceac9c7e610b8f86fa",
   "kernel-final-suite.log": "823c130ad9260e22e3fe276d8e09c01cd77d5552553fc6956dc7a3569fe0bece",
   "measurement-summary.json": "acf91cfca3758256f61c96e704129118cb9354095fdb6d1d59f16685e2634276",
-  "native-window-scope.json": "efad65210fccc9cd11372e6e3f44163df150d66fe23463e693556f11413e32bb",
+  "native-window-scope.json": "4ce353472977de66913fa26cc291675ee3e1619b8105210d5f45d4a6abe78b6f",
   "phone-table-checks.log": "c3060322e4165930cb8c56b3be75419a8b3a5b8910dfe941394237519fbec460",
   "polish-assets.log": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
   "polish-tests.log": "399d83b8f178c759aecc1cd55842bff368726b5b498c07419e246f8b24722f88",
@@ -31,5 +34,5 @@
   "settings-gate.json": "d39dadcc9bc9e06124ec87254ac2bb2c77d59d34fcdeee3b543f3e769ecbcf66",
   "settings-gate.log": "0d05d6e4e52fbe1a65abaddd1383d89de1e272635cadcb93a46ab0442207b215",
   "sidecar-carry.log": "596510e413305ddfb94dca6b73e801ccf5a85aada823071c4a5f0040ec4dce9c",
-  "source-inputs.json": "d226bfb97aaf06ee63db5ddf8134caaeeeb90dbe1491cbea742574379147d13d"
+  "source-inputs.json": "4c8de95f54353aa86a95a89b3ce860278462d86854db310c5018e693de6be4ca"
 }

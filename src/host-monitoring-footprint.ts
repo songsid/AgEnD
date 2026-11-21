@@ -1,5 +1,5 @@
 import {bindLinuxRootIdentities} from './host-monitoring-process-identity.js';
-import {spawn} from 'node:child_process';
+import {spawn} from './child-process.js';
 import {lstat} from 'node:fs/promises';
 import {cpus} from 'node:os';
 import {FootprintAttribution,parseFootprintProcesses,FOOTPRINT_BYTES,FOOTPRINT_ROOTS,type FootprintRoot,type FootprintReading} from './host-monitoring-footprint-policy.js';

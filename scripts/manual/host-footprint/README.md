@@ -33,3 +33,5 @@ node --import tsx scripts/manual/host-footprint/replay-birth.mts private-run.log
 ```
 
 For before views, set CAPTURE_PHASE=before and REPO to the clean baseline checkout; the script serves that checkout's actual app assets and records response SHA-256s. Candidate views use REPO at the candidate. Both use the same completed host cache; only candidate views include the recorded agent data. Settings seeds effective and raw scratch configuration consistently. No live configuration is changed. The retained footprint goes through the production snapshot staleness check, with no clock or sample-time rewriting.
+
+The later CI import correction routes spawn through the repository's existing guarded child-process wrapper. Its pipe-error listeners were not in the accepted cost window. Commands, caps, cadence, healthy admission and history are unchanged; guarded-pipe error/physical-close behavior has separate targeted tests. Do not describe these numbers as an exact-final-byte hour.
