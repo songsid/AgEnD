@@ -1,0 +1,62 @@
+[
+  {
+    "mutation": "duplicate-sample",
+    "exit": 1,
+    "inputSha256": "1c8a93835559c2110547fa852fd0f0b0ea378fde0d2a91fc2428659d9c61cf1b",
+    "restoredSha256": "fd7ab9da318b23a7d078630a270f6b17251caa743ba854fd3475c70350473512",
+    "path": "src/host-monitoring-alert-policy.ts",
+    "replace": "sample.sampledAt === this.lastSample",
+    "with": "false"
+  },
+  {
+    "mutation": "missing-recovery-reset",
+    "exit": 1,
+    "inputSha256": "25148fa6aeb6d27e41b3587b81566ee5329e34332a02af7e2280878120a5c7d9",
+    "restoredSha256": "fd7ab9da318b23a7d078630a270f6b17251caa743ba854fd3475c70350473512",
+    "path": "src/host-monitoring-alert-policy.ts",
+    "replace": "{ this.reset(); return null; }",
+    "with": "{ return null; }"
+  },
+  {
+    "mutation": "urgent-reset-on-warning",
+    "exit": 1,
+    "inputSha256": "ddc3b8ea6e9022076d686ac791ca8b9d15731b208262c6bde9c0a3d3c895a1e4",
+    "restoredSha256": "fd7ab9da318b23a7d078630a270f6b17251caa743ba854fd3475c70350473512",
+    "path": "src/host-monitoring-alert-policy.ts",
+    "replace": "return {kind:'opened',record:this.snapshot()!};",
+    "with": "this.urgent=null; return {kind:'opened',record:this.snapshot()!};"
+  },
+  {
+    "mutation": "no-checksum",
+    "exit": 1,
+    "inputSha256": "db5e688e1a6cd19fec034fe14db29783015f8b3af19fa71a5f8e5a4dc8762c13",
+    "restoredSha256": "73bff6b70f01337f73f3e1eb32d6768d0053ca4b6cc14a302a2b65bbfa12c33e",
+    "path": "src/host-monitoring-alert-store.ts",
+    "replace": "if (createHash('sha256').update(String(h.sequence)+':').update(bytes).digest('hex')!==h.sha256) return null;",
+    "with": "if (false) return null;"
+  },
+  {
+    "mutation": "sparse-reserve",
+    "exit": 1,
+    "inputSha256": "46658072ed267632676c519891bd23b9cc215030aa792c53941a955ac26b2d3b",
+    "restoredSha256": "73bff6b70f01337f73f3e1eb32d6768d0053ca4b6cc14a302a2b65bbfa12c33e",
+    "path": "src/host-monitoring-alert-store.ts",
+    "replace": "for(let at=0;at<this.bankBytes;at+=allocation.length){randomFillSync(allocation);this.write(fd,allocation.subarray(0,Math.min(allocation.length,this.bankBytes-at)),at);}",
+    "with": "ftruncateSync(fd,this.bankBytes);",
+    "additionalReplacements": [
+      {
+        "replace": "openSync, closeSync",
+        "with": "ftruncateSync, openSync, closeSync"
+      }
+    ]
+  },
+  {
+    "mutation": "source-wall-order",
+    "exit": 1,
+    "inputSha256": "a220747a5e73ae90ab66c02a9482976c55866b758cc5713959d0682e43185af3",
+    "restoredSha256": "fd7ab9da318b23a7d078630a270f6b17251caa743ba854fd3475c70350473512",
+    "path": "src/host-monitoring-alert-policy.ts",
+    "replace": "sample.sampledAt === this.lastSample",
+    "with": "sample.sampledAt <= this.lastSample"
+  }
+]

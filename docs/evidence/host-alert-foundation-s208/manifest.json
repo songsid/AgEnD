@@ -1,0 +1,78 @@
+[
+  {
+    "path": "changes/3454-host-alert-foundation.md",
+    "sha256": "462fcb35770d7e8e9f68f0817c02d3653fb25a10bbaa004b671a4280ee7a4c10"
+  },
+  {
+    "path": "changes/3454-host-alert-foundation.zh-TW.md",
+    "sha256": "42d806c0fe88fde8a9500a96380ac5a3274f6abc84334a40fa135f7a490f4cac"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/README.md",
+    "sha256": "ed1fc2d0f9064eb4094d5610c15d5a2fc8d734902334a4ec4db572a89a5f86e5"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/checks.json",
+    "sha256": "0f73fb335eafd669b3fb07f5d3e94f7580fe8a042c0845f4ceadbd39e7255041"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-duplicate-sample.log.gz",
+    "sha256": "579a14bc2c43a0d7d92141ade9ffbfeeca7ac600ce9756accc4bd675bdbde5b4"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-missing-recovery-reset.log.gz",
+    "sha256": "84bc9c1d1490be548052aab1e6037961a68f1e99ab86d707137e742aa718ecb1"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-no-checksum.log.gz",
+    "sha256": "7b5f6f45ccf302caae7017ceb2ccc5550c02ec6856da0bc7771e9d2bc83c89d2"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-source-wall-order.log.gz",
+    "sha256": "56c2e9f7dc9c0a8e8f8aecad224819beac16d8039edd54144ba3b8b84d256af9"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-sparse-reserve.log.gz",
+    "sha256": "ba8bda806303fca899ef603534148935f69663dcc2d2ee39b6d0c292e3a3e99d"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/final-mutant-urgent-reset-on-warning.log.gz",
+    "sha256": "5c904087df7099903292143ecc5d3de17b68fd61a759185a865d8f976828a636"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/header-binding-red.log.gz",
+    "sha256": "ee55dfd911a5981cf9b84b77a9d9e63bda2287494d780caa8919cf16ffee8674"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/mutations.json",
+    "sha256": "825c899ae48937688f61b043e36c565c33afddb55a0cee86f4c05aa4dc734d27"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/r1-reopen-red.log.gz",
+    "sha256": "2aa1fbdca5d83e7a3521c8bc0bc4dca7e64fe7302413aa15778728961f45ea6e"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/r1-store-green.log.gz",
+    "sha256": "221ba48e931cc66ee9853dce03567d3f4a25bb9580ce7d9681d7e56bc30264a7"
+  },
+  {
+    "path": "docs/evidence/host-alert-foundation-s208/terminal-verified.log.gz",
+    "sha256": "04ad2abd64e223ee9eece2c3d4a3a8599e86dd6c054a6d94f0843b934a8e618f"
+  },
+  {
+    "path": "src/host-monitoring-alert-policy.ts",
+    "sha256": "fd7ab9da318b23a7d078630a270f6b17251caa743ba854fd3475c70350473512"
+  },
+  {
+    "path": "src/host-monitoring-alert-store.ts",
+    "sha256": "a270d689542e4f184ce799305fe0487d46cdb2d6501a79d3efa0f257ca318446"
+  },
+  {
+    "path": "tests/host-monitoring-alert-policy-m3454.test.ts",
+    "sha256": "c295d2b53035fd5f1e1978318e6a6ca62fa83a241c95304a9aa9595eff5a37d2"
+  },
+  {
+    "path": "tests/host-monitoring-alert-store-m3454.test.ts",
+    "sha256": "0e27dbc1f8657aacd216626e806965cf0745426b353c0de390798c98ba13eaef"
+  }
+]
