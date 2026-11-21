@@ -25,3 +25,7 @@ Compressed logs are sanitized (worktree path replaced) and historical outputs ar
 This is the Leader-authorized dev release-freeze exception; Prism reviews, coordinator alone merges. S213 still requires dev-claude2's external candidate rehearsal: choose drive → beta.16 rollback starts → re-upgrade retains choice. That leg and exact CI/post-merge success are not claimed by the local proof. The prior S207 UI approval is unchanged. S208 remains paused.
 
 After migration, beta.16 ignores the sidecar and starts from compatible YAML; re-upgrading reads the retained preference. Reverting only this fix while continuing to save drives reintroduces the blocker. Do not restore a historical YAML containing the unsupported drive key when rolling back.
+
+## R1: version-neutral skill wording
+
+Exact-head CI at `3e5c2fad` failed `web-dashboard-skill-2061` because the new skill sentence named a prerelease version; the aggregate build inherited that single shard failure. The focused assertion reproduces 1/1 red before rewording. Only that sentence now describes older-release rollback without a version name. The complete dashboard-skill and concepts-sync files pass **10/10**. Production runtime, config/tests and the shipped-reader fixture are byte-identical to the source-cleared head; the original 170-test/type/mutation proof remains historical carry, not a repeated campaign. R1 adds these bounded skill logs and refreshes the manifest. No native, account or browser work.

@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/wsl-drive-sidecar-s213/README.md",
-    "sha256": "c7421913726bc6a7ed31db8eaaf351e5a49ea230b60f2faa6f3be2d445fc6e77"
+    "sha256": "47422c7225a40044460347bd738cef85c6f9236747e5ca908e846fbef893d041"
   },
   {
     "path": "docs/evidence/wsl-drive-sidecar-s213/base-red.log.gz",
@@ -16,8 +16,20 @@
     "sha256": "b41da90969abd8891806b0fc5a5de3b322365801f3f7b9ddffd0bb6df5830749"
   },
   {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/r1-skill-green.log.gz",
+    "sha256": "fc9a6394df047bf9bf34c0497227b6424fac66e76592aac92ea4202762c1b737"
+  },
+  {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/r1-skill-red.log.gz",
+    "sha256": "ef42ca711df013ff0c791d13ee6a62e225a6351918924ff2427c877b420963fe"
+  },
+  {
     "path": "src/fleet-manager.ts",
     "sha256": "c3b9d8ea175224d784cb627a954ab62943cc03a833b5845a86fd7f01b5a3e5b8"
+  },
+  {
+    "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "sha256": "bac89de99d5362c4b40df26ca0e367c90c4be7f7cbdd59c394ddd1f24ed95cb5"
   },
   {
     "path": "src/host-monitoring-config.ts",
