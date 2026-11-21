@@ -879,6 +879,10 @@ Shown read-only ("Set in fleet.yaml"): `web.allowed_hosts`, `view_access`, `prev
 (edit mode) adds the edit to the bar, and Save writes it. While it waits, Agents, Shared agent settings and the
 connections are off (and the setup wizard); while those have unsaved changes, the editor only reads.
 
+Routine automatic additions to fleet.yaml keep existing source lines, including comments and inline collections, rather
+than reprinting the file. Normal setting edits keep flow collections and leave long lines unwrapped. Existing validation
+and alias-isolation rules still apply.
+
 **Setup wizard** — agent (backend, directory, name) → platform → token and server/group, your user ID → preview →
 **Create and start**. The directory may be left empty: the agent gets its own folder, `~/.agend/workspaces/<name>`
 (shown under the field); one that is entered must be absolute. On a Telegram or Discord connection the first agent
