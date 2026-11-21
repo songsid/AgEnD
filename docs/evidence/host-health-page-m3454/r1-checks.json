@@ -1,0 +1,158 @@
+{
+  "views": [
+    {
+      "name": "real-desk-light-en",
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 855.1875
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 855.1875
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 20,
+        "colPadding": 20,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-desk-dark-en",
+      "device": "desk",
+      "theme": "dark",
+      "lang": "en",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 721.75,
+          "right": 1025.875,
+          "top": 265.1875,
+          "bottom": 855.1875
+        },
+        {
+          "left": 1041.875,
+          "right": 1346,
+          "top": 265.1875,
+          "bottom": 855.1875
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 20,
+        "colPadding": 20,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "overflow": false,
+      "small": [
+        "Refresh",
+        "Monitoring settings",
+        "1h",
+        "24h",
+        "7d",
+        "30d"
+      ],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 981.390625,
+          "bottom": 1405.390625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 981.390625,
+          "bottom": 1405.390625
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-resources-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 236.390625,
+          "bottom": 660.390625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 236.390625,
+          "bottom": 660.390625
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    }
+  ],
+  "nativePlatform": "wsl",
+  "nativeBackingIdentified": true,
+  "nativeSampleCount": 2,
+  "scope": "Actual WSL cache; macOS/Linux and unavailable states are synthetic UI only. No footprint/hour/model/account claim."
+}

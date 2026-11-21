@@ -9,7 +9,7 @@ import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-
 import { t, register, lang } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
-import { PanelHeader, setTitle } from "/assets/app-shell.js";
+import { PanelHeader, setTitle, useCanCreate, retryable } from "/assets/app-shell.js";
 import { HeaderTools } from "/assets/header-tools.js";
 import { navigate, renavigate } from "/assets/app-nav.js";
 import { RuntimePicker, AgentDraftAssistant, NativeAgendToolsHint, tr } from "./agent-runtime.js";
@@ -47,7 +47,7 @@ register("fleet", {
     hostMemory_elevated: "Host memory pressure: elevated — new agents start one at a time, at least 5 s apart",
     hostMemory_critical: "Host memory pressure: critical — new agents wait for memory to recover",
     hostMemory_top: "Largest: {0}", hostMemory_ownerFleet: "the fleet", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "not an instance",
-    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage",
+    title: "Fleet", tasks: "Tasks", schedules: "Schedules", teams: "Teams", org: "Org chart", cache: "Cache", usage: "Usage", "host-health": "Host health",
     docs: "Docs", docsNewTab: "Docs (opens in a new tab)",
     newSchedule: "New schedule", newTeam: "New team",
     noSchedules: "No schedules yet", noSchedulesHint: "Automate recurring work with cron.",
@@ -75,7 +75,7 @@ register("fleet", {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 Agent",
-    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量",
+    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量", "host-health": "主機狀態",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newSchedule: "新增排程", newTeam: "新增 team",
     noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",
@@ -105,7 +105,7 @@ const DOCS_SITE = "https://songsid.github.io/AgEnD";
 export function docsUrl(language = lang()) {
   return `${DOCS_SITE}${language === "zh-TW" ? "/zh-tw" : ""}/docs/web-guide/`;
 }
-const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key" };
+const ICONS = { tasks: "tasks", schedules: "clock", teams: "team", org: "org", cache: "chart", usage: "chart", authorizations: "key", "host-health": "chart" };
 const BACKENDS = ["claude-code", "codex", "opencode", "kiro-cli", "antigravity", "grok", "muse"];
 
 async function api(method, path, body, lease) {
@@ -213,7 +213,9 @@ export function FleetPanel({ route, navKey }) {
   const tab = route.tab;
   useEffect(() => { setTitle(`${t("fleet.title")} · ${t(`fleet.${tab}`)}`); }, [tab, navKey]);
   useEffect(() => { rememberFleetTab(tab); }, [tab]);   // #2183: the sidebar's and the phone's Fleet reopen it
-  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, authorizations: ContactAuthorizations }[tab] || TaskBoardTab;
+  const admin=useCanCreate();
+  const visibleTabs=FLEET_TABS.filter(k=>k!=="host-health"||admin);
+  const Body = { tasks: TaskBoardTab, schedules: Schedules, teams: Teams, org: Org, cache: Cache, usage: UsageTab, authorizations: ContactAuthorizations, "host-health":admin?LazyHostHealth:HostAdminRequired }[tab] || TaskBoardTab;
   // #1685: host memory pressure slowing or holding new agents — shown here, where macOS's routine "elevated" is not a chat notice.
   const { hostMemory, hostMemoryTop } = useStore(appStore);
   // #2015: and which processes hold the most, and whose — text only (never chat, #1712).
@@ -221,15 +223,15 @@ export function FleetPanel({ route, navKey }) {
   const sub = hostMemory ? html`<span class=${`status host-mem ${hostMemory}`} role="status"><span class=${`dot ${hostMemory === "critical" ? "bad" : "warn"}`} aria-hidden="true"></span>${t(`fleet.hostMemory_${hostMemory}`)}${top ? html`<span class="host-mem-top" title=${top}>${top}</span>` : null}</span>` : null;
   const root = useRef(null);
   const wide = useTabsInHeader(root), phone = usePhoneWidth();
-  // The phone's tab row scrolls sideways when it does not fit beside ☰: bring the open tab into view (用量 is the last).
+  // Keep the active tab visible after async administrator-only tabs arrive, on either tab row.
   useLayoutEffect(() => {
-    const nav = phone ? root.current?.querySelector(".fleet-phone-tabs") : null, on = nav?.querySelector(".active");
+    const nav = root.current?.querySelector("nav[data-trust='panel-navigation']"), on = nav?.querySelector(".active");
     if (!nav || !on) return;
     const n = nav.getBoundingClientRect(), a = on.getBoundingClientRect();
     if (a.right > n.right) nav.scrollLeft += a.right - n.right;
     else if (a.left < n.left) nav.scrollLeft -= n.left - a.left;
-  }, [phone, tab]);
-  const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${FLEET_TABS.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
+  }, [phone, tab, admin, wide]);
+  const tabs = (cls) => html`<nav data-trust="panel-navigation" class=${cls} aria-label=${t("fleet.title")}>${visibleTabs.map(k => html`<a key=${k} href=${fleetPath(k)} class=${`seg-item${k === tab ? " active" : ""}`}
     aria-current=${k === tab ? "page" : undefined}><${Icon} name=${ICONS[k]} size=${16} /><span>${t(`fleet.${k}`)}</span></a>`)}</nav>`;
   return html`<div ref=${root} data-effect-panel="fleet" class="panel p-fleet">
     ${/* M-2542: the tabs share the title row (PanelHeader's nav slot, as the instance tabs do) when everything fits
@@ -240,10 +242,21 @@ export function FleetPanel({ route, navKey }) {
     ${/* M-3166 (Argon 5, the user's OK of round 2): a phone's Fleet is two rows — its tabs in the header's row (☰, then the
          tabs; the title, search, docs and text size give way: app.css), then the page's own tools. */ ""}
     <${PanelHeader} title=${t("fleet.title")} sub=${sub} nav=${wide ? tabs("fleet-tabs") : phone ? tabs("seg fleet-phone-tabs") : null}><${DocsLink} /><${HeaderTools} navKey=${navKey} /></${PanelHeader}>
-    ${wide || phone ? null : tabs("seg")}
-    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
+    ${wide || phone ? null : tabs("seg fleet-tabs-row")}
+    <div data-trust="panel-content" class="panel-body"><div class=${`col${tab === "tasks" || tab === "org" || tab === "cache" || tab === "usage" || tab === "authorizations" || tab === "host-health" ? " col-wide" : ""}`}><${Body} lease=${lease} /></div></div>
   </div>`;
 }
+
+// Code and data load only for the active administrator tab; a failed import can retry.
+const loadHostHealth=retryable(attempt=>import(attempt?`./host-health.js?retry=${attempt}`:'./host-health.js'));
+function LazyHostHealth({lease}) {
+  const [component,setComponent]=useState(null),[error,setError]=useState(false),active=useRef(true),generation=useRef(0);
+  const load=()=>{const mine=++generation.current;setError(false);loadHostHealth().then(m=>{if(active.current&&lease.current()&&mine===generation.current)setComponent(()=>m.HostHealth);},()=>{if(active.current&&lease.current()&&mine===generation.current)setError(true);});};
+  useEffect(()=>{active.current=true;load();return()=>{active.current=false;generation.current++;};},[lease]);
+  return component?html`<${component} lease=${lease}/>`:error?html`<${ErrorState} onRetry=${load}/>`:html`<${Skeleton} lines=${5}/>`;
+}
+function HostAdminRequired(){return html`<section class="card"><h2>${t('fleet.host-health')}</h2><p>${t('hostHealthAccess.admin')}</p></section>`;}
+register('hostHealthAccess',{en:{admin:'Administrator sign-in is required to view host health.'},'zh-TW':{admin:'請以管理員身分登入，才能查看主機狀態。'}});
 
 /** #1844: the project's docs, from the overview — a link out (a new tab, no opener), not a Fleet tab; in front of the shared controls. */
 function DocsLink() {

@@ -2,17 +2,18 @@ import { html, useEffect, useRef, useState } from '/assets/app-html.js';
 import { register, t } from '/assets/app-i18n.js';
 import { confirmDialog } from '/assets/ui-confirm.js';
 import { useDraft, syncStage } from './settings-draft.js';
+import { fleetPath } from '/assets/app-route.js';
 import { hostMonitoringVisible } from './settings-capabilities.js';
 register('hostMonitoring', {
-  en: { title:'Host monitoring', enabled:'Monitor this computer', agents:'Include agent footprint',
-    hint:'When on, samples every 30–60 seconds; estimated 2–4 MiB RAM and 1–4 MiB of local writes per hour.',
+  en: { open:'View host health',title:'Host monitoring', enabled:'Monitor this computer', agents:'Include agent footprint',
+    hint:'Samples every 30–60 seconds; keeps up to 64 MiB locally. Memory and write costs are being measured.',
     agentHint:'Optional process snapshot every minute; for 32 agents, an estimated extra 2–8 MiB RAM and 1–4 MiB of writes per hour.',
     off:'Off by default. While off, there is no monitoring collector, timer or history file.',
     agentUnavailable:'Agent footprint is not available in this version of AgEnD.',
     stopTitle:'Turn off host monitoring?', stopBody:'This stops monitoring and its alerts, and removes the recorded host history. Turning it on again starts a new history.', stop:'Turn off',
     drive:'Windows drive holding this WSL distribution', auto:'Identify automatically', refresh:'Refresh drive list', driveHint:'If automatic identification is unavailable, choose the drive that holds this distribution’s virtual disk. Mounted local drives are listed from the latest sample while monitoring is on; Refresh reads that sample without starting a probe.', },
-  'zh-TW': { title:'主機監測', enabled:'監測這台電腦', agents:'包含 Agent 資源用量',
-    hint:'開啟後每 30–60 秒取樣；估計使用 2–4 MiB 記憶體，每小時本機寫入 1–4 MiB。',
+  'zh-TW': { open:'查看主機狀態',title:'主機監測', enabled:'監測這台電腦', agents:'包含 Agent 資源用量',
+    hint:'每 30–60 秒取樣，本機資料最多 64 MiB；額外記憶體與寫入量仍在量測。',
     agentHint:'選用：每分鐘讀取行程資料；32 個 Agent 估計另用 2–8 MiB 記憶體，每小時寫入 1–4 MiB。',
     off:'預設關閉。關閉時沒有監測收集器、計時器或歷史檔案。',
     agentUnavailable:'這個 AgEnD 版本尚未提供 Agent 資源用量。',
@@ -56,7 +57,7 @@ function AvailableHostMonitoringSettings({ ctx }) {
   };
   const row = (id,key,hint,disabled,change) => html`<div class="s-setting-row"><div class="s-setting-copy"><label for=${id}>${copy(key)}</label><p class="note" id=${`${id}-hint`}>${copy(hint)}</p></div>
     <input class="s-ui-toggle" type="checkbox" role="switch" id=${id} checked=${form[key === 'agents' ? 'agent_footprint':'enabled']} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${e=>change(e.target.checked, e.target)} /></div>`;
-  return html`<section class="card s-group" id="host-monitoring"><h3>${copy('title')}</h3>
+  return html`<section class="card s-group" id="host-monitoring"><div class="s-group-head"><h3>${copy('title')}</h3><a class="btn btn-sm" href=${fleetPath('host-health')}>${copy('open')}</a></div>
     ${row('hostMonitoringEnabled','enabled','hint',false,setEnabled)}
     ${row('hostMonitoringAgents','agents','agentHint',!agentsAvailable || !form.enabled,checked=>setForm(f=>({...f,agent_footprint:checked})))}
     ${health?.platform === 'wsl' || base.wsl_drive ? html`<div class="field"><label for="hostMonitoringDrive">${copy('drive')}</label>

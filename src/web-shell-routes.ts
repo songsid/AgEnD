@@ -13,7 +13,7 @@
 
 // #2347 §10: no Config tab — /ui/fleet/config is served as Settings → Agent defaults (the page moves the address).
 // M-3339: Authorizations — contact requests from ClassicBot rooms waiting for an approver (the page's FLEET_TABS too).
-export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "authorizations"] as const;
+export const FLEET_TABS = ["tasks", "schedules", "teams", "org", "cache", "usage", "authorizations", "host-health"] as const;
 export type FleetTab = typeof FLEET_TABS[number];
 // #2347: the sections in two groups (You: preferences, look; Fleet: the rest), as the page's (src/ui/shared/app-route.js).
 export const SETTINGS_SECTIONS = ["preferences", "look", "agents", "runtimes", "accounts", "agent-defaults", "notifications", "chat", "web-dashboard", "access", "hub", "advanced"] as const;

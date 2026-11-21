@@ -1,0 +1,140 @@
+{
+  "views": [
+    {
+      "name": "real-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 933.390625,
+          "bottom": 1357.390625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 933.390625,
+          "bottom": 1357.390625
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "keepGroups": [
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "0.62 / 0.86 / 1.20",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    },
+    {
+      "name": "real-resources-phone-dark-zh-TW",
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "source": "actual-host-cache",
+      "activeVisible": true,
+      "compute": [
+        {
+          "left": 16,
+          "right": 187,
+          "top": 236.390625,
+          "bottom": 660.390625
+        },
+        {
+          "left": 203,
+          "right": 374,
+          "top": 236.390625,
+          "bottom": 660.390625
+        }
+      ],
+      "pressureLines": 1,
+      "header": {
+        "gutter": 187,
+        "colPadding": 16,
+        "buttonPadding": 12,
+        "gap": 8
+      },
+      "keepGroups": [
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "0.62 / 0.86 / 1.20",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        },
+        {
+          "text": "11月21日 02:52:27",
+          "lines": 1,
+          "fits": true
+        }
+      ],
+      "overflow": false,
+      "small": [],
+      "cards": 3,
+      "svg": 0,
+      "pageErrors": 0
+    }
+  ],
+  "nativePlatform": "wsl",
+  "nativeBackingIdentified": true,
+  "nativeSampleCount": 2,
+  "scope": "Actual WSL cache; macOS/Linux and unavailable states are synthetic UI only. No footprint/hour/model/account claim."
+}

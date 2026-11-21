@@ -1,7 +1,7 @@
 /** M-3454: opt-in settings only. No I/O, providers, timers, workers or stores are created by reading them. */
 export interface HostMonitoringConfig { enabled: boolean; agent_footprint: boolean; wsl_drive?: string }
 // S-207 changes this only when the actual Host health page is available.
-export const HOST_MONITORING_PAGE_AVAILABLE = false;
+export const HOST_MONITORING_PAGE_AVAILABLE = true;
 export const HOST_MONITORING_KEYS = ['enabled', 'agent_footprint'] as const;
 export function monitoringProblem(value: unknown): string | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return 'must be a mapping';

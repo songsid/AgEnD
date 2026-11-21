@@ -18,6 +18,7 @@ export interface HostMonitoringProvider {
   stop(): Promise<void>;
 }
 export interface HostHealthSnapshot {
+  platformSupported?: boolean;
   version: 1; enabled: boolean; state: 'off' | 'starting' | 'sampling' | 'stopping' | 'failed';
   platform: MonitoringPlatform | null; reason?: string;
   history?: import('./host-monitoring-history.js').HostHistoryStatus;

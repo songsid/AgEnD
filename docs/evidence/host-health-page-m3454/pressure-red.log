@@ -1,0 +1,24 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-health-ui-m3454.test.ts (14 tests | 1 failed | 13 skipped) 45ms
+     × never calls cached pressure Normal after its source becomes unavailable 43ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-health-ui-m3454.test.ts > real Host health UI > never calls cached pressure Normal after its source becomes unavailable
+AssertionError: expected 'Host healthThis computerCPU, memory a…' to contain 'Memory pressure: Unknown'
+
+Expected: "Memory pressure: Unknown"
+Received: "Host healthThis computerCPU, memory and storage from the latest recorded samples.Last successful sample: 20 Nov, 18:16:17RefreshMonitoring settingsRefresh reads saved snapshots. It does not start a new probe.macOS2 of 3 readings have fresh data · Host every 30 s · storage every 60 sAPFS volumes may share free space. Do not add their free space together. Available memory is an estimate; pressure is shown separately.Paired Windows Runtimes are separate computers and are not included in these totals.1h24h7d30dCPU35.0% used4 logical CPUsLoad average: 0.10 / 0.20 / 0.30Last successful sample: 20 Nov, 18:16:17CPU historyMinimum: 0.0% · Peak: 35.0%3 of 4 chart buckets contain recorded samplesMemoryNot availableMemory pressure: Normal8.0 GiB available of 16.0 GiBSwap free: 3.0 GiBLast successful sample: 20 Nov, 18:16:17Memory historyNo recorded samples in this rangeStorageLocal volume · Fleet state100.0 GiB available50.0% used · Last successful sample: 20 Nov, 18:16:17Storage available historyNo recorded samples in this rangeGaps mean no sample was recorded; they are not zero.History is capped at 64 MiB, with up to 24 hours of raw samples and 30 days of rollups. Older samples may be pruned earlier.Agent footprint is not available in this version."
+
+ ❯ tests/host-health-ui-m3454.test.ts:40:141
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  02:16:16
+   Duration  423ms (transform 182ms, setup 86ms, import 164ms, tests 45ms, environment 0ms)

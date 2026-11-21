@@ -1,0 +1,63 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/changelog-fragments.test.ts (75 tests | 1 failed) 10031ms
+     × changes/ in this repository passes --check 80ms
+(node:6050) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+(node:6162) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ ❯ tests/i18n-ui-literals-2390.test.ts (5 tests | 1 failed) 2271ms
+     × no English written in place in src/ui (allowlist: names, examples, units) 943ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/changelog-fragments.test.ts > changelog-assemble: the repository's own files > changes/ in this repository passes --check
+AssertionError: changelog-assemble: changes/3454-host-health.md: no front-matter (a `---` line, `section: …`, a `---` line, then the entry)
+changelog-assemble: changes/3454-host-health.zh-TW.md: no front-matter (a `---` line, `section: …`, a `---` line, then the entry)
+: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ tests/changelog-fragments.test.ts:353:36
+    351|   it("changes/ in this repository passes --check", () => {
+    352|     const res = spawnSync(process.execPath, [ASSEMBLE, "--check"], { e…
+    353|     expect(res.status, res.stderr).toBe(0);
+       |                                    ^
+    354|   });
+    355|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/i18n-ui-literals-2390.test.ts > #2390 the web UI's words go through the locale layer > no English written in place in src/ui (allowlist: names, examples, units)
+AssertionError: expected [ …(3) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "host-health.js	setError	'admin'",
++   "host-health.js	setError	'admin'",
++   "host-health.js	setError	'load'",
++ ]
+
+ ❯ tests/i18n-ui-literals-2390.test.ts:126:57
+    124| describe("#2390 the web UI's words go through the locale layer", () =>…
+    125|   it("no English written in place in src/ui (allowlist: names, example…
+    126|     expect(uiLiterals().filter((l) => !ALLOWED.has(l))).toEqual([]);
+       |                                                         ^
+    127|   });
+    128|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  2 failed | 4 passed (6)
+      Tests  2 failed | 132 passed (134)
+   Start at  02:31:56
+   Duration  22.58s (transform 5.54s, setup 265ms, import 8.73s, tests 12.90s, environment 1ms)

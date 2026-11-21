@@ -27,8 +27,11 @@ describe('committed host monitoring runtime bridge',()=>{
  });
  it('refuses collection when pinning fails and never overwrites a concurrent monitoring edit',()=>{
   vi.useFakeTimers();const f=fixture({monitoring:{enabled:true}});f.config.enabled=true;f.pin.mockImplementation(()=>{throw Error('disk full')});f.runtime.start();
-  expect(f.runtime.available()).toBe(false);expect(f.factory).not.toHaveBeenCalled();expect(f.runtime.snapshot().reason).toBe('monitoring_config_not_committed');
+  expect(f.runtime.available()).toBe(false);expect(f.factory).not.toHaveBeenCalled();expect(f.runtime.snapshot().reason).toBe('monitoring_config_not_committed');expect(f.runtime.snapshot().platformSupported).toBe(true);
   const concurrent=fixture({monitoring:{enabled:true,agent_footprint:false}});concurrent.runtime.start();expect(concurrent.pin).not.toHaveBeenCalled();expect(concurrent.factory).not.toHaveBeenCalled();expect(concurrent.raw.monitoring.enabled).toBe(true);
+ });
+ it('reports unsupported local platforms without offering a misleading enable path',()=>{
+  const factory=vi.fn();const runtime=new HostMonitoringRuntime({supported:()=>false,committed:()=>({enabled:false,agent_footprint:false}),raw:()=>({monitoring:{enabled:false,agent_footprint:false}}),pin(){},factory});runtime.start();expect(runtime.snapshot().platformSupported).toBe(false);expect(runtime.available()).toBe(false);expect(factory).not.toHaveBeenCalled();runtime.stop();
  });
  it('applies only committed enable/disable and never restarts from an apply after shutdown',async()=>{
   vi.useFakeTimers();const f=fixture();f.runtime.start();f.config.enabled=true;f.raw.monitoring.enabled=true;f.runtime.apply();expect(f.factory).toHaveBeenCalledTimes(1);

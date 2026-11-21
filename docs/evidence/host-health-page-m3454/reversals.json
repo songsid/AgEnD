@@ -1,0 +1,194 @@
+[
+  {
+    "name": "stale-clock",
+    "path": "src/ui/host-health-model.js",
+    "original": {
+      "path": "src/ui/host-health-model.js",
+      "sha256": "260dc86c2be34e7a204182e5646a917c59179a8596c4b2bff73cb47f4b037165"
+    },
+    "mutant": {
+      "path": "src/ui/host-health-model.js",
+      "sha256": "59bf9eb870bd01201e55e7f75ce1f02a816ea49ecfcb434536a507d2a2dace23"
+    },
+    "replace": {
+      "from": "return numberOrNull(metric.sampledAt) === null || now - metric.sampledAt >= interval * 2 ? \"stale\" : \"ok\";",
+      "to": "return \"ok\";"
+    },
+    "test": "tests/host-health-model-m3454.test.ts",
+    "filter": "stale and unavailable",
+    "exit": 1,
+    "failed": [
+      "Host health numeric presentation stale and unavailable values cannot look healthy just because last-good data remains"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "gap-lines",
+    "path": "src/ui/host-health-model.js",
+    "original": {
+      "path": "src/ui/host-health-model.js",
+      "sha256": "260dc86c2be34e7a204182e5646a917c59179a8596c4b2bff73cb47f4b037165"
+    },
+    "mutant": {
+      "path": "src/ui/host-health-model.js",
+      "sha256": "2c634fa7ab43c4b73f1e9e3febddb8eda8b6c43d535651daa969907ea12144ae"
+    },
+    "replace": {
+      "from": "if(!valid(b)){if(points.length)segments.push(points.join(' '));points=[];continue;}",
+      "to": "if(!valid(b))continue;"
+    },
+    "test": "tests/host-health-model-m3454.test.ts",
+    "filter": "breaks the chart",
+    "exit": 1,
+    "failed": [
+      "Host health numeric presentation breaks the chart at missing values and retains actual zero"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "kernel-budget",
+    "path": "src/host-monitoring-platform.ts",
+    "original": {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08"
+    },
+    "mutant": {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "23529367429b3122073a680c48e68aa9ebd75eb07fdb9ef771f83e5eccce21ce"
+    },
+    "replace": {
+      "from": "MONITOR_MOUNT_BYTES = 64 * 1024",
+      "to": "MONITOR_MOUNT_BYTES = 32 * 1024"
+    },
+    "test": "tests/host-monitoring-mount-budget-m3454.test.ts",
+    "filter": "inventory above32KiB",
+    "exit": 1,
+    "failed": [
+      "bounded large kernel mount inventories keeps a valid153-record inventory above32KiB, including root and Windows backing mounts"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "mount-row-fence",
+    "path": "src/host-monitoring-platform.ts",
+    "original": {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08"
+    },
+    "mutant": {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "02d5a24e323daa9674f5589e8c8686ba7f206296e71e94a11f975fbb82995553"
+    },
+    "replace": {
+      "from": "if(rows.length>512)return [];",
+      "to": "if(false)return [];"
+    },
+    "test": "tests/host-monitoring-mount-budget-m3454.test.ts",
+    "filter": "never truncates",
+    "exit": 1,
+    "failed": [
+      "bounded large kernel mount inventories never truncates away a later overmount and then treats the root match as safe"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "admin-mount",
+    "path": "src/ui/panel-fleet.js",
+    "original": {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "1714a4515c35ac179270c662ce1e914358629c6e46414db83eb5539ae7ea429b"
+    },
+    "mutant": {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "aecfa5caa26fd4372589ba54884bde4f8bb4bd5c6471bc25cc0fa01d47bef4b9"
+    },
+    "replace": {
+      "from": "\"host-health\":admin?LazyHostHealth:HostAdminRequired",
+      "to": "\"host-health\":LazyHostHealth"
+    },
+    "test": "tests/host-health-route-m3454.test.ts",
+    "filter": "read-only direct",
+    "exit": 1,
+    "failed": [
+      "administrator Host health navigation a read-only direct route never mounts/fetches host metrics and offers no Host health tab"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "off-poll",
+    "path": "src/ui/host-health.js",
+    "original": {
+      "path": "src/ui/host-health.js",
+      "sha256": "e9053cc8385e70115042c8554f942537ee169add27980d3723a1b555cf53fcd9"
+    },
+    "mutant": {
+      "path": "src/ui/host-health.js",
+      "sha256": "9ea9e1fe8a67a616cac824f8a03142f16c6ff7ebbd7ecd02d8b29f71d73ddd11"
+    },
+    "replace": {
+      "from": "if(!data?.enabled)return;",
+      "to": "if(false)return;"
+    },
+    "test": "tests/host-health-ui-m3454.test.ts",
+    "filter": "off opens Settings",
+    "exit": 1,
+    "failed": [
+      "real Host health UI off opens Settings without history requests or a monitoring refresh interval"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "async-tab-scroll",
+    "path": "src/ui/panel-fleet.js",
+    "original": {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "1714a4515c35ac179270c662ce1e914358629c6e46414db83eb5539ae7ea429b"
+    },
+    "mutant": {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "317110477cdc5482aae5a5c166749bf63b486213bdf6e95307d36572fed6e064"
+    },
+    "replace": {
+      "from": "[phone, tab, admin, wide]",
+      "to": "[phone, tab, wide]"
+    },
+    "test": "tests/host-health-route-m3454.test.ts",
+    "filter": "asynchronously",
+    "exit": 1,
+    "failed": [
+      "administrator Host health navigation brings the active phone tab into view when administrator tabs arrive asynchronously"
+    ],
+    "caught": true,
+    "restored": true
+  },
+  {
+    "name": "pressure-fence",
+    "path": "src/ui/host-health.js",
+    "original": {
+      "path": "src/ui/host-health.js",
+      "sha256": "e9053cc8385e70115042c8554f942537ee169add27980d3723a1b555cf53fcd9"
+    },
+    "mutant": {
+      "path": "src/ui/host-health.js",
+      "sha256": "06dd588d42b3f08e1a5c9929aa00465d0afbff6806769636ad72859d2cb57e13"
+    },
+    "replace": {
+      "from": "metricState(health.memory,30000)==='ok'&&['normal','elevated','critical']",
+      "to": "['normal','elevated','critical']"
+    },
+    "test": "tests/host-health-ui-m3454.test.ts",
+    "filter": "never calls cached pressure",
+    "exit": 1,
+    "failed": [
+      "real Host health UI never calls cached pressure Normal after its source becomes unavailable"
+    ],
+    "caught": true,
+    "restored": true
+  }
+]

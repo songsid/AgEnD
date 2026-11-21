@@ -1,0 +1,20 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/dashboard-i18n.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/dashboard-i18n.test.ts [ tests/dashboard-i18n.test.ts ]
+ReferenceError: retryable is not defined
+ ❯ evalmachine.<anonymous>:251:22
+ ❯ tests/dashboard-i18n.test.ts:23:4
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  no tests
+   Start at  02:47:04
+   Duration  224ms (transform 52ms, setup 77ms, import 0ms, tests 0ms, environment 0ms)
