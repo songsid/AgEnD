@@ -1,0 +1,10 @@
+[
+  {
+    "control": "semantic-guard",
+    "result": "assertion failure caught"
+  },
+  {
+    "control": "line-width",
+    "result": "assertion failure caught"
+  }
+]
