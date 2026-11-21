@@ -1,5 +1,5 @@
 127b4822624db17a73e52da90f639ee4cb09227e54bd2f38c924825b73b389e7  docs/design/host-monitoring-dashboard.md
-4cc518ca794d480848349bd578492bb5b9324461c5cfc73dad41fba51f52a009  docs/evidence/host-alert-integration-m3454/README.md
+7a9a38323b77fd13d8da377a73b9d4069974c6f06c4cbc45616ad540cde3d0cc  docs/evidence/host-alert-integration-m3454/README.md
 5ace47db5ddaf8c2d8e7273e6ef6ef6ad7c96f8ea8761b12378b0e8fe68089ac  docs/evidence/host-alert-integration-m3454/after/fixture-alerts-desk-light-en.png
 05d2127c08f811ca5ea77e0156ea2ba5a1d627f5126453ecfb372aa26cec884d  docs/evidence/host-alert-integration-m3454/after/fixture-alerts-phone-dark-zh-TW.png
 fcdd124e8f4f19ec979486a46679b05c8b69181e07e5a0187975778430227aa3  docs/evidence/host-alert-integration-m3454/after/fixture-needs-desk-light-en.png
@@ -7,14 +7,14 @@ fcdd124e8f4f19ec979486a46679b05c8b69181e07e5a0187975778430227aa3  docs/evidence/
 054a91d66fa28548b8919b5e7349ccb531d2a32a541b0ad7c5356f06aacc8f93  docs/evidence/host-alert-integration-m3454/after/real-health-desk-light-en.png
 70ec3fc3e354ab8d7d0bbf02d2b100c82eb4b26c09f189033c9cf64366cab10d  docs/evidence/host-alert-integration-m3454/after/real-health-phone-dark-zh-TW.png
 13dd7efc953cc6bb1268f6e844365841e21e814ee47c07d5adec7e59b9f23fec  docs/evidence/host-alert-integration-m3454/after/real-settings-desk-light-en.png
-f53b3241af86290ad1dd7b7cf9ec5c8ef57de2892cc801006317a20e13576dcf  docs/evidence/host-alert-integration-m3454/after/real-settings-phone-dark-zh-TW.png
-2cb4714b4fb49afdf009b3bdce454b1c19d536bbdd33c62d4fd0d7a8079e71eb  docs/evidence/host-alert-integration-m3454/capture-checks.json
+d93b217be43ae2bad5212cce21ee4df720e7a02fdee8c27119b85bd182337d39  docs/evidence/host-alert-integration-m3454/after/real-settings-phone-dark-zh-TW.svg
+d72652b3e1d9b0489270d9dd0e22a5f71e85ea4642b98a61439a7b39dfaff330  docs/evidence/host-alert-integration-m3454/capture-checks.json
 793ca66d37cbb21b5d38f4b18ddfe4975dbc06ec441e7684c74728b77e6de7d7  docs/evidence/host-alert-integration-m3454/failure-stamp-red.log
 1bcd6f1cbb79372d4f8e896c4268c3985a5eeb79676d48a8f267544f81369d72  docs/evidence/host-alert-integration-m3454/mutation-results.json
-7cd2db85e8f23d0590f5c135f470c9baeae37eefee3fa9ed08a7d4cf870ba481  docs/evidence/host-alert-integration-m3454/polish.md
+ef9ad9512acf9bb20a6c22290910887de7dccacc96454359bd5ac80899921702  docs/evidence/host-alert-integration-m3454/polish.md
 1839b8c703a54695ba5c9710d8d04a6f48ff0c6eaeffd6f06a844e29f059de8e  docs/evidence/host-alert-integration-m3454/read-session-leak-red.log
 7fa4e61391f3b22f112505e7a9ef671959c5f5e4eb603d4160b41554120deb85  docs/evidence/host-alert-integration-m3454/stale-epoch-red.log
-15540ced6cfd525f70b4bb7f6693fa3ed0dd9b476d44e79a69cc507433deae90  docs/evidence/host-alert-integration-m3454/validation.json
+b70598099688eae5fd3a037f5f438577680081ff9c693de55f6aedf85ba9504b  docs/evidence/host-alert-integration-m3454/validation.json
 e060b70c1ebb6ccbe89c766d5276d58972c97842c252f867d9f68566bf0f7c87  scripts/manual/host-alert-integration/capture.mts
 d44880591fabf50fb3e6f831a770ee68e3bbcdeb7fc182c16630b298e18e3f1b  src/fleet-context.ts
 e55ed11e621e06b94108df62cbe4feaa6631ba255fae54bd3c2937c6bb8dbdb0  src/fleet-manager.ts

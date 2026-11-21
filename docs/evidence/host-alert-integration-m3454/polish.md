@@ -15,3 +15,5 @@ Prism's nonblocking filesystem-label ambiguity is also addressed with a short st
 Three UI cases failed before the fixes; all 74 affected tests in four files pass after them. Production/test types and asset generation are clean. Runtime, coordinator, collectors, persistence, routes, authorization and settings confirmation code are byte-identical to the original source-cleared head. The 214-test baseline and 124-check Settings gate carry with their original scope; there was no new broad suite or provider campaign.
 
 All eight affected real-app views were retaken serially and inspected. No phone overflow, sub-44px targets, new layout issue or private content was found in the captured regions. Actual host samples remain separate from synthetic incident examples. All browser, scratch runtime and worker resources were closed. USER LOOK HOLD remains.
+
+Privacy correction: the later coordinator scan flagged image 08 for its short volume identifier. It is withheld in the current tree and replaced by an explicit non-product placeholder. The earlier inspection sentence records its historical scope and is superseded for publication by this correction.

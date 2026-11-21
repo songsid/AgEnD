@@ -23,5 +23,11 @@
     "assets": 0,
     "runtimeChanged": false,
     "broadSuiteRepeated": false
+  },
+  "privacyFollowup": {
+    "image08": "withheld-explicit-placeholder",
+    "remainingOriginals": 7,
+    "runtimeUiTestsChanged": false,
+    "newCampaign": false
   }
 }

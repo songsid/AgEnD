@@ -34,14 +34,8 @@
   },
   {
     "name": "real-settings-phone-dark-zh-TW",
-    "device": "phone",
-    "theme": "dark",
-    "lang": "zh-TW",
-    "path": "/settings/notifications#host-monitoring",
-    "source": "actual-host-cache",
-    "overflow": false,
-    "coverageLines": 0,
-    "phoneTargetsAtLeast44": true
+    "source": "withheld-privacy-placeholder",
+    "scope": "Not a product screenshot; no layout or data claim."
   },
   {
     "name": "fixture-alerts-desk-light-en",

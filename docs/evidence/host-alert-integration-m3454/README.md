@@ -16,17 +16,21 @@ The initial real health images were retained. A Settings capture first exposed a
 
 ## Captures and scope
 
-All eight originals were visually inspected for layout and public safety. The real health and Settings images contain actual bounded host samples in an isolated product fixture with a synthetic agent name. Alert and Needs you incidents are explicitly synthetic overlays, including urgency and an acknowledged issue. They prove rendering, not a real native threshold incident or platform delivery. The one-hour run with both options remains S209, as does agent footprint.
+The original eight captures were inspected; the coordinator subsequently flagged the phone Settings threshold image for a short volume identifier. That image is now withheld and replaced by an explicit privacy placeholder. Seven originals remain in the current tree. The real health and Settings images contain actual bounded host samples in an isolated product fixture with a synthetic agent name. Alert and Needs you incidents are explicitly synthetic overlays, including urgency and an acknowledged issue. They prove rendering, not a real native threshold incident or platform delivery. The one-hour run with both options remains S209, as does agent footprint.
 
-All eight published views were subsequently retaken for the Leader’s visible wording/time polish. See [polish delta](polish.md). No capture claims native macOS/Ubuntu execution. Raw host snapshots, private command output and intermediate invalid captures are not published.
+The original eight views were subsequently retaken for the Leader’s visible wording/time polish. See [polish delta](polish.md). No capture claims native macOS/Ubuntu execution. Raw host snapshots, private command output and intermediate invalid captures are not published.
 
 **USER LOOK HOLD:** the integration must not merge until the Leader forwards the user's capture approval. Reviewer clearance alone does not lift that hold.
 
 - [Real desktop health](after/real-health-desk-light-en.png)
 - [Real phone health](after/real-health-phone-dark-zh-TW.png)
 - [Real desktop Settings](after/real-settings-desk-light-en.png)
-- [Real phone Settings](after/real-settings-phone-dark-zh-TW.png)
+- [Phone Settings withheld — privacy placeholder](after/real-settings-phone-dark-zh-TW.svg)
 - [Synthetic desktop alerts](after/fixture-alerts-desk-light-en.png)
 - [Synthetic phone alerts](after/fixture-alerts-phone-dark-zh-TW.png)
 - [Synthetic desktop Needs you](after/fixture-needs-desk-light-en.png)
 - [Synthetic phone Needs you](after/fixture-needs-phone-dark-zh-TW.png)
+
+## Privacy follow-up
+
+The phone Settings threshold capture (image 08) is replaced with a labelled SVG placeholder because it contained a short volume identifier. The placeholder is not a product screenshot and makes no layout or data claim. Runtime, UI, tests and the other seven image blobs are unchanged. New-head reviewer approval and Leader lift confirmation are required before the coordinator gate. No new capture, provider or test campaign was run.
