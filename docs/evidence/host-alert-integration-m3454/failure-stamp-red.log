@@ -1,0 +1,27 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-monitoring-alerts-m3454.test.ts (6 tests | 1 failed) 19ms
+     × does no work while off; persists before delivery and stamps only successful callback 11ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-monitoring-alerts-m3454.test.ts > durable owner-fenced host alerts > does no work while off; persists before delivery and stamps only successful callback
+AssertionError: expected 1000000 to be undefined
+
+- Expected:
+undefined
+
++ Received:
+1000000
+
+ ❯ tests/host-monitoring-alerts-m3454.test.ts:22:69
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  22:01:49
+   Duration  366ms (transform 120ms, setup 96ms, import 81ms, tests 19ms, environment 0ms)

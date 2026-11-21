@@ -115,3 +115,11 @@ Approve/reject the off-by-default Settings control, separate agent option, overh
 Later slices: collector/cache and bounded history; incident/delivery integration; Fleet UI. Validate parsers/missing states offline, storage caps/low-water deterministically, then native acceptance on each platform. Prototype captures prove layout only, not native collection or alert delivery.
 
 A future rollback disables the sampler/notifications and removes bounded history while leaving Fleet work and the current stopgap untouched. This design implements none of those operations.
+
+## S208 alert integration
+
+The existing history worker now owns both SQLite and the fixed incident reserve. Low-water blocks history writes, while the reserve remains available; Off's shared active bit fences both. The main-thread alert coordinator holds a bounded cache and one latest sample, persists incident transitions before publishing/sending, and keeps one coalesced physical send in flight. Existing General delivery callbacks confirm success; dispatch acceptance is not success. Restart restores the bounded pending retry state. An already dispatched platform send cannot be recalled, and a crash between delivery and its durable stamp can repeat a message.
+
+Only current administrator sessions see host incidents in passive Needs you responses and streams, and the dedicated acknowledgment/snooze action rechecks the session around asynchronous work. Acknowledgment leaves the incident visible. Threshold/destination preferences live in a separate atomic 0600 sidecar, with at most 64 resource overrides; confirmation binds the same captured bytes. They never enter fleet.yaml or the drive-preference sidecar. General starts off so notification handoff from the unchanged cron script remains explicit. The cached sysinfo summary adds incident count, coverage and age without probes. Inodes are not offered without a source counter.
+
+The integration exposes no agent-footprint implementation or one-hour measurement claim; those remain S209. Its real-app health/Settings captures and synthetic incident examples require user approval before merge.

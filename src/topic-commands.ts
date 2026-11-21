@@ -1704,6 +1704,9 @@ export class TopicCommands {
   private collectSysInfo(versions?: BackendCliVersionSnapshot, locale: Locale = getLocale()) {
     const say: typeof t = (key, ...args) => tForLocale(locale, key, ...args);
     const info = this.ctx.getSysInfo();
+    const host=this.ctx.hostHealthSnapshot?.();
+    const hostMetrics=host?[host.cpu,host.memory,host.disks]:[],fresh=hostMetrics.filter(m=>m.status==='ok').length;
+    const sampleTimes=hostMetrics.map(m=>m.sampledAt).filter((at):at is number=>at!==null),sampleAge=sampleTimes.length?Math.max(0,Math.round((Date.now()-Math.min(...sampleTimes))/1000)):null;
     const upHours = Math.floor(info.uptime_seconds / 3600);
     const upMins = Math.floor((info.uptime_seconds % 3600) / 60);
     const require = createRequire(import.meta.url);
@@ -1721,6 +1724,7 @@ export class TopicCommands {
       ],
       backends: backendCliRows(versions, say),
       summary: [
+        ...(host?.enabled?[locale==='zh-TW'?`主機監測：${host.alerts?.active.length??0} 個問題；${host.alerts?.state==='failed'?'警示無法使用':'快取資料'}；${fresh}/3 項有效；${sampleAge===null?'尚無取樣':sampleAge+' 秒前'}`:`Host monitoring: ${host.alerts?.active.length??0} issues; ${host.alerts?.state==='failed'?'alerts unavailable':'cached readings'}; ${fresh}/3 fresh; ${sampleAge===null?'no samples':sampleAge+' s old'}`]:[]),
         `${say("sysinfo.instances")}: ${info.running_count} ${say("sysinfo.running")}, ${info.paused_count} ${say("sysinfo.paused")}`,
         ...(info.fleet_mem_mb !== null ? [`${say("sysinfo.fleet_mem")}: ${(info.fleet_mem_mb / 1024).toFixed(1)} GB`] : []),
         `${say("sysinfo.system_mem")}: ${info.system_mem_gb.used} / ${info.system_mem_gb.total} GB`,

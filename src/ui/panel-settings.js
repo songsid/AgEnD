@@ -119,6 +119,7 @@ export async function loadAll(lease) {
   if (!lease.current()) return null;
   if (!fleet.ok) return { error: true };
   out.fleet = fleet.body || {};
+  if(out.schema?.host_alert_defaults){const alerts=await read(lease,'/api/settings/fleet/host-alerts');if(!lease.current())return null;out.hostAlerts=alerts.ok?alerts.body:null;}
   const classic = await read(lease, "/api/settings/classic");
   if (!lease.current()) return null;
   out.classic = classic.body || {};

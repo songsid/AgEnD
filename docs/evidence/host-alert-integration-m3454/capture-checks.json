@@ -1,0 +1,84 @@
+[
+  {
+    "name": "real-health-desk-light-en",
+    "device": "desk",
+    "theme": "light",
+    "lang": "en",
+    "path": "/ui/fleet/host-health",
+    "source": "actual-host-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": null
+  },
+  {
+    "name": "real-health-phone-dark-zh-TW",
+    "device": "phone",
+    "theme": "dark",
+    "lang": "zh-TW",
+    "path": "/ui/fleet/host-health",
+    "source": "actual-host-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": true
+  },
+  {
+    "name": "real-settings-desk-light-en",
+    "device": "desk",
+    "theme": "light",
+    "lang": "en",
+    "path": "/settings/notifications#host-monitoring",
+    "source": "actual-host-cache",
+    "overflow": false,
+    "coverageLines": 0,
+    "phoneTargetsAtLeast44": null
+  },
+  {
+    "name": "real-settings-phone-dark-zh-TW",
+    "source": "withheld-privacy-placeholder",
+    "scope": "Not a product screenshot; no layout or data claim."
+  },
+  {
+    "name": "fixture-alerts-desk-light-en",
+    "device": "desk",
+    "theme": "light",
+    "lang": "en",
+    "path": "/ui/fleet/host-health",
+    "source": "synthetic-alert-overlay-on-actual-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": null
+  },
+  {
+    "name": "fixture-alerts-phone-dark-zh-TW",
+    "device": "phone",
+    "theme": "dark",
+    "lang": "zh-TW",
+    "path": "/ui/fleet/host-health",
+    "source": "synthetic-alert-overlay-on-actual-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": true
+  },
+  {
+    "name": "fixture-needs-desk-light-en",
+    "device": "desk",
+    "theme": "light",
+    "lang": "en",
+    "path": "/ui/needs",
+    "source": "synthetic-alert-overlay-on-actual-cache",
+    "overflow": false,
+    "coverageLines": 0,
+    "phoneTargetsAtLeast44": null
+  },
+  {
+    "name": "fixture-needs-phone-dark-zh-TW",
+    "device": "phone",
+    "theme": "dark",
+    "lang": "zh-TW",
+    "path": "/ui/needs",
+    "source": "synthetic-alert-overlay-on-actual-cache",
+    "overflow": false,
+    "coverageLines": 0,
+    "phoneTargetsAtLeast44": true
+  }
+]

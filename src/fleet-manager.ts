@@ -1,3 +1,8 @@
+import {hostAlertSummary} from './host-monitoring-alert-text.js';
+import {HostMonitoringAlerts} from './host-monitoring-alerts.js';
+import {readHostAlertSettings,writeHostAlertSettings,defaultHostAlertSettings,parseHostAlertSettings,type HostAlertSettings} from './host-monitoring-alert-settings.js';
+import {hostAlertResources} from './host-monitoring-alert-resources.js';
+import {validateHostAlertRule} from './host-monitoring-alert-policy.js';
 import {readHostMonitoringDrive,writeHostMonitoringDrive,validMonitoringDrive} from './host-monitoring-settings-store.js';
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { HostMonitoringHistory } from './host-monitoring-history.js';
@@ -1289,10 +1294,19 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly memoryPressure: MemoryPressure;
   private hostMonitor: HostMonitoringRuntime | null = null;
   private hostHistory: HostMonitoringHistory | null = null;
+  private hostAlerts: HostMonitoringAlerts | null = null;
+  private hostAlertConfig: HostAlertSettings = defaultHostAlertSettings();
+  private hostAlertSettingsLoaded = false;
+  private hostAlertSettingsFailed = false;
   private startHostMonitoringRuntime(): void {
-    this.hostHistory ??= new HostMonitoringHistory({path:join(this.dataDir,'host-monitoring.sqlite'),unblocked:()=>this.hostMonitor?.apply()});
+    if(!this.hostAlertSettingsLoaded){this.hostAlertSettingsLoaded=true;try{this.hostAlertConfig=readHostAlertSettings(this.dataDir);}catch{this.hostAlertSettingsFailed=true;}}
+    this.hostHistory ??= new HostMonitoringHistory({path:join(this.dataDir,'host-monitoring.sqlite'),incidents:true,incidentReady:()=>this.hostAlerts?.ready(),unblocked:()=>this.hostMonitor?.apply()});
+    this.hostAlerts ??= new HostMonitoringAlerts({persistence:this.hostHistory,changed:()=>this.needsYou?.poke(),deliver:(changes,ack)=>{
+      return this.notifyFleetError(hostAlertSummary(changes,getLocale()),{throttle:false,ack});
+    }});
     this.hostMonitor ??= new HostMonitoringRuntime({
       history:this.hostHistory,
+      alerts:{configure:enabled=>{this.hostAlerts!.configure(enabled,this.hostAlertConfig);if(this.hostAlertSettingsFailed)this.hostAlerts!.unavailable();},stop:()=>this.hostAlerts!.stop(),ingest:snapshot=>this.hostAlerts!.ingest(snapshot),snapshot:()=>this.hostAlerts!.snapshot()},
       supported: () => process.platform === "linux" || process.platform === "darwin",
       drive: () => readHostMonitoringDrive(this.dataDir),
       committed: () => monitoringConfig(this.fleetConfig?.monitoring),
@@ -1305,6 +1319,22 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
   hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
+  hostAlertSettings(): HostAlertSettings {return structuredClone(this.hostAlertConfig);}
+  saveHostAlertSettings(input: unknown): HostAlertSettings {
+    const next=parseHostAlertSettings(input),resources=hostAlertResources(this.hostHealthSnapshot(),Date.now());
+    for(const [key,rule] of Object.entries(next.rules)){
+      const resource=resources.find(r=>r.key===key);
+      if(!resource){if(JSON.stringify(rule)===JSON.stringify(this.hostAlertConfig.rules[key]))continue;throw Error('invalid_alert_resource');}
+      if(resource.kind!==rule.kind)throw Error('invalid_alert_resource');validateHostAlertRule(rule,resource.capacity);
+    }
+    writeHostAlertSettings(this.dataDir,next);this.hostAlertConfig=next;this.hostAlertSettingsFailed=false;this.hostAlerts?.configure(this.fleetConfig?.monitoring?.enabled===true,next);return this.hostAlertSettings();
+  }
+  hostAlertAction(key:string,revision:number,actor:string,snoozeMs?:number):Promise<boolean>{return this.hostAlerts?.act(key,revision,actor,snoozeMs)??Promise.resolve(false);}
+  private hostNeedsYouItems(): import('./needs-you.js').NeedsYouItem[] {
+    const alerts=this.hostAlerts?.snapshot();if(!alerts||alerts.state==='off'||!alerts.needsYou)return [];
+    if(alerts.state==='failed')return [{id:'host:unavailable',type:'host',reason:'host_health',instance:'',detail:'Host alerts unavailable. Open Host health.',since:0}];
+    return alerts.active.map(record=>({id:`host:${record.key}:${record.openedAt}`,type:'host',reason:'host_health',instance:'',detail:`${record.level}: ${record.kind}`,since:record.openedAt,hostAlert:record}));
+  }
   /** Effective Settings view: the drive is intentionally outside FleetConfig/fleet.yaml. */
   hostMonitoringSettings(): import('./host-monitoring-config.js').HostMonitoringConfig {
     const drive = readHostMonitoringDrive(this.dataDir);
@@ -19743,6 +19773,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       return owner !== undefined && this.worlds.has(owner) ? owner : undefined;
     };
     this.needsYou = new NeedsYouHub({
+      hostAlerts:()=>this.hostNeedsYouItems(),
       contactSuggestions: () => this.contactSuggestions(),
       dataDir: this.dataDir,
       now: () => Date.now(),

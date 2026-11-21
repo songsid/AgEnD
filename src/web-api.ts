@@ -258,6 +258,9 @@ const safeInstanceSegment = (name: string): boolean => /^[^\\/\x00]+$/.test(name
 const streamGuests = new WeakMap<ServerResponse, GuestRequest>();
 const streamContactProjection = new WeakMap<ServerResponse, (event: string, data: unknown) => unknown>();
 function contactNeedsFor(req: IncomingMessage, url: URL, ctx: WebApiContext, base: unknown[]): unknown[] {
+  const auth=evaluateWebRequest(req as unknown as WebGateRequest,url,ctx.webToken??null,ctx.webSessions,{touch:false});
+  const admin=auth.kind==='allow'&&auth.via==='session'&&auth.session.tier==='admin';
+  base=admin?base:base.filter(item=>!item||typeof item!=='object'||(item as {type?:string}).type!=='host');
   const ordinary = base.filter(item => !item || typeof item !== "object" || (item as { type?: string }).type !== "contact");
   const actor = ctx.contactActor?.(req, url);
   if (actor && ctx.contactNeeds) return [...ordinary, ...ctx.contactNeeds(actor)];
@@ -419,6 +422,7 @@ export type AccountWriteResult = { ok: true } | { ok: false; error: string; clas
 export interface WebApiContext extends ClaudeCredentialApi {
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
   hostHealthSnapshot?(): import("./host-monitoring.js").HostHealthSnapshot;
+  hostAlertAction?(key:string,revision:number,actor:string,snoozeMs?:number):Promise<boolean>;
   clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
   writeContactPermissions?: ContactApiHost["writeContactPermissions"];
@@ -2189,6 +2193,21 @@ export function handleWebRequest(
     },()=>{if(!res.destroyed)json(res,503,{error:"history_unavailable"});});
     return true;
   }
+  if(path==='/ui/host-alert-action'){
+    res.setHeader('Cache-Control','private, no-store');
+    const auth=()=>evaluateWebRequest(req as unknown as WebGateRequest,url,ctx.webToken??null,ctx.webSessions,{touch:false});
+    const who=auth();if(who.kind!=='allow'||who.via!=='session'||who.session.tier!=='admin'){json(res,403,{error:'admin_session_required'});return true;}
+    if(method!=='POST'||url.search){json(res,400,{error:'invalid_host_alert_action'});return true;}
+    void readBoundedWebBody(req,2048).then(async bytes=>{
+      const current=()=>{const value=auth();return value.kind==='allow'&&value.via==='session'&&value.session.tier==='admin'&&value.session.idHash===who.session.idHash;};
+      if(!current())return json(res,403,{error:'admin_session_required'});
+      let input:any;try{input=JSON.parse(bytes.toString('utf8'));}catch{return json(res,400,{error:'invalid_host_alert_action'});}
+      if(!input||Array.isArray(input)||Object.keys(input).some(k=>!['key','revision','snoozeMs'].includes(k))||typeof input.key!=='string'||!/^[a-zA-Z0-9:_-]{1,128}$/.test(input.key)||!Number.isSafeInteger(input.revision)||input.revision<1||(input.snoozeMs!==undefined&&(!Number.isSafeInteger(input.snoozeMs)||input.snoozeMs<60000||input.snoozeMs>86400000)))return json(res,400,{error:'invalid_host_alert_action'});
+      const ok=await ctx.hostAlertAction?.(input.key,input.revision,'web:'+who.session.idHash,input.snoozeMs);
+      if(!current())return json(res,403,{error:'admin_session_required'});
+      json(res,ok?200:409,{ok:!!ok,...(!ok?{error:'host_alert_stale'}:{})});
+    }).catch(()=>{if(!res.headersSent)json(res,503,{error:'host_alert_unavailable'});});return true;
+  }
   if (path === "/ui/host-health") {
     res.setHeader("Cache-Control", "private, no-store");
     const who = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, {touch:false});
@@ -2506,7 +2525,7 @@ export function handleWebRequest(
     // (§5.2), then only what guestFrameData lets through — no prompts or Needs you.
     const guest = guestRequestOf(req);
     if (guest) { streamGuests.set(res, guest); guest.streamOpened?.(); }
-    if (!guest && ctx.contactActor) streamContactProjection.set(res, (event, value) => {
+    if (!guest) streamContactProjection.set(res, (event, value) => {
       if (event === "needs") return { items: contactNeedsFor(req, url, ctx,
         (value && typeof value === "object" && Array.isArray((value as { items?: unknown }).items)) ? (value as { items: unknown[] }).items : []) };
       if (event === "contact-auth") {

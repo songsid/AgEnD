@@ -265,3 +265,8 @@ describe("M-3425 structured web sysinfo", () => {
     expect(answer.report.rows.every(row => row.length === 2)).toBe(true);
   });
 });
+
+ it('reads host alert count, coverage and age from the passive cache only',async()=>{
+  const {commands,fleet}=await makeCommands();const sampledAt=Date.now()-30000;fleet.hostHealthSnapshot=vi.fn(()=>({enabled:true,cpu:{status:'ok',sampledAt},memory:{status:'unavailable',sampledAt:null},disks:{status:'ok',sampledAt},alerts:{state:'ready',active:[{key:'cpu'}]}}));
+  const text=commands.getSysInfoText();expect(text).toContain('Host monitoring: 1 issues; cached readings; 2/3 fresh; 30 s old');expect(fleet.hostHealthSnapshot).toHaveBeenCalledTimes(1);expect(workers).toHaveLength(0);
+ });

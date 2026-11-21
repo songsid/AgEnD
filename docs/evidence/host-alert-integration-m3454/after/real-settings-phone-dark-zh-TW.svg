@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="390" height="844" viewBox="0 0 390 844" role="img" aria-labelledby="title description">
+  <title id="title">Settings capture withheld — privacy placeholder</title>
+  <desc id="description">The phone Settings screenshot is withheld. This placeholder contains no host or volume data.</desc>
+  <rect width="390" height="844" fill="rgb(248,249,252)"/>
+  <g text-anchor="middle" font-family="system-ui, sans-serif" fill="rgb(35,42,53)">
+    <text x="195" y="350" font-size="22" font-weight="600">Image withheld</text>
+    <text x="195" y="390" font-size="16">Privacy placeholder</text>
+    <text x="195" y="430" font-size="19" font-weight="600">截圖暫不提供</text>
+    <text x="195" y="468" font-size="14">此圖為隱私佔位圖，並非產品截圖。</text>
+    <text x="195" y="510" font-size="13">This is not a product screenshot.</text>
+  </g>
+</svg>
