@@ -184,6 +184,8 @@ export interface SettingsApiContext extends AppShellContext {
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
   hostMonitoringAvailable?(): boolean;
+  hostMonitoringSettings?(): import('./host-monitoring-config.js').HostMonitoringConfig;
+  saveHostMonitoringSettings?(patch: Partial<import('./host-monitoring-config.js').HostMonitoringConfig>): import('./host-monitoring-config.js').HostMonitoringConfig;
   /** Refresh managed guidance and web clients after a committed experimental setting change. */
   lifecycle: {
     isPaused(name: string): boolean;
@@ -751,7 +753,7 @@ export function handleSettingsRequest(
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet") {
-    json(res, 200, redactInlineSecrets(ctx.fleetConfig ?? {}));
+    json(res, 200, redactInlineSecrets(ctx.fleetConfig ? {...ctx.fleetConfig,monitoring:ctx.hostMonitoringSettings?.()??ctx.fleetConfig.monitoring} : {}));
     return true;
   }
   if (method === "GET" && path === "/api/settings/fleet/raw") {
@@ -1605,15 +1607,19 @@ export function handleSettingsRequest(
       const previous = { value: cfg.monitoring, had: Object.hasOwn(cfg, "monitoring") };
       try {
         settingsWrite(req, () => {
-          cfg.monitoring = monitoring;
-          ctx.saveFleetConfig(Object.entries(monitoring).map(([key, value]) => ({ path: ["monitoring", key], value })));
+          if(ctx.saveHostMonitoringSettings)ctx.saveHostMonitoringSettings(parsed.patch);
+          else {
+            if(Object.hasOwn(parsed.patch,'wsl_drive'))throw Error('monitoring_sidecar_unavailable');
+            cfg.monitoring = monitoringConfig(monitoring);
+            ctx.saveFleetConfig(Object.entries(cfg.monitoring).map(([key,value])=>({path:['monitoring',key],value})));
+          }
         });
       } catch (error) {
         if (previous.had) cfg.monitoring = previous.value; else delete cfg.monitoring;
         ctx.logger.warn({ error }, "settings: monitoring save refused");
         return json(res, 500, { error: "monitoring_save_failed" });
       }
-      json(res, 200, { ok: true, monitoring });
+      json(res, 200, { ok: true, monitoring:ctx.hostMonitoringSettings?.()??monitoringConfig(monitoring) });
     }).catch(() => { if (!res.headersSent) json(res, 400, { error: "bad request" }); });
     return true;
   }

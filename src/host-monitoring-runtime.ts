@@ -4,6 +4,7 @@ import { HostMonitoring, disabledHostHealth, type HostHealthSnapshot, type HostM
 
 interface Options {
   history?:import('./host-monitoring-history.js').HostMonitoringHistory;
+  drive?(): string | undefined;
   supported(): boolean;
   committed(): HostMonitoringConfig;
   raw(): { monitoring?: unknown };
@@ -47,8 +48,9 @@ export class HostMonitoringRuntime {
       if(this.options.history?.blocked()){this.collector?.setRuntimeActive(false);return;}
       // No factory, buffer or timer is created for a default-off installation.
       if (committed.enabled) this.collector ??= new HostMonitoring({factory:this.options.factory,onSnapshot:snapshot=>this.options.history?.ingest(snapshot)});
-      if (this.collector && this.appliedDrive !== committed.wsl_drive) this.collector.configure({...committed,enabled:false});
-      this.appliedDrive=committed.wsl_drive;
+      const drive = this.options.drive?.();
+      if (this.collector && this.appliedDrive !== drive) this.collector.configure({...committed,enabled:false});
+      this.appliedDrive=drive;
       this.collector?.configure(committed);
       this.collector?.setRuntimeActive(true);
     } catch {

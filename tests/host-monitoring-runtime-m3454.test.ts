@@ -7,7 +7,7 @@ function fixture(raw:any={},history?:HostMonitoringHistory) {
  const provider={platform:'linux' as const,host:()=>({cpu:{value:null},memory:{value:null}}),disks:()=>({result:Promise.resolve({volumes:[]}),stopped:Promise.resolve(),cancel(){}}),stop:vi.fn(async()=>{})};
  const pin=vi.fn((patches:Array<{path:string[];value:boolean}>)=>{events.push('commit');raw.monitoring ??={};for(const patch of patches)raw.monitoring[patch.path[1]]=patch.value;});
  const read=vi.fn(()=>raw),factory=vi.fn(()=>{events.push('factory');return provider;});
- const runtime=new HostMonitoringRuntime({history,supported:()=>true,committed:()=>config,raw:read,pin,factory});
+ const runtime=new HostMonitoringRuntime({history,drive:()=>config.wsl_drive,supported:()=>true,committed:()=>config,raw:read,pin,factory});
  return {runtime,config,raw,pin,read,factory,events,provider};
 }
 describe('committed host monitoring runtime bridge',()=>{
@@ -56,7 +56,7 @@ describe('committed host monitoring runtime bridge',()=>{
  });
  it('drains the old provider when the explicit backing-drive selection changes',async()=>{
   vi.useFakeTimers();const f=fixture({monitoring:{enabled:true,agent_footprint:false}});f.config.enabled=true;f.runtime.start();
-  f.config.wsl_drive='E';f.raw.monitoring.wsl_drive='E';f.runtime.apply();
+  f.config.wsl_drive='E';f.runtime.apply();
   expect(f.provider.stop).toHaveBeenCalledTimes(1);expect(f.factory).toHaveBeenCalledTimes(1);
   for(let i=0;i<12;i++)await Promise.resolve();expect(f.factory).toHaveBeenCalledTimes(2);f.runtime.stop();
  });

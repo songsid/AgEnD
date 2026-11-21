@@ -50,6 +50,7 @@ export interface SettingsSecretProof {
 export interface SettingsEffectContext {
   config: FleetConfig | null; classic: Record<string, any>;
   hostMonitoringAvailable?(): boolean;
+  hostMonitoringDrive?(): string | undefined;
   proof?(kind: "provider" | "secret" | "binding", target: string, verification: string, binding?: string, key?: string): SettingsSecretProof | null;
   generalLocation?(input: unknown): { summary: string[]; summary_i18n?: SettingsSummaryPresentation; connections: string[] };
   /** S3c (S-55): a Hub exposure publish's summary (absent: no Hub member here). Throws on a refused input. */
@@ -386,7 +387,9 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     if (!cfg) throw new SettingsConfirmationError(503, "fleet_unavailable");
     const parsed = parseMonitoringSettings(body);
     if ("error" in parsed) throw new SettingsConfirmationError(400, parsed.error);
-    const monitoring = { ...monitoringConfig(cfg.monitoring), ...parsed.patch };
+    const drive=context.hostMonitoringDrive?.();
+    before.fleet.monitoring={...monitoringConfig(cfg.monitoring),...(drive?{wsl_drive:drive}:{})};
+    const monitoring = { ...before.fleet.monitoring, ...parsed.patch };
     if (monitoring.enabled && context.hostMonitoringAvailable?.() !== true) throw new SettingsConfirmationError(409, "monitoring_unavailable");
     after.fleet.monitoring = monitoring;
   } else if (path === "/api/settings/fleet/runtimes") {

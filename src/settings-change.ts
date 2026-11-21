@@ -554,6 +554,12 @@ export function settingsChangeDiff(before: unknown, after: unknown, options: {
       if (!valid(old) || !valid(next)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
       add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next)); return;
     }
+    // Rollback-safe drive preference: only the exact schema-owned letter may be displayed.
+    if (["fleet.monitoring.wsl_drive", "monitoring.wsl_drive"].includes(path.join("."))) {
+      const valid = (value: unknown) => value === undefined || (typeof value === "string" && /^[A-Z]?$/.test(value));
+      if (!valid(old) || !valid(next)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
+      add(changeLine(`${label}: ${settingsDisplay(old)} → ${settingsDisplay(next)}`, [label], old, next)); return;
+    }
     // Under an immediate key, only its known children are settings; a secret or an id list is still confirmed below.
     if (unknownImmediateChild(path) && !SETTINGS_SECRET_KEY.test(key) && !idLists.has(key)) throw new SettingsConfirmationError(400, "unsupported_sensitive_effect");
     if (SETTINGS_SECRET_KEY.test(key)) { section = "secret"; add(summaryLine(`${label}: ${t("settings_confirm.summary.fingerprint")} ${fingerprint(old)} → ${fingerprint(next)}`, label, ": ", word("fingerprint"), " ", ...fingerprintParts(old), " → ", ...fingerprintParts(next))); return; }

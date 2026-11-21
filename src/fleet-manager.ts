@@ -1,3 +1,4 @@
+import {readHostMonitoringDrive,writeHostMonitoringDrive,validMonitoringDrive} from './host-monitoring-settings-store.js';
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { HostMonitoringHistory } from './host-monitoring-history.js';
 import { HostMonitoringRuntime } from "./host-monitoring-runtime.js";
@@ -1292,16 +1293,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.hostMonitor ??= new HostMonitoringRuntime({
       history:this.hostHistory,
       supported: () => process.platform === "linux" || process.platform === "darwin",
+      drive: () => readHostMonitoringDrive(this.dataDir),
       committed: () => monitoringConfig(this.fleetConfig?.monitoring),
       raw: () => { if (!this.configPath) throw Error("config unavailable"); return {monitoring:loadRawFleetConfig(this.configPath).monitoring}; },
       pin: patches => this.saveFleetConfig(patches),
-      factory: () => new NativeHostMonitoring({statePath:this.dataDir,memory:()=>this.memoryPressure.snapshot(),wslDrive:this.fleetConfig?.monitoring?.wsl_drive}),
+      factory: () => new NativeHostMonitoring({statePath:this.dataDir,memory:()=>this.memoryPressure.snapshot(),wslDrive:readHostMonitoringDrive(this.dataDir)}),
     });
     this.hostMonitor.start();
   }
   hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
   hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
+  /** Effective Settings view: the drive is intentionally outside FleetConfig/fleet.yaml. */
+  hostMonitoringSettings(): import('./host-monitoring-config.js').HostMonitoringConfig {
+    const drive = readHostMonitoringDrive(this.dataDir);
+    return { ...monitoringConfig(this.fleetConfig?.monitoring), ...(drive ? { wsl_drive: drive } : {}) };
+  }
+  saveHostMonitoringSettings(patch: Partial<import('./host-monitoring-config.js').HostMonitoringConfig>): import('./host-monitoring-config.js').HostMonitoringConfig {
+    if (!this.fleetConfig || !this.configPath) throw Error('fleet unavailable');
+    const previous = this.fleetConfig.monitoring, oldDrive = readHostMonitoringDrive(this.dataDir);
+    const raw = loadRawFleetConfig(this.configPath).monitoring as Record<string, unknown> | undefined;
+    const legacy = raw && Object.hasOwn(raw, 'wsl_drive');
+    const change = Object.hasOwn(patch, 'wsl_drive') || legacy;
+    const nextDrive = Object.hasOwn(patch, 'wsl_drive') ? patch.wsl_drive : legacy ? raw!.wsl_drive : oldDrive;
+    // Sidecar first: failure cannot leave new YAML pointing at an unsaved selection.
+    if (change) {
+      if (!validMonitoringDrive(nextDrive)) throw Error('invalid_monitoring_drive');
+      writeHostMonitoringDrive(this.dataDir, nextDrive);
+    }
+    try {
+      this.fleetConfig.monitoring = monitoringConfig({ ...monitoringConfig(previous), ...patch });
+      this.saveFleetConfig([
+        ...Object.entries(this.fleetConfig.monitoring).map(([key, value]) => ({ path: ['monitoring', key], value })),
+        { path: ['monitoring', 'wsl_drive'], remove: true },
+      ]);
+    } catch (error) {
+      this.fleetConfig.monitoring = previous;
+      if (change) writeHostMonitoringDrive(this.dataDir, oldDrive ?? '');
+      throw error;
+    }
+    return this.hostMonitoringSettings();
+  }
 
   /** Fleet-level backend reachability memory (fed by pty_error / startup panes). */
   readonly backendOutage = new BackendOutageTracker();
@@ -6876,6 +6908,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     process.env.AGEND_FLEET_DATA_DIR = resolvePath(this.dataDir);
     process.env.AGEND_FLEET_CONFIG_PATH = resolvePath(configPath);
     if (options.remember !== false && existsSync(configPath)) history.accepted("fleet.yaml", configPath, selected);
+    // The normal lossless writer owns migration; never hand-edit YAML or retain this beta.17-only key for rollback.
+    if(options.startup&&raw.monitoring&&Object.hasOwn(raw.monitoring,'wsl_drive'))this.saveFleetConfig();
     return this.fleetConfig;
   }
 
@@ -17015,6 +17049,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.rawFleetConfig = loadRawFleetConfig(this.configPath);
     // #2208: what the file says before this save, aliases expanded — every write below is recorded, and anything that
     // changes outside them (a place sharing a node with one written) refuses the save.
+
+    // Any save repairs a legacy drive key. A Settings transaction which already saved its sidecar supplies remove.
+    const drivePath=(p:RawConfigPatch)=>p.path.length===2&&p.path[0]==='monitoring'&&p.path[1]==='wsl_drive';
+    const requestedDrive=explicitPatches.find(p=>drivePath(p)&&!p.remove);
+    const removesDrive=explicitPatches.some(p=>drivePath(p)&&p.remove);
+    const rawMonitoring=this.rawFleetConfig.monitoring as Record<string,unknown>|undefined;
+    const legacyDrive=rawMonitoring&&Object.hasOwn(rawMonitoring,'wsl_drive');
+    if(requestedDrive||legacyDrive&&!removesDrive){
+      const value=requestedDrive?requestedDrive.value:rawMonitoring!.wsl_drive;
+      if(!validMonitoringDrive(value))throw Error('invalid_monitoring_drive');
+      writeHostMonitoringDrive(this.dataDir,value);
+    }
+    if(this.fleetConfig.monitoring)this.fleetConfig.monitoring=monitoringConfig(this.fleetConfig.monitoring);
+    explicitPatches=explicitPatches.filter(p=>!drivePath(p));
+    explicitPatches.push({path:['monitoring','wsl_drive'],remove:true});
     const fileBefore = this.rawFleetDocument.toJS({ maxAliasCount: -1 });
     const writes: Array<Array<string | number>> = this.fleetDocumentWrites = [];      // a throw below leaves it to the next save
     this.patchFleetDocument(
