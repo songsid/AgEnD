@@ -1000,7 +1000,9 @@ function claudeCommandRequestIdentity(pane: string): string {
 const FILE_SEND_ONLY_QUESTION = /(?:Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
 const FILE_SEND_QUESTION = /(?:Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\.)[ \t]*$/;
 /** Pre-filter only (anywhere in the pane); claudeFileSendCardActive decides. */
-export const CLAUDE_FILE_SEND_PATTERN = /Do you want to proceed\?|Choose No, and no files are sent\.|or choose No\./;
+// M-2306 (Prism nit on #2995): wrap-tolerant (\s+ between words), because the dev branch's native pane lifecycle uses this as a
+// pre-filter before claudeFileSendCardActive, and a narrow pane wraps the question anywhere ("…Choose" / "No, and …").
+export const CLAUDE_FILE_SEND_PATTERN = /Do\s+you\s+want\s+to\s+proceed\?|Choose\s+No,\s+and\s+no\s+files\s+are\s+sent\.|or\s+choose\s+No\./;
 // 2.1.319+ (2.1.322 audit): an ordinary name's row is plain `"<path>" (<size>)` — only a look-alike name is `* `-marked —
 // so the card's own lead row, "This call sends <N> file(s) from this computer", is a mark too; and 2.1.322 reworded the
 // look-alike warning to "Name may use look-alike characters." (2.1.317's wording kept).
