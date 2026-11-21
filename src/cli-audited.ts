@@ -18,7 +18,8 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   // 2.1.316: native persistent-pane acceptance. 2.1.318: upstream watch audit (#3048). 2.1.319: live-captured (tests/claude-cold-resume-2.1.319.test.ts). 2.1.325: upstream watch audit (tests/fixtures/claude-2.1.325-*).
   // 2.1.326: upstream watch audit (#4122 / #4124, tests/claude-2.1.326-*). 2.1.327: no detector change (M-3336, tests/claude-2.1.327-screens.test.ts).
   // 2.1.328: on the maintainer's ledger (the shipped list caught up in M-3477). 2.1.329: no detector change (M-3477, tests/claude-2.1.329-screens.test.ts).
-  "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327", "2.1.328", "2.1.329"]),
+  // 2.1.330: the file-send lead row and the usage-limit note are read in their new wording (M-3501, tests/claude-2.1.330-screens.test.ts).
+  "claude-code": Object.freeze(["2.1.316", "2.1.318", "2.1.319", "2.1.325", "2.1.326", "2.1.327", "2.1.328", "2.1.329", "2.1.330"]),
   // 0.165.0: native persistent-pane acceptance (#2954 / #3001 / #3219). 0.166.0: upstream watch audit. 0.167.0: tests/codex-0167-audit.test.ts. 0.169.0: tests/codex-0169-audit.test.ts (#3830).
   // 0.170.0: isolated mock-backed audit (M-3337, tests/codex-0170-audit.test.ts); no detector change.
   // 0.171.0: isolated mock-backed audit (M-3476, #4287, tests/codex-0171-audit.test.ts); no detector change.

@@ -414,4 +414,4 @@ The binaries were 2.1.329 (sha256 `30e2724e2aecb1bf5dc9f3130901afb71c5fa229051c1
 - **MCP approval:** not re-captured. The pre-onboarded home now runs in auto mode, where neither version shows it. 2.1.329's fixture pins it.
 - **Fixtures:** `tests/fixtures/claude-2.1.330-*.pane.txt`, held by `tests/claude-2.1.330-screens.test.ts`, plus the two file-send cards above. The 2.1.330 busy-queued capture is registered in `tests/claude-queued-input-1169.test.ts`.
 - **Precheck manifest:** rebuilt, so the watch now also reads "Allowing this sends" and "set to continue".
-- **Shipped ledger:** the dev twin moves `src/cli-audited.ts` and the Windows Runtime pin to 2.1.330. Main has no shipped ledger.
+- **Shipped ledger (dev):** `src/cli-audited.ts` adds 2.1.330, and the Windows Runtime pin moves to 2.1.330: the same two packages, no dependencies, `claude.exe` at the same path, each integrity the registry's and checked against its downloaded tarball. Main has no shipped ledger.

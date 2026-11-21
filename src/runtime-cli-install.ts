@@ -73,10 +73,10 @@ export type InstallableCli = NpmInstallableCli | DownloadInstallableCli;
 export interface ExpectedSigner { cn: string; o: string }
 export const INSTALLABLE_CLIS = Object.freeze({
   "claude-code": {
-    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.329",
+    id: "claude-code", kind: "npm", spec: "@anthropic-ai/claude-code", version: "2.1.330",
     integrity: {
-      "node_modules/@anthropic-ai/claude-code": "sha512-WQ7RY331gsODjOoDBbeG1fjMfKY1Ur9yxWAOI9SgdLZvqA9sAREaezXt7e3uNbHlgjVAZg1IqlJT1J7WKViEFA==",
-      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-BkbOTOAYvz1BNVwdRJzibhxXtZVw289ucHt1aSArGSax8C6INgf6Xtp2wxmwsSSpKk+P8LyIhj0ufvFD1VJOFA==",
+      "node_modules/@anthropic-ai/claude-code": "sha512-KQMl6kixLMGHRCDUhkUPebuBhw13MpxlH3+17QzHQx40FNVd1z3uFKUSqQXB5zF9vLQGcpoC/8wWe5R35lsWvQ==",
+      "node_modules/@anthropic-ai/claude-code-win32-x64": "sha512-P3aamhGb7lZUsgj6kQzdZAKh3fNFoXvawxZFuUz+pC5HVLwEtX5eWgO6kpxzT9+qfHaPhoepZ9KU8K1sz3b2yw==",
     },
     native: { path: "node_modules/@anthropic-ai/claude-code-win32-x64/claude.exe", signer: { cn: "Anthropic, PBC", o: "Anthropic, PBC" } },
   },
@@ -88,7 +88,7 @@ export const INSTALLABLE_CLIS = Object.freeze({
     },
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
-  // M-3176: Claude 2.1.325 (now 2.1.329, M-3477; 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
+  // M-3176: Claude 2.1.325 (now 2.1.330, M-3501; 2.1.329 in M-3477, 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
   // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.14 (M-3500, was 1.5.13):
   // the windows_amd64 manifest read 2026-11-21 (version 1.5.14, this url, this sha512); the file downloaded is 238615704 bytes with that sha512. OpenCode 1.19.6 (M-3477):
   // the same three packages, each integrity the registry's and checked against its downloaded tarball, opencode.exe at the same path in the baseline one.
