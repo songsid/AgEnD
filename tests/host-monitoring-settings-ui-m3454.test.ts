@@ -45,6 +45,6 @@ describe('shared Settings monitoring card',()=>{
   ctx.schema={host_monitoring:false};await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled')).toBeNull();expect(staged.size).toBe(0);
  });
  it('keeps bounded storage, variable background/process costs and off semantics visible in Traditional Chinese',async()=>{
-  i18n.setLang('zh-TW',{store:false});await p.mount(h(Component,{ctx}));expect(p.root.textContent).toContain('本機資料最多 64 MiB');expect(p.root.textContent).toContain('記憶體與寫入量依電腦而異');expect(p.root.textContent).toContain('背景歷史工作行程');expect(p.root.textContent).toContain('不掃描工作區');expect(p.root.textContent).toContain('不會取樣、啟動監測計時器或建立歷史檔案');
+  i18n.setLang('zh-TW',{store:false});await p.mount(h(Component,{ctx}));expect(p.root.textContent).toContain('本機資料最多 64 MiB');expect(p.root.textContent).toContain('記憶體與寫入量依電腦而異');expect(p.root.textContent).toContain('在背景保存歷史');expect(p.root.textContent).toContain('不掃描工作區');expect(p.root.textContent).toContain('不會取樣、啟動監測計時器或建立歷史檔案');
  });
 });

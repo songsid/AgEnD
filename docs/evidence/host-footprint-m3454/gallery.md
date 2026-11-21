@@ -30,6 +30,10 @@ Actual completed one-hour host data in the real app. One owned idle helper; name
 
 ![real-health-desk-light-en](after/real-health-desk-light-en.png)
 
+### real-health-phone-dark-zh-TW-alerts-empty
+
+![real-health-phone-dark-zh-TW-alerts-empty](after/real-health-phone-dark-zh-TW-alerts-empty.png)
+
 ### real-health-phone-dark-zh-TW-footprint
 
 ![real-health-phone-dark-zh-TW-footprint](after/real-health-phone-dark-zh-TW-footprint.png)

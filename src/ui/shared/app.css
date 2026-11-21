@@ -5146,3 +5146,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .host-footprint th:first-child { min-width: 6rem; }
   .host-footprint th, .host-footprint td { padding: var(--s-1); }
 }
+
+.host-footprint-sample { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.host-footprint-memory { white-space: nowrap; }

@@ -10,6 +10,9 @@
     "src/host-monitoring-history-store.ts": "d99443fb5a325cb983f1146d682a08b58e34fe3c19146f7c8d2f4bbd996834b5",
     "scripts/manual/host-footprint/measure.mts": "65e6f00908fd1b86a81fb0686f674101ced84edca0d77dc3708d74eea034d5d1",
     "scripts/manual/host-footprint/replay-birth.mts": "e90c6875d3c9b624a721de0022d2c3779cf68e35b900dbf186640a3c19a0c593",
-    "scripts/manual/host-footprint/capture.mts": "8107512e2971fef00ce5adfc41f667782fd019eeedd9e4a1b98c0068e25b2684"
+    "scripts/manual/host-footprint/capture.mts": "f845a50a3a0e3b7eb03501f43b254732bc71d42fedfd9070e2fedd7c02dc80f1",
+    "src/ui/host-footprint.js": "0ad33bdf1ce60b78995fc1d2b9df54de738111f66caba3f66939260fd1cc5f62",
+    "src/ui/settings-host-monitoring.js": "ac3c4e5f00a7a9ab1b73686d1e943909ccb596b0d82490fbc13e43fb1c96885a",
+    "src/ui/shared/app.css": "2aedbbd86c3dc87656f7cc556d50b0ff8e58773cef99a790f05d157e69b66c8b"
   }
 }
