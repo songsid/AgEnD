@@ -90,7 +90,7 @@ describe("startWebInstall — Antigravity's update to the latest (the named exce
     expect(flow.backend).toBe("antigravity");
     expect(flow.command).toContain("agend-install");
     expect(flow.command).toContain("agy update");
-    expect(flow.command).not.toMatch(/\{version\}|1\.5\.13|curl|install\.sh/);
+    expect(flow.command).not.toMatch(/\{version\}|1\.5\.14|curl|install\.sh/);
     expect((fm as any).loginWindow.heldFor("antigravity")).toMatchObject({ kind: "install", backend: "antigravity" });
   });
   it("success: the version afterwards is the binary probe's own, read again; the window is released", async () => {
@@ -133,7 +133,7 @@ describe("startWebInstall — Antigravity's update to the latest (the named exce
     expect(fakeSessions).toHaveLength(1);
   });
   it("the pinned-release CLIs are unchanged: Grok at the audited release is still refused as up_to_date", async () => {
-    writeFileSync(join(profileBin, "grok"), '#!/bin/sh\necho "grok 1.0.89 (abc)"\n'); chmodSync(join(profileBin, "grok"), 0o755); onPath();
+    writeFileSync(join(profileBin, "grok"), '#!/bin/sh\necho "grok 1.0.92 (abc)"\n'); chmodSync(join(profileBin, "grok"), 0o755); onPath();
     const { fm, reporter } = fleet();
     expect(await fm.startWebInstall("grok", reporter(), undefined, "update")).toEqual({ refused: "up_to_date" });
   });

@@ -82,7 +82,7 @@ describe("install a CLI from the dashboard: who may ask", () => {
   it("a local administrator reads the computer's switches from the computer, and the audit name is an opaque session handle", async () => {
     const answer = await ask(SETUP, "GET", "admin");
     expect(answer.status).toBe(200);
-    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.329", kind: "npm", pin: "audited" }, { id: "codex", version: "0.171.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.13", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
+    expect(answer.json).toMatchObject({ capable: true, online: true, switches: { install: { on: true } }, job: null, catalog: [{ id: "claude-code", version: "2.1.329", kind: "npm", pin: "audited" }, { id: "codex", version: "0.171.0", kind: "npm", pin: "audited" }, { id: "antigravity", version: "1.5.14", kind: "download", pin: "audited" }, { id: "opencode", version: "1.19.6", kind: "npm", pin: "audited" }] });
     expect(calls[0]).toMatchObject({ operation: "accounts.switches", payload: {} });
     const install = await ask(INSTALL, "POST", "replay", { cli: "codex" });
     expect(install.status).toBe(202);
@@ -125,7 +125,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
     expect(sent()).toEqual([["cli.install", "opencode"]]);
   });
   it("AGEND-153 Antigravity already installed: the named exception is asked for as `cli.update`, with the CLI id and the asker's handle and nothing else", async () => {
-    has("antigravity", "1.5.13");
+    has("antigravity", "1.5.14");
     expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", acceptLatestUnaudited: true })).status).toBe(202);
     expect(sent()).toEqual([["cli.update", "antigravity"]]);
     // the acknowledgement is the route's: what the Runtime is sent is still the id and the asker's handle
@@ -133,7 +133,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
   });
   // AGEND-154 (Prism P2-1 on #3552): the retained older page module labels this button "Update to 1.5.9" and sends `{ cli }`. That used to be taken as the latest exception; now it is refused.
   it("AGEND-154 fail-first: Antigravity already installed + a request WITHOUT `acceptLatestUnaudited` (what an older page module sends) is refused 409 before any job or call — it is not run as the latest exception", async () => {
-    has("antigravity", "1.5.13");
+    has("antigravity", "1.5.14");
     const refused = await ask(INSTALL, "POST", "replay", { cli: "antigravity" });
     expect([refused.status, refused.json.code]).toEqual([409, "latest_ack_required"]);
     expect(refused.json.error).toMatch(/Refresh the page/);                       // what an older page module shows (it shows `error`)
@@ -165,7 +165,7 @@ describe("AGEND-152 / AGEND-153: one POST for Install and Update — told apart 
     expect(sent()).toEqual([["cli.install", "codex"]]);
   });
   it("the body is still the CLI's id and nothing else — a `release`, `latest` or `mode` is refused before anything is sent", async () => {
-    has("antigravity", "1.5.13");
+    has("antigravity", "1.5.14");
     for (const extra of [{ release: "latest" }, { latest: true }, { mode: "update" }, { version: "9.9.9" }]) expect((await ask(INSTALL, "POST", "replay", { cli: "antigravity", ...extra })).status, JSON.stringify(extra)).toBe(400);
     expect(sent()).toEqual([]);
   });

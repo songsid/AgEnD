@@ -26,10 +26,10 @@ export const AUDITED_CLI_VERSIONS: Readonly<Record<CliId, readonly string[]>> = 
   // tests/kiro-*-audit.test.ts: 2.29.0 … 3.1.0. 3.3.0: no detector change (M-3072, #3831), on the maintainer's ledger.
   // 3.5.0: its chat.defaultModel warning is excluded from model_error (M-3398, tests/kiro-model-unavailable.test.ts).
   "kiro-cli": Object.freeze(["2.29.0", "2.29.1", "2.30.0", "2.33.0", "2.34.0", "2.37.0", "3.0.0", "3.1.0", "3.3.0", "3.5.0"]),
-  // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3, 1.5.9, 1.5.12 and 1.5.13 on the maintainer's ledger (1.5.12/1.5.13 shipped in M-3477).
-  antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9", "1.5.12", "1.5.13"]),
-  // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.89; 1.0.89 lands with its isolated real-binary evidence (M-3335).
-  grok: Object.freeze(["1.0.52", "1.0.60", "1.0.67", "1.0.70", "1.0.77", "1.0.88", "1.0.89"]),
+  // tests/fixtures/agy-1.3.5-audit, agy-1.3.6-audit; 1.5.3, 1.5.9, 1.5.12 and 1.5.13 on the maintainer's ledger (1.5.12/1.5.13 shipped in M-3477; 1.5.14 in M-3500).
+  antigravity: Object.freeze(["1.3.5", "1.3.6", "1.5.3", "1.5.9", "1.5.12", "1.5.13", "1.5.14"]),
+  // tests/grok-1.0.*-audit.test.ts: 1.0.52 … 1.0.89; 1.0.89 lands with its isolated real-binary evidence (M-3335); 1.0.92: precheck false alarm, switch rig identical (M-3500).
+  grok: Object.freeze(["1.0.52", "1.0.60", "1.0.67", "1.0.70", "1.0.77", "1.0.88", "1.0.89", "1.0.92"]),
   // tests/muse-1.4.*-audit.test.ts. Keep builds for the audited 1.4.23-R8977.1 (M-3290) and 1.4.24-R9131.1 (M-3396);
   // another build of the same x.y.z is not that audited release. Older entries keep their numbers (1.4.14 was R7309.1,
   // 1.4.15 was R8339.1, 1.4.20 was R8619.1; fixtures retain the exact provenance).
