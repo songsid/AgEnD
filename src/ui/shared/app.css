@@ -2305,10 +2305,14 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-age { color: var(--text-3); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
 .n-detail, .n-notify-note { color: var(--text-2); font-size: var(--fs-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
 .n-actions, .n-notify-actions { display: flex; gap: var(--s-2); flex-wrap: wrap; margin-top: var(--s-1); }
+/* M-3503: a text button in Needs you lines up with the text above it on every width (a phone already did, below). */
+.n-actions > .btn-ghost { padding-left: 0; padding-right: 0; margin-left: -1px; }
 /* M-3503 (the user): this device's notify setting is not an item waiting — a section of its own under the list, a rule
    above it; drawn as an item row (its bell in the icon's place, neutral), so text and buttons share the items' edge. */
 .n-settings { margin-top: var(--s-6); padding-top: var(--s-4); border-top: 1px solid var(--border); }
 .n-notify .n-notify-icon { color: var(--text-2); }
+/* M-3503: no word left alone on the note's last line (a phone's zh line ended with 「知。」 by itself). */
+.n-notify-note { text-wrap: balance; }
 /* M-3503: one left edge and one rhythm. The column starts at the header's leading edge (its title on a desk with the
    sidebar open; its ☰/‹ button otherwise, as on a phone), not centred away from it; the first section label sits one
    step under the header, a label one small step above its cards, sections one step apart. */
