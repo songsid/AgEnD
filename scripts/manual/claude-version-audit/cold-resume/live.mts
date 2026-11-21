@@ -48,6 +48,11 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "328-summary-newfocus": { v: "328", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "329-summary-newfocus": { v: "329", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "329-summary-newfocus-80": { v: "329", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  // 2.1.330 audit (M-3501).
+  "330-lookup": { v: "330", width: 160, flags: { tengu_amber_tally: TIER } },
+  "330-summary-lookup": { v: "330", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "330-summary-newfocus": { v: "330", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "330-summary-newfocus-80": { v: "330", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
