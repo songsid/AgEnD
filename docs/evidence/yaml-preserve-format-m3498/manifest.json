@@ -1,0 +1,10 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "e36ed1886aa42a29cafff7186589f8d501c1d5e02437ce46041d8b373082f676"
+  },
+  {
+    "path": "source-equality.json",
+    "sha256": "1837eaf03e58a98b4de5a734ad33a4d9548caa0791b8db7430125380b3716ef2"
+  }
+]
