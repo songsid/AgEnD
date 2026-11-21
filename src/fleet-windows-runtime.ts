@@ -24,7 +24,7 @@ export interface FleetWindowsRuntimeHost {
   save(): void;
   emit(event: string, data: unknown): void;
   stopping(): boolean;
-  history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages">>;
+  history?: Pick<WebChatHistory,"findByMessageId"> & Partial<Pick<WebChatHistory,"reconcileNativeMessages" | "findByNativeHistoryId">>;
   openMcp?(instance: string, requestId: string, sandbox: WindowsAgent["sandbox"], stillCurrent: () => boolean): NativeMcpLease | null;
   warn?(message: string,error: unknown): void;
   removed?(name: string,config: InstanceConfig): void;
@@ -266,7 +266,7 @@ export class FleetWindowsRuntime {
         if (turn.finishedAt) expected.push({role:turn.status === "completed" ? "agent" : "status",sender:agent.name,text:turn.output || turn.error || turn.status,ts:new Date(turn.finishedAt).toISOString(),messageId:replyId});
       }
       this.host.history.reconcileNativeMessages?.(name,expected);
-      for (const message of expected) if (!this.host.history.findByMessageId(name,message.messageId)) this.host.emit("message",{instance:name,...message});
+      for (const message of expected) if (!(this.host.history.findByNativeHistoryId?.(name,message.messageId) ?? this.host.history.findByMessageId(name,message.messageId))) this.host.emit("message",{instance:name,...message});
     }
   }
   private claim(name: string, payload: Record<string,unknown>, options: NativeRuntimeDeliveryOptions, settled: (task:NativeExecutionResult)=>void): WindowsCliTask | import("./windows-agents.js").WindowsTurn {

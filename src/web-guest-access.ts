@@ -53,7 +53,7 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
   { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
   // Phase 2 (step 2b): chat as on the platform — authority none, never a command (guestChatRefusal, in the handlers).
-  { methods: ["POST"], pattern: /^\/ui\/send$/, instance: null, state: "on", note: "a message to an in-scope instance (the handler checks the body's instance and web.guests.chat); never a command" },
+  { methods: ["POST"], pattern: /^\/ui\/(?:send|resend)$/, instance: null, state: "on", note: "a message to an in-scope instance (the handler checks the body's instance and web.guests.chat); never a command" },
   { methods: ["POST"], pattern: /^\/ui\/upload$/, instance: { query: "instance" }, state: "on", note: "a file for an in-scope instance's message (web.guests.chat)" },
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
   { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },
@@ -227,7 +227,7 @@ export function guestSeesMessage(m: WebChatMessage, guest: GuestRequest, scope: 
  * guest may see the message it quotes — otherwise just that it replies to an earlier message (`hidden`).
  */
 export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: ReadonlySet<string>): Record<string, unknown> {
-  const { from, previews: _previews, channel: _channel, messageId, anchor, delivery, seenSeq: _seen, replyTo, ...rest } = m;
+  const { from, previews: _previews, channel: _channel, messageId, anchor, delivery, seenSeq: _seen, replyTo, retry, ...rest } = m;
   void _channel; void _seen;
   const mine = from === accountOf(guest.owner);
   // #2085 review: a click's `text` is what the agent was given — the button's value too, which the platform never
@@ -239,7 +239,7 @@ export function guestMessage(m: WebChatMessage, guest: GuestRequest, scope?: Rea
   // A guest's input or private-room echo must not turn arbitrary ids into cache lookups.
   const mentionNames = !mine && m.channel === true && guest.mentionNames
     ? messageMentionNames(rest.click ? rest.click.label : rest.text, q => guest.mentionNames!(m.instance, q)) : undefined;
-  return { ...rest, ...click, ...quote, ...(mentionNames ? { mentionNames } : {}), ...(mine ? { mine: true } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && anchor ? { anchor } : {}), ...(mine && delivery ? { delivery } : {}) };
+  return { ...rest, ...click, ...quote, ...(mentionNames ? { mentionNames } : {}), ...(mine ? { mine: true, ...(retry ? { retry } : {}) } : {}), ...(mine && messageId ? { messageId } : {}), ...(mine && anchor ? { anchor } : {}), ...(mine && delivery ? { delivery } : {}) };
 }
 const visibleList = (rows: readonly WebChatMessage[], guest: GuestRequest, scope: ReadonlySet<string>) =>
   rows.filter((m) => guestSeesMessage(m, guest, scope)).map((m) => guestMessage(m, guest, scope));
@@ -265,7 +265,7 @@ export function guestFrameData(event: string, data: unknown, scope: ReadonlySet<
   if (!history || typeof d.instance !== "string" || !scope.has(d.instance)) return undefined;
   if (event === "delivery") {
     const own = typeof d.messageId === "string" ? history.findByMessageId(d.instance, d.messageId) : undefined;
-    return own && own.from === accountOf(guest.owner) ? { instance: d.instance, messageId: d.messageId, delivery: d.delivery } : undefined;
+    return own && own.from === accountOf(guest.owner) ? { instance: d.instance, messageId: d.messageId, delivery: d.delivery, ...(own.retry ? { boot: own.boot, id: own.id, retry: own.retry } : {}) } : undefined;
   }
   // #2305: a reaction, on a message the guest may see.
   if (event === "reactions") {

@@ -1,0 +1,56 @@
+M-3502: live-pane delivery recovery and an in-place web Resend
+
+The failure log's specific preceding error is the stranded-input budget reaching round3. The later lifecycle warning called every `message_failed` event “window gone, retries exhausted”; it did not establish a missing window. The earlier quota warning had already recovered. The failure-time pane capture is unavailable, so no exact historical footer shape is asserted. Live evidence was inspected read-only; no live pane, account or Fleet was restarted or changed, and no private log or chat record is included here.
+
+After the startup input barrier is retired by an earlier successful delivery, the broad idle gate can return ready while the stricter stranded-input check still needs a stable composer. The loop charged each busy observation against its three-key recovery budget. Its wait could resolve immediately, consuming all rounds without a timed retry. A production Codex backend with the existing context-less footer fixture and an explicitly live stubbed pane reproduces the failure before the first second. The fixed path gives only the proven empty raw-terminal unknown-footer candidate the timed stable-composer wait, within the existing30-minute readiness budget. Other unsafe composers retain bounded refusal. Actual recovery Enters have a separate three-key budget, with a final clear check permitted without a fourth Enter. The raw-terminal check remains required after startup too; cooked-shell scrollback cannot grant the fallback. Cancellation remains silent; an unsafe composer is never pasted onto. Failed events/logs carry their actual phase/proof.
+
+The server's failed-delivery state already reached web chat. The existing Retry only handled browser-local requests that failed before acceptance. The new Resend uses the retained server row, current sender and admission, quote visibility and safely reopened original files. It accepts no replacement text or paths. Normal one-use upload rules remain intact. Missing/replaced files or missing quotes leave the original bubble untouched with a localized explanation.
+
+| Current state | Retained bubble | Delivery attempt | Needs you |
+|---|---|---|---|
+| Failed | Original boot/id, quote and files | Failed attempt | Listed |
+| Resend queued/processing | Same row, no new message event | Fresh wire ID, synchronously claimed once | Still listed |
+| Current attempt confirmed | Same row | Delivered | Clears |
+| Late old report | Same row | Ignored | Cannot clear the current episode |
+
+Two tabs cannot claim the same failed attempt twice. Losing the HTTP answer after handoff does not create another send or turn acceptance into failure. Current session/instance admission is passed through the same human-delivery facade. Guests keep their current scope/chat/command rules, the public gateway explicitly routes Resend through its existing gate, and current public raw-command restrictions remain. Retry ownership is the server's account key, never a display-name comparison or client assertion.
+
+New owned failed-delivery descriptors keep their attempt/attention state through history reloads; legacy rows still do not acquire unverified interactive state. The stored sender binding is restored before checking descriptor ownership; malformed or mismatched descriptors are refused. A guest receives retry metadata only for their own rows across history, replay and live updates. Owned retry rows retain the complete16384-character payload accepted by Send, through restoration and the real HTTP resend; ordinary history retains its existing16000-character cap. Stable web attention IDs share the existing bounded24-hour/newest50 delivery projection and acknowledgement path. Attention survives queued/processing retries and clears on current confirmed delivery, or an explicit existing Acknowledge action.
+
+Main first: main has both affected paths. The dev twin follows the actual main merge and preserves dev's workspace/native-runtime integration. This PR is on USER-LOOK HOLD; the coordinator must wait for the user's visual release and exact-head review/checks.
+
+R1 validation (overlapping runs are not added together):
+
+- Both actual failed CI job logs were inspected. The recovery loop now preserves native-strand refusal and raw-terminal ownership. Diagnostic/history/action-list assertions intentionally include the additive protocol changes. All six affected CI/root suites plus resend/guest coverage pass:10 files,579 tests.
+- New fail-first controls reproduce bound-person restore loss, guest retry-owner leakage,16384-character suffix loss and post-startup cooked-shell paste. Final web/persistence/guest/UI controls pass5 files,63 tests; final test typecheck exits0. The maximum-length control restores the persisted row before the actual HTTP resend.
+- All12 current after images (8 failed plus4 queued/delivered) were independently inspected. Phones retain44px Resend targets; the visible reason and bordered shared button explain the failed state. No missing paperclip glyph remains with the scratch font. No additional live/native/provider campaign.
+
+Original validation (overlapping runs are not added together):
+
+- Root fail-first: the retired-startup-guard live-pane case emits failure before its first timed retry on the base; fixed controls cover stable recovery, cancellation, persistent unsafe input, actual three-Enter refusal and a successful final clear check.
+-20 affected files:294 passed. Subsequent focused transport/persistence controls38 passed; final guest/recovery/history controls50 passed; public-route/raw/upload controls73 passed. The new public route assertion failed before its gateway registration. Test types exit0.
+- Real HTTP controls cover one claim across double taps, unchanged bubble count/quote/files, late reports, current admission revocation, missing/replaced files, missing quote, CSRF/owner refusal and a lost response after handoff. Existing request-retry deduplication remains covered.
+- Chromium product-app fixture: all8 desktop/phone × light/dark × EN/zh-TW cases keep one bubble, its quote/file, no horizontal overflow, and no action-time page error/CSP report. Phone Resend targets measure44px; desktop uses the shared30px bordered small button. Needs you remains while queued and clears when confirmed. The initial30px phone target failed the capture check and was corrected before the retained captures.
+
+Captures in [main/](main/) include four before views from baseline2af5f0a96, all eight failed-message matrix views and queued/delivered views for desktop light EN and phone dark zh-TW. Every selected16 PNG was visually inspected: generic Example identities/content only, no private names/chat IDs, no unexpected clipping or overlap. The phone's one-line quote ellipsis is also present in the baseline. These are real product pages on an owned scratch web server; pane delivery is stubbed. No physical phone, Safari, Windows runtime, live provider/account or live pane campaign is claimed. R1 retakes replace the12 after views with the requested reason and visible action. The4 baseline views remain unchanged. The original rig lacked an emoji font; a scratch-only Noto Color Emoji fontconfig now renders the unchanged paperclip correctly in every after view. This is a capture-environment correction, not a product or host-font change.
+
+Shared UI: the existing chat thread, quote/attachment renderers, `.btn.btn-sm`, token spacing and the canonical touch query. No additional confirmation step or new page; the sender finishes in the same chat. English **Resend** and Traditional Chinese **重新傳送** use the normal string table.
+
+Rollback restores the delivery loop/diagnostic and removes the resend protocol/UI/projection changes. New retry fields are optional and ignored by older readers; message content/quotes/files remain normal history. No migration or runtime credential change.
+
+
+Dev twin integration (after actual main merge)
+
+Main #4319 merged as d03e3f923b989ecdaff690b8da51a73433aba03d; all49 approved changed-file blobs match and the merge is an ancestor of origin/main. All five exact-merge push workflows, including CI44920935657, succeeded. The twin starts independently at alpha930b0a875, without stacking main history.
+
+The same approved resend row and two scoped CSS rules move to dev's shared chat modules. Existing Hub reactions, contact badges, archive/paging, mentions, quote anchors, draft/workspace callbacks, asset versioning and Office routing remain. Only Fleet supplies the Resend callbacks; the Hub gains no action.
+
+Native integration retains existing Windows admin/attachment rules, per-attempt UUID/requestId wire correlation, response-independent authority rechecks for delayed execution, and strict native input proof. Native panes never gain the POSIX unknown-footer fallback. Public raw-command admission retains dev's existing administrator rule.
+
+An additional fail-first integration control caught native journal reimport recreating an old attempt as a second user bubble. Private bounded retired-native identities now serve import/reference lookup only; current-attempt delivery lookup remains strict. Only actual journal identities are retained (the journal keeps ten turns), so repeated unjournaled failed handoffs cannot evict a real retained identity. Aliases persist separately from retry authority and are not projected into web messages. Two retries, repeated import, history reload, delayed native startup after HTTP completion and authorization revocation are pinned with synthetic components.
+
+Dev proof (runs overlap):12 root/API/UI/guest/CI suites1088PASS;5 native/quote/scrollback suites31PASS;5 boundary/archive/native-reply suites59PASS;7 final native/permissions/quote/history suites56PASS;last4 native/history/authority suites27PASS. Test types exit0. The duplicate-import control fails before the integration fix (two user bubbles), then passes. Native bridge/processes are mocked; no live runtime, provider, pane or account campaign occurred.
+
+All6 [dev originals](dev/) were independently inspected:desktop light EN and phone dark zh-TW ×failed/queued/delivered. Same approved reason/button/glyph, quote and file controls;phone44px, one row,no overflow/errors/CSP. Phone focus mode hides the Needs-you badge:its lifecycle is checked in the fixture state, not claimed from that phone image alone. Existing approved8-case main visual evidence above carries; no new product layout was introduced.
+
+The current source-hash inventory is for the dev integration, with the three moved modules mapped to shared/. Main's approved source is pinned by its merged commit. USER visual release for the unchanged resend layout was verified before this twin; normal exact-head Prism/CI/coordinator gating remains. Both branches' required post-merge workflows must succeed before closing the card.

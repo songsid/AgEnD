@@ -782,6 +782,8 @@ function threadEntry(name, doc) {
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
     contactBadge: (x) => { installBadgeRefresh(); return contactBadgeHtml(x); },   // M-3339: 聯絡申請 #R… / 已准轉交 #R… (kept current)
+    canResend: (message) => store.canResend(name, message),
+    resendMessage: (key) => store.resendMessage(name, key),
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
     putBackOutgoing: (clientId) => { recordEdit(composerField(name)); store.putBackOutgoing(name, clientId); },   // undoable, as typing

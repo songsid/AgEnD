@@ -196,6 +196,7 @@ export function createThread(list, scroller, opts) {
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
+    const resend = opts.canResend?.(x) ? `<div data-trust="thread-control" class="msg-resend"><span class="muted">${escAttr(tr("chat.tick_failed"))} ·</span><button type="button" class="btn btn-sm" data-act="resend" data-arg="${escAttr(msgKey(x))}" ${x.resending ? "disabled" : ""}>${escAttr(tr(x.resending ? "chat.resending" : "chat.resend"))}</button></div>` : "";
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
@@ -213,7 +214,7 @@ export function createThread(list, scroller, opts) {
     // M-3339: a contact request's badge (聯絡申請 #R… / 已准轉交 #R…) — escaped HTML from the Fleet chat's hook; a Hub passes none.
     const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}${contact}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}${contact}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}${resend}</div>`;
   }
   /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
   function reactText(k, ...a) {
@@ -1062,6 +1063,7 @@ export function createThread(list, scroller, opts) {
     else if (act === "reactAdd") { closePicker(true); reactFrom(el, true); }                       // a quick pick: mine added
     else if (act === "reactToggle") reactFrom(el, el.getAttribute("aria-pressed") !== "true");      // a chip: mine on or off
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
+    else if (act === "resend") opts.resendMessage?.(el.dataset.arg);
     else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
     else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
     else if (act === "deleteOut") opts.deleteOutgoing?.(el.dataset.arg);

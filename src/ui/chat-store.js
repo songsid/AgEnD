@@ -46,7 +46,7 @@ const COMPACT_PAGE_LIMIT_MS = 11 * 60_000;
 /** Build a store. `deps` (fetch, toast, announce, t, now) are injected so tests can drive every path. */
 export function createChatStore(deps) {
   const s = {
-    msgs: {}, drafts: {}, replies: {}, pendingFiles: {}, sending: {}, outgoing: {}, instanceStatus: {}, waking: {},
+    resendOwner: null, resendBusy: new Set(), msgs: {}, drafts: {}, replies: {}, pendingFiles: {}, sending: {}, outgoing: {}, instanceStatus: {}, waking: {},
     prompts: {}, workingSince: {}, stopping: {}, cancelling: {}, scrollMemo: {}, historyRead: new Set(), gapped: new Set(), allHidden: new Set(), rbBusy: new Set(),
     pollMine: readPollMine(),
     // #1823 (#1828 review): the server's clock minus this device's. A poll's deadline is the server's; a page whose clock
@@ -159,7 +159,7 @@ export function createChatStore(deps) {
     for (const d of list) {
       if (!d || typeof d.instance !== "string") continue;
       const before = s.msgs[d.instance];
-      s.msgs[d.instance] = R().applyDelivery(before, d.messageId, d.delivery);
+      s.msgs[d.instance] = R().applyDelivery(before, d.messageId, d.delivery, d);
       if (s.msgs[d.instance] !== before) touched.add(d.instance);
     }
     for (const i of touched) changed(i, "msgs");
@@ -211,6 +211,7 @@ export function createChatStore(deps) {
       if (!current()) return false;
       if (signal?.aborted) { s.historyRead.delete(name); return false; }
       if (!r || !Array.isArray(r.messages)) { s.historyRead.delete(name); return true; }
+      if (typeof r.resendOwner === "string") s.resendOwner = r.resendOwner;
       // Kept even when the person has moved on: the store is page-lived, and the answer belongs to `name`.
       // #2848: a guest's chat whose every message is hidden from it (between agents): its empty chat says so.
       if (r.allHidden === true) s.allHidden.add(name); else s.allHidden.delete(name);
@@ -325,7 +326,8 @@ export function createChatStore(deps) {
   /** The thread as drawn: the server's messages, then this page's pending ones. */
   function threadRows(name) {
     const out = s.outgoing[name];
-    return out && out.length ? (s.msgs[name] || []).concat(out) : (s.msgs[name] || []);
+    const rows = out && out.length ? (s.msgs[name] || []).concat(out) : (s.msgs[name] || []);
+    return s.resendBusy.size ? rows.map(m => s.resendBusy.has(msgKeyOf(m)) ? { ...m, resending: true } : m) : rows;
   }
   /** Upload one file, its progress told as it goes (XHR: fetch cannot report an upload's progress). */
   async function uploadFile(target, file, onProgress) {
@@ -444,6 +446,21 @@ export function createChatStore(deps) {
     e.outgoing = { state: "failed", error: localized && localized !== key ? localized : (r && r.error ? r.error : t("chat.disconnected")) };
     changed(target, "msgs"); changed(target);
     deps.toast(e.outgoing.error, false);
+  }
+  function canResend(target, message) {
+    return message?.instance === target && message.role === "user" && message.delivery === "failed"
+      && !!s.resendOwner && message.retry?.owner === s.resendOwner;
+  }
+  async function resendMessage(target, key) {
+    const message = (s.msgs[target] || []).find(m => msgKeyOf(m) === key);
+    if (!message || !canResend(target, message) || s.resendBusy.has(key)) return;
+    s.resendBusy.add(key); changed(target, "msgs");
+    try {
+      const r = await api("POST", "/ui/resend", { instance: target, boot: message.boot, id: message.id, attempt: message.retry.attempt });
+      if (r?.message) applyDeliveries([r.message]);
+      if (!r?.sent) deps.toast(t(r?.reason === "attachment_gone" ? "chat.resendAttachmentGone" : r?.reason === "reply_gone" ? "chat.resendReplyGone" : "chat.resendFailed"), false);
+    } catch { deps.toast(t("chat.resendFailed"), false); }
+    finally { s.resendBusy.delete(key); changed(target, "msgs"); }
   }
   /** A failed send, sent again (the same bubble; files already uploaded are not uploaded again). */
   function retryOutgoing(target, clientId) {
@@ -812,7 +829,7 @@ export function createChatStore(deps) {
     attach, applyStatus, applyActivity, ingest, applyDeliveries, openHistory, onGap,
     onPrompt, applyPrompts, resolvePrompt, answerPrompt, answerByNonce, holdPrompt, releasePrompt, promptsFor,
     applyReplyButtons, clickReplyButton,
-    uploadFile, send, retryOutgoing, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
+    uploadFile, send, retryOutgoing, resendMessage, canResend, deleteOutgoing, putBackOutgoing, threadRows, addFiles, removeFile, attachPastedText, fileBackAsText, isPasted, setDraft,
     startReply, clearReply, findQuoted, loadOlder, loadNewer, loadAround, backToLatest, pagingState, addToDraft, captureDraft, draftCurrent, clearCapturedDraft, acceptDraft,
     cancelReply, isUser, runCommand, dismissCommand, commandFree, reloadModelMenu,
     allHidden: (name) => s.allHidden.has(name),

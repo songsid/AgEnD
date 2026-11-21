@@ -56,7 +56,7 @@ import { ROUTE_WORKER_CSP, ROUTE_WORKER_PATH, sendPanelHtml } from "./web-host-g
 import { libavoidFile } from "./web-libavoid.js";
 import { shellRoute } from "./web-shell-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { createReadStream, createWriteStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, createWriteStream, existsSync, readFileSync, closeSync } from "node:fs";
 import { servedAssets } from "./auth-api.js";
 import { assetIntact, assetsUnchanged, assetVersion, assetVersionMark, answerStaleAsset, buildModuleGraph, staticClosure, versionShell, IMMUTABLE_PRIVATE, type ModuleGraph } from "./web-asset-version.js";
 import { join, dirname } from "node:path";
@@ -2624,7 +2624,7 @@ export function handleWebRequest(
     // #2848: the chat has messages, none of them a guest's to see (all between agents, or kept before they were marked):
     // said, so its empty chat is explained rather than blank. Only that there are some — never how many, or what.
     const allHidden = !!guest && messages.length === 0 && (ctx.webChatHistory?.list(instance, 1).length ?? 0) > 0;
-    json(res, 200, { messages, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
+    json(res, 200, { messages, resendOwner: webPersonOf(req, url, ctx)?.voterKey ?? null, boot: ctx.webChatHistory?.boot ?? null, lastId: ctx.webChatHistory?.lastId ?? 0, ...(allHidden ? { allHidden: true } : {}) });
     return true;
   }
 
@@ -2858,6 +2858,11 @@ export function handleWebRequest(
   }
 
   // ── Send message ───────────────────────────────────────
+
+  if (method === "POST" && path === "/ui/resend") {
+    void handleResendMessage(req, res, ctx).catch(() => { if (!res.destroyed && !res.headersSent) json(res, 503, { error: "Resend unavailable" }); });
+    return true;
+  }
 
   if (method === "POST" && path === "/ui/send") {
     handleSendMessage(req, res, ctx);
@@ -4549,6 +4554,88 @@ function webSendDedupeOf(ctx: WebApiContext): WebSendDedupe {
   return d;
 }
 
+/** Resend only retained server content, with one new attempt on the same bubble. */
+async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): Promise<void> {
+  const url = new URL(req.url ?? "/", "http://localhost"), arrival = webAuthorityOf(req, url, ctx);
+  let raw: unknown;
+  try { raw = JSON.parse((await readBoundedWebBody(req, 8192)).toString("utf8")); }
+  catch { json(res, 400, { error: "Invalid resend request" }); return; }
+  if (!permitWebContinuation(req, res, ctx)) return;
+  const parsed = z.object({ instance: z.string().min(1).max(128), boot: z.string().regex(/^[0-9a-f]{1,32}$/),
+    id: z.number().int().positive().max(Number.MAX_SAFE_INTEGER), attempt: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER) }).strict().safeParse(raw);
+  if (!parsed.success) { json(res, 400, { error: "Invalid resend request" }); return; }
+  const { instance, boot, id, attempt } = parsed.data, history = ctx.webChatHistory;
+  const person = webPersonOf(req, url, ctx), guest = guestRequestOf(req), refused = guestChatRefusal(guest, instance);
+  if (!person) { json(res, 401, { error: WEB_TOKEN_INVALID_MESSAGE }); return; }
+  if (refused) { json(res, refused.status, { error: refused.error }); return; }
+  const native = isWindowsInstance(ctx.fleetConfig?.instances[instance]);
+  if (native && !nativeCliAuthorization(req, url, ctx)) { json(res, 403, { error: "Windows runtime requires an administrator on the local dashboard" }); return; }
+  const row = history?.find(instance, boot, id);
+  if (!row || row.role !== "user" || row.retry?.owner !== person.voterKey || (guest && !guestSeesMessage(row, guest, guest.scope()))) {
+    json(res, 404, { error: "Message is not available to resend" }); return;
+  }
+  if (native && row.attachments?.length) { json(res, 400, { error: "Attachments are not supported by this runtime yet" }); return; }
+  if (guest && guestCommandText(row.text)) { json(res, 403, { error: "guest_no_commands" }); return; }
+  if (gatewayRequestContext(req) && row.text.startsWith("/raw ") && !adminAdmissionOf(req, url, ctx)) { json(res, 403, { error: t("web.raw_public_refused") }); return; }
+  const registered = registeredChatInstance(ctx, instance);
+  if (!registered && !ctx.instanceIpcClients.has(instance)) { json(res, 404, { error: "Instance not found" }); return; }
+  const admission = admissionOf(req, url, ctx);
+  const authorityCurrent = () => admission !== null && admissionOf(req, url, ctx) === admission
+    && webPersonOf(req, url, ctx)?.voterKey === person.voterKey
+    && (!guest || (guest.current() && !guestChatRefusal(guest, instance)))
+    && (native ? isWindowsInstance(ctx.fleetConfig?.instances[instance]) && nativeCliAuthorization(req, url, ctx)
+      : registered ? registeredChatInstance(ctx, instance) : ctx.instanceIpcClients.has(instance));
+  const stillCurrent = () => !res.destroyed && authorityCurrent();
+  const update = () => ctx.emitSseEvent("delivery", { instance, boot: row.boot, id: row.id, messageId: row.messageId, delivery: row.delivery, retry: row.retry });
+  if (row.retry.attempt === attempt + 1 && row.delivery !== "failed") { json(res, 200, { sent: true, repeated: true, message: row }); return; }
+  if (row.delivery !== "failed" || row.retry.attempt !== attempt) { json(res, 409, { error: "This delivery changed; refresh and try again" }); return; }
+  const quoted = row.replyTo ? history!.find(instance, row.replyTo.boot, row.replyTo.id) : undefined;
+  if (row.replyTo && (!quoted || (guest && !guestSeesMessage(quoted, guest, guest.scope())))) { json(res, 409, { error: t("web.reply_gone"), reason: "reply_gone" }); return; }
+  const files: Array<Pick<UploadEntry, "kind" | "path" | "name">> = [];
+  const limits = uploadLimits(ctx.fleetConfig?.web, { publicLink: gatewayRequestContext(req) !== undefined });
+  let totalBytes = 0;
+  if ((row.attachments?.length ?? 0) > limits.maxFiles) { json(res, 409, { error: "The attachments exceed the current file limit", reason: "attachment_gone" }); return; }
+  for (const attachment of row.attachments ?? []) {
+    const opened = "id" in attachment ? ctx.webFiles?.open(attachment.id) : null;
+    if (!opened) { json(res, 409, { error: "An attached file is no longer available", reason: "attachment_gone" }); return; }
+    try {
+      if (opened.file.instance !== instance) { json(res, 409, { error: "An attached file is no longer available", reason: "attachment_gone" }); return; }
+      totalBytes += opened.file.size;
+      if (opened.file.size > limits.maxFileBytes || totalBytes > limits.maxTotalBytes) { json(res, 409, { error: "The attachments exceed the current file limit", reason: "attachment_gone" }); return; }
+      files.push({ kind: opened.file.kind, name: opened.file.name, path: opened.file.realPath });
+    } finally { closeSync(opened.fd); }
+  }
+  if (!stillCurrent()) { json(res, 403, { error: "The session or instance changed" }); return; }
+  const { authority } = confirmAfterBody(arrival, webAuthorityOf(req, url, ctx, instance));
+  const nativeRequestId = isNativeExecInstance(ctx.fleetConfig?.instances[instance]) ? randomUUID() : undefined;
+  const nativeJournalIds = nativeRequestId ? new Set((ctx.nativeInstanceRuntime?.().get(instance)?.turns ?? []).map(turn => `native:${turn.id}:user`)) : undefined;
+  const messageId = nativeRequestId ? `native:${nativeRequestId}:user` : newWebMessageId(), claimed = history!.beginResend(instance, boot, id, attempt, person.voterKey, messageId, nativeJournalIds);
+  if (claimed.kind === "refused") { json(res, 409, { error: "This delivery changed; refresh and try again" }); return; }
+  if (claimed.kind === "already") { json(res, 200, { sent: true, repeated: true, message: claimed.message }); return; }
+  update();
+  const delivery = attachmentDelivery(row.text, files);
+  const adapter = ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter;
+  const payload = { type: "fleet_inbound", content: delivery.text, ...(nativeRequestId ? { requestId: nativeRequestId } : {}), targetSession: instance, meta: {
+    chat_id: ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? ""),
+    thread_id: String(ctx.fleetConfig?.instances[instance]?.topic_id ?? ""), message_id: messageId,
+    user: person.name, user_id: person.userId, source: "web", ts: new Date().toISOString(), adapter_id: adapter?.id,
+    ...(guest ? { web_guest: "1" } : {}), ...delivery.meta, ...(quoted ? { reply_to_text: webChatReplyText(quoted) } : {}),
+  } };
+  let handedOff = false;
+  try {
+    const delivered = ctx.deliverHumanToInstance ? await ctx.deliverHumanToInstance(instance, payload, webHumanOrigin(false, authority), row.text, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
+      : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
+    if (delivered === false) throw new Error("delivery changed");
+    handedOff = true;
+    if (!res.destroyed) json(res, 200, { sent: true, message: row });
+  } catch (error) {
+    if (handedOff) return; // a lost HTTP answer does not make the accepted pane handoff fail
+    history!.setDelivery(instance, messageId, "failed"); update();
+    ctx.logger.error({ instance, err: error }, "Web resend handoff failed");
+    json(res, 503, { ...webDeliveryFailure(error), message: row });
+  }
+}
+
 function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebApiContext): void {
   const arrival = webAuthorityOf(req, new URL(req.url ?? "/", "http://localhost"), ctx);   // #1939 §3: again after the body
   let body = "";
@@ -4781,7 +4868,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       ctx.lastInboundUser.set(instance, person.name);
       ctx.eventLog?.logActivity("message", person.name, (message || `[${files.length} file(s)]`).slice(0, 200), instance);
       // #1920: the account that wrote it (a guest sees its own); channel-visible once its copy was sent (above).
-      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
+      ctx.emitSseEvent("message", { instance, sender: person.name, role: "user", retryOwner: person.voterKey, text: message, ts, attachments: files.map(publicAttachment), messageId, ...(person.bound ? { from: person.voterKey } : {}),
         ...(quoted ? { replyTo: webChatReplyRef(quoted) } : {}), ...(clientId ? { clientId } : {}) });
       json(res, 200, { sent: true, messageId });
     } catch {

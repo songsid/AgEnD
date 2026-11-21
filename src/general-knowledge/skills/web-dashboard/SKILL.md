@@ -182,6 +182,8 @@ them load; nothing loads before you get there. Past each agent's newest 500, the
 - **Search hits and pins** open the page around the message, however far back it is.
 - **Admins only** (over the public link too); a guest sees only the chat's newest messages, as before.
 
+A web message the server accepted but could not deliver shows **Resend** on its failed bubble. Its sender can send it again there: the same bubble keeps its quote and attached files. If a quoted message or file is no longer available, it stays failed and explains how to write a new message. Needs you keeps the failed delivery while it is being resent and clears it when delivery is confirmed.
+
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
 queued messages. While the agent works, "*name* is working…" and **Stop reply** sit in a bar above the message box; the
