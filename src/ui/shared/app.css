@@ -2317,9 +2317,12 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
    sidebar open; its ☰/‹ button otherwise, as on a phone), not centred away from it; the first section label sits one
    step under the header, a label one small step above its cards, sections one step apart. */
 .p-needs > .panel-body > .col { margin-inline: 0; padding-top: var(--s-3); padding-inline: max(var(--s-3), env(safe-area-inset-left)) max(var(--s-3), env(safe-area-inset-right)); }
-.p-needs :is(.n-group-head, .n-settings-head) { padding: 0 0 var(--s-2); }
+/* A plain heading only: the suggestions group's head is its <summary>, a control that keeps its own padding (and a
+   phone's tap height, below). */
+.p-needs :is(h2.n-group-head, .n-settings-head) { padding: 0 0 var(--s-2); }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .p-needs > .panel-body > .col { padding-inline: max(var(--s-4), env(safe-area-inset-left)) max(var(--s-4), env(safe-area-inset-right)); }
+  .p-needs .n-suggestions > summary { min-height: var(--tap); }
 }
 /* #2910 D2: Notices (a web-only fleet's General) — the Needs you rows; a new one has an accent edge and a "New" tag. */
 .n-item.notice.unread { box-shadow: inset 3px 0 0 var(--accent); }
