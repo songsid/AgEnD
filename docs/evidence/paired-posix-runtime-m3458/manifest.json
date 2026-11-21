@@ -1,0 +1,30 @@
+{
+  "source": "cb91653ba82c8d8f1c6196ef618e39b943d95a89",
+  "kind": "display-only real-app Settings prototype; not platform acceptance",
+  "files": [
+    {
+      "path": "README.md",
+      "sha256": "bcc3bfb7e3569b6f30a5b5c7eee11a3cfcba705ffdc8eb5b8a7e00a5adef2427"
+    },
+    {
+      "path": "checks.json",
+      "sha256": "22a86b5373fcb0c4524348893c5ff4baaf798bfb4422e95d6bcc3325cd8267d4"
+    },
+    {
+      "path": "desk-en-approval.png",
+      "sha256": "1778c8dc43a9f0ed7c02aa1a7f68df0d4ac9fc4dd0b2e1f767786ff514e5976b"
+    },
+    {
+      "path": "desk-en-connect.png",
+      "sha256": "dc1c445f78ed4aaf3d4547693742fce6d2f8d321ddacb3b2bef572e2b1100381"
+    },
+    {
+      "path": "phone-zh-TW-approval.png",
+      "sha256": "34742dc5cdb4732f20a66304422019c5e1708df1d94d850c554c04eab5b44071"
+    },
+    {
+      "path": "phone-zh-TW-connect.png",
+      "sha256": "9f7529809ec81f1aa602ff85fed60abd2cdb1603949ff1096bb0efb550440b47"
+    }
+  ]
+}
