@@ -1,0 +1,33 @@
+{
+  "attempt": 1,
+  "run": 44902531664,
+  "job": 136841657767,
+  "sha": "883cf43ea9823a946795280d01a64402886d7f87",
+  "observedCaseMilliseconds": 10130,
+  "budgetMilliseconds": 10000,
+  "rerunCaseMilliseconds": 89,
+  "forcedDelayMilliseconds": 11000,
+  "baseFaultControl": {
+    "exit": 1,
+    "testMilliseconds": 10010
+  },
+  "fixedFaultControl": {
+    "exit": 0,
+    "testMilliseconds": 84,
+    "collectionMilliseconds": 17460
+  },
+  "partitionBase": {
+    "failed": 1,
+    "passed": 2
+  },
+  "focused": {
+    "files": 4,
+    "passed": 84
+  },
+  "limits": "Original log has no per-await/CPU/I/O attribution; transform delay is a bounded fault control, not a timing trace of the runner.",
+  "fullDurable": {
+    "files": 4,
+    "passed": 379
+  },
+  "typesExit": 0
+}
