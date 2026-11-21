@@ -155,7 +155,7 @@ describe("the panel renders the server's list and reads nothing itself (#1374)",
     await mount(); await settle(4);
     expect(p.root.querySelectorAll(".n-group-head").map((e: any) => e.textContent)).toEqual(["api-server", "qa-bot", "docs-writer"]);
     expect(p.root.querySelectorAll(".n-title strong").map((e: any) => e.textContent)).toEqual(["Waiting at its terminal", "Permission needed", "Crashed", "Could not confirm delivery"]);
-    expect(p.root.querySelectorAll(".n-age").map((e: any) => e.textContent)).toEqual(["2 min", "2 min", "47 min", "3 h"]);
+    expect(p.root.querySelectorAll(".n-age").map((e: any) => e.textContent)).toEqual(["2 min ago", "2 min ago", "47 min ago", "3 h ago"]);
     expect(p.root.querySelectorAll(".n-item a").map((a: any) => a.getAttribute("href"))).toEqual(["/ui/chat/api-server", "/ui/chat/api-server", "/ui/chat/qa-bot", "/ui/chat/docs-writer"]);
     // Resolved anywhere: the server's next list drops it, and so does the panel.
     app.appStore.set({ needs: ITEMS.filter(i => i.id !== "delivery:d1") });

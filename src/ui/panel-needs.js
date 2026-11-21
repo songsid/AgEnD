@@ -1,4 +1,4 @@
-import {HostAlertActions,hostAlertText,hostAlertValue} from './host-alerts.js';
+import {HostAlertActions,hostAlertText,hostAlertName,hostAlertDescription} from './host-alerts.js';
 import { modelSwitchText } from "/assets/model-observation.js";
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
@@ -43,7 +43,7 @@ register("needs", {
     otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
-    ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
+    ageNow: "just now", ageMin: "{0} min ago", ageHour: "{0} h ago", ageDay: "{0} d ago",
     notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
     notifyDenied: "This browser blocked notifications for AgEnD. Allow them in the site settings to turn this on.",
@@ -68,7 +68,7 @@ register("needs", {
     otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
-    ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
+    ageNow: "剛剛", ageMin: "{0} 分鐘前", ageHour: "{0} 小時前", ageDay: "{0} 天前",
     notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了 AgEnD 的通知。請在網站設定中允許後再開啟。",
@@ -273,8 +273,8 @@ function NeedsItem({ item, nowMs, owner }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${item.type==='host'?hostAlertText('title'):itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
-      ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertText(({cpu:'cpu',memory:'memory',filesystem:'filesystem','backing-drive':'backing'})[item.hostAlert.kind]||'filesystem')} · ${hostAlertText('value',hostAlertValue(item.hostAlert),hostAlertValue(item.hostAlert,item.hostAlert.threshold))}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
+      <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}

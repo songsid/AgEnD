@@ -1,5 +1,27 @@
 [
   {
+    "name": "real-health-desk-light-en",
+    "device": "desk",
+    "theme": "light",
+    "lang": "en",
+    "path": "/ui/fleet/host-health",
+    "source": "actual-host-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": null
+  },
+  {
+    "name": "real-health-phone-dark-zh-TW",
+    "device": "phone",
+    "theme": "dark",
+    "lang": "zh-TW",
+    "path": "/ui/fleet/host-health",
+    "source": "actual-host-cache",
+    "overflow": false,
+    "coverageLines": 1,
+    "phoneTargetsAtLeast44": true
+  },
+  {
     "name": "real-settings-desk-light-en",
     "device": "desk",
     "theme": "light",

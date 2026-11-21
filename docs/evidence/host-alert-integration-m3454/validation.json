@@ -11,5 +11,17 @@
     "checks": 124,
     "result": "PASS"
   },
-  "scope": "No CLI, account/model or real notification sender; actual scratch host sampling for health/settings; synthetic incident overlays for alerts/Needs."
+  "scope": "No CLI, account/model or real notification sender; actual scratch host sampling for health/settings; synthetic incident overlays for alerts/Needs.",
+  "baselineHead": "04b977bb967382705337d8c0d80db8ba3d0dee0e",
+  "polish": {
+    "files": 4,
+    "tests": 74,
+    "passed": 74,
+    "beforeFailingCases": 3,
+    "productionTypes": 0,
+    "testTypes": 0,
+    "assets": 0,
+    "runtimeChanged": false,
+    "broadSuiteRepeated": false
+  }
 }
