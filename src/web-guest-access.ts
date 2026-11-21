@@ -52,7 +52,7 @@ export const GUEST_ROUTES: readonly GuestRoute[] = [
   // Opened by phase 2: what needs the guest's own identity, authority and the history rule.
   { methods: ["GET"], pattern: /^\/ui\/history$/, instance: { query: "instance" }, state: "on", note: "an in-scope instance's history, as its channel showed it (guestHistory, #1920 §5.2)" },
   // Phase 2 (step 2b): chat as on the platform — authority none, never a command (guestChatRefusal, in the handlers).
-  { methods: ["POST"], pattern: /^\/ui\/send$/, instance: null, state: "on", note: "a message to an in-scope instance (the handler checks the body's instance and web.guests.chat); never a command" },
+  { methods: ["POST"], pattern: /^\/ui\/(?:send|resend)$/, instance: null, state: "on", note: "a message to an in-scope instance (the handler checks the body's instance and web.guests.chat); never a command" },
   { methods: ["POST"], pattern: /^\/ui\/upload$/, instance: { query: "instance" }, state: "on", note: "a file for an in-scope instance's message (web.guests.chat)" },
   { methods: ["POST"], pattern: /^\/ui\/reply-button$/, instance: null, state: "on", note: "a click on a reply the guest may see (the handler checks; web.guests.chat)" },
   { methods: ["POST"], pattern: new RegExp(`^/ui/cancel/${NAME}$`), instance: { group: 1 }, state: "on", note: "Cancel, as the platform's button lets anyone allowed there (web.guests.chat)" },

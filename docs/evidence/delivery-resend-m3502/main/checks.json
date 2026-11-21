@@ -1,0 +1,245 @@
+{
+  "before": false,
+  "cases": {
+    "desk-light-en": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 792,
+        "y": 366,
+        "width": 72,
+        "height": 30
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "desk-light-zh-TW": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 909.375,
+        "y": 366,
+        "width": 74,
+        "height": 30
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-en": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 792,
+        "y": 366,
+        "width": 72,
+        "height": 30
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "desk-dark-zh-TW": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 909.375,
+        "y": 366,
+        "width": 74,
+        "height": 30
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "phone-light-en": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 55.921875,
+        "y": 438,
+        "width": 72,
+        "height": 44
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "phone-light-zh-TW": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 110.375,
+        "y": 414,
+        "width": 74,
+        "height": 44
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-en": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 55.921875,
+        "y": 438,
+        "width": 72,
+        "height": 44
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-zh-TW": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 110.375,
+        "y": 414,
+        "width": 74,
+        "height": 44
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    }
+  }
+}

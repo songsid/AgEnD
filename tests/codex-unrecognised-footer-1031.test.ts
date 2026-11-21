@@ -108,6 +108,43 @@ describe("the real Context-less idle pane (#1031)", () => {
   });
 });
 
+describe("post-startup input recovery (M-3502)", () => {
+  it("waits for the live composer's stable proof instead of exhausting three rounds in one tick", async () => {
+    const h = makeHarness();
+    h.daemon.inputTransientGuardGeneration = null; // an earlier delivery already retired the startup barrier
+    const failed = vi.fn(); h.daemon.on("message_failed", failed);
+    const delivery = h.daemon.deliverMessage(MESSAGE, { chatId: "c", messageId: "m" }, { submissionId: "m" });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(failed, "a transient input miss must get a timed retry").not.toHaveBeenCalled();
+    expect(h.paste).not.toHaveBeenCalled();
+    await expect(settle(delivery, 60_000)).resolves.toBe(true);
+    expect(h.paste).toHaveBeenCalledOnce();
+    expect(failed).not.toHaveBeenCalled();
+  });
+  it("cancels a timed input retry without a paste, recovery Enter or failed receipt", async () => {
+    const h = makeHarness(); h.daemon.inputTransientGuardGeneration = null;
+    const failed = vi.fn(); h.daemon.on("message_failed", failed);
+    const delivery = h.daemon.deliverMessage(MESSAGE, { chatId: "c", messageId: "m" }, { deliveryEpoch: h.daemon.deliveryEpoch });
+    await vi.advanceTimersByTimeAsync(1_000); h.daemon.deliveryEpoch++;
+    await expect(settle(delivery, 1_000)).resolves.toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled(); expect(failed).not.toHaveBeenCalled();
+  });
+
+  it("keeps a persistent unsafe composer unpasted and reports its real failure reason at the bounded deadline", async () => {
+    const h = makeHarness(); h.daemon.inputTransientGuardGeneration = null;
+    h.state.pane = NO_CONTEXT.replace("› Ask Codex to do anything", "› unfinished personal draft");
+    const failed = vi.fn(); h.daemon.on("message_failed", failed);
+    const started = Date.now();
+    const delivery = h.daemon.deliverMessage(MESSAGE, { chatId: "c", messageId: "m" }, {});
+    await vi.advanceTimersByTimeAsync(1_000); expect(failed).not.toHaveBeenCalled();
+    vi.setSystemTime(started + 30 * 60_000 + 1);
+    await expect(settle(delivery, 1_000)).resolves.toBe(false);
+    expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled();
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ phase: "stranded-input", proof: "input-not-clear-timeout" }));
+  });
+
+});
+
 describe("every #978 condition is required (#1031)", () => {
   /** Ask the fallback twice, a full stable window apart. */
   function readyAfterStableWindow(h: ReturnType<typeof makeHarness>, pane: string): boolean {

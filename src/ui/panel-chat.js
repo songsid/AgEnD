@@ -447,6 +447,8 @@ function threadEntry(name, doc) {
     onEmpty: (v) => e.sink?.setEmpty(v && store.allHidden(name) ? "hidden" : v),
     setPreviewOptIn, copyText, download: downloadHtml, toggleWrap,
     clickReplyButton: (id, index) => store.clickReplyButton(name, id, index),      // #1266
+    canResend: (message) => store.canResend(name, message),
+    resendMessage: (key) => store.resendMessage(name, key),
     retryOutgoing: (clientId) => store.retryOutgoing(name, clientId),              // a failed send's Retry and Delete
     deleteOutgoing: (clientId) => store.deleteOutgoing(name, clientId),
     putBackOutgoing: (clientId) => { recordEdit(composerField()); store.putBackOutgoing(name, clientId); },   // undoable, as typing

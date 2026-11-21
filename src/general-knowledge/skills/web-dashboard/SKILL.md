@@ -133,6 +133,8 @@ Agents then see that browser's messages as `@web:v` and check their receipt like
 
 A message to a paused agent wakes it through the same delivery path as Discord/Telegram, including ClassicBot. The composer shows **Waking…**; a refused wake explains why, keeps the draft/files and offers **Retry send**. No automatic resend. Stopped agents still require Start. Upload/history/Cancel do not wake agents. Existing guest/public-link send permissions are unchanged.
 
+A web message the server accepted but could not deliver shows **Resend** on its failed bubble. Its sender can send it again there: the same bubble keeps its quote and attached files. If a quoted message or file is no longer available, it stays failed and explains how to write a new message. Needs you keeps the failed delivery while it is being resent and clears it when delivery is confirmed.
+
 **Sending.** Type and press Enter. A message sent while the agent works waits its turn; `/steer <text>` goes into
 the current turn, `/btw <question>` asks a side question. **Stop reply** (or Esc) interrupts the reply and drops
 queued messages. While the agent works, "*name* is working…" and **Stop reply** sit in a bar above the message box; the

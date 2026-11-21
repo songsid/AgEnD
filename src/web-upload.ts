@@ -661,7 +661,7 @@ export class WebFileLedger {
  * The text and meta an agent gets for a message with files — the same tags and keys a Telegram
  * message produces (attachment-handler.ts), so agents need nothing new.
  */
-export function attachmentDelivery(message: string, entries: readonly UploadEntry[]): { text: string; meta: Record<string, string> } {
+export function attachmentDelivery(message: string, entries: readonly Pick<UploadEntry, "kind" | "path" | "name">[]): { text: string; meta: Record<string, string> } {
   const photos = entries.filter(e => e.kind === "photo");
   const docs = entries.filter(e => e.kind === "document");
   const meta: Record<string, string> = {};

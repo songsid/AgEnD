@@ -1,0 +1,32 @@
+{
+  "rootFailFirst": "assertion: live pane fails before one second after startup guard retired",
+  "affected": {
+    "files": 20,
+    "passed": 294
+  },
+  "finalTransport": {
+    "files": 3,
+    "passed": 38
+  },
+  "finalSafety": {
+    "files": 3,
+    "passed": 50
+  },
+  "publicRoute": {
+    "files": 3,
+    "passed": 73
+  },
+  "typesExit": 0,
+  "runsOverlap": true,
+  "screenshots": {
+    "matrixCases": 8,
+    "selectedOriginals": 16,
+    "phoneTargetPx": 44,
+    "desktopSmallButtonPx": 30,
+    "sameBubble": true,
+    "quoteFilesRetained": true,
+    "noOverflow": true,
+    "noActionPageErrorsOrCsp": true
+  },
+  "limits": "Failure-time pane text unavailable; existing Codex fixture reproduces the gate mismatch. Product web fixture only, delivery stubbed; no live pane/account/provider campaign."
+}

@@ -406,8 +406,8 @@
       if (seen[k] !== undefined) {
         // The same message again (history after the stream): the copy that got further shows its ticks.
         var had = out[seen[k]];
-        var next = nextDeliveryState(had.delivery, m.delivery);
-        if (next !== had.delivery) out[seen[k]] = had = Object.assign({}, had, { delivery: next });
+        var updated = deliveryMessage(had, m);
+        if (updated !== had) out[seen[k]] = had = updated;
         // #1266: …and the copy whose buttons got further (open → chosen / expired) shows them.
         if (m.buttons && (!had.buttons || buttonsRank(m.buttons) > buttonsRank(had.buttons) || (buttonsRank(m.buttons) === buttonsRank(had.buttons) && m.buttons.poll && had.buttons.poll && m.buttons.poll.rev > had.buttons.poll.rev))) out[seen[k]] = Object.assign({}, had, { buttons: m.buttons });
         return;
@@ -440,15 +440,30 @@
   }
 
   /** The list after a delivery report for `messageId`: the same list when nothing moved, else a copy. */
-  function applyDelivery(list, messageId, delivery) {
+  function deliveryMessage(had, update) {
+    var retry = update.retry, old = had.retry;
+    if (retry && typeof retry.owner === "string" && Number.isSafeInteger(retry.attempt) && retry.attempt >= 0) {
+      if (old && (old.owner !== retry.owner || retry.attempt < old.attempt)) return had;
+      if (old && retry.attempt === old.attempt && update.messageId !== had.messageId) return had;
+      var newer = !old || retry.attempt > old.attempt;
+      var next = newer ? nextDeliveryState(undefined, update.delivery) : nextDeliveryState(had.delivery, update.delivery);
+      if (!next) return had;
+      if (!newer && next === had.delivery && update.delivery !== had.delivery) return had;
+      if (!newer && next === had.delivery && JSON.stringify(retry) === JSON.stringify(old)) return had;
+      return Object.assign({}, had, { messageId: update.messageId, delivery: next, retry: Object.assign({}, retry) });
+    }
+    if (had.retry && update.messageId && update.messageId !== had.messageId) return had;
+    var next = nextDeliveryState(had.delivery, update.delivery);
+    return next === had.delivery ? had : Object.assign({}, had, { delivery: next });
+  }
+  function applyDelivery(list, messageId, delivery, update) {
     var msgs = list || [];
     for (var i = msgs.length - 1; i >= 0; i--) {
-      if (!msgs[i] || msgs[i].messageId !== messageId) continue;
-      var next = nextDeliveryState(msgs[i].delivery, delivery);
-      if (next === msgs[i].delivery) return msgs;
-      var out = msgs.slice();
-      out[i] = Object.assign({}, msgs[i], { delivery: next });
-      return out;
+      var sameRow = update && update.retry && msgs[i] && msgs[i].boot === update.boot && msgs[i].id === update.id;
+      if (!msgs[i] || (!sameRow && msgs[i].messageId !== messageId)) continue;
+      var next = deliveryMessage(msgs[i], Object.assign({}, update || {}, { messageId: messageId, delivery: delivery }));
+      if (next === msgs[i]) return msgs;
+      var out = msgs.slice(); out[i] = next; return out;
     }
     return msgs;
   }
