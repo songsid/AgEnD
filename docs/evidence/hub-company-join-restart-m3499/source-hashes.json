@@ -1,0 +1,22 @@
+[
+  {
+    "path": "tests/hub-company-join-restart.test.ts",
+    "sha256": "f5a130b2a9f4b647d677cef575577d61a8949a1f17b9cf09888a25b4d4056990"
+  },
+  {
+    "path": "tests/support/durable-ci-suites.ts",
+    "sha256": "d4a72bac77ed67514bfc2fbe727a9b5422dc9080c2571038eae6dbf70cc901ec"
+  },
+  {
+    "path": "tests/durable-ci-partition-m3496.test.ts",
+    "sha256": "5f38c73ca4de1f2e975262ee499eaa70395f00bd5e44c8a2b0a736dbb21ea7c9"
+  },
+  {
+    "path": "scripts/manual/test-resource-contention-m3499.py",
+    "sha256": "566c930eb69b4f10e868269d9ff1ffbc309ff917d4f5252d7a6304eb8e2744b5"
+  },
+  {
+    "path": "scripts/manual/vitest-company-join-cold-m3499.ts",
+    "sha256": "e8a50adfb574e13ef520e1e339f5c79241aee532439319bdccfd3e841146f6c5"
+  }
+]

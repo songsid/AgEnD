@@ -4,6 +4,10 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateKeyPairSync, randomUUID } from "node:crypto";
+// Load the real lazy components during collection, outside the restart scenario's 10s budget.
+// Imports create no controller, files or connection; each restart still builds fresh private state.
+import "../src/hub/join/local.js";
+import "../src/hub/member/pairing-api.js";
 import { FleetManager } from "../src/fleet-manager.js";
 import { CompanyJoinClient } from "../src/hub/join/client.js";
 import { currentLocalJoinId } from "../src/hub/join/local-journal.js";

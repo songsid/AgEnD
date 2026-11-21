@@ -1,0 +1,77 @@
+[
+  {
+    "run": 1,
+    "mode": "serial",
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 38.555,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "a new FleetManager reconstructs the expired journal and starts again from the same private state",
+        "status": "passed",
+        "milliseconds": 239.4704700000002
+      }
+    ]
+  },
+  {
+    "run": 2,
+    "mode": "serial",
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 35.995,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "a new FleetManager reconstructs the expired journal and starts again from the same private state",
+        "status": "passed",
+        "milliseconds": 211.647361000003
+      }
+    ]
+  },
+  {
+    "run": 3,
+    "mode": "serial",
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 38.739,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "a new FleetManager reconstructs the expired journal and starts again from the same private state",
+        "status": "passed",
+        "milliseconds": 224.74479299999803
+      }
+    ]
+  },
+  {
+    "run": 4,
+    "mode": "serial",
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 36.608,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "a new FleetManager reconstructs the expired journal and starts again from the same private state",
+        "status": "passed",
+        "milliseconds": 228.94741400000203
+      }
+    ]
+  },
+  {
+    "run": 5,
+    "mode": "serial",
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 36.841,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "a new FleetManager reconstructs the expired journal and starts again from the same private state",
+        "status": "passed",
+        "milliseconds": 383.3659699999989
+      }
+    ]
+  }
+]
