@@ -51,12 +51,12 @@ describe('settings persistence and staged confirmation agreement',()=>{
     const r=await api({defaults:{},instances:{}},{enabled:true});expect(r.status).toBe(409);expect(r.save).not.toHaveBeenCalled();
     expect(()=>prepareSettingsEffect('PUT',route,{enabled:true},{config:{defaults:{},instances:{}},classic:{}})).toThrow('monitoring_unavailable');
   });
-  it('enables only with real runtime capability and retains an explicitly selected mounted drive',async()=>{
-    const fleet:any={defaults:{},instances:{},monitoring:{enabled:false,agent_footprint:false,wsl_drive:'E'}};
-    const r=await api(fleet,{enabled:true},{available:true});expect(r.status).toBe(200);expect(fleet.monitoring.wsl_drive).toBe('E');
+  it('enables only with real runtime capability and keeps persisted config beta.16-compatible',async()=>{
+    const fleet:any={defaults:{},instances:{},monitoring:{enabled:false,agent_footprint:false}};
+    const r=await api(fleet,{enabled:true},{available:true});expect(r.status).toBe(200);expect(fleet.monitoring).not.toHaveProperty('wsl_drive');
     expect(()=>prepareSettingsEffect('PUT',route,{enabled:true},{config:fleet,classic:{},hostMonitoringAvailable:()=>true})).not.toThrow();
     for(const drive of ['/mnt/e','e','EE',null,true])expect(parseMonitoringSettings({wsl_drive:drive})).toEqual({error:'invalid_monitoring_settings'});
-    expect(monitoringConfig({wsl_drive:'E'})).toEqual({enabled:false,agent_footprint:false,wsl_drive:'E'});
+    expect(monitoringConfig({wsl_drive:'E'})).toEqual({enabled:false,agent_footprint:false});
   });
   it('classifies only validated boolean changes as an immediate settings operation',()=>{
     expect(isSettingsMutation('PUT',route)).toBe(true);

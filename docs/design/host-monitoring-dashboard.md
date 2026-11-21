@@ -55,6 +55,9 @@ APFS shares container space ([Apple](https://support.apple.com/en-gb/guide/secur
 
 ### WSL backing drive
 
+The Settings drive preference is stored atomically with mode 0600 in `host-monitoring-settings.json` under the Fleet state directory, separate from history and `fleet.yaml`. Only `enabled` and `agent_footprint` belong in the YAML monitoring mapping. Startup and ordinary config saves migrate a legacy `wsl_drive` through the lossless config writer. Missing or malformed sidecars use automatic detection. Older releases ignore the sidecar; re-upgrading retains it. Settings responses project the choice without putting it into the persisted FleetConfig, and confirmation fingerprints cover the sidecar. Removing monitoring history does not remove this preference.
+
+
 Linux free space alone is insufficient: virtual disk maximum capacity can exceed the Windows disk's capacity. [Microsoft documents the distinction and locating a distribution's vhdx through registered BasePath](https://learn.microsoft.com/en-us/windows/wsl/disk-space#how-to-locate-the-vhdx-file-and-disk-path-for-your-linux-distribution).
 
 At startup, after a path/config change and at most hourly, perform a bounded constant-script read of the current distribution's registration. Resolve its Windows volume and mounted Linux path, honouring custom automount roots. Cache mapping and volume identity. Never search user directories or enumerate vhdx files. Sampling reads filesystem counters; it does not open/traverse/repair/resize the vhdx or shut down WSL.

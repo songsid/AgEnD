@@ -1,0 +1,70 @@
+[
+  {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/README.md",
+    "sha256": "c7421913726bc6a7ed31db8eaaf351e5a49ea230b60f2faa6f3be2d445fc6e77"
+  },
+  {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/base-red.log.gz",
+    "sha256": "cfdcc4d25808cefa6d0a86dac53fbedd311359fc9ecace7bb4f6fdee8a794cb7"
+  },
+  {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/focused-green.log.gz",
+    "sha256": "ac5463fcfa9c609a685133cc104f02d992adf725d9802047a52e0f1c01d06ca7"
+  },
+  {
+    "path": "docs/evidence/wsl-drive-sidecar-s213/mutant-no-baseline.log.gz",
+    "sha256": "b41da90969abd8891806b0fc5a5de3b322365801f3f7b9ddffd0bb6df5830749"
+  },
+  {
+    "path": "src/fleet-manager.ts",
+    "sha256": "c3b9d8ea175224d784cb627a954ab62943cc03a833b5845a86fd7f01b5a3e5b8"
+  },
+  {
+    "path": "src/host-monitoring-config.ts",
+    "sha256": "000605d975880eda9945bab994d4a55428552b430b09087dbb0682b4a62dee4c"
+  },
+  {
+    "path": "src/host-monitoring-runtime.ts",
+    "sha256": "985506e7fc15c69131c01f5755eed35e74197a00202bb4ae5bdda5a997458db2"
+  },
+  {
+    "path": "src/host-monitoring-settings-store.ts",
+    "sha256": "faeb1a99714093c5c7c391a73bcead2aacfafd45759e93c6b661e992c2d01792"
+  },
+  {
+    "path": "src/settings-api.ts",
+    "sha256": "f3224aed29d481b39e72bffa2bbccd73a91379efc83179a5afd92067e976e356"
+  },
+  {
+    "path": "src/settings-baseline.ts",
+    "sha256": "a24e38c1090ba125aed76fdc92918787ff56feef78669e2ee0fa15217e869605"
+  },
+  {
+    "path": "src/settings-change.ts",
+    "sha256": "cd1e8ff124c52de55461b27bbd00fa598096876cc4769d91d50b361cd74923d0"
+  },
+  {
+    "path": "src/settings-effect.ts",
+    "sha256": "34bfd47cfff628f71e44ae62a1311b5574a7c985b08ce81eda5e4613399097a4"
+  },
+  {
+    "path": "tests/fixtures/host-monitoring-beta16/host-monitoring-config.ts",
+    "sha256": "f732592b9d913c1e4fd5ebcc313a037af442fb966eca6263acff41b0cc37a968"
+  },
+  {
+    "path": "tests/host-monitoring-runtime-m3454.test.ts",
+    "sha256": "f4823481f6dca5435b1cf38a8f29f8389d59ae90aa6f89d81d8f3b7b9153901a"
+  },
+  {
+    "path": "tests/host-monitoring-settings-m3454.test.ts",
+    "sha256": "474aae72e8abc9b7313b732c606da572ab43e9d4cb4c9624cbc1ef019e972df1"
+  },
+  {
+    "path": "tests/host-monitoring-sidecar-s213.test.ts",
+    "sha256": "b87e5052c646a66da627522066cf237f88802bb63396ae696a01e47993ce04e7"
+  },
+  {
+    "path": "tests/settings-http-confirmation-1423.test.ts",
+    "sha256": "9ea9a46131af4d5a58e18908b0277a70dcc3e6d7e07635d3102fa3a84ff834d1"
+  }
+]

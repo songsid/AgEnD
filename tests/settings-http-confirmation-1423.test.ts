@@ -44,11 +44,20 @@ function harness() {
       catch (err) { reject(err); }
     });
   }
-  return { config, save, store, gate, ctx, request, afterDispatch: (hook: () => void) => { afterDispatch = hook; }, stop: () => { alive = false; }, foreign: () => { session = "foreign"; }, path };
+  return { root, config, save, store, gate, ctx, request, afterDispatch: (hook: () => void) => { afterDispatch = hook; }, stop: () => { alive = false; }, foreign: () => { session = "foreign"; }, path };
 }
 const actor = () => ({ label: "F", current: () => true });
 const candidate = (h: ReturnType<typeof harness>) => [{ ...h.config.channels[0], access: { mode: "locked", allowed_users: ["2"] } }];
 describe("#1423 actual Settings handler behind confirmation", () => {
+  it("invalidates a pending settings confirmation when the monitoring sidecar changes", async () => {
+    const h = harness();
+    const first = await h.request("PUT", "/api/settings/fleet/channels", candidate(h));
+    expect(first.status).toBe(202);
+    writeFileSync(join(h.root, "host-monitoring-settings.json"), JSON.stringify({ version: 1, wsl_drive: "E" }));
+    expect((await h.store.decide(first.body.pending_change.id, "confirm", actor())).state).toBe("stale");
+    expect(h.save).not.toHaveBeenCalled();
+  });
+
   it("projects display metadata through real proposal and GET while preserving the exact canonical summary", async () => {
     const h = harness(), proposed = candidate(h), effect = prepareSettingsEffect("PUT", "/api/settings/fleet/channels", proposed, { config: h.config, classic: {} });
     const first = await h.request("PUT", "/api/settings/fleet/channels", proposed);

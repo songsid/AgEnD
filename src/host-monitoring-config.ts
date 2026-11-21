@@ -15,8 +15,9 @@ export function monitoringProblem(value: unknown): string | null {
 export function monitoringConfig(value?: unknown): HostMonitoringConfig {
   if (value !== undefined) { const problem = monitoringProblem(value); if (problem) throw new Error(`monitoring: ${problem}`); }
   const v = value as Partial<HostMonitoringConfig> | undefined;
+  // Persist only the beta.16-compatible booleans. wsl_drive is accepted solely for legacy migration / Settings input.
   // Explicit literals, never a changeable default or an environment override.
-  return { enabled: v?.enabled === true, agent_footprint: v?.agent_footprint === true, ...(v?.wsl_drive ? {wsl_drive:v.wsl_drive} : {}) };
+  return { enabled: v?.enabled === true, agent_footprint: v?.agent_footprint === true };
 }
 export function parseMonitoringSettings(body: unknown): { patch: Partial<HostMonitoringConfig> } | { error: string } {
   if (monitoringProblem(body) || !Object.keys(body as object).length) return { error: 'invalid_monitoring_settings' };
