@@ -956,9 +956,9 @@ export class InstanceLifecycle {
       if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "delivered", data.threadId);
       else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "delivered", data.threadId);
     });
-    daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string; threadId?: string }) => {
-      this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId });
-      this.ctx.logger.warn({ name, messageId: data.messageId }, "Message delivery failed (window gone, retries exhausted)");
+    daemon.on("message_failed", safeHandler((data: { chatId: string; messageId: string; threadId?: string; phase?: string; proof?: string }) => {
+      this.ctx.eventLog?.insert(name, "message_failed", { messageId: data.messageId, phase: data.phase, proof: data.proof });
+      this.ctx.logger.warn({ name, messageId: data.messageId, phase: data.phase, proof: data.proof }, "Message delivery failed");
       if (this.ctx.finishDeliveryStatus) this.ctx.finishDeliveryStatus(name, data.chatId, data.messageId, "failed", data.threadId);
       else this.ctx.reactMessageStatus(name, data.chatId, data.messageId, "failed", data.threadId);
     }, this.ctx.logger, `daemon.message_failed[${name}]`));

@@ -188,6 +188,7 @@ export function createThread(list, scroller, opts) {
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
+    const resend = opts.canResend?.(x) ? `<div data-trust="thread-control" class="msg-resend"><span class="muted">${escAttr(tr("chat.tick_failed"))} ·</span><button type="button" class="btn btn-sm" data-act="resend" data-arg="${escAttr(msgKey(x))}" ${x.resending ? "disabled" : ""}>${escAttr(tr(x.resending ? "chat.resending" : "chat.resend"))}</button></div>` : "";
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";
@@ -196,7 +197,7 @@ export function createThread(list, scroller, opts) {
     // #2272: reply to it — a hover strip at its top right (phones: swipe left or long-press; R on a focused message).
     const key = msgKey(x);
     const act = opts.canReply?.() === false ? "" : `<div data-trust="thread-control" class="msg-actions"><button type="button" class="chip-btn icon-only" data-act="reply" data-arg="${escAttr(key)}" title="${escAttr(tr("chat.reply"))}" aria-label="${escAttr(tr("chat.reply"))}">${REPLY}</button></div>`;
-    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender">${escAttr(x.sender)}</span>${time}${ticks}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr("chat.attGone"), goneLabel: tr("chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}${resend}</div>`;
   }
   /**
    * A message this page is sending (chat-store.js): its own bubble at once, dimmed with "Sending…" until the server
@@ -909,6 +910,7 @@ export function createThread(list, scroller, opts) {
     } else if (act === "showButtons") { const x = msgs.find(y => y.buttons && y.buttons.id === el.dataset.arg); if (x) reveal(msgKey(x)); }
     else if (act === "reply") { const x = msgs.find(y => msgKey(y) === el.dataset.arg); if (x) opts.startReply?.(x); }
     else if (act === "jumpQuote") void jumpTo(el.dataset.arg);
+    else if (act === "resend") opts.resendMessage?.(el.dataset.arg);
     else if (act === "retryOut") opts.retryOutgoing?.(el.dataset.arg);                 // a failed send, again
     else if (act === "putBackOut") opts.putBackOutgoing?.(el.dataset.arg);              // back in the composer, to change it
     else if (act === "deleteOut") opts.deleteOutgoing?.(el.dataset.arg);

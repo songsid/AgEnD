@@ -442,7 +442,7 @@ describe("GET /ui/history", () => {
   });
 
   it("a context without a chat answers with an empty list, not an error", () => {
-    expect(JSON.parse(call("/ui/history?instance=w", ctxWith()).res.body)).toEqual({ messages: [], boot: null, lastId: 0 });
+    expect(JSON.parse(call("/ui/history?instance=w", ctxWith()).res.body)).toEqual({ messages: [], boot: null, lastId: 0, resendOwner: "web:operator" });
   });
 });
 
