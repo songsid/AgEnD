@@ -106,7 +106,11 @@ export class HostAlertReserve {
           fsyncSync(fd);
           const allocated=fstatSync(fd);
           if(!Number.isFinite(allocated.blocks) || allocated.blocks*512<this.bankBytes)throw Error('incident_reservation_unconfirmed');
-        } else if(info.size!==this.bankBytes)throw Error('invalid_incident_file_size');
+        } else {
+          if(info.size!==this.bankBytes)throw Error('invalid_incident_file_size');
+          // A checksum-valid payload does not prove that a previously allocated tail still exists.
+          if(!Number.isFinite(info.blocks) || info.blocks*512<this.bankBytes)throw Error('incident_reservation_unconfirmed');
+        }
       }
       if(created.length && !fresh)throw Error('incomplete_incident_banks');
       this.failed=false;

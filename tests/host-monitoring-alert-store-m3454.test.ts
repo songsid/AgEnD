@@ -1,5 +1,6 @@
 import {afterEach,describe,it,expect} from 'vitest';
-import {mkdtempSync,rmSync,statSync,readFileSync,writeFileSync,openSync,writeSync,closeSync,symlinkSync,linkSync,readdirSync,chmodSync}from'node:fs';
+import {mkdtempSync,rmSync,statSync,readFileSync,writeFileSync,openSync,writeSync,closeSync,symlinkSync,linkSync,readdirSync,chmodSync,ftruncateSync}from'node:fs';
+import {createHash}from'node:crypto';
 import {join}from'node:path';import {tmpdir}from'node:os';
 import {HostAlertReserve,emptyHostAlerts,validateHostAlertDocument,type HostAlertDocument}from'../src/host-monitoring-alert-store.js';
 import {cleanupHistory,historyFiles}from'../src/host-monitoring-history-files.js';
@@ -67,6 +68,23 @@ describe('bounded physically reserved incident banks',()=>{
 
  it('refuses sparse incident arrays rather than committing a JSON null that cannot be restored',()=>{
   const d=emptyHostAlerts();d.active=new Array(1);expect(()=>validateHostAlertDocument(d)).toThrow('invalid_incident_document');
+ });
+
+ it('refuses checksum-valid existing banks whose tails became sparse, without repairing incident state',()=>{
+  const f=fixture({reserveBytes:128*1024});f.s.open();f.s.commit(1,document());f.s.close();
+  for(const path of f.s.files){
+   const bytes=readFileSync(path),h=JSON.parse(bytes.subarray(0,bytes.indexOf(0)).toString()),payload=bytes.subarray(4096,4096+h.length);
+   expect(createHash('sha256').update(String(h.sequence)+':').update(payload).digest('hex')).toBe(h.sha256);
+   const fd=openSync(path,'r+');try{ftruncateSync(fd,4096+h.length);ftruncateSync(fd,f.s.bankBytes);}finally{closeSync(fd);}
+   expect(statSync(path).size).toBe(f.s.bankBytes);expect(statSync(path).blocks*512).toBeLessThan(f.s.bankBytes);
+   expect(readFileSync(path).subarray(0,4096+h.length)).toEqual(bytes.subarray(0,4096+h.length));
+  }
+  const sparse=f.s.files.map(path=>readFileSync(path));expect(()=>f.s.open()).toThrow('incident_reservation_unconfirmed');
+  expect(f.s.files.map(path=>readFileSync(path))).toEqual(sparse);
+ });
+ it('accepts fully allocated existing banks at the same bounded budget without changing their data',()=>{
+  const f=fixture({reserveBytes:128*1024});f.s.open();f.s.commit(1,document());f.s.close();const bytes=f.s.files.map(path=>readFileSync(path));
+  expect(f.s.open()).toEqual({sequence:2,document:document()});for(const path of f.s.files)expect(statSync(path).blocks*512).toBeGreaterThanOrEqual(f.s.bankBytes);expect(f.s.files.map(path=>readFileSync(path))).toEqual(bytes);
  });
 
 });
