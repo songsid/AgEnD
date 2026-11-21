@@ -195,7 +195,7 @@ describe("the app builds its markup from templates and props; the thread's strin
     // #1266: replyButton; a click chip's link: showButtons; #2272: reply (a message's Reply) and jumpQuote (a reply's quote)
     // A failed send's Retry, Put back and Delete on its pending bubble: retryOut, putBackOut, deleteOut.
     // M-3127: a Hub room's reactions — Add reaction (reactPick), a quick pick (reactAdd), a chip (reactToggle).
-    expect(named).toEqual(["copyCode", "copyMsg", "deleteOut", "jumpQuote", "putBackOut", "reactAdd", "reactPick", "reactToggle", "reply", "replyButton", "retryOut", "showButtons", "statusAction", "toggleFold", "toggleWrap"]);   // M-3092: a Hub room line's one action
+    expect(named).toEqual(["copyCode", "copyMsg", "deleteOut", "jumpQuote", "putBackOut", "reactAdd", "reactPick", "reactToggle", "reply", "replyButton", "resend", "retryOut", "showButtons", "statusAction", "toggleFold", "toggleWrap"]);   // M-3092: a Hub room line's one action
     expect(handled).toEqual(named);
     expect(THREAD).toContain('e.target.closest("[data-act]")');
   });

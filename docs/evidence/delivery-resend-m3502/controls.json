@@ -1,0 +1,87 @@
+{
+  "rootFailFirst": "assertion: live pane fails before one second after startup guard retired",
+  "affected": {
+    "files": 20,
+    "passed": 294
+  },
+  "finalTransport": {
+    "files": 3,
+    "passed": 38
+  },
+  "finalSafety": {
+    "files": 3,
+    "passed": 50
+  },
+  "publicRoute": {
+    "files": 3,
+    "passed": 73
+  },
+  "typesExit": 0,
+  "runsOverlap": true,
+  "screenshots": {
+    "matrixCases": 8,
+    "selectedOriginals": 16,
+    "phoneTargetPx": 44,
+    "desktopSmallButtonPx": 30,
+    "sameBubble": true,
+    "quoteFilesRetained": true,
+    "noOverflow": true,
+    "noActionPageErrorsOrCsp": true
+  },
+  "limits": "Failure-time pane text unavailable; existing Codex fixture reproduces the gate mismatch. Product web fixture only, delivery stubbed; no live pane/account/provider campaign.",
+  "r1": {
+    "actualFailedJobsInspected": [
+      136888628239,
+      136888628173
+    ],
+    "focused": {
+      "files": 10,
+      "passed": 579
+    },
+    "finalWeb": {
+      "files": 5,
+      "passed": 63
+    },
+    "typesExit": 0,
+    "failFirst": [
+      "bound-person restore",
+      "guest retry identity projection",
+      "16384-character payload suffix",
+      "cooked-terminal unknown footer"
+    ],
+    "afterOriginalsInspected": 12,
+    "emojiFont": "scratch-only Noto Color Emoji; no product font change",
+    "browserMatrixCases": 8
+  },
+  "devIntegration": {
+    "base": "930b0a8758568cf639cfca2a6f369e571ea9ff71",
+    "mainActualMerge": "d03e3f923b989ecdaff690b8da51a73433aba03d",
+    "mainApprovedBlobsEqual": 49,
+    "mainPostWorkflowsAllSuccess": true,
+    "focused": {
+      "files": 12,
+      "passed": 1088
+    },
+    "nativeQuote": {
+      "files": 5,
+      "passed": 31
+    },
+    "boundaryArchive": {
+      "files": 5,
+      "passed": 59
+    },
+    "nativeFinal": {
+      "files": 7,
+      "passed": 56
+    },
+    "nativeLast": {
+      "files": 4,
+      "passed": 27
+    },
+    "typesExit": 0,
+    "nativeImportFailFirst": "two user bubbles before dedicated import identity lookup",
+    "actualWindowsOrProviderCalls": false,
+    "realAppCases": 2,
+    "devImagesInspected": 6
+  }
+}

@@ -107,6 +107,17 @@ function webChatButtons(raw: unknown): WebChatButtons | undefined {
   };
 }
 
+/** Retry ownership is assigned by the accepted server path, never by a message body. */
+export interface WebChatRetry { owner: string; attempt: number; failedAt?: number; acknowledged?: true }
+function retryInfo(raw: unknown): WebChatRetry | null {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  if (typeof r.owner !== "string" || !r.owner || r.owner.length > 256 || /\s/.test(r.owner)
+    || !Number.isSafeInteger(r.attempt) || (r.attempt as number) < 0) return null;
+  const failedAt = typeof r.failedAt === "number" && Number.isFinite(r.failedAt) && r.failedAt > 0 ? r.failedAt : undefined;
+  return { owner: r.owner, attempt: r.attempt as number, ...(failedAt ? { failedAt } : {}), ...(r.acknowledged === true ? { acknowledged: true as const } : {}) };
+}
+
 export interface WebChatMessage {
   contactTicket?: ContactBadge;
   /** Files shown with the message (absent when none); a restored one that cannot be served again is `gone` (#1565). */
@@ -124,6 +135,8 @@ export interface WebChatMessage {
   boot: string;
   /** Where a web user's message has got (absent: nothing reported yet, or not the web user's). */
   delivery?: WebDeliveryState;
+  /** A new attempt explicitly resets the tick on the same retained bubble. */
+  retry?: WebChatRetry;
   id: number;
   instance: string;
   /** A live web delivery id, or a native runtime turn's durable history identity. */
@@ -306,6 +319,9 @@ export interface WebChatHistoryOptions {
 export interface StoredWebChatMessage {
   contactTicket?: ContactBadge;
   previews?: ReplyPreviewSpec[];
+  retry?: { info: WebChatRetry; messageId: string; delivery: WebDeliveryState };
+  /** Import/reference identities only: never accepted by delivery status lookup. */
+  retiredNativeIds?: string[];
   boot: string;
   id: number;
   instance: string;
@@ -358,6 +374,8 @@ export interface WebChatPersistence {
 }
 
 export const WEB_CHAT_TEXT_MAX = 16_000;
+// /ui/send accepts 16 KiB of text. A retry must retain that complete payload.
+const WEB_CHAT_RETRY_TEXT_MAX = 16_384;
 
 /** A native turn id is inert history identity, never a revived web delivery or interactive control. */
 function nativeHistoryMessageId(value: unknown, role: WebChatRole): value is string {
@@ -401,6 +419,7 @@ export class WebChatHistory {
   private readonly restoredBoots = new Map<string, string>();
   /** #2281: each row's platform posts, beside it (never a field of it). Gone with the row. */
   private readonly posts = new WeakMap<WebChatMessage, WebChatPost[]>();
+  private readonly retiredNativeIds = new WeakMap<WebChatMessage, string[]>();
   /** M-3272: where messages leaving the window go (web-chat-archive.ts); none: they are dropped, as before. */
   private archive: WebChatArchive | null = null;
 
@@ -440,7 +459,10 @@ export class WebChatHistory {
       ...(m.channel ? { channel: true as const } : {}), ...(m.from ? { from: m.from } : {}), ...(m.seenSeq !== undefined ? { seenSeq: m.seenSeq } : {}),
       ...(m.replyTo ? { replyTo: m.replyTo } : {}), ...(m.reactions?.length ? { reactions: [...m.reactions] } : {}), ...(m.cards?.length ? { cards: [...m.cards] } : {}), ...(m.role === "agent" && m.previews?.length ? { previews: m.previews } : {}) };
     if (nativeHistoryMessageId(m.messageId, m.role)) row.messageId = m.messageId;
+    const retired = this.retiredNativeIds.get(m);
+    if (retired?.length) row.retiredNativeIds = [...retired];
     if (m.contactTicket) row.contactTicket = { ...m.contactTicket };
+    if (m.retry?.failedAt && m.messageId && m.delivery) row.retry = { info: { ...m.retry }, messageId: m.messageId, delivery: m.delivery };
     const posts = this.posts.get(m);
     if (posts?.length) row.posts = posts.map(p => ({ ...p }));
     if (m.attachments?.length) {
@@ -476,7 +498,7 @@ export class WebChatHistory {
   /**
    * #1565: the messages this instance had in an earlier fleet process, as stored (web-chat-store.ts) — validated
    * here, never trusted: a row that is not ours in shape is dropped; text is cut; the role is kept as stored and is
-   * never made `agent` (anything else is a person's message); nothing interactive comes back (no buttons, no ticks).
+   * never made `agent` (anything else is a person's message); legacy rows restore no interactive state. A bounded owned failed-delivery descriptor is the exception: it keeps the retry attempt and attention episode.
    * Bounds as for record(). Then each kept message's files are served again under their ids, by the file ledger's
    * checks; a file that fails one — or is missing — is `gone` (its name shown as unavailable). Returns how many
    * messages it restored. Only for an instance with nothing recorded yet in this process.
@@ -484,7 +506,7 @@ export class WebChatHistory {
   restore(instance: string, rows: unknown[] | null): number {
     if (!Array.isArray(rows) || this.byInstance.has(instance)) return 0;
     const seen = new Set<string>();
-    const out: Array<{ message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] }> = [];
+    const out: Array<{ message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[]; retiredNativeIds: string[] }> = [];
     for (const raw of rows) {
       const r = restoredRow(raw, instance, this.boot);
       if (!r) continue;
@@ -499,6 +521,7 @@ export class WebChatHistory {
     const kept = out.slice(from).map((r) => {
       const message = this.restoreFiles(r, instance);
       if (r.posts.length) this.posts.set(message, r.posts);
+      if (r.retiredNativeIds.length) this.retiredNativeIds.set(message, r.retiredNativeIds);
       return message;
     });
     if (!kept.length) return 0;
@@ -546,7 +569,7 @@ export class WebChatHistory {
   get lastId(): number { return this.nextId - 1; }
 
   /** Record one message; returns it with its id. Text beyond WEB_CHAT_TEXT_MAX is cut. */
-  record(msg: { instance: string; sender: string; text: string; ts: string; contactTicket?: unknown; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
+  record(msg: { instance: string; sender: string; text: string; ts: string; contactTicket?: unknown; attachments?: WebChatAttachment[]; messageId?: string; anchor?: string; role?: string; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown }): WebChatMessage {
     return this.recordEntry(msg);
   }
 
@@ -568,7 +591,7 @@ export class WebChatHistory {
       // Anything not one of the three — or absent — is a person's message.
       role: typeof msg.role === "string" && ROLES.has(msg.role) ? msg.role as WebChatRole : "user",
       sender: String(msg.sender),
-      text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
+      text: msg.retryOwner ? String(msg.text ?? "").slice(0, WEB_CHAT_RETRY_TEXT_MAX) : String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),
       ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime, ...drawnSize(a) })) } : {}),
       ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
@@ -576,6 +599,10 @@ export class WebChatHistory {
     // AGEND-181: a web person's message is anchored by the id the agent was given for it; any row by the `anchor` given.
     const anchor = typeof msg.anchor === "string" && msg.anchor ? msg.anchor : entry.messageId;
     if (anchor && ANCHOR_ID.test(anchor)) entry.anchor = anchor.slice(0, 80);
+    if (entry.role === "user" && entry.messageId && typeof msg.retryOwner === "string") {
+      const retry = retryInfo({ owner: msg.retryOwner, attempt: 0 });
+      if (retry) entry.retry = retry;
+    }
     const buttons = msg.role === "agent" ? webChatButtons(msg.buttons) : undefined;
     if (buttons) entry.buttons = buttons;
     const previews = entry.role === "agent" ? replyPreviews(msg.previews) : null;
@@ -708,9 +735,16 @@ export class WebChatHistory {
     const messages = this.byInstance.get(instance)?.messages ?? [];
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
-      if (m.messageId === id || m.anchor === id || this.posts.get(m)?.some(p => p.messageId === id)) return m;
+      if (m.messageId === id || m.anchor === id || this.retiredNativeIds.get(m)?.includes(id) || this.posts.get(m)?.some(p => p.messageId === id)) return m;
     }
     return undefined;
+  }
+
+  /** Native journal imports may recognize a superseded attempt without accepting its status reports. */
+  findByNativeHistoryId(instance: string, messageId: string): WebChatMessage | undefined {
+    const current = this.findByMessageId(instance, messageId);
+    if (current || !nativeHistoryMessageId(messageId, "user")) return current;
+    return this.byInstance.get(instance)?.messages.find(m => this.retiredNativeIds.get(m)?.includes(messageId));
   }
 
   findByMessageId(instance: string, messageId: string): WebChatMessage | undefined {
@@ -823,6 +857,50 @@ export class WebChatHistory {
    * A delivery report for one of this instance's messages. Returns the message when its state changed (so the
    * caller tells the pages), null when there is no such message or the report would move it back.
    */
+  /** Claim one failed attempt synchronously: two tabs cannot enqueue two resends. */
+  beginResend(instance: string, boot: string, id: number, attempt: number, owner: string, messageId: string, nativeJournalIds?: ReadonlySet<string>):
+    { kind: "started" | "already"; message: WebChatMessage } | { kind: "refused" } {
+    const m = this.find(instance, boot, id), r = m?.retry;
+    if (!m || m.role !== "user" || !r || r.owner !== owner) return { kind: "refused" };
+    if (r.attempt === attempt + 1 && m.delivery !== "failed") return { kind: "already", message: m };
+    if (m.delivery !== "failed" || r.attempt !== attempt || r.attempt >= Number.MAX_SAFE_INTEGER || !r.failedAt) return { kind: "refused" };
+    const previousId = m.messageId, previousRetired = this.retiredNativeIds.get(m);
+    // WindowsAgents keeps ten journal turns. Keep that same bounded import
+    // horizon privately, including through reloads; never expose it as status authority.
+    if (nativeHistoryMessageId(previousId, "user")) {
+      const aliases = [...new Set([...(previousRetired ?? []), previousId])];
+      this.retiredNativeIds.set(m, aliases.filter(id => !nativeJournalIds || nativeJournalIds.has(id)).slice(-10));
+    }
+    r.attempt++; m.messageId = messageId; m.delivery = "queued";
+    // failedAt survives queued/processing: attention clears only on confirmed delivery.
+    try { this.persist(instance); } catch (error) { r.attempt--; m.messageId = previousId; m.delivery = "failed"; if (previousRetired) this.retiredNativeIds.set(m, previousRetired); else this.retiredNativeIds.delete(m); throw error; }
+    return { kind: "started", message: m };
+  }
+
+  failedWebDeliveries(since: number): Array<{ deliveryId: string; state: "failed"; source: string; target: string; kind: string; finishedAt: number }> {
+    const out = [];
+    for (const [instance, slot] of this.byInstance) for (const m of slot.messages) {
+      if (m.retry?.failedAt && !m.retry.acknowledged && m.retry.failedAt >= since) out.push({
+        deliveryId: `web:${m.boot}:${m.id}`, state: "failed" as const, source: m.sender, target: instance,
+        kind: "web", finishedAt: m.retry.failedAt,
+      });
+    }
+    return out.sort((a, b) => b.finishedAt - a.finishedAt).slice(0, 50);
+  }
+
+  acknowledgeWebDelivery(deliveryId: string): boolean {
+    const match = /^web:([0-9a-f]{1,32}):([1-9][0-9]*)$/.exec(deliveryId);
+    if (!match) return false;
+    for (const [instance, slot] of this.byInstance) {
+      const m = slot.messages.find(row => row.boot === match[1] && row.id === Number(match[2]));
+      if (!m?.retry?.failedAt || m.retry.acknowledged) continue;
+      m.retry.acknowledged = true;
+      try { this.persist(instance); } catch (error) { delete m.retry.acknowledged; throw error; }
+      return true;
+    }
+    return false;
+  }
+
   setDelivery(instance: string, messageId: string, state: WebDeliveryState): WebChatMessage | null {
     const messages = this.byInstance.get(instance)?.messages ?? [];
     let m: WebChatMessage | undefined;
@@ -831,6 +909,10 @@ export class WebChatHistory {
     const next = nextDeliveryState(m.delivery, state);
     if (next === m.delivery) return null;
     m.delivery = next;
+    if (m.retry) {
+      if (next === "failed") { m.retry.failedAt = Date.now(); delete m.retry.acknowledged; }
+      if (next === "delivered") { delete m.retry.failedAt; delete m.retry.acknowledged; }
+    }
     this.persist(instance);
     return m;
   }
@@ -846,10 +928,10 @@ export class WebChatHistory {
    * the stream sends it on every (re)connect and each poll carries it (#1253 review). Ticks only move forward on
    * the page, so receiving it twice changes nothing.
    */
-  deliveries(): Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> {
-    const out: Array<{ instance: string; messageId: string; delivery: WebDeliveryState }> = [];
+  deliveries(): Array<{ instance: string; messageId: string; delivery: WebDeliveryState; boot?: string; id?: number; retry?: WebChatRetry }> {
+    const out: ReturnType<WebChatHistory["deliveries"]> = [];
     for (const [instance, slot] of this.byInstance) {
-      for (const m of slot.messages) if (m.messageId !== undefined && m.delivery !== undefined) out.push({ instance, messageId: m.messageId, delivery: m.delivery });
+      for (const m of slot.messages) if (m.messageId !== undefined && m.delivery !== undefined) out.push({ instance, messageId: m.messageId, delivery: m.delivery, ...(m.retry ? { boot: m.boot, id: m.id, retry: { ...m.retry } } : {}) });
     }
     return out;
   }
@@ -1041,11 +1123,12 @@ interface RestoredFile { id?: string; path?: string; kind: "photo" | "document";
  * Only what was said comes back: no buttons, delivery tick or ordinary web delivery id. A strict native turn id is
  * inert history identity and survives. #2305: the instance's reactions (what was answered) survive too. Restored
  * messages keep their original boot/id rather than taking a new cursor in this process.
+ * Validated owned failed-delivery descriptors also retain their retry attempt.
  */
 /** An anchor id: what a transcript can name a message by (web-…, a platform's digits, a tool result's id). */
 const ANCHOR_ID = /^[A-Za-z0-9._:-]{1,80}$/;
 
-function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[] } | null {
+function restoredRow(raw: unknown, instance: string, thisBoot: string): { message: WebChatMessage; files: RestoredFile[]; posts: WebChatPost[]; retiredNativeIds: string[] } | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const r = raw as Record<string, unknown>;
   if (typeof r.boot !== "string" || !/^[0-9a-f]{1,32}$/.test(r.boot) || r.boot === thisBoot) return null;
@@ -1053,12 +1136,21 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (r.instance !== instance || typeof r.sender !== "string" || typeof r.text !== "string" || typeof r.ts !== "string") return null;
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
-  const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.retry ? r.text.slice(0, WEB_CHAT_RETRY_TEXT_MAX) : r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
+  if (role === "user" && r.retry && typeof r.retry === "object") {
+    const saved = r.retry as Record<string, unknown>, retry = retryInfo(saved.info);
+    if (retry?.failedAt && typeof saved.messageId === "string" && (isWebMessageId(saved.messageId) || nativeHistoryMessageId(saved.messageId, role)) && saved.messageId.length <= 64
+      && typeof saved.delivery === "string" && ["queued", "processing", "failed", "cancelled"].includes(saved.delivery)
+      && (message.from ? retry.owner === message.from : retry.owner === "web:operator")) {
+      message.retry = retry; message.messageId = saved.messageId; message.delivery = saved.delivery as WebDeliveryState;
+    }
+  }
   const badge = contactBadge(r.contactTicket);
   if (badge) message.contactTicket = badge;
   const previews = role === "agent" ? replyPreviews(r.previews) : null;
   if (previews?.length) message.previews = previews;
-  if (nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;
+  if (!message.retry && nativeHistoryMessageId(r.messageId,role)) message.messageId=r.messageId;
   // A click comes back as its label only (the link to its buttons belonged to the process that ended).
   const click = role === "user" ? webChatClick(r.click) : undefined;
   if (click) message.click = { label: click.label };
@@ -1068,7 +1160,6 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (cards) message.cards = cards;
   // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
   if (r.channel === true) message.channel = true;
-  if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
   if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   if (typeof r.anchor === "string" && ANCHOR_ID.test(r.anchor)) message.anchor = r.anchor;
@@ -1086,7 +1177,9 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
       size: typeof f.size === "number" && Number.isSafeInteger(f.size) && f.size >= 0 ? f.size : 0, mime: typeof f.mime === "string" ? f.mime.slice(0, 128) : "",
     }];
   });
-  return { message, files, posts: webChatPosts(r.posts) };
+  const retiredNativeIds = role === "user" && Array.isArray(r.retiredNativeIds)
+    ? [...new Set(r.retiredNativeIds.filter((id): id is string => nativeHistoryMessageId(id, "user")))].slice(-10) : [];
+  return { message, files, posts: webChatPosts(r.posts), retiredNativeIds };
 }
 
 /** A photo's drawn size as the page gets it (both positive integers), or nothing. Measured from the file, never kept. */

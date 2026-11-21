@@ -18425,7 +18425,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private reportWebDelivery(instanceName: string, messageId: string, status: DeliveryStatus): void {
     if (status !== "queued" && status !== "processing" && status !== "delivered" && status !== "failed") return;
     const m = this.webChatHistory.setDelivery(instanceName, messageId, status);
-    if (m) this.emitSseEvent("delivery", { instance: instanceName, messageId, delivery: m.delivery });
+    if (m) this.emitSseEvent("delivery", { instance: instanceName, messageId, delivery: m.delivery, ...(m.retry ? { boot: m.boot, id: m.id, retry: m.retry } : {}) });
   }
 
   /**
@@ -19782,10 +19782,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       clearTimer: h => clearTimeout(h as ReturnType<typeof setTimeout>),
       prompts: () => this.needsYouPrompts(),
       instances: () => this.needsYouInstances(),
-      deliveries: since => (this.deliveryOutbox?.isOpen ? this.deliveryOutbox.needsAttention(since) : []).map(d => ({
+      deliveries: since => [...(this.deliveryOutbox?.isOpen ? this.deliveryOutbox.needsAttention(since) : []).map(d => ({
         deliveryId: d.deliveryId, state: d.state, source: d.sourceInstance, target: d.targetInstance, kind: d.kind,
         finishedAt: Date.parse(d.finishedAt) || 0,
-      })),
+      })), ...this.webChatHistory.failedWebDeliveries(Date.parse(since) || 0)].sort((a, b) => b.finishedAt - a.finishedAt).slice(0, 50),
       ownerOf,
       worlds: () => [...this.worlds.values()].map((w): NeedsYouWorld => ({ id: w.id, adapter: w.adapter, place: worldPlaceOf(w) })),
       noticeTarget: world => {
@@ -19805,6 +19805,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       fleetAdmins: world => (this.getChannelConfig(world)?.access?.allowed_users ?? []).map(String),
       emitSse: (event, data) => this.emitSseEvent(event, data),
       acknowledge: (deliveryId, by) => {
+        if (deliveryId.startsWith("web:")) return this.webChatHistory.acknowledgeWebDelivery(deliveryId);
         if (!this.deliveryOutbox?.isOpen) throw new Error("the delivery outbox is not open");
         return this.deliveryOutbox.acknowledge(deliveryId, by);
       },
@@ -24900,19 +24901,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   /** Push an SSE event to all connected Web UI clients. */
   emitSseEvent(event: string, data: unknown): void {
     // #1386: a prompt opened or closed, or an instance's state moved — "Needs you" may have changed.
-    if (event === "prompt" || event === "prompt_resolved" || event === "activity") this.needsYou?.poke();
+    if (event === "prompt" || event === "prompt_resolved" || event === "activity" || event === "delivery") this.needsYou?.poke();
     const onError = (err: unknown) => this.logger.debug({ err }, "SSE client write failed; evicting");
     if (event === "message" && data && typeof data === "object") {
       // #2861: an Office share's dialogue box hears that someone talked to an instance (never what was said).
       this.officeTalk.noteMessage(data);
       // A chat message: record it, and send it WITH its id so a reconnecting stream can ask for what it missed.
-      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown };
+      const m = data as { instance?: unknown; sender?: unknown; text?: unknown; ts?: unknown; attachments?: unknown; messageId?: unknown; anchor?: unknown; role?: unknown; retryOwner?: unknown; buttons?: unknown; previews?: unknown; click?: unknown; links?: unknown; channel?: unknown; from?: unknown; replyTo?: unknown; cards?: unknown; posts?: unknown; reserved?: unknown; contactTicket?: unknown };
       const recorded = this.webChatHistory.record({
         instance: String(m.instance ?? ""), sender: String(m.sender ?? ""), text: String(m.text ?? ""), ts: String(m.ts ?? new Date().toISOString()),
         attachments: Array.isArray(m.attachments) ? m.attachments as WebChatAttachment[] : undefined,
         messageId: typeof m.messageId === "string" ? m.messageId : undefined,
         anchor: typeof m.anchor === "string" ? m.anchor : undefined,
         role: typeof m.role === "string" ? m.role : undefined,
+        retryOwner: m.retryOwner,
         buttons: m.buttons,
         previews: m.previews,
         click: m.click,

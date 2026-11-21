@@ -29,11 +29,11 @@ class NodeLikeRes extends ServerResponse {
   override writeHead(status: number): this { this.status = status; return this; }
   override end(value?: unknown): this { this.body += String(value ?? ""); this.destroy(); this.emit("capture:end"); return this; }
 }
-async function send(ctx: WebApiContext, body: unknown) {
+async function send(ctx: WebApiContext, body: unknown, path = "/ui/send") {
   const req = Readable.from([JSON.stringify(body)]) as unknown as IncomingMessage;
-  req.method = "POST"; req.url = "/ui/send"; req.headers = { host: "localhost", "x-agend-token": token };
+  req.method = "POST"; req.url = path; req.headers = { host: "localhost", "x-agend-token": token };
   const res = new NodeLikeRes(req), ended = new Promise<void>(done => res.once("capture:end", () => done()));
-  expect(handleWebRequest(req, res, new URL("/ui/send", "http://localhost"), ctx)).toBe(true); await ended;
+  expect(handleWebRequest(req, res, new URL(path, "http://localhost"), ctx)).toBe(true); await ended;
   expect(res.destroyed).toBe(true);
   return { status: res.status, body: JSON.parse(res.body) };
 }
@@ -105,6 +105,32 @@ describe("S-30: a web-chat turn to a local Windows agent starts after /ui/send h
     delete f.fleet.instances[f.name];
     f.release();
     await vi.waitFor(() => expect(f.turn()?.status).toBe("failed"));
+    expect(spawn).not.toHaveBeenCalled();
+  });
+});
+
+
+describe("M-3502 native resend keeps post-response authority and one correlated attempt", () => {
+  const failed = (f: Awaited<ReturnType<typeof fixture>>) => {
+    const m = f.history.record({ instance: f.name, role: "user", sender: "Example person", text: "Retry this synthetic task", ts: new Date().toISOString(), messageId: "native:11111111-1111-4111-8111-111111111111:user", retryOwner: "web:operator" });
+    f.history.setDelivery(f.name, m.messageId!, "failed");
+    return m;
+  };
+  it("starts the retry after HTTP close with a fresh UUID matching its retained bubble", async () => {
+    const f = await fixture(), row = failed(f), old = row.messageId;
+    const response = await send(f.ctx, { instance: f.name, boot: row.boot, id: row.id, attempt: 0 }, "/ui/resend");
+    expect(response.status).toBe(200); expect(row.messageId).not.toBe(old);
+    expect(row.messageId).toBe(`native:${f.turn()!.id}:user`);
+    expect(f.history.list(f.name).filter(m => m.role === "user")).toHaveLength(1);
+    // The response is destroyed before this transport lookup finishes.
+    f.release(); await vi.waitFor(() => expect(spawn).toHaveBeenCalledOnce());
+    expect(f.turn()?.error).toBeUndefined();
+  });
+  it("still refuses a native retry revoked between journaling and process launch", async () => {
+    const f = await fixture(), row = failed(f);
+    expect((await send(f.ctx, { instance: f.name, boot: row.boot, id: row.id, attempt: 0 }, "/ui/resend")).status).toBe(200);
+    (f.ctx as { webToken: string }).webToken = "r".repeat(48);
+    f.release(); await vi.waitFor(() => expect(f.turn()).toMatchObject({ status: "failed", error: "Web authorization expired before the Windows task started" }));
     expect(spawn).not.toHaveBeenCalled();
   });
 });

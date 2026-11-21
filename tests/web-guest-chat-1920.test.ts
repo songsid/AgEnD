@@ -337,3 +337,21 @@ describe("live: a guest scoped to `a`", () => {
     }
   });
 });
+
+it("a guest may resend its own failed accepted message only in scope and while chat remains allowed", async () => {
+  scopedToA(); guestsChat(); const guest = session("guest", ALICE);
+  const delivered: any[] = [];
+  vi.spyOn(fm, "deliverHumanToInstance").mockImplementation(async (...args: any[]) => { delivered.push(args); return true; });
+  const first = await raw(port, "POST", "/ui/send", write(guest), JSON.stringify({ instance: "a", message: "Check the example again" }));
+  expect(first.status).toBe(200); const original = JSON.parse(first.body).messageId;
+  fm.finishDeliveryStatus("a", "web", original, "failed");
+  const row = fm.webChatHistory.list("a").find((m: any) => m.messageId === original);
+  const body = { instance: "a", boot: row.boot, id: row.id, attempt: row.retry.attempt };
+  expect((await raw(port, "POST", "/ui/resend", write(guest), JSON.stringify({ ...body, instance: "b" }))).status).toBe(404);
+  guestsChat(false);
+  expect((await raw(port, "POST", "/ui/resend", write(guest), JSON.stringify(body))).status).toBe(403);
+  expect(delivered).toHaveLength(1);
+  guestsChat();
+  expect((await raw(port, "POST", "/ui/resend", write(guest), JSON.stringify(body))).status).toBe(200);
+  expect(delivered).toHaveLength(2); expect(delivered[1][1].meta.web_guest).toBe("1");
+});

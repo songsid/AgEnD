@@ -884,7 +884,7 @@ const INPUT_TRANSIENT_STALL_MS = 30_000;
  */
 const INPUT_TRANSIENT_WAIT_MS = 10 * 60_000;
 const INPUT_TRANSIENT_POLL_MS = 250;
-/** Max "stranded text → submit → wait for prompt → re-check" rounds per delivery; each may send one recovery Enter. */
+/** Max actual stranded-text recovery Enters per delivery; a busy observation spends none. */
 const STRANDED_INPUT_MAX_ROUNDS = 3;
 /** The Claude phrasing every backend was judged by before #1217; still the default for a backend that names none. */
 const LEGACY_NO_CONVERSATION = /no conversation found|no conversation to (continue|resume)|no previous (session|conversation)/i;
@@ -8617,7 +8617,7 @@ export class Daemon extends EventEmitter {
     // Durable cross-instance rows are still retryable before a pane write. Their
     // terminal state is announced by the outbox only after its retry/TTL policy
     // is exhausted; emitting ❌ here would expose a transient gate timeout.
-    if (status && !verdict.durableAttempt) this.emit("message_failed", status); // ❌
+    if (status && !verdict.durableAttempt) this.emit("message_failed", { ...status, phase, proof }); // ❌
     return false;
   }
 
@@ -9107,26 +9107,44 @@ export class Daemon extends EventEmitter {
       // must come back AND the check runs again — the stranded text may still
       // be there. "failed" (the Enter could not be sent) fails the delivery:
       // pasting now would submit both messages as one.
-      for (let round = 0; ; round++) {
-        // Budget check BEFORE the next mutating call: each round may send one
-        // recovery Enter, so exactly STRANDED_INPUT_MAX_ROUNDS of them go out.
-        if (round >= STRANDED_INPUT_MAX_ROUNDS) {
-          this.logger.error({ round }, "Input row still not clear after the stranded-text recovery budget — reporting delivery failure");
-          return this.failDelivery(verdict, status, "stranded-input", "retry-budget-exhausted");
+      const inputDeadline = Date.now() + 30 * 60_000;
+      let submissions = 0;
+      let unavailableProbes = 0;
+      for (;;) {
+        if (cancelled()) return false;
+        if (Date.now() >= inputDeadline) {
+          this.logger.error("Input row stayed unavailable until the delivery deadline");
+          return this.failDelivery(verdict, status, "stranded-input", "input-not-clear-timeout");
         }
-        const stranded = await this.submitStrandedInputIfAny(windowId);
+        // Only actual recovery Enters spend the submission budget. A live pane's
+        // unreadable/changing composer may need time, not three synchronous probes.
+        const stranded = await this.submitStrandedInputIfAny(windowId, submissions < STRANDED_INPUT_MAX_ROUNDS);
         if (cancelled()) return false;
         if (stranded === "idle") break;
+        if (stranded === "exhausted") {
+          this.logger.error({ submissions }, "Input row still not clear after the stranded-text recovery budget — reporting delivery failure");
+          return this.failDelivery(verdict, status, "stranded-input", "retry-budget-exhausted");
+        }
         if (stranded === "failed") {
-          this.logger.error({ round }, "Could not submit the stranded text — reporting delivery failure");
+          this.logger.error({ submissions }, "Could not submit the stranded text — reporting delivery failure");
           return this.failDelivery(verdict, status, "stranded-input", "enter-failed");
         }
-        const readyAgain = await this.waitForPaneReadyForDelivery(windowId);
+        if (stranded === "submitted") submissions++;
+        // Only the proven empty unknown-footer candidate needs the timed
+        // fallback. Preserve the existing bounded refusal for other unsafe
+        // input (including a stranded draft whose footer cannot be proved).
+        if (stranded === "busy" && this.footerFallbackPaneKey === null && ++unavailableProbes >= STRANDED_INPUT_MAX_ROUNDS) {
+          return this.failDelivery(verdict, status, "stranded-input", "input-not-clear");
+        }
+        const readyAgain = await this.waitForPaneReadyForDelivery(windowId, inputDeadline - Date.now());
         if (cancelled()) return false;
         if (!readyAgain) {
-          this.logger.error("Pane never returned to its prompt after submitting stranded input — reporting delivery failure");
+          this.logger.error("Pane never returned to its prompt after checking stranded input — reporting delivery failure");
           return this.failDelivery(verdict, status, "stranded-input", "prompt-timeout");
         }
+        // After startup, the general idle gate can pass while the stricter input
+        // proof is still collecting a stable composer. Yield before re-reading it.
+        if (stranded === "busy") await new Promise(resolve => setTimeout(resolve, BOTTOM_READY_POLL_MS));
       }
     }
 
@@ -10584,7 +10602,7 @@ export class Daemon extends EventEmitter {
     return "not-cleared";
   }
 
-  private async submitStrandedInputIfAny(windowId: string): Promise<"idle" | "submitted" | "busy" | "failed"> {
+  private async submitStrandedInputIfAny(windowId: string, allowSubmit = true): Promise<"idle" | "submitted" | "busy" | "failed" | "exhausted"> {
     if (!this.tmux || !this.backend) return "idle";
     const prompt = this.backend.getBottomReadyPattern?.();
     if (!prompt) return "idle";
@@ -10598,7 +10616,7 @@ export class Daemon extends EventEmitter {
     if (pre === "stranded") {
       this.logger.warn({ windowId }, "Unsubmitted message found in the input row — submitting it before this delivery");
     }
-    return this.paneWriteLock.run(async (): Promise<"idle" | "submitted" | "busy" | "failed"> => {
+    return this.paneWriteLock.run(async (): Promise<"idle" | "submitted" | "busy" | "failed" | "exhausted"> => {
       // Re-check UNDER the lock right before the key goes out: between the
       // pre-check and acquiring the lock the CLI may have started generating
       // (the stranded text got submitted by someone else, or the dismisser
@@ -10608,6 +10626,7 @@ export class Daemon extends EventEmitter {
       const state = await this.strandedInputState(prompt, requireBottomReady);
       if (state === "clear") return "idle";
       if (state !== "stranded") return "busy"; // busy, or unreadable: no evidence the prompt is free
+      if (!allowSubmit) return "exhausted"; // a final clear check is allowed, a fourth recovery Enter is not
       const sent = await this.sendDeliveryEnter("stranded-input-submit");
       return sent ? "submitted" : "failed";
     });
@@ -10624,6 +10643,16 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
+    // The timed footer fallback is valid only in a live raw TUI, even
+    // after the startup guard has retired. Historical shell scrollback is not
+    // evidence that a composer still owns the terminal.
+    const known = this.backend?.isDeliveryInputReadyPane?.(pane);
+    if (known === false && this.backend?.isStableUnknownLayoutIdlePane?.(pane)) {
+      if (this.nativePaneLifecycle || await this.tmux?.getPaneInputMode?.() !== "raw") {
+        this.resetFooterFallback();
+        return "busy";
+      }
+    }
     if (!this.deliveryInputReadyPane(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) {
       // A cancelled human turn can restore its text here. Idle observation must not let a later delivery submit it.

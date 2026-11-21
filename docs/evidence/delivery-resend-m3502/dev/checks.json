@@ -1,0 +1,65 @@
+{
+  "before": false,
+  "cases": {
+    "desk-light-en": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 901,
+        "y": 372,
+        "width": 72,
+        "height": 30
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    },
+    "phone-dark-zh-TW": {
+      "failed": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "button": {
+        "x": 174.578125,
+        "y": 362,
+        "width": 78,
+        "height": 44
+      },
+      "queued": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsDuringRetry": true,
+      "delivered": {
+        "rows": 1,
+        "sideways": false,
+        "quote": true,
+        "file": true
+      },
+      "needsCleared": true,
+      "errors": [],
+      "csp": []
+    }
+  }
+}

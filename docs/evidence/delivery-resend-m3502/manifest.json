@@ -1,0 +1,110 @@
+[
+  {
+    "path": "docs/evidence/delivery-resend-m3502/README.md",
+    "sha256": "192ac0cbd8083ab43d0564fae8789afc30cd758bc6da5c011e2981f5644e9913"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/controls.json",
+    "sha256": "b4dda355009a6e9bb1440f2e0c6ae62c0e4e482a84ca14a9a5a4ad067cad1e4b"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/checks.json",
+    "sha256": "9e95f0801b477f1e378983bc9312687f15f0e21a25f20a4e553e32e5e88282b7"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/desk-light-en-delivered.png",
+    "sha256": "ea480bb354679cb3677c38544f43f90bfb701b39ebbab9797fc0e0177ed9871b"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/desk-light-en-failed.png",
+    "sha256": "9da7d3f9ac89bdf9fa62698af6bddb65416c93f3c5128485aaefb72811edae02"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/desk-light-en-queued.png",
+    "sha256": "774ac2c43fc740e641cdd24515ef930e657a7a46b6ccebe921b18666d7f7ee1e"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/phone-dark-zh-TW-delivered.png",
+    "sha256": "0b0bd7d25aba617bf65e08854e9346e5b1e15a0a04e1733c7df5bae0ab01032a"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/phone-dark-zh-TW-failed.png",
+    "sha256": "6060da91d009db24a9b954dc11699d51e1ca53ecb53581d1ff54bce04b35529f"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/dev/phone-dark-zh-TW-queued.png",
+    "sha256": "218b2f6846d8376ac508c5b33bead7857d8d2c2c6b3cd3fd31c0c18216650624"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/checks.json",
+    "sha256": "2cd6055b3b403e1b8c24475701190270943600a89caaa9df74187b369496f190"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-en-failed.png",
+    "sha256": "94796c82a20f44cc4629218f18267e7380c65a362388d1d3e41b27d84697e8e2"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-zh-TW-before.png",
+    "sha256": "b485f1377e1fe7f4d8b1523e9b8697ae6ea3808bb7738559066f239f3475e970"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-zh-TW-failed.png",
+    "sha256": "13aef8d016f012f5ecdbbad321d639d50e9238c4f5f2ae7d6cbf33e429c02b35"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-before.png",
+    "sha256": "29f2528f037a2b592ac0240a3832c17bd5e06ae89b17b4897d9d950bd69d4243"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-delivered.png",
+    "sha256": "86ac8ac731efa3a767b9fe4cf3cfee2ed333c6d5f07d4e61cf63b655303f6250"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-failed.png",
+    "sha256": "3f46e8a84225ebc89853e426d2d55d7b7f1558f845a7081bf51da5cb0eb9b8b7"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-queued.png",
+    "sha256": "bf7d660cae4ff4d6f3bbd11299aeeb2453df39ece13cf6a2e88ba3c4d60ef0f3"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/desk-light-zh-TW-failed.png",
+    "sha256": "9bf51dc093b84479a0486b81fbd6b9c7038547d6841dc7c3a49426656cfd237e"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-en-failed.png",
+    "sha256": "8c6574a85fb0e5a445bf431a54dee5906b70434630f93e32ec35d6264b129504"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-before.png",
+    "sha256": "04fb97f60bc6d290add6bdd2a91b9ca71497e529ff543f6c8d6e5b1ab397a0ee"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-delivered.png",
+    "sha256": "b356c546964d773d465017f2729b429d717e1eeb7654313ea93e8759c5374df8"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-failed.png",
+    "sha256": "4722fd208ed434937169beea35c8ef0c88ae6d9ceeb792afe43989d35d753542"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-queued.png",
+    "sha256": "ee95c300b883dd5208c1bcbba8802a3cc5dc47efb86f2bcd1342b26845973492"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-light-en-before.png",
+    "sha256": "e925ebe42db6031447ce8effe41989be7d74dd4428dc2098fbde4a4108afca9d"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-light-en-failed.png",
+    "sha256": "982b7181cf3dd719a9762291829ce329a9a16315bb03e9c3a7381441361c624e"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/main/phone-light-zh-TW-failed.png",
+    "sha256": "534c2c351ef3e5579493642ae35bfd0bdac34118c20b4548bacaaee77e37dca1"
+  },
+  {
+    "path": "docs/evidence/delivery-resend-m3502/source-hashes.json",
+    "sha256": "cebe39a55103899ec8d9336101c038964f03ceb1ce7a1efe9cef26cfcbaa6edf"
+  }
+]

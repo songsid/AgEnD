@@ -106,3 +106,23 @@ describe("Windows runtime through the ordinary web instance/chat surface",()=>{
     expect(restored.register()).toBe(false);expect(f.fleet.instances).not.toHaveProperty(f.name);expect(newStore.get(f.profile.id).id).toBe(f.profile.id);
   });
 });
+
+it("M-3502 reimport keeps one native user bubble across two retries and a history reload", async () => {
+  const f = await fixture(), ctx = f.makeContext();
+  await call(ctx, "POST", "/ui/send", { instance: f.name, message: "Synthetic retry", clientId: "native-retry-import" });
+  const row = f.history.list(f.name).find(m => m.role === "user")!;
+  const stable = { boot: row.boot, id: row.id };
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const old = row.messageId!;
+    f.complete(f.start.mock.calls[attempt][0].requestId);
+    f.history.setDelivery(f.name, old, "failed");
+    expect((await call(ctx, "POST", "/ui/resend", { instance: f.name, ...stable, attempt })).status).toBe(200);
+    expect(f.history.setDelivery(f.name, old, "delivered")).toBeNull();
+    f.runtime.importHistory(); f.runtime.importHistory();
+    expect(f.history.list(f.name).filter(m => m.role === "user")).toHaveLength(1);
+  }
+  const saved = f.history.list(f.name).map(m => (f.history as any).stored(m));
+  const restored = new WebChatHistory({ boot: "dcba" }); restored.restore(f.name, saved);
+  f.host.history = restored; f.runtime.importHistory(); f.runtime.importHistory();
+  expect(restored.list(f.name).filter(m => m.role === "user")).toMatchObject([{ ...stable, messageId: row.messageId }]);
+});

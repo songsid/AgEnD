@@ -82,7 +82,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "GET" && (path === "/ui/themes" || /^\/ui\/img\/theme\/[^/]+\/[0-9a-f]{32}$/.test(path))) return true;
   // #1630: avatars and server emoji, read-only — nothing a signed-in public user cannot already see in the page.
   if (method === "GET" && /^\/ui\/(?:img\/(?:bot|avatar|emoji)\/[^/]+|emojis|mentions)$/.test(path)) return true;
-  if (method === "POST" && /^\/ui\/(send|office-tell|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|config)$/.test(path)) return true;
+  if (method === "POST" && /^\/ui\/(send|resend|office-tell|upload|prompt|reply-button|command|needs\/ack|cancel\/[^/]+|stop\/[^/]+|start\/[^/]+|instances\/[^/]+\/delete|restart\/[^/]+|instances|config)$/.test(path)) return true;
   // The task board (scheduler/task-board.ts) is read over the public link — a card too — and changed only on the local
   // page, the old /ui/tasks create and update included: the handlers refuse a write over the public link too
   // (confirming, sending back and assigning are the person's authority, never carried here).

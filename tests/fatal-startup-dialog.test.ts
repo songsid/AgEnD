@@ -101,7 +101,7 @@ describe("fatal startup dialogs", () => {
       const status = { chatId: "chat-1", messageId: "msg-1" };
       const delivered = await (daemon as any).deliverMessage("hello agent", status, {});
       expect(delivered).toBe(false);
-      expect(failed).toEqual([status]);
+      expect(failed).toEqual([{ ...status, phase: "fatal-startup", proof: "blocked-before-write" }]);
       expect(sendSpecialKey).not.toHaveBeenCalled();
       expect(sendKeys).not.toHaveBeenCalled();
       expect(pasteMultiline).not.toHaveBeenCalled();

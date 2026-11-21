@@ -1,0 +1,118 @@
+[
+  {
+    "path": "scripts/manual/smoke/smoke-3502-delivery-resend.mts",
+    "sha256": "87abaca17de25d330c641d1c9791b9bcde0f235761e1218e6816565e171b2ea0"
+  },
+  {
+    "path": "src/daemon.ts",
+    "sha256": "013f43a633a0a854d224cafa3ecaa30aa858147d538cd202cab4a6a68e3460e2"
+  },
+  {
+    "path": "src/fleet-manager.ts",
+    "sha256": "03d0217ad80cfc9a39b2b220727893c872c02d0c7b78ec7001af400fc08d34c7"
+  },
+  {
+    "path": "src/fleet-windows-runtime.ts",
+    "sha256": "ce69bee644abe6f32bf725646d959f919efaf0262c245a387cf64cdb6ee028c6"
+  },
+  {
+    "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "sha256": "c9fce0cde49b652447948f1a65b2ac769825cab87293fda3e64e176121bc3ee4"
+  },
+  {
+    "path": "src/instance-lifecycle.ts",
+    "sha256": "4a3b352ba8a660cb5fac0d6fd3ed1a567234696861125d392f5d1dfe057f7532"
+  },
+  {
+    "path": "src/public-web-gateway.ts",
+    "sha256": "466f115e29136d604d3a66eed6f8aad7a96cdebd93569ec184dad3e78414d71a"
+  },
+  {
+    "path": "src/ui/chat-store.js",
+    "sha256": "d5ad67f6e564e1741ee7869b204b59ab810b943fc88b8b339b2f77f3c288464e"
+  },
+  {
+    "path": "src/ui/panel-chat.js",
+    "sha256": "1b91d4a17b2cfc9759f3861eaaf7fa8531047124cdbb23c2ac63d1f350576f53"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "sha256": "b39cea82ca5ebd35d2655e09763d228d01b551a7cb1e97589f318d03429b1e2c"
+  },
+  {
+    "path": "src/ui/shared/chat-render.js",
+    "sha256": "0c8c831f3252ab2b2abf18f037b56da6cc640bfdf61abe1a89f8679dd2ea5305"
+  },
+  {
+    "path": "src/ui/shared/chat-strings.js",
+    "sha256": "9fad886e524c575754e0374590a35ce6a4a01340c9667efcc5a33a522e72558d"
+  },
+  {
+    "path": "src/ui/shared/chat-thread.js",
+    "sha256": "37557929f7af9d8f5f39809532a10098e7007c97b34286b9ee87eb29b7871c62"
+  },
+  {
+    "path": "src/web-api.ts",
+    "sha256": "dc6ead611f1656defe9fbcfab45f98f6e75f3d115bfffa1acc57f3143f23845a"
+  },
+  {
+    "path": "src/web-chat-history.ts",
+    "sha256": "a12243e0de8da63d51ef7f39177b970a5fae574c2c38a29c74252fc2c2927692"
+  },
+  {
+    "path": "src/web-guest-access.ts",
+    "sha256": "2aeae33d96ab49724b88eb92b5ea28fb67a7d02dbe3f69f1b214a446facb5aa6"
+  },
+  {
+    "path": "src/web-upload.ts",
+    "sha256": "1f30dbf283489cbfb3d3f1571db96ae697f29cb4fa228b9d9c12ab55b9885f73"
+  },
+  {
+    "path": "tests/codex-unrecognised-footer-1031.test.ts",
+    "sha256": "850f700f280a6828163e5ff86304cc33776a137105ba71cdf30826a14afef5e9"
+  },
+  {
+    "path": "tests/delivery-failure-reporting-m3502.test.ts",
+    "sha256": "1fadd1e79e631b84fd9c3bdba5898e860147ac273f947a4667708e72cbe367ad"
+  },
+  {
+    "path": "tests/fatal-startup-dialog.test.ts",
+    "sha256": "fdeb5554b6c6b8e3a862948ee47d961058dd56442dff40fb393f0b3cb06b165f"
+  },
+  {
+    "path": "tests/kiro-delivery-enter-drop.test.ts",
+    "sha256": "1a2eb5f7ced62392daf1873506afc087c599b8c3c63bd025f701031a1a1226f9"
+  },
+  {
+    "path": "tests/native-runtime-web-integration.test.ts",
+    "sha256": "226816fb66479776faaf8ad0274d0025a9a4ca9a03e632ef72629f3cbc18a6f8"
+  },
+  {
+    "path": "tests/web-chat-c1.test.ts",
+    "sha256": "f687efd897c4185f82a7a45b0bbb27cf35ff1059151c4e56925093fa14d486cc"
+  },
+  {
+    "path": "tests/web-chat-resend-http-m3502.test.ts",
+    "sha256": "954727e68b5d6a28b33b457642ef18111641ea8c63f5f7f5822822563ee62d23"
+  },
+  {
+    "path": "tests/web-chat-resend-m3502.test.ts",
+    "sha256": "f6ec3c4ca6dbd5f13dcc64077025f2e7ba0990a6a0a3d7731844a22b7af83094"
+  },
+  {
+    "path": "tests/web-chat-resend-ui-m3502.test.ts",
+    "sha256": "959a4217479b0f2420872fab3de9860c8427bb69c4af3091148fbd8a166e0eef"
+  },
+  {
+    "path": "tests/web-csp-1268.test.ts",
+    "sha256": "6946adaa59e52a15d957ff4da6f52bfb24b3647313a735adf2d55b2dd78099fc"
+  },
+  {
+    "path": "tests/web-guest-chat-1920.test.ts",
+    "sha256": "242ea1ec9150b9676b825b797161d7b1daa4aabba1890e98faf051ae27c83210"
+  },
+  {
+    "path": "tests/windows-web-chat-authority.test.ts",
+    "sha256": "fda368147b245233372bc2b706065338991e735da64bdb0803df2629ba0f8f06"
+  }
+]
