@@ -1,0 +1,26 @@
+{
+  "base": "506acdf29ab9a3937aabceb5d40e90b08e13a826",
+  "scope": "Disconnected foundation only; no production consumers or UI/notification wiring",
+  "tests": {
+    "command": "nice -n 10 node node_modules/vitest/vitest.mjs run tests/host-monitoring-alert-policy-m3454.test.ts tests/host-monitoring-alert-store-m3454.test.ts tests/host-monitoring-history-policy-m3454.test.ts tests/changelog-fragments.test.ts --maxWorkers=1",
+    "files": 4,
+    "passed": 126
+  },
+  "types": [
+    {
+      "command": "nice -n 10 node_modules/.bin/tsc --noEmit",
+      "exit": 0,
+      "diagnostics": 0
+    },
+    {
+      "command": "nice -n 10 node_modules/.bin/tsc --noEmit -p tsconfig.test.json",
+      "exit": 0,
+      "diagnostics": 0
+    }
+  ],
+  "semanticReversals": 6,
+  "sourceRestored": true,
+  "nativePlatformCampaign": false,
+  "browserAccountModelCampaign": false,
+  "S208Complete": false
+}
