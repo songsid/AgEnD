@@ -1,0 +1,28 @@
+{
+  "acceptedWindow": "R5",
+  "processSamples": 60,
+  "hostObservations": 119,
+  "agentHistoryBuckets": 59,
+  "allFramesCovered": true,
+  "stableKernelIdentity": true,
+  "psEpochStartDeltaMs": -1000,
+  "priorWindows": [
+    {
+      "name": "initial",
+      "status": "incomplete coverage"
+    },
+    {
+      "name": "R2",
+      "status": "incomplete coverage"
+    },
+    {
+      "name": "R3",
+      "status": "fail-fast on ps epoch presentation shift"
+    },
+    {
+      "name": "R4",
+      "status": "superseded and owned processes stopped"
+    }
+  ],
+  "arithmeticDelta": "Final birth-age ceiling added after R5 began. All 60 frames replayed against final production binder/policy with identical admission; no I/O/cadence/history delta. Not a byte-identical final-source measurement."
+}

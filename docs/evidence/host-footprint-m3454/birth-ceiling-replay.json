@@ -1,0 +1,309 @@
+{
+  "scope": "Final production birth/identity admission replay over the recorded one-root numeric window; CPU/RSS/storage are the original real measurement, not remeasured here.",
+  "frames": 60,
+  "hz": 100,
+  "allAdmitted": true,
+  "minimumMarginMs": 548,
+  "checks": [
+    {
+      "sample": 0,
+      "admitted": true,
+      "birthMarginMs": 548
+    },
+    {
+      "sample": 1,
+      "admitted": true,
+      "birthMarginMs": 30637
+    },
+    {
+      "sample": 2,
+      "admitted": true,
+      "birthMarginMs": 90734
+    },
+    {
+      "sample": 3,
+      "admitted": true,
+      "birthMarginMs": 150817
+    },
+    {
+      "sample": 4,
+      "admitted": true,
+      "birthMarginMs": 210911
+    },
+    {
+      "sample": 5,
+      "admitted": true,
+      "birthMarginMs": 271000
+    },
+    {
+      "sample": 6,
+      "admitted": true,
+      "birthMarginMs": 331089
+    },
+    {
+      "sample": 7,
+      "admitted": true,
+      "birthMarginMs": 391157
+    },
+    {
+      "sample": 8,
+      "admitted": true,
+      "birthMarginMs": 451240
+    },
+    {
+      "sample": 9,
+      "admitted": true,
+      "birthMarginMs": 511312
+    },
+    {
+      "sample": 10,
+      "admitted": true,
+      "birthMarginMs": 571386
+    },
+    {
+      "sample": 11,
+      "admitted": true,
+      "birthMarginMs": 631458
+    },
+    {
+      "sample": 12,
+      "admitted": true,
+      "birthMarginMs": 691523
+    },
+    {
+      "sample": 13,
+      "admitted": true,
+      "birthMarginMs": 751601
+    },
+    {
+      "sample": 14,
+      "admitted": true,
+      "birthMarginMs": 811668
+    },
+    {
+      "sample": 15,
+      "admitted": true,
+      "birthMarginMs": 871740
+    },
+    {
+      "sample": 16,
+      "admitted": true,
+      "birthMarginMs": 931819
+    },
+    {
+      "sample": 17,
+      "admitted": true,
+      "birthMarginMs": 991909
+    },
+    {
+      "sample": 18,
+      "admitted": true,
+      "birthMarginMs": 1051997
+    },
+    {
+      "sample": 19,
+      "admitted": true,
+      "birthMarginMs": 1112083
+    },
+    {
+      "sample": 20,
+      "admitted": true,
+      "birthMarginMs": 1172173
+    },
+    {
+      "sample": 21,
+      "admitted": true,
+      "birthMarginMs": 1232261
+    },
+    {
+      "sample": 22,
+      "admitted": true,
+      "birthMarginMs": 1292345
+    },
+    {
+      "sample": 23,
+      "admitted": true,
+      "birthMarginMs": 1352421
+    },
+    {
+      "sample": 24,
+      "admitted": true,
+      "birthMarginMs": 1412506
+    },
+    {
+      "sample": 25,
+      "admitted": true,
+      "birthMarginMs": 1472559
+    },
+    {
+      "sample": 26,
+      "admitted": true,
+      "birthMarginMs": 1532636
+    },
+    {
+      "sample": 27,
+      "admitted": true,
+      "birthMarginMs": 1592721
+    },
+    {
+      "sample": 28,
+      "admitted": true,
+      "birthMarginMs": 1652803
+    },
+    {
+      "sample": 29,
+      "admitted": true,
+      "birthMarginMs": 1712893
+    },
+    {
+      "sample": 30,
+      "admitted": true,
+      "birthMarginMs": 1772962
+    },
+    {
+      "sample": 31,
+      "admitted": true,
+      "birthMarginMs": 1833069
+    },
+    {
+      "sample": 32,
+      "admitted": true,
+      "birthMarginMs": 1893154
+    },
+    {
+      "sample": 33,
+      "admitted": true,
+      "birthMarginMs": 1954224
+    },
+    {
+      "sample": 34,
+      "admitted": true,
+      "birthMarginMs": 2014301
+    },
+    {
+      "sample": 35,
+      "admitted": true,
+      "birthMarginMs": 2074384
+    },
+    {
+      "sample": 36,
+      "admitted": true,
+      "birthMarginMs": 2134465
+    },
+    {
+      "sample": 37,
+      "admitted": true,
+      "birthMarginMs": 2194555
+    },
+    {
+      "sample": 38,
+      "admitted": true,
+      "birthMarginMs": 2254641
+    },
+    {
+      "sample": 39,
+      "admitted": true,
+      "birthMarginMs": 2314718
+    },
+    {
+      "sample": 40,
+      "admitted": true,
+      "birthMarginMs": 2374802
+    },
+    {
+      "sample": 41,
+      "admitted": true,
+      "birthMarginMs": 2434885
+    },
+    {
+      "sample": 42,
+      "admitted": true,
+      "birthMarginMs": 2494953
+    },
+    {
+      "sample": 43,
+      "admitted": true,
+      "birthMarginMs": 2555026
+    },
+    {
+      "sample": 44,
+      "admitted": true,
+      "birthMarginMs": 2615098
+    },
+    {
+      "sample": 45,
+      "admitted": true,
+      "birthMarginMs": 2675186
+    },
+    {
+      "sample": 46,
+      "admitted": true,
+      "birthMarginMs": 2735270
+    },
+    {
+      "sample": 47,
+      "admitted": true,
+      "birthMarginMs": 2795348
+    },
+    {
+      "sample": 48,
+      "admitted": true,
+      "birthMarginMs": 2855432
+    },
+    {
+      "sample": 49,
+      "admitted": true,
+      "birthMarginMs": 2915506
+    },
+    {
+      "sample": 50,
+      "admitted": true,
+      "birthMarginMs": 2975589
+    },
+    {
+      "sample": 51,
+      "admitted": true,
+      "birthMarginMs": 3035676
+    },
+    {
+      "sample": 52,
+      "admitted": true,
+      "birthMarginMs": 3095760
+    },
+    {
+      "sample": 53,
+      "admitted": true,
+      "birthMarginMs": 3155833
+    },
+    {
+      "sample": 54,
+      "admitted": true,
+      "birthMarginMs": 3215915
+    },
+    {
+      "sample": 55,
+      "admitted": true,
+      "birthMarginMs": 3275973
+    },
+    {
+      "sample": 56,
+      "admitted": true,
+      "birthMarginMs": 3336044
+    },
+    {
+      "sample": 57,
+      "admitted": true,
+      "birthMarginMs": 3396101
+    },
+    {
+      "sample": 58,
+      "admitted": true,
+      "birthMarginMs": 3456185
+    },
+    {
+      "sample": 59,
+      "admitted": true,
+      "birthMarginMs": 3516267
+    }
+  ]
+}

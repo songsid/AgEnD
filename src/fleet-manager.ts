@@ -1,3 +1,4 @@
+import {HostFootprint} from "./host-monitoring-footprint.js";
 import {hostAlertSummary} from './host-monitoring-alert-text.js';
 import {HostMonitoringAlerts} from './host-monitoring-alerts.js';
 import {readHostAlertSettings,writeHostAlertSettings,defaultHostAlertSettings,parseHostAlertSettings,type HostAlertSettings} from './host-monitoring-alert-settings.js';
@@ -1292,6 +1293,20 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   readonly stormWindow: StormWindow;
   readonly spawnGate: SpawnGate;
   readonly memoryPressure: MemoryPressure;
+  private hostFootprint: HostFootprint | null = null;
+  private hostFootprintEnabled=false;
+  private hostFootprintLabels=new Map<string,string>();
+  private hostFootprintRoots():import('./host-monitoring-footprint.js').FootprintInput[]{
+    const roots:import('./host-monitoring-footprint.js').FootprintInput[]=[];
+    this.hostFootprintLabels.clear();
+    for(const [name,daemon] of this.daemons){
+      const root=daemon.hostFootprintRoot?.(),id=createHash("sha256").update(name).digest("hex").slice(0,16);
+      roots.push({id,pid:root?.pid??0,owner:root?.owner??"unavailable",observedAt:root?.observedAt??0,files:[join(this.getInstanceDir(name),"output.log")]});
+      if(roots.length>128)break;
+      this.hostFootprintLabels.set(id,this.fleetConfig?.instances[name]?.display_name??name);
+    }
+    return roots;
+  }
   private hostMonitor: HostMonitoringRuntime | null = null;
   private hostHistory: HostMonitoringHistory | null = null;
   private hostAlerts: HostMonitoringAlerts | null = null;
@@ -1304,7 +1319,10 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.hostAlerts ??= new HostMonitoringAlerts({persistence:this.hostHistory,changed:()=>this.needsYou?.poke(),deliver:(changes,ack)=>{
       return this.notifyFleetError(hostAlertSummary(changes,getLocale()),{throttle:false,ack});
     }});
+    this.hostFootprint ??= new HostFootprint({roots:()=>this.hostFootprintRoots(),changed:()=>this.hostHistory?.ingest(this.hostHealthSnapshotInternal())});
     this.hostMonitor ??= new HostMonitoringRuntime({
+      footprint:this.hostFootprint,
+      footprintEnabled:enabled=>{this.hostFootprintEnabled=enabled;for(const daemon of this.daemons.values())daemon.setHostFootprintEnabled?.(enabled);},
       history:this.hostHistory,
       alerts:{configure:enabled=>{this.hostAlerts!.configure(enabled,this.hostAlertConfig);if(this.hostAlertSettingsFailed)this.hostAlerts!.unavailable();},stop:()=>this.hostAlerts!.stop(),ingest:snapshot=>this.hostAlerts!.ingest(snapshot),snapshot:()=>this.hostAlerts!.snapshot()},
       supported: () => process.platform === "linux" || process.platform === "darwin",
@@ -1318,7 +1336,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
-  hostHealthSnapshot(): import("./host-monitoring.js").HostHealthSnapshot { return this.hostMonitor?.snapshot() ?? disabledHostHealth(); }
+  private hostHealthSnapshotInternal(): import("./host-monitoring.js").HostHealthSnapshot {return this.hostMonitor?.snapshot()??disabledHostHealth();}
+  hostHealthSnapshot(agentOffset=0): import("./host-monitoring.js").HostHealthSnapshot {
+    const snapshot=this.hostHealthSnapshotInternal(),reading=snapshot.footprint?.reading;
+    if(reading){
+      const labels=this.hostFootprintLabels;
+      reading.rows=reading.rows.slice(agentOffset,agentOffset+50).map(row=>({...row,label:labels?.get(row.id)??'Agent'}));
+      Object.assign(reading,{offset:agentOffset,hasMore:agentOffset+50<reading.total});
+    }
+    return snapshot;
+  }
   hostAlertSettings(): HostAlertSettings {return structuredClone(this.hostAlertConfig);}
   saveHostAlertSettings(input: unknown): HostAlertSettings {
     const next=parseHostAlertSettings(input),resources=hostAlertResources(this.hostHealthSnapshot(),Date.now());
@@ -5938,6 +5965,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   onDaemonReady(name: string, daemonBootId: string): void {
     const daemon = this.daemons.get(name);
     if (daemon?.bootId === daemonBootId) {
+      daemon.setHostFootprintEnabled?.(this.hostFootprintEnabled);
       this.listenForWorkingState(name, daemon);
       const cfg = this.fleetConfig?.instances[name];
       if (cfg?.general_topic && !this.generalLocationFlights.has(name) && daemon.getProcessStatus() === "running"

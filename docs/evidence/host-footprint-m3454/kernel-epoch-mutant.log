@@ -1,0 +1,32 @@
+
+ RUN  v4.1.12 /work/agend
+
+ ❯ tests/.s209-kernel-mutant.test.ts (8 tests | 1 failed) 31ms
+     × survives the observed one-second epoch presentation change, but still rejects a replaced kernel identity 5ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/.s209-kernel-mutant.test.ts > stable Linux root start identity > survives the observed one-second epoch presentation change, but still rejects a replaced kernel identity
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/.s209-kernel-mutant.test.ts:14:27
+     12|   const policy=new FootprintAttribution();policy.sample([row(undefined…
+     13|   const changed=policy.sample([{...row((boot+50)*1000-1000,5000),cpuMs…
+     14|   expect(changed.covered).toBe(1);expect(changed.rows[0].rssBytes).toB…
+       |                           ^
+     15|   expect(policy.sample([row((boot+50)*1000-1000,6000)],[{...root,obser…
+     16|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 7 passed (8)
+   Start at  03:52:12
+   Duration  268ms (transform 63ms, setup 75ms, import 27ms, tests 31ms, environment 0ms)

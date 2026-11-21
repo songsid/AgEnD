@@ -273,7 +273,7 @@ function NeedsItem({ item, nowMs, owner }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
       ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}

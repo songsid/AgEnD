@@ -1,0 +1,40 @@
+{
+  "scope": "Actual host collectors, actual /bin/ps and SQLite/incident storage, one owned real idle process tree; no live Fleet agent attribution, no account, model, tmux or notifications. Process counters include sampler/history worker threads; reaped ps CPU separately measured; ps transient RSS not included in process peak.",
+  "durationMs": 3600132.368219,
+  "logicalCpus": 6,
+  "options": {
+    "enabled": true,
+    "agent_footprint": true
+  },
+  "processSamples": 60,
+  "hostSamples": 119,
+  "before": {
+    "cpuUs": 367651,
+    "childrenCpuUs": 0,
+    "writeBytes": 57344,
+    "rss": 97583104,
+    "maxRss": 98115584
+  },
+  "after": {
+    "cpuUs": 3434386,
+    "childrenCpuUs": 1000000,
+    "writeBytes": 14577664,
+    "rss": 133156864,
+    "maxRss": 141062144
+  },
+  "cpuOneCorePercent": 0.11296070766453041,
+  "cpuTotalPercent": 0.018826784610755067,
+  "physicalWriteBytes": 14520320,
+  "physicalWriteBytesPerHour": 14519786.122714078,
+  "peakRssBytes": 141062144,
+  "history": {
+    "state": "recording",
+    "stats": {
+      "bytes": 4382720,
+      "rows": 1281,
+      "maxBytes": 67108864,
+      "dbBudget": 31297536,
+      "trimmed": false
+    }
+  }
+}

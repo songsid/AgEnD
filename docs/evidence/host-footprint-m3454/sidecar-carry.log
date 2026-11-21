@@ -1,0 +1,10 @@
+
+ RUN  v4.1.12 /work/agend
+
+(node:21114) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  16 passed (16)
+   Start at  04:04:04
+   Duration  14.33s (transform 9.79s, setup 113ms, import 13.08s, tests 809ms, environment 0ms)

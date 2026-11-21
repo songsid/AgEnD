@@ -29,6 +29,10 @@ describe('passive administrator host-health cache',()=>{
  it.each(['read','guest','token','anonymous']as const)('refuses %s without reading or creating a collector',async tier=>{
   read.mockClear();expect((await get(tier)).status).toBe(403);expect((await get(tier,true)).status).toBe(403);expect(read).not.toHaveBeenCalled();
  });
+ it.each([false,true])('accepts only bounded numeric cache pages (gateway=%s)',async gateway=>{
+  read.mockClear();expect((await get('admin',gateway,'/ui/host-health?agentOffset=50')).status).toBe(200);expect(read).toHaveBeenLastCalledWith(50);
+  for(const query of ['-1','1','150','/tmp','50&agentOffset=100'])expect((await get('admin',gateway,'/ui/host-health?agentOffset='+query)).status).toBe(400);
+ });
  it('the public manifest permits only the exact cached GET',()=>{expect(isPublicWebRoute('GET','/ui/host-health')).toBe(true);for(const method of ['POST','PUT','HEAD','DELETE'])expect(isPublicWebRoute(method,'/ui/host-health')).toBe(false);expect(isPublicWebRoute('GET','/ui/host-health/extra')).toBe(false);});
  it('accepts no path/command parameters or mutation method',async()=>{
   read.mockClear();expect((await get('admin',false,'/ui/host-health?path=/')).status).toBe(400);expect((await get('admin',false,'/ui/host-health','POST')).status).toBe(403);expect(read).not.toHaveBeenCalled();

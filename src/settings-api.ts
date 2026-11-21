@@ -739,6 +739,7 @@ export function handleSettingsRequest(
       ...buildSettingsImpactSchema(),
       host_monitoring: ctx.hostMonitoringAvailable?.() === true,
       host_monitoring_page: HOST_MONITORING_PAGE_AVAILABLE,
+      host_monitoring_agents: true,
       ...(ctx.hostAlertSettings?{host_alert_defaults:HOST_ALERT_DEFAULTS}:{}),
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows

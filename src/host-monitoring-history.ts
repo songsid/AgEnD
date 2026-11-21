@@ -1,7 +1,7 @@
 import {Worker} from 'node:worker_threads';
 import type {HistoryAnswer,HistoryStats} from './host-monitoring-history-store.js';
 import {cleanupHistory} from './host-monitoring-history-files.js';
-import {HistoryWatermark,historyQuery,hostHistoryPoints,type HistoryPoint} from './host-monitoring-history-policy.js';
+import {HISTORY_MAX_POINTS,HistoryWatermark,historyQuery,hostHistoryPoints,type HistoryPoint} from './host-monitoring-history-policy.js';
 import type {HostAlertDocument} from './host-monitoring-alert-store.js';
 import type {HostHealthSnapshot} from './host-monitoring.js';
 
@@ -131,7 +131,7 @@ export class HostMonitoringHistory {
   private async flush():Promise<void> {
     if(!this.pending.size||this.flight||!this.ready||!this.permitted)return;
     const generation=this.permitGeneration;
-    const points=[...this.pending.values()].slice(-64);this.pending.clear();this.lastFlush=this.monotonic();
+    const points=[...this.pending.values()].slice(-HISTORY_MAX_POINTS);this.pending.clear();this.lastFlush=this.monotonic();
     const answer=await this.request({op:'append',points,now:this.now()});
     if(!this.enabled||this.stopped||this.closing||generation!==this.permitGeneration)return;
     if(!answer.ok){this.fail('history_io_failed');return;}
