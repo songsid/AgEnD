@@ -65,6 +65,19 @@ describe("#2834: the same events as before, from the records", () => {
       message: "Claude Code usage limit reached — paused; continuing automatically at 6:53pm" })]);
   });
 
+  it("M-3501: 2.1.330's note, \"Usage limit reached · set to continue automatically …\" with no esc tail, gives the same notice", () => {
+    const { record, errors } = wired();
+    record(USAGE_ERROR);
+    record({ ...USAGE_NOTE, content: "Usage limit reached · set to continue automatically at 6:53pm" });
+    expect(errors).toEqual([expect.objectContaining({ type: "quota", action: "notify", verifyQuota: true,
+      message: "Claude Code usage limit reached — paused; continuing automatically at 6:53pm" })]);
+  });
+  it("M-3501: 2.1.330's \"again\" note is the same pause (no second notice within the window)", () => {
+    const { record, errors } = wired();
+    record({ ...USAGE_NOTE, content: "Usage limit reached · set to continue automatically at 6:53pm" });
+    record({ ...USAGE_NOTE, content: "Usage limit reached again · set to continue automatically at 6:53pm" });
+    expect(errors).toHaveLength(1);
+  });
   it("an exhausted credit balance pauses, as the old pattern meant to", () => {
     const { record, errors } = wired();
     record(CREDIT_ERROR);
