@@ -30,6 +30,7 @@ export const PUBLIC_GATEWAY_WAIT_MS = 4_000;
 /** Reviewed panel routes. No health, agent, issue-code, preview, legacy restart or SSE. */
 export function isPublicWebRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
+  if (method === "POST" && path === "/ui/host-alert-action") return true;
   if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if (reads && isWebIconPath(path)) return true;
   if (method === "GET" && path === "/ui/reply-preview") return true; // handler requires an admin session on every read
@@ -135,6 +136,7 @@ export function isPublicWebRoute(method: string, path: string): boolean {
  */
 function isPublicPrivilegedRoute(method: string, path: string): boolean {
   const reads = method === "GET" || method === "HEAD";
+  if (method === "POST" && path === "/ui/host-alert-action") return true;
   if (method === "GET" && (path === "/ui/host-health" || path === "/ui/host-history")) return true; // cached only; handler requires a current admin session
   if ((reads || method === "PUT" || method === "DELETE") && path === "/ui/app-icon") return true;
   if (method === "GET" && (path === "/ui/update" || path === "/ui/update/log")) return true;
@@ -199,6 +201,7 @@ function isPublicPrivilegedSettingsRoute(method: string, path: string): boolean 
   if ((method === "GET" || method === "POST") && path === "/api/settings/general-location") return true;
   if (method === "GET" && path === "/api/settings/runtimes") return true;
   if (method === "PUT" && path === "/api/settings/fleet/runtimes") return true;
+  if ((method === "GET" || method === "PUT") && path === "/api/settings/fleet/host-alerts") return true;
   if (method === "PUT" && path === "/api/settings/fleet/monitoring") return true;
   if (method === "GET" && /^\/api\/settings\/public-tunnel-token(?:\/apply\/[A-Za-z0-9_-]+)?$/.test(path)) return true;
   if (method === "POST" && /^\/api\/settings\/public-tunnel-token\/(?:verify|apply)$/.test(path)) return true;

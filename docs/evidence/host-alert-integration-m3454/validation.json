@@ -1,0 +1,15 @@
+{
+  "files": 21,
+  "tests": 214,
+  "passed": 214,
+  "failed": 0,
+  "sourceBuild": 0,
+  "productionTypes": 0,
+  "testTypes": 0,
+  "settingsGate": {
+    "mode": "ci",
+    "checks": 124,
+    "result": "PASS"
+  },
+  "scope": "No CLI, account/model or real notification sender; actual scratch host sampling for health/settings; synthetic incident overlays for alerts/Needs."
+}

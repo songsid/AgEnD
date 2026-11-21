@@ -1,3 +1,4 @@
+import {HostAlertSettings} from './settings-host-alerts.js';
 import { html, useEffect, useRef, useState } from '/assets/app-html.js';
 import { register, t } from '/assets/app-i18n.js';
 import { confirmDialog } from '/assets/ui-confirm.js';
@@ -23,7 +24,7 @@ register('hostMonitoring', {
 const copy = k => t(`hostMonitoring.${k}`);
 export function HostMonitoringSettings({ ctx }) {
   const available = hostMonitoringVisible(ctx.schema);
-  useEffect(() => { if (!available) syncStage(ctx, 'host-monitoring', null); }, [available]);
+  useEffect(() => { if (!available) {syncStage(ctx, 'host-monitoring', null);syncStage(ctx,'host-alerts',null);} }, [available]);
   // A collector alone is not a visible feature: S-207 must provide its page too.
   // A separate child keeps hook order stable across capability transitions.
   return available ? html`<${AvailableHostMonitoringSettings} ctx=${ctx} />` : null;
@@ -65,5 +66,5 @@ function AvailableHostMonitoringSettings({ ctx }) {
         <option value="">${copy('auto')}</option>${[...new Set([...(health?.disks?.value?.availableDrives ?? []),form.wsl_drive])].filter(v=>typeof v==='string'&&/^[A-Z]$/.test(v)).slice(0,26).map(d=>html`<option value=${d}>${d}:</option>`)}</select>
       <p class="note">${copy('driveHint')}</p><button type="button" class="btn btn-sm" disabled=${reading} onClick=${refresh}>${copy('refresh')}</button></div>` : null}
     ${!agentsAvailable ? html`<p class="note">${copy('agentUnavailable')}</p>` : null}
-    <p class="note">${copy('off')}</p></section>`;
+    <p class="note">${copy('off')}</p><${HostAlertSettings} ctx=${ctx} health=${health}/></section>`;
 }

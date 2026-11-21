@@ -50,6 +50,7 @@ export interface NeedsYouWorld {
 
 export interface NeedsYouHubContext {
   contactSuggestions?(): NeedsYouItem[];
+  hostAlerts?(): NeedsYouItem[];
   dataDir: string;
   /** Wall clock, for item ages and the outbox window. */
   now(): number;
@@ -277,6 +278,7 @@ export class NeedsYouHub {
     try { this.items.push(...(this.ctx.contactSuggestions?.() ?? [])); }
     catch (error) { this.ctx.log("warn", "Could not read Classic contact suggestions", { reason: error instanceof Error ? error.message : "unavailable" }); }
 
+    this.items.push(...(this.ctx.hostAlerts?.() ?? []));
     const webSig = renderSignature(this.items, now);
     if (webSig !== this.webSignature) {
       this.webSignature = webSig;

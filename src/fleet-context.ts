@@ -57,6 +57,7 @@ export interface FleetContext {
   /** A read-only, bounded pane capture tied to the current daemon/launch. */
   getPaneContextSource?(name: string): PaneContextSource | null;
   getSysInfo(): SysInfo;
+  hostHealthSnapshot?():import('./host-monitoring.js').HostHealthSnapshot;
   /** Read cached CLI versions without triggering a probe. */
   getBackendCliVersionSnapshot?(): BackendCliVersionSnapshot;
   /** Refresh stale/missing CLI versions after the sysinfo reply has been sent. */
