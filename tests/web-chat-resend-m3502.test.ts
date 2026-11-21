@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
+import { guestMessage, guestHistory, guestFrameData, guestMessages, guestDeliveries } from "../src/web-guest-access.js";
 import { WebChatHistory } from "../src/web-chat-history.js";
 
 it("resends a failed accepted message in place, fencing old reports and keeping attention until the new attempt lands", () => {
@@ -61,4 +62,30 @@ it("restores no retry authority from invalid or mismatched descriptors", () => {
 it("exposes Resend on the same reviewed public POST surface as Send, without an extra wildcard", () => {
   expect(isPublicWebRoute("POST", "/ui/resend")).toBe(true);
   expect(isPublicWebRoute("POST", "/ui/resend/extra")).toBe(false);
+});
+
+it("restores a bound person's failed retry and rejects an operator descriptor on that bound row", () => {
+  const raw = { boot: "abcd", id: 1, instance: "example", role: "user", sender: "Person", text: "Check it", ts: "2026-01-01", from: "discord:person", retry: { info: { owner: "discord:person", attempt: 0, failedAt: 10 }, messageId: "web-old", delivery: "failed" } };
+  const h = new WebChatHistory({ boot: "dcba" }); h.restore("example", [raw]);
+  expect(h.find("example", "abcd", 1)).toMatchObject({ from: raw.from, delivery: "failed", retry: { owner: raw.from } });
+  const bad = new WebChatHistory({ boot: "dcba" }); bad.restore("example", [{ ...raw, retry: { ...raw.retry, info: { ...raw.retry.info, owner: "web:operator" } } }]);
+  expect(bad.find("example", "abcd", 1)?.retry).toBeUndefined();
+});
+
+it("projects retry identity only for a guest's own channel-visible message across history and live/replay projection", () => {
+  const h = new WebChatHistory({ boot: "abcd" });
+  const guest: any = { owner: { adapterId: "discord", userId: "person" }, history: () => h };
+  const scope = new Set(["example"]);
+  for (const own of [true, false]) {
+    const m = h.record({ instance: "example", role: "user", sender: "Person", text: "Check it", ts: "2026-01-01", channel: true, from: own ? "discord:person" : "discord:other", messageId: own ? "web-own" : "web-other", retryOwner: own ? "discord:person" : "discord:other" });
+    h.setDelivery("example", m.messageId!, "failed");
+    const projected = guestMessage(m, guest, scope);
+    expect(projected.retry).toEqual(own ? m.retry : undefined);
+    expect(guestMessages([m], guest, scope)[0].retry).toEqual(own ? m.retry : undefined);
+    const frame = guestFrameData("delivery", { instance: m.instance, messageId: m.messageId, delivery: "failed" }, scope, guest) as any;
+    expect(frame?.retry).toEqual(own ? m.retry : undefined);
+    expect(guestDeliveries(h, guest, scope).some(d => d.messageId === m.messageId)).toBe(own);
+    expect(guestHistory(h, "example", 1, guest, scope)[0].retry).toEqual(own ? m.retry : undefined);
+    expect((guestFrameData("message", m, scope, guest) as any)?.retry).toEqual(own ? m.retry : undefined);
+  }
 });

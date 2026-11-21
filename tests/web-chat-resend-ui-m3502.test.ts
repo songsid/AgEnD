@@ -26,6 +26,8 @@ it.each(["en", "zh-TW"] as const)("%s: the failed accepted bubble has a native R
   const resend = vi.fn(), m = row();
   const thread = createThread(list, scroll, { t, tf: t, isUser: (x: any) => x.role === "user", serverNow: () => 0, onJump() {}, onEmpty() {}, canResend: () => true, resendMessage: resend }); clean.push(() => thread.dispose());
   thread.render([m]); const button = list.querySelector('[data-act="resend"]');
+  expect(list.querySelector(".msg-resend").textContent).toContain(lang === "en" ? "Not delivered ·" : "沒有送到 ·");
+  expect(button.classList.contains("btn-ghost")).toBe(false);
   expect(button.tagName.toLowerCase()).toBe("button"); expect(button.textContent).toBe(lang === "en" ? "Resend" : "重新傳送");
   thread.onClick({ target: button }); expect(resend).toHaveBeenCalledWith("abcd-2");
   expect(list.querySelectorAll('.msg[data-key="abcd-2"]')).toHaveLength(1);

@@ -335,6 +335,8 @@ export interface WebChatPersistence {
 }
 
 export const WEB_CHAT_TEXT_MAX = 16_000;
+// /ui/send accepts 16 KiB of text. A retry must retain that complete payload.
+const WEB_CHAT_RETRY_TEXT_MAX = 16_384;
 
 /**
  * The `message_id` a message from the web chat is delivered under. Unique (two sends in one millisecond used
@@ -517,7 +519,7 @@ export class WebChatHistory {
       // Anything not one of the three — or absent — is a person's message.
       role: typeof msg.role === "string" && ROLES.has(msg.role) ? msg.role as WebChatRole : "user",
       sender: String(msg.sender),
-      text: String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
+      text: msg.retryOwner ? String(msg.text ?? "").slice(0, WEB_CHAT_RETRY_TEXT_MAX) : String(msg.text ?? "").slice(0, WEB_CHAT_TEXT_MAX),
       ts: String(msg.ts),
       ...(msg.attachments && msg.attachments.length ? { attachments: msg.attachments.slice(0, 20).map(a => ({ id: a.id, kind: a.kind, name: a.name, size: a.size, mime: a.mime, ...drawnSize(a) })) } : {}),
       ...(typeof msg.messageId === "string" && msg.messageId ? { messageId: msg.messageId.slice(0, 64) } : {}),
@@ -873,7 +875,8 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (r.instance !== instance || typeof r.sender !== "string" || typeof r.text !== "string" || typeof r.ts !== "string") return null;
   // The role as stored — a person's message unless it is one of the three; never upgraded to `agent`.
   const role: WebChatRole = typeof r.role === "string" && ROLES.has(r.role) ? r.role as WebChatRole : "user";
-  const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  const message: WebChatMessage = { boot: r.boot, id: r.id, instance, role, sender: r.sender.slice(0, 256), text: r.retry ? r.text.slice(0, WEB_CHAT_RETRY_TEXT_MAX) : r.text.slice(0, WEB_CHAT_TEXT_MAX), ts: r.ts.slice(0, 64) };
+  if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   if (role === "user" && r.retry && typeof r.retry === "object") {
     const saved = r.retry as Record<string, unknown>, retry = retryInfo(saved.info);
     if (retry?.failedAt && typeof saved.messageId === "string" && isWebMessageId(saved.messageId) && saved.messageId.length <= 64
@@ -891,7 +894,6 @@ function restoredRow(raw: unknown, instance: string, thisBoot: string): { messag
   if (cards) message.cards = cards;
   // #1920: as recorded — a row from before these were written has neither, so a guest is never shown it.
   if (r.channel === true) message.channel = true;
-  if (role === "user" && typeof r.from === "string" && FROM.test(r.from)) message.from = r.from;
   // #2085 (made the channel's late) and #1774 (recorded late): either way, where it stands in its boot's sequence.
   if (typeof r.seenSeq === "number" && Number.isSafeInteger(r.seenSeq) && r.seenSeq > r.id) message.seenSeq = r.seenSeq;
   const replyTo = role === "user" || role === "agent" ? webChatReplyRefOf(r.replyTo) : undefined;

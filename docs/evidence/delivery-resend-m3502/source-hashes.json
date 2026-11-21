@@ -5,7 +5,7 @@
   },
   {
     "path": "src/daemon.ts",
-    "sha256": "ca23fc14a90202197344a6d4cb8822ef130a4954dfa0bf84bc13b7f59ed86a32"
+    "sha256": "35e16a610664afc68537f625f78b72c6f455bf8856beccfee2d3a93e072b5db8"
   },
   {
     "path": "src/fleet-manager.ts",
@@ -33,11 +33,11 @@
   },
   {
     "path": "src/ui/chat-strings.js",
-    "sha256": "b440a25ff821644363b3ac3a91cbc8f7d4ee9b48a0ecba18f4176eb37a902394"
+    "sha256": "b0d27831731ff3f3ec98c302b5b1e970de71e15874f90216618b8381114d7ab6"
   },
   {
     "path": "src/ui/chat-thread.js",
-    "sha256": "d18e2f3e6131e5a4faa022d04d3277ef5514d47a51020d5ba2d6c6edb293302d"
+    "sha256": "a1847078f0814c07fa359c0c6eae3bc621d35bbb0a4183d703bca43017747160"
   },
   {
     "path": "src/ui/panel-chat.js",
@@ -45,7 +45,7 @@
   },
   {
     "path": "src/ui/shared/app.css",
-    "sha256": "f047a98fad151255ef2dbd0c9ca1e6f9410411391c3d63488b2696a4fc8286a7"
+    "sha256": "fa02d9d326343d31c6edef5aaf8780f0032950b25ad553e235325ff25ae88010"
   },
   {
     "path": "src/web-api.ts",
@@ -53,11 +53,11 @@
   },
   {
     "path": "src/web-chat-history.ts",
-    "sha256": "ccde210ce9438324560e98eb90428849f60262b7b3563f48481b6fd4b38a1242"
+    "sha256": "8a4ed6e876834e0030ba3d1d8ba18db67d4e8a3506e5524f65b69721a7716149"
   },
   {
     "path": "src/web-guest-access.ts",
-    "sha256": "92865fd3a8f37911f7d58837867fd79b93b832a028ee3a828239f29324d68540"
+    "sha256": "24fff9896e52d41deff7a3908032db8239176586852b414d1157b843622d7821"
   },
   {
     "path": "src/web-upload.ts",
@@ -65,27 +65,39 @@
   },
   {
     "path": "tests/codex-unrecognised-footer-1031.test.ts",
-    "sha256": "fc24dbef0c80ab7fd43fbd26a7c46c87651d5b30d92e1d18fc14e5e81e450d37"
+    "sha256": "850f700f280a6828163e5ff86304cc33776a137105ba71cdf30826a14afef5e9"
   },
   {
     "path": "tests/delivery-failure-reporting-m3502.test.ts",
     "sha256": "1fadd1e79e631b84fd9c3bdba5898e860147ac273f947a4667708e72cbe367ad"
   },
   {
+    "path": "tests/fatal-startup-dialog.test.ts",
+    "sha256": "fdeb5554b6c6b8e3a862948ee47d961058dd56442dff40fb393f0b3cb06b165f"
+  },
+  {
     "path": "tests/kiro-delivery-enter-drop.test.ts",
     "sha256": "c255e3040737cad579dc8991fa73614295d9773f92e8467735ba814959ae6b7e"
   },
   {
+    "path": "tests/web-chat-c1.test.ts",
+    "sha256": "b3c4823c572a011fe58c8471b9b2fbcf41db1b5a2e79cf76325c90d1eb9de67b"
+  },
+  {
     "path": "tests/web-chat-resend-http-m3502.test.ts",
-    "sha256": "9ef4c0e08c6179b768ee42052d7cdf3c4eacd8b5e8b9b6cbd9512ebdcbe065f7"
+    "sha256": "954727e68b5d6a28b33b457642ef18111641ea8c63f5f7f5822822563ee62d23"
   },
   {
     "path": "tests/web-chat-resend-m3502.test.ts",
-    "sha256": "54fb31e8f62ea14a6aca8e383abc52e4093fc23f3e6a9dcbbadbdc2841d5b47d"
+    "sha256": "427cfdc2402b5f44c60caaf4a8b4ab1d223ff9084703f99e4d87b3f818edc71d"
   },
   {
     "path": "tests/web-chat-resend-ui-m3502.test.ts",
-    "sha256": "e7be002f9b7603526e606c524b5d4b509ba7532a3a9b45ea2bb91a68cf8a3183"
+    "sha256": "c6055d1946cb11db63f7c7e178d83463fb4b9d1b39c8da59bbd5ca1433d6e556"
+  },
+  {
+    "path": "tests/web-csp-1268.test.ts",
+    "sha256": "738c38ba5e6094f9c0ab3bb09569c2f76595c43331f92ca83159bd70b598e0b4"
   },
   {
     "path": "tests/web-guest-chat-1920.test.ts",

@@ -256,7 +256,7 @@ register("chat", {
     previews: "允許預覽 HTML",
     clicked: "點選了：", clickShow: "顯示這些按鈕所在的訊息",
     copy: "複製", copyMessage: "複製這則回覆", copied: "已複製", copyFailed: "複製失敗", wrap: "換行", showAll: "展開全部 {0} 行", showMore: "顯示更多", showLess: "收合", showAllShort: "全部 {0} 行", showMoreShort: "更多", jumpLatest: "最新", newBelow: "{0} 則新訊息",
-    disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "未送達", resend: "重新傳送", resending: "正在重新傳送…", resendFailed: "無法重新傳送這則訊息，請再試一次。", resendAttachmentGone: "附件已無法使用。請寫一則新訊息，重新附上檔案。", resendReplyGone: "引用的訊息已無法使用。請寫一則不含引用的新訊息。", tick_cancelled: "已被中止取消", reactedBy: "{0} 的回應",
+    disconnected: "已斷線", tick_queued: "排在前一則訊息之後", tick_processing: "已交給 agent", tick_delivered: "agent 已收到", tick_failed: "沒有送到", resend: "重新傳送", resending: "正在重新傳送…", resendFailed: "無法重新傳送這則訊息，請再試一次。", resendAttachmentGone: "附件已無法使用。請寫一則新訊息，重新附上檔案。", resendReplyGone: "引用的訊息已無法使用。請寫一則不含引用的新訊息。", tick_cancelled: "已被中止取消", reactedBy: "{0} 的回應",
     promptAnswering: "回覆中…", promptGone: "這個提示已經結束", promptTextPlaceholder: "你的回答", promptTextSend: "送出回答", promptFor: "{0}：{1}",
     working: "{0} 處理中…", stuck: "{0} 似乎卡住了", stopReply: "停止回覆", stopReplyTitle: "停止目前的回覆（同 Esc），並取消還在排隊的訊息。Agent 會繼續運行。", stopSent: "已中止",
     file_empty: "空檔案", file_too_large: "超過 {0} MB", file_too_large_public: "超過 {0} MB，這是公開連結單次上傳的上限", file_too_many: "每則訊息最多 {0} 個檔案", file_too_much: "檔案合計會超過 {0} MB", removeFile: "移除", putBack: "放回輸入框", 

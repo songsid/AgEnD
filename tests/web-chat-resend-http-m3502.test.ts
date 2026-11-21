@@ -121,3 +121,21 @@ it("a lost HTTP answer after handoff neither fails the accepted attempt nor rese
   const replay = await post("/ui/resend", payload);
   expect(replay.status).toBe(200); expect(replay.body.repeated).toBe(true); expect(deliver).toHaveBeenCalledOnce();
 });
+
+it("resends the full accepted 16384-character payload including its suffix after restoration", async () => {
+  const deliver = vi.spyOn(fm, "deliverHumanToInstance").mockResolvedValue(true);
+  const suffix = "BOUNDARY-SUFFIX-12345", text = "x".repeat(16384 - suffix.length) + suffix;
+  expect(text).toHaveLength(16384);
+  const row = await accepted({ message: text });
+  expect(row.text).toHaveLength(16384); expect(row.text.endsWith(suffix)).toBe(true);
+  // Use the same persisted snapshot and restore API as a host restart.
+  const saved = [fm.webChatHistory.stored(row)];
+  const { WebChatHistory } = await import("../src/web-chat-history.js");
+  const restored = new WebChatHistory({ boot: "dcba" }); restored.restore("example", saved);
+  expect(restored.find("example", row.boot, row.id)?.text).toBe(text);
+  const previous = fm.webChatHistory; fm.webChatHistory = restored;
+  try {
+    deliver.mockClear(); expect((await post("/ui/resend", retry(row))).status).toBe(200);
+    expect(JSON.stringify(deliver.mock.calls[0]).includes(text)).toBe(true);
+  } finally { fm.webChatHistory = previous; }
+});

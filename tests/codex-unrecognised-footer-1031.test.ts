@@ -130,17 +130,24 @@ describe("post-startup input recovery (M-3502)", () => {
     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled(); expect(failed).not.toHaveBeenCalled();
   });
 
-  it("keeps a persistent unsafe composer unpasted and reports its real failure reason at the bounded deadline", async () => {
+  it("keeps a persistent unsafe composer unpasted and reports its real failure reason without a recovery Enter", async () => {
     const h = makeHarness(); h.daemon.inputTransientGuardGeneration = null;
     h.state.pane = NO_CONTEXT.replace("› Ask Codex to do anything", "› unfinished personal draft");
     const failed = vi.fn(); h.daemon.on("message_failed", failed);
-    const started = Date.now();
     const delivery = h.daemon.deliverMessage(MESSAGE, { chatId: "c", messageId: "m" }, {});
-    await vi.advanceTimersByTimeAsync(1_000); expect(failed).not.toHaveBeenCalled();
-    vi.setSystemTime(started + 30 * 60_000 + 1);
     await expect(settle(delivery, 1_000)).resolves.toBe(false);
     expect(h.paste).not.toHaveBeenCalled(); expect(h.enter).not.toHaveBeenCalled();
-    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ phase: "stranded-input", proof: "input-not-clear-timeout" }));
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ phase: "stranded-input", proof: "input-not-clear" }));
+  });
+
+  it("does not use the unknown-footer fallback after startup when the terminal is no longer raw", async () => {
+    const h = makeHarness(); h.daemon.inputTransientGuardGeneration = null; h.state.mode = "cooked";
+    const epoch = h.daemon.deliveryEpoch;
+    const delivery = h.daemon.deliverMessage(MESSAGE, { chatId: "c", messageId: "m" }, { deliveryEpoch: epoch });
+    await vi.advanceTimersByTimeAsync(UNKNOWN_LAYOUT_STABLE_MS + 2_000);
+    expect(h.paste, "a historical composer in a cooked shell is not live input proof").not.toHaveBeenCalled();
+    h.daemon.deliveryEpoch++; await expect(settle(delivery, 1_000)).resolves.toBe(false);
+    expect(h.enter).not.toHaveBeenCalled();
   });
 
 });

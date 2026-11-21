@@ -9,7 +9,7 @@
         "file": true
       },
       "button": {
-        "x": 792,
+        "x": 901,
         "y": 366,
         "width": 72,
         "height": 30
@@ -39,7 +39,7 @@
         "file": true
       },
       "button": {
-        "x": 909.375,
+        "x": 985.375,
         "y": 366,
         "width": 74,
         "height": 30
@@ -69,7 +69,7 @@
         "file": true
       },
       "button": {
-        "x": 792,
+        "x": 901,
         "y": 366,
         "width": 72,
         "height": 30
@@ -99,7 +99,7 @@
         "file": true
       },
       "button": {
-        "x": 909.375,
+        "x": 985.375,
         "y": 366,
         "width": 74,
         "height": 30
@@ -129,7 +129,7 @@
         "file": true
       },
       "button": {
-        "x": 55.921875,
+        "x": 164.921875,
         "y": 438,
         "width": 72,
         "height": 44
@@ -159,7 +159,7 @@
         "file": true
       },
       "button": {
-        "x": 110.375,
+        "x": 186.375,
         "y": 414,
         "width": 74,
         "height": 44
@@ -189,7 +189,7 @@
         "file": true
       },
       "button": {
-        "x": 55.921875,
+        "x": 164.921875,
         "y": 438,
         "width": 72,
         "height": 44
@@ -219,7 +219,7 @@
         "file": true
       },
       "button": {
-        "x": 110.375,
+        "x": 186.375,
         "y": 414,
         "width": 74,
         "height": 44

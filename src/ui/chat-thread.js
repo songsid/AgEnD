@@ -188,7 +188,7 @@ export function createThread(list, scroller, opts) {
     if (x.role === "status") return statusHtml(x, time);
     const u = opts.isUser(x);
     // renderMarkdown escapes the whole text before it adds any tag of its own (chat-render.js).
-    const resend = opts.canResend?.(x) ? `<div data-trust="thread-control" class="msg-resend"><button type="button" class="btn btn-ghost btn-sm" data-act="resend" data-arg="${escAttr(msgKey(x))}" ${x.resending ? "disabled" : ""}>${escAttr(tr(x.resending ? "chat.resending" : "chat.resend"))}</button></div>` : "";
+    const resend = opts.canResend?.(x) ? `<div data-trust="thread-control" class="msg-resend"><span class="muted">${escAttr(tr("chat.tick_failed"))} ·</span><button type="button" class="btn btn-sm" data-act="resend" data-arg="${escAttr(msgKey(x))}" ${x.resending ? "disabled" : ""}>${escAttr(tr(x.resending ? "chat.resending" : "chat.resend"))}</button></div>` : "";
     const ticks = u && x.delivery ? R().deliveryHtml(x.delivery, TICKS()) : "";
     const tools = u ? "" : `<div data-trust="thread-control" class="msg-tools"><button type="button" class="chip-btn icon-only" data-act="copyMsg" data-arg="${escAttr(msgKey(x))}" title="${escAttr(tr("chat.copyMessage"))}" aria-label="${escAttr(tr("chat.copyMessage"))}">${COPY}</button></div>`;
     const buttons = x.role === "agent" ? replyButtonsHtml(x.buttons) : "";

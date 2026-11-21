@@ -8455,6 +8455,7 @@ export class Daemon extends EventEmitter {
       // pasting now would submit both messages as one.
       const inputDeadline = Date.now() + 30 * 60_000;
       let submissions = 0;
+      let unavailableProbes = 0;
       for (;;) {
         if (cancelled()) return false;
         if (Date.now() >= inputDeadline) {
@@ -8475,6 +8476,12 @@ export class Daemon extends EventEmitter {
           return this.failDelivery(verdict, status, "stranded-input", "enter-failed");
         }
         if (stranded === "submitted") submissions++;
+        // Only the proven empty unknown-footer candidate needs the timed
+        // fallback. Preserve the existing bounded refusal for other unsafe
+        // input (including a stranded draft whose footer cannot be proved).
+        if (stranded === "busy" && this.footerFallbackPaneKey === null && ++unavailableProbes >= STRANDED_INPUT_MAX_ROUNDS) {
+          return this.failDelivery(verdict, status, "stranded-input", "input-not-clear");
+        }
         const readyAgain = await this.waitForPaneReadyForDelivery(windowId, inputDeadline - Date.now());
         if (cancelled()) return false;
         if (!readyAgain) {
@@ -9975,6 +9982,16 @@ export class Daemon extends EventEmitter {
     try { pane = await this.tmux!.capturePane(); } catch { return "unknown"; }
     if (this.inputTransientInPane(pane)) return "busy";
     if (this.backend?.getBusyPattern?.()?.test(pane)) return "busy";
+    // The timed footer fallback is valid only in a live raw TUI, even
+    // after the startup guard has retired. Historical shell scrollback is not
+    // evidence that a composer still owns the terminal.
+    const known = this.backend?.isDeliveryInputReadyPane?.(pane);
+    if (known === false && this.backend?.isStableUnknownLayoutIdlePane?.(pane)) {
+      if (await this.tmux?.getPaneInputMode?.() !== "raw") {
+        this.resetFooterFallback();
+        return "busy";
+      }
+    }
     if (!this.deliveryInputReadyPane(pane)) return "busy";
     if (strandedAgendMessageInInput(pane, prompt)) return "stranded";
     // Kiro uses the bottom row; Codex's positive prompt/footer check above

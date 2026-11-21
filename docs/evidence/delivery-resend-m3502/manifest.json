@@ -1,19 +1,19 @@
 [
   {
     "path": "docs/evidence/delivery-resend-m3502/README.md",
-    "sha256": "c2f9972b7bf4f0b9f2cf29792af5bf272dc73d9a3d9e4667e9503c92ab64f4e4"
+    "sha256": "9899d325a6426fb2f57fdc15223c8c7e733557e1d7d1db673ef15a693698a84c"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/controls.json",
-    "sha256": "beb3de5e3ebf6b10fa25f4176dd5e630e58176a7f556735a8f0b32561a8e8ce2"
+    "sha256": "6d1909f0eaf72f24e0a0cbae45ab14093fd0ec10f405367a608dfe9b215d7670"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/checks.json",
-    "sha256": "43633afcf463fdb875a8d3593c951a637208b932204bd7a59c1baa8f62b881d7"
+    "sha256": "2cd6055b3b403e1b8c24475701190270943600a89caaa9df74187b369496f190"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-en-failed.png",
-    "sha256": "cea350141f8de8888ed380a76ce4f17b49a8566bcf333fac1865744312802db4"
+    "sha256": "94796c82a20f44cc4629218f18267e7380c65a362388d1d3e41b27d84697e8e2"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-zh-TW-before.png",
@@ -21,7 +21,7 @@
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-dark-zh-TW-failed.png",
-    "sha256": "59143674b6aac935ba6c503ae437337c6aac8a09c165639465402d138de19b41"
+    "sha256": "13aef8d016f012f5ecdbbad321d639d50e9238c4f5f2ae7d6cbf33e429c02b35"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-before.png",
@@ -29,23 +29,23 @@
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-delivered.png",
-    "sha256": "4adce87721725091ddcb279219ef8df68e0f2c08d4d2f848af1a21607086d35b"
+    "sha256": "86ac8ac731efa3a767b9fe4cf3cfee2ed333c6d5f07d4e61cf63b655303f6250"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-failed.png",
-    "sha256": "8469b1530f368d77ce196e702fd390bbb00d5197b653f31bbc57687bae3e9ee7"
+    "sha256": "3f46e8a84225ebc89853e426d2d55d7b7f1558f845a7081bf51da5cb0eb9b8b7"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-light-en-queued.png",
-    "sha256": "1eeb0a1cdd7697e7cef6f85628d0bc5a4174e010b581eb7e65b11aa28d72d340"
+    "sha256": "bf7d660cae4ff4d6f3bbd11299aeeb2453df39ece13cf6a2e88ba3c4d60ef0f3"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/desk-light-zh-TW-failed.png",
-    "sha256": "c3b741ba3e7ff86f8d43d59137a185279f270ae77196294f2d6559def9b34247"
+    "sha256": "9bf51dc093b84479a0486b81fbd6b9c7038547d6841dc7c3a49426656cfd237e"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-en-failed.png",
-    "sha256": "01a49351f7c15a20fb64f02fdd972f38eba990a9b6bbdf23bc40cbf8a0b54618"
+    "sha256": "8c6574a85fb0e5a445bf431a54dee5906b70434630f93e32ec35d6264b129504"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-before.png",
@@ -53,15 +53,15 @@
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-delivered.png",
-    "sha256": "6a83259bba08b31b74a1e5d24e9335372b572d4109dd264dcd897ddc2317779b"
+    "sha256": "b356c546964d773d465017f2729b429d717e1eeb7654313ea93e8759c5374df8"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-failed.png",
-    "sha256": "e81db5e71df9c592a80948bed1aeea0171cbf70a3a5714ba821685648b054c56"
+    "sha256": "4722fd208ed434937169beea35c8ef0c88ae6d9ceeb792afe43989d35d753542"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-dark-zh-TW-queued.png",
-    "sha256": "25a9eabe3f3bb424a4e1c3e2944400f0ba44f7d45422931b92ef7077e3f647dd"
+    "sha256": "ee95c300b883dd5208c1bcbba8802a3cc5dc47efb86f2bcd1342b26845973492"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-light-en-before.png",
@@ -69,14 +69,14 @@
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-light-en-failed.png",
-    "sha256": "893f5bc8d0ced063e0f2d014bb519429221eec13d857a1f1703abe7157ac87a8"
+    "sha256": "982b7181cf3dd719a9762291829ce329a9a16315bb03e9c3a7381441361c624e"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/main/phone-light-zh-TW-failed.png",
-    "sha256": "66232ad3d2baf391eebd2f56c09b4aa1d634a7c37cedddcced6a2b09c0a618ea"
+    "sha256": "534c2c351ef3e5579493642ae35bfd0bdac34118c20b4548bacaaee77e37dca1"
   },
   {
     "path": "docs/evidence/delivery-resend-m3502/source-hashes.json",
-    "sha256": "b95c0141f87ca496a63d24a622686812cc4241d1c24994f92565cf085cde0f76"
+    "sha256": "c2efcb6d4d6e3bb662d9f2e94ce9f5d3f04307306475cf7aa5128b2a8e355a94"
   }
 ]
