@@ -90,6 +90,7 @@ import { MemoryPressure, type MemoryPressureSnapshot } from "./memory-pressure.j
 import { replyDedupText, ReplyDeduper } from "./reply-dedup.js";
 import { isMap, isScalar, parseDocument } from "yaml";
 import { changedOutside, detachForWrite } from "./yaml-shared-nodes.js";
+import { stringifyFleetYaml } from "./fleet-yaml-stringify.js";
 import { tmuxExecHelper } from "./tmux-exec-helper.js";
 import { kiroLogGate } from "./kiro-log-gate.js";
 
@@ -13485,7 +13486,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (stray) throw new Error(`Refusing to save fleet.yaml: this change would also change ${stray}, which shares a value with what it edits. Give each its own value in fleet.yaml.`);
 
     noteSettingsWrite(this.configPath, this.savedFleetConfigSnapshot, this.fleetConfig);
-    const output = String(this.rawFleetDocument);
+    const output = stringifyFleetYaml(this.rawFleetDocument, source);
     if (redundantPaths.length > 0) this.writeFleetConfigBackup(source);
     // Atomic write with fsync. The beforeRename hook runs after fsync and
     // before rename so validation failures are reported before the file is
