@@ -93,6 +93,13 @@ describe("M-2296 Claude 2.1.317 connector file-send card", () => {
     expect(claudeFileSendCardActive(pane)).toBe(true);
     expect(first(pane)!.description).toBe(FILE_SEND_DESCRIPTION);
   });
+  // M-2306 (Prism nit on #2995): the native pane's lifecycle asks `dialog.pattern.test(screen) && dialog.isActive(screen)`
+  // (native-pane-lifecycle.ts), so the pattern is a pre-filter that must see a wrapped question too, not only isActive.
+  it.each(narrow)("narrow pane: %s passes the native lifecycle's pattern-and-isActive pre-filter", (_n, name, phrase) => {
+    const pane = wrap(fx(name), phrase);
+    const card = backend.getRuntimeDialogs().find(d => d.description === FILE_SEND_DESCRIPTION)!;
+    expect(card.pattern.test(pane) && (!card.isActive || card.isActive(pane))).toBe(true);
+  });
   it("a default-No menu whose cursor moved to Yes is still the card", () => {
     const pane = fx("claude-2.1.317-file-send-default-no").replace(" ❯ No", "   No").replace("   Yes", " ❯ Yes");
     expect(claudeFileSendCardActive(pane)).toBe(true);
