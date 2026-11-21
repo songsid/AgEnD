@@ -1,3 +1,4 @@
+import {HostAlertSettings} from './settings-host-alerts.js';
 import { html, useEffect, useRef, useState } from '/assets/app-html.js';
 import { register, t } from '/assets/app-i18n.js';
 import { confirmDialog } from '/assets/ui-confirm.js';
@@ -15,7 +16,7 @@ register('hostMonitoring', {
   'zh-TW': { open:'查看主機狀態',title:'主機監測', enabled:'監測這台電腦', agents:'包含 Agent 資源用量',
     hint:'每 30–60 秒取樣，本機資料最多 64 MiB；額外記憶體與寫入量仍在量測。',
     agentHint:'選用：每分鐘讀取行程資料；32 個 Agent 估計另用 2–8 MiB 記憶體，每小時寫入 1–4 MiB。',
-    off:'預設關閉。關閉時沒有監測收集器、計時器或歷史檔案。',
+    off:'預設關閉。關閉時不會取樣、啟動監測計時器或建立歷史檔案。',
     agentUnavailable:'這個 AgEnD 版本尚未提供 Agent 資源用量。',
     stopTitle:'關閉主機監測？', stopBody:'這會停止監測與通知，並移除已記錄的主機歷史。重新開啟時會建立新的歷史。', stop:'關閉',
     drive:'這個 WSL 發行版本的 Windows 磁碟', auto:'自動辨識', refresh:'重新整理磁碟清單', driveHint:'無法自動辨識時，請選擇存放這個發行版本虛擬磁碟的磁碟。監測開啟後會依最新取樣列出已掛載的本機磁碟；重新整理只讀取該取樣，不會啟動探測。', },
@@ -23,7 +24,7 @@ register('hostMonitoring', {
 const copy = k => t(`hostMonitoring.${k}`);
 export function HostMonitoringSettings({ ctx }) {
   const available = hostMonitoringVisible(ctx.schema);
-  useEffect(() => { if (!available) syncStage(ctx, 'host-monitoring', null); }, [available]);
+  useEffect(() => { if (!available) {syncStage(ctx, 'host-monitoring', null);syncStage(ctx,'host-alerts',null);} }, [available]);
   // A collector alone is not a visible feature: S-207 must provide its page too.
   // A separate child keeps hook order stable across capability transitions.
   return available ? html`<${AvailableHostMonitoringSettings} ctx=${ctx} />` : null;
@@ -65,5 +66,5 @@ function AvailableHostMonitoringSettings({ ctx }) {
         <option value="">${copy('auto')}</option>${[...new Set([...(health?.disks?.value?.availableDrives ?? []),form.wsl_drive])].filter(v=>typeof v==='string'&&/^[A-Z]$/.test(v)).slice(0,26).map(d=>html`<option value=${d}>${d}:</option>`)}</select>
       <p class="note">${copy('driveHint')}</p><button type="button" class="btn btn-sm" disabled=${reading} onClick=${refresh}>${copy('refresh')}</button></div>` : null}
     ${!agentsAvailable ? html`<p class="note">${copy('agentUnavailable')}</p>` : null}
-    <p class="note">${copy('off')}</p></section>`;
+    <p class="note">${copy('off')}</p><${HostAlertSettings} ctx=${ctx} health=${health}/></section>`;
 }

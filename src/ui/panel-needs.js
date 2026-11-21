@@ -1,3 +1,4 @@
+import {HostAlertActions,hostAlertText,hostAlertName,hostAlertDescription} from './host-alerts.js';
 import { modelSwitchText } from "/assets/model-observation.js";
 // #1408 step 4 = #1386 part (b): the "Needs you" panel (/ui/needs) — everything waiting on the person, from every
 // world, in one list. Behind the session gate (/ui/js/), loaded the first time it is opened.
@@ -18,7 +19,7 @@ import { t, register } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { useLease } from "/assets/app-ctx.js";
 import { PanelHeader, setTitle } from "/assets/app-shell.js";
-import { chatPath } from "/assets/app-route.js";
+import { fleetPath, chatPath } from "/assets/app-route.js";
 import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
@@ -33,8 +34,8 @@ import { HostDirectoryNotices, hostDirectoryNoticesOffered } from "./hub-host-se
 
 // A pre-upgrade tab retains app-i18n.js. Register these reasons when the updated panel is loaded, too.
 register("app", {
-  en: { needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
-  "zh-TW": { needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
+  en: { needs_reason_host_health: "Host health", needs_reason_stale_auth: "Codex needs a restart", needs_stale_auth_detail: "Codex cannot refresh this agent’s current sign-in. Restart the agent; sign in again only if Codex asks.", needs_reason_hub_proposal: "Hub action proposed: review locally", needs_reason_hub_execution_hold: "Hub work held: review locally", needs_reason_hub_unavailable: "Hub not running", needs_reason_tmux_hold: "Held: an old tmux server or window" },
+  "zh-TW": { needs_reason_host_health: "主機狀態", needs_reason_stale_auth: "Codex 需要重新啟動", needs_stale_auth_detail: "Codex 無法更新這個 Agent 執行中使用的登入。請重新啟動 Agent；只有 Codex 要求時才需要重新登入。", needs_reason_hub_proposal: "Hub 提議操作：請在本機檢視", needs_reason_hub_execution_hold: "Hub 工作已暫停：請在本機檢視", needs_reason_hub_unavailable: "Hub 未在執行", needs_reason_tmux_hold: "已暫停：舊的 tmux 伺服器或視窗" },
 });
 
 register("needs", {
@@ -42,7 +43,7 @@ register("needs", {
     otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
-    ageNow: "just now", ageMin: "{0} min", ageHour: "{0} h", ageDay: "{0} d",
+    ageNow: "just now", ageMin: "{0} min ago", ageHour: "{0} h ago", ageDay: "{0} d ago",
     notifySection: "This device", notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
     notifyDenied: "This browser blocked notifications for AgEnD. Allow them in the site settings to turn this on.",
@@ -67,7 +68,7 @@ register("needs", {
     otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
-    ageNow: "剛剛", ageMin: "{0} 分鐘", ageHour: "{0} 小時", ageDay: "{0} 天",
+    ageNow: "剛剛", ageMin: "{0} 分鐘前", ageHour: "{0} 小時前", ageDay: "{0} 天前",
     notifySection: "這台裝置", notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了 AgEnD 的通知。請在網站設定中允許後再開啟。",
@@ -165,7 +166,7 @@ export function groupNeeds(items) {
   const groups = new Map();
   for (const item of items) {
     // Configuration issues belong to Settings, not the unassigned task/sign-in group.
-    const key = JSON.stringify([item.instance, !item.instance && item.type === "config"]);
+    const key = JSON.stringify([item.instance, !item.instance && item.type === "config",item.type==='host']);
     const group = groups.get(key);
     if (group) group.items.push(item);
     else groups.set(key, { instance: item.instance, items: [item] });
@@ -217,8 +218,8 @@ export function NeedsPanel({ navKey }) {
       </section>` : null}
       ${(!ready || needsLoaded === false) && !items.length && !asks.length ? html`<${Skeleton} variant="rows" lines=${3} />`
         : !items.length && !asks.length && !decidedHere.length ? hostDirectoryNoticesOffered() ? html`<p class="muted">${tn("otherEmpty")}</p>` : html`<${Empty} icon="check" title=${tn("empty")} hint=${tn(chatApp ? "emptyHint" : "emptyHintWeb")} />`
-        : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config", !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
-          <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
+        : groups.map((g) => html`<section key=${JSON.stringify([g.instance, g.items[0]?.type === "config",g.items[0]?.type === 'host', !!g.items[0]?.runtimeUpdate])} class="n-group" aria-label=${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance}>
+          <h2 class="n-group-head">${g.items[0]?.runtimeUpdate ? runtimeUpdateText("attention") : g.instance ? html`<a href=${chatPath(g.instance)} title=${g.instance}>${nameFor(g.instance)}</a>` : g.items[0]?.type==='host'?hostAlertText('title'):g.items[0]?.type === "config" ? t("app.settings") : tn(g.items.some(i => i.type === "backend") ? "fleetSignIns" : "noAssignee")}</h2>
           ${g.items.map((item) => item.type === "contact"
             // M-3339: a contact request or the restricted-mode suggestion — its own card (contact-needs.js; references only).
             ? html`<${ContactNeedsItem} key=${item.id} item=${item} />`
@@ -272,10 +273,11 @@ function NeedsItem({ item, nowMs, owner }) {
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
-      <div class="n-title"><strong>${itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
-      ${detailOf(item) ? html`<p class="n-detail">${detailOf(item)}</p>` : null}
+      <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${age(item.since, nowMs)}</span></div>
+      ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
+      ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}

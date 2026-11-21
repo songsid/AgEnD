@@ -10,7 +10,7 @@ import type { ModelSwitch } from "./claude-model-observation.js";
 
 import type { ConfigIssue } from "./config-history.js";
 
-export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub" | "runtime" | "contact";
+export type NeedsYouType = "prompt" | "awaiting_input" | "instance" | "delivery" | "task" | "backend" | "config" | "missed" | "hub" | "runtime" | "contact" | "host";
 
 export interface NeedsYouItem {
   /** Stable per occurrence: a new episode, crash or delivery is a new id (§3). */
@@ -23,6 +23,7 @@ export interface NeedsYouItem {
   /** Which kind of wait, for the title (localized by the renderer, not here). */
   reason: NeedsYouReason;
   modelSwitch?: ModelSwitch;
+  hostAlert?: import('./host-monitoring-alert-policy.js').HostAlertRecord;
   quiet?: true;
   /** One line, may be "": a prompt's text, an interaction summary, "source → target · kind". */
   detail: string;
@@ -68,6 +69,7 @@ export interface NeedsYouItem {
 }
 
 export type NeedsYouReason =
+  | "host_health"
   | "contact_request" | "contact_restricted_suggestion"
   | "hang" | "exited" | "assist" | "question"                       // prompt
   | "permission" | "dangerous_command" | "login" | "dialog" | "terminal_input"   // awaiting_input
@@ -420,6 +422,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     i.lane ?? null,
     i.hubProposal ?? null,
     i.runtimeUpdate ?? false,
+    i.hostAlert ?? null,
   ]));
 }
 

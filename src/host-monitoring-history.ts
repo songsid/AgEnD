@@ -2,6 +2,7 @@ import {Worker} from 'node:worker_threads';
 import type {HistoryAnswer,HistoryStats} from './host-monitoring-history-store.js';
 import {cleanupHistory} from './host-monitoring-history-files.js';
 import {HistoryWatermark,historyQuery,hostHistoryPoints,type HistoryPoint} from './host-monitoring-history-policy.js';
+import type {HostAlertDocument} from './host-monitoring-alert-store.js';
 import type {HostHealthSnapshot} from './host-monitoring.js';
 
 export interface HistoryIsolate {
@@ -17,6 +18,8 @@ interface Options {
   factory?:(path:string,control:SharedArrayBuffer)=>HistoryIsolate;
   cleanup?:(path:string)=>Promise<void>;
   unblocked?:()=>void;
+  incidents?:boolean;
+  incidentReady?:()=>void;
 }
 const createIsolate=(path:string,control:SharedArrayBuffer):HistoryIsolate=>import.meta.url.endsWith('.ts')
   ?new Worker(`const {workerData}=require('node:worker_threads');import('tsx/esm/api').then(({tsImport})=>tsImport(workerData.entry,workerData.entry));`,{eval:true,execArgv:[],resourceLimits:{maxOldGenerationSizeMb:64},workerData:{path,control,entry:new URL('./host-monitoring-history-worker.ts',import.meta.url).href}})
@@ -41,6 +44,7 @@ export class HostMonitoringHistory {
   private removeOnClose=false;
   private startupTimer:ReturnType<typeof setTimeout>|null=null;
   private flight:Flight|null=null;
+  private incidentQueued:{message:Record<string,unknown>;resolve:(value:any)=>void}|null=null;
   private sequence=0;
   private pending=new Map<string,HistoryPoint>();
   private lastFlush=-Infinity;
@@ -52,11 +56,11 @@ export class HostMonitoringHistory {
   status():HostHistoryStatus {return structuredClone(this.current);}
   blocked():boolean {return !!this.closing||this.cleanupFailed;}
   configure(enabled:boolean):void {
-    if(this.initialized&&this.enabled===enabled&&!this.stopped)return;
+    if(this.initialized&&this.enabled===enabled&&!this.stopped){if(enabled&&this.options.incidents)this.start();return;}
     this.initialized=true;this.enabled=enabled;this.stopped=false;
     if(!enabled){void this.finish(true);return;}
     if(this.cleanupFailed)return;
-    this.failed=false;if(this.closing)return;this.lastWall=-Infinity;this.lastFlush=-Infinity;this.watermark=new HistoryWatermark();this.current={state:'waiting'};
+    this.failed=false;if(this.closing)return;this.lastWall=-Infinity;this.lastFlush=-Infinity;this.watermark=new HistoryWatermark();this.current={state:'waiting'};if(this.options.incidents)this.start();
   }
   /** Shutdown retains enabled history; disabling removes it only after physical worker exit. */
   shutdown():void {this.stopped=true;void this.finish(!this.enabled);}
@@ -78,7 +82,7 @@ export class HostMonitoringHistory {
   }
   private start():void {
     if(this.worker||!this.enabled||this.blocked()||this.failed||this.stopped)return;
-    const control=new SharedArrayBuffer(8);this.control=new Int32Array(control);Atomics.store(this.control,0,1);Atomics.store(this.control,1,1);
+    const control=new SharedArrayBuffer(8);this.control=new Int32Array(control);Atomics.store(this.control,0,1);Atomics.store(this.control,1,this.permitted?1:0);
     let worker:HistoryIsolate;
     try{worker=(this.options.factory??createIsolate)(this.options.path,control);}catch{this.fail('history_start_failed');return;}
     this.worker=worker;worker.unref();
@@ -86,29 +90,43 @@ export class HostMonitoringHistory {
       if(this.worker===worker){this.worker=null;this.ready=false;this.clearStartup();this.complete({ok:false,reason:'history_unavailable'});if(!this.closing&&!this.stopped)this.fail('history_worker_exited');}
       resolve();
     }));
-    worker.on('error',()=>{this.fail('history_io_failed');this.complete({ok:false});void worker.terminate();});
+    worker.on('error',()=>{this.ready=false;this.fail('history_io_failed');this.complete({ok:false});void worker.terminate();});
     worker.on('message',message=>{
       if(this.worker!==worker)return;
       if(message?.op==='ready'){
         this.clearStartup();if(!this.enabled||this.stopped||this.closing){worker.postMessage({op:'close'});return;}
-        this.ready=true;if(this.permitted){this.current={state:'recording',stats:message.stats};void this.flush();}return;
+        this.ready=true;if(this.options.incidents)this.options.incidentReady?.();if(this.permitted){this.current={state:'recording',stats:message.stats};void this.flush();}return;
       }
-      if(message?.op==='failed'){this.fail('history_io_failed');void worker.terminate();return;}
+      if(message?.op==='failed'){this.ready=false;this.fail('history_io_failed');void worker.terminate();return;}
       if(message?.id===this.flight?.id)this.complete(message);
     });
-    this.startupTimer=setTimeout(()=>{this.fail('history_timeout');void worker.terminate();},2000);this.startupTimer.unref?.();
+    this.startupTimer=setTimeout(()=>{this.ready=false;this.fail('history_timeout');void worker.terminate();},2000);this.startupTimer.unref?.();
   }
   private clearStartup(){if(this.startupTimer)clearTimeout(this.startupTimer);this.startupTimer=null;}
   private fail(reason:string){this.failed=true;this.pending.clear();this.current={...this.current,state:'failed',reason};this.clearStartup();}
-  private complete(value:any){const flight=this.flight;if(!flight)return;this.flight=null;clearTimeout(flight.timer);flight.resolve(value);}
+  private complete(value:any){const flight=this.flight;if(!flight)return;this.flight=null;clearTimeout(flight.timer);flight.resolve(value);this.drainIncident();}
   private request(message:Record<string,unknown>):Promise<any> {
     if(!this.worker||!this.ready||this.flight||this.closing||!this.enabled||this.stopped)return Promise.resolve({ok:false,reason:'history_busy'});
     const worker=this.worker,id=++this.sequence;
     return new Promise(resolve=>{
-      const timer=setTimeout(()=>{if(this.flight?.id===id){this.complete({ok:false,reason:'history_timeout'});this.fail('history_timeout');void worker.terminate();}},2000);timer.unref?.();
+      const timer=setTimeout(()=>{if(this.flight?.id===id){this.ready=false;this.fail('history_timeout');this.complete({ok:false,reason:'history_timeout'});void worker.terminate();}},2000);timer.unref?.();
       this.flight={id,timer,resolve};
-      try{worker.postMessage({...message,id});}catch{this.complete({ok:false,reason:'history_unavailable'});this.fail('history_io_failed');}
+      try{worker.postMessage({...message,id});}catch{this.ready=false;this.fail('history_io_failed');this.complete({ok:false,reason:'history_unavailable'});}
     });
+  }
+  /** One additional bounded incident request may wait behind a history operation; no second worker. */
+  incidentRead():Promise<any> {return this.incidentRequest({op:'incident-read'});}
+  incidentSave(sequence:number,document:HostAlertDocument):Promise<any> {return this.incidentRequest({op:'incident-save',sequence,document});}
+  private incidentRequest(message:Record<string,unknown>):Promise<any> {
+    if(!this.options.incidents||!this.worker||!this.ready||this.closing||!this.enabled||this.stopped)return Promise.resolve({ok:false,reason:'incident_unavailable'});
+    if(!this.flight)return this.request(message);
+    if(this.incidentQueued)return Promise.resolve({ok:false,reason:'incident_busy'});
+    return new Promise(resolve=>{this.incidentQueued={message,resolve};});
+  }
+  private drainIncident():void {
+    const queued=this.incidentQueued;if(!queued||this.flight)return;this.incidentQueued=null;
+    if(!this.worker||!this.ready||this.closing||!this.enabled||this.stopped){queued.resolve({ok:false,reason:'incident_unavailable'});return;}
+    void this.request(queued.message).then(queued.resolve);
   }
   private async flush():Promise<void> {
     if(!this.pending.size||this.flight||!this.ready||!this.permitted)return;
@@ -133,6 +151,7 @@ export class HostMonitoringHistory {
     this.permitted=false;if(this.control)Atomics.store(this.control,1,0);this.permitGeneration++;this.pending.clear();this.clearStartup();this.complete({ok:false,reason:'history_unavailable'});
     if(this.control)Atomics.store(this.control,0,0);
     const worker=this.worker,physical=this.exit;
+    this.incidentQueued?.resolve({ok:false,reason:'incident_unavailable'});this.incidentQueued=null;
     this.current={state:'stopping'};
     this.closing=(async()=>{
       // Assign ownership before a no-worker close can finish.

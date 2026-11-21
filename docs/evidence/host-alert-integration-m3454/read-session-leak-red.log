@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-monitoring-alert-api-m3454.test.ts (8 tests | 2 failed) 45ms
+     × filters passive initial/live/poll host items for read 7ms
+     × filters passive initial/live/poll host items for token 2ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-monitoring-alert-api-m3454.test.ts > host alerts administrator boundary > filters passive initial/live/poll host items for read
+ FAIL  tests/host-monitoring-alert-api-m3454.test.ts > host alerts administrator boundary > filters passive initial/live/poll host items for token
+AssertionError: expected [ 'ordinary', 'private' ] to deeply equal [ 'ordinary' ]
+
+- Expected
++ Received
+
+  [
+    "ordinary",
++   "private",
+  ]
+
+ ❯ tests/host-monitoring-alert-api-m3454.test.ts:25:115
+     23| describe('host alerts administrator boundary',()=>{
+     24|  it.each(['admin','read','token']as const)('filters passive initial/li…
+     25|   const f=fixture(tier),poll=f.request('/ui/poll?after=');poll.run();e…
+       |                                                                                                                   ^
+     26|   const events=f.request('/ui/events');events.run();const initial=even…
+     27|   broadcastSseEvent(f.ctx.sseClients,'needs',{items:f.ctx.needsYouItem…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 6 passed (8)
+   Start at  22:01:51
+   Duration  3.73s (transform 2.65s, setup 88ms, import 3.45s, tests 45ms, environment 0ms)

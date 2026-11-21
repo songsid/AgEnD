@@ -1,0 +1,20 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-monitoring-alerts-m3454.test.ts (6 tests | 1 failed) 18ms
+     × fences an old callback through Off/re-enable and keeps at most one physical delivery 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-monitoring-alerts-m3454.test.ts > durable owner-fenced host alerts > fences an old callback through Off/re-enable and keeps at most one physical delivery
+AssertionError: expected "vi.fn()" to be called 2 times, but got 1 times
+ ❯ tests/host-monitoring-alerts-m3454.test.ts:35:135
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 5 passed (6)
+   Start at  22:01:50
+   Duration  345ms (transform 115ms, setup 92ms, import 80ms, tests 18ms, environment 0ms)

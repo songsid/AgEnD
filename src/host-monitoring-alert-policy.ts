@@ -51,11 +51,11 @@ export class HostAlertWindow {
   private lastMonotonic: number | null = null;
   private revision: number;
   readonly rule: Readonly<HostAlertRule>;
-  constructor(readonly key: string, rule: HostAlertRule, restored?: HostAlertRecord) {
+  constructor(readonly key: string, rule: HostAlertRule, restored?: HostAlertRecord, revisionFloor = 0) {
     if (!hostAlertKey(key)) throw Error('invalid_alert_key');
     validateHostAlertRule(rule); this.rule = { ...rule };
     if (restored && (restored.key !== key || restored.kind !== rule.kind || restored.resolvedAt !== undefined)) throw Error('invalid_restored_alert');
-    this.incident = restored ? structuredClone(restored) : null; this.revision = restored?.revision ?? 0;
+    this.incident = restored ? structuredClone(restored) : null; if(!Number.isSafeInteger(revisionFloor)||revisionFloor<0)throw Error('invalid_alert_revision');this.revision = Math.max(restored?.revision ?? 0,revisionFloor);
   }
   snapshot(): HostAlertRecord | null { return this.incident ? structuredClone(this.incident) : null; }
   private reset(): void { this.warning=null; this.urgent=null; this.recovery=null; }

@@ -1,3 +1,5 @@
+import {HOST_ALERT_DEFAULTS} from './host-monitoring-alert-policy.js';
+import {parseHostAlertSettings} from './host-monitoring-alert-settings.js';
 import { HOST_MONITORING_PAGE_AVAILABLE, monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
 import { handleHubWebInitHttp } from "./hub/init/web-http.js";
@@ -184,6 +186,8 @@ export interface SettingsApiContext extends AppShellContext {
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
   hostMonitoringAvailable?(): boolean;
+  hostAlertSettings?():import('./host-monitoring-alert-settings.js').HostAlertSettings;
+  saveHostAlertSettings?(input:unknown):import('./host-monitoring-alert-settings.js').HostAlertSettings;
   hostMonitoringSettings?(): import('./host-monitoring-config.js').HostMonitoringConfig;
   saveHostMonitoringSettings?(patch: Partial<import('./host-monitoring-config.js').HostMonitoringConfig>): import('./host-monitoring-config.js').HostMonitoringConfig;
   /** Refresh managed guidance and web clients after a committed experimental setting change. */
@@ -735,6 +739,7 @@ export function handleSettingsRequest(
       ...buildSettingsImpactSchema(),
       host_monitoring: ctx.hostMonitoringAvailable?.() === true,
       host_monitoring_page: HOST_MONITORING_PAGE_AVAILABLE,
+      ...(ctx.hostAlertSettings?{host_alert_defaults:HOST_ALERT_DEFAULTS}:{}),
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.
@@ -1587,6 +1592,20 @@ export function handleSettingsRequest(
       return true;
     }
     json(res, 405, { error: "method_not_allowed" }); return true;
+  }
+
+  if(path==='/api/settings/fleet/host-alerts'&&(method==='GET'||method==='PUT')){
+    const auth=()=>evaluateWebRequest(req as any,url,ctx.webToken??null,ctx.webSessions,{touch:false});
+    const who=auth();if(who.kind!=='allow'||who.via!=='session'||who.session.tier!=='admin'){json(res,403,{error:'admin_session_required'});return true;}
+    if(method==='GET'){json(res,200,ctx.hostAlertSettings?.()??null);return true;}
+    void readBody(req,32*1024).then(buf=>{
+      if(!permitWebContinuation(req,res,ctx))return;
+      const current=auth();if(current.kind!=='allow'||current.via!=='session'||current.session.tier!=='admin'||current.session.idHash!==who.session.idHash)return json(res,403,{error:'admin_session_required'});
+      let next;try{next=parseHostAlertSettings(JSON.parse(buf.toString('utf8')));}catch{return json(res,400,{error:'invalid_alert_settings'});}
+      if(!ctx.saveHostAlertSettings)return json(res,503,{error:'host_alert_unavailable'});
+      try{let result;settingsWrite(req,()=>{result=ctx.saveHostAlertSettings!(next);});json(res,200,{ok:true,alerts:result});}
+      catch{return json(res,400,{error:'invalid_alert_settings'});}
+    }).catch(()=>{if(!res.headersSent)json(res,400,{error:'invalid_alert_settings'});});return true;
   }
 
   // M-3454: settings are inert until the collector slice is connected. False

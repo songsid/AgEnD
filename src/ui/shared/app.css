@@ -5122,6 +5122,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .host-health { min-width: 0; }
 .host-health .s-page-actions { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 .host-health :is(.host-sample-time, .host-load-value) { display: inline-block; white-space: nowrap; overflow-wrap: normal; }
+.host-health .host-coverage { display: inline-block; white-space: nowrap; overflow-wrap: normal; }
 .host-health .host-pressure-value { white-space: nowrap; overflow-wrap: normal; }
 .host-health .host-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
 .host-health .host-grid { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
@@ -5143,6 +5144,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .host-health .host-chart .note { margin: 4px 0; }
 .host-health .host-no-history { padding: 20px 0; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .p-settings #host-monitoring :is(select, input[type="number"], summary) { min-height: var(--tap); min-width: var(--tap); font-size: max(1rem, var(--fs-sm)); }
   .host-health .host-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .host-health .host-storage { grid-row: 1; grid-column: 1 / -1; }
   .host-health .s-page-actions { width: 100%; }

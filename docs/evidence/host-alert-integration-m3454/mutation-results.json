@@ -1,0 +1,17 @@
+[
+  {
+    "name": "failure-stamp",
+    "exit": 1,
+    "restoredSha256": "e8bed7f6dc9271c7da6726b083adbd15f5852def66e10645d45b9a89b55363e8"
+  },
+  {
+    "name": "stale-epoch",
+    "exit": 1,
+    "restoredSha256": "e8bed7f6dc9271c7da6726b083adbd15f5852def66e10645d45b9a89b55363e8"
+  },
+  {
+    "name": "read-session-leak",
+    "exit": 1,
+    "restoredSha256": "844ea5daf499601404d09c358e858f8e8a894b835dd689d2c3a9e1417ca25d7f"
+  }
+]

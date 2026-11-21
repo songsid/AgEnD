@@ -1,3 +1,4 @@
+import {hostAlertSettingsPath,parseHostAlertSettingsBytes} from './host-monitoring-alert-settings.js';
 import {hostMonitoringSettingsPath,parseHostMonitoringDrive} from './host-monitoring-settings-store.js';
 import { constants, openSync, fstatSync, readSync, closeSync } from "node:fs";
 import { open } from "node:fs/promises";
@@ -63,19 +64,19 @@ export class SettingsBaselines {
     hubPairing?: SettingsEffectContext["hubPairing"];
   }) {}
   snapshot(): unknown {
-    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir)];
+    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
     return { runtime: this.options.config(), owner: this.options.current(),
       revisions: files.map(path => path ? settingsRevision(path) : null) };
   }
   captureCommitted(): string {
     const before = settingsFingerprint(this.snapshot());
-    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir)];
+    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
     const bytes = files.map(readSettingsCommittedFile);
     return settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]);
   }
   async read(): Promise<SettingsBaseline> {
     const before = settingsFingerprint(this.snapshot());
-    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir)];
+    const files = [this.options.configPath(), join(this.options.dataDir, "classicBot.yaml"), join(this.options.dataDir, ".env"),hostMonitoringSettingsPath(this.options.dataDir),hostAlertSettingsPath(this.options.dataDir)];
     const bytes = await withinBudget(Promise.all(files.map(read)), performance.now() + 5000);
     if (settingsFingerprint(this.snapshot()) !== before) throw new SettingsConfirmationError(409, "settings_changed");
     let classic: Record<string, any> = {};
@@ -86,7 +87,7 @@ export class SettingsBaselines {
     }
     // Classify the raw switch from the same bounded file snapshot as the confirmation fingerprint, not cached runtime config.
     const membership = this.options.hubMembership, pilotTrust = this.options.hubPilotTrust, pageSharing = this.options.hubPageSharing;
-    return { hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
+    return { hostAlertSettings:()=>parseHostAlertSettingsBytes(bytes[4]), hostMonitoringDrive:()=>parseHostMonitoringDrive(bytes[3]), hostMonitoringAvailable: this.options.hostMonitoringAvailable, config: structuredClone(this.options.config()), classic, proof: this.options.proof, generalLocation: this.options.generalLocation, hubBrowserCertificate: this.options.hubBrowserCertificate, hubMembership: membership ? () => membership(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPilotTrust: pilotTrust ? () => pilotTrust(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubPageSharing: pageSharing ? () => pageSharing(bytes[0] ? yaml.load(bytes[0].toString("utf8")) ?? {} : {}) : undefined, hubExposure: this.options.hubExposure, hubPairing: this.options.hubPairing,
       fingerprint: settingsFingerprint([before, ...bytes.map(item => item === null ? null : settingsFingerprint(item.toString("utf8")))]) };
   }
 }
