@@ -82,7 +82,7 @@ try {
         await page.evaluate(async (path: string) => { const nav = await import("/assets/app-nav.js"); nav.navigate(path); }, path);
         if (label === "chat-working") {
           await page.evaluate(async (name: string) => { const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, [name]: "working" } })); }, name);
-          await page.locator(".work-bar #stopBtn").waitFor();
+          await page.locator(privacyCapture && c.device === "phone" ? ".chat-meta #stopBtn" : ".work-bar #stopBtn").waitFor();
         }
         await page.locator(`.p-${panel}`).waitFor(); await page.locator(`.p-${panel} .inst-switch`).waitFor({ state: privacyCapture && c.device === "phone" ? "attached" : "visible" });
         await page.evaluate(async () => { await document.fonts.ready; await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
