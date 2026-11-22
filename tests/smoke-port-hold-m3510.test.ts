@@ -33,11 +33,15 @@ function failing(code: string, failPort: number) {
 describe("holdPorts (the smoke's old-port control)", () => {
   it("a free port is held by us; one another listener has is 'taken' (EADDRINUSE); both count as occupied", async () => {
     const other = await listen();                                    // another listener already has this one
-    const free = await listen(); const freePort = portOf(free); await new Promise<void>((r) => free.close(() => r())); open.splice(open.indexOf(free), 1);
-    const holds = await holdPorts([portOf(other), freePort]);
+    // The held case binds atomically (port 0: the system's free port), never a port picked, closed and bound again — a
+    // competitor could take it in between. Its actual port is read back from the server.
+    const holds = await holdPorts([portOf(other), 0]);
     try {
-      expect(holds.map((h) => [h.port, h.state])).toEqual([[portOf(other), "taken"], [freePort, "held"]]);
-      expect(holds[1]!.state === "held" && holds[1]!.server.listening).toBe(true);
+      expect(holds.map((h) => h.state)).toEqual(["taken", "held"]);
+      const held = holds[1]!;
+      expect(held.state === "held" && held.server.listening).toBe(true);
+      const actual = held.state === "held" ? (held.server.address() as { port: number }).port : 0;
+      expect(actual > 0 && actual !== portOf(other)).toBe(true);
     } finally { releasePorts(holds); }
   });
   it("any other error (EACCES, EADDRNOTAVAIL) proves nothing: it rejects, and the sockets already held are closed", async () => {
