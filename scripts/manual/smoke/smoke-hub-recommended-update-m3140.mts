@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // M-3140 (hub-fleet-versions.md §3.3, web): the Hub's recommended version on the REAL shell and server routes (the shared
 // Settings fixture: in-process FleetManager, scratch home, loopback only). The advice is set on the fleet the way #3951's
 // receiver exposes it (hubRecommendedUpdate); the launch is stubbed (no updater ever runs) and records the pinned version.
@@ -15,7 +16,7 @@ const CASES = matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phone-
 const r: Record<string, unknown> = {}, fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
 const marker = await import(process.env.REPO + "/src/update-marker.ts");
-const fx = await bootFixture({ port: 19570, instances: 4, classic: false, host: true } as any);
+const fx = await bootFixture({ roster: publicRoster(4), port: 19570, instances: 4, classic: false, host: true } as any);
 const fm = fx.fm as any;
 fm.runningAgendVersion = () => "2.3.5-beta.2";
 const launches: Array<{ origin: string; pin?: string }> = [];

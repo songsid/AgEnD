@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Owned read-only shell/menu rehearsal. One Chromium/context at a time; only explicit own-favourite writes. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -24,7 +25,7 @@ for (const path of sources) record(inputs, path, readFileSync(join(repo, path)))
 record(inputs, "harness", readFileSync(new URL(import.meta.url))); mkdirSync(out, { recursive: true });
 const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty, oldRef, retain, theme, language, phone, narrow,
   scope: "Owned scratch FleetManager, real cookie/HTTP/SSE and production UI; mocked status model/display-name/colour/reply inputs and recorded chat text, no Fleet start/CLI/vendor/AD/live operation", inputs, assets, substitutions, cases: [], errors: [], effects: [], external: [], preferences: [], previews: [] };
-const fx = await bootFixture({ port: Number(process.env.HP || 56042), instances: 6, classic: false });
+const fx = await bootFixture({ roster: publicRoster(6), port: Number(process.env.HP || 56042), instances: 6, classic: false });
 let ctx: any;
 const jobs: Promise<unknown>[] = [];
 const tr = (en: string, zh: string) => language === "en" ? en : zh;

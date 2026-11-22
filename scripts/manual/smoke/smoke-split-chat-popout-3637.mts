@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Owned real-shell PR4 real-window handoff and retained-asset journeys. No fleet start, CLI, vendor account or host configuration. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -22,7 +23,7 @@ const initial = new Map(sources.map(path => [path, hash(readFileSync(join(repo, 
 for (const path of sources) { const bytes = readFileSync(join(repo, path)); record(inputs, path, bytes); if (!dirty) assert.equal(hash(bytes), hash(execFileSync("git", ["show", `HEAD:${path}`], { cwd: repo }))); }
 record(inputs, "harness", readFileSync(new URL(import.meta.url)));
 mkdirSync(out, { recursive: true });
-const fx = await bootFixture({ port: Number(process.env.HP || 55896), instances: 3, classic: false });
+const fx = await bootFixture({ roster: publicRoster(3), port: Number(process.env.HP || 55896), instances: 3, classic: false });
 const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty: !!dirty,
   scope: "Owned scratch FleetManager; actual browser/server/session/stream; fixture terminal and step reads; no CLI or live fleet", inputs, assets, cases: [] };
 const errors: string[] = [], blocked: string[] = [], effects: string[] = [], jobs: Promise<unknown>[] = [];

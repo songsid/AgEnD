@@ -1,3 +1,4 @@
+import { publicRoster } from "./smoke-fixture/public-roster.mts";
 /** Display-only production diff/store projections in the real authenticated app/Settings shell. No Settings writes. */
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -13,7 +14,7 @@ if (git("status", "--porcelain", "--untracked-files=no")) throw Error("capture r
 const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
 const inputs = ["src/settings-summary.ts", "src/settings-change.ts", "src/settings-confirmation.ts", "src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css", "src/ui/app.html", "scripts/manual/settings-summary-browser-3416.mts", "scripts/manual/smoke-fixture/index.mts", "src/settings-effect.ts", "src/hub-pairing-summary.ts", "src/hub/member/exposure-api.ts", "tests/helpers/settings-summary-effects-3416.ts"];
 const sources = Object.fromEntries(inputs.map(p => [p, digest(readFileSync(join(repo, p)))]));
-const fx = await bootFixture({ port: Number(process.env.HP ?? 54940), instances: 2, classic: false });
+const fx = await bootFixture({ roster: publicRoster(2), port: Number(process.env.HP ?? 54940), instances: 2, classic: false });
 const { settingsChangeDiff } = await import(join(repo, "src/settings-change.ts"));
 const { SettingsConfirmationStore } = await import(join(repo, "src/settings-confirmation.ts"));
 const { setLocale } = await import(join(repo, "src/locale.ts"));

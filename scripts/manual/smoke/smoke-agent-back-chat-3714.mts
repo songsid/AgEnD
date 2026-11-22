@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Owned cookie/HTTP UI rehearsal; no Fleet start, CLI, account or settings writes. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -19,7 +20,7 @@ const inputs:Record<string,string[]>={},assets:Record<string,string[]>={},substi
 const record=(m:Record<string,string[]>,path:string,b:string|Buffer)=>{const paths=m[digest(b)]||=[];if(!paths.includes(path))paths.push(path);};
 for(const p of sources)record(inputs,p,readFileSync(join(repo,p)));record(inputs,"harness",readFileSync(new URL(import.meta.url)));mkdirSync(out,{recursive:true});
 const receipt:any={head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree}"),dirty,theme,language,phone,retain,oldRef,inputs,assets,substitutions,cases:[],errors:[],effects:[],previews:[],external:[],scope:"Owned scratch FleetManager with real cookie/HTTP/SSE/UI; fixture status and names, no Fleet start/CLI/account/AD/live work; edit unsaved description only, never Apply"};
-const fx=await bootFixture({port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
+const fx=await bootFixture({ roster: publicRoster(6),port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
 try{
  receipt.browserVersion=fx.browser.version();const a=fx.instances[1].name,b=fx.instances[2].name,status=fx.fm.getUiStatus.bind(fx.fm);
  fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Cairn"}:{}),...(it.name===b?{display_name:"AgEnD Leader"}:{})}))};};

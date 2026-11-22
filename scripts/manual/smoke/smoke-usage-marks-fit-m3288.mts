@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // M-3288 (the user): in the AI usage panel's grouped view, a login that is both stale (cached numbers, "cached at 10:47")
 // and used by no agent (M-3248's ⓘ) overflowed its row in the one-line mode (M-3241): the head's cached text ran into
 // the window's bar and the name vanished. Every row must keep each part inside it — the name (some of it), the ⓘ, the
@@ -10,7 +11,7 @@
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-usage-marks-fit-m3288";
-const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49010), instances: 4, classic: false });
+const fx = await bootFixture({ roster: publicRoster(4), port: 0, oldPort: Number(process.env.HP ?? 49010), instances: 4, classic: false });
 const H = 3_600_000, soon = (h: number) => new Date(Date.now() + h * H).toISOString(), ago = (m: number) => new Date(Date.now() - m * 60_000).toISOString();
 const pct = (label: string, key: string, used: number, windowMs: number, resetH: number) =>
   ({ type: "percent", label, labelI18n: { key }, used, windowMs, resetsAt: soon(resetH) });

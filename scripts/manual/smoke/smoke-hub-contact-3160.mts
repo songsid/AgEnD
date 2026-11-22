@@ -1,9 +1,10 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // Real product shell, inert member client, scratch FleetManager with no fleet/CLI start.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, matrix, caseName } from "../smoke-fixture/index.mts";
 const out = process.env.OUT!; mkdirSync(out, { recursive: true });
-const fx = await bootFixture({ port: 19581, classic: false, instances: 2, host: true });
+const fx = await bootFixture({ roster: publicRoster(2), port: 19581, classic: false, instances: 2, host: true });
 const results: unknown[] = [];
 try {
   for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {

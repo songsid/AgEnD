@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // #3727 (M-2973): annotate a chat image and quote it to the agent, in a real headless Chrome on the shared smoke fixture
 // (the product's own web server from an in-process FleetManager, a scratch home, loopback only; the agent is a stub at
 // the IPC boundary — no CLI, tmux, vendor or account). Per case (MATRIX=quick, the default: desk-light-en and
@@ -61,7 +62,7 @@ function png(w: number, h: number): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 48912), instances: 3 });
+const fx = await bootFixture({ classic: false, roster: publicRoster(3), port: Number(process.env.GATE_PORT ?? 48912), instances: 3 });
 const fm = fx.fm;
 const agents = fx.instances.filter((i: any) => !i.general).map((i: any) => i.name);
 const [A, B] = [agents[0]!, agents[1]!];

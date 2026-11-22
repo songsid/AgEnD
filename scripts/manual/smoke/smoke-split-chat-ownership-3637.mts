@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** PR1 real-shell parity, one page stream, and retained-module controls. No agent/CLI is started. */
 import assert from "node:assert/strict";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -29,7 +30,7 @@ for (const file of retained) {
   substitutions.set(file === "app.css" ? "/assets/app.css" : path.includes("/shared/") ? `/assets/${file}` : `/ui/js/${file}`, bytes);
 }
 mkdirSync(out, { recursive: true });
-const fx = await bootFixture({ port: Number(process.env.HP || 54970), instances: 3, classic: false });
+const fx = await bootFixture({ roster: publicRoster(3), port: Number(process.env.HP || 54970), instances: 3, classic: false });
 const receipt: any = { head, tree, mode, baseline: baseline || null, scope: "Real authenticated shell; owned pane/steps display fixtures; no tmux, CLI, vendor, live fleet or backend transcript E2E", inputs, assets, substitutions: {}, cases: [] };
 try {
   await seedUsage(fx);
@@ -62,7 +63,7 @@ try {
         if (url.origin !== fx.base) { blocked.push(url.origin); return route.abort(); }
         const old = substitutions.get(url.pathname);
         if (old) { hits[url.pathname] = (hits[url.pathname] || 0) + 1; return route.fulfill({ body: old, contentType: url.pathname.endsWith(".css") ? "text/css" : "text/javascript" }); }
-        if (url.pathname.startsWith("/api/pane/")) return route.fulfill({ body: "cairn@fixture $\n第一個步驟已完成。\nReady for the next message.\n", headers: { "Content-Type": "text/plain", "X-Pane-Cols": "96", "X-Pane-Rows": "24" } });
+        if (url.pathname.startsWith("/api/pane/")) return route.fulfill({ body: "example@fixture $\n第一個步驟已完成。\nReady for the next message.\n", headers: { "Content-Type": "text/plain", "X-Pane-Cols": "96", "X-Pane-Rows": "24" } });
         if (url.pathname === "/ui/steps") return route.fulfill({ json: { enabled: true, supported: true, backend: "codex", steps: [], events: [], key: "owned-fixture", after: null, before: null } });
         return route.continue();
       });
