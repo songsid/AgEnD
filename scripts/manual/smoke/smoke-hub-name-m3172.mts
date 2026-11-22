@@ -36,8 +36,8 @@ try {
     try {
       await page.waitForSelector(".hub-update-consent", { timeout: 15_000 });
       const expected = value.pairing.hub.name || value.pairing.hub.memberOrigin;
-      checks[prefix + ":consent"] = (await page.locator(".hub-update-consent").innerText()).includes(expected);
-      await page.locator(".hub-update-consent").scrollIntoViewIfNeeded();
+      checks[prefix + ":consent"] = (await page.locator(".hub-update-consent").filter({ has: page.locator("#hubUpdateConsent") }).innerText()).includes(expected);
+      await page.locator(".hub-update-consent").filter({ has: page.locator("#hubUpdateConsent") }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(out, prefix + "-consent.png") });
       await page.locator("#hubUpdateConsent").click();
       await page.waitForSelector("dialog[open]", { timeout: 5_000 });
