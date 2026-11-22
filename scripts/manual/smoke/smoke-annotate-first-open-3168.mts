@@ -23,7 +23,8 @@ for (const p of [home, bin, join(home, ".claude"), join(home, ".codex"), join(ow
 const realFonts = join(process.env.HOME ?? "", ".local", "share", "fonts");
 if (existsSync(realFonts)) symlinkSync(realFonts, join(home, ".local", "share", "fonts"));
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= join(process.env.HOME ?? "", ".cache", "ms-playwright");
-Object.assign(process.env, { HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex"), TMUX_TMPDIR: join(owned, "tmux") });
+// Keep caller HOME/CODEX_HOME intact; bootFixture isolates AGEND_HOME and guarded binaries prevent native launches.
+Object.assign(process.env, { CLAUDE_CONFIG_DIR: join(home, ".claude"), TMUX_TMPDIR: join(owned, "tmux") });
 const guard = `#!${process.execPath}\nprocess.exit(97);\n`;
 for (const n of ["claude", "tmux", "codex", "kiro-cli", "agend-private-tmux"]) { writeFileSync(join(bin, n), guard); chmodSync(join(bin, n), 0o755); }
 process.env.PATH = [bin, dirname(process.execPath), "/usr/bin", "/bin"].join(":");
