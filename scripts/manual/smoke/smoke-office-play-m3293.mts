@@ -1,4 +1,5 @@
 import { publicRoster } from "../smoke-fixture/public-roster.mts";
+import { officeCapturePassed, selectOfficeCaptureCases } from "../smoke-fixture/office-capture-cases.js";
 // M-3293 (#4119, the light version) on the real app, from defaults (fleet decision a78ebdc5): Fleet → Org chart → Office
 // (the whole fleet's own office, Cozy). A person is found on the canvas by the pointer (the canvas lights up over one).
 //   desk: "Drag and pat" on by default; a mouse drag carries them (no card opens after the drop), they walk off the
@@ -15,6 +16,7 @@ import { writeFileSync } from "node:fs";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-office-play-m3293";
+const selectedCases = selectOfficeCaptureCases(process.env.M3513_CASE);
 const fx = await bootFixture({ roster: publicRoster(6), port: 0, oldPort: Number(process.env.HP ?? 49020), instances: 6, classic: false });
 // The fixture opens no event log (no fleet start): Tell's queue is the real EventLog, in the scratch home.
 if (!fx.fm.eventLog) { const { EventLog } = await import(`${process.env.REPO}/src/event-log.ts`); fx.fm.eventLog = new EventLog(`${fx.dir}/events-m3293.db`); }
@@ -63,10 +65,8 @@ async function currentCard(page: any) {
 }
 
 
-for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { device: "desk", theme: "dark", lang: "zh-TW", rm: false },
-  { device: "desk", theme: "light", lang: "en", rm: true }, { device: "phone", theme: "light", lang: "en", rm: false }] as const) {
+for (const c of selectedCases) {
   const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`;
-  if (process.env.M3513_CASE && process.env.M3513_CASE !== tag) continue;
   const res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
@@ -181,7 +181,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
   }
   await p.ctx.close();
 }
-r.pass = Object.values(r.cases).every((x: any) => !x.failed);
+r.pass = officeCapturePassed(r.cases);
 writeFileSync(shotPath(SMOKE, "result", "x").replace(/-x\.png$/, ".json"), JSON.stringify(r, null, 1));
 console.log(JSON.stringify({ pass: r.pass, cases: Object.fromEntries(Object.entries(r.cases).map(([k, v]: any) => [k, v.failed ?? []])) }, null, 1));
 await fx.close(); process.exit(r.pass ? 0 : 1);
