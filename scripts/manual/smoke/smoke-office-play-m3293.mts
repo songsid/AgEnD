@@ -34,6 +34,14 @@ async function findPerson(page: any): Promise<{ x: number; y: number } | null> {
 }
 /** Phone: a tap that opens a card is over a person (closed again). */
 async function findPersonTouch(page: any): Promise<{ x: number; y: number } | null> {
+  if (process.env.M3513_CAPTURE_ONLY === "1") {
+    // Use the same real painted-person hit test first; confirm with an actual tap.
+    const point = await findPerson(page);
+    if (point) {
+      await page.touchscreen.tap(point.x, point.y); await page.waitForTimeout(120);
+      if (await page.locator(".oo-card").count()) { await page.locator(".oo-card-close").click(); await page.waitForTimeout(150); return point; }
+    }
+  }
   const b = await page.locator(".oo-canvas").boundingBox();
   for (let y = b.y + 60; y < b.y + b.height - 40; y += 26) for (let x = b.x + 30; x < b.x + b.width - 30; x += 26) {
     await page.touchscreen.tap(x, y); await page.waitForTimeout(120);
@@ -50,7 +58,9 @@ const writes = (log: any[]) => log.filter((q) => q.method !== "GET");
 
 for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { device: "desk", theme: "dark", lang: "zh-TW", rm: false },
   { device: "desk", theme: "light", lang: "en", rm: true }, { device: "phone", theme: "light", lang: "en", rm: false }] as const) {
-  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`, res: any = (r.cases[tag] = {});
+  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`;
+  if (process.env.M3513_CASE && process.env.M3513_CASE !== tag) continue;
+  const res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
   const { page, base } = p;
