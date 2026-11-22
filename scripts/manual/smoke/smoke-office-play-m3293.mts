@@ -55,6 +55,13 @@ async function openOffice(page: any, base: string, lang: string) {
   await page.waitForSelector(".oo-canvas", { timeout: 15000 }); await page.waitForTimeout(2500);
 }
 const writes = (log: any[]) => log.filter((q) => q.method !== "GET");
+const currentCapture = process.env.M3513_CAPTURE_ONLY === "1";
+async function currentCard(page: any) {
+  // Speech bubbles now have their own chat action; the accessible person target opens its card.
+  const person = page.locator("button.oo-desk").first(); await person.focus(); await person.press("Enter");
+  await page.locator(".oo-card").waitFor();
+}
+
 
 for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { device: "desk", theme: "dark", lang: "zh-TW", rm: false },
   { device: "desk", theme: "light", lang: "en", rm: true }, { device: "phone", theme: "light", lang: "en", rm: false }] as const) {
@@ -76,7 +83,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
       ok(res, "reduced:toggle off and locked", !(await box.isChecked()) && (await box.isDisabled()));
       const at = await findPerson(page);
       ok(res, "reduced:person found", !!at);
-      if (at) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else if (at) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(400); }
       ok(res, "reduced:card has no Pat/Feed", (await page.locator(".oo-card").count()) === 1 && (await page.locator(".oo-card-pat, .oo-card-feed").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "1-card") });
     } else if (c.device === "desk") {
@@ -104,8 +112,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
       ok(res, "they walk off the drop point", left);
       await page.waitForTimeout(4000);
       await page.screenshot({ path: shotPath(SMOKE, tag, "4-back") });
-      const again = await findPerson(page);
-      if (again) { await page.mouse.click(again.x, again.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else { const again = await findPerson(page); if (again) { await page.mouse.click(again.x, again.y); await page.waitForTimeout(400); } }
       ok(res, "card: Pat and Feed", (await page.locator(".oo-card-pat").count()) === 1 && (await page.locator(".oo-card-feed").count()) === 1);
       await page.locator(".oo-card-pat").click(); await page.waitForTimeout(700);
       await page.screenshot({ path: shotPath(SMOKE, tag, "5-pat") });
@@ -130,15 +138,15 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
       await page.locator(".oo-card-close").click().catch(() => {}); await page.waitForTimeout(150);
       await page.locator(".oo-card-pat").count();   // (closed)
       // A pat with the card closed: the hearts and the words over them (the card hid them above).
-      const again2 = await findPerson(page);
-      if (again2) { await page.mouse.click(again2.x, again2.y); await page.waitForTimeout(300); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); }
+      if (currentCapture) { await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); }
+      else { const again2 = await findPerson(page); if (again2) { await page.mouse.click(again2.x, again2.y); await page.waitForTimeout(300); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); } }
       await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
       // Off: no Pat/Feed, and a drag pans (no one carried).
       await page.locator(".oo-card-close").click().catch(() => {});
       await box.click(); await page.waitForTimeout(300);
       ok(res, "toggle off: kept here", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === "0");
-      const off = await findPerson(page);
-      if (off) { await page.mouse.click(off.x, off.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else { const off = await findPerson(page); if (off) { await page.mouse.click(off.x, off.y); await page.waitForTimeout(400); } }
       ok(res, "toggle off: no Pat/Feed", (await page.locator(".oo-card-pat").count()) === 0);
       await box.click();   // back on, for the next case's defaults (each case is its own browser context anyway)
     } else {
