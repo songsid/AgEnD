@@ -89,3 +89,16 @@ it.each([
   expect(result).toBe(source.replace("false # choice", "true # choice").replace(/\*off/g, "false"));
   expect((yaml.load(result) as any).monitoring.enabled).toBe(true);
 });
+
+it.each([["Tide", "Tide"], ["one,two", '"one,two"']])("uses context-safe YAML scalar spelling for %s without touching its flow neighbours", (value, spelling) => {
+  const source = "settings: {\n  name: before, # own comment\n  keep: true,\n}\n";
+  const { result } = edit(source, [[["settings", "name"], value]]);
+  expect(result).toBe(source.replace("before", spelling));
+  expect((yaml.load(result) as any).settings.name).toBe(value);
+});
+it("uses the original schema when quoting an otherwise ambiguous scalar", () => {
+  const source = "%YAML 1.1\n---\nname: before # keep\nother: {\n  untouched: true,\n}\n";
+  const { result } = edit(source, [[["name"], "yes"]]);
+  expect(parseDocument(result).toJS().name).toBe("yes");
+  expect(result.slice(result.indexOf("other:"))).toBe(source.slice(source.indexOf("other:")));
+});

@@ -45,7 +45,16 @@ export function stringifyFleetYaml(document: ReturnType<typeof parseDocument>, s
         // final parse/equivalence check still verifies its intended value.
         if (isAlias(node) && isAlias(next) && node.source === next.source) return;
         if ((!isScalar(node) && !isAlias(node)) || !isScalar(next) || !node.range) throw Error("No owned scalar range");
-        let text = new Document(newValue).toString({ lineWidth: 0, defaultStringType: "QUOTE_DOUBLE", doubleQuotedAsJSON: true }).replace(/\n$/, "");
+        // Serialize in a flow context so delimiters cannot become syntax,
+        // while retaining ordinary plain spelling (e.g. a display name).
+        const scalarDoc = new Document([newValue], { schema: original.schema });
+        if (!isSeq(scalarDoc.contents)) throw Error("No scalar serialization context");
+        scalarDoc.contents.flow = true;
+        const serialized = scalarDoc.toString({ lineWidth: 0, doubleQuotedAsJSON: true,
+          defaultStringType: typeof newValue === "string" && /[\r\n]/.test(newValue) ? "QUOTE_DOUBLE" : "PLAIN" });
+        const serializedNode = parseDocument(serialized, { schema: original.schema }).getIn([0], true);
+        if (!isScalar(serializedNode) || !serializedNode.range) throw Error("No serialized scalar range");
+        let text = serialized.slice(serializedNode.range[0], serializedNode.range[1]);
         const [start, end] = node.range;
         const replaced = source.slice(start, end);
         if (isScalar(node) && (node.type === "BLOCK_LITERAL" || node.type === "BLOCK_FOLDED")) {

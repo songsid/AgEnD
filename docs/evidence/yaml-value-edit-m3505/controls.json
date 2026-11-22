@@ -10,7 +10,7 @@
     "files": 8,
     "passed": 99
   },
-  "newCases": 19,
+  "newCases": 22,
   "testTypesExit": 0,
   "readers": [
     "beta.16",
@@ -30,5 +30,18 @@
     },
     "testTypesExit": 0,
     "broadRunRepeated": false
+  },
+  "r2": {
+    "actualFailedJob": 137099258225,
+    "priorHead": "8b4c455370201f9a3a05ab7338810bb3749280d1",
+    "baseAssertionsFailed": 3,
+    "basePositiveCases": 3,
+    "focused": {
+      "files": 3,
+      "passed": 34
+    },
+    "testTypesExit": 0,
+    "legacyIdentityTestChanged": false,
+    "full99RunRepeated": false
   }
 }
