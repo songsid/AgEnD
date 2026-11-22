@@ -1,5 +1,7 @@
 # Desktop split chat — PR3
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 84 affected current-gallery paths were recaptured with example identities across light/dark zh-TW, light EN and a separate coarse-pointer run. All 84 originals were visually privacy-checked. Twenty-four affected historical before/retained controls were withdrawn: a pinned retained-all replay failed the required absence-of-geometry assertion (expected zero, observed one). Partial replay images are not published as historical proof. Older behavioral/source receipts below remain historical; these PNGs have current rendering provenance. Long labels truncate and floating/docking previews intentionally overlap. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every disposition and capture hash. No live provider, CLI, pane or Fleet was used.
+
 Refs #3637, M-2924 / S-123. This slice adds native sidebar/header docking, a shared physical sash and an in-page floating pane. The real browser pop-out remains PR4. The owner round follows PR4, as requested.
 
 The existing router, leave guards, pane leases, composers and page stream remain the owners. Sidebar docking extends its existing reorder handler; foreign drags and attachment drops are not adopted. Edge previews occupy exactly half the target; an existing agent dropped in the center swaps positions, while a third agent replaces the target through the same leave guards. Escape, a changed navigation incarnation, changed bounds, a dialog, lost capture or teardown cancels pending geometry.

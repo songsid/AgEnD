@@ -1,0 +1,1281 @@
+{
+  "capture_head": "f685db74630f3d9714f82cc8db54e011c73579dc",
+  "capture_tree": "9a3788e6219ed1662f6f3e53fa1faf4464bdd8e1",
+  "scope": "Current privacy refresh only; historic behavior receipts are not rerun claims.",
+  "completed_snapshots": 84,
+  "capture_variants": [
+    "light zh-TW",
+    "dark zh-TW",
+    "light en",
+    "dark zh-TW coarse pointer"
+  ],
+  "retained_probe": "Pinned retained-all replay failed at smoke-split-chat-docking-3637.mts:194: expected zero geometry controls, observed one. No partial probe images are published or claimed as retained historical code.",
+  "visual_limits": [
+    "Long names truncate.",
+    "Floating panes and docking previews intentionally overlap their peer; static captures do not establish complete interaction or touch coverage."
+  ],
+  "files": [
+    {
+      "variant": "light",
+      "name": "light-zh-TW-center-swap.png",
+      "sha256": "3fb9978bbb2b1329382b472dab0e0076e0a490a3fead11336d2e7c97f3829ed4"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-dock-preview.png",
+      "sha256": "8e48c202ea52636557a5007611815adc27d84863f2dfd37c0c2c02760842b287"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-docked.png",
+      "sha256": "a56375c1204e580f621d242690781635e9e88ba284868e094067ab47e0e29017"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-keyboard-applied.png",
+      "sha256": "74886b9542e0da2b7a5746bdc4fe0558a3fd4e7c80910f3a552c145ccbeed30c"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-keyboard-preview.png",
+      "sha256": "5bf17b18661eedd319662770961c7a5cbe097ff92e0193520617b9313bbf3698"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-menu.png",
+      "sha256": "e06bf0b952f66f3a3b233d730f9267182ee9a836f23028ee7f4a6c5ca03b52a3"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-moved.png",
+      "sha256": "9b50966ad895cd2b498e857289486d1baadbc74ec0712571ba57f9dbec9af34c"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-reload.png",
+      "sha256": "cfa8363a2e3d98e87269127337dbbd09963f5c9305ceca937ca586fbc43b731f"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float-resized.png",
+      "sha256": "449abaef119c425a44dfe9e9908cf7eff957f45fd75d630a4fe3f856d4d8adc1"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-float.png",
+      "sha256": "fc58429104e6eca7be1d62a94d29cd96276b9f316226cde03b86705eabbc2f5a"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-header-drop-preview.png",
+      "sha256": "2d1cc5478cfc4222131afdbeb12b3141c79de140922a69f50b77cde023438fa4"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-minimum-pane.png",
+      "sha256": "b2ba6c8b58d2cbbbde9887d139b0afef7d4b7f88a6d79cb6d64f70f2622e5693"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-narrow.png",
+      "sha256": "2d563465f829d761df99c18a1f34c49cbd972011b9f6c21f46a1a7643953afd0"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-phone.png",
+      "sha256": "432aef00ae88ca8bf5f0bc1f7b93cd7eeda60612e7bf4cefdea76412f246ec56"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-right.png",
+      "sha256": "5444bea987c6aa7ae7d90d2f13fef35c24d0197b247d9c365f698cf7005d8c72"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-sash-cancel.png",
+      "sha256": "435a93e15c2f394bf76629e7367442024aa511c796924f8cc258a8f2711e440c"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-sash-drag.png",
+      "sha256": "d2631c20f975c8df5a01e5603a27c79f23a2574e00143cbcd94bdceac774d6e6"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-sash-keyboard.png",
+      "sha256": "d3a887e53fe868991da6eb83910a0ea948d2496a0da8064d8ec98693180f30ee"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-stacked.png",
+      "sha256": "bf19f45d0110ee491f54c9612920e19c227fc3175a65fbaf71427940100c5bfb"
+    },
+    {
+      "variant": "light",
+      "name": "light-zh-TW-ultrawide-minimum.png",
+      "sha256": "a7d4a8c9c4a060c476dc2f8d1287ae81bbc78e281a1430c6bdfae1f6b72a3641"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-center-swap.png",
+      "sha256": "ec612ce168b7d6f00d5bb72e9dc12b4f1661414937e52a7ae615822ce7f0509c"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-dock-preview.png",
+      "sha256": "c180758a9a8105f1b16302bfdb7185e7142e6255ad7743071b8b0d46e95618aa"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-docked.png",
+      "sha256": "4bc44dc1be417dd10504dc6b067ddd265393d0587e1d2bc2a1a1b76d09a09adf"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-keyboard-applied.png",
+      "sha256": "4ff02e1f75216d376153bc556e9388065d00e52413c595e6ef4b207635dcce48"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-keyboard-preview.png",
+      "sha256": "34d99b687c2dfce5e3ca761b7bfa57fa28aec0243ef3296f45cdd35cb405b86a"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-menu.png",
+      "sha256": "bcdba683773bbc5c6b25323493f762b1e490c9d066ccd8cd8dc1ac001a5bf109"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-moved.png",
+      "sha256": "93b868018ce3c2c99e26756c0317f632d2c3a619d0fbfe6d92df4d085f7945f2"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-reload.png",
+      "sha256": "209374b97018a81ebf64357aa02609459ce8af21158012a305a39752cce7c0b9"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float-resized.png",
+      "sha256": "cc69801690cd1827a47f54fcb24aae833a5249db099d1b1f405afa376879cb63"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-float.png",
+      "sha256": "aa3b3f4bed160adec1d9e335ede26371ea3979b85a3880d0bdb4912ad62b4aa8"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-header-drop-preview.png",
+      "sha256": "9859161a6e33daa63c72906dd222c980a79471ca164dd5dd89fc81b94bd54011"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-minimum-pane.png",
+      "sha256": "bc24f1fd3672762d6723887b17bec64d02f27841b462254e558b19c078263bb0"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-narrow.png",
+      "sha256": "9e4d7f077307570f13bb1f6149d59bd21a6d914cc4d21e112a28516b47b4c8f9"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-phone.png",
+      "sha256": "0b772c2b5640c30a75b55c4b47e06e05797e84b39a7b90f17c6185253c4a1b53"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-right.png",
+      "sha256": "01ec7b5670667401eed63f03b825c44061477e4576975abe359def954689c915"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-sash-cancel.png",
+      "sha256": "250910bf1786934bf53b855fca608b9916df562d5a7298ccc660975044240dbc"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-sash-drag.png",
+      "sha256": "d28cd08466c98abd841e1a2e98353623d1af337d07d5a3ab10409a74cd959851"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-sash-keyboard.png",
+      "sha256": "81bebd8cb4f95be4bec9b95f704d489f231ec5cbc5db92f7f70c8ed5bde27970"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-single.png",
+      "sha256": "c851b2a5da033346ddb719ae899725e58ee7df811163fef80d34b1d659d6c106"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-stacked.png",
+      "sha256": "b141d17fde509b5a0af39f9f69f36c4975b01f76a9347f3eebf8226f4d3c2f75"
+    },
+    {
+      "variant": "dark",
+      "name": "dark-zh-TW-ultrawide-minimum.png",
+      "sha256": "dfaff43742e2e1e7db3acd2b5a1ef7e174f17df4e6ec504a72544bc74d27c9f0"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-center-swap.png",
+      "sha256": "6e8be5583efc8b10410589fd5490e9290e25e75f3d262084f72089a1f586e47d"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-dock-preview.png",
+      "sha256": "b98a304409848a31d399acf45b95a9bc3595b4255f1da3b3f44bd92763dfa4da"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-docked.png",
+      "sha256": "cbbc34fdf09b9818b13ee073a4e1e4530c531ff7f4e5d58e02587df5d985cd30"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-keyboard-applied.png",
+      "sha256": "de3d425195dbd1a2224129ba4755f0988759225a254afe7ddb044178ecea961e"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-keyboard-preview.png",
+      "sha256": "202d11ab02e5e5d7eb57f3ebb623bc7c7392b5382cae843963899c6ff637d2dd"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-menu.png",
+      "sha256": "2bf5f28b5081c4621861573dc075b0fa1581b7c90f3df826e935573c82964066"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-moved.png",
+      "sha256": "0f64e442f039ab2c6f929e4739bd77fca1b4904a3c7b3a3e9b58e2e772f77019"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-reload.png",
+      "sha256": "f7dc6a19313ea1f8e6a6db0dcc0c55f5265adc9647099851a4d00c387da3f239"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float-resized.png",
+      "sha256": "7069541d84ec499e8b72641c52c3ad2f0322de7d070ea1172e7c7d5ac780589b"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-float.png",
+      "sha256": "931ba513994e76acdcd957f7dcaec6e5962c370d62f5f240d41014647e75a969"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-header-drop-preview.png",
+      "sha256": "2d1aeee1c558ac6377892540f1acabeb9f0a9b71bdd25e122bd9d59cd1926b92"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-minimum-pane.png",
+      "sha256": "fca72bc484eeb9930b3213830dcfa53856b395938bece170bec9035dea64b888"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-narrow.png",
+      "sha256": "245794a6ec16a154bd73d0358f362365f64cfca25d49e0fa508353bdeb927db1"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-phone.png",
+      "sha256": "f6393c2c6d97c38b3191d04b6908b2b8076bc397d70d05df939d4f7c4c00e014"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-right.png",
+      "sha256": "f376a191800649ec2bb41cb028370d839e02d19f68a1dfb874324828c9ac2399"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-sash-cancel.png",
+      "sha256": "2b55b6b30c6d207e51abf5b64fbf29cbe07bfcd2db1a423ba989527472180159"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-sash-drag.png",
+      "sha256": "e3a38f0edee061fb47db16a3e5407280915b64a1148b2dd1abb4cb3191c01ec5"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-sash-keyboard.png",
+      "sha256": "8923849bf315c12b5c3a1314a1e3d850cd63b3eaca10ad16c72bf84e7c3041dc"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-single.png",
+      "sha256": "a540b5278a060990e8b1fa4211818344f55e3aa69e24aef6353f7ef54296c081"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-stacked.png",
+      "sha256": "21ccce1152e0195b00cdbd5f073490c24b7975b8bee35eb551462eeaeac17a70"
+    },
+    {
+      "variant": "en",
+      "name": "light-en-ultrawide-minimum.png",
+      "sha256": "4b4b39078cf073e4d298a7fbe6336d1bb93dc9ff11eeb349230da54b1e770a55"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-center-swap.png",
+      "sha256": "57ca4843a158e320d7033e1b329326e598f0f194d979f4105489e25f147567b1"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-dock-preview.png",
+      "sha256": "42b5ff4634ac87565b671d514ffdbc6c52a5218501b98f8cd1a0041d175f539f"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-docked.png",
+      "sha256": "3d74cac4fed662dd4f0d7d5575b1ed4c763ff46c24086ce888fafc289c730ce0"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-keyboard-applied.png",
+      "sha256": "9eeb3e16afd7ac0940e86810afbf8895b57b128d7b49bc53009d8189013ed9c9"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-keyboard-preview.png",
+      "sha256": "4461ada6c53450f790267f39c4d72a86f81008fe0ce504b63edd20661a70af4d"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-menu.png",
+      "sha256": "3755af362e4690154cd09f1496bbd665aaaaf12dfb0a89917a47e5217c097acf"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-moved.png",
+      "sha256": "bdda5328a0e7d89a5f2114092e9abce58a598f7c58985329768e468b3513afac"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-reload.png",
+      "sha256": "cf73f7b058a749f3fff3e081543730a2275f6c9cc334e7cd93e7b5948dc27d11"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float-resized.png",
+      "sha256": "05c6b4b540a611079ba24f6ebc2d7f6dd6fd49177fee55e5af4a92b7e53b8ca1"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-float.png",
+      "sha256": "36a817ea57c5287dd92c43d5f5a530c78cceb021ed1b8e4e5ac709af28964ba3"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-header-drop-preview.png",
+      "sha256": "8b304228c76aee0f28fedac7eaf6da1e4ab6b0810e912702681d900fb48888e9"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-minimum-pane.png",
+      "sha256": "5bf3feb594bf98dd3ba67982456bec0d8aa023a2198a767cbe15746cfac4ed86"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-narrow.png",
+      "sha256": "f5485064f9da0240222c4479fe7008c954a1d31058105e12860c6fb7308fce61"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-phone.png",
+      "sha256": "d4c6c9f8064e87122529c1a56caa06af3102a8cbc4461a6d9aa18b8ace89f929"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-right.png",
+      "sha256": "d875b1d2751b3a99fb32c09113e1a1f5f959fbbf0a40376822ca1279ef0657c7"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-sash-cancel.png",
+      "sha256": "bbb18739748565ce48fc140256e5d442e3693166630ef2f14b21e836d0472cba"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-sash-drag.png",
+      "sha256": "e771f0c7c35d6f3eab161ecfab96d0cc830f3ca00be02832db6adb624c900716"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-sash-keyboard.png",
+      "sha256": "59faf2273e50f9a090aa4d2fb0cd824923ed30fa6b245ac9c39ea8019b4b90f6"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-single.png",
+      "sha256": "0d3a26dc8a741ba7aadefce4c61771bbab42eeafc0524abd82cffc28f8dccbaa"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-stacked.png",
+      "sha256": "59658124739185a2dfcd8f0efa588a0b532f16383afa1467bff74f07ff7a0c5d"
+    },
+    {
+      "variant": "coarse",
+      "name": "dark-zh-TW-ultrawide-minimum.png",
+      "sha256": "8f44a9e0fc8e1ac0b850771f81fc3ea919258dc36bc4f8edd81eb973dbec31bf"
+    }
+  ],
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-center-swap.png",
+      "blob": "a77e1294ce3dbd735be134017a1cac58ff5c4a3b",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "57ca4843a158e320d7033e1b329326e598f0f194d979f4105489e25f147567b1"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-dock-preview.png",
+      "blob": "8fab68d609278ddab53180a946cbdd023d949acb",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "42b5ff4634ac87565b671d514ffdbc6c52a5218501b98f8cd1a0041d175f539f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-docked.png",
+      "blob": "d65bd62aee4c948cc090347f8711504e2ce44c51",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "3d74cac4fed662dd4f0d7d5575b1ed4c763ff46c24086ce888fafc289c730ce0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-keyboard-applied.png",
+      "blob": "8f399373c0f1ae399dd1780c6c4ee2ec4dfa6093",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "9eeb3e16afd7ac0940e86810afbf8895b57b128d7b49bc53009d8189013ed9c9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-keyboard-preview.png",
+      "blob": "979419a2cac12452ec6b1f80c20ed00aeb1a31b6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "4461ada6c53450f790267f39c4d72a86f81008fe0ce504b63edd20661a70af4d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-menu.png",
+      "blob": "ace5d8e5f89ece7764172fb33bf68dacd9d67715",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "3755af362e4690154cd09f1496bbd665aaaaf12dfb0a89917a47e5217c097acf"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-moved.png",
+      "blob": "ab76b3b7a7d869e7777f96d783fb532857751c98",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "bdda5328a0e7d89a5f2114092e9abce58a598f7c58985329768e468b3513afac"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-reload.png",
+      "blob": "1adf8a14e53071a660caf119bb81cb4cd784095c",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "cf73f7b058a749f3fff3e081543730a2275f6c9cc334e7cd93e7b5948dc27d11"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-resized.png",
+      "blob": "ba34554623a3e8eb825484f74cf6184665cd8826",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "05c6b4b540a611079ba24f6ebc2d7f6dd6fd49177fee55e5af4a92b7e53b8ca1"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float.png",
+      "blob": "f7d435c196f9b48680fb038f0fbc7eed83ae7c6e",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "36a817ea57c5287dd92c43d5f5a530c78cceb021ed1b8e4e5ac709af28964ba3"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-header-drop-preview.png",
+      "blob": "8b4f44f326d7b164364ef99d8cb447cec5942f7e",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "8b304228c76aee0f28fedac7eaf6da1e4ab6b0810e912702681d900fb48888e9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-minimum-pane.png",
+      "blob": "3ff7806451041a408a301de7505642eeed92d558",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "5bf3feb594bf98dd3ba67982456bec0d8aa023a2198a767cbe15746cfac4ed86"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-narrow.png",
+      "blob": "99c18d947730e0ce1363e9968c98b39535f0a0e1",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "f5485064f9da0240222c4479fe7008c954a1d31058105e12860c6fb7308fce61"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-phone.png",
+      "blob": "c3895a42257d297f3e033e5b6db541558baddd7e",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "d4c6c9f8064e87122529c1a56caa06af3102a8cbc4461a6d9aa18b8ace89f929"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-right.png",
+      "blob": "bc572155c4cac0265c409a98f3885f263e28ef79",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "d875b1d2751b3a99fb32c09113e1a1f5f959fbbf0a40376822ca1279ef0657c7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-cancel.png",
+      "blob": "4a469c574bd43feffd7fd2a37640a72269697c4c",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "bbb18739748565ce48fc140256e5d442e3693166630ef2f14b21e836d0472cba"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-drag.png",
+      "blob": "49d9908b4a4e0db528ec4893d96b07d071247895",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "e771f0c7c35d6f3eab161ecfab96d0cc830f3ca00be02832db6adb624c900716"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-keyboard.png",
+      "blob": "4319c3ed8b3d8d9a57cf5eb46574ac02259cc274",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "59faf2273e50f9a090aa4d2fb0cd824923ed30fa6b245ac9c39ea8019b4b90f6"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-single.png",
+      "blob": "597b2d004f3b8a7f700059e8ab8f8b3c1c154447",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "0d3a26dc8a741ba7aadefce4c61771bbab42eeafc0524abd82cffc28f8dccbaa"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-stacked.png",
+      "blob": "96a832fcd3f879bb01110aaac563c6e1fdbce2a5",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "59658124739185a2dfcd8f0efa588a0b532f16383afa1467bff74f07ff7a0c5d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-ultrawide-minimum.png",
+      "blob": "47796228b30fa03ffa34000913b4a6f2a54cc11a",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "coarse",
+      "replacement_sha256": "8f44a9e0fc8e1ac0b850771f81fc3ea919258dc36bc4f8edd81eb973dbec31bf"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-center-swap.png",
+      "blob": "a789536f4de4087dd526ce6ddae38ea2bb8045a3",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "ec612ce168b7d6f00d5bb72e9dc12b4f1661414937e52a7ae615822ce7f0509c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-dock-preview.png",
+      "blob": "fb816608d6e7db93cb1a39f15f2aceea3184042c",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "c180758a9a8105f1b16302bfdb7185e7142e6255ad7743071b8b0d46e95618aa"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-docked.png",
+      "blob": "7f30576e7edebb96ce8e483daf6cf04b4fc46292",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "4bc44dc1be417dd10504dc6b067ddd265393d0587e1d2bc2a1a1b76d09a09adf"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-keyboard-applied.png",
+      "blob": "705ac45dc431cac4b3f156faa4829be9768d96f5",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "4ff02e1f75216d376153bc556e9388065d00e52413c595e6ef4b207635dcce48"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-keyboard-preview.png",
+      "blob": "516fc84d8abaa2ea33cdc2462add7d21c75a5760",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "34d99b687c2dfce5e3ca761b7bfa57fa28aec0243ef3296f45cdd35cb405b86a"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-menu.png",
+      "blob": "d44441d49abffd908862c63806e367bbbe0b4ab4",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "bcdba683773bbc5c6b25323493f762b1e490c9d066ccd8cd8dc1ac001a5bf109"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-moved.png",
+      "blob": "498895d65efd3459d318890a0f343feb05d6cc4f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "93b868018ce3c2c99e26756c0317f632d2c3a619d0fbfe6d92df4d085f7945f2"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-reload.png",
+      "blob": "74f43fe9da359b3c0037833d8a41e1e03d1baa2b",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "209374b97018a81ebf64357aa02609459ce8af21158012a305a39752cce7c0b9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-resized.png",
+      "blob": "b5c47e223bc6eb543db3a7f62daf0a54f87d9380",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "cc69801690cd1827a47f54fcb24aae833a5249db099d1b1f405afa376879cb63"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float.png",
+      "blob": "94179ae827a2e90a49d0014ff3c3e9f4e931fd0d",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "aa3b3f4bed160adec1d9e335ede26371ea3979b85a3880d0bdb4912ad62b4aa8"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-header-drop-preview.png",
+      "blob": "4313e91e5679dc5cc9d34428e231e0a33ec0fa59",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "9859161a6e33daa63c72906dd222c980a79471ca164dd5dd89fc81b94bd54011"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-minimum-pane.png",
+      "blob": "d16c6f8aa1f40631f8936a69291558f3b8e8776a",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "bc24f1fd3672762d6723887b17bec64d02f27841b462254e558b19c078263bb0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-narrow.png",
+      "blob": "81656f69ac3bc6b20310cacc078eb5fd7638833a",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "9e4d7f077307570f13bb1f6149d59bd21a6d914cc4d21e112a28516b47b4c8f9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-phone.png",
+      "blob": "f462eda6023e43a3688348e7843f37f5593834f3",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "0b772c2b5640c30a75b55c4b47e06e05797e84b39a7b90f17c6185253c4a1b53"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-right.png",
+      "blob": "9ab71d04fb3d72a791625874475c3b44471fbc74",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "01ec7b5670667401eed63f03b825c44061477e4576975abe359def954689c915"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-cancel.png",
+      "blob": "9f44376e8edcae4b53f89f4c4f6cdc1b9cbcbdd6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "250910bf1786934bf53b855fca608b9916df562d5a7298ccc660975044240dbc"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-drag.png",
+      "blob": "ad26bcb56cf2b80fd1cd7991b358605936b2bbe7",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "d28cd08466c98abd841e1a2e98353623d1af337d07d5a3ab10409a74cd959851"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-keyboard.png",
+      "blob": "a1cd6324868fb8825d414844d7bc727c4f88b5f0",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "81bebd8cb4f95be4bec9b95f704d489f231ec5cbc5db92f7f70c8ed5bde27970"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-single.png",
+      "blob": "7dabd8a06086834ad47415abe75f1732f40216e0",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "c851b2a5da033346ddb719ae899725e58ee7df811163fef80d34b1d659d6c106"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-stacked.png",
+      "blob": "09214c766fd008b034a899b34ac4cb409a74036b",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "b141d17fde509b5a0af39f9f69f36c4975b01f76a9347f3eebf8226f4d3c2f75"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-ultrawide-minimum.png",
+      "blob": "d8ab4ace9ed2529cd6f29fa9910b840925ee04b1",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "dark",
+      "replacement_sha256": "dfaff43742e2e1e7db3acd2b5a1ef7e174f17df4e6ec504a72544bc74d27c9f0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-center-swap.png",
+      "blob": "0567a999ea315fb280bfb41db08d35dbc7c4a9d7",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "6e8be5583efc8b10410589fd5490e9290e25e75f3d262084f72089a1f586e47d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-dock-preview.png",
+      "blob": "f6f0d5c8f2f74935fc7b8fb43dc74abbebcfa105",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "b98a304409848a31d399acf45b95a9bc3595b4255f1da3b3f44bd92763dfa4da"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-docked.png",
+      "blob": "87527fdadebee7e48232a3e7a71b04e96a5d2b9f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "cbbc34fdf09b9818b13ee073a4e1e4530c531ff7f4e5d58e02587df5d985cd30"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-keyboard-applied.png",
+      "blob": "8dab335fd912a8e86e90619f668cf49dc941f1fb",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "de3d425195dbd1a2224129ba4755f0988759225a254afe7ddb044178ecea961e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-keyboard-preview.png",
+      "blob": "b61f21b522f73d0bc63ce59007807a0fd923d11f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "202d11ab02e5e5d7eb57f3ebb623bc7c7392b5382cae843963899c6ff637d2dd"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-menu.png",
+      "blob": "137978990e154c85fd829e69742ab32e827012d3",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "2bf5f28b5081c4621861573dc075b0fa1581b7c90f3df826e935573c82964066"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-moved.png",
+      "blob": "2075f63f958c7c894d4a8c6fb5def8d99337b2cf",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "0f64e442f039ab2c6f929e4739bd77fca1b4904a3c7b3a3e9b58e2e772f77019"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-reload.png",
+      "blob": "92f5c5c43151e17da3d7862730c402104207ba51",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "f7dc6a19313ea1f8e6a6db0dcc0c55f5265adc9647099851a4d00c387da3f239"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-resized.png",
+      "blob": "9799f692bf4155186bb9971f549c71f5e80dd4b9",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "7069541d84ec499e8b72641c52c3ad2f0322de7d070ea1172e7c7d5ac780589b"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float.png",
+      "blob": "30d293afc19280cd637d61dcc456f280f85f8846",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "931ba513994e76acdcd957f7dcaec6e5962c370d62f5f240d41014647e75a969"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-header-drop-preview.png",
+      "blob": "de128e05e622fc2339946e559e518c8cee12bc50",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "2d1aeee1c558ac6377892540f1acabeb9f0a9b71bdd25e122bd9d59cd1926b92"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-minimum-pane.png",
+      "blob": "06e9e8bdfd99fd50f03e2eef04d970b6584cf419",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "fca72bc484eeb9930b3213830dcfa53856b395938bece170bec9035dea64b888"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-narrow.png",
+      "blob": "b109300a27c4f2d88545dc0072f72a35bb007107",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "245794a6ec16a154bd73d0358f362365f64cfca25d49e0fa508353bdeb927db1"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-phone.png",
+      "blob": "b5169bbcc8c90f299a94df69c172cdf34f71bcd5",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "f6393c2c6d97c38b3191d04b6908b2b8076bc397d70d05df939d4f7c4c00e014"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-right.png",
+      "blob": "973d3d201e2c9276c5c95b85f511a56809f79343",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "f376a191800649ec2bb41cb028370d839e02d19f68a1dfb874324828c9ac2399"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-cancel.png",
+      "blob": "dc1245899c65f77e0203a671de3d18b1c67b3e47",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "2b55b6b30c6d207e51abf5b64fbf29cbe07bfcd2db1a423ba989527472180159"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-drag.png",
+      "blob": "df25e86d039ecafe1291e368cd653bcef7a63cb8",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "e3a38f0edee061fb47db16a3e5407280915b64a1148b2dd1abb4cb3191c01ec5"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-keyboard.png",
+      "blob": "76d10d773244fc893040f31be88867fa6d5a79a7",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "8923849bf315c12b5c3a1314a1e3d850cd63b3eaca10ad16c72bf84e7c3041dc"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-single.png",
+      "blob": "8dcbdf789dd553584d226636930feaf17ed33d7e",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "a540b5278a060990e8b1fa4211818344f55e3aa69e24aef6353f7ef54296c081"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-stacked.png",
+      "blob": "91a2bc8085539d92ce5698bc5197c309f4af1e4c",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "21ccce1152e0195b00cdbd5f073490c24b7975b8bee35eb551462eeaeac17a70"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-ultrawide-minimum.png",
+      "blob": "3bbaf2dd1e0f931c47a04f40c37e65cf1fbb54e6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "en",
+      "replacement_sha256": "4b4b39078cf073e4d298a7fbe6336d1bb93dc9ff11eeb349230da54b1e770a55"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-center-swap.png",
+      "blob": "4eb6aa7999c882d66a4eacdbca0a6492d72d208f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "3fb9978bbb2b1329382b472dab0e0076e0a490a3fead11336d2e7c97f3829ed4"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-dock-preview.png",
+      "blob": "82110000d9e2ae4b0d040b0ab6d11c501aeca175",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "8e48c202ea52636557a5007611815adc27d84863f2dfd37c0c2c02760842b287"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-docked.png",
+      "blob": "2b47a33fbfd2bea1d84648263104b8a2c95a94a2",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "a56375c1204e580f621d242690781635e9e88ba284868e094067ab47e0e29017"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-keyboard-applied.png",
+      "blob": "c7028b1f28fd57c0d96bd04625358be6d4b6543f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "74886b9542e0da2b7a5746bdc4fe0558a3fd4e7c80910f3a552c145ccbeed30c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-keyboard-preview.png",
+      "blob": "3f1ef2e8301fd26a36dfe3cb28fdbd814a1101fc",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "5bf17b18661eedd319662770961c7a5cbe097ff92e0193520617b9313bbf3698"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-menu.png",
+      "blob": "0ba2aeeec5798e96a42a339d48a2cf8da4374ae8",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "e06bf0b952f66f3a3b233d730f9267182ee9a836f23028ee7f4a6c5ca03b52a3"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-moved.png",
+      "blob": "f417589a58ba71a86fc343df7626e4528e937b0f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "9b50966ad895cd2b498e857289486d1baadbc74ec0712571ba57f9dbec9af34c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-reload.png",
+      "blob": "e4a0d710927968d8b1c240b472b60230b72be1e9",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "cfa8363a2e3d98e87269127337dbbd09963f5c9305ceca937ca586fbc43b731f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-resized.png",
+      "blob": "46f532e077961e66ea3562b3ef9f5c27a9634aa6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "449abaef119c425a44dfe9e9908cf7eff957f45fd75d630a4fe3f856d4d8adc1"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float.png",
+      "blob": "9d37a226e600cb34c3a8f79c71b5b62c65912cc6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "fc58429104e6eca7be1d62a94d29cd96276b9f316226cde03b86705eabbc2f5a"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-header-drop-preview.png",
+      "blob": "5747ba06595ba677ec1650a9f02e8cc372d55371",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "2d1cc5478cfc4222131afdbeb12b3141c79de140922a69f50b77cde023438fa4"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-minimum-pane.png",
+      "blob": "804bed3c266914ff6348a4d44a501a63be25cd54",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "b2ba6c8b58d2cbbbde9887d139b0afef7d4b7f88a6d79cb6d64f70f2622e5693"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-narrow.png",
+      "blob": "c6c4bb62d845921e959d89ae79896c8c73cb2194",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "2d563465f829d761df99c18a1f34c49cbd972011b9f6c21f46a1a7643953afd0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-phone.png",
+      "blob": "ddc2dcf2da76122497ea8eec487810270652bb05",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "432aef00ae88ca8bf5f0bc1f7b93cd7eeda60612e7bf4cefdea76412f246ec56"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-right.png",
+      "blob": "bb2743860cf275d4d0c0efe4157d36474fce27a6",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "5444bea987c6aa7ae7d90d2f13fef35c24d0197b247d9c365f698cf7005d8c72"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-cancel.png",
+      "blob": "5a7c493b5bf3e0b465b36360c9003f5f1749548b",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "435a93e15c2f394bf76629e7367442024aa511c796924f8cc258a8f2711e440c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-drag.png",
+      "blob": "1747206f7b0936310b76cbcd03ad65b80b100348",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "d2631c20f975c8df5a01e5603a27c79f23a2574e00143cbcd94bdceac774d6e6"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-keyboard.png",
+      "blob": "f645864dfe102ac3c6db5f2817d57c847a056b97",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "d3a887e53fe868991da6eb83910a0ea948d2496a0da8064d8ec98693180f30ee"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-stacked.png",
+      "blob": "ea5ce51c6c485641dc92889e80c38ad5272da1fe",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "bf19f45d0110ee491f54c9612920e19c227fc3175a65fbaf71427940100c5bfb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-ultrawide-minimum.png",
+      "blob": "a6a9822061b9182c252d3a0085b5ebd94286652f",
+      "action": "recaptured-current-rendering",
+      "capture_variant": "light",
+      "replacement_sha256": "a7d4a8c9c4a060c476dc2f8d1287ae81bbc78e281a1430c6bdfae1f6b72a3641"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-dark/dark-zh-TW-retained-all-float-refused.png",
+      "blob": "54caa6131fd8ddfe4b30753dbe736c24e66bfb01",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-dark/dark-zh-TW-retained-all.png",
+      "blob": "fc1d1d34d663380a0bbe2be602538f93880ca470",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-dark/dark-zh-TW-single.png",
+      "blob": "7dabd8a06086834ad47415abe75f1732f40216e0",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-light/light-zh-TW-retained-all-float-refused.png",
+      "blob": "731df3b4981a25457bdc06bf789e7b666369c762",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-light/light-zh-TW-retained-all.png",
+      "blob": "d58865052737dd38a0e32cab0e810a3219b8f082",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/before-light/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-css-old-app/light-zh-TW-retained-css-old-app.png",
+      "blob": "196637aad229392a4c97e77f1a77c9041c77c839",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-css-old-app/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-css/light-zh-TW-retained-css.png",
+      "blob": "f541c893e840ad7157dc2da7bca4bfb4d9d249be",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-css/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-host/light-zh-TW-retained-host-float-refused.png",
+      "blob": "731df3b4981a25457bdc06bf789e7b666369c762",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-host/light-zh-TW-retained-host.png",
+      "blob": "d58865052737dd38a0e32cab0e810a3219b8f082",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-host/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-js/light-zh-TW-retained-js-float-refused.png",
+      "blob": "731df3b4981a25457bdc06bf789e7b666369c762",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-js/light-zh-TW-retained-js.png",
+      "blob": "d58865052737dd38a0e32cab0e810a3219b8f082",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-js/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-model/light-zh-TW-retained-model.png",
+      "blob": "f541c893e840ad7157dc2da7bca4bfb4d9d249be",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-model/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-navigation/light-zh-TW-retained-navigation.png",
+      "blob": "5b2687b8d91d5bf0594bf833452434204fa56ec0",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-navigation/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-server/light-zh-TW-retained-server.png",
+      "blob": "f541c893e840ad7157dc2da7bca4bfb4d9d249be",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-server/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-sidebar/light-zh-TW-retained-sidebar.png",
+      "blob": "bb2743860cf275d4d0c0efe4157d36474fce27a6",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/skew-sidebar/light-zh-TW-single.png",
+      "blob": "561fd4a7101711229e6bd589fee4c072a1abf910",
+      "action": "withdrawn-unreproduced-historical-control",
+      "replacement_sha256": null
+    }
+  ]
+}
