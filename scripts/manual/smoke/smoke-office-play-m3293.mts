@@ -79,7 +79,13 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
     const box = page.locator(".oo-play input");
     // A phone keeps the Office's options in its ⋯ sheet; the desk shows them in the bar.
     if (c.device === "desk") ok(res, "toggle:shown", (await box.count()) === 1);
-    if (c.rm) {
+    if (process.env.M3513_WORDS_ONLY === "1") {
+      if (!currentCapture || c.device !== "desk" || c.rm) throw new Error("words-only capture requires an ordinary desktop case");
+      await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click();
+      await page.mouse.move(0, 0); await page.waitForTimeout(500);
+      await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
+      ok(res, "current-pat-frame", true, "Pat/card close/cursor moved off map; static capture only, not drag/Tell/off behavioral replay");
+    } else if (c.rm) {
       ok(res, "reduced:toggle off and locked", !(await box.isChecked()) && (await box.isDisabled()));
       const at = await findPerson(page);
       ok(res, "reduced:person found", !!at);
