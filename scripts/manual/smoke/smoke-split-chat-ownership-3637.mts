@@ -10,6 +10,7 @@ import { seedUsage } from "../smoke-fixture/seed.mts";
 
 const repo = resolve(process.env.REPO!), out = resolve(process.env.OUT!);
 const mode = process.env.MODE || "current", baseline = process.env.BASELINE_REF;
+const privacyCapture = process.env.M3513_CAPTURE_ONLY === "1";
 const git = (...args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
 const sha = (data: string | Buffer) => createHash("sha256").update(data).digest("hex");
 assert.equal(git("status", "--porcelain", "--untracked-files=no"), "", "capture requires clean tracked source");
@@ -31,7 +32,7 @@ for (const file of retained) {
 }
 mkdirSync(out, { recursive: true });
 const fx = await bootFixture({ roster: publicRoster(3), port: Number(process.env.HP || 54970), instances: 3, classic: false });
-const receipt: any = { head, tree, mode, baseline: baseline || null, scope: "Real authenticated shell; owned pane/steps display fixtures; no tmux, CLI, vendor, live fleet or backend transcript E2E", inputs, assets, substitutions: {}, cases: [] };
+const receipt: any = { head, tree, mode, privacyCapture, baseline: baseline || null, scope: "Real authenticated shell; owned pane/steps display fixtures; no tmux, CLI, vendor, live fleet or backend transcript E2E", inputs, assets, substitutions: {}, cases: [] };
 try {
   await seedUsage(fx);
   const name = fx.instances[1].name;
@@ -83,7 +84,7 @@ try {
           await page.evaluate(async (name: string) => { const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, [name]: "working" } })); }, name);
           await page.locator(".work-bar #stopBtn").waitFor();
         }
-        await page.locator(`.p-${panel}`).waitFor(); await page.locator(`.p-${panel} .inst-switch`).waitFor();
+        await page.locator(`.p-${panel}`).waitFor(); await page.locator(`.p-${panel} .inst-switch`).waitFor({ state: privacyCapture && c.device === "phone" ? "attached" : "visible" });
         await page.evaluate(async () => { await document.fonts.ready; await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
         await page.waitForTimeout(200);
         const geometry = await page.evaluate(() => {

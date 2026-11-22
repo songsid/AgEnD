@@ -23,7 +23,7 @@ const receipt:any={head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree
 const fx=await bootFixture({ roster: publicRoster(6),port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
 try{
  receipt.browserVersion=fx.browser.version();const a=fx.instances[1].name,b=fx.instances[2].name,status=fx.fm.getUiStatus.bind(fx.fm);
- fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Cairn"}:{}),...(it.name===b?{display_name:"AgEnD Leader"}:{})}))};};
+ fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Example alpha"}:{}),...(it.name===b?{display_name:"Example beta"}:{})}))};};
  fx.fm.webPrefs.write("operator",new Map([["theme",theme],["lang",language],["nav.favorites",[a]]]));
  ctx=await fx.browser.newContext({viewport:phone?{width:390,height:844}:{width:1600,height:1000},colorScheme:theme,locale:language,hasTouch:phone});
  await ctx.addInitScript({content:"window.__name = (f) => f;"});

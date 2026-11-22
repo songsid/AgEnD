@@ -34,7 +34,7 @@ try {
   const status = fx.fm.getUiStatus.bind(fx.fm), a = fx.instances[1].name, b = fx.instances[2].name;
   const passage = tr("Compare this passage in the other pane.", "把這段文字放到另一格比較。");
   const colors = ["preset:lime", "preset:orange", "#aaddff", "#ffbb11", "preset:violet", "preset:cyan"];
-  fx.fm.getUiStatus = (...args: any[]) => { const s = status(...args); return { ...s, instances: s.instances.map((it: any, i: number) => ({ ...it, model: "Opus 5.5", effort: "auto", color: { person: colors[i % colors.length] }, color_show: { person: ["name", "bar", "ring"] }, ...(it.name === a ? { display_name: "Cairn" } : {}), ...(it.name === b ? { display_name: "AgEnD Leader", last_reply: new Date(Date.now() - 120000).toISOString() } : {}) })) }; };
+  fx.fm.getUiStatus = (...args: any[]) => { const s = status(...args); return { ...s, instances: s.instances.map((it: any, i: number) => ({ ...it, model: "Opus 5.5", effort: "auto", color: { person: colors[i % colors.length] }, color_show: { person: ["name", "bar", "ring"] }, ...(it.name === a ? { display_name: "Example alpha" } : {}), ...(it.name === b ? { display_name: "Example beta", last_reply: new Date(Date.now() - 120000).toISOString() } : {}) })) }; };
   for (const name of [a, b]) fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: passage, ts: "2026-11-12T06:00:00.000Z" });
   fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", language], ["nav.favorites", [a]]]));
   ctx = await fx.browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: narrow ? 1200 : 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: phone });
@@ -164,7 +164,7 @@ try {
         const pop = page.locator(".quote-pop"); await pop.waitFor();
         const rows = await pop.locator("button").evaluateAll((els: HTMLButtonElement[]) => els.map(el => ({ label: el.textContent, icon: !!el.querySelector("svg"), weight: getComputedStyle(el).fontWeight, color: getComputedStyle(el).color, height: el.getBoundingClientRect().height, whiteSpace: getComputedStyle(el).whiteSpace })));
         if (!retain) {
-          assert.equal(rows.length, 2); assert.equal(rows[1].label, tr("Quote into the other pane (AgEnD Leader)", "引用到另一格（AgEnD Leader）"));
+          assert.equal(rows.length, 2); assert.equal(rows[1].label, tr("Quote into the other pane (Example beta)", "引用到另一格（Example beta）"));
           assert.ok(rows.every(r => r.icon && r.whiteSpace === "nowrap")); assert.equal(rows[0].weight, rows[1].weight); assert.equal(rows[0].color, rows[1].color); assert.equal(rows[0].height, rows[1].height);
         }
         check("selection-quote-rows", rows); await shot("quote-options"); await pop.locator(".quote-other").click();
