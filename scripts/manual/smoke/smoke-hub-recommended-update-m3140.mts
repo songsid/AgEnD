@@ -16,7 +16,7 @@ const CASES = matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phone-
 const r: Record<string, unknown> = {}, fail: string[] = [];
 const check = (name: string, ok: boolean, detail?: unknown) => { r[name] = ok ? "PASS" : { FAIL: detail ?? true }; if (!ok) fail.push(name); };
 const marker = await import(process.env.REPO + "/src/update-marker.ts");
-const fx = await bootFixture({ roster: publicRoster(4), port: 19570, instances: 4, classic: false, host: true } as any);
+const fx = await bootFixture({ roster: publicRoster(4), port: Number(process.env.HP ?? 19570), instances: 4, classic: false, host: true } as any);
 const fm = fx.fm as any;
 fm.runningAgendVersion = () => "2.3.5-beta.2";
 const launches: Array<{ origin: string; pin?: string }> = [];

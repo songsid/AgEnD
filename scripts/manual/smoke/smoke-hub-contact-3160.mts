@@ -4,7 +4,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, matrix, caseName } from "../smoke-fixture/index.mts";
 const out = process.env.OUT!; mkdirSync(out, { recursive: true });
-const fx = await bootFixture({ roster: publicRoster(2), port: 19581, classic: false, instances: 2, host: true });
+const fx = await bootFixture({ roster: publicRoster(2), port: Number(process.env.HP ?? 19581), classic: false, instances: 2, host: true });
 const results: unknown[] = [];
 try {
   for (const c of matrix("desk-light-en,phone-dark-zh-TW")) {
