@@ -47,7 +47,7 @@ const FAKE_VV = `(() => {
     if (panned) t.dispatchEvent(new Event("scroll"));
   };
 })();`;
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49120), instances: 3 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49120), instances: 3 });
 const name = fx.instances[1]!.name;
 const cases = matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW,phone-dark-en,phone-light-zh-TW").filter((c) => c.device === "phone");
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];

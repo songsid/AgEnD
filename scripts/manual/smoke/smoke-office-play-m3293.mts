@@ -14,7 +14,7 @@ import { writeFileSync } from "node:fs";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-office-play-m3293";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49020), instances: 6, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49020), instances: 6, classic: false });
 // The fixture opens no event log (no fleet start): Tell's queue is the real EventLog, in the scratch home.
 if (!fx.fm.eventLog) { const { EventLog } = await import(`${process.env.REPO}/src/event-log.ts`); fx.fm.eventLog = new EventLog(`${fx.dir}/events-m3293.db`); }
 const r: any = { cases: {} };

@@ -12,7 +12,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 import { clearDensity, faces, withFaces } from "../smoke-fixture/faces.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-density-split-m3252";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 6 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 6 });
 const names = fx.instances.map((i: any) => i.name);
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 const READ = () => {

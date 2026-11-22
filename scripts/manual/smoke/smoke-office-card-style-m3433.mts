@@ -20,7 +20,7 @@ const ROSTER = [
   { name: "bot-gamma", displayName: "Gamma", backend: "kiro-cli", model: "claude-sonnet-4-6", team: "Studio", status: "running" as const },
 ];
 
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49042), roster: ROSTER, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49042), roster: ROSTER, classic: false });
 const fm = fx.fm;
 
 const origUiStatus = fm.getUiStatus.bind(fm);

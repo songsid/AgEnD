@@ -12,7 +12,7 @@ const roster = [
   { name: "release-helper", displayName: "Release helper", backend: "claude-code" },
   { name: "report-helper", displayName: "Report helper", backend: "codex" },
 ] as any;
-const fx = await bootFixture({ port: Number(process.env.HP || 19809), roster, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP || 19809), roster, classic: false });
 const person = { platform: "host", adapterId: "host", userId: "operator", label: "Example owner" };
 const pending = { id: "R11111111-2222-4333-8444-555555555555", revision: 1, scope: "peer.dispatch", state: "pending", source: "example-room", target: "release-helper", sourceGeneration: "one", targetGeneration: "two", verb: "request_information",
   // One person: a standing grant ("also allow") is one person's; the server refuses one for any other origin (M-3385).

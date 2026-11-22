@@ -12,7 +12,7 @@
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-hub-switch-names-m3235";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 4, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 4, classic: false });
 (fx.fm as any).saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
 const BASE = {
   en: "Research and Development Hub for the Platform Infrastructure Group in Asia Pacific",

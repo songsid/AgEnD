@@ -9,6 +9,7 @@
  * fresh scratch dir set BEFORE fleet-manager is imported; playwright-core from PW_DIR, Chrome from CHROME; a fresh
  * sign-in code per browser context; tour and first-run overlays skipped.
  */
+import { holdPorts, releasePorts, type PortHold } from "./port-hold.mts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -45,6 +46,12 @@ export interface FixtureOptions {
    * never stop the boot. No retry and no wait: there is nothing to collide with.
    */
   port: number;
+  /**
+   * M-3511: with `port: 0`, the fixed port this smoke used before (its ui-gate HP). The control: the fixture holds it and the
+   * next one (the old preview port) on loopback while it boots and runs — one another listener already has (EADDRINUSE)
+   * counts as occupied, any other error fails the boot — and refuses ports read back onto them. Released by close().
+   */
+  oldPort?: number;
   /** Extra YAML appended under `web:` (indented two spaces), e.g. appearance caps. */
   webYaml?: string;
   /** Use the full ~60-instance fleet (default) or only the first `instances` of it. */
@@ -64,6 +71,8 @@ export interface Fixture {
   /** M-3510: the web (health) listener's actual port, and the preview listener's (read back; differs from 0 when ephemeral). */
   port: number;
   previewPort: number;
+  /** M-3511: the old ports held during the run (`oldPort`), each "held" by this process or "taken" by another listener. */
+  held: Array<{ port: number; state: "held" | "taken" }>;
   instances: FixtureInstance[];
   browser: any;
   /** A signed-in page for one matrix case (fresh context, overlays skipped, host theme pref set). */
@@ -110,6 +119,8 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const PW = process.env.PW_DIR; if (!PW) throw new Error("set PW_DIR=<dir with playwright-core>");
   if (!process.env.FONTCONFIG_FILE) process.env.FONTCONFIG_FILE = "/etc/fonts/fonts.conf";
   const ephemeral = o.port === 0;
+  if (o.oldPort !== undefined && !ephemeral) throw new Error("oldPort is the control for an ephemeral boot (port: 0)");
+  let holds: PortHold[] = [];
   if (!ephemeral) for (const p of [o.port, o.port + 1]) if (!(await portFree(p))) throw new Error(`port ${p} is in use: refusing to boot (the fixture never talks to a listener it did not start)`);
   const dir = mkdtempSync(join(tmpdir(), "smoke-fx-"));
   process.env.AGEND_HOME = dir;
@@ -118,6 +129,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const close = (): Promise<void> => closed ??= (async () => {
     const step = async (what: string, fn: () => unknown) => { try { await fn(); } catch (e) { console.error(`fixture close: ${what}: ${String(e).slice(0, 160)}`); } };
     await step("browser", () => browser?.close());
+    await step("old-port control", () => releasePorts(holds));
     await step("health listener", () => new Promise<void>(r => { const srv = fm?.healthServer; if (!srv) return r(); srv.closeAllConnections?.(); srv.close(() => r()); fm.healthServer = null; }));
     await step("preview listener", () => fm?.stopPreviewListener?.());
     await step("scratch home", () => rmSync(dir, { recursive: true, force: true }));
@@ -129,6 +141,8 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   // A store can still flush after close() (a debounced write recreates the folder): remove the home again at exit.
   process.once("exit", () => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ } });
   try {                                                  // BEFORE fleet-manager is imported
+  // M-3511: the old-port control, inside the boot's try: a failure from here on releases it (close()).
+  if (o.oldPort !== undefined) holds = await holdPorts([o.oldPort, o.oldPort + 1]);
   const instances = (o.roster ?? fixtureInstances()).slice(0, o.instances ?? 60);
   const q = (s: string) => JSON.stringify(s);
   const teams = TEAMS.map(t => ({ t, members: instances.filter(i => i.team === t).map(i => i.name) })).filter(x => x.members.length);
@@ -170,6 +184,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, ephemeral ? 0 : o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${ephemeral ? "(ephemeral)" : o.port + 1}`);
   const previewPort: number = fm.previewListener.server.address().port;
   if (ephemeral && previewPort === port) throw new Error("the fixture's preview listener shares the web listener's port");
+  if (holds.some((h) => h.port === port || h.port === previewPort)) throw new Error(`the fixture came up on an old port it holds (${port}, ${previewPort})`);
   const code = (host: boolean | undefined = o.host) => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(host ? { host: true } : {}) }).display; };
   // PW_ENGINE=webkit runs the same smoke in WebKit (Safari's engine; its system libraries come with the Playwright
   // image, e.g. mcr.microsoft.com/playwright). Default: CHROME if set, else playwright-core's own Chromium
@@ -185,7 +200,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const base = `http://127.0.0.1:${port}`;
   const painter = await browser.newPage();
   return {
-    fm, dir, base, port, previewPort, instances, browser,
+    fm, dir, base, port, previewPort, held: holds.map((h) => ({ port: h.port, state: h.state })), instances, browser,
     async page(c, opts = {}) {
       // Theme and language are host preferences (#1665): set on the host, every page follows them.
       // Every case starts from the same prefs: what a previous case set (a card size, a filter) is cleared first.

@@ -16,7 +16,7 @@ const OUT = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
 mkdirSync(OUT, { recursive: true });
 const CHAT_ID = /-t\d{6,}/;
 const roster = fixtureInstances().filter((i) => ["general", "docs-site-builder"].includes(i.name));
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48443), roster, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 48443), roster, classic: false });
 fx.fm.getActiveUsageProviderIds = () => null;
 const pct = (label: string, used: number) => ({ type: "percent", label, used, windowMs: 168 * 3_600_000 });
 const PROVIDERS = [

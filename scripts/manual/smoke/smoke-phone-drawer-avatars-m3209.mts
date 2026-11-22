@@ -14,7 +14,7 @@ import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-drawer-avatars-m3209";
 const webkit = process.env.PW_ENGINE === "webkit";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 8 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 8 });
 const names = fx.instances.map((i: any) => i.name);
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 // A face per agent: a round coloured picture with two eyes (so a squashed one shows in the pictures).

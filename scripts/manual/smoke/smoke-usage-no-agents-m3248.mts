@@ -13,7 +13,7 @@
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-usage-no-agents-m3248";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 4, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 4, classic: false });
 const H = 3_600_000, soon = (h: number) => new Date(Date.now() + h * H).toISOString();
 const pct = (label: string, key: string, used: number, windowMs: number, resetH: number) =>
   ({ type: "percent", label, labelI18n: { key }, used, windowMs, resetsAt: soon(resetH) });

@@ -12,7 +12,7 @@
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-connect-dialogs-m3238";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 4, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 4, classic: false });
 const names = fx.instances.map((i: any) => i.name);
 const URL_ = "https://auth.openai.com/codex/device", CODE = "K7Q2-9XMB";
 const RUN = { id: "r".repeat(32), backend: "codex", profile: "jefflin", phase: "running", ok: null, startedOn: "Chrome on Linux", startedAt: 1, endedAt: null, mine: true,

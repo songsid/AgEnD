@@ -6,7 +6,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 import { clearDensity } from "../smoke-fixture/faces.mts";
 
 const before = process.env.STAGE === "before", smoke = `smoke-compact-name-m3269-${before ? "before" : "after"}`;
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49120), classic: false, roster: [
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49120), classic: false, roster: [
   { name: "general", displayName: "General", backend: "claude-code", general: true },
   { name: "agent-alpha", displayName: "Atlas", backend: "codex" },
   { name: "agent-beta", displayName: "Beacon", backend: "claude-code" },

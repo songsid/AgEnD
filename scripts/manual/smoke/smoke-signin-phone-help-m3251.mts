@@ -12,7 +12,7 @@
 import { bootFixture, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-signin-phone-help-m3251";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 2, classic: false, host: true });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 2, classic: false, host: true });
 const fm = fx.fm as any;
 const CASES = [
   { name: "chat-light-en", chat: true, theme: "light", lang: "en" },
