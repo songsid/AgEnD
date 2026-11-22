@@ -1,0 +1,1 @@
+- Editing a Fleet setting now preserves unrelated `fleet.yaml` formatting, including multi-line flow mappings, comments and long lines. Scalar changes replace their original value ranges; structural changes keep the guarded YAML fallback.

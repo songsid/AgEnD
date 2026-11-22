@@ -1,0 +1,21 @@
+{
+  "base": "db01bd20529b260fc1e4fd305bd23e53840aa6ba",
+  "originalFormatterReversal": {
+    "failedAssertions": 14,
+    "structuralPositives": 3,
+    "validFixtures": true
+  },
+  "affected": {
+    "files": 8,
+    "passed": 99
+  },
+  "newCases": 17,
+  "testTypesExit": 0,
+  "readers": [
+    "beta.16",
+    "beta.17"
+  ],
+  "beta17Commit": "506acdf29ab9a3937aabceb5d40e90b08e13a826",
+  "liveConfigWrites": false,
+  "releaseFreeze": "beta.18; keep draft until explicit Leader lift"
+}

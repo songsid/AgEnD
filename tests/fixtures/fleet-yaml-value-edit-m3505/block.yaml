@@ -1,0 +1,11 @@
+# Same choices in block style.
+web: {guests: {
+  chat: true,
+  }}
+instances:
+  example: {
+    working_directory: /tmp/example, backend: codex,
+  }
+monitoring:
+  enabled:    false  # monitoring choice
+  agent_footprint: false # footprint choice

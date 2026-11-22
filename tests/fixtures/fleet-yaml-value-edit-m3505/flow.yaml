@@ -1,0 +1,16 @@
+# Synthetic hand-formatted Fleet; every unrelated line must survive.
+web:
+  guests: {
+    chat: true, # keep guest spacing
+  }
+instances: {
+  example: { working_directory: /tmp/example, backend: codex,
+    description: "A deliberately long example description that exceeds eighty columns and stays on its original single line." },
+  helper: {
+    working_directory: /tmp/helper, backend: codex,
+  },
+}
+monitoring: {
+  enabled: false,  # monitoring choice
+  agent_footprint: false, # footprint choice
+}

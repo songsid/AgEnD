@@ -1,16 +1,18 @@
 import { isDeepStrictEqual } from "node:util";
-import { Document, isMap, parseDocument } from "yaml";
+import { Document, isAlias, isMap, isScalar, parseDocument } from "yaml";
 
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => v !== null && typeof v === "object" && !Array.isArray(v)
   && (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null);
-function onlyAdds(before: unknown, after: unknown): boolean {
+const scalar = (value: unknown): boolean => value === null || ["string", "number", "boolean"].includes(typeof value);
+function canSplice(before: unknown, after: unknown): boolean {
   if (isDeepStrictEqual(before, after)) return true;
-  if (Array.isArray(before) && Array.isArray(after)) return before.length === after.length && before.every((v, i) => onlyAdds(v, after[i]));
-  return record(before) && record(after) && Object.keys(before).every(key => Object.hasOwn(after, key) && onlyAdds(before[key], after[key]));
+  if (scalar(before) && scalar(after)) return true;
+  if (Array.isArray(before) && Array.isArray(after)) return before.length === after.length && before.every((v, i) => canSplice(v, after[i]));
+  return record(before) && record(after) && Object.keys(before).every(key => Object.hasOwn(after, key) && canSplice(before[key], after[key]));
 }
 
-/** Add-only saves splice new entries into the source; normal edits retain the guarded AST writer without wrapping. */
+/** Add keys and edit scalar ranges in place. Structural replacements/removals retain the guarded no-wrap AST writer. */
 export function stringifyFleetYaml(document: ReturnType<typeof parseDocument>, source: string): string {
   const fallback = () => document.toString({ lineWidth: 0 });
   try {
@@ -18,21 +20,45 @@ export function stringifyFleetYaml(document: ReturnType<typeof parseDocument>, s
     if (original.errors.length) return fallback();
     const before = original.toJS({ maxAliasCount: -1 }), after = document.toJS({ maxAliasCount: -1 });
     if (isDeepStrictEqual(before, after)) return source;
-    if (!onlyAdds(before, after)) return fallback();
+    if (!canSplice(before, after)) return fallback();
     const eol = source.includes("\r\n") ? "\r\n" : "\n";
     const edits: Array<{ start: number; end: number; text: string }> = [];
     const collect = (oldValue: unknown, newValue: unknown, path: Array<string | number>): void => {
-      if (isDeepStrictEqual(oldValue, newValue)) return;
+      const node = path.length ? original.getIn(path, true) : original.contents;
+      const next = path.length ? document.getIn(path, true) : document.contents;
+      // Detaching an anchored scalar can materialize an unchanged alias too.
+      // Replace that alias token, or the old anchor would change both values.
+      const materializedScalar = isAlias(node) && isScalar(next);
+      if (isDeepStrictEqual(oldValue, newValue) && !materializedScalar) return;
+      if (scalar(oldValue) && scalar(newValue)) {
+        // An alias intentionally left bound follows its anchor's edit; the
+        // final parse/equivalence check still verifies its intended value.
+        if (isAlias(node) && isAlias(next) && node.source === next.source) return;
+        if ((!isScalar(node) && !isAlias(node)) || !isScalar(next) || !node.range) throw Error("No owned scalar range");
+        let text = new Document(newValue).toString({ lineWidth: 0, defaultStringType: "QUOTE_DOUBLE", doubleQuotedAsJSON: true }).replace(/\n$/, "");
+        const [start, end] = node.range;
+        const replaced = source.slice(start, end);
+        if (isScalar(node) && (node.type === "BLOCK_LITERAL" || node.type === "BLOCK_FOLDED")) {
+          // Block headers (including their comment) belong to this value's
+          // range. Quote the replacement on one line and keep that comment.
+          text += replaced.split(/\r?\n/, 1)[0]!.match(/[ \t]+#.*$/)?.[0] ?? "";
+          if (replaced.endsWith("\n")) text += eol;
+        }
+        // A YAML null may have an empty range directly after ':' or before '#'.
+        if (start === end && source[start - 1] === ":") text = " " + text;
+        if (start === end && source[end] === "#") text += " ";
+        edits.push({ start, end, text });
+        return;
+      }
       if (Array.isArray(oldValue) && Array.isArray(newValue)) {
         oldValue.forEach((value, index) => collect(value, newValue[index], [...path, index]));
         return;
       }
       if (!record(oldValue) || !record(newValue)) throw Error("Not a mapping addition");
-      const node = path.length ? original.getIn(path, true) : original.contents;
       if (!isMap(node) || !node.range) throw Error("No owned source mapping");
       const column = node.range[0] - source.lastIndexOf("\n", node.range[0] - 1) - 1;
-      if (node.flow) {
-        const next = path.length ? document.getIn(path, true) : document.contents;
+      const additions = Object.fromEntries(Object.entries(newValue).filter(([key]) => !Object.hasOwn(oldValue, key)));
+      if (node.flow && Object.keys(additions).length) {
         if (!isMap(next)) throw Error("Changed mapping kind");
         const standalone = new Document();
         const copy = next.clone();
@@ -46,7 +72,6 @@ export function stringifyFleetYaml(document: ReturnType<typeof parseDocument>, s
         edits.push({ start: node.range[0], end: node.range[1], text });
         return;
       }
-      const additions = Object.fromEntries(Object.entries(newValue).filter(([key]) => !Object.hasOwn(oldValue, key)));
       if (Object.keys(additions).length) {
         const text = new Document(additions).toString({ lineWidth: 0 }).split("\n").slice(0, -1)
           .map(line => " ".repeat(column) + line).join(eol) + eol;

@@ -1,0 +1,14 @@
+[
+  {
+    "path": "docs/evidence/yaml-value-edit-m3505/README.md",
+    "sha256": "7494dfaa7857efd0e1352e72bc0f698a62ba2e2ec1324f250fbe95a78991ff69"
+  },
+  {
+    "path": "docs/evidence/yaml-value-edit-m3505/controls.json",
+    "sha256": "ce4900f8123ac3ef1521b487b0b280b49e5d55e5f344d0e6177ef6307509f937"
+  },
+  {
+    "path": "docs/evidence/yaml-value-edit-m3505/source-hashes.json",
+    "sha256": "0b7aa0af2c1e16ca461f855a33120d7f2a874b84cc1e9540539a5e913ab79113"
+  }
+]
