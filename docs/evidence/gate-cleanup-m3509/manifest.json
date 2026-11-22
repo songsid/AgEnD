@@ -1,0 +1,22 @@
+[
+  {
+    "path": "docs/evidence/gate-cleanup-m3509/README.md",
+    "sha256": "66650fc51625a3f544910bbeea8fa7baafd8eeea09d048ad397eac431144a489"
+  },
+  {
+    "path": "docs/evidence/gate-cleanup-m3509/contention-summary.json",
+    "sha256": "ec335cf551871e5fdc992339287c3e0866ce3f220cfd0b52cc25e0a03a692dbd"
+  },
+  {
+    "path": "docs/evidence/gate-cleanup-m3509/controls.json",
+    "sha256": "900c5fb96bdb3809cb235afc84e6da7c2827ae2c5980548328c1ad7f757429f3"
+  },
+  {
+    "path": "docs/evidence/gate-cleanup-m3509/source-hashes.json",
+    "sha256": "c2d6293cf5f1546bdd7c30db1926f6cd926881c4d3291373dfbd54398cb60b6f"
+  },
+  {
+    "path": "docs/evidence/gate-cleanup-m3509/dev-integration.json",
+    "sha256": "a3a7737a0174696b38c662ac59391e240b5ccc679a0a0b416136d1ef25983535"
+  }
+]
