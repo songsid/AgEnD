@@ -27,3 +27,7 @@ All 14 selected original screenshots were visually inspected. Main's existing ph
 Run the files in `focused.json`, then both native typechecks. Use an owned detached baseline and `BASELINE=<path> node_modules/.bin/tsx scripts/manual/settings-summary-canonical-3416.mts`. For browser captures set `REPO`, `OUT`, `BASELINE_REF`, isolated `HOME`, short owned `TMPDIR`, `PW_DIR`, `CHROME`, and `FONTCONFIG_FILE`, then run `scripts/manual/settings-summary-browser-3416.mts` with tsx. Capture requires a clean tracked tree and rejects any source change during execution.
 
 Rollback: revert this change; original summary strings and all confirmation/security state retain their existing format. Unknown metadata already falls back safely. Alpha's additional effect summaries are a separate main-first twin.
+
+## Withdrawn legacy images (M-3513, 2026-11-22)
+
+`browser/before-desk-light-en.png` and `browser/before-desk-light-zh-TW.png` were removed because their old roster exposed private labels. A rerun of the original isolated script against current main failed its legacy-versus-current phone control-size comparison, so an equivalent full historical packet could not be reproduced. No partial rerun images are published or claimed as passing evidence. The remaining original images were visually checked and retain their historical scope; earlier receipts describe the historical execution, while this manifest lists only retained artifacts. Functional test/summary records remain available.
