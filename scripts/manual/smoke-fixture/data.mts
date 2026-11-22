@@ -20,7 +20,7 @@ export interface FixtureInstance {
 
 /** Team names: long Latin, long CJK, short, and one mixed with an emoji. */
 export const TEAMS = [
-  "Example Infrastructure Team",
+  "Example Infrastructure and Long Release Engineering Team",
   "示範介面與版面配置團隊",
   "Example QA",
   "示範資料 Example Data",
