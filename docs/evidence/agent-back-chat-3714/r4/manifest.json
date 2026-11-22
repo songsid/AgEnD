@@ -1,32 +1,32 @@
 {
-  "49569e9da52852a8e7df0f89a44d7997fc0fb1cfc96a48817edd9ce5bff1efe8": [
+  "421d30ce69d206c012007632de63c5e4b11401f6c935a75daaf81f88e25e08fd": [
     "README.md"
   ],
-  "b91f612629a8c5c2c3b76b0a80f8c14c842cbb17e9e88da0e1c68f079108c74c": [
+  "49416746da66bb8b98c9fbc72d220b8d112729f0e113b8d9deef4582bd86dcd4": [
     "browser/desktop-dark-zh-TW/dark-zh-TW-returned-chat.png"
   ],
-  "8b226a665635b0b73e33d53bf5f5db3e37c233649c816fed5a84579afe2f6bc0": [
+  "8d106405c7e72303a4d1bb001ed9cb45ce866d0c480ed2dc9d7c2ed7d8e644de": [
     "browser/desktop-dark-zh-TW/dark-zh-TW-settings.png"
   ],
-  "693295880d96426945d45bec2fe498e6230567ef4dcd776fcaaf6e0375899459": [
+  "5f30e17e8b7f51dee7c8997245d3b5b1246672f12f2d19ac0724feb192ba679e": [
     "browser/desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png"
   ],
-  "1dc318488c33096cdc67972adf883cca87f304968d856cae0ddcf52956a3c3dc": [
+  "48c537f6075b2cb32456f2937d3df02acd513c645c1e4a9867c865a22a56a4f2": [
     "browser/desktop-dark-zh-TW/dark-zh-TW-split-settings.png"
   ],
   "546b2aacffd8e0b169719dfa00268974bb5c447536a23af07e0cd4123967cd74": [
     "browser/desktop-dark-zh-TW/receipt.json"
   ],
-  "dd223e205318d34e728717e2683d72d8799b5a5a394d0e28ca65dbf3acaa06c7": [
+  "189f66589e565f144bbdec4d23f3103ceeba53fe25a2850086a2d0bd60b341f7": [
     "browser/desktop-light-zh-TW/light-zh-TW-returned-chat.png"
   ],
-  "c5e8272a1646290cff168d2d798a9c07b56a15591064d901b6481b118876a0fc": [
+  "f5ba58aee1dd0d2f4332acf977da9ee166fcffe8f4dbe46b541865156845aa55": [
     "browser/desktop-light-zh-TW/light-zh-TW-settings.png"
   ],
-  "1a3eed3f7c4519dd0e7a83d59d906dbd7a84eeeac1ac0ef12777b142ede01ac5": [
+  "a950b9c98efcd3bc54af3870b868d3479e665f9942914a2b2ac21e1d30ca32f3": [
     "browser/desktop-light-zh-TW/light-zh-TW-split-returned-chat.png"
   ],
-  "c5c8a6729beeb6183bd660e2c1270b0ff842a227a5c1e5996cd97d230fcc80c9": [
+  "52bac3848dc74bd0547f91c7c62fec8368a144b30a93cbac4b919205265dce38": [
     "browser/desktop-light-zh-TW/light-zh-TW-split-settings.png"
   ],
   "3bcdf63c8386c5771be8a55bd952f50b86233319c4aa425d20690e8a75170f1e": [
@@ -38,7 +38,7 @@
   "a410b7fe6afff798cc40730f056c0ff0429ec51dac6df991b7c3f8b12d645328": [
     "browser/phone-dark-en/dark-en-settings-index.png"
   ],
-  "2dca5dbb99d7d6d0e2be7fb24f6c740f36be3fddd8ba44c302cb3d45049d9ab2": [
+  "84e012c652fd8fcbcfb3c84f9b051f2805f829596ab7a3b2316d0c98e680f541": [
     "browser/phone-dark-en/dark-en-settings.png"
   ],
   "46766dbe5eae465148075c2e82e2857ab76b4c253f2ece99a610c4ce71dad9b8": [
@@ -50,7 +50,7 @@
   "57e4d751bc356800504b7ccfe9a1a5db968fd6926113c74151510ce769e4ed20": [
     "browser/phone-dark-zh-TW/dark-zh-TW-settings-index.png"
   ],
-  "51391e8db03be2a14bd306b5c277661152403cd3bb62fd4ff1e515419884d501": [
+  "31cdafc882bd5303137c2642d00561dd2bcc37c9f912a740a5cecb1bcad8bd58": [
     "browser/phone-dark-zh-TW/dark-zh-TW-settings.png"
   ],
   "ffb3aeee3d604e91e9918f2cc8df806dd5889a3c9bafac4022120aa2b8d53bbe": [
@@ -58,9 +58,6 @@
   ],
   "4fbab04caea2df8ef5ef725b9875f1baa5d75c82e80e8d2ae8a3270fd56159ce": [
     "browser/phone-dark-zh-TW-retained-css/dark-zh-TW-settings-index.png"
-  ],
-  "969be11ee766fac8d96e5c177a0da5d76bebccba45160047bdf3f3a7e9e86137": [
-    "browser/phone-dark-zh-TW-retained-css/dark-zh-TW-settings.png"
   ],
   "0955bb06c287f5a55f794a635f03454ad036860108c078c84df0a9048499b962": [
     "browser/phone-dark-zh-TW-retained-css/receipt.json"
@@ -71,7 +68,7 @@
   "73194e8c73a704588c16c728710319f6becc86a4c9841d5262a3c46969a5255b": [
     "browser/phone-light-en/light-en-settings-index.png"
   ],
-  "1f2bd4c5215f83953392056f5d13a0d70cd6dbec9c89e5f9cae65dcdf4c029dd": [
+  "9b1b7e14ee815977a83eb0977e3b871d8149b380b63d7f4b99f88a3326db0ceb": [
     "browser/phone-light-en/light-en-settings.png"
   ],
   "d6de034bb51061f70e54d6837c94cdea4f5b2bb8364ea28ab94f5977e0aaea3a": [
@@ -83,7 +80,7 @@
   "0e9fa71bc12470b689a57710674bd016f12ba4e0d620ae1f04ea509011b1ce4a": [
     "browser/phone-light-zh-TW/light-zh-TW-settings-index.png"
   ],
-  "f389f93cf088cbf4c051248f2813b5fd140610e576ba7d908b19ec5d862721bc": [
+  "f168db990edfbeda22f60a90260fd168d981b246a22aa3a3efe4445f89c5c5e9": [
     "browser/phone-light-zh-TW/light-zh-TW-settings.png"
   ],
   "3704835f4ee1f54332e8077300299e8c181dcb032793cf56353caaecc14329ae": [

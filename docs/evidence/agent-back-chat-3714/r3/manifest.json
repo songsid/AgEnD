@@ -1,67 +1,63 @@
 {
-  "f834e3f6f8c5a3d9bace3316da7f48156eb2e649ea7d8ae0701b7166734b42da": [
+  "b177c740f1b30312cac3e737bfa39d485c3b8204ec02a86c1ea8d6983950be2d": [
     "README.md"
   ],
-  "43c86f137b5cdb28dd0014f4672f8c1b1dbec6a6ec5ec7eb6f95f8df1971710a": [
+  "81fdc81bb9453f5d4f59a38a2ae0d0e22c5b0084344ec0b69e13348f9b6a3f5d": [
     "browser/after-desktop-dark-en/dark-en-returned-chat.png"
   ],
-  "0019d86936a98e1eff1c22b9c15cdfeb540a93eb93804f199899b780da710aeb": [
+  "0ddef432f765225d2aa242752a8610617b323339e195a55088d7f98e48cc0051": [
     "browser/after-desktop-dark-en/dark-en-settings.png"
   ],
-  "32bf9de524cad8ab26e65673fd5c6a0795d6694bafbf2ff4669f3e40ae365620": [
+  "c12de59ff4c32d0d5c430b7875b753ce9bc8c752a255e4433ba33efa79b10604": [
     "browser/after-desktop-dark-en/dark-en-split-returned-chat.png"
   ],
-  "77eac149038b3b159ad8cafe74ac90102f27831f4075376cba7130c2114713bb": [
+  "cd4813765a9c99ffacfe15f714f6ba32d92ee4b65d64203ed3ad2fd099e1a9a1": [
     "browser/after-desktop-dark-en/dark-en-split-settings.png"
   ],
   "1b3a9dc60b08a1519c374a4965abde5a81b7c76123f0f4e39546b3313c3805c1": [
     "browser/after-desktop-dark-en/receipt.json"
   ],
-  "119c03faff284eaca7acaac3c255e4a2c0bd1b4ea1748520d74910855b7dc586": [
+  "49416746da66bb8b98c9fbc72d220b8d112729f0e113b8d9deef4582bd86dcd4": [
     "browser/after-desktop-dark-zh-TW/dark-zh-TW-returned-chat.png"
   ],
-  "3c6d1edddbd831a378dc9b801f97f676a0b8cbc916d7921bffd9e2ad32280af4": [
+  "8d106405c7e72303a4d1bb001ed9cb45ce866d0c480ed2dc9d7c2ed7d8e644de": [
     "browser/after-desktop-dark-zh-TW/dark-zh-TW-settings.png"
   ],
-  "2486ed0f559cda36e1418a5539a937f77b1b880ec2681bced518ab9ba51459f6": [
+  "5f30e17e8b7f51dee7c8997245d3b5b1246672f12f2d19ac0724feb192ba679e": [
     "browser/after-desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png"
   ],
-  "c48e3068c0272ef41e9b6c9e10ec120979483cd59044c599e20ea5527c33cc64": [
+  "48c537f6075b2cb32456f2937d3df02acd513c645c1e4a9867c865a22a56a4f2": [
     "browser/after-desktop-dark-zh-TW/dark-zh-TW-split-settings.png"
   ],
   "d784e2b03c2fbfd358605e57e1dee973852a16d5da2d8a2388ddf70624fc3972": [
     "browser/after-desktop-dark-zh-TW/receipt.json"
   ],
-  "a07c63c02377817374c139d25eb5aa1d9a99f47156f4804f66720b0100485d98": [
+  "259e757215779aca2311ed362a1549ce0327697b807ddd197d676a42e5562ba9": [
     "browser/after-desktop-light-en/light-en-returned-chat.png"
   ],
-  "c8cd4a00b4e3a470f5b7871665fe573fce810ce93db92b8a593d447ce85c8fb1": [
+  "1c792621053b8446599a31d854b157bc7b48931bc6d59e62fa75912391a8bda7": [
     "browser/after-desktop-light-en/light-en-settings.png"
   ],
-  "7f07f8318f26a02257d9dd394184301f14d30ced9a9600afe38b177edad4baab": [
+  "749ea1fa6a1fd7301e41a0565924976c41a8a9aaa6964738ed8052c4db512e35": [
     "browser/after-desktop-light-en/light-en-split-returned-chat.png"
   ],
-  "436c313a3b861ffd1d2797595017c7364061627903515c241f5f5ff1c08bc244": [
+  "6e27db86cf125c889a2263efd86e9670e2bfdacb48aee0daa773145f1a0cf904": [
     "browser/after-desktop-light-en/light-en-split-settings.png"
   ],
   "090ebabeaf27d97b2c680209378f8a2e0e8c67dd392dc37721b6027b9e73b901": [
     "browser/after-desktop-light-en/receipt.json"
   ],
-  "e99dbe5103b0e7dce07d0b1b3d69a22893f1a71f10d57f3fb9b1c3c04bfcb68e": [
+  "189f66589e565f144bbdec4d23f3103ceeba53fe25a2850086a2d0bd60b341f7": [
     "browser/after-desktop-light-zh-TW/light-zh-TW-returned-chat.png"
   ],
-  "821fa29d59893a3a697f1af28e06bffd6fb3834e2f02e1fe39e572e5ccafb80b": [
-    "browser/after-desktop-light-zh-TW/light-zh-TW-settings.png",
-    "browser/skew-workspace/light-zh-TW-settings.png"
+  "f5ba58aee1dd0d2f4332acf977da9ee166fcffe8f4dbe46b541865156845aa55": [
+    "browser/after-desktop-light-zh-TW/light-zh-TW-settings.png"
   ],
-  "e3e5aadb38dc28c9b0d152a82dba5710e489844c426b5f8b4c35b99864938157": [
-    "browser/after-desktop-light-zh-TW/light-zh-TW-split-returned-chat.png",
-    "browser/skew-css-desktop/light-zh-TW-split-returned-chat.png",
-    "browser/skew-workspace/light-zh-TW-split-returned-chat.png"
+  "a950b9c98efcd3bc54af3870b868d3479e665f9942914a2b2ac21e1d30ca32f3": [
+    "browser/after-desktop-light-zh-TW/light-zh-TW-split-returned-chat.png"
   ],
-  "549a5bd4a942c4d2eb1dd3b7021d8283e11e84383ef39da50393db7076bc8af0": [
-    "browser/after-desktop-light-zh-TW/light-zh-TW-split-settings.png",
-    "browser/skew-workspace/light-zh-TW-split-settings.png"
+  "52bac3848dc74bd0547f91c7c62fec8368a144b30a93cbac4b919205265dce38": [
+    "browser/after-desktop-light-zh-TW/light-zh-TW-split-settings.png"
   ],
   "33df04411438a10dac0db895defc0422736222048de7a1f5353f0b16ba7b245f": [
     "browser/after-desktop-light-zh-TW/receipt.json"
@@ -72,7 +68,7 @@
   "ad44635bf23c6b590bc35230939f0f0fb3097c67e5ee018f92af659d82883f3b": [
     "browser/after-phone-dark-en/dark-en-settings-index.png"
   ],
-  "d2a86cdb7d4422f2f53adb9b24af3148983caf21ad27cbe44dcfc8e9809a8d3a": [
+  "84e012c652fd8fcbcfb3c84f9b051f2805f829596ab7a3b2316d0c98e680f541": [
     "browser/after-phone-dark-en/dark-en-settings.png"
   ],
   "f379e6b8e47251148d2e07b8d5986fa4fcb1b297165c40657fa57f0e0ff34f45": [
@@ -84,7 +80,7 @@
   "3cdf7d3d954b2ea19960a62af3a7e9ab372f696ed53aa91b824706103c2a63e1": [
     "browser/after-phone-dark-zh-TW/dark-zh-TW-settings-index.png"
   ],
-  "4535f4cef81054ef02c8c8ca0080346218538453c58087f94e8765f4b69020be": [
+  "31cdafc882bd5303137c2642d00561dd2bcc37c9f912a740a5cecb1bcad8bd58": [
     "browser/after-phone-dark-zh-TW/dark-zh-TW-settings.png"
   ],
   "e8851581d35e01b128d23e628701466c3eadebc03e92c2cb2a403750aefc7f16": [
@@ -96,7 +92,7 @@
   "ddf5cc00ee7dfe96ca00fa033c1d1c2f170ae65c3a38f191879ee25366bc9068": [
     "browser/after-phone-light-en/light-en-settings-index.png"
   ],
-  "34246e6c7c838a1818faa062849989b444029481cddb9caa2e44630eb61c8799": [
+  "9b1b7e14ee815977a83eb0977e3b871d8149b380b63d7f4b99f88a3326db0ceb": [
     "browser/after-phone-light-en/light-en-settings.png"
   ],
   "9e7a1455790ce712598a193816aa40c74a2699ca1e0e26d094836209ba2a4304": [
@@ -108,23 +104,14 @@
   "3c31c91379c7340310823f4361c61cdb41d025bf6e56fdff50f5f0e60a8e28da": [
     "browser/after-phone-light-zh-TW/light-zh-TW-settings-index.png"
   ],
-  "6b0d63a785d01c493484065463cf58e9e6a5f39f6f1fe751fd297a2aa7d08e98": [
+  "f168db990edfbeda22f60a90260fd168d981b246a22aa3a3efe4445f89c5c5e9": [
     "browser/after-phone-light-zh-TW/light-zh-TW-settings.png"
   ],
   "7fcc1573f9ac56887db09353eb5cb0fdc83f250c4b639119a50e8fb8081ed1b2": [
     "browser/after-phone-light-zh-TW/receipt.json"
   ],
-  "33211ae2f97467ca5184577d76f0486abceb8970d5da17e84b58f9122a8c0009": [
-    "browser/skew-categories-phone/light-zh-TW-settings.png"
-  ],
   "2741b320607366ccfedf0b49a23bbfaa50c91c1f3a5fa469f56c9ed249c1ded8": [
     "browser/skew-categories-phone/receipt.json"
-  ],
-  "4bd2c3566d368f6682b5972ec26df0f70d153549c3c296e5b2d929899e50e948": [
-    "browser/skew-css-desktop/light-zh-TW-settings.png"
-  ],
-  "1be93db6f7e5adf0c6035b6a6d1af9fc2a993f9c215351301ed4fca3a865978b": [
-    "browser/skew-css-desktop/light-zh-TW-split-settings.png"
   ],
   "f067cca94f5afe1c68c3b34476c0ec8be6297819f5b5dfd04c818b8236a9a3fa": [
     "browser/skew-css-desktop/receipt.json"
@@ -132,20 +119,8 @@
   "78ea572305c6a0286c01b262df2279c59cddcf7776f0c42137c63c8b8d566068": [
     "browser/skew-css-phone/light-zh-TW-settings-index.png"
   ],
-  "2f13c520766315bbb1ef90871e548ec056c8e80425deb80a78bda045b1017cdf": [
-    "browser/skew-css-phone/light-zh-TW-settings.png"
-  ],
   "177b33c53ea3c66508c6165bd465dd172890ce6db63e7a0fcbfb68b6d02b5f65": [
     "browser/skew-css-phone/receipt.json"
-  ],
-  "ee05c74419d4335e56f84e64c14b70d56d399f1e4a15bb7a0fb7450f40cdd70b": [
-    "browser/skew-details/light-zh-TW-settings.png"
-  ],
-  "a8c82ab40fe8d7ca9f63ac6612e2d17d8388e4d2318511ab72b514a60fbc6cac": [
-    "browser/skew-details/light-zh-TW-split-returned-chat.png"
-  ],
-  "5bd3a2310fab5843cb0f77a1092e83db61a965d86a00f120176d248495ea7004": [
-    "browser/skew-details/light-zh-TW-split-settings.png"
   ],
   "e5a6ac70b13c3bf11217975c7d28f4433c88d0bca1e1ff654add78ba9c84266e": [
     "browser/skew-details/receipt.json"

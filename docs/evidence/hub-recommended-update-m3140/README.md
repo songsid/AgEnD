@@ -1,0 +1,3 @@
+# hub-recommended-update-m3140
+
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 8 affected paths recaptured, 0 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. All28 checks passed; updater launch is an owned recording stub. Visible temporary directory/version is fixture-only. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.

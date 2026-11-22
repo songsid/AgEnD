@@ -1,0 +1,18 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation."
+  ],
+  "harness": "scripts/manual/smoke/smoke-hub-contact-3160.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-contact-3160/desk-light-en.png",
+      "blob": "0de60e6f607cd3531ea5cf203022d66f80a688b7",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "a3f4441b744073004675242db5c0b5d55d15031d149bf30bb20ab2af1767e195",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "known_blobs": 542,
+  "base": {
+    "ref": "f421ce81a08aeab9eb30c27f72b19c4f117b8f44",
+    "checked_png_paths": 3035,
+    "remaining_affected_paths": 731,
+    "exit": 1
+  },
+  "current": {
+    "checked_png_paths": 2823,
+    "remaining_affected_paths": 0,
+    "exit": 0
+  },
+  "reproduce": "python3 scripts/manual/check-evidence-privacy-m3513.py --known docs/evidence/screenshot-hygiene-dev-m3513/known-affected-blobs.json [--ref f421ce81a08aeab9eb30c27f72b19c4f117b8f44]",
+  "limits": "Known original-image duplicate guard only; all original and every changed present image also underwent separate native-resolution visual inspection."
+}

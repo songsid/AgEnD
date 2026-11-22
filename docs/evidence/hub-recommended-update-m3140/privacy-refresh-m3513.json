@@ -1,0 +1,75 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation.",
+    "All28 checks passed; updater launch is an owned recording stub. Visible temporary directory/version is fixture-only."
+  ],
+  "harness": "scripts/manual/smoke/smoke-hub-recommended-update-m3140.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-1-hub-line.png",
+      "blob": "2dcb39740d495b7c3fc1bedf144ba3b45d90cd08",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "e411d9c0d0d21cf4ab09f4e61cc557ad955aa50ca43c31dc1efb651968dd9270",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-2-confirm.png",
+      "blob": "9072435530fa8008217d90140491d0232310e1e6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "2ba1ec17c844371b21702e884e16f588ab10aabbbdcea9e6eabb1d4c2d64ea9f",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-3-started.png",
+      "blob": "0cb15ddb76b6094a8068d1ccdeb4c51e1f755593",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "86a2409f4e4e9278dac5722178fa963cacdd852b9ee78076626d32d543ae842f",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-4-settings.png",
+      "blob": "04fae3e1a74c6029f393fc84524f08bd347c3408",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "4b5d8e5101f492e52e3816428c48a5c9aed4db31411731380792b57dfef67acc",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-1-hub-line.png",
+      "blob": "c682a665437dbc196ac4c52f0bdb75a7c854b824",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "b4f97abf606a083712009c106898a2b6bfcf9b6f6a961acf71a2c14f4f3ce603",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-2-confirm.png",
+      "blob": "7e6fc549ad8563651668780341a0199e23376da6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "c1380813a43855842921031b81402b8d68ff7d99eb4abd48974f9e7a8f085d61",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-3-started.png",
+      "blob": "1fb64a40eda75a459542e308110aa2dfe3c43c50",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9a5a252dcec6481ed5c54f8a6c2b13fd8f35bea4d83697fb32f478e691f9886f",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-4-settings.png",
+      "blob": "dbc44c87ffdaf5ef3ec9f4043fe7088994564f8d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "ff520de8d72f70d383f5839fcecec7259ee58a1a60cd68397e5bde6047957b88",
+      "capture_head": "fc582b2eab7c762ca4726cb54a18014201910777"
+    }
+  ]
+}

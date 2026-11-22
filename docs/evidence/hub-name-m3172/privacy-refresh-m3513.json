@@ -1,0 +1,59 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation.",
+    "Baseline/candidate denote synthetic DTO phases on the current UI, as in the original test; they are not historical asset replay. Consent/updater apply is stubbed to throw."
+  ],
+  "harness": "scripts/manual/smoke/smoke-hub-name-m3172.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-confirm.png",
+      "blob": "87cbebaa81839418bac809dfeb65d4244e7f4c9c",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "c7f4eb737ee6a5916dae4194a3af32826159f2393d6ff6dc4f7dfb47e1ef2bdf",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-consent.png",
+      "blob": "618bfc3c138bf32d675b9118147231735e4f10b3",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "d631fb367e736b07224ab57116661556dfcb56fe63475ffe0663ec90b12f9981",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-notice-banner.png",
+      "blob": "4c55d9eefc43cfa1633bf78bed533172d8118e0f",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8f8a939db16e70c50592595a1252a48ca039b6d133744a6b8f0d6525267369b9",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-confirm.png",
+      "blob": "0d4a4f1728dea5024e6ddc6e91b36aeb3aadd188",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "7a5af95b8e2cfe81a0d4eb086cbadba63b80d12c95595366dd4169716ae34609",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-consent.png",
+      "blob": "0c2dd7687a586a4d5d172eb137b7db6a4abbd959",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "5651c7cc6af6051acaedee4c75ca434ea7672b0c36ff16301666f3793d776ebd",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-notice-banner.png",
+      "blob": "2effba471efee75771d7817f8ace8fdc7b5ee725",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "3592d2f1bbad220546622ae3d4dfa897b4ea2f9b91764d62ba1836f53b10837d",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    }
+  ]
+}

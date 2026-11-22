@@ -1,0 +1,60 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation.",
+    "Two historical before images are cropped to the original Usage dialog [0,348,390,844]. They retain original one-line overlap, omit private background and are not full-phone/current-renderer evidence.",
+    "Current four-case usage capture passed with injected synthetic usage; no real provider meter called."
+  ],
+  "harness": "scripts/manual/smoke/smoke-usage-marks-fit-m3288.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/usage-marks-fit-m3288/images/after-phone-dark-zh-TW-window-2-one-line.png",
+      "blob": "401d7d8297fbf50de7245e2affcdb235cf246372",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "bb737eed76af84d9662065df41f8648a4eb02cbcf498fe556e786171595d84b3",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/usage-marks-fit-m3288/images/after-phone-light-en-window-2-one-line.png",
+      "blob": "7343ad29cbb50f3b56ad1710bf8639af87d172d0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "13dafb9b483391af9ca99c8fd94f3d6faea6deb70a423b54fda77c6e76b2961c",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/usage-marks-fit-m3288/images/before-phone-dark-zh-TW-window-2-one-line.png",
+      "blob": "04dc7c79c4087690eac735ff3d27c831bb191133",
+      "action": "cropped-historical-dialog-detail",
+      "replacement_sha256": "7b4cb8765ef9bfdd542baf2ff9c644b063c4df6e87e0fe1e48e263245e48f8fd",
+      "capture_head": null,
+      "crop_ltrb_exclusive": [
+        0,
+        348,
+        390,
+        844
+      ],
+      "historical_source_sha256": "544b9d52c3cdbe1bcb8c2f7be64ffc2abb4041b642b3b209ed1a9e02375c61fb",
+      "limit": "Historical dialog detail only, not full viewport or current rerender; original Usage overlap remains visible."
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/usage-marks-fit-m3288/images/before-phone-light-en-window-2-one-line.png",
+      "blob": "b8eb023cc84de4bfb68f20af2a4e2b17c0550c67",
+      "action": "cropped-historical-dialog-detail",
+      "replacement_sha256": "da7b5a45efa4151b26f965643aabea48701c1bf910897f1004fadfa125187751",
+      "capture_head": null,
+      "crop_ltrb_exclusive": [
+        0,
+        348,
+        390,
+        844
+      ],
+      "historical_source_sha256": "a2ad161a3f150432525971d34d25a1487be5fe495bbbc4cf317bc554421800d4",
+      "limit": "Historical dialog detail only, not full viewport or current rerender; original Usage overlap remains visible."
+    }
+  ]
+}
