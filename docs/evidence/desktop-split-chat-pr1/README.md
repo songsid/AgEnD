@@ -1,5 +1,7 @@
 # Desktop split chat, PR1: ownership
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** Current/r1-current images were refreshed from today's isolated app using explicit example identities; all20 current snapshots were visually checked. Privacy-affected full-baseline/retained-control images were withdrawn. A pinned retained-shell replay failed its required module-substitution check (`/assets/app-ctx.js` was not exercised), so no new historical parity claim is made. Older source/test receipts below describe the historical runs, not the replacement PNG provenance. Current phone uses its metadata status line and hidden tabs; the default historical assertions remain unchanged. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every affected path and replacement/withdrawal. No live provider, CLI, pane or Fleet was used.
+
 Original R0 source/capture head: `5bf0bbb174ca409a36f1f9060a5be4a6c7ebe007`.
 Control: alpha `996e3e201e39d70e0d892c8420a169d9eb4e1eb6`.
 Approved design: `docs/design/desktop-split-chat.md`, copied unchanged from `d6735f99`.
