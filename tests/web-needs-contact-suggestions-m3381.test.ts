@@ -5,6 +5,8 @@
  * (the page's count, the sidebar's and the tab's: needsCount). The real Needs you panel, en and zh-TW.
  */
 import { afterEach, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 
 const pages: AppPage[] = [];
@@ -35,4 +37,14 @@ it.each([["en", "3 existing ClassicBot room(s) can switch to restricted mode", "
     expect(p.root.textContent).toContain(count);
     expect(shell.needsCount({ needs: NEEDS, proposals: [] }), "the sidebar's and the tab's count").toBe(2);
   } finally { i18n.setLang("en", { store: false }); }
+});
+
+it("M-3503 (#4318 review): the group's <summary> is a control — Needs you's heading rhythm leaves its padding, and a phone gives it the tap height", () => {
+  const css = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
+  // The rhythm (no top padding) is for plain headings only; the summary also carries .n-group-head.
+  expect(css).toMatch(/\.p-needs :is\(h2\.n-group-head, \.n-settings-head\) \{ padding: 0 0 var\(--s-2\); \}/);
+  expect(css).not.toMatch(/\.p-needs :is\(\.n-group-head, \.n-settings-head\)/);
+  // Inside the shared phone query: the summary is at least a touch target tall.
+  const phone = /@media \(max-width: 899px\), \(pointer: coarse\) and \(max-height: 500px\) and \(max-width: 1023px\) \{\n  \.p-needs > \.panel-body > \.col \{[^}]*\}\n  \.p-needs \.n-suggestions > summary \{ min-height: var\(--tap\); \}\n\}/;
+  expect(css).toMatch(phone);
 });

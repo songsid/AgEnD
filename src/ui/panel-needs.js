@@ -44,7 +44,7 @@ register("needs", {
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
     ageNow: "just now", ageMin: "{0} min ago", ageHour: "{0} h ago", ageDay: "{0} d ago",
-    notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
+    notifySection: "This device", notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
     notifyDenied: "This browser blocked notifications for AgEnD. Allow them in the site settings to turn this on.",
     notifyMobile: "On a phone, rely on your chat app's notification: a new item is a new post in General.", notifyMobileWeb: "On a phone, open this page to see what needs you.",
@@ -69,7 +69,7 @@ register("needs", {
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     ageNow: "剛剛", ageMin: "{0} 分鐘前", ageHour: "{0} 小時前", ageDay: "{0} 天前",
-    notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
+    notifySection: "這台裝置", notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
     notifyDenied: "這個瀏覽器封鎖了 AgEnD 的通知。請在網站設定中允許後再開啟。",
     notifyMobile: "在手機上請以聊天 app 的通知為主：每個新項目都會在 General 發一則新訊息。", notifyMobileWeb: "在手機上請打開這個頁面查看等你處理的事。",
@@ -407,9 +407,18 @@ function NotifyToggle() {
   const { connections } = useStore(appStore);
   const note = support === "mobile" ? tn(connections > 0 ? "notifyMobile" : "notifyMobileWeb") : support === "insecure" ? tn("notifyInsecure")
     : support !== "ok" ? tn("notifyUnsupported") : state === "denied" ? tn("notifyDenied") : on ? tn("notifyOn") : tn("notifyOff");
-  return html`<section class="card n-notify"><h3>${tn("notifyTitle")}</h3>
-    <p class="note">${note}</p>
-    ${support === "ok" ? html`<div><button type="button" class=${`btn btn-sm${on ? "" : " btn-primary"}`} aria-pressed=${on ? "true" : "false"} disabled=${asking} onClick=${toggle}>
-      <${Icon} name="bell" size=${14} />${on ? tn("turnOff") : tn("turnOn")}</button></div>` : null}
+  // M-3503 (the user): a setting of this device, not an item waiting — its own section under the list (a rule above it,
+  // its own heading), drawn as an item row (icon, then the words and the button) so every card's text and buttons share
+  // one edge. Its own class names (styled with the items' in app.css): nothing that counts the items counts it.
+  return html`<section class="n-settings" aria-labelledby="n-settings-head"><h2 class="n-settings-head" id="n-settings-head">${tn("notifySection")}</h2>
+    <article class="n-notify">
+      <span class="n-notify-icon"><${Icon} name="bell" size=${18} /></span>
+      <div class="n-notify-body">
+        <div class="n-notify-title"><strong>${tn("notifyTitle")}</strong></div>
+        <p class="n-notify-note note">${note}</p>
+        ${support === "ok" ? html`<div class="n-notify-actions"><button type="button" class=${`btn btn-sm${on ? "" : " btn-primary"}`} aria-pressed=${on ? "true" : "false"} disabled=${asking} onClick=${toggle}>
+          <${Icon} name="bell" size=${14} />${on ? tn("turnOff") : tn("turnOn")}</button></div>` : null}
+      </div>
+    </article>
   </section>`;
 }
