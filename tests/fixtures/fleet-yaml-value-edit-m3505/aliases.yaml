@@ -1,0 +1,11 @@
+# Unrelated anchors and their aliases stay exactly as written.
+web: {guests: {
+  chat: true,
+  }}
+defaults:
+  description: &description "A deliberately long example description that exceeds eighty columns and stays on its original single line."
+instances:
+  example: { working_directory: /tmp/example, backend: codex, description: *description }
+monitoring:
+  enabled: &off false # monitoring choice
+  agent_footprint: *off # footprint choice
