@@ -26,6 +26,7 @@ function reading(pane: string) {
     stable: backend.isStableUnknownLayoutIdlePane(pane),
     resume: backend.getInputUnavailableTransients().some(d => d.isActive(pane)),
     runtime: dialogs(backend.getRuntimeDialogs()), startup: dialogs(backend.getStartupDialogs()),
+    errors: [...new Set(backend.getErrorPatterns().filter(p => { p.pattern.lastIndex = 0; return p.pattern.test(pane); }).map(p => p.type))].sort(),
   };
 }
 const surfaces = ["idle", "turn-idle", "busy", "near-suppressed", "usage", "ws-credits", "ws-credits-dismissed", "ws-spend", "ws-spend-dismissed",
@@ -67,6 +68,18 @@ describe("Codex 0.169 versus 0.170: captured mock-provider surfaces", () => {
       expect(reading(frame(v, "idle"))).toMatchObject({ ready: true, busy: false, deliverable: true, redraw: true, resume: false });
       expect(reading(frame(v, "busy")).busy).toBe(true);
       expect(reading(frame(v, "resume-loading"))).toMatchObject({ ready: false, deliverable: false, resume: true });
+    }
+  });
+
+  it("classifies the captured error frames by AgEnD error type", () => {
+    // The scenarios share one session, so a later frame keeps earlier errors in its scrollback (usage's quota line is
+    // still visible at e401). Each error frame must add its own type on top of what came before.
+    for (const v of versions) {
+      expect(reading(frame(v, "idle")).errors).toEqual([]);
+      expect(reading(frame(v, "busy")).errors).toEqual([]);
+      expect(reading(frame(v, "usage")).errors).toEqual(["quota"]);
+      expect(reading(frame(v, "e401")).errors).toEqual(["auth_error", "quota"]);
+      expect(reading(frame(v, "model-not-found")).errors).toEqual(["auth_error", "model_error", "quota"]);
     }
   });
 
