@@ -18,6 +18,8 @@ const { settingsChangeDiff } = await import(join(repo, "src/settings-change.ts")
 const { SettingsConfirmationStore } = await import(join(repo, "src/settings-confirmation.ts"));
 const { setLocale } = await import(join(repo, "src/locale.ts"));
 const stores: any[] = [], results: any[] = []; let effects = 0;
+// Privacy refresh: recapture current rendering only; keep historical comparison as the default.
+const currentOnly = process.env.M3513_CURRENT_ONLY === "1";
 const keys = ["src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css"];
 const baselineAssets = Object.fromEntries(keys.map(p => [p, execFileSync("git", ["show", `${baseline}:${p}`], { cwd: repo, encoding: "utf8" })]));
 const oldPath: Record<string, string> = { "/assets/app-shell.js": keys[0], "/ui/js/settings-confirm.js": keys[1], "/assets/app-i18n.js": keys[2], "/assets/app.css": keys[3] };
@@ -27,7 +29,7 @@ try {
     ...matrix("desk-light-en,desk-light-zh-TW,phone-dark-en,phone-dark-zh-TW").map(c => ({ ...c, variant: "before" })),
     ...["old-shell", "old-server", "old-i18n", "old-confirm"].map(variant => ({ device: "phone" as const, theme: "light" as const, lang: "zh-TW" as const, variant })),
   ];
-  for (const c of cases) {
+  for (const c of cases.filter(c => !currentOnly || c.variant === "after")) {
     setLocale(c.lang === "en" ? "zh-TW" : "en");
     const instances = Object.fromEntries(["first", "second", "third"].map(n => [n, {}]));
     const diff = settingsChangeDiff({ defaults: { cross_instance_visibility: "hidden" }, instances, api_key: "dummy-old" },
@@ -73,13 +75,13 @@ try {
     await ctx.close(); store.close();
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
-for (const language of ["en", "zh-TW"]) {
+for (const language of currentOnly ? [] : ["en", "zh-TW"]) {
   const previous = results.find(r => r.name === `before-phone-dark-${language}`), candidate = results.find(r => r.name === `after-phone-dark-${language}`);
   if (JSON.stringify(previous.layout.tap) !== JSON.stringify(candidate.layout.tap)) throw Error("existing phone control dimensions changed");
 }
 if (effects !== 0 || git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("capture boundary changed");
 for (const p of inputs) if (sources[p] !== digest(readFileSync(join(repo, p)))) throw Error("source changed: " + p);
-writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources, browser: fx.browser.version(), effects, cases: results,
+writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, currentOnly, sources, browser: fx.browser.version(), effects, cases: results,
   scope: "Display fixtures from real diff + confirmation store; real cookie sign-in/app.html/Settings shell/Preact/styles, recorded pending reads. No write, authority/effect or chat delivery E2E. Baseline exact assets substituted only as listed. No live account, fleet, CLI or native runtime." }, null, 2) + "\n");
 console.log(JSON.stringify({ cases: results.length, screenshots: results.length + 2, effects, cleanup: "browser/listeners/store/scratch home closed" }));
 process.exit(0);

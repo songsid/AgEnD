@@ -1,0 +1,242 @@
+{
+  "complete": true,
+  "files": [
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-en-card.png",
+      "sha256": "17abb50da9833a0488d6f8f50e25a0303816e81e0c39f282d1271eeb92a7f7c3"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-en-details.png",
+      "sha256": "7daf0440258e4faaf789ecc9d6f68ef59088610b5dcbd17b6a8556afee9e3624"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-en-log.png",
+      "sha256": "e865a6a733ae5226d89adb821469687029d5fc12782c1c59bf12a51ddbe4aeae"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-en-needs.png",
+      "sha256": "dd8b1a651b5fcc7106ac76e66d70f37a39d20c7e5dff2b9d48e1ca63f2cd9de6"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-en-office-card.png",
+      "sha256": "63ce9d3c075d3c45dd594fca0c2a59eb115167b297f6076552cd7b79ceaa57ce"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-zh-TW-card.png",
+      "sha256": "ba546e882c4129741e289684b7ccfcd90bd36138adfe28fd02b72534c8f723d9"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-zh-TW-details.png",
+      "sha256": "5273d26fbb0568685af3888186b82089c26af94d21b15c6f9fb02d7d7dd1d84c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-zh-TW-log.png",
+      "sha256": "f0114505657fbfcddb4493b5a722810971ba8b5380f0007dcb3736ef63d6b057"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-zh-TW-needs.png",
+      "sha256": "76467d4614c4a4f7756a89f93961037a25dab528d662af9b4b5703971433781e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-dark-zh-TW-office-card.png",
+      "sha256": "b86d6f39c4d57e7f5f47067ffbe17f369a71bc99f5641855e8fbf7d39ca36ebd"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-en-card.png",
+      "sha256": "bea31e9c858e219d7d937fccf5a3386294180a7f3c445afde64081d39580c67a"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-en-details.png",
+      "sha256": "cf2aeecab4424026481fc3afe7e8633420fb780a7f36134399d05e9516b3a68e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-en-log.png",
+      "sha256": "4ed3d3d8766722d52e00660e766430caa03294949ee4f60b2301c9c409ee0ba4"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-en-needs.png",
+      "sha256": "154cba996be97d08cd6e00bb6a4b5d8a602172989ac2f7bffcba18cf4e363f22"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-en-office-card.png",
+      "sha256": "87c63f45737c455c2a0bd99462542be95d8618b3ebcf80e02153882f39c4d126"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-zh-TW-card.png",
+      "sha256": "7ebc2055b92325179b550951956e25158dc736f18950fb79f280a327154c4cd1"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-zh-TW-details.png",
+      "sha256": "15189e119f91f5533d85aaf632ffaa19d2791b90ccd0293d03ee7958a09ce7f5"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-zh-TW-log.png",
+      "sha256": "5b0f38e30c7006979f34bf1f1313110dfa7189e79666b8eda32284f63eda3495"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-zh-TW-needs.png",
+      "sha256": "d7c7d48ff035eefc0e80efdcfcf695df97157a9442a225e1eeb80b47eb0a708f"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-desk-light-zh-TW-office-card.png",
+      "sha256": "d7f468c2b4980f63dc78d4f356932a118d28a3ada41792d049b5559cb579340c"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-en-details.png",
+      "sha256": "196239d2da70343e0181f02341619b98208e9b9837adc24e73932fa8c1d9a1b4"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-en-log.png",
+      "sha256": "93734743c889df062ed913efb2c35753ef94d98ab5388ee23575cffd85b448a4"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-en-needs.png",
+      "sha256": "6b99dff329dcf8742e747a1093812df2e023384522b4e9f75e8e4abdcc873ffe"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-en-office-card.png",
+      "sha256": "b187cba0a3d042f5eb7e9e40b263b15f1100d8736a04627d42e6e213fb4a5c16"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-zh-TW-details.png",
+      "sha256": "70a6fdbfcf5530ebf1a773209efc7d14862da3dd8d894c04ff3871d780451faf"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-zh-TW-log.png",
+      "sha256": "15a5f89270e2b2d74455f97e8d84d4d6f6b6fd2568659bbd62b44caad1df04b8"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-zh-TW-needs.png",
+      "sha256": "57a0649beed6030bbc700cd3940378a6e682b61f20207c2268be7c2d311a7ab3"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-dark-zh-TW-office-card.png",
+      "sha256": "72cbcda01fc99d5e94d2dfdedc5713ef969ae11596b8353ad1eb19a67f973507"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-en-details.png",
+      "sha256": "3abfb419cdd592695bd1bbba2379ac5c3a496c1b40d079d28cc67362db32bcf5"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-en-log.png",
+      "sha256": "30ab64c608b02ec21838577526712363c3a156b35647541ea8c3096acbee4b12"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-en-needs.png",
+      "sha256": "f0e9b3a9d75a9746eb8d935a31936de12898c640e23bea60ca039888e08aedec"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-en-office-card.png",
+      "sha256": "2e5767c49d1794c6a8149370fcd2c314d9f2e1aad9dfb8d4e696edb877a3de30"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-zh-TW-details.png",
+      "sha256": "f2323d332ba845b27ba1aa31b4dc3430625627e58e03d9fd751526730941a013"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-zh-TW-log.png",
+      "sha256": "b7d5ca41279150bf7012573f33351495ebc1e070280540734cbcf401e788236b"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-zh-TW-needs.png",
+      "sha256": "d92cb11a78ad158132793a28602d0db93f26af80c9c8860de030812ca1537019"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/after-phone-light-zh-TW-office-card.png",
+      "sha256": "defc0c92c3b978e2ba9b8889bced35955060d20e4d9cbcb7cb017375509d15aa"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-dark-zh-TW-details.png",
+      "sha256": "3afe6df020c09ea24516c1aa1b747067edc23c8c1d9fb077735f9788aa32eaa3"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-dark-zh-TW-log.png",
+      "sha256": "96e8a3cfee5be9453e78af26b887c8c37099296284d165c4378482d3ddf17c4e"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-dark-zh-TW-needs.png",
+      "sha256": "6b0b82f73d2dc6fd4925c38cbaa71f76f09ed35840c69028445538cbdbb34aa8"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-light-en-details.png",
+      "sha256": "6d284a1e475e3b60aa14ab3d22cd7401656157dfcdf6e01a7649320d94502214"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-light-en-log.png",
+      "sha256": "b9d5fdbaac241ff3692e5e6b3fcf5de8b24dfa0013c4293b9917e5207ce4452b"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/availability-desk-light-en-needs.png",
+      "sha256": "9ae163bc3829c5a12029e0dd58067d3415e2d371a3b5716b44f1101fadb33704"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/before-desk-dark-zh-TW-details.png",
+      "sha256": "42200eafe3ed08674cf7959968e315c535cb9097038f9d44b13c2875ef6109f4"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/before-desk-light-zh-TW-details.png",
+      "sha256": "b25d02c6ccc35ed5f610990cf70f2680d9429b7bf302a6c6fe084febbf843763"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-panels-desk-light-en-details.png",
+      "sha256": "3ed0648d85c28d97b52dcdebb881763b788bfd0a2f032c76381dbd1ed116dbd8"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-panels-desk-light-en-log.png",
+      "sha256": "023bef933ee3816f8de3aa54d5c6661d6e863054038a735f0819c06bf63eb1a7"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-panels-desk-light-en-needs.png",
+      "sha256": "154cba996be97d08cd6e00bb6a4b5d8a602172989ac2f7bffcba18cf4e363f22"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-dark-zh-TW-details.png",
+      "sha256": "70a6fdbfcf5530ebf1a773209efc7d14862da3dd8d894c04ff3871d780451faf"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-dark-zh-TW-log.png",
+      "sha256": "15a5f89270e2b2d74455f97e8d84d4d6f6b6fd2568659bbd62b44caad1df04b8"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-dark-zh-TW-needs.png",
+      "sha256": "57a0649beed6030bbc700cd3940378a6e682b61f20207c2268be7c2d311a7ab3"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-light-en-details.png",
+      "sha256": "3abfb419cdd592695bd1bbba2379ac5c3a496c1b40d079d28cc67362db32bcf5"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-light-en-log.png",
+      "sha256": "30ab64c608b02ec21838577526712363c3a156b35647541ea8c3096acbee4b12"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-main/browser/retained-shell-phone-light-en-needs.png",
+      "sha256": "f0e9b3a9d75a9746eb8d935a31936de12898c640e23bea60ca039888e08aedec"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/after-desk-dark-en.png",
+      "sha256": "0341b214fe50d719a14fae977c467b7c46a6980708cb585e84a9932637979ee7"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/after-desk-dark-zh-TW.png",
+      "sha256": "21995194225276e7f75a0b3c363ec030ef7ed17138b28795332b3ba5543135c2"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/after-desk-light-en.png",
+      "sha256": "930589ed0441c06dd8f0148cd2aeb94a04b42894fc665d76f540c8e51558af5a"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416/browser/after-desk-light-zh-TW.png",
+      "sha256": "e615d2821ef7679e3020fc043eeb5632861333e09456498a48694421da62f08c"
+    }
+  ],
+  "result": "All57 retained replacement PNGs visually checked; no prohibited suffixes/private text found.",
+  "limitations": [
+    "Static visual review of all 53 whole images via 84 native-size regions in 21 contact sheets; no browser, tests, provider calls or source edits.",
+    "Long generic Example team heading wraps over two lines in desktop List cards and ellipsizes in the sidebar; no new overlap from it observed.",
+    "Existing long synthetic agent labels truncate in sidebar/cards/map labels; this is retained fixture stress, not evidence of full-name accessibility.",
+    "Phone Details captures show scrolled/cropped content and partial Task Board at bottom. Phone Office cards obscure map and some Chinese toolbar text extends to viewport edge (images 28 and 36); retained static limits, no interaction/accessibility or offscreen reachability claim.",
+    "Only generic fixture identifiers and generated /tmp/smoke-fx path visible; no prohibited -t<digits> labels, real personal/account/platform identifiers or company text observed."
+  ],
+  "settings_scope": "Four current desktop images retained from8-case/10-image current-only fixture; synthetic dead-store confirmation IDs/dummy fingerprints source-verified."
+}

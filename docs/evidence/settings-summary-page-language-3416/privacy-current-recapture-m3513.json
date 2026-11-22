@@ -1,0 +1,15 @@
+{
+  "source_head": "2a86a967615b931b5ac08f5b8b45d586a057a08f",
+  "source_tree": "74071b7ac64a71a6a47506641be1f73e3bd47882",
+  "current_only": true,
+  "completed_cases": 8,
+  "effects": 0,
+  "images_retained": [
+    "after-desk-dark-en.png",
+    "after-desk-dark-zh-TW.png",
+    "after-desk-light-en.png",
+    "after-desk-light-zh-TW.png"
+  ],
+  "harness_sha256": "6fca467eeb55420ba536c4bfc63c750fad351fc43ff6342bb6144c096c41c9e8",
+  "scope": "Current-only rendering/locale/immutability checks; no historical comparison claim. All stores/browser/listeners/scratch home closed."
+}
