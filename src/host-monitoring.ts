@@ -22,6 +22,7 @@ export interface HostHealthSnapshot {
   version: 1; enabled: boolean; state: 'off' | 'starting' | 'sampling' | 'stopping' | 'failed';
   platform: MonitoringPlatform | null; reason?: string;
   history?: import('./host-monitoring-history.js').HostHistoryStatus;
+  footprint?: import('./host-monitoring-footprint.js').FootprintSnapshot;
   alerts?: import('./host-monitoring-alerts.js').HostAlertsSnapshot;
   cpu: Metric<CpuReading>; memory: Metric<MemoryReading>; disks: Metric<DiskReading>;
 }

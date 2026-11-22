@@ -46,9 +46,11 @@ export class HistoryWatermark {
   }
 }
 
+export const agentHistorySeries=(value:string)=>/^agent\.[a-f0-9]{16}\.(?:cpu|rss|managed)$/.test(value);
+export const HISTORY_MAX_POINTS=832;
 export interface HistoryPoint {series:string;at:number;sourceAt:number;value:number}
 export const historySeries = (value: unknown): value is string => typeof value==='string' &&
-  /^(?:cpu\.used|memory\.(?:available|pressure)|swap\.free|disk\.[a-f0-9]{16}\.(?:available|used))$/.test(value);
+  /^(?:agent\.[a-f0-9]{16}\.(?:cpu|rss|managed)|cpu\.used|memory\.(?:available|pressure)|swap\.free|disk\.[a-f0-9]{16}\.(?:available|used))$/.test(value);
 /** Only numerical telemetry and opaque volume ids cross into history. No paths/names/native text. */
 export function hostHistoryPoints(snapshot: HostHealthSnapshot, at:number): HistoryPoint[] {
   if (!snapshot.enabled||snapshot.state!=='sampling'||!Number.isSafeInteger(at)||at<0) return [];
@@ -69,6 +71,15 @@ export function hostHistoryPoints(snapshot: HostHealthSnapshot, at:number): Hist
     add(`disk.${disk.id}.available`,disk.availableBytes,disk.sampledAt);
     add(`disk.${disk.id}.used`,disk.usedPercent,disk.sampledAt,100);
   }
+  const footprint=snapshot.footprint;
+  if(footprint?.enabled&&footprint.status==='ok'&&footprint.reading)for(const row of footprint.reading.rows.slice(0,128)){
+    if(!/^[a-f0-9]{16}$/.test(row.id))continue;
+    const start=points.length;
+    add(`agent.${row.id}.cpu`,row.cpuPercent,footprint.reading.sampledAt,100);
+    add(`agent.${row.id}.rss`,row.rssBytes,footprint.reading.sampledAt);
+    add(`agent.${row.id}.managed`,row.managedBytes,footprint.reading.sampledAt);
+    for(let i=start;i<points.length;i++)points[i].at=footprint.reading.sampledAt;
+  }
   return points;
 }
 
@@ -76,7 +87,7 @@ export const HISTORY_RANGES = {'1h':60*60*1000,'24h':HISTORY_RAW_MS,'7d':7*HISTO
 export type HistoryRange = keyof typeof HISTORY_RANGES;
 export function historyQuery(range:unknown,series:unknown,now:number) {
   if (typeof range!=='string'||!Object.hasOwn(HISTORY_RANGES,range)||!Array.isArray(series)||series.length<1||series.length>24||!series.every(historySeries)||new Set(series).size!==series.length||!Number.isSafeInteger(now)||now<0) throw Error('invalid_history_query');
-  const duration=HISTORY_RANGES[range as HistoryRange],resolution=range==='1h'?30_000:HISTORY_BUCKET_MS;
+  const duration=HISTORY_RANGES[range as HistoryRange],resolution=range==='1h'?(series.some(agentHistorySeries)?60_000:30_000):HISTORY_BUCKET_MS;
   const step=Math.max(resolution,Math.ceil(duration/HISTORY_MAX_BUCKETS/resolution)*resolution);
   const start=Math.max(0,now-duration);
   return {series:[...series] as string[],start,end:now,resolution,step,buckets:Math.max(1,Math.ceil((now-start)/step))};

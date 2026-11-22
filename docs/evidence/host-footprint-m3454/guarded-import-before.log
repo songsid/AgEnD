@@ -1,0 +1,34 @@
+
+ RUN  v4.1.12 /work/agend
+
+ ❯ tests/child-stdio-errors-2374.test.ts (14 tests | 1 failed | 13 skipped) 93ms
+     × no source file imports an unguarded spawn/execFile/exec/fork from node:child_process 92ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/child-stdio-errors-2374.test.ts > #2374 fleet code takes child processes from src/child-process.ts > no source file imports an unguarded spawn/execFile/exec/fork from node:child_process
+AssertionError: expected [ Array(1) ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   "host-monitoring-footprint.ts: spawn",
++ ]
+
+ ❯ tests/child-stdio-errors-2374.test.ts:196:23
+    194|       if (bad.length) offenders.push(`${relative(root, file)}: ${bad.j…
+    195|     }
+    196|     expect(offenders).toEqual([]);
+       |                       ^
+    197|   });
+    198| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 13 skipped (14)
+   Start at  05:36:30
+   Duration  348ms (transform 74ms, setup 97ms, import 20ms, tests 93ms, environment 0ms)

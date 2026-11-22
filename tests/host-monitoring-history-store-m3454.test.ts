@@ -61,7 +61,7 @@ describe('physically capped monitoring history',()=>{
   expect(store.query('30d',['cpu.used'],now+1).series[0].buckets.filter(b=>b.count)).toHaveLength(1);
  });
  it('never accepts an unbounded point batch, unsafe series or oversized incident reserve',()=>{
-  const {store,path}=fixture();expect(()=>store.append(Array.from({length:65},()=>point(1,1)),1)).toThrow('history_invalid_points');
+  const {store,path}=fixture();expect(()=>store.append(Array.from({length:833},()=>point(1,1)),1)).toThrow('history_invalid_points');
   expect(()=>store.append([{...point(1,1),series:'../outside'}],1)).toThrow('history_invalid_points');
   writeFileSync(path+'.incidents','',{mode:0o600});truncateSync(path+'.incidents',400000);
   expect(()=>store.append([point(1,1)],1)).toThrow('history_cap');

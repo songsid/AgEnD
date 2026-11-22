@@ -421,7 +421,7 @@ export type AccountWriteResult = { ok: true } | { ok: false; error: string; clas
 
 export interface WebApiContext extends ClaudeCredentialApi {
   hostHistoryQuery?(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult>;
-  hostHealthSnapshot?(): import("./host-monitoring.js").HostHealthSnapshot;
+  hostHealthSnapshot?(agentOffset?:number): import("./host-monitoring.js").HostHealthSnapshot;
   hostAlertAction?(key:string,revision:number,actor:string,snoozeMs?:number):Promise<boolean>;
   clearContactOrigin?: ContactApiHost["clearContactOrigin"];
   contactPermissions?: ContactApiHost["contactPermissions"];
@@ -2212,9 +2212,9 @@ export function handleWebRequest(
     res.setHeader("Cache-Control", "private, no-store");
     const who = evaluateWebRequest(req as unknown as WebGateRequest, url, ctx.webToken ?? null, ctx.webSessions, {touch:false});
     if (who.kind !== "allow" || who.via !== "session" || who.session.tier !== "admin") { json(res,403,{error:"admin_session_required"}); return true; }
-    if (method !== "GET" || url.search) { json(res,400,{error:"invalid_host_health_request"}); return true; }
+    if (method !== "GET" || [...url.searchParams.keys()].some(k=>k!=="agentOffset") || url.searchParams.getAll("agentOffset").length>1 || !/^(?:0|50|100)$/.test(url.searchParams.get("agentOffset")??"0")) { json(res,400,{error:"invalid_host_health_request"}); return true; }
     if (!ctx.hostHealthSnapshot) { json(res,503,{error:"host_monitoring_unavailable"}); return true; }
-    json(res,200,ctx.hostHealthSnapshot()); return true;
+    json(res,200,ctx.hostHealthSnapshot(Number(url.searchParams.get("agentOffset")??0))); return true;
   }
   // Auth check for all /ui routes. Defence in depth behind the fleet-manager
   // gate: the same session cookie or header token, and an unset token closes

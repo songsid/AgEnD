@@ -1,7 +1,7 @@
 // SQLite is synchronous: production imports this only inside the dedicated history worker.
 import Database from 'better-sqlite3';
 import { closeSync, lstatSync, openSync } from 'node:fs';
-import { historyBudget, historyQuery, historySeries, HISTORY_BUCKET_MS, HISTORY_PAGE_BYTES, HISTORY_RAW_MS, HISTORY_ROLLUP_MS, HISTORY_SHM_BUDGET, type HistoryPoint } from './host-monitoring-history-policy.js';
+import { agentHistorySeries, HISTORY_MAX_POINTS, historyBudget, historyQuery, historySeries, HISTORY_BUCKET_MS, HISTORY_PAGE_BYTES, HISTORY_RAW_MS, HISTORY_ROLLUP_MS, HISTORY_SHM_BUDGET, type HistoryPoint } from './host-monitoring-history-policy.js';
 
 export { historyFiles, cleanupHistory } from './host-monitoring-history-files.js';
 import { historyFiles } from './host-monitoring-history-files.js';
@@ -70,7 +70,7 @@ export class HostHistoryStore {
     if(removed)this.trimmed=true;return removed;
   }
   append(points:HistoryPoint[],now:number):{written:number;paused:boolean;stats:HistoryStats} {
-    if(points.length>64||!Number.isSafeInteger(now)||now<0||points.some(p=>!historySeries(p.series)||!Number.isSafeInteger(p.at)||p.at<0||p.at>now||!Number.isSafeInteger(p.sourceAt)||p.sourceAt<0||!Number.isFinite(p.value)||p.value<0||p.value>Number.MAX_SAFE_INTEGER))throw Error('history_invalid_points');
+    if(points.length>HISTORY_MAX_POINTS||!Number.isSafeInteger(now)||now<0||points.some(p=>!historySeries(p.series)||!Number.isSafeInteger(p.at)||p.at<0||p.at>now||!Number.isSafeInteger(p.sourceAt)||p.sourceAt<0||!Number.isFinite(p.value)||p.value<0||p.value>Number.MAX_SAFE_INTEGER))throw Error('history_invalid_points');
     // A pinned WAL must close before another write. Never accumulate a second transaction behind it.
     const pressure=this.files().bytes>=this.budget.softBytes;
     if(!this.checkpoint())return {written:0,paused:true,stats:this.stats()};
@@ -78,6 +78,7 @@ export class HostHistoryStore {
       // The entire DB and row population are capped; expiry completes in this worker transaction.
       for(const [resolution,cutoff]of[[30_000,now-HISTORY_RAW_MS],[HISTORY_BUCKET_MS,now-HISTORY_ROLLUP_MS]])
         this.db.prepare('DELETE FROM monitoring_points WHERE resolution=? AND at<?').run(resolution,cutoff);
+      this.db.prepare("DELETE FROM monitoring_points WHERE series LIKE 'agent.%' AND ((resolution=60000 AND at<?) OR (resolution=300000 AND at<?))").run(now-6*60*60*1000,now-7*HISTORY_RAW_MS);
       // At the soft mark prune oldest history, then release WAL below the low mark.
       // DB+reserve+SHM alone is deliberately smaller than that low mark.
       if(pressure)this.removeOldest(2000);
@@ -92,10 +93,10 @@ export class HostHistoryStore {
     const put=this.db.prepare(`INSERT INTO monitoring_points VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(resolution,series,at)
       DO UPDATE SET lo=excluded.lo,hi=excluded.hi,total=excluded.total,n=excluded.n,source_at=excluded.source_at`);
     const aggregate=this.db.prepare(`SELECT min(lo) lo,max(hi) hi,sum(total) total,sum(n) n,max(source_at) source_at
-      FROM monitoring_points WHERE resolution=30000 AND series=? AND at>=? AND at<?`);
+      FROM monitoring_points WHERE resolution IN (30000,60000) AND series=? AND at>=? AND at<?`);
     this.db.transaction(()=>{
       const changed=new Map<string,{series:string;at:number}>();
-      for(const p of points){const at=Math.floor(p.at/30_000)*30_000;put.run(30_000,p.series,at,p.value,p.value,p.value,1,p.sourceAt);
+      for(const p of points){const resolution=agentHistorySeries(p.series)?60000:30000;const at=Math.floor(p.at/resolution)*resolution;put.run(resolution,p.series,at,p.value,p.value,p.value,1,p.sourceAt);
         const roll=Math.floor(at/HISTORY_BUCKET_MS)*HISTORY_BUCKET_MS;changed.set(`${p.series}:${roll}`,{series:p.series,at:roll});}
       for(const p of changed.values()){
         const a=aggregate.get(p.series,p.at,p.at+HISTORY_BUCKET_MS) as {lo:number;hi:number;total:number;n:number;source_at:number};
@@ -112,7 +113,7 @@ export class HostHistoryStore {
     const select=this.db.prepare(`SELECT CAST((at-?)/? AS INTEGER) bucket,min(lo) lo,max(hi) hi,sum(total) total,sum(n) n,max(source_at) source_at
       FROM monitoring_points WHERE resolution=? AND series=? AND at>=? AND at<? GROUP BY bucket ORDER BY bucket LIMIT 241`);
     return {start:q.start,end:q.end,step:q.step,series:q.series.map(id=>{
-      const rows=select.all(q.start,q.step,q.resolution,id,q.start,q.end) as Array<{bucket:number;lo:number;hi:number;total:number;n:number;source_at:number}>;
+      const rows=select.all(q.start,q.step,range==='1h'?(agentHistorySeries(id)?60000:30000):q.resolution,id,q.start,q.end) as Array<{bucket:number;lo:number;hi:number;total:number;n:number;source_at:number}>;
       const byBucket=new Map(rows.map(r=>[r.bucket,r]));
       return {id,buckets:Array.from({length:q.buckets},(_,i)=>{const r=byBucket.get(i);return {at:q.start+i*q.step,min:r?.lo??null,max:r?.hi??null,average:r&&r.n?r.total/r.n:null,count:r?.n??0,sourceAt:r?.source_at??null};})};
     }),stats:this.stats()};

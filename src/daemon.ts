@@ -4112,8 +4112,10 @@ export class Daemon extends EventEmitter {
           if (this.nativePaneLifecycle) {
             if (this.healthCheckPaused) { scheduleNext(); return; }
             const native = this.nativePaneLifecycle, pane = this.tmux;
+            const footprintObservedAt=this.footprintEnabled?Date.now():0,footprintOwner=this.footprintEnabled?JSON.stringify(this.interactionOwner()):null;
             const status = await pane?.getPaneStatus();
             if (this.runtimeMonitorsFrozen || native !== this.nativePaneLifecycle || pane !== this.tmux) return;
+            if(this.footprintEnabled&&status?.alive&&status.pid&&footprintOwner===JSON.stringify(this.interactionOwner()))this.footprintPane={pid:status.pid,owner:footprintOwner,observedAt:footprintObservedAt,pane};
             const snapshot = native.snapshot?.();
             if (status?.alive === false && snapshot?.state === "exited") {
               this.healthCheckPaused = true;
@@ -4151,11 +4153,13 @@ export class Daemon extends EventEmitter {
             return true;
           };
 
+          const footprintObservedAt=this.footprintEnabled?Date.now():0;
           let paneStatus = await healthTmux.getPaneStatus();
           // Auto-pause intentionally exits the pane process. A health tick that
           // began just before pause must not classify that exit as a crash.
           if (discardStaleHealth()) return;
           if (paneStatus?.alive) {
+            if(this.footprintEnabled&&footprintObservedAt>0&&paneStatus.pid)this.footprintPane={pid:paneStatus.pid,owner:JSON.stringify(healthOwner),observedAt:footprintObservedAt,pane:healthTmux};
             // A CLI shutdown also closes its MCP children. Revive tools only for
             // a positively live pane, never while its exit is being classified.
             measureSyncWork("daemon.healthCheck", () => this.checkMcpServerAlive());
@@ -6077,6 +6081,14 @@ export class Daemon extends EventEmitter {
     return { ...snapshot, interaction: this.getInteractionSnapshot() };
   }
 
+  private footprintEnabled=false;
+  private footprintPane: {pid:number;owner:string;observedAt:number;pane:unknown}|null=null;
+  setHostFootprintEnabled(enabled:boolean):void {this.footprintEnabled=enabled;if(!enabled)this.footprintPane=null;}
+  hostFootprintRoot():{pid:number;owner:string;observedAt:number}|null {
+    const cached=this.footprintPane;
+    if(!this.footprintEnabled||!cached||cached.pane!==this.tmux||cached.owner!==JSON.stringify(this.interactionOwner())||this.isPaused||this.spawning||this.healthCheckPaused||this.runtimeMonitorsFrozen||Date.now()-cached.observedAt>120000)return null;
+    return {pid:cached.pid,owner:cached.owner,observedAt:cached.observedAt};
+  }
   private interactionOwner(): InteractionOwner {
     return { bootId: this.bootId, spawnGeneration: this.spawnGeneration,
       launchAttempt: this.launchAttempt, launchFenceEpoch: this.launchFenceEpoch };
