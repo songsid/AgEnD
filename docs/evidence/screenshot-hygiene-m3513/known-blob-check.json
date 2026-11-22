@@ -1,0 +1,9 @@
+{
+  "base_ref": "99959a27b4b168771e3dea77ada03d6ad5cd5645",
+  "base_control_exit": 1,
+  "base_affected_paths": 37,
+  "remediated_working_tree_exit": 0,
+  "remediated_checked_paths": 178,
+  "remediated_affected_paths": 0,
+  "scope": "Known-blob remediation/duplicate guard; no claim of new private-text detection."
+}

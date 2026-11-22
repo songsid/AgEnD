@@ -1,10 +1,10 @@
 {
-  "source_head": "89d8fe56dc1212dfa25a834aa0121a9cc71d9412",
-  "source_tree": "9d2532e8b21e38c5f59b916df96bc86557098c03",
+  "source_head": "520e0f5e9f2a03d6b256a0f785901ef69eba45f6",
+  "source_tree": "fdaaecd4b1eb3434a657fde55e480291a45313fb",
   "baseline_assets_ref": "3e4c2b657b86d343a5f70ab9d6f47e844fddeb46",
-  "private_full_receipt_sha256": "e233999963a70b0cc4cb8671e53aabdec83b2d3a754c4d9861950b2a51cb2eb4",
+  "private_full_receipt_sha256": "45299ebef82f022aa234faf43da5302a50ea3c883367251818f7d368ddad3eab",
   "harness_sha256": "655f7779c4925449abe19336bf0a60e04492a2294bc1eede9d4fdc8d43181ca6",
-  "fixture_data_sha256": "306fec7330445a8bc0a3d877d580e64474518da7adaedf7a617bac8ece438191",
+  "fixture_data_sha256": "0cef647ea2eaefd11af5b6b283f1bf8cd7854ba408ef5ab3bc4bc22489b9c488",
   "cases": [
     {
       "case": "desk-light-en",
@@ -564,6 +564,6 @@
       ]
     }
   ],
-  "image_hashes": "../screenshot-hygiene-m3513/replacement-visual-check.json",
-  "scope": "Owned scratch home, real cookie/app/SSE/Log reader and parser. Synthetic typed metadata, read-only model/Needs projections. Baseline UI asset substitutions are explicit; no vendor call, CLI, live pane, real transcript or automatic model/policy operation. Retained panels show legacy pair text; retained shell means the three listed old assets, not an all-old loaded tab."
+  "scope": "Owned scratch home, real cookie/app/SSE/Log reader and parser. Synthetic typed metadata, read-only model/Needs projections. Baseline UI asset substitutions are explicit; no vendor call, CLI, live pane, real transcript or automatic model/policy operation. Retained panels show legacy pair text; retained shell means the three listed old assets, not an all-old loaded tab.",
+  "limits": "All15 cases completed and receipt/cleanup summary emitted; terminal wrapper later reported143, so no wrapper exit0 claim."
 }
