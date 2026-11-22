@@ -1,0 +1,30 @@
+{
+  "attempt1": {
+    "run": 44987513358,
+    "job": 137101522305,
+    "sha": "81cdd60d311a2010f221aabbff4aeac58a47b462",
+    "failedHook": "afterAll cleanup",
+    "hookBudgetMs": 10000,
+    "gateCasesPassed": 154
+  },
+  "baseRetentionControl": {
+    "failed": 1,
+    "passed": 1,
+    "skipped": 152,
+    "actual10sStallManufactured": false
+  },
+  "fullSuitePassed": 154,
+  "testTypesExit": 0,
+  "contention": {
+    "freshRuns": 5,
+    "casesPerRun": 3,
+    "passes": 15,
+    "affinityCpuCount": 1,
+    "busyProcesses": 4,
+    "maxCaseMs": 7464.647
+  },
+  "parserControlTests": 4,
+  "productionGateChanged": false,
+  "ciPartitionChanged": false,
+  "releaseFreeze": "beta.18; keep draft until explicit Leader lift"
+}

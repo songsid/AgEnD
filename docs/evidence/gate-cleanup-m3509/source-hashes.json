@@ -1,0 +1,18 @@
+[
+  {
+    "path": "tests/gate-merge-script.test.ts",
+    "sha256": "9000df61ea82da02e61b1acced7f4c43788142a326bccd2b198cb81b1e085ee2"
+  },
+  {
+    "path": "scripts/gate-merge.sh",
+    "sha256": "826b1203c6537d57ceccc63dc7ce81a935a47faa783c3effd184e0f869fd4728"
+  },
+  {
+    "path": "scripts/manual/test-gate-cleanup-contention-m3509.py",
+    "sha256": "6459c7ef0075c0b995b3c923f1c4005e6d7cfc36f21f2ea2bbbf80fea2854da7"
+  },
+  {
+    "path": "scripts/manual/test_gate_cleanup_report_m3509.py",
+    "sha256": "2b0b9863b77b26ef1db21b66accc9690a70408cbb32141fb4f7c7a6a3df38041"
+  }
+]
