@@ -2,238 +2,218 @@
   "50e6b72e99a38b9bc3a3d42a217e6a8ab9bb845efb6a48c6ec70fe7f8ce75f13": [
     "OWNER.md"
   ],
-  "3e4f81063fba587f315131dee9771717a960f32172924c84a4368bfc785a9605": [
+  "b0b7002c3092a2f9136f394212eb0375a4a5fff5d7aec9de52165f22c35c828f": [
     "README.md"
   ],
-  "50a8fcff2dbc9f5e2dbc2239a29b35901d0d7a2c617fbe08bb0fdac25d2fa013": [
-    "browser/auth/light-zh-TW-auth-keeps-source.png",
-    "browser/skew-child-app/light-zh-TW-current-keeps-source.png",
-    "browser/skew-child-chat/light-zh-TW-current-keeps-source.png",
-    "browser/skew-child-css/light-zh-TW-current-keeps-source.png",
-    "browser/skew-child-shell/light-zh-TW-current-keeps-source.png"
+  "0d4c0d3ccc4978650748049c5adfca78a7a33d08d170ba07b74ce13bd15e0ca6": [
+    "browser/auth/light-zh-TW-auth-keeps-source.png"
   ],
-  "1e234cff22bf50cb2194de730755214cbceb3424d4cdad6d9bd13e19e9a1ebbb": [
+  "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618": [
     "browser/auth/light-zh-TW-layout-menu.png",
     "browser/blocked/light-zh-TW-layout-menu.png",
     "browser/changed/light-zh-TW-layout-menu.png",
     "browser/current-light/light-zh-TW-layout-menu.png",
-    "browser/cycles/light-zh-TW-layout-menu.png",
-    "browser/skew-child-app/light-zh-TW-layout-menu.png",
-    "browser/skew-child-chat/light-zh-TW-layout-menu.png",
-    "browser/skew-child-css/light-zh-TW-layout-menu.png",
-    "browser/skew-child-shell/light-zh-TW-layout-menu.png"
+    "browser/cycles/light-zh-TW-layout-menu.png"
   ],
-  "ffb38b13204850345333543085c8baffbad103913bdfcec91212630765aad3a4": [
+  "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8": [
     "browser/auth/light-zh-TW-right.png",
     "browser/blocked/light-zh-TW-right.png",
     "browser/changed/light-zh-TW-right.png",
     "browser/current-light/light-zh-TW-right.png",
-    "browser/cycles/light-zh-TW-right.png",
-    "browser/skew-child-app/light-zh-TW-right.png",
-    "browser/skew-child-chat/light-zh-TW-right.png",
-    "browser/skew-child-css/light-zh-TW-right.png",
-    "browser/skew-child-shell/light-zh-TW-right.png",
-    "browser/skew-parent-store/light-zh-TW-right.png"
+    "browser/cycles/light-zh-TW-right.png"
   ],
-  "f287e8fb6cd34b43e277c31c6b4088e9efbe4e521eaae5717d59e120e50a5264": [
+  "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223": [
     "browser/auth/light-zh-TW-single-before.png",
-    "browser/before-light/light-zh-TW-single-before.png",
     "browser/blocked/light-zh-TW-single-before.png",
     "browser/changed/light-zh-TW-single-before.png",
     "browser/current-light/light-zh-TW-single-before.png",
-    "browser/cycles/light-zh-TW-single-before.png",
-    "browser/skew-child-app/light-zh-TW-single-before.png",
-    "browser/skew-child-chat/light-zh-TW-single-before.png",
-    "browser/skew-child-css/light-zh-TW-single-before.png",
-    "browser/skew-child-shell/light-zh-TW-single-before.png",
-    "browser/skew-parent-store/light-zh-TW-single-before.png"
+    "browser/cycles/light-zh-TW-single-before.png"
   ],
-  "e601d50382e2792b9bcadebd3606f9b5599dcab24f5f07368b08adf388c94da8": [
+  "95b44c4b0fdc515d21a488978df18a99c6bad17e273004ddea9d7b654c84ba39": [
     "browser/auth/receipt.json"
   ],
-  "509e589d977401545896d69d144091d75410d6f37a26228fb1acc35476e7eb3b": [
-    "browser/before-dark/dark-zh-TW-single-before.png",
-    "browser/current-dark/dark-zh-TW-single-before.png"
-  ],
-  "28b7cfe81a6ce267fc2fa330eac84f6988a10db6b3ec680266da977594a941b5": [
+  "1b7cc869bca3b2d056e04b6c0d5b3c3bf7ecc318b51e2e224834de8dbf478388": [
     "browser/before-dark/receipt.json"
   ],
-  "59ed1f04a48e302c989abb40e525d7cb254dc9760068252131024de0cb2568cf": [
+  "511964ac651b26323457c3fe806ed9e48c285b84834fbebcd82572bded1405f1": [
     "browser/before-light/receipt.json"
   ],
-  "a1e9da26ca8e348b80cccbe693f0a6012b5dbbb20e62cdc9383fc1ff2a5c69b6": [
+  "27bcd537bd82c2f2c582cea4141c490b0a983e3ca636efe474214bb083807520": [
     "browser/blocked/light-zh-TW-blocked-keeps-source.png"
   ],
-  "0e889121a3841c8cf45dacdd7180fe3613cb062ff5f60d703d10c6f706aff07e": [
+  "f90ef83b73e10f7595a9067e7beaf6fb5ac42777893e4222fd4507027252927a": [
     "browser/blocked/receipt.json"
   ],
-  "d8e7f6ac4b8f374026dc434ba0e030d815296786a0579e2236fde9a07380ef8e": [
+  "fe2414c422133798aa1a09d4f63fd4a45fb4f5155a8f2298a9ab24d825720301": [
     "browser/changed/light-zh-TW-changed-keeps-source.png"
   ],
-  "0190899e4b0f4a970c2f963720e1105a8a47c6cd20257446bbf880a862e3d4da": [
+  "25024c6bb9a24b875e229ff0e08106e3b245e256a7b8292a60762e596224c80b": [
     "browser/changed/receipt.json"
   ],
-  "bf6bcfb794f77d6ec9570207f4a629e0b36bdba43920710b51cd4763f59533a8": [
+  "071a9a781f4af7b08ae602e78c05521c7bc2947463b630cd2d2c18ec77c230ed": [
     "browser/current-coarse/dark-zh-TW-drag-edge-preview.png"
   ],
-  "02a4c5592d20b8d499a2092110372c833a83aa2bf3249738207305bbe75b0413": [
+  "1ec6d3460166d7265ad1191e8ab8bd55b90ccfd61413b7ac5eff19ed18998741": [
     "browser/current-coarse/dark-zh-TW-float-move-resize.png"
   ],
-  "4e4a8c912943fba64ae127891ba75d618c617395ce64c9195a05bd5e28da9970": [
+  "6cd3eaedd4dc28ee701a5680c56ce4dcff70eaf3a4157432364f01d99bba574d": [
     "browser/current-coarse/dark-zh-TW-float.png"
   ],
-  "86f9596ada52fc3708cb9e0efaddaea121cb92eeb3b8335d27b70617854d1883": [
+  "1d44c797054dfbf599c00b6e3e49fbd92ce1eb3a83f2df7040a76f04078aedba": [
     "browser/current-coarse/dark-zh-TW-layout-menu.png"
   ],
-  "55d60aaf01ee2124bc758b19d454fe272e0e23599829873fbe628c7022a2431e": [
+  "90eac7cde37e84c4a8cea58832b617665cc42cf2a4d58a99c60040d2ec54f006": [
     "browser/current-coarse/dark-zh-TW-log.png"
   ],
-  "5d2813fa8c9b539d7ab02252de42e337fb8d5a21fbe4a37985f4faf4e802b37e": [
+  "df1f71b14a413968593768da189b4c21452d17255675aa28b2c1fc62861e93e9": [
     "browser/current-coarse/dark-zh-TW-narrow360.png"
   ],
-  "775d3666a0a3e7a251b9d66259bb6080a6308ec888289ece32873e64c2774498": [
+  "79ff017a51902195bd60373a5de6f34060dbf2688d0d176ecb592e41f998be15": [
     "browser/current-coarse/dark-zh-TW-popout-log.png"
   ],
-  "21172e5d77368269314c0093b4c3c9ec6ce0a832564fdd68ca00cff499a14f8f": [
+  "47bb1121480125dfdd2c17636fa7e85ff6030f338a35b0c0ab541fd9c15ee03f": [
     "browser/current-coarse/dark-zh-TW-popout-main.png"
   ],
   "af1225f72d72c6516178ed8cbe464b94a194cadc0acc52ffdacac5996981f68f": [
     "browser/current-coarse/dark-zh-TW-popout-narrow360.png"
   ],
-  "b72c039b1e9060626800987184a81fbba783de42dd8fea5fd7deef7a67b96567": [
+  "f2919ee88d0dcda6541fb79bd4a1ffdb5d97bda4c4ca1bf6021792de13fc30ed": [
     "browser/current-coarse/dark-zh-TW-popout-reload.png"
   ],
-  "ee3114bb3042e612c58c2578673cf2bc09c25aa54e0d213d200f9929a6a47bd0": [
+  "70f1557bd20249cdf12d3df0638d28be7dc29978bc46263e778d11ee2350f590": [
     "browser/current-coarse/dark-zh-TW-popout-window.png"
   ],
-  "3bea92632401e0a210e119bfd2ae82a6fe09f9309ccd03a4293f9b2e70a81948": [
+  "215ba829cbc9eda066c870aad51db1400520d992ea55f84ee7398676ab1e7872": [
     "browser/current-coarse/dark-zh-TW-right.png"
   ],
-  "6b0b4fde9ec90ae86b989f1febe4d39930002ff1b8f707cdbbf658fde6273640": [
+  "f3773382a59d6614eb8e7d2e8dc0b6642effd3591fcbdf79cc6aecce4d10f3e5": [
     "browser/current-coarse/dark-zh-TW-sash-keyboard.png"
   ],
-  "e96b3d6d95cdf27e71c1187c82aab093548f7661dd3228f659dbc0462fb3ad11": [
+  "1224faaca1f2c40ba1e5ebb05c2470b57677661f68d087b859a6e0c9614a4da7": [
     "browser/current-coarse/dark-zh-TW-single-before.png"
   ],
-  "001131b7f700f4d7499339eb488a734fe8a79fbb0d8cd628eb7799c9dc03559d": [
+  "e6e716669ae21ff9d2b017046e10962ad6d974329f126ee450357421f66e2c31": [
     "browser/current-coarse/dark-zh-TW-stacked.png"
   ],
-  "5b0e1c58f053d5296be7c429de0940b23cc2d4d2d024986ffc9d6e09e168d84a": [
+  "ff2bdadfe95315b3cbfa637b096e1e592ff0c9fccd84ba74e474dbda82e96bf0": [
     "browser/current-coarse/receipt.json"
   ],
-  "05e17dbe98b057f4a36c520b838478da6960656823dd30873679019a6d808642": [
+  "3e05dd611f4530e3926d2860b4c2fd0e92442b700a68192e3d8b64c94de9d905": [
     "browser/current-dark/dark-zh-TW-drag-edge-preview.png"
   ],
-  "d9c7f5dceb2a79fa9b10017ad91d688605b20f48b753de65f28925f674ebeddd": [
+  "a99209d1a5bd8163ecddc6ee129160dbdca3a55e1414dba0ee828454e413fc31": [
     "browser/current-dark/dark-zh-TW-float-move-resize.png"
   ],
-  "912c46dc73cfc607e9287c5c026892bbe1dccaf13ac0caa80d4c1e6b7af99725": [
+  "99771086c2d8df4cc485c4cfe2bfe69c4b0cb692205f134504f6bec41190e335": [
     "browser/current-dark/dark-zh-TW-float.png"
   ],
-  "0eebf058348ab69f9bf464aa936b6fbf4fb6e7c00720d39b9a7fa589c43d9fba": [
+  "58cf7fb56fedc3867dd238e61b14b0295d73e97db8df24c60cdadbafd43ca9a4": [
     "browser/current-dark/dark-zh-TW-layout-menu.png"
   ],
-  "2262ae6436273c0e6f0318338db17061a087c08abef4014f119c5e7d602c4754": [
+  "8b391fad431d50dc4cdc8e44e87d9689f91514ea386af05b2b6126fa1f0112e5": [
     "browser/current-dark/dark-zh-TW-log.png"
   ],
-  "195a9e21bd5f1dd7bbb4a36ff090c14a709bf043208eca900fcc0b5ae126ab5d": [
+  "daf2bf09795a034f467e415ab4b92a7addfce79b0098e0c300d3cf0140bb6653": [
     "browser/current-dark/dark-zh-TW-narrow360.png"
   ],
-  "8eccc296ef63f1c78a988f68258a5ea664117558bdb821f854930ba51b1ce38c": [
+  "633a03549811c809b641779ab7959c0f62cf05143f0d44a4813a45ca74a74da0": [
     "browser/current-dark/dark-zh-TW-popout-log.png"
   ],
-  "8923e8b6aefd41faed17a99125600b158e7a483ff1b1e6153727df0b383ee062": [
+  "26b10906c470f829126a03f7a3e8297988b8390012cf1ae89ac95dc828cef300": [
     "browser/current-dark/dark-zh-TW-popout-main.png"
   ],
   "b5ca543095c7400cf74abb724c20457002880b1bab4216259df528928eb62c38": [
     "browser/current-dark/dark-zh-TW-popout-narrow360.png"
   ],
-  "aab30bb9c719aa7a3cf4e76fde62ef860393cef9ebd8ec03b16ae9bc42f68cee": [
+  "4421bf3a3f365ed964148e5dfe265d5caf7bf2bd9843d189ae184f333c1552c8": [
     "browser/current-dark/dark-zh-TW-popout-reload.png"
   ],
-  "bd5fa4af3e0854851d545423a3a2426749c2c4975f55f12a74ed11e07e7461cd": [
+  "436dcc4964cd192360891cdfa19f9b9ecc7befd9ce73fefb22ce64dac98f377e": [
     "browser/current-dark/dark-zh-TW-popout-window.png"
   ],
-  "1d7b4fe784cf35fb74948d4ad55158670ad79b7a8e14d211baf36fd7e1cbe47e": [
+  "81ed38f58301b3fdfebe3565379012dfe10dcff30f28dadeadc4ecf111cb7159": [
     "browser/current-dark/dark-zh-TW-right.png"
   ],
-  "0d03a1e937b6b89525c1af24205d140fe058bad44b17304598e990f590f01418": [
+  "e083e37adbb9fb3299aaf13ecba674c0a6591331e50b093b83e13430d1a8eff3": [
     "browser/current-dark/dark-zh-TW-sash-keyboard.png"
   ],
-  "c6bf1601dee7ed90f4cdd4c8b6332d4177869285e8b4a3fe91e1fb60445b7914": [
+  "e54418edc94f39c02fc8aac42e6662d11bad21a93bbacc0b51a2a0a2a6b5e2e4": [
+    "browser/current-dark/dark-zh-TW-single-before.png"
+  ],
+  "c0776ea3662257b14c582be954bb024c132cd06347ba3e1ed6875e797956be92": [
     "browser/current-dark/dark-zh-TW-stacked.png"
   ],
-  "0dd7be83c40a8d27602535f25dde7460382b8fb1630e69955ba2394cdbcc0c9a": [
+  "60a3081a675b35c6cb9a037c73bfd41bb9014b2212ad0b383d9e61d0a736a881": [
     "browser/current-dark/receipt.json"
   ],
-  "b331cf265ab918a95b8a3769d1e0bbfaa320b3ad8ba83ffcb17d211f905e9035": [
+  "62edb46de24d3dc4dee0a7c0ce35b7fbf4d5f952f4df3b305bf70934b3572932": [
     "browser/current-en/light-en-drag-edge-preview.png"
   ],
-  "38a88a4ec12808b16fe4bb08af315aa1856e838bc0b4f36be63828a411942368": [
+  "669faac08a6c0dab156027962b6fad47edaa8b3fe0be7f2c5a4750b3ae2fd9c0": [
     "browser/current-en/light-en-float-move-resize.png"
   ],
-  "2d0fee10cf8c964a9b42e6aa72f83ff1e1ebaf88a9084043d670015ab1a5a103": [
+  "d3b250aedab9f1921f928b4ad691d65ad30275319cca9a52c1c58648e878ed7b": [
     "browser/current-en/light-en-float.png"
   ],
-  "c5b9160428146954cda2fc68ef94e9a53b302727760103e0e05a2b37a0d6f8d2": [
+  "887be80f5a68794d286442a8cc4f93f38a74975e449aaa15f355891020a87146": [
     "browser/current-en/light-en-layout-menu.png"
   ],
-  "c5b86d498916377ad0ce6994ef2da0a4a8231e5aa4f7c657ab200ec09ab5e469": [
+  "599641d121470e3697d1d77b15533d1ee20f1b02a505f6b7e266694bd942cc1f": [
     "browser/current-en/light-en-log.png"
   ],
-  "2b7e208562c7df8281d082d687a3de869dd35a75bcd86dcaefeb6e4ccd9df871": [
+  "5573b64c64d85f0c51c7ba960faad50b0c6d951bb599fcf50d2c6588f4b1a993": [
     "browser/current-en/light-en-narrow360.png"
   ],
-  "1557989ccc777d1eb9c17f9f6d3995aeb840a8267afc19e81e272546ff17d9b3": [
+  "0e6fd649d6fb3e0568f72cb064694336b4a199b62757b29b5ac643b8abc8b7be": [
     "browser/current-en/light-en-popout-log.png"
   ],
-  "3a4c8a48eb9909192a3d054187904e301e9f8357ee9826431602474d93e0d9e9": [
+  "7d7c97f4ad46a8a77829deb5522dabb0e40dfaa66358a11dea11aeb7d0020f16": [
     "browser/current-en/light-en-popout-main.png"
   ],
   "17119f44eddc69282c1b92c8a46cac739b95265b72e6aa05502dd9dd16415b7a": [
     "browser/current-en/light-en-popout-narrow360.png"
   ],
-  "945a99fb0b7679a1dcd2ec0a0ab200fa845da4083556dd9cadec9deb6009b749": [
+  "94ebce0cbca2c09b73602c87e9026a7dc431a3b0e5bd54d9310c977f405704ce": [
     "browser/current-en/light-en-popout-reload.png"
   ],
-  "7703dd47d246648d6646452c7d9f9a003a05aac879ce91fca38f2fe8bfee59dc": [
+  "35fd049bc81d14058f83d750b4bbbd861c9db0325b586f055f2073bf7663838a": [
     "browser/current-en/light-en-popout-window.png"
   ],
-  "912ba10084ccd74bff87e142367463eefa841980b3fbb78af40f8b0e5a8373b6": [
+  "ac82969536e4414f0dd69206052233fa94fe691cc5bee69b1dd1daeca87f7a8e": [
     "browser/current-en/light-en-right.png"
   ],
-  "ba08f8b0252d50fa659398d901bc80e5cbac9cfa0675b093931362aa3dca4e75": [
+  "8e01c5404c424097850692a3929d25ce3773fba91a33a39de412d095655278c5": [
     "browser/current-en/light-en-sash-keyboard.png"
   ],
-  "ba6efdd13ac767c1d19a8a799234caa654a80671937f69b05a613d359a59a86f": [
+  "e5217b47894204c30ec5c42bf50b78f9139a6dc372a8cc5c274a0447b5481795": [
     "browser/current-en/light-en-single-before.png"
   ],
-  "91d752cecfe696faaf7d0de9a72e1f53d5cab475bccfa18319e4f561170f97d6": [
+  "a8b0e8a36146ac1c2207c32f21e29c382934ff03008430625465aa3f9e979c7e": [
     "browser/current-en/light-en-stacked.png"
   ],
-  "aa64f93055cc47779f1b83a8e68775cbe923e26b8e5efd4f1f4cf3c2864651e1": [
+  "e9b91daff19e421e0041012e88033843e5b311b3e9a107fded17757862c7f544": [
     "browser/current-en/receipt.json"
   ],
-  "191229212e253fd0104bd70e34455ea0b91dc79c62252dc82892bf015fd9796c": [
+  "36cc76cf690aab61bb3032f2712dd8aa6304d45ead578fc338d3f4c6e3106965": [
     "browser/current-light/light-zh-TW-drag-edge-preview.png"
   ],
-  "d4e5262679bbe6261987defe58c862d88ef4958edf2c472ae7f8b455fca8e430": [
+  "c1ed1b3373a79f45d61ffacd8dc87ea92c25c9976c6fc80156512552eacccf57": [
     "browser/current-light/light-zh-TW-float-move-resize.png"
   ],
-  "a43c4601f7a1261c86c14a49e02c2b0b9ce3e4c1655beee9157f5d4454e2d278": [
+  "f6de86d4e9a7970b6ce4ee6ad377ea7fc969054a7d1147eecfb248707ca8f79e": [
     "browser/current-light/light-zh-TW-float.png"
   ],
-  "b43c818ea450a86efdf49ec1c90e8bbd04cfda80be2cd69469009caec9b06846": [
+  "28711115f2eb25ecbf105e2e9322f97600c9d16b6baa91987d73816db7127d4f": [
     "browser/current-light/light-zh-TW-log.png"
   ],
-  "7a1a2cd0865a6c0aadbf1cc05add48b2ff9cc98762f35d088308e274023160ae": [
+  "02a0e511dc2e5512a03019be8a6cc99364cc0e8f36c423f66082e47b00d17742": [
     "browser/current-light/light-zh-TW-narrow360.png"
   ],
-  "84ce3bdfc4732f4a697c3ba699f5dc18ceb6e43390980d095fdd1c1887bc32f1": [
+  "dffba11cce7498a75747e5f0d3b75a9a4f6b3bd51fa69370b193fd3fe804f28a": [
     "browser/current-light/light-zh-TW-popout-log.png",
     "browser/cycles/light-zh-TW-popout-log.png"
   ],
-  "de6f60c59e93c6d821601610928cf3e026f6dcc797c24d15e72cb1357dc5accc": [
+  "c538fd7c7b26bc379768ea5063c394ce4df12cb684cf296adcf4ab1240497b33": [
     "browser/current-light/light-zh-TW-popout-main.png",
     "browser/cycles/light-zh-TW-popout-main.png"
   ],
@@ -241,62 +221,57 @@
     "browser/current-light/light-zh-TW-popout-narrow360.png",
     "browser/cycles/light-zh-TW-popout-narrow360.png"
   ],
-  "ba22778b86d314517a8b0c4d503f5f5cb10a17fe92ea785943bfa14e8e2b609c": [
+  "ffc8336800f426453d53437180179b891e97cd3aaf71c48c35f08fb68c996fb5": [
     "browser/current-light/light-zh-TW-popout-reload.png",
     "browser/cycles/light-zh-TW-popout-reload.png"
   ],
-  "aa79adc1602cad82c79f91ce8b68840fa10e56f691bc3992903b4ec0b97c2e2e": [
+  "14b0a02bbf1acbe9d5108cafa6ec662d7480ae3b4b72946bdede52676b2ada19": [
     "browser/current-light/light-zh-TW-popout-window.png",
     "browser/cycles/light-zh-TW-popout-window.png"
   ],
-  "c8553553ff67c088e465ec2d1a8d11706482dd17debf6798121f96c2dbae3569": [
+  "d5a1a0b963babba890727f11b7eaeddf502b74b97283984e8c8b538f5765a0b1": [
     "browser/current-light/light-zh-TW-sash-keyboard.png"
   ],
-  "1774c0f4bd5c05cf86e9355072b1f2edfa6a772f01f1d861c993ba36117109ce": [
+  "e07a74c7e84c5809e84eb1cf51fca5e88f21e7aa4d57f170e6114e1f88be9a04": [
     "browser/current-light/light-zh-TW-stacked.png"
   ],
-  "2b3d0a52c1f6a65a5731809dfcdf2c28b5f8ef086292eee076bb1958a0bc5593": [
+  "16235124a4e0237a31df5e768bf45c038b81e9d33cbaebe42fac4d2f3140eade": [
     "browser/current-light/receipt.json"
   ],
-  "5fb0c206d0ea51082ed524b7a990d83831be72ec364ef0e1a09e9416263391d7": [
+  "5810a545120b054c51518982aa601cddf2c7148f1791add7e7f48e35112ea86d": [
     "browser/cycles/receipt.json"
   ],
-  "0c87f30c54aa0a0822c1bf325183b80a2c4e66c806c5afa0cca4a88001eb11e2": [
-    "browser/phone-before-dark/dark-zh-TW-single-before.png",
-    "browser/phone-current-dark/dark-zh-TW-single-before.png"
-  ],
-  "2a3534afde8a4f75c393a8dd52f7370461053be783a0acf4cd0344272eaf505c": [
+  "8a47bd86e26c7aeceb47950b293e033a49b1e9079b48d4173ed45f920bc434e7": [
     "browser/phone-before-dark/receipt.json"
   ],
-  "fabb37ceb728481f9a006351d53fa5295580743a668408f7e05a36ef34c851b6": [
-    "browser/phone-before-light/light-zh-TW-single-before.png",
-    "browser/phone-current-light/light-zh-TW-single-before.png"
-  ],
-  "a0e4249988fe4ee2835cfd863a943e7db16d7fa26cc9f9af24b8829671b7048d": [
+  "941828e8b82560abe7743a07efb15daeaf6e28c9f56b55091524b4ec7094a559": [
     "browser/phone-before-light/receipt.json"
   ],
-  "372aff00b51fdd569bb260fee08bde99eeb3e61e305d021b0da548981192ff05": [
+  "71a9c2a1c4f9144e6a68fa8579ef40df5ff86c85ad74daea10855f5be25eba5a": [
+    "browser/phone-current-dark/dark-zh-TW-single-before.png"
+  ],
+  "864aa0b570b2d686eb60264aa61295e048eda6a5b900410d6aadf9b17e9fc43a": [
     "browser/phone-current-dark/receipt.json"
   ],
-  "51f898b593de43fd75dd2b396dde2bd741fd65ae435fd64fc8577449a69636a5": [
+  "7a9255afb1742f14cb71dc3b33da4933761cbef80d33b58f813c22a358cee950": [
+    "browser/phone-current-light/light-zh-TW-single-before.png"
+  ],
+  "bace0a3afc69f77683b493eb6d6e5060ed63cb534a15bb63d0124987433c35bc": [
     "browser/phone-current-light/receipt.json"
   ],
-  "2b4b335134544beec18123c0f42e728731c322f9092a496d73f94f40b322d10a": [
+  "c01f25fa259fa7c05d5b170e1eca24e51159a3336d6b21f8b903d2c0c20153c1": [
     "browser/skew-child-app/receipt.json"
   ],
-  "807a59da2d3d279aae3eb9c4333b0c5a619cc1f86aaa0b8c776cc853c665d4df": [
+  "af5ea4a2bdd04800999010db28b001ec031951052afa805067262caa53c1609f": [
     "browser/skew-child-chat/receipt.json"
   ],
-  "68d1650a23a4417171b0099c1ec8994a2ec9098ec53d130fcc35930b9d971916": [
+  "962cddfa42e4654c234dadb903d0519b5bf948699db908f715cd4cf51869e093": [
     "browser/skew-child-css/receipt.json"
   ],
-  "9fc725d39f351d9d841e39180bca1aeadd7073050ea0bf810f3a37821519ab78": [
+  "f0074a9c9378e2a053132038d15ebbc102fadc11777ae70a9a76eaeab51d86a9": [
     "browser/skew-child-shell/receipt.json"
   ],
-  "c066ed1f8ed5da6301dd90830afe94fe23a3761e7dbfee713934f6ce5d84598c": [
-    "browser/skew-parent-store/light-zh-TW-retained-parent-store.png"
-  ],
-  "e3e9bda2a5500fc423d96aa7585d96568903d8b506da3a3eba83008a56840927": [
+  "3c6d6cbcc9f75d58f4360b8e76d065a2c9d48fc412752ff45356999d290bb1a4": [
     "browser/skew-parent-store/receipt.json"
   ],
   "02c664554e84ee9ce9d4ac670d95ebbd8c28380592a3e3c8bb86d03ad7bb42d1": [
@@ -427,5 +402,8 @@
   ],
   "9b812c6415d1db7220d795a5b4b7be67cdd81197e91659e24b4a1ba4eae0d083": [
     "checks/width-focused.log"
+  ],
+  "d11403a9fdb8169c93bb4d8bfb53d0efd623d8c33497b73361a080d2d287fb70": [
+    "privacy-refresh-m3513.json"
   ]
 }
