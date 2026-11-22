@@ -7,16 +7,31 @@
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const SCRIPT = join(process.cwd(), "scripts", "gate-merge.sh");
 const REPO = "songsid/AgEnD";
 const PRISM = "agend-reviewer";
 const dirs: string[] = [];
-afterAll(() => { for (const d of dirs) rmSync(d, { recursive: true, force: true }); });
+let previousCaseRoots: string[] = [];
+function assertFixtureCleanup(): void {
+  expect(dirs, "A gate case must not inherit the previous case's scratch repositories").toHaveLength(0);
+  for (const dir of previousCaseRoots) expect(existsSync(dir), "The previous case's repositories must be removed").toBe(false);
+}
+beforeEach(assertFixtureCleanup);
+afterEach(() => {
+  previousCaseRoots = dirs.splice(0);
+  const errors: unknown[] = [];
+  for (const dir of previousCaseRoots) {
+    try { rmSync(dir, { recursive: true, force: true }); } catch (error) { errors.push(error); }
+  }
+  if (errors.length) throw new AggregateError(errors, "Gate fixture cleanup failed");
+});
+// The final hook only verifies the last case, never erases the entire suite.
+afterAll(assertFixtureCleanup);
 
 // The gh stub: `pr view|list|edit|merge` and `api` (check-runs, DELETE ref), from state.json; calls → calls.log.
 const GH_STUB = String.raw`#!/usr/bin/env node
@@ -1008,8 +1023,8 @@ function interpretTrailers(message: string) {
 }
 
 describe("gate-merge: Co-authored-by trailers on the squash", { timeout: 30_000 }, () => {
-  // Each case runs the real bash gate (scratch clone + gh stub). 10s is tight when
-  // this file's earlier cases have already filled /tmp with git repos.
+  // Each case runs the real bash gate (scratch clone + gh stub). Its existing
+  // test budget is unchanged; fixture repositories are released after that case.
   it("a carry PR (external author + ours) gets real Co-authored-by trailers; the merger and bots do not", { timeout: 30_000 }, () => {
     const w = world();
     w.state.prs[7]!.body = [

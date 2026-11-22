@@ -1,0 +1,122 @@
+[
+  {
+    "run": 1,
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 21.021,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "gate-merge: the happy path and the one-line verdict head = approved, CI green \u2192 squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>",
+        "status": "passed",
+        "milliseconds": 6188.8072010000005
+      },
+      {
+        "name": "gate-merge: the happy path and the one-line verdict --dry-run runs every check and changes nothing \u2192 WOULD_MERGE <head>",
+        "status": "passed",
+        "milliseconds": 3279.2455869999994
+      },
+      {
+        "name": "gate-merge: Co-authored-by trailers on the squash a contributor first appearing in commit 101 is still a Co-authored-by trailer",
+        "status": "passed",
+        "milliseconds": 7464.646731000001
+      }
+    ]
+  },
+  {
+    "run": 2,
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 20.333,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "gate-merge: the happy path and the one-line verdict head = approved, CI green \u2192 squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>",
+        "status": "passed",
+        "milliseconds": 6296.308499000001
+      },
+      {
+        "name": "gate-merge: the happy path and the one-line verdict --dry-run runs every check and changes nothing \u2192 WOULD_MERGE <head>",
+        "status": "passed",
+        "milliseconds": 3307.5062609999995
+      },
+      {
+        "name": "gate-merge: Co-authored-by trailers on the squash a contributor first appearing in commit 101 is still a Co-authored-by trailer",
+        "status": "passed",
+        "milliseconds": 6765.497229999999
+      }
+    ]
+  },
+  {
+    "run": 3,
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 19.454,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "gate-merge: the happy path and the one-line verdict head = approved, CI green \u2192 squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>",
+        "status": "passed",
+        "milliseconds": 6267.092891
+      },
+      {
+        "name": "gate-merge: the happy path and the one-line verdict --dry-run runs every check and changes nothing \u2192 WOULD_MERGE <head>",
+        "status": "passed",
+        "milliseconds": 3087.3437920000006
+      },
+      {
+        "name": "gate-merge: Co-authored-by trailers on the squash a contributor first appearing in commit 101 is still a Co-authored-by trailer",
+        "status": "passed",
+        "milliseconds": 6189.5776620000015
+      }
+    ]
+  },
+  {
+    "run": 4,
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 19.993,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "gate-merge: the happy path and the one-line verdict head = approved, CI green \u2192 squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>",
+        "status": "passed",
+        "milliseconds": 6866.146535
+      },
+      {
+        "name": "gate-merge: the happy path and the one-line verdict --dry-run runs every check and changes nothing \u2192 WOULD_MERGE <head>",
+        "status": "passed",
+        "milliseconds": 2925.099411000001
+      },
+      {
+        "name": "gate-merge: Co-authored-by trailers on the squash a contributor first appearing in commit 101 is still a Co-authored-by trailer",
+        "status": "passed",
+        "milliseconds": 5865.650156
+      }
+    ]
+  },
+  {
+    "run": 5,
+    "cpu": 0,
+    "busyProcesses": 4,
+    "seconds": 18.403,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "gate-merge: the happy path and the one-line verdict head = approved, CI green \u2192 squash-merges with --match-head-commit, deletes the branch, prints MERGED <sha>",
+        "status": "passed",
+        "milliseconds": 5628.877326
+      },
+      {
+        "name": "gate-merge: the happy path and the one-line verdict --dry-run runs every check and changes nothing \u2192 WOULD_MERGE <head>",
+        "status": "passed",
+        "milliseconds": 3204.716149
+      },
+      {
+        "name": "gate-merge: Co-authored-by trailers on the squash a contributor first appearing in commit 101 is still a Co-authored-by trailer",
+        "status": "passed",
+        "milliseconds": 6196.2529159999995
+      }
+    ]
+  }
+]

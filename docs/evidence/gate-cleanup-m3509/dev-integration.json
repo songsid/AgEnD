@@ -1,0 +1,18 @@
+{
+  "main_merge": "8edb28efcf8e58af41adcc86cd7e91f708168b71",
+  "dev_base": "fdaaec209931e9d70ffc1c44450bd75bd95ee3fd",
+  "copied_paths_byte_identical_before_note": [
+    "changes/3509-gate-fixture-cleanup.md",
+    "changes/3509-gate-fixture-cleanup.zh-TW.md",
+    "docs/evidence/gate-cleanup-m3509/README.md",
+    "docs/evidence/gate-cleanup-m3509/contention-summary.json",
+    "docs/evidence/gate-cleanup-m3509/controls.json",
+    "docs/evidence/gate-cleanup-m3509/manifest.json",
+    "docs/evidence/gate-cleanup-m3509/source-hashes.json",
+    "scripts/manual/test-gate-cleanup-contention-m3509.py",
+    "scripts/manual/test_gate_cleanup_report_m3509.py",
+    "tests/gate-merge-script.test.ts"
+  ],
+  "production_gate_blob": "a8a27c07a7ab94766521a436c86fb4233202957c",
+  "proof_scope": "Main execution retained; no duplicate contention campaign. Exact dev CI required."
+}
