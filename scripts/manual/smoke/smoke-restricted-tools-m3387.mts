@@ -9,9 +9,9 @@
 //   PW_DIR=<playwright-core dir> REPO=<checkout> OUT=<dir> [MATRIX=…] npx tsx scripts/manual/smoke/smoke-restricted-tools-m3387.mts
 // ui-gate: {"name": "Restricted switch: what stops, by kind (M-3387)", "hp": 48387}
 import { mkdirSync, writeFileSync } from "node:fs";
-import { createServer, type Server } from "node:net";
 import { join } from "node:path";
 import { bootFixture, caseName, matrix, shotPath } from "../smoke-fixture/index.mts";
+import { holdPorts, releasePorts } from "../smoke-fixture/port-hold.mts";
 import { fixtureInstances } from "../smoke-fixture/data.mts";
 import { TOOLS } from "../../../src/channel/mcp-tools.ts";
 import { CLASSIC_RESTRICTED_TOOLS } from "../../../src/contact-auth-types.ts";
@@ -28,15 +28,14 @@ const roster = fixtureInstances().filter((i) => PICK.includes(i.name));
 if (roster.length !== PICK.length || roster.some((i) => CHAT_ID.test(i.name))) throw new Error(`roster: ${roster.map((i) => i.name).join(", ")}`);
 // M-3510: ui-gate shard 1 once failed to start here — its fixed preview port (48387 + 1) was held by something else on the
 // runner (a fixed port inside the system's ephemeral range). The fixture now boots on ephemeral ports and reads them back.
-// The control: this run itself holds the old ports (HP and HP + 1) on loopback while it boots and runs; a port someone
-// else already holds is held all the same. The fixture must start anyway, on other ports.
+// The control: this run itself holds the old ports (HP and HP + 1) on loopback while it boots and runs; one another listener
+// already has (EADDRINUSE) is occupied all the same. Any other error fails the run (port-hold.mts). The fixture must start
+// anyway, on other ports.
 const OLD = Number(process.env.HP ?? 48387);
-const hold = (port: number) => new Promise<Server | "taken">((resolve) => {
-  const srv = createServer(); srv.once("error", () => resolve("taken")); srv.listen(port, "127.0.0.1", () => resolve(srv));
-});
-const held = await Promise.all([OLD, OLD + 1].map(hold));
-const fx = await bootFixture({ port: 0, roster, classic: false });
-check("ports:oldHeld", held.every((h) => h === "taken" || (h as Server).listening), held.map((h) => (h === "taken" ? "taken" : "held")));
+const held = await holdPorts([OLD, OLD + 1]);
+let fx: Awaited<ReturnType<typeof bootFixture>>;
+try { fx = await bootFixture({ port: 0, roster, classic: false }); } catch (e) { releasePorts(held); throw e; }
+check("ports:oldHeld", held.every((h) => h.state === "taken" || h.server.listening), held.map((h) => h.state));
 check("ports:ephemeralReadBack", fx.port > 0 && fx.previewPort > 0 && fx.port !== fx.previewPort && ![OLD, OLD + 1].includes(fx.port) && ![OLD, OLD + 1].includes(fx.previewPort)
   && fx.base === `http://127.0.0.1:${fx.port}`, { port: fx.port, previewPort: fx.previewPort, base: fx.base });
 const ROOM = "docs-site-builder";
@@ -96,6 +95,6 @@ try {
   for (const f of fail.slice(0, 30)) console.log(`FAIL ${f}: ${JSON.stringify((r[f] as any)?.FAIL ?? r.error ?? "").slice(0, 700)}`);
   console.log(fail.length ? `M-3387 smoke FAILED (${fail.length}) in ${r.seconds}s — ${OUT}` : `M-3387 smoke passed in ${r.seconds}s (${Object.keys(r).length - 1} checks)`);
   await fx.close();
-  for (const h of held) if (h !== "taken") h.close();
+  releasePorts(held);
   process.exit(fail.length ? 1 : 0);
 }
