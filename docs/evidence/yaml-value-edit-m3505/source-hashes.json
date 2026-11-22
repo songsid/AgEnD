@@ -1,0 +1,22 @@
+[
+  {
+    "path": "src/fleet-yaml-stringify.ts",
+    "sha256": "6fe2cda3e50d5558e65134e2bb93fa74e0de087ffde34b1288ea93bc000f517d"
+  },
+  {
+    "path": "tests/fleet-yaml-value-edit-m3505.test.ts",
+    "sha256": "05783e4ed808d7ccbb907fdae2c5034607a82e3b910a488350a9d213261497c2"
+  },
+  {
+    "path": "tests/fixtures/fleet-yaml-value-edit-m3505/aliases.yaml",
+    "sha256": "4957ce625a9cca64cb6d668c4d546e0100f867ecf7f3df0290a41bc2a4861ea0"
+  },
+  {
+    "path": "tests/fixtures/fleet-yaml-value-edit-m3505/block.yaml",
+    "sha256": "af162697e4037ec0d6fbd6a40985e508c4697cbba52831d74b3147169de8c380"
+  },
+  {
+    "path": "tests/fixtures/fleet-yaml-value-edit-m3505/flow.yaml",
+    "sha256": "d2f98ffa4600db02de23ab5af5437c3a7031b07561c0f76b0a47d3ee4d121643"
+  }
+]
