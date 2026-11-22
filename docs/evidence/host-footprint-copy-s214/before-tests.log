@@ -1,0 +1,36 @@
+
+ RUN  v4.1.12 /work/agend
+
+ ❯ tests/host-monitoring-settings-ui-m3454.test.ts (17 tests | 2 failed | 15 skipped) 102ms
+     × names actual agent and whole-computer process caps and over-limit behavior (en) 22ms
+     × names actual agent and whole-computer process caps and over-limit behavior (zh-TW) 12ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-monitoring-settings-ui-m3454.test.ts > shared Settings monitoring card > names actual agent and whole-computer process caps and over-limit behavior (en)
+AssertionError: expected 'Optional bounded process snapshot eve…' to contain '128'
+
+Expected: "128"
+Received: "Optional bounded process snapshot every minute. Cost grows with agent and process counts; reads known file metadata without scanning workspaces."
+
+ ❯ tests/host-monitoring-settings-ui-m3454.test.ts:14:159
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/host-monitoring-settings-ui-m3454.test.ts > shared Settings monitoring card > names actual agent and whole-computer process caps and over-limit behavior (zh-TW)
+AssertionError: expected '選用：每分鐘讀取各 Agent 的 CPU 和記憶體用量（有上限）。Age…' to contain '128'
+
+Expected: "128"
+Received: "選用：每分鐘讀取各 Agent 的 CPU 和記憶體用量（有上限）。Agent 與行程越多，耗用的資源越多；只讀已知檔案的資訊，不掃描工作區。"
+
+ ❯ tests/host-monitoring-settings-ui-m3454.test.ts:14:159
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 15 skipped (17)
+   Start at  10:17:29
+   Duration  460ms (transform 202ms, setup 101ms, import 116ms, tests 102ms, environment 0ms)

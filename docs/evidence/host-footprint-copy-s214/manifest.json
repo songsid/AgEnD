@@ -1,0 +1,20 @@
+{
+  "README.md": "7922403303b06b0f1905760dc4dd1541b3c99aef852f38b8154ff1f1bf25985b",
+  "after/after-settings-desk-light-en.png": "4184d2ce6ee3998cdf1bd12472e16488e30f9bf06508760ed85d2060464b9994",
+  "after/after-settings-phone-dark-zh-TW.png": "77a83078767dba67bd9c105c9018aada7565e57fe686ccf6f63c311446e0355c",
+  "after/after-table-phone-dark-zh-TW.png": "0440537df373318b17f68b11a2d84b0d1846eb62881936627e252221b4294be5",
+  "after-inputs.json": "07a1d475c986583b18160c92030d28730107cf167025edadec11d786bbe93f3d",
+  "after-table-tests.log": "c7d189d6921566ac84c05aff2539598fcfa09de4682a784454addaafa9d5a405",
+  "after-tests.log": "6d802b3cc7749cb4783ae755786e9970a18a005726b61ed95732d61de839c8e4",
+  "before/before-settings-desk-light-en.png": "17def07c56489afb8442bb20c0bf089a66830afd93acd4d78e85a780a2207c4b",
+  "before/before-settings-phone-dark-zh-TW.png": "24a3259b392801845992a4c50a3cff7be1df5ede8f5b2a7d8dfef83c10783b65",
+  "before/before-table-phone-dark-zh-TW.png": "4a54c2e91c1b3f9db89eb4ab5efadfc90fb7eabd30f74410a1b07508ac309652",
+  "before-inputs.json": "e38805ce160bb23ac92630d39c47ca0518b4674df594b782abfa7d4790a8e33c",
+  "before-tests.log": "00c99793cc9fed1e243363597b8b0fd3f39f5496aaf0234f353bbfbfdebc2f06",
+  "build.log": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec",
+  "final-assets.log": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115",
+  "gallery.md": "8a075d165017cc030ac53bc5caa18cb6635eab703b8b1c1fb9a99b99c4a19cfc",
+  "phone-css.log": "ffa6507a48181572d90f908f6a760b12ebb7cbc91c2bae690ffad9b62bdc505a",
+  "source-inputs.json": "be7d34362ebe2cbdbc1b087fa62205c7e5073c761175a7b595ed48cb28b0356e",
+  "test-types.log": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+}

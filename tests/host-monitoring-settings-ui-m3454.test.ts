@@ -1,6 +1,7 @@
 import { beforeAll,afterAll,afterEach,beforeEach,describe,expect,it,vi } from 'vitest';
 import {page,h,settle,type AppPage} from './helpers/app-harness.js';
 import {fire} from './helpers/mini-dom.js';
+import {FOOTPRINT_ROOTS,FOOTPRINT_ROWS} from '../src/host-monitoring-footprint-policy.js';
 const realFetch=globalThis.fetch;
 let p:AppPage,Component:any,i18n:any;const staged=new Map();let ctx:any;
 beforeAll(async()=>{p=page({url:'http://localhost/settings/notifications'});i18n=await import('/assets/app-i18n.js');Component=(await import('/ui/js/settings-host-monitoring.js')).HostMonitoringSettings});
@@ -9,6 +10,9 @@ afterEach(async()=>{await p.unmount();delete (globalThis as any).confirm});after
 const input=(id:string)=>p.root.querySelector('#'+id);
 const toggle=async(id:string,value:boolean)=>{const el=input(id);el.checked=value;fire(el,'change');await settle(12)};
 describe('shared Settings monitoring card',()=>{
+ it.each(['en','zh-TW'])('names actual agent and whole-computer process caps and over-limit behavior (%s)',async locale=>{
+  i18n.setLang(locale,{store:false});await p.mount(h(Component,{ctx}));const hint=p.root.querySelector('#hostMonitoringAgents-hint').textContent;expect(hint).toContain(String(FOOTPRINT_ROOTS));expect(hint).toContain(String(FOOTPRINT_ROWS));expect(hint).toContain(locale==='en'?'on this computer':'全機');expect(hint).toContain(locale==='en'?'unavailable':'無法取得');
+ });
  it('starts both off with agent sampling disabled; opening Settings stages nothing',async()=>{
   await p.mount(h(Component,{ctx}));expect(input('hostMonitoringEnabled').checked).toBe(false);expect(input('hostMonitoringAgents').checked).toBe(false);expect(input('hostMonitoringAgents').disabled).toBe(true);expect(staged.size).toBe(0);expect(p.root.textContent).toContain('no monitoring collector, timer or history file');
  });

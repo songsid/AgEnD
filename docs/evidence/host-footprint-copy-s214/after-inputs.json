@@ -1,0 +1,90 @@
+{
+  "phase": "after",
+  "scope": "Same completed real host cache before/after; synthetic helper/volume aliases, original timestamps. No collector, live Fleet/CLI/account/model or new measurement.",
+  "views": [
+    {
+      "name": "after-settings-desk-light-en",
+      "case": {
+        "device": "desk",
+        "theme": "light",
+        "lang": "en"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "headerLines": null,
+        "small": [
+          "View host health",
+          "hostMonitoringEnabled",
+          "hostMonitoringAgents",
+          "hostMonitoringDrive",
+          "Refresh drive list",
+          "hostAlert-needsYou",
+          "hostAlert-general",
+          "Restore defaults"
+        ],
+        "hint": "Optional: samples agent CPU and memory every minute, up to 128 agents and 4096 processes on this computer. Above either limit, the sample is unavailable. Cost grows with agent and process counts; reads known file metadata without scanning workspaces."
+      },
+      "assets": [
+        {
+          "path": "/ui/js/v-1583ee37ff1a/settings-host-monitoring.js",
+          "sha256": "c7e826f2a68238babbd15ce566a2f90d209a4ba2ec7495f2489fd4e5221fa0c1"
+        },
+        {
+          "path": "/assets/v-1583ee37ff1a/app.css",
+          "sha256": "acc1f9a69560f18468a826d5b3213dc18e226e4ae0485c4ed106376e7165fe78"
+        }
+      ]
+    },
+    {
+      "name": "after-settings-phone-dark-zh-TW",
+      "case": {
+        "device": "phone",
+        "theme": "dark",
+        "lang": "zh-TW"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "headerLines": null,
+        "small": [],
+        "hint": "\u9078\u7528\uff1a\u6bcf\u5206\u9418\u8b80\u53d6 Agent \u7684 CPU \u548c\u8a18\u61b6\u9ad4\u7528\u91cf\uff0c\u6bcf\u6b21\u6700\u591a 128 \u500b Agent\u3001\u5168\u6a5f 4096 \u500b\u884c\u7a0b\u3002\u8d85\u904e\u4efb\u4e00\u4e0a\u9650\u6642\uff0c\u8a72\u6b21\u8b80\u6578\u6703\u986f\u793a\u7121\u6cd5\u53d6\u5f97\u3002Agent \u8207\u884c\u7a0b\u8d8a\u591a\uff0c\u8017\u7528\u7684\u8cc7\u6e90\u8d8a\u591a\uff1b\u53ea\u8b80\u5df2\u77e5\u6a94\u6848\u7684\u8cc7\u8a0a\uff0c\u4e0d\u6383\u63cf\u5de5\u4f5c\u5340\u3002"
+      },
+      "assets": [
+        {
+          "path": "/ui/js/v-1583ee37ff1a/settings-host-monitoring.js",
+          "sha256": "c7e826f2a68238babbd15ce566a2f90d209a4ba2ec7495f2489fd4e5221fa0c1"
+        },
+        {
+          "path": "/assets/v-1583ee37ff1a/app.css",
+          "sha256": "acc1f9a69560f18468a826d5b3213dc18e226e4ae0485c4ed106376e7165fe78"
+        }
+      ]
+    },
+    {
+      "name": "after-table-phone-dark-zh-TW",
+      "case": {
+        "device": "phone",
+        "theme": "dark",
+        "lang": "zh-TW"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "header": "\u7ba1\u7406\u6a94\u6848",
+        "headerLines": 1,
+        "small": []
+      },
+      "assets": [
+        {
+          "path": "/assets/v-62127615ecd2/app.css",
+          "sha256": "acc1f9a69560f18468a826d5b3213dc18e226e4ae0485c4ed106376e7165fe78"
+        },
+        {
+          "path": "/ui/js/v-62127615ecd2/host-footprint.js",
+          "sha256": "df49b1858205ed8427b3827838bde8ab71749699c6121085a10624fe1f3a7566"
+        }
+      ]
+    }
+  ]
+}
