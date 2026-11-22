@@ -38,7 +38,12 @@ export const caseName = (c: MatrixCase) => `${c.device}-${c.theme}-${c.lang}`;
 export const labelOf = (c: MatrixCase, l: { en: string; zh: string }) => c.lang === "zh-TW" ? l.zh : l.en;
 
 export interface FixtureOptions {
-  /** Health port; the preview origin is port + 1. Each smoke has its own default. */
+  /**
+   * Health port; the preview origin is port + 1. Each smoke has its own default. M-3510: 0 = ephemeral — the system picks
+   * free ports for the web and preview listeners and the fixture reads them back (`port`, `previewPort`), so a port some
+   * other process happens to hold (a fixed port in the system's ephemeral range, taken by an unrelated connection) can
+   * never stop the boot. No retry and no wait: there is nothing to collide with.
+   */
   port: number;
   /** Extra YAML appended under `web:` (indented two spaces), e.g. appearance caps. */
   webYaml?: string;
@@ -56,6 +61,9 @@ export interface Fixture {
   fm: any;
   dir: string;
   base: string;
+  /** M-3510: the web (health) listener's actual port, and the preview listener's (read back; differs from 0 when ephemeral). */
+  port: number;
+  previewPort: number;
   instances: FixtureInstance[];
   browser: any;
   /** A signed-in page for one matrix case (fresh context, overlays skipped, host theme pref set). */
@@ -101,7 +109,8 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   const REPO = process.env.REPO; if (!REPO) throw new Error("set REPO=<checkout>");
   const PW = process.env.PW_DIR; if (!PW) throw new Error("set PW_DIR=<dir with playwright-core>");
   if (!process.env.FONTCONFIG_FILE) process.env.FONTCONFIG_FILE = "/etc/fonts/fonts.conf";
-  for (const p of [o.port, o.port + 1]) if (!(await portFree(p))) throw new Error(`port ${p} is in use: refusing to boot (the fixture never talks to a listener it did not start)`);
+  const ephemeral = o.port === 0;
+  if (!ephemeral) for (const p of [o.port, o.port + 1]) if (!(await portFree(p))) throw new Error(`port ${p} is in use: refusing to boot (the fixture never talks to a listener it did not start)`);
   const dir = mkdtempSync(join(tmpdir(), "smoke-fx-"));
   process.env.AGEND_HOME = dir;
   let fm: any = null, browser: any = null, closed: Promise<void> | null = null;
@@ -133,7 +142,8 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
       ...(i.description ? [`    description: ${q(i.description)}`] : []),
     ]),
     ...(teams.length ? ["teams:", ...teams.flatMap(({ t, members }) => [`  ${q(t)}:`, `    members: [${members.map(q).join(", ")}]`])] : []),
-    "web:", `  preview_port: ${o.port + 1}`, ...(o.webYaml ? [o.webYaml] : []),
+    // Ephemeral: no preview_port — with health_port 0 the fleet opens an ephemeral preview listener too (web-preview.ts).
+    ...(ephemeral ? (o.webYaml ? ["web:", o.webYaml] : []) : ["web:", `  preview_port: ${o.port + 1}`, ...(o.webYaml ? [o.webYaml] : [])]),
   ].join("\n") + "\n";
   writeFileSync(join(dir, "fleet.yaml"), yaml);
   if (o.classic !== false) {
@@ -153,9 +163,13 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
   fm.getInstanceStatus = (n: string) => status.get(n) ?? "running";
   fm.initializeWebAuthTokens(); fm.startHealthServer(o.port);
   // Our own servers, bound to the ports we checked — before any page is opened.
-  const owns = (srv: any, port: number) => { const a = srv?.listening ? srv.address() : null; return !!a && typeof a === "object" && a.port === port && a.address === "127.0.0.1"; };
+  // Ours: bound on loopback at the port we asked for — or, ephemeral, at the one the system gave us (read back).
+  const owns = (srv: any, port: number) => { const a = srv?.listening ? srv.address() : null; return !!a && typeof a === "object" && a.address === "127.0.0.1" && (port === 0 ? a.port > 0 : a.port === port); };
   if (!(await until(() => fm.healthServerListening === true && owns(fm.healthServer, o.port), 10000))) throw new Error(`the fixture's health listener did not bind 127.0.0.1:${o.port}`);
-  if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${o.port + 1}`);
+  const port: number = fm.healthServer.address().port;
+  if (!(await until(() => fm.previewListening === true && owns(fm.previewListener?.server, ephemeral ? 0 : o.port + 1), 10000))) throw new Error(`the fixture's preview listener did not bind 127.0.0.1:${ephemeral ? "(ephemeral)" : o.port + 1}`);
+  const previewPort: number = fm.previewListener.server.address().port;
+  if (ephemeral && previewPort === port) throw new Error("the fixture's preview listener shares the web listener's port");
   const code = (host: boolean | undefined = o.host) => { fm.initializeWebSessions(); return fm.webLoginCodes.issue({ tier: "admin", epoch: tokenEpoch(fm.webToken), ...(host ? { host: true } : {}) }).display; };
   // PW_ENGINE=webkit runs the same smoke in WebKit (Safari's engine; its system libraries come with the Playwright
   // image, e.g. mcr.microsoft.com/playwright). Default: CHROME if set, else playwright-core's own Chromium
@@ -168,10 +182,10 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
     : await pw.chromium.launch({ ...(process.env.CHROME ? { executablePath: process.env.CHROME } : {}), args: ["--no-sandbox", `--host-resolver-rules=MAP ${LAN_HOST} 127.0.0.1`],
       // PW_SCROLLBARS=1: classic scrollbars that take width, as on Windows (headless hides them by default).
       ...(process.env.PW_SCROLLBARS === "1" ? { ignoreDefaultArgs: ["--hide-scrollbars"] } : {}) });
-  const base = `http://127.0.0.1:${o.port}`;
+  const base = `http://127.0.0.1:${port}`;
   const painter = await browser.newPage();
   return {
-    fm, dir, base, instances, browser,
+    fm, dir, base, port, previewPort, instances, browser,
     async page(c, opts = {}) {
       // Theme and language are host preferences (#1665): set on the host, every page follows them.
       // Every case starts from the same prefs: what a previous case set (a card size, a filter) is cleared first.
@@ -188,7 +202,7 @@ export async function bootFixture(o: FixtureOptions): Promise<Fixture> {
         // A name the dashboard answers to, as an operator adds one to web.allowed_hosts for a LAN or tailnet browser.
         const hosts: string[] = fm.fleetConfig.web.allowed_hosts ?? [];
         if (!hosts.includes(LAN_HOST)) fm.fleetConfig.web.allowed_hosts = [...hosts, LAN_HOST];
-        at = `http://${LAN_HOST}:${o.port}`;
+        at = `http://${LAN_HOST}:${port}`;
       }
       if (opts.headers) await ctx.setExtraHTTPHeaders(opts.headers);
       await page.goto(`${at}/signin`); await page.waitForSelector("#code");
