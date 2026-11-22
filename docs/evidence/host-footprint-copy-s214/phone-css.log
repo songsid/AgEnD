@@ -1,0 +1,8 @@
+
+ RUN  v4.1.12 /work/agend
+
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  10:21:05
+   Duration  418ms (transform 91ms, setup 143ms, import 28ms, tests 60ms, environment 0ms)

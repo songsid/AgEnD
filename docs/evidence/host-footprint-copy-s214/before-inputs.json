@@ -1,0 +1,90 @@
+{
+  "phase": "before",
+  "scope": "Same completed real host cache before/after; synthetic helper/volume aliases, original timestamps. No collector, live Fleet/CLI/account/model or new measurement.",
+  "views": [
+    {
+      "name": "before-settings-desk-light-en",
+      "case": {
+        "device": "desk",
+        "theme": "light",
+        "lang": "en"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "headerLines": null,
+        "small": [
+          "View host health",
+          "hostMonitoringEnabled",
+          "hostMonitoringAgents",
+          "hostMonitoringDrive",
+          "Refresh drive list",
+          "hostAlert-needsYou",
+          "hostAlert-general",
+          "Restore defaults"
+        ],
+        "hint": "Optional bounded process snapshot every minute. Cost grows with agent and process counts; reads known file metadata without scanning workspaces."
+      },
+      "assets": [
+        {
+          "path": "/ui/js/v-2dd5b0b3f17a/settings-host-monitoring.js",
+          "sha256": "ac3c4e5f00a7a9ab1b73686d1e943909ccb596b0d82490fbc13e43fb1c96885a"
+        },
+        {
+          "path": "/assets/v-2dd5b0b3f17a/app.css",
+          "sha256": "5dff33e96d68992eb57ddc4f7276f9431419c1c5ad3a60dbafabc1c7e11e47d7"
+        }
+      ]
+    },
+    {
+      "name": "before-table-phone-dark-zh-TW",
+      "case": {
+        "device": "phone",
+        "theme": "dark",
+        "lang": "zh-TW"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "header": "\u5df2\u77e5\u7ba1\u7406\u6a94\u6848",
+        "headerLines": 2,
+        "small": []
+      },
+      "assets": [
+        {
+          "path": "/assets/v-2dd5b0b3f17a/app.css",
+          "sha256": "5dff33e96d68992eb57ddc4f7276f9431419c1c5ad3a60dbafabc1c7e11e47d7"
+        },
+        {
+          "path": "/ui/js/v-2dd5b0b3f17a/host-footprint.js",
+          "sha256": "0ad33bdf1ce60b78995fc1d2b9df54de738111f66caba3f66939260fd1cc5f62"
+        }
+      ]
+    },
+    {
+      "name": "before-settings-phone-dark-zh-TW",
+      "case": {
+        "device": "phone",
+        "theme": "dark",
+        "lang": "zh-TW"
+      },
+      "geometry": {
+        "pageOverflow": false,
+        "tableOverflow": false,
+        "headerLines": null,
+        "small": [],
+        "hint": "\u9078\u7528\uff1a\u6bcf\u5206\u9418\u8b80\u53d6\u5404 Agent \u7684 CPU \u548c\u8a18\u61b6\u9ad4\u7528\u91cf\uff08\u6709\u4e0a\u9650\uff09\u3002Agent \u8207\u884c\u7a0b\u8d8a\u591a\uff0c\u8017\u7528\u7684\u8cc7\u6e90\u8d8a\u591a\uff1b\u53ea\u8b80\u5df2\u77e5\u6a94\u6848\u7684\u8cc7\u8a0a\uff0c\u4e0d\u6383\u63cf\u5de5\u4f5c\u5340\u3002"
+      },
+      "assets": [
+        {
+          "path": "/ui/js/v-2dd5b0b3f17a/settings-host-monitoring.js",
+          "sha256": "ac3c4e5f00a7a9ab1b73686d1e943909ccb596b0d82490fbc13e43fb1c96885a"
+        },
+        {
+          "path": "/assets/v-2dd5b0b3f17a/app.css",
+          "sha256": "5dff33e96d68992eb57ddc4f7276f9431419c1c5ad3a60dbafabc1c7e11e47d7"
+        }
+      ]
+    }
+  ]
+}

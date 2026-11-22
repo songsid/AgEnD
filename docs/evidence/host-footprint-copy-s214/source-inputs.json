@@ -1,0 +1,22 @@
+{
+  "base": "9e922bbeff05f43d11cfdb3727fa37ab6df0d447",
+  "sourceSha256": {
+    "src/ui/host-footprint.js": {
+      "before": "0ad33bdf1ce60b78995fc1d2b9df54de738111f66caba3f66939260fd1cc5f62",
+      "after": "df49b1858205ed8427b3827838bde8ab71749699c6121085a10624fe1f3a7566"
+    },
+    "src/ui/settings-host-monitoring.js": {
+      "before": "ac3c4e5f00a7a9ab1b73686d1e943909ccb596b0d82490fbc13e43fb1c96885a",
+      "after": "c7e826f2a68238babbd15ce566a2f90d209a4ba2ec7495f2489fd4e5221fa0c1"
+    },
+    "src/ui/shared/app.css": {
+      "before": "5dff33e96d68992eb57ddc4f7276f9431419c1c5ad3a60dbafabc1c7e11e47d7",
+      "after": "acc1f9a69560f18468a826d5b3213dc18e226e4ae0485c4ed106376e7165fe78"
+    },
+    "src/host-monitoring-footprint-policy.ts": {
+      "before": "dedd99c61befc59c2a61a02772e191e750d88a007787b52eb3c68da9ac9061b1",
+      "after": "dedd99c61befc59c2a61a02772e191e750d88a007787b52eb3c68da9ac9061b1"
+    }
+  },
+  "scope": "The policy is unchanged; only three presentation production files change. The retained actual cache is the already accepted S209 window, not a new native workload."
+}
