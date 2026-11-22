@@ -64,7 +64,11 @@ try{
    await page.locator('[data-pane="a"] textarea').fill("Preserved peer draft");await go(details(b)+"?cat=basic");await page.locator('[data-pane="b"] input[id$="ag-desc"]').waitFor();await shot("split-settings");
    const close=page.locator('[data-pane="b"] .ws-pane-close');
    if(retain==="workspace"){assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));await row(b).press("Enter");check("retained-workspace","old header keeps its old Close pane label; new sidebar returns focus to Chat");}
-   else{assert.equal(await close.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await close.click();}
+   else if(process.env.M3513_CAPTURE_ONLY==="1"){
+    // Current workspace header closes a pane; the Settings-owned link returns to Chat.
+    assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));
+    const back=page.locator('[data-pane="b"] .agent-back-chat');assert.equal(await back.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await back.click();
+   }else{assert.equal(await close.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await close.click();}
    await page.locator('[data-pane="b"] textarea').waitFor();assert.equal(await page.locator(".ws-pane").count(),2);assert.equal(await page.locator('[data-pane="a"] textarea').inputValue(),"Preserved peer draft");check("split-back","own pane returns to Chat, peer draft and two-pane layout preserved");await shot("split-returned-chat");
   }
  }

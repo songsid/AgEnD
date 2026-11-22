@@ -119,7 +119,15 @@ try {
   }
   else {
     const row = (name: string) => page.locator(".v-li").filter({ has: page.locator(`a.inst[href$="/${encodeURIComponent(name)}"]`) }).first();
-    if (!retain || ["css", "ui-menu"].includes(retain)) {
+    if (!retain && phone && process.env.M3513_CAPTURE_ONLY === "1") {
+      // Today's Fleet sidebar intentionally hides the legacy row button on phones.
+      // Capture its real shared context sheet via the supported keyboard path.
+      const r = row(a), anchor = r.locator("a.inst");
+      await shot("sidebar-hover"); await anchor.focus(); await anchor.press("Shift+F10");
+      await page.locator("dialog[open]").waitFor(); await shot("sidebar-menu");
+      await page.keyboard.press("Escape"); await page.locator("dialog[open]").waitFor({ state: "detached" });
+      check("current-phone-context", "Supported Shift+F10 path opens/closes current context sheet; not a rerun of the hidden legacy row-menu contract");
+    } else if (!retain || ["css", "ui-menu"].includes(retain)) {
       const r = row(a), button = r.locator(".inst-row-menu > button");
       if (!retain) {
         const slot = await button.boundingBox(); assert.ok(slot);
