@@ -1,0 +1,18 @@
+M-3509: bound merge-gate fixture cleanup by one case
+
+Attempt 1 of CI run 44987513358 on 81cdd60d311a2010f221aabbff4aeac58a47b462 (job137101522305) reports all 154 gate cases passed, then a 10,000 ms hook timeout at `tests/gate-merge-script.test.ts:19`. That hook removed every scratch repository accumulated in `dirs` across the entire suite. The failure is in the final cleanup, not a gate verdict or provider request. The log does not contain per-directory disk/CPU timing, so the precise runner resource delay is not claimed.
+
+Cleanup now runs after each case and drains that case's roots. Before the next case and after the final case, guards verify both the registry and the actual removed paths. Cleanup errors remain failures and all of the case's roots are attempted. The final hook performs a bounded verification only. Existing 154 behavior cases, real scratch Git operations, fake-gh ordering/assertions, test budgets and default 10 s hook budget remain unchanged. Production `scripts/gate-merge.sh` is untouched.
+
+The serial durable-suite partition was evaluated. It changes competing worker load while leaving an all-suite deletion hook proportional to the entire suite. Per-case ownership fixes that cumulative workload directly, so this suite stays in its existing unit partition; no CI/config scheduling change is needed.
+
+Proof:
+
+- Fail-first retention control: add the boundary assertion while keeping the old final cleanup, select the first happy-path and dry-run cases. First case passes; second fails because the first case's repositories remain registered. This forces the retention mechanism; it does not manufacture or claim a local 10 s filesystem stall.
+- Fixed ordinary full run: 154/154 passed. Test types exit0. No gate assertion, timeout or retry was relaxed.
+- Five fresh focused Vitest runs, each with all child processes pinned to one allowed Linux CPU alongside four owned busy processes:15/15 selected cases passed (happy path, dry run and contributor on commit 101). Boundary/final cleanup guards run normally in each sample. The longest selected case is 7.465 s; this is a case duration, not a separate hook-time measurement. The full 154-case suite was run once; it was not repeated five times under load.
+- The rehearsal removes stale reports, requires process exit0 and exactly the three intended passed cases, rejects missing/empty/skipped/wrong/extra results, and stops on the first failure without retries. Four parser-control tests pass. All owned load processes are stopped in finally.
+
+Real Git repositories and bash gate are used only against scratch local bare origins. `gh` is a fixture stub. No real PR merge, GitHub write, provider, live Fleet or pane is exercised. Main/dev have byte-identical affected test and gate-script blobs (`21510c88436cc670d1d8790ce976b011f3e75f58` and `a8a27c07a7ab94766521a436c86fb4233202957c` respectively). Main fix first; standalone dev twin follows the actual main merge.
+
+Release-freeze HOLD: keep the PR DRAFT until beta.18 ships and the Leader explicitly lifts it. Rollback only restores the test fixture's old lifetime; production merge-gate behavior and persisted data are unchanged.
