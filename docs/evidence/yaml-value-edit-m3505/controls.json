@@ -3,13 +3,14 @@
   "originalFormatterReversal": {
     "failedAssertions": 14,
     "structuralPositives": 3,
-    "validFixtures": true
+    "validFixtures": true,
+    "cases": 17
   },
   "affected": {
     "files": 8,
     "passed": 99
   },
-  "newCases": 17,
+  "newCases": 19,
   "testTypesExit": 0,
   "readers": [
     "beta.16",
@@ -17,5 +18,17 @@
   ],
   "beta17Commit": "506acdf29ab9a3937aabceb5d40e90b08e13a826",
   "liveConfigWrites": false,
-  "releaseFreeze": "beta.18; keep draft until explicit Leader lift"
+  "releaseFreeze": "beta.18; keep draft until explicit Leader lift",
+  "r1": {
+    "review": "6010404251",
+    "priorHead": "2955ade47699dbc940c04e31237069c63f4ca5f4",
+    "failedAssertions": 2,
+    "skippedDuringBaseControl": 17,
+    "focused": {
+      "files": 2,
+      "passed": 28
+    },
+    "testTypesExit": 0,
+    "broadRunRepeated": false
+  }
 }

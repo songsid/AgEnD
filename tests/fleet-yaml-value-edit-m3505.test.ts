@@ -79,3 +79,13 @@ it("the actual Fleet saver toggles values in place and both shipped readers stil
   expect(beta16(saved.monitoring)).toEqual(fm.fleetConfig!.monitoring); expect(beta17(saved.monitoring)).toEqual(fm.fleetConfig!.monitoring);
   fm.saveFleetConfig(); expect(readFileSync(path, "utf8")).toBe(result);
 });
+
+it.each([
+  ["map", "other:\n  nested:\n    value: *off # keep independently false\n"],
+  ["sequence", "other:\n  - *off # keep independently false\n  - nested: [*off] # second copy\n"],
+])("reaches materialized scalar aliases under an equal-data sibling %s", (_kind, sibling) => {
+  const source = "monitoring:\n  enabled: &off false # choice\n" + sibling + "web: {\n  guests: { chat: true, },\n}\n";
+  const { result } = edit(source, [[["monitoring", "enabled"], true]]);
+  expect(result).toBe(source.replace("false # choice", "true # choice").replace(/\*off/g, "false"));
+  expect((yaml.load(result) as any).monitoring.enabled).toBe(true);
+});

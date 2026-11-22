@@ -1,11 +1,11 @@
 [
   {
     "path": "src/fleet-yaml-stringify.ts",
-    "sha256": "775be8d71f59deace27cdf1b0248fa331dbcff088a802f254447f9ccfa2ad4b7"
+    "sha256": "9b226f19e663017f111a038245dca24a81e78c5e9734be2eff5254a9b00b9ef9"
   },
   {
     "path": "tests/fleet-yaml-value-edit-m3505.test.ts",
-    "sha256": "fec6478c097831c8b4284178ac6e53a4be8d30fb25d0425ba58128fc17c21ebd"
+    "sha256": "a0811d739a47c8eb9974e9455b15e28cfbb22512042ff44c48dd9d7a0e91960c"
   },
   {
     "path": "tests/fixtures/host-monitoring-beta17/host-monitoring-config.ts",

@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { Document, isAlias, isMap, isScalar, parseDocument } from "yaml";
+import { Document, isAlias, isMap, isScalar, isSeq, parseDocument } from "yaml";
 
 type RecordValue = Record<string, unknown>;
 const record = (v: unknown): v is RecordValue => v !== null && typeof v === "object" && !Array.isArray(v)
@@ -29,7 +29,17 @@ export function stringifyFleetYaml(document: ReturnType<typeof parseDocument>, s
       // Detaching an anchored scalar can materialize an unchanged alias too.
       // Replace that alias token, or the old anchor would change both values.
       const materializedScalar = isAlias(node) && isScalar(next);
-      if (isDeepStrictEqual(oldValue, newValue) && !materializedScalar) return;
+      if (isDeepStrictEqual(oldValue, newValue) && !materializedScalar) {
+        // Equal data does not mean equal alias structure: detachForWrite may
+        // have materialized a scalar alias anywhere beneath this container.
+        // Descend concrete containers, never dereference collection aliases.
+        if (isSeq(node) && isSeq(next) && Array.isArray(oldValue) && Array.isArray(newValue)) {
+          oldValue.forEach((value, index) => collect(value, newValue[index], [...path, index]));
+        } else if (isMap(node) && isMap(next) && record(oldValue) && record(newValue)) {
+          for (const key of Object.keys(oldValue)) collect(oldValue[key], newValue[key], [...path, key]);
+        }
+        return;
+      }
       if (scalar(oldValue) && scalar(newValue)) {
         // An alias intentionally left bound follows its anchor's edit; the
         // final parse/equivalence check still verifies its intended value.
