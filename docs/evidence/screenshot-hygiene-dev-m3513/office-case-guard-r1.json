@@ -1,0 +1,37 @@
+{
+  "reviewed_baseline": "5525c8af0a93f7e4a08a7d1e4f5e7b0c391cc58d",
+  "review_findings": "One Office capture selector/verdict P2; all prior image/provenance checks carry.",
+  "change": "Shared pure selector rejects unknown values before fixture boot; verdict refuses zero exercised cases.",
+  "narrow_controls": {
+    "base_assertion_failures": [
+      "unknown selector silently selected zero cases",
+      "empty verdict returned true"
+    ],
+    "base_passed_controls": 2,
+    "fixed_passed_controls": 4,
+    "actual_unknown_harness_exit": 1,
+    "actual_unknown_rejected_before_fixture_boot": true
+  },
+  "proof_limits": [
+    "Valid selection/verdict tested without launching browser.",
+    "No image, fixture roster, historical capture binding, production implementation, timeout or retry change.",
+    "No native/provider/browser campaign repeated."
+  ],
+  "unchanged_present_png_paths": 529,
+  "base_control_method": "Original selection/verdict extracted into the actual shared helper before guards: two assertion failures and two positive passes; corrected helper then passes all four.",
+  "focused_helper_types": "tsc --ignoreConfig --noEmit --skipLibCheck --strict --target ES2022 --module NodeNext --moduleResolution NodeNext (pure helper only): exit0",
+  "source_sha256": [
+    {
+      "path": "scripts/manual/smoke-fixture/office-capture-cases.ts",
+      "sha256": "a2531fc224dcffea341c96551236f737bcd86e5c4336e253ed938ea093d6fe62"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-office-play-m3293.mts",
+      "sha256": "83be494022631d9b0b22e93876738c5065530741ac78e0bfac323e1b5db93151"
+    },
+    {
+      "path": "tests/manual-office-capture-cases-m3513.test.ts",
+      "sha256": "94fd1429b758d9f3c309059c3a16d392102b4611cb23765888fd6dfc7dd1e8a5"
+    }
+  ]
+}

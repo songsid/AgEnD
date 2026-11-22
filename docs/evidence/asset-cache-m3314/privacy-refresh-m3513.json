@@ -1,0 +1,26 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation."
+  ],
+  "harness": "scripts/manual/smoke/smoke-asset-cache-m3314.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/asset-cache-m3314/after-load.png",
+      "blob": "4ae50bd761e097a1bba9dad3dd26d8cf455b8e6b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "e4c18596c98a21d428d215939a9ce4c90d7a3e8a530282c24897aa5545424856",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/asset-cache-m3314/after-update-stale.png",
+      "blob": "e03656302ccd5600273dc2ab7c8eb6426b72671d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8146fbe35c3c233fbad60075af85312e9879fa2fbdcf1e314feb477f9beeb9fd",
+      "capture_head": "ae6d3e1067f19740e9a87a62b8c2488db19a49bb"
+    }
+  ]
+}

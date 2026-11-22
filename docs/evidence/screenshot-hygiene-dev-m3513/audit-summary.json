@@ -1,0 +1,136 @@
+{
+  "original_branch_paths": {
+    "main": 71,
+    "dev": 2555
+  },
+  "original_distinct_visual_union": 2100,
+  "original_affected_distinct_union": 579,
+  "original_affected_paths": {
+    "main": 37,
+    "dev": 731
+  },
+  "uncertain_originals": 0,
+  "dev_actions": {
+    "recaptured": 517,
+    "cropped_historical_details": 2,
+    "withdrawn": 212
+  },
+  "families": {
+    "agent-back-chat-3714": {
+      "original_affected": 82,
+      "recaptured": 52,
+      "cropped": 0,
+      "withdrawn": 30
+    },
+    "annotate-first-open-3168": {
+      "original_affected": 22,
+      "recaptured": 12,
+      "cropped": 0,
+      "withdrawn": 10
+    },
+    "asset-cache-m3314": {
+      "original_affected": 2,
+      "recaptured": 2,
+      "cropped": 0,
+      "withdrawn": 0
+    },
+    "chat-annotate-3727": {
+      "original_affected": 52,
+      "recaptured": 34,
+      "cropped": 0,
+      "withdrawn": 18
+    },
+    "chat-menus-m2959": {
+      "original_affected": 94,
+      "recaptured": 57,
+      "cropped": 0,
+      "withdrawn": 37
+    },
+    "claude-model-observation-alpha": {
+      "original_affected": 31,
+      "recaptured": 26,
+      "cropped": 0,
+      "withdrawn": 5
+    },
+    "desktop-split-chat-pr1": {
+      "original_affected": 60,
+      "recaptured": 25,
+      "cropped": 0,
+      "withdrawn": 35
+    },
+    "desktop-split-chat-pr2": {
+      "original_affected": 141,
+      "recaptured": 119,
+      "cropped": 0,
+      "withdrawn": 22
+    },
+    "desktop-split-chat-pr3": {
+      "original_affected": 108,
+      "recaptured": 84,
+      "cropped": 0,
+      "withdrawn": 24
+    },
+    "desktop-split-chat-pr4": {
+      "original_affected": 100,
+      "recaptured": 77,
+      "cropped": 0,
+      "withdrawn": 23
+    },
+    "hub-contact-3160": {
+      "original_affected": 1,
+      "recaptured": 1,
+      "cropped": 0,
+      "withdrawn": 0
+    },
+    "hub-name-m3172": {
+      "original_affected": 6,
+      "recaptured": 6,
+      "cropped": 0,
+      "withdrawn": 0
+    },
+    "hub-recommended-update-m3140": {
+      "original_affected": 8,
+      "recaptured": 8,
+      "cropped": 0,
+      "withdrawn": 0
+    },
+    "office-drag-pat-m3293": {
+      "original_affected": 10,
+      "recaptured": 6,
+      "cropped": 0,
+      "withdrawn": 4
+    },
+    "office-stay-in-area-m3286": {
+      "original_affected": 2,
+      "recaptured": 2,
+      "cropped": 0,
+      "withdrawn": 0
+    },
+    "settings-summary-page-language-3416-alpha": {
+      "original_affected": 8,
+      "recaptured": 4,
+      "cropped": 0,
+      "withdrawn": 4
+    },
+    "usage-marks-fit-m3288": {
+      "original_affected": 4,
+      "recaptured": 2,
+      "cropped": 2,
+      "withdrawn": 0
+    }
+  },
+  "modified_present_png_paths": 529,
+  "modified_present_distinct_sha256": 352,
+  "every_modified_png_visual_hash_verified": true,
+  "artifact_manifests_verified": 24,
+  "artifact_bindings_verified": 1300,
+  "proof_limits": [
+    "All original2100distinct images inspected at native-resolution regions; OCR was supplemental only. No OCR/private source text published.",
+    "Current captures use isolated FleetManager/web listeners and generic fixtures; providers/native CLIs/live Fleet/panes are not used.",
+    "Historical source/test receipts are preserved as historical records. Unexercised retained-asset controls and unavailable reaction frames were withdrawn, not relabelled as passing current proof.",
+    "Some source wrappers had diagnostic failures/interruption. Per-family README/sidecar distinguishes completed selected captures, static views and failed controls.",
+    "Static truncation, scrolled/cropped menus, narrow Settings, transitional frames and absent reaction words remain explicitly documented.",
+    "Historical Usage details are exact crops of their original dialog, not full-phone views or fresh renders.",
+    "No production/UI implementation changed; only isolated capture fixtures/harnesses, evidence and the known-blob guard."
+  ]
+}

@@ -1,0 +1,3 @@
+# annotate-first-open-3168
+
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 12 affected current paths recaptured using example identities; 10 affected historical controls withdrawn. Current12 sampling frames were inspected. The pinned prior-reference replay completed, but its unversioned old-module routes do not establish exercised historical code on today's versioned URLs; no historical first-paint parity is claimed. Some early desktop second-open frames are nearly black/transitional and are not populated-editor evidence. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every disposition/hash. No live provider, CLI, pane or Fleet was used.

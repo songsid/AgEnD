@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Owned cookie/HTTP UI rehearsal; no Fleet start, CLI, account or settings writes. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -19,10 +20,10 @@ const inputs:Record<string,string[]>={},assets:Record<string,string[]>={},substi
 const record=(m:Record<string,string[]>,path:string,b:string|Buffer)=>{const paths=m[digest(b)]||=[];if(!paths.includes(path))paths.push(path);};
 for(const p of sources)record(inputs,p,readFileSync(join(repo,p)));record(inputs,"harness",readFileSync(new URL(import.meta.url)));mkdirSync(out,{recursive:true});
 const receipt:any={head:git("rev-parse","HEAD"),tree:git("rev-parse","HEAD^{tree}"),dirty,theme,language,phone,retain,oldRef,inputs,assets,substitutions,cases:[],errors:[],effects:[],previews:[],external:[],scope:"Owned scratch FleetManager with real cookie/HTTP/SSE/UI; fixture status and names, no Fleet start/CLI/account/AD/live work; edit unsaved description only, never Apply"};
-const fx=await bootFixture({port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
+const fx=await bootFixture({ roster: publicRoster(6),port:Number(process.env.HP||56046),instances:6,classic:false});let ctx:any;const jobs:Promise<unknown>[]=[];
 try{
  receipt.browserVersion=fx.browser.version();const a=fx.instances[1].name,b=fx.instances[2].name,status=fx.fm.getUiStatus.bind(fx.fm);
- fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Cairn"}:{}),...(it.name===b?{display_name:"AgEnD Leader"}:{})}))};};
+ fx.fm.getUiStatus=(...args:any[])=>{const s=status(...args);return {...s,instances:s.instances.map((it:any)=>({...it,...(it.name===a?{display_name:"Example alpha"}:{}),...(it.name===b?{display_name:"Example beta"}:{})}))};};
  fx.fm.webPrefs.write("operator",new Map([["theme",theme],["lang",language],["nav.favorites",[a]]]));
  ctx=await fx.browser.newContext({viewport:phone?{width:390,height:844}:{width:1600,height:1000},colorScheme:theme,locale:language,hasTouch:phone});
  await ctx.addInitScript({content:"window.__name = (f) => f;"});
@@ -63,7 +64,11 @@ try{
    await page.locator('[data-pane="a"] textarea').fill("Preserved peer draft");await go(details(b)+"?cat=basic");await page.locator('[data-pane="b"] input[id$="ag-desc"]').waitFor();await shot("split-settings");
    const close=page.locator('[data-pane="b"] .ws-pane-close');
    if(retain==="workspace"){assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));await row(b).press("Enter");check("retained-workspace","old header keeps its old Close pane label; new sidebar returns focus to Chat");}
-   else{assert.equal(await close.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await close.click();}
+   else if(process.env.M3513_CAPTURE_ONLY==="1"){
+    // Current workspace header closes a pane; the Settings-owned link returns to Chat.
+    assert.equal(await close.getAttribute("aria-label"),tr("Close this pane","收起此格"));
+    const back=page.locator('[data-pane="b"] .agent-back-chat');assert.equal(await back.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await back.click();
+   }else{assert.equal(await close.getAttribute("aria-label"),tr("Back to chat","回到聊天"));await close.click();}
    await page.locator('[data-pane="b"] textarea').waitFor();assert.equal(await page.locator(".ws-pane").count(),2);assert.equal(await page.locator('[data-pane="a"] textarea').inputValue(),"Preserved peer draft");check("split-back","own pane returns to Chat, peer draft and two-pane layout preserved");await shot("split-returned-chat");
   }
  }

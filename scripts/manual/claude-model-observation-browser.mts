@@ -1,3 +1,4 @@
+import { publicRoster } from "./smoke-fixture/public-roster.mts";
 /** Owned display rehearsal: real product cookie/shell/SSE/Log parser, synthetic metadata only; no CLI/API/pane. */
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -15,7 +16,7 @@ if (git("status", "--porcelain", "--untracked-files=no")) throw Error("clean tra
 const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
 const inputs = git("diff", "--name-only", base, "HEAD").split("\n").filter(p => /^(src\/|scripts\/manual\/claude-model)/.test(p));
 const bindings = inputs.map(path => ({ digest: hash(readFileSync(join(repo, path))), paths: [path] }));
-const fx = await bootFixture({ port: Number(process.env.HP ?? 55860), instances: 3, classic: false, webYaml: "  log_tab: true" });
+const fx = await bootFixture({ roster: publicRoster(3), port: Number(process.env.HP ?? 55860), instances: 3, classic: false, webYaml: "  log_tab: true" });
 const fm = fx.fm, name = "general", dir = fm.getInstanceDir(name); mkdirSync(dir, { recursive: true });
 const transcript = join(dir, "session-A.jsonl");
 const at = "2026-11-13T07:00:00.000Z";

@@ -1,3 +1,5 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
+import { officeCapturePassed, selectOfficeCaptureCases } from "../smoke-fixture/office-capture-cases.js";
 // M-3293 (#4119, the light version) on the real app, from defaults (fleet decision a78ebdc5): Fleet → Org chart → Office
 // (the whole fleet's own office, Cozy). A person is found on the canvas by the pointer (the canvas lights up over one).
 //   desk: "Drag and pat" on by default; a mouse drag carries them (no card opens after the drop), they walk off the
@@ -14,7 +16,8 @@ import { writeFileSync } from "node:fs";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-office-play-m3293";
-const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49020), instances: 6, classic: false });
+const selectedCases = selectOfficeCaptureCases(process.env.M3513_CASE);
+const fx = await bootFixture({ roster: publicRoster(6), port: 0, oldPort: Number(process.env.HP ?? 49020), instances: 6, classic: false });
 // The fixture opens no event log (no fleet start): Tell's queue is the real EventLog, in the scratch home.
 if (!fx.fm.eventLog) { const { EventLog } = await import(`${process.env.REPO}/src/event-log.ts`); fx.fm.eventLog = new EventLog(`${fx.dir}/events-m3293.db`); }
 const r: any = { cases: {} };
@@ -33,6 +36,14 @@ async function findPerson(page: any): Promise<{ x: number; y: number } | null> {
 }
 /** Phone: a tap that opens a card is over a person (closed again). */
 async function findPersonTouch(page: any): Promise<{ x: number; y: number } | null> {
+  if (process.env.M3513_CAPTURE_ONLY === "1") {
+    // Use the same real painted-person hit test first; confirm with an actual tap.
+    const point = await findPerson(page);
+    if (point) {
+      await page.touchscreen.tap(point.x, point.y); await page.waitForTimeout(120);
+      if (await page.locator(".oo-card").count()) { await page.locator(".oo-card-close").click(); await page.waitForTimeout(150); return point; }
+    }
+  }
   const b = await page.locator(".oo-canvas").boundingBox();
   for (let y = b.y + 60; y < b.y + b.height - 40; y += 26) for (let x = b.x + 30; x < b.x + b.width - 30; x += 26) {
     await page.touchscreen.tap(x, y); await page.waitForTimeout(120);
@@ -46,10 +57,17 @@ async function openOffice(page: any, base: string, lang: string) {
   await page.waitForSelector(".oo-canvas", { timeout: 15000 }); await page.waitForTimeout(2500);
 }
 const writes = (log: any[]) => log.filter((q) => q.method !== "GET");
+const currentCapture = process.env.M3513_CAPTURE_ONLY === "1";
+async function currentCard(page: any) {
+  // Speech bubbles now have their own chat action; the accessible person target opens its card.
+  const person = page.locator("button.oo-desk").first(); await person.focus(); await person.press("Enter");
+  await page.locator(".oo-card").waitFor();
+}
 
-for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { device: "desk", theme: "dark", lang: "zh-TW", rm: false },
-  { device: "desk", theme: "light", lang: "en", rm: true }, { device: "phone", theme: "light", lang: "en", rm: false }] as const) {
-  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`, res: any = (r.cases[tag] = {});
+
+for (const c of selectedCases) {
+  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`;
+  const res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
   const { page, base } = p;
@@ -61,11 +79,18 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
     const box = page.locator(".oo-play input");
     // A phone keeps the Office's options in its ⋯ sheet; the desk shows them in the bar.
     if (c.device === "desk") ok(res, "toggle:shown", (await box.count()) === 1);
-    if (c.rm) {
+    if (process.env.M3513_WORDS_ONLY === "1") {
+      if (!currentCapture || c.device !== "desk" || c.rm) throw new Error("words-only capture requires an ordinary desktop case");
+      await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click();
+      await page.mouse.move(0, 0); await page.waitForTimeout(500);
+      await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
+      ok(res, "current-pat-frame", true, "Pat/card close/cursor moved off map; static capture only, not drag/Tell/off behavioral replay");
+    } else if (c.rm) {
       ok(res, "reduced:toggle off and locked", !(await box.isChecked()) && (await box.isDisabled()));
       const at = await findPerson(page);
       ok(res, "reduced:person found", !!at);
-      if (at) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else if (at) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(400); }
       ok(res, "reduced:card has no Pat/Feed", (await page.locator(".oo-card").count()) === 1 && (await page.locator(".oo-card-pat, .oo-card-feed").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "1-card") });
     } else if (c.device === "desk") {
@@ -93,8 +118,8 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
       ok(res, "they walk off the drop point", left);
       await page.waitForTimeout(4000);
       await page.screenshot({ path: shotPath(SMOKE, tag, "4-back") });
-      const again = await findPerson(page);
-      if (again) { await page.mouse.click(again.x, again.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else { const again = await findPerson(page); if (again) { await page.mouse.click(again.x, again.y); await page.waitForTimeout(400); } }
       ok(res, "card: Pat and Feed", (await page.locator(".oo-card-pat").count()) === 1 && (await page.locator(".oo-card-feed").count()) === 1);
       await page.locator(".oo-card-pat").click(); await page.waitForTimeout(700);
       await page.screenshot({ path: shotPath(SMOKE, tag, "5-pat") });
@@ -119,15 +144,15 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
       await page.locator(".oo-card-close").click().catch(() => {}); await page.waitForTimeout(150);
       await page.locator(".oo-card-pat").count();   // (closed)
       // A pat with the card closed: the hearts and the words over them (the card hid them above).
-      const again2 = await findPerson(page);
-      if (again2) { await page.mouse.click(again2.x, again2.y); await page.waitForTimeout(300); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); }
+      if (currentCapture) { await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); }
+      else { const again2 = await findPerson(page); if (again2) { await page.mouse.click(again2.x, again2.y); await page.waitForTimeout(300); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); } }
       await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
       // Off: no Pat/Feed, and a drag pans (no one carried).
       await page.locator(".oo-card-close").click().catch(() => {});
       await box.click(); await page.waitForTimeout(300);
       ok(res, "toggle off: kept here", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === "0");
-      const off = await findPerson(page);
-      if (off) { await page.mouse.click(off.x, off.y); await page.waitForTimeout(400); }
+      if (currentCapture) await currentCard(page);
+      else { const off = await findPerson(page); if (off) { await page.mouse.click(off.x, off.y); await page.waitForTimeout(400); } }
       ok(res, "toggle off: no Pat/Feed", (await page.locator(".oo-card-pat").count()) === 0);
       await box.click();   // back on, for the next case's defaults (each case is its own browser context anyway)
     } else {
@@ -156,7 +181,7 @@ for (const c of [{ device: "desk", theme: "light", lang: "en", rm: false }, { de
   }
   await p.ctx.close();
 }
-r.pass = Object.values(r.cases).every((x: any) => !x.failed);
+r.pass = officeCapturePassed(r.cases);
 writeFileSync(shotPath(SMOKE, "result", "x").replace(/-x\.png$/, ".json"), JSON.stringify(r, null, 1));
 console.log(JSON.stringify({ pass: r.pass, cases: Object.fromEntries(Object.entries(r.cases).map(([k, v]: any) => [k, v.failed ?? []])) }, null, 1));
 await fx.close(); process.exit(r.pass ? 0 : 1);

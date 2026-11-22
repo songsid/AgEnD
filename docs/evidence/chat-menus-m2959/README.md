@@ -1,5 +1,7 @@
 # Chat menus and favourites — M-2959
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 57 affected current paths were recaptured with example identities; 37 affected historical controls were withdrawn. Phone captures use the current shared context sheet opened with Shift+F10 because the old row button is intentionally hidden. Default historical assertions are unchanged; this is not a rerun of the old phone-menu contract. A retained-all replay completed but intercepted zero old assets; no old-renderer proof is claimed. Replacement PNGs do not renew the older source/test/behavior receipts below. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every path/hash. Static limits: narrow split Runtime Settings wraps tightly, phone menu continues below the viewport, and long input values can clip. No live provider, CLI, pane or Fleet was used.
+
 A split-pane menu repeated Split and mixed model commands with layout and appearance actions. Sidebar stars and menus competed for space, selected-text quote actions had different presentation, and some light-theme identity colours were too pale.
 
 The existing Menu now groups pane, agent, appearance and delete actions. Model and effort opens the existing guarded runtime Settings form. Sidebar favourites and More share one slot. Quote actions use the other pane's display name and the same icon/label row; quoting edits a draft without sending it. Light sidebar name shading includes selected, hovered and recent-reply backgrounds; dark shading is unchanged. No endpoint or authority rule changes.

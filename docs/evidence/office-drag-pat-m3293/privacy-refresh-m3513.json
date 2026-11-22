@@ -1,0 +1,93 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation.",
+    "Selected ordinary light/dark/reduced/phone cases completed independently. Initial combined wrapper was interrupted143 and is not a full pass.",
+    "Four full/cropped reaction-word pictures were withdrawn: both complete journeys and fresh narrowly timed frames showed no visible reaction words/hearts in that state. No crop is invented from absent effects.",
+    "Current-only card navigation uses its real accessible person target; old pointer-only assertions remain default. The phone path confirms an actual tap and uses real CDP long-press."
+  ],
+  "harness": "scripts/manual/smoke/smoke-office-play-m3293.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-dark-zh-TW-7-pat-words-crop.png",
+      "blob": "8b280c6b104174b3090442493729de57b73ffc89",
+      "action": "withdrawn-unreproduced-reaction-frame",
+      "replacement_sha256": null,
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-dark-zh-TW-7-pat-words.png",
+      "blob": "a2624af9f0f5994f987246801bd221580e3051d7",
+      "action": "withdrawn-unreproduced-reaction-frame",
+      "replacement_sha256": null,
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-1-before.png",
+      "blob": "77a13de717fec209b14d0a0c05b4eccade7f62ea",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "44711994da9788974bd49030d907b68550df8041e82d41e1931bea86fccaf724",
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-2-carried.png",
+      "blob": "a1d47ce671eb75620981084f5d7c034b3d1d2e83",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "3e4152b38cdd822fb47005fb6c06ff95a16735c0b97e8a844f4a6a8dd6b3477c",
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-3-walking-back.png",
+      "blob": "fe61c97136f1e8227cde889c7de80ead988cd4e0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "92f54811fa93aa708aec82dac699e1a71f333a7b5be959c743b0cb5d3eec85b1",
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-5-pat.png",
+      "blob": "0c96769eebf40523ff68933d7cb439630ae3245d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "e8d2112738697a2d87d7f80fca2c69aacf508cacf69c13b1604447bdf453b839",
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-7-pat-words-crop.png",
+      "blob": "2276f7f5bf4fe88e8f28d71381735db6f10d1812",
+      "action": "withdrawn-unreproduced-reaction-frame",
+      "replacement_sha256": null,
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-7-pat-words.png",
+      "blob": "552782d6d243e724b1d81de47423786b736cfc42",
+      "action": "withdrawn-unreproduced-reaction-frame",
+      "replacement_sha256": null,
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-reduced-1-card.png",
+      "blob": "af4aa4261ed2134a6c72be249ae6a2f6fa8e19fb",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "5de22f3fb3fa9d584d53c3f0ae1f6046d2be2b977a29e18af84e50d1a51b2ba9",
+      "capture_head": "d0dd90dceeabbbccde58b48beead44140e45b4e7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-drag-pat-m3293/images/phone-light-en-1-long-press-carried.png",
+      "blob": "82099571565875d8c3b07724d7b25807e981c8f2",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "74d0d9ed3eac962ebd0fd261e9305297ff24ea0d440bfccaa3eea03c4615d5f7",
+      "capture_head": "292fdf6596850ccbb58b9448608caf2133d5c71c"
+    }
+  ]
+}

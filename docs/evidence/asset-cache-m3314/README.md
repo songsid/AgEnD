@@ -1,5 +1,7 @@
 # M-3314 (#4157): versioned, cached web files and module preload
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 2 affected paths recaptured, 0 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
+
 ## Method
 
 `scripts/manual/smoke/smoke-asset-cache-m3314.mts` runs the real app in a smoke fixture (headless Chromium) with **150 ms of latency on every request** (CDP `Network.emulateNetworkConditions`). That is about the round trip the fixed public link measured in M-3312. A "wave" is a group of module requests; a gap longer than 120 ms (0.8 × the latency) starts a new one.

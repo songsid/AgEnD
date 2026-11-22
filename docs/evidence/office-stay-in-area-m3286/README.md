@@ -1,5 +1,7 @@
 # Office: idle people stay in their own area (M-3286, #4104)
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 2 affected paths recaptured, 0 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
+
 Source `2d236e9af22c5ac2612478d471fd23198c41697b`, from dev tip `c766694408792c04b26d1a0d5bec079a7483a000`.
 
 **Change.** Edit offices has a per-office box, **Idle people stay in their own area** (待命只在自己的區域走動), off by default. With it on:

@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // M-3168: the first 「標註」 on a chat image paints the editor in its final layout — no frame of the bare editor (the
 // picture at the far left, no tool bar) while its stylesheet arrives — and a page that never annotates loads none of it.
 // Real headless Chrome on the shared smoke fixture (the product's own web server, scratch home, loopback only; no CLI).
@@ -22,7 +23,8 @@ for (const p of [home, bin, join(home, ".claude"), join(home, ".codex"), join(ow
 const realFonts = join(process.env.HOME ?? "", ".local", "share", "fonts");
 if (existsSync(realFonts)) symlinkSync(realFonts, join(home, ".local", "share", "fonts"));
 process.env.PLAYWRIGHT_BROWSERS_PATH ??= join(process.env.HOME ?? "", ".cache", "ms-playwright");
-Object.assign(process.env, { HOME: home, CLAUDE_CONFIG_DIR: join(home, ".claude"), CODEX_HOME: join(home, ".codex"), TMUX_TMPDIR: join(owned, "tmux") });
+// Keep caller HOME/CODEX_HOME intact; bootFixture isolates AGEND_HOME and guarded binaries prevent native launches.
+Object.assign(process.env, { CLAUDE_CONFIG_DIR: join(home, ".claude"), TMUX_TMPDIR: join(owned, "tmux") });
 const guard = `#!${process.execPath}\nprocess.exit(97);\n`;
 for (const n of ["claude", "tmux", "codex", "kiro-cli", "agend-private-tmux"]) { writeFileSync(join(bin, n), guard); chmodSync(join(bin, n), 0o755); }
 process.env.PATH = [bin, dirname(process.execPath), "/usr/bin", "/bin"].join(":");
@@ -52,7 +54,7 @@ function png(w: number, h: number): Buffer {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(raw)), chunk("IEND", Buffer.alloc(0))]);
 }
 
-const fx = await bootFixture({ port: Number(process.env.GATE_PORT ?? 48913), instances: 2 });
+const fx = await bootFixture({ classic: false, roster: publicRoster(2), port: Number(process.env.GATE_PORT ?? 48913), instances: 2 });
 const fm = fx.fm;
 const A = fx.instances.filter((i: any) => !i.general)[0]!.name;
 fm.instanceIpcClients.set(A, { connected: true, send() { return true; } });

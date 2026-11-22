@@ -1,5 +1,7 @@
 # Usage: a stale login with no agents fits its one-line row (M-3288, #4112)
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 2 affected paths recaptured, 2 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. Two historical before images are cropped to the original Usage dialog [0,348,390,844]. They retain original one-line overlap, omit private background and are not full-phone/current-renderer evidence. Current four-case usage capture passed with injected synthetic usage; no real provider meter called. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
+
 Source `bac15ff43dbc603fe9a38632eca8fcf83d23d553`, from dev tip `b644a3078`.
 
 **Cause.** In one line per login (the grouped view's −/+, #4054), the row's head is a third of the line (`.u-crow.is-one > .u-crow-head { flex: 0 0 32% }`). A login both stale and used by no agent puts three things there: the name, the ⓘ (#4069) and the cached words ("cached at 10:47", `flex: none; white-space: nowrap`). The words can't shrink, so they ran 10–32 px into the window's tag and bar, and the name was squeezed to 0 px.

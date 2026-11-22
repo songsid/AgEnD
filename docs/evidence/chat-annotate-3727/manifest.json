@@ -1,0 +1,113 @@
+{
+  "ecdfe32eeeba33653c58c61e0817e1d078377640c3ea2098aff224fc609b98c2": [
+    "README.md"
+  ],
+  "37637cb52788d5e64cd70b8dd67ca3eea2cae86d6049674587972c09a4a5dca9": [
+    "current/desk-dark-en-1-viewer.png"
+  ],
+  "4222a71375165f1c8f98e430bd3476b19489c6e28288f92f04d250ffcfe08457": [
+    "current/desk-dark-en-2-editor.png"
+  ],
+  "6f1f1d0e13d00b7bb8f8dfa186d3303b315575f49abfe846a3c66fe39b037590": [
+    "current/desk-dark-en-3-marked.png"
+  ],
+  "07f9824d6268bcc320511159be08c967934d02ad45565be60b06d596f56fb8f6": [
+    "current/desk-dark-en-4-composer.png"
+  ],
+  "6e2c4cdd17fd095440f13e5f34270e9d6dc9fb6747448b137036009035fe7884": [
+    "current/desk-dark-zh-TW-1-viewer.png"
+  ],
+  "00c08f804ff9268a46518e9dbe7de289991a49b80032f61df490c3473f7fea95": [
+    "current/desk-dark-zh-TW-2-editor.png"
+  ],
+  "79ba2bc25660c0aee3a36811ed4b76a15b21b5d123f79b783e4bebcb271d66be": [
+    "current/desk-dark-zh-TW-3-marked.png"
+  ],
+  "6bee82347026102a1be128ef8ea9d196646ea83793332c4fd50f5a24cbdda66b": [
+    "current/desk-dark-zh-TW-4-composer.png"
+  ],
+  "eb603aa82f455ad4011b5ed23a4547ebad0abaacb4e273e3a3899ecc5509e3f4": [
+    "current/desk-light-en-1-viewer.png"
+  ],
+  "71ecf49724c9ab258562ae7bb91df5a41db100408e09b0d9c30782406d678785": [
+    "current/desk-light-en-2-editor.png"
+  ],
+  "f7c5db274ca26a569bfc576085c6cc8fbd61cce2103f510751ee59fc565fc9d1": [
+    "current/desk-light-en-3-marked.png"
+  ],
+  "7ec432f5bf7177e5d9ab86e7bb2e22fca5cd19285c39986521d606d24439220b": [
+    "current/desk-light-en-4-composer.png"
+  ],
+  "483b7edd3e747facf975d104b8482c7cf983b0851280271b5688488a3975013e": [
+    "current/desk-light-zh-TW-1-viewer.png"
+  ],
+  "f0d14d1ce748e4f488c0a84881468eca9e1e8bff1a105b34921c712537fc069d": [
+    "current/desk-light-zh-TW-2-editor.png"
+  ],
+  "845fb59291c802913ba1a35b37f54b878144d8af8614c34b622255d07f76bb27": [
+    "current/desk-light-zh-TW-3-marked.png"
+  ],
+  "8042517d1ce3911f5dbf12fe2b8892b88587db8f20fc3db2c738f71d99b21846": [
+    "current/desk-light-zh-TW-4-composer.png"
+  ],
+  "497067e72e548e8dbd56c69f5da16cd53c4c8a9cfaa20d76527600a6ec2e99ba": [
+    "current/phone-dark-en-1-viewer.png"
+  ],
+  "6652f2f0aa8ce1c9fde38126b7348ce6a6203918a321896e34f0cb8058862d2b": [
+    "current/phone-dark-en-2-editor.png"
+  ],
+  "ccc179edfb043b1166a8cd0e2683e9807c7e9d5eabea5e9ca99c5772742cd7cc": [
+    "current/phone-dark-en-3-marked.png"
+  ],
+  "be498f9492d87bad1eb9bbe006dbc9cc7d142be70379aec307ed15f26ef58fd4": [
+    "current/phone-dark-en-4-composer.png"
+  ],
+  "cbe7bf5fc2dfa99276d1be0f6dd8e9d431b7e5c06e735bf38590f16e4401d213": [
+    "current/phone-dark-zh-TW-1-viewer.png"
+  ],
+  "8ff5143ac840bf8dbb970fb745ecacd15ddac5926d84ebe77e7a9404769d65d8": [
+    "current/phone-dark-zh-TW-2-editor.png"
+  ],
+  "6e4ba43817df14613cc28175ddc3d1a5b554aaa1e9be8dad19012de18a0e55d9": [
+    "current/phone-dark-zh-TW-3-marked.png"
+  ],
+  "750c9107cf3aff60221ec54e5dcc5e27ac777f9682896292aac53626ae80e026": [
+    "current/phone-dark-zh-TW-4-composer.png"
+  ],
+  "b5756483650fc89282ac9b2e8021f351db234331fbbae9314b172416aab5d7f2": [
+    "current/phone-light-en-1-viewer.png"
+  ],
+  "d1e969914a71f3bd1f47d5e94c672c1b9a54f15764a24a2e7b2405b23224298e": [
+    "current/phone-light-en-2-editor.png"
+  ],
+  "acdf89b66e99f0137b940ff5dc238ce176fe82f5b66bdb303366e52c562ecf48": [
+    "current/phone-light-en-3-marked.png"
+  ],
+  "bece1d0c4f5ed5e03c2a743171a007f4d0179bd1371a568b24958abd11169546": [
+    "current/phone-light-en-4-composer.png"
+  ],
+  "0ae30ba0cdd5bd23140d0b16f181f3ceb02b2054f0278fb28c3fb37a2e3221e6": [
+    "current/phone-light-zh-TW-1-viewer.png"
+  ],
+  "23264f28cbb5885df1197b973d2ab0d84b5a7edc148083a3b16c639cf333a8c0": [
+    "current/phone-light-zh-TW-2-editor.png"
+  ],
+  "3a4478b0d80106b65180e0e689da2e432bfb2abb021253a0603d679e7b2f461a": [
+    "current/phone-light-zh-TW-3-marked.png"
+  ],
+  "ba2326ca833a35efb5098c97985f5c9f361c1588fcadf950fa49c22cb251479c": [
+    "current/phone-light-zh-TW-4-composer.png"
+  ],
+  "d6df92136d4770c0a5e8c2725e93218ed7bfd8d602b1148b87ef97d46076ad2e": [
+    "legs/split-1-editor.png"
+  ],
+  "17d8a1028d8d75e9f7be810b233bf01ecc2983f718fbef6c1af929e28a21de24": [
+    "legs/split-2-other-pane.png"
+  ],
+  "7617e532fc3db4370d8d5763a71aedab8f006e57ce3c461b8ac88c416cd9973c": [
+    "privacy-refresh-m3513.json"
+  ],
+  "b8ac8d1c62ceac5c11d21eae4b0e1d65ac491a660fb1aeb4fb84837be56097a5": [
+    "result.json"
+  ]
+}

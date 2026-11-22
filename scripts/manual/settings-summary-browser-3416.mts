@@ -1,3 +1,4 @@
+import { publicRoster } from "./smoke-fixture/public-roster.mts";
 /** Display-only production diff/store projections in the real authenticated app/Settings shell. No Settings writes. */
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -13,12 +14,14 @@ if (git("status", "--porcelain", "--untracked-files=no")) throw Error("capture r
 const head = git("rev-parse", "HEAD"), tree = git("rev-parse", "HEAD^{tree}");
 const inputs = ["src/settings-summary.ts", "src/settings-change.ts", "src/settings-confirmation.ts", "src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css", "src/ui/app.html", "scripts/manual/settings-summary-browser-3416.mts", "scripts/manual/smoke-fixture/index.mts", "src/settings-effect.ts", "src/hub-pairing-summary.ts", "src/hub/member/exposure-api.ts", "tests/helpers/settings-summary-effects-3416.ts"];
 const sources = Object.fromEntries(inputs.map(p => [p, digest(readFileSync(join(repo, p)))]));
-const fx = await bootFixture({ port: Number(process.env.HP ?? 54940), instances: 2, classic: false });
+const fx = await bootFixture({ roster: publicRoster(2), port: Number(process.env.HP ?? 54940), instances: 2, classic: false });
 const { settingsChangeDiff } = await import(join(repo, "src/settings-change.ts"));
 const { SettingsConfirmationStore } = await import(join(repo, "src/settings-confirmation.ts"));
 const { setLocale } = await import(join(repo, "src/locale.ts"));
 const { effectSummaryCases } = await import(join(repo, "tests/helpers/settings-summary-effects-3416.ts"));
 const stores: any[] = [], results: any[] = []; let effects = 0;
+// Privacy refresh observes current rendering without renewing historical comparisons.
+const currentOnly = process.env.M3513_CURRENT_ONLY === "1";
 const keys = ["src/ui/shared/app-shell.js", "src/ui/settings-confirm.js", "src/ui/shared/app-i18n.js", "src/ui/shared/app.css"];
 const baselineAssets = Object.fromEntries(keys.map(p => [p, execFileSync("git", ["show", `${baseline}:${p}`], { cwd: repo, encoding: "utf8" })]));
 const oldPath: Record<string, string> = { "/assets/app-shell.js": keys[0], "/ui/js/settings-confirm.js": keys[1], "/assets/app-i18n.js": keys[2], "/assets/app.css": keys[3] };
@@ -28,7 +31,7 @@ try {
     ...matrix("full").map(c => ({ ...c, variant: "before" })),
     ...["old-shell", "old-server", "old-i18n", "old-confirm"].map(variant => ({ device: "phone" as const, theme: "light" as const, lang: "zh-TW" as const, variant })),
   ];
-  for (const c of cases) {
+  for (const c of cases.filter(c => !currentOnly || c.variant === "after")) {
     setLocale(c.lang === "en" ? "zh-TW" : "en");
     const instances = Object.fromEntries(["first", "second", "third"].map(n => [n, {}]));
     const generic = settingsChangeDiff({ defaults: { cross_instance_visibility: "hidden" }, instances, api_key: "dummy-old" },
@@ -79,15 +82,15 @@ try {
   }
 } finally { for (const s of stores) s.close(); await fx.close(); }
 // No control or CSS is introduced: pin the existing dimensions against exact baseline assets, including phone Withdraw.
-const controlComparisons = matrix("full").map(c => {
+const controlComparisons = (currentOnly ? [] : matrix("full")).map(c => {
   const before = results.find(r => r.name === "before-" + caseName(c))!, after = results.find(r => r.name === "after-" + caseName(c))!;
   if (JSON.stringify(before.layout.tap) !== JSON.stringify(after.layout.tap)) throw Error("control size changed: " + caseName(c));
   return {case:caseName(c),before:before.layout.tap,after:after.layout.tap};
 });
-if (digest(baselineAssets[keys[3]]) !== sources[keys[3]]) throw Error("CSS unexpectedly changed");
+if (!currentOnly && digest(baselineAssets[keys[3]]) !== sources[keys[3]]) throw Error("CSS unexpectedly changed");
 if (effects !== 0 || git("rev-parse", "HEAD") !== head || git("status", "--porcelain", "--untracked-files=no")) throw Error("capture boundary changed");
 for (const p of inputs) if (sources[p] !== digest(readFileSync(join(repo, p)))) throw Error("source changed: " + p);
-writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, sources: Object.entries(sources).map(([path,digest])=>({digest,paths:[path]})), browser: fx.browser.version(), effects, controlComparisons, cases: results,
+writeFileSync(join(out, "receipt.json"), JSON.stringify({ head, tree, baseline, currentOnly, sources: Object.entries(sources).map(([path,digest])=>({digest,paths:[path]})), browser: fx.browser.version(), effects, controlComparisons, cases: results,
   scope: "Synthetic display gallery combining independent real diff/retention/pairing/exposure previews + confirmation store; never one executable operation; real cookie sign-in/app.html/Settings shell/Preact/styles, recorded pending reads. No write, authority/effect or chat delivery E2E. Baseline exact assets substituted only as listed. No live account, fleet, CLI or native runtime." }, null, 2) + "\n");
 console.log(JSON.stringify({ cases: results.length, screenshots: results.length + 2, effects, cleanup: "browser/listeners/store/scratch home closed" }));
 process.exit(0);

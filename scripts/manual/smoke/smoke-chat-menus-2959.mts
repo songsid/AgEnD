@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Owned read-only shell/menu rehearsal. One Chromium/context at a time; only explicit own-favourite writes. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -24,7 +25,7 @@ for (const path of sources) record(inputs, path, readFileSync(join(repo, path)))
 record(inputs, "harness", readFileSync(new URL(import.meta.url))); mkdirSync(out, { recursive: true });
 const receipt: any = { head: git("rev-parse", "HEAD"), tree: git("rev-parse", "HEAD^{tree}"), dirty, oldRef, retain, theme, language, phone, narrow,
   scope: "Owned scratch FleetManager, real cookie/HTTP/SSE and production UI; mocked status model/display-name/colour/reply inputs and recorded chat text, no Fleet start/CLI/vendor/AD/live operation", inputs, assets, substitutions, cases: [], errors: [], effects: [], external: [], preferences: [], previews: [] };
-const fx = await bootFixture({ port: Number(process.env.HP || 56042), instances: 6, classic: false });
+const fx = await bootFixture({ roster: publicRoster(6), port: Number(process.env.HP || 56042), instances: 6, classic: false });
 let ctx: any;
 const jobs: Promise<unknown>[] = [];
 const tr = (en: string, zh: string) => language === "en" ? en : zh;
@@ -33,7 +34,7 @@ try {
   const status = fx.fm.getUiStatus.bind(fx.fm), a = fx.instances[1].name, b = fx.instances[2].name;
   const passage = tr("Compare this passage in the other pane.", "把這段文字放到另一格比較。");
   const colors = ["preset:lime", "preset:orange", "#aaddff", "#ffbb11", "preset:violet", "preset:cyan"];
-  fx.fm.getUiStatus = (...args: any[]) => { const s = status(...args); return { ...s, instances: s.instances.map((it: any, i: number) => ({ ...it, model: "Opus 5.5", effort: "auto", color: { person: colors[i % colors.length] }, color_show: { person: ["name", "bar", "ring"] }, ...(it.name === a ? { display_name: "Cairn" } : {}), ...(it.name === b ? { display_name: "AgEnD Leader", last_reply: new Date(Date.now() - 120000).toISOString() } : {}) })) }; };
+  fx.fm.getUiStatus = (...args: any[]) => { const s = status(...args); return { ...s, instances: s.instances.map((it: any, i: number) => ({ ...it, model: "Opus 5.5", effort: "auto", color: { person: colors[i % colors.length] }, color_show: { person: ["name", "bar", "ring"] }, ...(it.name === a ? { display_name: "Example alpha" } : {}), ...(it.name === b ? { display_name: "Example beta", last_reply: new Date(Date.now() - 120000).toISOString() } : {}) })) }; };
   for (const name of [a, b]) fx.fm.emitSseEvent("message", { instance: name, sender: name, role: "agent", text: passage, ts: "2026-11-12T06:00:00.000Z" });
   fx.fm.webPrefs.write("operator", new Map([["theme", theme], ["lang", language], ["nav.favorites", [a]]]));
   ctx = await fx.browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: narrow ? 1200 : 1600, height: 1000 }, colorScheme: theme, locale: language, hasTouch: phone });
@@ -118,7 +119,15 @@ try {
   }
   else {
     const row = (name: string) => page.locator(".v-li").filter({ has: page.locator(`a.inst[href$="/${encodeURIComponent(name)}"]`) }).first();
-    if (!retain || ["css", "ui-menu"].includes(retain)) {
+    if (!retain && phone && process.env.M3513_CAPTURE_ONLY === "1") {
+      // Today's Fleet sidebar intentionally hides the legacy row button on phones.
+      // Capture its real shared context sheet via the supported keyboard path.
+      const r = row(a), anchor = r.locator("a.inst");
+      await shot("sidebar-hover"); await anchor.focus(); await anchor.press("Shift+F10");
+      await page.locator("dialog[open]").waitFor(); await shot("sidebar-menu");
+      await page.keyboard.press("Escape"); await page.locator("dialog[open]").waitFor({ state: "detached" });
+      check("current-phone-context", "Supported Shift+F10 path opens/closes current context sheet; not a rerun of the hidden legacy row-menu contract");
+    } else if (!retain || ["css", "ui-menu"].includes(retain)) {
       const r = row(a), button = r.locator(".inst-row-menu > button");
       if (!retain) {
         const slot = await button.boundingBox(); assert.ok(slot);
@@ -163,7 +172,7 @@ try {
         const pop = page.locator(".quote-pop"); await pop.waitFor();
         const rows = await pop.locator("button").evaluateAll((els: HTMLButtonElement[]) => els.map(el => ({ label: el.textContent, icon: !!el.querySelector("svg"), weight: getComputedStyle(el).fontWeight, color: getComputedStyle(el).color, height: el.getBoundingClientRect().height, whiteSpace: getComputedStyle(el).whiteSpace })));
         if (!retain) {
-          assert.equal(rows.length, 2); assert.equal(rows[1].label, tr("Quote into the other pane (AgEnD Leader)", "引用到另一格（AgEnD Leader）"));
+          assert.equal(rows.length, 2); assert.equal(rows[1].label, tr("Quote into the other pane (Example beta)", "引用到另一格（Example beta）"));
           assert.ok(rows.every(r => r.icon && r.whiteSpace === "nowrap")); assert.equal(rows[0].weight, rows[1].weight); assert.equal(rows[0].color, rows[1].color); assert.equal(rows[0].height, rows[1].height);
         }
         check("selection-quote-rows", rows); await shot("quote-options"); await pop.locator(".quote-other").click();

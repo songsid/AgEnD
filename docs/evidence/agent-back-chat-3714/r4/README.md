@@ -1,5 +1,7 @@
 # R4: one phone Settings heading
 
+> **M-3513 screenshot privacy refresh:** Affected images in this packet were refreshed or withdrawn; old behavioral/source receipts below remain historical and do not describe new PNG provenance. See the [family dispositions](../privacy-refresh-m3513.json) for exact paths, capture/crop hashes and limits.
+
 The owner’s phone-only correction merges **← Settings / Basic info / Back to chat X** into one scrolling content row. There is one visible section title; its existing scope/lead are hidden only in the narrow layout. The category index has its own **Settings + X** row. Both links retain 44px targets and the localized Back to chat / 回到聊天 tooltip and accessible name. Desktop composition, pane-header close, navigation and authority are unchanged.
 
 This reuses `AgentPageHead`/`PageHead`, `.s-row`, `.s-back`, `.icon-btn`, shared `Icon` and existing localized labels. No new shared export or import contract is introduced. The hidden desktop back link moves inside the heading grid; phone-only rules arrange three columns. The duplicated section label is removed.

@@ -1,0 +1,2650 @@
+{
+  "scope": "Every modified present PNG hash belongs to a natively inspected current capture or inspected historical crop.",
+  "images": [
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-en/dark-en-returned-chat.png",
+      "sha256": "81fdc81bb9453f5d4f59a38a2ae0d0e22c5b0084344ec0b69e13348f9b6a3f5d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-en/dark-en-settings.png",
+      "sha256": "0ddef432f765225d2aa242752a8610617b323339e195a55088d7f98e48cc0051",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-en/dark-en-split-returned-chat.png",
+      "sha256": "c12de59ff4c32d0d5c430b7875b753ce9bc8c752a255e4433ba33efa79b10604",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-en/dark-en-split-settings.png",
+      "sha256": "cd4813765a9c99ffacfe15f714f6ba32d92ee4b65d64203ed3ad2fd099e1a9a1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-zh-TW/dark-zh-TW-returned-chat.png",
+      "sha256": "49416746da66bb8b98c9fbc72d220b8d112729f0e113b8d9deef4582bd86dcd4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "8d106405c7e72303a4d1bb001ed9cb45ce866d0c480ed2dc9d7c2ed7d8e644de",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png",
+      "sha256": "5f30e17e8b7f51dee7c8997245d3b5b1246672f12f2d19ac0724feb192ba679e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-dark-zh-TW/dark-zh-TW-split-settings.png",
+      "sha256": "48c537f6075b2cb32456f2937d3df02acd513c645c1e4a9867c865a22a56a4f2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-en/light-en-returned-chat.png",
+      "sha256": "259e757215779aca2311ed362a1549ce0327697b807ddd197d676a42e5562ba9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-en/light-en-settings.png",
+      "sha256": "1c792621053b8446599a31d854b157bc7b48931bc6d59e62fa75912391a8bda7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-en/light-en-split-returned-chat.png",
+      "sha256": "749ea1fa6a1fd7301e41a0565924976c41a8a9aaa6964738ed8052c4db512e35",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-en/light-en-split-settings.png",
+      "sha256": "6e27db86cf125c889a2263efd86e9670e2bfdacb48aee0daa773145f1a0cf904",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-zh-TW/light-zh-TW-returned-chat.png",
+      "sha256": "189f66589e565f144bbdec4d23f3103ceeba53fe25a2850086a2d0bd60b341f7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f5ba58aee1dd0d2f4332acf977da9ee166fcffe8f4dbe46b541865156845aa55",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-zh-TW/light-zh-TW-split-returned-chat.png",
+      "sha256": "a950b9c98efcd3bc54af3870b868d3479e665f9942914a2b2ac21e1d30ca32f3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-desktop-light-zh-TW/light-zh-TW-split-settings.png",
+      "sha256": "52bac3848dc74bd0547f91c7c62fec8368a144b30a93cbac4b919205265dce38",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-phone-dark-en/dark-en-settings.png",
+      "sha256": "84e012c652fd8fcbcfb3c84f9b051f2805f829596ab7a3b2316d0c98e680f541",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-phone-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "31cdafc882bd5303137c2642d00561dd2bcc37c9f912a740a5cecb1bcad8bd58",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-phone-light-en/light-en-settings.png",
+      "sha256": "9b1b7e14ee815977a83eb0977e3b871d8149b380b63d7f4b99f88a3326db0ceb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/browser/after-phone-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f168db990edfbeda22f60a90260fd168d981b246a22aa3a3efe4445f89c5c5e9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-en/dark-en-returned-chat.png",
+      "sha256": "81fdc81bb9453f5d4f59a38a2ae0d0e22c5b0084344ec0b69e13348f9b6a3f5d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-en/dark-en-settings.png",
+      "sha256": "0ddef432f765225d2aa242752a8610617b323339e195a55088d7f98e48cc0051",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-en/dark-en-split-returned-chat.png",
+      "sha256": "c12de59ff4c32d0d5c430b7875b753ce9bc8c752a255e4433ba33efa79b10604",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-en/dark-en-split-settings.png",
+      "sha256": "cd4813765a9c99ffacfe15f714f6ba32d92ee4b65d64203ed3ad2fd099e1a9a1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-zh-TW/dark-zh-TW-returned-chat.png",
+      "sha256": "49416746da66bb8b98c9fbc72d220b8d112729f0e113b8d9deef4582bd86dcd4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "8d106405c7e72303a4d1bb001ed9cb45ce866d0c480ed2dc9d7c2ed7d8e644de",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png",
+      "sha256": "5f30e17e8b7f51dee7c8997245d3b5b1246672f12f2d19ac0724feb192ba679e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-dark-zh-TW/dark-zh-TW-split-settings.png",
+      "sha256": "48c537f6075b2cb32456f2937d3df02acd513c645c1e4a9867c865a22a56a4f2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-en/light-en-returned-chat.png",
+      "sha256": "259e757215779aca2311ed362a1549ce0327697b807ddd197d676a42e5562ba9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-en/light-en-settings.png",
+      "sha256": "1c792621053b8446599a31d854b157bc7b48931bc6d59e62fa75912391a8bda7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-en/light-en-split-returned-chat.png",
+      "sha256": "749ea1fa6a1fd7301e41a0565924976c41a8a9aaa6964738ed8052c4db512e35",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-en/light-en-split-settings.png",
+      "sha256": "6e27db86cf125c889a2263efd86e9670e2bfdacb48aee0daa773145f1a0cf904",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-zh-TW/light-zh-TW-returned-chat.png",
+      "sha256": "189f66589e565f144bbdec4d23f3103ceeba53fe25a2850086a2d0bd60b341f7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f5ba58aee1dd0d2f4332acf977da9ee166fcffe8f4dbe46b541865156845aa55",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-zh-TW/light-zh-TW-split-returned-chat.png",
+      "sha256": "a950b9c98efcd3bc54af3870b868d3479e665f9942914a2b2ac21e1d30ca32f3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-desktop-light-zh-TW/light-zh-TW-split-settings.png",
+      "sha256": "52bac3848dc74bd0547f91c7c62fec8368a144b30a93cbac4b919205265dce38",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-phone-dark-en/dark-en-settings.png",
+      "sha256": "84e012c652fd8fcbcfb3c84f9b051f2805f829596ab7a3b2316d0c98e680f541",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-phone-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "31cdafc882bd5303137c2642d00561dd2bcc37c9f912a740a5cecb1bcad8bd58",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-phone-light-en/light-en-settings.png",
+      "sha256": "9b1b7e14ee815977a83eb0977e3b871d8149b380b63d7f4b99f88a3326db0ceb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r3/browser/after-phone-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f168db990edfbeda22f60a90260fd168d981b246a22aa3a3efe4445f89c5c5e9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-dark-zh-TW/dark-zh-TW-returned-chat.png",
+      "sha256": "49416746da66bb8b98c9fbc72d220b8d112729f0e113b8d9deef4582bd86dcd4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "8d106405c7e72303a4d1bb001ed9cb45ce866d0c480ed2dc9d7c2ed7d8e644de",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-dark-zh-TW/dark-zh-TW-split-returned-chat.png",
+      "sha256": "5f30e17e8b7f51dee7c8997245d3b5b1246672f12f2d19ac0724feb192ba679e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-dark-zh-TW/dark-zh-TW-split-settings.png",
+      "sha256": "48c537f6075b2cb32456f2937d3df02acd513c645c1e4a9867c865a22a56a4f2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-light-zh-TW/light-zh-TW-returned-chat.png",
+      "sha256": "189f66589e565f144bbdec4d23f3103ceeba53fe25a2850086a2d0bd60b341f7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f5ba58aee1dd0d2f4332acf977da9ee166fcffe8f4dbe46b541865156845aa55",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-light-zh-TW/light-zh-TW-split-returned-chat.png",
+      "sha256": "a950b9c98efcd3bc54af3870b868d3479e665f9942914a2b2ac21e1d30ca32f3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/desktop-light-zh-TW/light-zh-TW-split-settings.png",
+      "sha256": "52bac3848dc74bd0547f91c7c62fec8368a144b30a93cbac4b919205265dce38",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/phone-dark-en/dark-en-settings.png",
+      "sha256": "84e012c652fd8fcbcfb3c84f9b051f2805f829596ab7a3b2316d0c98e680f541",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/phone-dark-zh-TW/dark-zh-TW-settings.png",
+      "sha256": "31cdafc882bd5303137c2642d00561dd2bcc37c9f912a740a5cecb1bcad8bd58",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/phone-light-en/light-en-settings.png",
+      "sha256": "9b1b7e14ee815977a83eb0977e3b871d8149b380b63d7f4b99f88a3326db0ceb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/agent-back-chat-3714/r4/browser/phone-light-zh-TW/light-zh-TW-settings.png",
+      "sha256": "f168db990edfbeda22f60a90260fd168d981b246a22aa3a3efe4445f89c5c5e9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-1000ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-100ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-400ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-1000ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-100ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-400ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-1000ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-100ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-400ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-1000ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-100ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-400ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/asset-cache-m3314/after-load.png",
+      "sha256": "e4c18596c98a21d428d215939a9ce4c90d7a3e8a530282c24897aa5545424856",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/asset-cache-m3314/after-update-stale.png",
+      "sha256": "8146fbe35c3c233fbad60075af85312e9879fa2fbdcf1e314feb477f9beeb9fd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-1-viewer.png",
+      "sha256": "37637cb52788d5e64cd70b8dd67ca3eea2cae86d6049674587972c09a4a5dca9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-2-editor.png",
+      "sha256": "4222a71375165f1c8f98e430bd3476b19489c6e28288f92f04d250ffcfe08457",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-3-marked.png",
+      "sha256": "6f1f1d0e13d00b7bb8f8dfa186d3303b315575f49abfe846a3c66fe39b037590",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-4-composer.png",
+      "sha256": "07f9824d6268bcc320511159be08c967934d02ad45565be60b06d596f56fb8f6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-1-viewer.png",
+      "sha256": "6e2c4cdd17fd095440f13e5f34270e9d6dc9fb6747448b137036009035fe7884",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-2-editor.png",
+      "sha256": "00c08f804ff9268a46518e9dbe7de289991a49b80032f61df490c3473f7fea95",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-3-marked.png",
+      "sha256": "79ba2bc25660c0aee3a36811ed4b76a15b21b5d123f79b783e4bebcb271d66be",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-4-composer.png",
+      "sha256": "6bee82347026102a1be128ef8ea9d196646ea83793332c4fd50f5a24cbdda66b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-1-viewer.png",
+      "sha256": "eb603aa82f455ad4011b5ed23a4547ebad0abaacb4e273e3a3899ecc5509e3f4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-2-editor.png",
+      "sha256": "71ecf49724c9ab258562ae7bb91df5a41db100408e09b0d9c30782406d678785",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-3-marked.png",
+      "sha256": "f7c5db274ca26a569bfc576085c6cc8fbd61cce2103f510751ee59fc565fc9d1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-4-composer.png",
+      "sha256": "7ec432f5bf7177e5d9ab86e7bb2e22fca5cd19285c39986521d606d24439220b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-1-viewer.png",
+      "sha256": "483b7edd3e747facf975d104b8482c7cf983b0851280271b5688488a3975013e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-2-editor.png",
+      "sha256": "f0d14d1ce748e4f488c0a84881468eca9e1e8bff1a105b34921c712537fc069d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-3-marked.png",
+      "sha256": "845fb59291c802913ba1a35b37f54b878144d8af8614c34b622255d07f76bb27",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-4-composer.png",
+      "sha256": "8042517d1ce3911f5dbf12fe2b8892b88587db8f20fc3db2c738f71d99b21846",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-1-viewer.png",
+      "sha256": "497067e72e548e8dbd56c69f5da16cd53c4c8a9cfaa20d76527600a6ec2e99ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-2-editor.png",
+      "sha256": "6652f2f0aa8ce1c9fde38126b7348ce6a6203918a321896e34f0cb8058862d2b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-3-marked.png",
+      "sha256": "ccc179edfb043b1166a8cd0e2683e9807c7e9d5eabea5e9ca99c5772742cd7cc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-4-composer.png",
+      "sha256": "be498f9492d87bad1eb9bbe006dbc9cc7d142be70379aec307ed15f26ef58fd4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-1-viewer.png",
+      "sha256": "cbe7bf5fc2dfa99276d1be0f6dd8e9d431b7e5c06e735bf38590f16e4401d213",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-2-editor.png",
+      "sha256": "8ff5143ac840bf8dbb970fb745ecacd15ddac5926d84ebe77e7a9404769d65d8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-3-marked.png",
+      "sha256": "6e4ba43817df14613cc28175ddc3d1a5b554aaa1e9be8dad19012de18a0e55d9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-4-composer.png",
+      "sha256": "750c9107cf3aff60221ec54e5dcc5e27ac777f9682896292aac53626ae80e026",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-1-viewer.png",
+      "sha256": "b5756483650fc89282ac9b2e8021f351db234331fbbae9314b172416aab5d7f2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-2-editor.png",
+      "sha256": "d1e969914a71f3bd1f47d5e94c672c1b9a54f15764a24a2e7b2405b23224298e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-3-marked.png",
+      "sha256": "acdf89b66e99f0137b940ff5dc238ce176fe82f5b66bdb303366e52c562ecf48",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-4-composer.png",
+      "sha256": "bece1d0c4f5ed5e03c2a743171a007f4d0179bd1371a568b24958abd11169546",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-1-viewer.png",
+      "sha256": "0ae30ba0cdd5bd23140d0b16f181f3ceb02b2054f0278fb28c3fb37a2e3221e6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-2-editor.png",
+      "sha256": "23264f28cbb5885df1197b973d2ab0d84b5a7edc148083a3b16c639cf333a8c0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-3-marked.png",
+      "sha256": "3a4478b0d80106b65180e0e689da2e432bfb2abb021253a0603d679e7b2f461a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-4-composer.png",
+      "sha256": "ba2326ca833a35efb5098c97985f5c9f361c1588fcadf950fa49c22cb251479c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/legs/split-1-editor.png",
+      "sha256": "d6df92136d4770c0a5e8c2725e93218ed7bfd8d602b1148b87ef97d46076ad2e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-annotate-3727/legs/split-2-other-pane.png",
+      "sha256": "17d8a1028d8d75e9f7be810b233bf01ecc2983f718fbef6c1af929e28a21de24",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-model-settings.png",
+      "sha256": "3095267f226b848dd7a56003147575bc9f8d411b9b53392141e174fce3c22f81",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-pane-appearance.png",
+      "sha256": "0bb1638ca5fff4d2eca9cc940bec81f7a77ca39d3e6abb31a030820dbb7a90bc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-pane-delete.png",
+      "sha256": "0bb1638ca5fff4d2eca9cc940bec81f7a77ca39d3e6abb31a030820dbb7a90bc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-pane-layout.png",
+      "sha256": "0bb1638ca5fff4d2eca9cc940bec81f7a77ca39d3e6abb31a030820dbb7a90bc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-pane-model.png",
+      "sha256": "0bb1638ca5fff4d2eca9cc940bec81f7a77ca39d3e6abb31a030820dbb7a90bc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-quote-options.png",
+      "sha256": "fa24779995045a35c0775f4a3b55f04a8d6ffa2b9bb0cf6e896e5871a0403e90",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-sidebar-hover.png",
+      "sha256": "23b12719020319e152e0091878149cdb5e6647c3ecfaf18f9a88f8a7879487dc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-sidebar-menu.png",
+      "sha256": "094f4d739247882fa9d121fe9590971dc7e294f98984377882929197ab7ddfd0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-en/dark-en-sidebar-rest.png",
+      "sha256": "c85319c4e6794bfb2cf13d480441850ece2d3812d1075eed7179397cbe38267a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-model-settings.png",
+      "sha256": "a8a64649756e62d0335f1cc0b1665829b95e1650264162854429d3b4fa23b39e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-pane-appearance.png",
+      "sha256": "d09442909b8e672ca8c36a3bcdc8512ce3768f5d4e4d7566adc6a5e324f1d1c9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-pane-delete.png",
+      "sha256": "d09442909b8e672ca8c36a3bcdc8512ce3768f5d4e4d7566adc6a5e324f1d1c9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-pane-layout.png",
+      "sha256": "d09442909b8e672ca8c36a3bcdc8512ce3768f5d4e4d7566adc6a5e324f1d1c9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-pane-model.png",
+      "sha256": "d09442909b8e672ca8c36a3bcdc8512ce3768f5d4e4d7566adc6a5e324f1d1c9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-quote-options.png",
+      "sha256": "848debaf9c1011ab7b292e6f865ddb9556d976fe8e2b9a2f1ee7b47d52bd5acd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-sidebar-hover.png",
+      "sha256": "c43013cc190d5fc8f5863bc42c8febc5c247e5998c03ae5d5bd326638dd136e8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-sidebar-menu.png",
+      "sha256": "7d644a41c6aea67e30fdaac8d26e4e25c1864a20d2005c74edfa168ed644bea6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-dark-zh-TW/dark-zh-TW-sidebar-rest.png",
+      "sha256": "2c14e28830612ac2e32dd15482333fb7c902d9c401bc121ced5cf60c49d434fd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-model-settings.png",
+      "sha256": "061184a88cd022b4a31ba71a0fd0dc4696f342cab0813ca13100bcd8b9b47363",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-pane-appearance.png",
+      "sha256": "e25663766c72580f0bda2aacc216742797f62fcdbde4092505441ffc863073e7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-pane-delete.png",
+      "sha256": "e25663766c72580f0bda2aacc216742797f62fcdbde4092505441ffc863073e7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-pane-layout.png",
+      "sha256": "e25663766c72580f0bda2aacc216742797f62fcdbde4092505441ffc863073e7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-pane-model.png",
+      "sha256": "e25663766c72580f0bda2aacc216742797f62fcdbde4092505441ffc863073e7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-quote-options.png",
+      "sha256": "7d658853debf1023daa3f4e19146fd5f0a81b7f5f84601d9166e32a51ffc0359",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-sidebar-hover.png",
+      "sha256": "f3106b84cf97f71e7b6ead43ebb201861893fed9103d7b17cb19efdde4232207",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-sidebar-menu.png",
+      "sha256": "4ef8b2b4aa0e2826fe1bbf2e3acada9e921c3b1352b49526d5f3ffcc0f547d6d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-en/light-en-sidebar-rest.png",
+      "sha256": "c13ef3334a0d8c5efd573faa10bcb5efc64a23effedd935bc9a056fd4d785f6f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-model-settings.png",
+      "sha256": "9f22260ac99247f23bf17d75d31f833629f3f5a96ae8f4c32a3982d52f0eb96b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-pane-appearance.png",
+      "sha256": "e18eed94b97a178bf4bb7c0ea5bd7c71c9a18d963b22e12d5bcd3892fddb4edf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-pane-delete.png",
+      "sha256": "e18eed94b97a178bf4bb7c0ea5bd7c71c9a18d963b22e12d5bcd3892fddb4edf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-pane-layout.png",
+      "sha256": "e18eed94b97a178bf4bb7c0ea5bd7c71c9a18d963b22e12d5bcd3892fddb4edf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-pane-model.png",
+      "sha256": "e18eed94b97a178bf4bb7c0ea5bd7c71c9a18d963b22e12d5bcd3892fddb4edf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-quote-options.png",
+      "sha256": "2533955d62c99ba8d0f96e1a3954c4a6ca69d3302ee2528f9fe06c8b04d8bd53",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-sidebar-hover.png",
+      "sha256": "042923d00b56b43fca7f7948cdc1acfa8d9e848699081a17a25042eae656b67a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-sidebar-menu.png",
+      "sha256": "7e59ba52acafba8f9cd0226904577cdda894fd9e2067373425a38c937475b619",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-desktop-light-zh-TW/light-zh-TW-sidebar-rest.png",
+      "sha256": "a7f5329a2afe17a76851a4a274ef6d2f9fa2fb4de98204e269b8ee42ecb78b2d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-en/dark-en-sidebar-hover.png",
+      "sha256": "dc568f89167b417f0283843aa6b05175006541e2350e496b1d7925f1cc600758",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-en/dark-en-sidebar-menu.png",
+      "sha256": "76351c44239204331f591ca548e410941137dbebd121c08f368f8429dd744e44",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-en/dark-en-sidebar-rest.png",
+      "sha256": "dc568f89167b417f0283843aa6b05175006541e2350e496b1d7925f1cc600758",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-zh-TW/dark-zh-TW-sidebar-hover.png",
+      "sha256": "947c08a4bd1cda92f940bc6bcf3ef657700ae80c27c890b8cb10b85f60524ec2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-zh-TW/dark-zh-TW-sidebar-menu.png",
+      "sha256": "97f6feea1b878bbb77451b98d0962590cafbe244352ba6a87ff4aae8c554cc71",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-dark-zh-TW/dark-zh-TW-sidebar-rest.png",
+      "sha256": "947c08a4bd1cda92f940bc6bcf3ef657700ae80c27c890b8cb10b85f60524ec2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-en/light-en-sidebar-hover.png",
+      "sha256": "373fc7d5c375745101e5602860cb8946af1a71867145dccb5c3ababead4ba8c5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-en/light-en-sidebar-menu.png",
+      "sha256": "8e21fb57453fe525722f5e9bae2a631a70cd8d05f9a0e74763b34661dec5bd1a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-en/light-en-sidebar-rest.png",
+      "sha256": "373fc7d5c375745101e5602860cb8946af1a71867145dccb5c3ababead4ba8c5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-zh-TW/light-zh-TW-sidebar-hover.png",
+      "sha256": "d2fb20542ac26429b7e5dedb968175ac948df7f33fb5d07b7ba467ba1dc6691c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-zh-TW/light-zh-TW-sidebar-menu.png",
+      "sha256": "b172154dc039215616624553f7e3de069e5a4db255814296c81d616114aa0e88",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/after-phone-light-zh-TW/light-zh-TW-sidebar-rest.png",
+      "sha256": "d2fb20542ac26429b7e5dedb968175ac948df7f33fb5d07b7ba467ba1dc6691c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-model-settings.png",
+      "sha256": "0e842bd597064f0a3e4cebe5d48514506dd32f2be4ed155df66489d70abf5ac2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-pane-appearance.png",
+      "sha256": "af8b3efd6bc6eb1222c484316c925fd1acf6a952eeb7af6d0755a5518a3e9784",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-pane-delete.png",
+      "sha256": "ba084c7067b6c74ac5ce6f4d02904e1a75e546fc6703c18bfa45a835df4305d6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-pane-layout.png",
+      "sha256": "af8b3efd6bc6eb1222c484316c925fd1acf6a952eeb7af6d0755a5518a3e9784",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-pane-model.png",
+      "sha256": "af8b3efd6bc6eb1222c484316c925fd1acf6a952eeb7af6d0755a5518a3e9784",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-quote-options.png",
+      "sha256": "9a0a554fbea17969123b61e6c1358e6780a89146795c59f612afaa83694327bc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-sidebar-hover.png",
+      "sha256": "61778c0bfb68acab624fa64726792004672171ccbdc14e7a740bb5bfa7047545",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-sidebar-menu.png",
+      "sha256": "d7e7b6c6c0009d97abc9bfe800612f7a70bc5c0d3675a751ef993f3e22d992c0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/chat-menus-m2959/browser/narrow360/light-zh-TW-sidebar-rest.png",
+      "sha256": "59da05a25d836e8144d1a62388aa6b74b59942d8fa06f5eed4c31f82fe60e25b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-card.png",
+      "sha256": "8e00a4076e4d793bb02e1fe80bc979d324e8bcb33b1ab6a3ea60b07b8f5ea123",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-details.png",
+      "sha256": "cc506648c2abb76c5168aa789b7fa6df58301389fa5f39b138007819a8c661d7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-log.png",
+      "sha256": "e82f874e07ced03028adf61dd8ef37819f25174ff988e766ae4da47a2f6f43e8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-needs.png",
+      "sha256": "75ae7886485b7f3e13a278d709687b540830656d52d3bf18949690ef63e9c448",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-office-card.png",
+      "sha256": "f040476c63fed8100a968e62450d1812d421fd2111bb4c268ddfbdca5ef2e9ea",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-card.png",
+      "sha256": "b5630e05f16dc0711e9afcdabd079f7904f9b6f810d6fcfec542d133654e1c92",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-details.png",
+      "sha256": "293cb9ba0037fc383cab6f5960a904606647b1b22fd946fd1c33b03f84eb1e2c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-log.png",
+      "sha256": "12ddbb523250c6eb340e6b8541130ae040f67a614bb4fa80c324b808877c6b65",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-needs.png",
+      "sha256": "3095331bdb35757dd6eabf2f65517c802119553d9d28d60275adf87fecc3594e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-office-card.png",
+      "sha256": "67062b2601ec002be07121d5b92d902e22ba1ae2431c342f218fe3754956fdbf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-card.png",
+      "sha256": "e952ad43713455c71ae89b4e7b99e97381b4847553dc389472812da27bb72feb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-details.png",
+      "sha256": "b06d9dc0fa22b96c1aca91b1e3036ff774145692d2aa3a020ba5f56b0462bba8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-log.png",
+      "sha256": "288f73df2e67852f5248b76da074ae5ef7045b6173c2a33a3f25e1f0ef4efdcf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-needs.png",
+      "sha256": "d318c25bbce4c3d670ce73c3dcb4bc683174329b3f204dd0a2bd82c9b94e6c41",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-office-card.png",
+      "sha256": "15879fcb464fb8d32b4f3a1cbc2caf226dcccba731c88a4968da9684b117eb0b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-card.png",
+      "sha256": "1f3a06f94872a60bda0f3e10c41847a3cc5b985e286b44d45df999d78e6e5b4d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-details.png",
+      "sha256": "80150051df7aa1076e6c7029db83a049cc9a61398bf9eccaaaa22a6c140fefed",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-log.png",
+      "sha256": "ceedd712abbd62726b0a94fa0ed116e87bb82e82eef6b20c70512eaea2540ba0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-needs.png",
+      "sha256": "6e188c5106f8851b7481841467178de84c81d415e79dadf9ba4c7e8db62314b0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-office-card.png",
+      "sha256": "9f89f627fbd671faa7d52afc0b4ff628452bcc97bca73891ab98bd2e873789b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-details.png",
+      "sha256": "8fa60972e6b81cc5e26a0d3909448d7104b1f43ec73ddefc6b3bd10384df0041",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-log.png",
+      "sha256": "3d62e650d1233697a1b8a296f334c67536f956a25b7b75bf98dc8d33ffbfef97",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-needs.png",
+      "sha256": "00e67ac492c0deab8295965c1aff469cdbbd950b6140fb4073301220b5bdd67d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-details.png",
+      "sha256": "6410c3bd6818bafc5b0b2ed302a9131f9ed58af17ba8b2391282473c6c2d95fd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-log.png",
+      "sha256": "ae761adfe3f6ef976e9b5559591e9d68d9e28a09ad640043d905d160e1016a66",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-needs.png",
+      "sha256": "fff7fc442f937d5beb43f0dbae17a95214b4f9c522d9884886c3bdeebb3d1575",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-chat-working.png",
+      "sha256": "edf4dd44908d6e7e47b7c86360ced7a0b62b0d710a0ef9f5b5f6b19febfa50d1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-chat.png",
+      "sha256": "713f6865a4f78ef333288a32236fbc4f84d432fde8d9e5deb6931d1ed8e6a8f8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-details.png",
+      "sha256": "ddbb2380ec9d7e2cd49707c3b59a94d0856848920ff70c57f363331276389584",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-log.png",
+      "sha256": "dffe27bad3b4b1fe0d04c61ae1097c84554c2cd1675835cc7b9535ff98690ff3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-dark-zh-TW-view.png",
+      "sha256": "05b64de0178360cf6665904eb8d6acf73c849943e25f01f2ec8bf4b38794ab8c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-chat-working.png",
+      "sha256": "34b40a3ee9eab7a8d73becad57d9f55170a99d563b857a33d499e63e95d2005d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-chat.png",
+      "sha256": "1b33efdc27a1b2f818d4a2d8f470202f414b278d98824354534e5e641917a863",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-details.png",
+      "sha256": "7636b45988e1e9ca53bbc32baed57fbeb2cc450129026476d78419b0e1c12ed1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-log.png",
+      "sha256": "49dfe99fd1271621761f4caaded7d4a07fb2b766215eb9b9204877ac2a3e027d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/desk-light-zh-TW-view.png",
+      "sha256": "fa901b8415a24d42f624282ef7126e44a10e0925e816d1189e3ae595285b342e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-chat-working.png",
+      "sha256": "4fbb41275cb206bf5adfd7fbedd1b3f83fef97f6901ef81a20bd64947a6b2663",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-chat.png",
+      "sha256": "3ae245c04da177c54a0c311b5207416e925dc00cae7a058e841aaf2eb56e45cd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-details.png",
+      "sha256": "ba775b9009c4d0790ee12955cdcb53e7a191727a3415ac9601eb34e032b69f36",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-log.png",
+      "sha256": "aa90c2dc02ea1ef9fdce864c385567c50b18a3e07d13c10e3973fc4dfeb4c215",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-dark-zh-TW-view.png",
+      "sha256": "eb317648bbee64941664ed8e577ea9b47303915b8e5b244e6d09f08c2918c533",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-chat-working.png",
+      "sha256": "656797f7f130286a8fd6745d0521fdb229b49cb03fe51a973f3c8a36e726aaeb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-chat.png",
+      "sha256": "9929b0001307130b48135c5c8689b4c3dbefa3880c5448b37d77d51d70948f08",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-details.png",
+      "sha256": "b17dc9f4ae130bfff6c9b0bb10f0ef8af2de8ecafaa28d8207e6c2d62f7ab164",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-log.png",
+      "sha256": "cf5f50c7f36182675fc418876425557cbe4bc431ef00fe3d23a28856e9c9cdd7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/current/phone-light-zh-TW-view.png",
+      "sha256": "b32f262b3b9b7d0babcda7207d706ea011528c5d5d4dca7543543288f99bf362",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-chat-working.png",
+      "sha256": "edf4dd44908d6e7e47b7c86360ced7a0b62b0d710a0ef9f5b5f6b19febfa50d1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-chat.png",
+      "sha256": "713f6865a4f78ef333288a32236fbc4f84d432fde8d9e5deb6931d1ed8e6a8f8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-details.png",
+      "sha256": "ddbb2380ec9d7e2cd49707c3b59a94d0856848920ff70c57f363331276389584",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-log.png",
+      "sha256": "dffe27bad3b4b1fe0d04c61ae1097c84554c2cd1675835cc7b9535ff98690ff3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-dark-zh-TW-view.png",
+      "sha256": "05b64de0178360cf6665904eb8d6acf73c849943e25f01f2ec8bf4b38794ab8c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-chat-working.png",
+      "sha256": "34b40a3ee9eab7a8d73becad57d9f55170a99d563b857a33d499e63e95d2005d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-chat.png",
+      "sha256": "1b33efdc27a1b2f818d4a2d8f470202f414b278d98824354534e5e641917a863",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-details.png",
+      "sha256": "7636b45988e1e9ca53bbc32baed57fbeb2cc450129026476d78419b0e1c12ed1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-log.png",
+      "sha256": "49dfe99fd1271621761f4caaded7d4a07fb2b766215eb9b9204877ac2a3e027d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr1/r1-current/desk-light-zh-TW-view.png",
+      "sha256": "fa901b8415a24d42f624282ef7126e44a10e0925e816d1189e3ae595285b342e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-log-and-chat.png",
+      "sha256": "7e84d945e73db27ae3796c92225770d64b2716ed6aef27e496208bb813549ecd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-log-and-view.png",
+      "sha256": "12c6b1453c87055d2f35972472743cc784397e676a679c6f074500b5c8e6daf4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-minimum-width.png",
+      "sha256": "bbcfc22bb13fff4b84689e36fee556abcbf9036e7a1db206e7b7c55a61c82b44",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-narrow.png",
+      "sha256": "9dd60105dd30d374f74eba616028ec2049429c57946c84221a41d8b61ff40da6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-ordinary-deep-link.png",
+      "sha256": "eea9f3bc16749d187d7be77f9ad45fce7fe6da17e8a23cf29c1034d42ea9c266",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-overflow-menu.png",
+      "sha256": "68cec19ae91eaba90c30153a09d89052370f1dd493407bf084e97bd8e4c57c95",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-phone.png",
+      "sha256": "086cdda8e86f35b05341b7052b9df25190d12563d1a1063ac3331f21e1855606",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-quoted.png",
+      "sha256": "5da1703206a15822fa5a3e36cb5b2b342bcb8a8624fb72f9706afd3c8bce688c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-reload-compare.png",
+      "sha256": "b716a79484020d9b0d1757430cbfa2038ca4abbbcc8ebccabaee8825109fc13a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-restored-settings.png",
+      "sha256": "e6a33d24398aa785d29f6f7f20309c187dd389f417708ac7d48adaa8aaa47420",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-right.png",
+      "sha256": "f14ce485562e44e0ffdbbe1c4ff8f5b32e22274fc218b6839b4f1183b1b44d39",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-single.png",
+      "sha256": "c9c97842ede711db0e23417b797eca29afb3125234a19f34f9b9b925b2079593",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-stack.png",
+      "sha256": "45c9635c4080c40f0c60e4e5853db3c7ef9fd1d8f2c36c65880ee988bcdc097c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-suspended-settings-a.png",
+      "sha256": "b0ba6553fc213faa332514d71269451b39be8785cf98994487d2c0c35593db53",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-dark/dark-zh-TW-two-settings.png",
+      "sha256": "4ae35d113960a9f4fa44a3cc07350c46093b53abb69d5cfb1f38418a5fa21a2a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-log-and-chat.png",
+      "sha256": "3235d34346889e49acc78580920cde7621f4227fddb07bb0fee11500040ea7d5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-log-and-view.png",
+      "sha256": "3b76c48355730a3757c7109d4129560a198884c161df4823afee97bb21ef4460",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-minimum-width.png",
+      "sha256": "b72664ba22a86c658fc3bfbbb720116ff92f4df621c14885cd43054d2e0885e3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-narrow.png",
+      "sha256": "753737bfe86aeb6d87b0e97927bd751394ab8fe75722cd76c8ca8aeb762d1f96",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-ordinary-deep-link.png",
+      "sha256": "6d5e76b6caa2a670f77644969adb74846a5a50ccfc49f31e13237162723227db",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-overflow-menu.png",
+      "sha256": "28222f72e1447c2c1b0c0866b3417b73be2001940972cb388a182e18f344388d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-phone.png",
+      "sha256": "8f99b2572caa322d76fd87448f03f52997d3a24f3cff6a2e2582721865b9377a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-quoted.png",
+      "sha256": "24d7fa14138d975ca4478c1af2646612bf29d481fd4a9c6f576cb11a828c27bb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-reload-compare.png",
+      "sha256": "67d5ba35718fbb354725bcaa81463ff8499b96d05f25ffa73788fb6bdb229470",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-restored-settings.png",
+      "sha256": "9265c08796504f8604bdb1d5c0b80a7822e4ec013791d83ad8b60d93b1605bd9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-right.png",
+      "sha256": "5ff458c379967680d9c40f5ec27d94685f9f7db0d332bf5efd7ce95dcdec50b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-stack.png",
+      "sha256": "688d7ad9c7e268c0bcc882edd3b9056606d90158492cdc9608d3fc1268241d9c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-suspended-settings-a.png",
+      "sha256": "6db1427b9a82a6aaab25731a7ad5e49efc5eb3b7a1c10761a16b9a59f265a12b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-light/light-zh-TW-two-settings.png",
+      "sha256": "b65855a7ecb8f23711be7ccfc5bbc1071d26a0c7fab44c12aaf7e989f01f23ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-log-and-chat.png",
+      "sha256": "3235d34346889e49acc78580920cde7621f4227fddb07bb0fee11500040ea7d5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-log-and-view.png",
+      "sha256": "3b76c48355730a3757c7109d4129560a198884c161df4823afee97bb21ef4460",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-minimum-width.png",
+      "sha256": "b72664ba22a86c658fc3bfbbb720116ff92f4df621c14885cd43054d2e0885e3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-narrow.png",
+      "sha256": "753737bfe86aeb6d87b0e97927bd751394ab8fe75722cd76c8ca8aeb762d1f96",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-ordinary-deep-link.png",
+      "sha256": "6d5e76b6caa2a670f77644969adb74846a5a50ccfc49f31e13237162723227db",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-overflow-menu.png",
+      "sha256": "28222f72e1447c2c1b0c0866b3417b73be2001940972cb388a182e18f344388d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-phone.png",
+      "sha256": "8f99b2572caa322d76fd87448f03f52997d3a24f3cff6a2e2582721865b9377a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-quoted.png",
+      "sha256": "24d7fa14138d975ca4478c1af2646612bf29d481fd4a9c6f576cb11a828c27bb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-reload-compare.png",
+      "sha256": "67d5ba35718fbb354725bcaa81463ff8499b96d05f25ffa73788fb6bdb229470",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-right.png",
+      "sha256": "5ff458c379967680d9c40f5ec27d94685f9f7db0d332bf5efd7ce95dcdec50b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-stack.png",
+      "sha256": "688d7ad9c7e268c0bcc882edd3b9056606d90158492cdc9608d3fc1268241d9c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/final-touch/light-zh-TW-two-settings.png",
+      "sha256": "b65855a7ecb8f23711be7ccfc5bbc1071d26a0c7fab44c12aaf7e989f01f23ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-log-and-chat.png",
+      "sha256": "3235d34346889e49acc78580920cde7621f4227fddb07bb0fee11500040ea7d5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-log-and-view.png",
+      "sha256": "3b76c48355730a3757c7109d4129560a198884c161df4823afee97bb21ef4460",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-minimum-width.png",
+      "sha256": "b72664ba22a86c658fc3bfbbb720116ff92f4df621c14885cd43054d2e0885e3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-narrow.png",
+      "sha256": "753737bfe86aeb6d87b0e97927bd751394ab8fe75722cd76c8ca8aeb762d1f96",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-ordinary-deep-link.png",
+      "sha256": "6d5e76b6caa2a670f77644969adb74846a5a50ccfc49f31e13237162723227db",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-overflow-menu.png",
+      "sha256": "28222f72e1447c2c1b0c0866b3417b73be2001940972cb388a182e18f344388d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-phone.png",
+      "sha256": "8f99b2572caa322d76fd87448f03f52997d3a24f3cff6a2e2582721865b9377a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-quoted.png",
+      "sha256": "24d7fa14138d975ca4478c1af2646612bf29d481fd4a9c6f576cb11a828c27bb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-reload-compare.png",
+      "sha256": "67d5ba35718fbb354725bcaa81463ff8499b96d05f25ffa73788fb6bdb229470",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-right.png",
+      "sha256": "5ff458c379967680d9c40f5ec27d94685f9f7db0d332bf5efd7ce95dcdec50b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-stack.png",
+      "sha256": "688d7ad9c7e268c0bcc882edd3b9056606d90158492cdc9608d3fc1268241d9c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/lifecycles/light-zh-TW-two-settings.png",
+      "sha256": "b65855a7ecb8f23711be7ccfc5bbc1071d26a0c7fab44c12aaf7e989f01f23ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-alt-split-owner.png",
+      "sha256": "a777d1228f2f27c1f6686c17e24be01a9affa450245a28e7fc4874c3289b469e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-log-and-chat.png",
+      "sha256": "7e84d945e73db27ae3796c92225770d64b2716ed6aef27e496208bb813549ecd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-log-and-view.png",
+      "sha256": "12c6b1453c87055d2f35972472743cc784397e676a679c6f074500b5c8e6daf4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-minimum-width.png",
+      "sha256": "bbcfc22bb13fff4b84689e36fee556abcbf9036e7a1db206e7b7c55a61c82b44",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-narrow.png",
+      "sha256": "9dd60105dd30d374f74eba616028ec2049429c57946c84221a41d8b61ff40da6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-ordinary-deep-link.png",
+      "sha256": "eea9f3bc16749d187d7be77f9ad45fce7fe6da17e8a23cf29c1034d42ea9c266",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-overflow-menu.png",
+      "sha256": "68cec19ae91eaba90c30153a09d89052370f1dd493407bf084e97bd8e4c57c95",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-phone.png",
+      "sha256": "086cdda8e86f35b05341b7052b9df25190d12563d1a1063ac3331f21e1855606",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-quoted.png",
+      "sha256": "5da1703206a15822fa5a3e36cb5b2b342bcb8a8624fb72f9706afd3c8bce688c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-reload-compare.png",
+      "sha256": "b716a79484020d9b0d1757430cbfa2038ca4abbbcc8ebccabaee8825109fc13a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-restored-emojis.png",
+      "sha256": "847a3d99b6a65f534375a3a191870a3485779b2c001bd7c704fa21a3f70083cc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-restored-settings.png",
+      "sha256": "e6a33d24398aa785d29f6f7f20309c187dd389f417708ac7d48adaa8aaa47420",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-right.png",
+      "sha256": "f14ce485562e44e0ffdbbe1c4ff8f5b32e22274fc218b6839b4f1183b1b44d39",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-single.png",
+      "sha256": "c9c97842ede711db0e23417b797eca29afb3125234a19f34f9b9b925b2079593",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-stack.png",
+      "sha256": "45c9635c4080c40f0c60e4e5853db3c7ef9fd1d8f2c36c65880ee988bcdc097c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-suspended-settings-a.png",
+      "sha256": "b0ba6553fc213faa332514d71269451b39be8785cf98994487d2c0c35593db53",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-dark/dark-zh-TW-two-settings.png",
+      "sha256": "4ae35d113960a9f4fa44a3cc07350c46093b53abb69d5cfb1f38418a5fa21a2a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-alt-split-owner.png",
+      "sha256": "286ab4aea3246ae240cabfdb5caf7f16673d9e2ab0f9f1e88591d547305aea0b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-log-and-chat.png",
+      "sha256": "3235d34346889e49acc78580920cde7621f4227fddb07bb0fee11500040ea7d5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-log-and-view.png",
+      "sha256": "3b76c48355730a3757c7109d4129560a198884c161df4823afee97bb21ef4460",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-minimum-width.png",
+      "sha256": "b72664ba22a86c658fc3bfbbb720116ff92f4df621c14885cd43054d2e0885e3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-narrow.png",
+      "sha256": "753737bfe86aeb6d87b0e97927bd751394ab8fe75722cd76c8ca8aeb762d1f96",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-ordinary-deep-link.png",
+      "sha256": "6d5e76b6caa2a670f77644969adb74846a5a50ccfc49f31e13237162723227db",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-overflow-menu.png",
+      "sha256": "28222f72e1447c2c1b0c0866b3417b73be2001940972cb388a182e18f344388d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-phone.png",
+      "sha256": "8f99b2572caa322d76fd87448f03f52997d3a24f3cff6a2e2582721865b9377a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-quoted.png",
+      "sha256": "24d7fa14138d975ca4478c1af2646612bf29d481fd4a9c6f576cb11a828c27bb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-reload-compare.png",
+      "sha256": "67d5ba35718fbb354725bcaa81463ff8499b96d05f25ffa73788fb6bdb229470",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-restored-emojis.png",
+      "sha256": "24ad19ebd15ccb1c469bf492fb4d02eaaa123d881803bf41033f26e1b927984c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-restored-settings.png",
+      "sha256": "9265c08796504f8604bdb1d5c0b80a7822e4ec013791d83ad8b60d93b1605bd9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-right.png",
+      "sha256": "5ff458c379967680d9c40f5ec27d94685f9f7db0d332bf5efd7ce95dcdec50b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-stack.png",
+      "sha256": "688d7ad9c7e268c0bcc882edd3b9056606d90158492cdc9608d3fc1268241d9c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-suspended-settings-a.png",
+      "sha256": "6db1427b9a82a6aaab25731a7ad5e49efc5eb3b7a1c10761a16b9a59f265a12b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/review-r1-light/light-zh-TW-two-settings.png",
+      "sha256": "b65855a7ecb8f23711be7ccfc5bbc1071d26a0c7fab44c12aaf7e989f01f23ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-alt-split-owner.png",
+      "sha256": "a777d1228f2f27c1f6686c17e24be01a9affa450245a28e7fc4874c3289b469e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-log-and-chat.png",
+      "sha256": "7e84d945e73db27ae3796c92225770d64b2716ed6aef27e496208bb813549ecd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-log-and-view.png",
+      "sha256": "12c6b1453c87055d2f35972472743cc784397e676a679c6f074500b5c8e6daf4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-minimum-width.png",
+      "sha256": "bbcfc22bb13fff4b84689e36fee556abcbf9036e7a1db206e7b7c55a61c82b44",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-narrow.png",
+      "sha256": "9dd60105dd30d374f74eba616028ec2049429c57946c84221a41d8b61ff40da6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-ordinary-deep-link.png",
+      "sha256": "eea9f3bc16749d187d7be77f9ad45fce7fe6da17e8a23cf29c1034d42ea9c266",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-overflow-menu.png",
+      "sha256": "68cec19ae91eaba90c30153a09d89052370f1dd493407bf084e97bd8e4c57c95",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-phone.png",
+      "sha256": "086cdda8e86f35b05341b7052b9df25190d12563d1a1063ac3331f21e1855606",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-quoted.png",
+      "sha256": "5da1703206a15822fa5a3e36cb5b2b342bcb8a8624fb72f9706afd3c8bce688c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-reload-compare.png",
+      "sha256": "b716a79484020d9b0d1757430cbfa2038ca4abbbcc8ebccabaee8825109fc13a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-restored-emojis.png",
+      "sha256": "847a3d99b6a65f534375a3a191870a3485779b2c001bd7c704fa21a3f70083cc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-restored-settings.png",
+      "sha256": "e6a33d24398aa785d29f6f7f20309c187dd389f417708ac7d48adaa8aaa47420",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-right.png",
+      "sha256": "f14ce485562e44e0ffdbbe1c4ff8f5b32e22274fc218b6839b4f1183b1b44d39",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-single.png",
+      "sha256": "c9c97842ede711db0e23417b797eca29afb3125234a19f34f9b9b925b2079593",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-stack.png",
+      "sha256": "45c9635c4080c40f0c60e4e5853db3c7ef9fd1d8f2c36c65880ee988bcdc097c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-suspended-settings-a.png",
+      "sha256": "b0ba6553fc213faa332514d71269451b39be8785cf98994487d2c0c35593db53",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-dark/dark-zh-TW-two-settings.png",
+      "sha256": "4ae35d113960a9f4fa44a3cc07350c46093b53abb69d5cfb1f38418a5fa21a2a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-alt-split-owner.png",
+      "sha256": "286ab4aea3246ae240cabfdb5caf7f16673d9e2ab0f9f1e88591d547305aea0b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-log-and-chat.png",
+      "sha256": "3235d34346889e49acc78580920cde7621f4227fddb07bb0fee11500040ea7d5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-log-and-view.png",
+      "sha256": "3b76c48355730a3757c7109d4129560a198884c161df4823afee97bb21ef4460",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-minimum-width.png",
+      "sha256": "b72664ba22a86c658fc3bfbbb720116ff92f4df621c14885cd43054d2e0885e3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-narrow.png",
+      "sha256": "753737bfe86aeb6d87b0e97927bd751394ab8fe75722cd76c8ca8aeb762d1f96",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-ordinary-deep-link.png",
+      "sha256": "6d5e76b6caa2a670f77644969adb74846a5a50ccfc49f31e13237162723227db",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-overflow-menu.png",
+      "sha256": "28222f72e1447c2c1b0c0866b3417b73be2001940972cb388a182e18f344388d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-phone.png",
+      "sha256": "8f99b2572caa322d76fd87448f03f52997d3a24f3cff6a2e2582721865b9377a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-quoted.png",
+      "sha256": "24d7fa14138d975ca4478c1af2646612bf29d481fd4a9c6f576cb11a828c27bb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-reload-compare.png",
+      "sha256": "67d5ba35718fbb354725bcaa81463ff8499b96d05f25ffa73788fb6bdb229470",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-restored-emojis.png",
+      "sha256": "24ad19ebd15ccb1c469bf492fb4d02eaaa123d881803bf41033f26e1b927984c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-restored-settings.png",
+      "sha256": "9265c08796504f8604bdb1d5c0b80a7822e4ec013791d83ad8b60d93b1605bd9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-right.png",
+      "sha256": "5ff458c379967680d9c40f5ec27d94685f9f7db0d332bf5efd7ce95dcdec50b8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-stack.png",
+      "sha256": "688d7ad9c7e268c0bcc882edd3b9056606d90158492cdc9608d3fc1268241d9c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-suspended-settings-a.png",
+      "sha256": "6db1427b9a82a6aaab25731a7ad5e49efc5eb3b7a1c10761a16b9a59f265a12b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr2/browser/sync-classic-light/light-zh-TW-two-settings.png",
+      "sha256": "b65855a7ecb8f23711be7ccfc5bbc1071d26a0c7fab44c12aaf7e989f01f23ba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-center-swap.png",
+      "sha256": "57ca4843a158e320d7033e1b329326e598f0f194d979f4105489e25f147567b1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-dock-preview.png",
+      "sha256": "42b5ff4634ac87565b671d514ffdbc6c52a5218501b98f8cd1a0041d175f539f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-docked.png",
+      "sha256": "3d74cac4fed662dd4f0d7d5575b1ed4c763ff46c24086ce888fafc289c730ce0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-keyboard-applied.png",
+      "sha256": "9eeb3e16afd7ac0940e86810afbf8895b57b128d7b49bc53009d8189013ed9c9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-keyboard-preview.png",
+      "sha256": "4461ada6c53450f790267f39c4d72a86f81008fe0ce504b63edd20661a70af4d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-menu.png",
+      "sha256": "3755af362e4690154cd09f1496bbd665aaaaf12dfb0a89917a47e5217c097acf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-moved.png",
+      "sha256": "bdda5328a0e7d89a5f2114092e9abce58a598f7c58985329768e468b3513afac",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-reload.png",
+      "sha256": "cf73f7b058a749f3fff3e081543730a2275f6c9cc334e7cd93e7b5948dc27d11",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float-resized.png",
+      "sha256": "05c6b4b540a611079ba24f6ebc2d7f6dd6fd49177fee55e5af4a92b7e53b8ca1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-float.png",
+      "sha256": "36a817ea57c5287dd92c43d5f5a530c78cceb021ed1b8e4e5ac709af28964ba3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-header-drop-preview.png",
+      "sha256": "8b304228c76aee0f28fedac7eaf6da1e4ab6b0810e912702681d900fb48888e9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-minimum-pane.png",
+      "sha256": "5bf3feb594bf98dd3ba67982456bec0d8aa023a2198a767cbe15746cfac4ed86",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-narrow.png",
+      "sha256": "f5485064f9da0240222c4479fe7008c954a1d31058105e12860c6fb7308fce61",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-phone.png",
+      "sha256": "d4c6c9f8064e87122529c1a56caa06af3102a8cbc4461a6d9aa18b8ace89f929",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-right.png",
+      "sha256": "d875b1d2751b3a99fb32c09113e1a1f5f959fbbf0a40376822ca1279ef0657c7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-cancel.png",
+      "sha256": "bbb18739748565ce48fc140256e5d442e3693166630ef2f14b21e836d0472cba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-drag.png",
+      "sha256": "e771f0c7c35d6f3eab161ecfab96d0cc830f3ca00be02832db6adb624c900716",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-sash-keyboard.png",
+      "sha256": "59faf2273e50f9a090aa4d2fb0cd824923ed30fa6b245ac9c39ea8019b4b90f6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-single.png",
+      "sha256": "0d3a26dc8a741ba7aadefce4c61771bbab42eeafc0524abd82cffc28f8dccbaa",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-stacked.png",
+      "sha256": "59658124739185a2dfcd8f0efa588a0b532f16383afa1467bff74f07ff7a0c5d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-coarse/dark-zh-TW-ultrawide-minimum.png",
+      "sha256": "8f44a9e0fc8e1ac0b850771f81fc3ea919258dc36bc4f8edd81eb973dbec31bf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-center-swap.png",
+      "sha256": "ec612ce168b7d6f00d5bb72e9dc12b4f1661414937e52a7ae615822ce7f0509c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-dock-preview.png",
+      "sha256": "c180758a9a8105f1b16302bfdb7185e7142e6255ad7743071b8b0d46e95618aa",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-docked.png",
+      "sha256": "4bc44dc1be417dd10504dc6b067ddd265393d0587e1d2bc2a1a1b76d09a09adf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-keyboard-applied.png",
+      "sha256": "4ff02e1f75216d376153bc556e9388065d00e52413c595e6ef4b207635dcce48",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-keyboard-preview.png",
+      "sha256": "34d99b687c2dfce5e3ca761b7bfa57fa28aec0243ef3296f45cdd35cb405b86a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-menu.png",
+      "sha256": "bcdba683773bbc5c6b25323493f762b1e490c9d066ccd8cd8dc1ac001a5bf109",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-moved.png",
+      "sha256": "93b868018ce3c2c99e26756c0317f632d2c3a619d0fbfe6d92df4d085f7945f2",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-reload.png",
+      "sha256": "209374b97018a81ebf64357aa02609459ce8af21158012a305a39752cce7c0b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float-resized.png",
+      "sha256": "cc69801690cd1827a47f54fcb24aae833a5249db099d1b1f405afa376879cb63",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-float.png",
+      "sha256": "aa3b3f4bed160adec1d9e335ede26371ea3979b85a3880d0bdb4912ad62b4aa8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-header-drop-preview.png",
+      "sha256": "9859161a6e33daa63c72906dd222c980a79471ca164dd5dd89fc81b94bd54011",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-minimum-pane.png",
+      "sha256": "bc24f1fd3672762d6723887b17bec64d02f27841b462254e558b19c078263bb0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-narrow.png",
+      "sha256": "9e4d7f077307570f13bb1f6149d59bd21a6d914cc4d21e112a28516b47b4c8f9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-phone.png",
+      "sha256": "0b772c2b5640c30a75b55c4b47e06e05797e84b39a7b90f17c6185253c4a1b53",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-right.png",
+      "sha256": "01ec7b5670667401eed63f03b825c44061477e4576975abe359def954689c915",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-cancel.png",
+      "sha256": "250910bf1786934bf53b855fca608b9916df562d5a7298ccc660975044240dbc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-drag.png",
+      "sha256": "d28cd08466c98abd841e1a2e98353623d1af337d07d5a3ab10409a74cd959851",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-sash-keyboard.png",
+      "sha256": "81bebd8cb4f95be4bec9b95f704d489f231ec5cbc5db92f7f70c8ed5bde27970",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-single.png",
+      "sha256": "c851b2a5da033346ddb719ae899725e58ee7df811163fef80d34b1d659d6c106",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-stacked.png",
+      "sha256": "b141d17fde509b5a0af39f9f69f36c4975b01f76a9347f3eebf8226f4d3c2f75",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-dark/dark-zh-TW-ultrawide-minimum.png",
+      "sha256": "dfaff43742e2e1e7db3acd2b5a1ef7e174f17df4e6ec504a72544bc74d27c9f0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-center-swap.png",
+      "sha256": "6e8be5583efc8b10410589fd5490e9290e25e75f3d262084f72089a1f586e47d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-dock-preview.png",
+      "sha256": "b98a304409848a31d399acf45b95a9bc3595b4255f1da3b3f44bd92763dfa4da",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-docked.png",
+      "sha256": "cbbc34fdf09b9818b13ee073a4e1e4530c531ff7f4e5d58e02587df5d985cd30",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-keyboard-applied.png",
+      "sha256": "de3d425195dbd1a2224129ba4755f0988759225a254afe7ddb044178ecea961e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-keyboard-preview.png",
+      "sha256": "202d11ab02e5e5d7eb57f3ebb623bc7c7392b5382cae843963899c6ff637d2dd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-menu.png",
+      "sha256": "2bf5f28b5081c4621861573dc075b0fa1581b7c90f3df826e935573c82964066",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-moved.png",
+      "sha256": "0f64e442f039ab2c6f929e4739bd77fca1b4904a3c7b3a3e9b58e2e772f77019",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-reload.png",
+      "sha256": "f7dc6a19313ea1f8e6a6db0dcc0c55f5265adc9647099851a4d00c387da3f239",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float-resized.png",
+      "sha256": "7069541d84ec499e8b72641c52c3ad2f0322de7d070ea1172e7c7d5ac780589b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-float.png",
+      "sha256": "931ba513994e76acdcd957f7dcaec6e5962c370d62f5f240d41014647e75a969",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-header-drop-preview.png",
+      "sha256": "2d1aeee1c558ac6377892540f1acabeb9f0a9b71bdd25e122bd9d59cd1926b92",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-minimum-pane.png",
+      "sha256": "fca72bc484eeb9930b3213830dcfa53856b395938bece170bec9035dea64b888",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-narrow.png",
+      "sha256": "245794a6ec16a154bd73d0358f362365f64cfca25d49e0fa508353bdeb927db1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-phone.png",
+      "sha256": "f6393c2c6d97c38b3191d04b6908b2b8076bc397d70d05df939d4f7c4c00e014",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-right.png",
+      "sha256": "f376a191800649ec2bb41cb028370d839e02d19f68a1dfb874324828c9ac2399",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-cancel.png",
+      "sha256": "2b55b6b30c6d207e51abf5b64fbf29cbe07bfcd2db1a423ba989527472180159",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-drag.png",
+      "sha256": "e3a38f0edee061fb47db16a3e5407280915b64a1148b2dd1abb4cb3191c01ec5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-sash-keyboard.png",
+      "sha256": "8923849bf315c12b5c3a1314a1e3d850cd63b3eaca10ad16c72bf84e7c3041dc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-single.png",
+      "sha256": "a540b5278a060990e8b1fa4211818344f55e3aa69e24aef6353f7ef54296c081",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-stacked.png",
+      "sha256": "21ccce1152e0195b00cdbd5f073490c24b7975b8bee35eb551462eeaeac17a70",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-en/light-en-ultrawide-minimum.png",
+      "sha256": "4b4b39078cf073e4d298a7fbe6336d1bb93dc9ff11eeb349230da54b1e770a55",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-center-swap.png",
+      "sha256": "3fb9978bbb2b1329382b472dab0e0076e0a490a3fead11336d2e7c97f3829ed4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-dock-preview.png",
+      "sha256": "8e48c202ea52636557a5007611815adc27d84863f2dfd37c0c2c02760842b287",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-docked.png",
+      "sha256": "a56375c1204e580f621d242690781635e9e88ba284868e094067ab47e0e29017",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-keyboard-applied.png",
+      "sha256": "74886b9542e0da2b7a5746bdc4fe0558a3fd4e7c80910f3a552c145ccbeed30c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-keyboard-preview.png",
+      "sha256": "5bf17b18661eedd319662770961c7a5cbe097ff92e0193520617b9313bbf3698",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-menu.png",
+      "sha256": "e06bf0b952f66f3a3b233d730f9267182ee9a836f23028ee7f4a6c5ca03b52a3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-moved.png",
+      "sha256": "9b50966ad895cd2b498e857289486d1baadbc74ec0712571ba57f9dbec9af34c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-reload.png",
+      "sha256": "cfa8363a2e3d98e87269127337dbbd09963f5c9305ceca937ca586fbc43b731f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float-resized.png",
+      "sha256": "449abaef119c425a44dfe9e9908cf7eff957f45fd75d630a4fe3f856d4d8adc1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-float.png",
+      "sha256": "fc58429104e6eca7be1d62a94d29cd96276b9f316226cde03b86705eabbc2f5a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-header-drop-preview.png",
+      "sha256": "2d1cc5478cfc4222131afdbeb12b3141c79de140922a69f50b77cde023438fa4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-minimum-pane.png",
+      "sha256": "b2ba6c8b58d2cbbbde9887d139b0afef7d4b7f88a6d79cb6d64f70f2622e5693",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-narrow.png",
+      "sha256": "2d563465f829d761df99c18a1f34c49cbd972011b9f6c21f46a1a7643953afd0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-phone.png",
+      "sha256": "432aef00ae88ca8bf5f0bc1f7b93cd7eeda60612e7bf4cefdea76412f246ec56",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-right.png",
+      "sha256": "5444bea987c6aa7ae7d90d2f13fef35c24d0197b247d9c365f698cf7005d8c72",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-cancel.png",
+      "sha256": "435a93e15c2f394bf76629e7367442024aa511c796924f8cc258a8f2711e440c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-drag.png",
+      "sha256": "d2631c20f975c8df5a01e5603a27c79f23a2574e00143cbcd94bdceac774d6e6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-sash-keyboard.png",
+      "sha256": "d3a887e53fe868991da6eb83910a0ea948d2496a0da8064d8ec98693180f30ee",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-single.png",
+      "sha256": "301f270928a92e77ee505ec7cce4128ce8493339dac78d86a489bc85f33c20b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-stacked.png",
+      "sha256": "bf19f45d0110ee491f54c9612920e19c227fc3175a65fbaf71427940100c5bfb",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr3/browser/current-light/light-zh-TW-ultrawide-minimum.png",
+      "sha256": "a7d4a8c9c4a060c476dc2f8d1287ae81bbc78e281a1430c6bdfae1f6b72a3641",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/auth/light-zh-TW-auth-keeps-source.png",
+      "sha256": "0d4c0d3ccc4978650748049c5adfca78a7a33d08d170ba07b74ce13bd15e0ca6",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/auth/light-zh-TW-layout-menu.png",
+      "sha256": "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/auth/light-zh-TW-right.png",
+      "sha256": "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/auth/light-zh-TW-single-before.png",
+      "sha256": "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/blocked/light-zh-TW-blocked-keeps-source.png",
+      "sha256": "27bcd537bd82c2f2c582cea4141c490b0a983e3ca636efe474214bb083807520",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/blocked/light-zh-TW-layout-menu.png",
+      "sha256": "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/blocked/light-zh-TW-right.png",
+      "sha256": "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/blocked/light-zh-TW-single-before.png",
+      "sha256": "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/changed/light-zh-TW-changed-keeps-source.png",
+      "sha256": "fe2414c422133798aa1a09d4f63fd4a45fb4f5155a8f2298a9ab24d825720301",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/changed/light-zh-TW-layout-menu.png",
+      "sha256": "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/changed/light-zh-TW-right.png",
+      "sha256": "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/changed/light-zh-TW-single-before.png",
+      "sha256": "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-drag-edge-preview.png",
+      "sha256": "071a9a781f4af7b08ae602e78c05521c7bc2947463b630cd2d2c18ec77c230ed",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-float-move-resize.png",
+      "sha256": "1ec6d3460166d7265ad1191e8ab8bd55b90ccfd61413b7ac5eff19ed18998741",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-float.png",
+      "sha256": "6cd3eaedd4dc28ee701a5680c56ce4dcff70eaf3a4157432364f01d99bba574d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-layout-menu.png",
+      "sha256": "1d44c797054dfbf599c00b6e3e49fbd92ce1eb3a83f2df7040a76f04078aedba",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-log.png",
+      "sha256": "90eac7cde37e84c4a8cea58832b617665cc42cf2a4d58a99c60040d2ec54f006",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-narrow360.png",
+      "sha256": "df1f71b14a413968593768da189b4c21452d17255675aa28b2c1fc62861e93e9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-popout-log.png",
+      "sha256": "79ff017a51902195bd60373a5de6f34060dbf2688d0d176ecb592e41f998be15",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-popout-main.png",
+      "sha256": "47bb1121480125dfdd2c17636fa7e85ff6030f338a35b0c0ab541fd9c15ee03f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-popout-reload.png",
+      "sha256": "f2919ee88d0dcda6541fb79bd4a1ffdb5d97bda4c4ca1bf6021792de13fc30ed",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-popout-window.png",
+      "sha256": "70f1557bd20249cdf12d3df0638d28be7dc29978bc46263e778d11ee2350f590",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-right.png",
+      "sha256": "215ba829cbc9eda066c870aad51db1400520d992ea55f84ee7398676ab1e7872",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-sash-keyboard.png",
+      "sha256": "f3773382a59d6614eb8e7d2e8dc0b6642effd3591fcbdf79cc6aecce4d10f3e5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-single-before.png",
+      "sha256": "1224faaca1f2c40ba1e5ebb05c2470b57677661f68d087b859a6e0c9614a4da7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-coarse/dark-zh-TW-stacked.png",
+      "sha256": "e6e716669ae21ff9d2b017046e10962ad6d974329f126ee450357421f66e2c31",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-drag-edge-preview.png",
+      "sha256": "3e05dd611f4530e3926d2860b4c2fd0e92442b700a68192e3d8b64c94de9d905",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-float-move-resize.png",
+      "sha256": "a99209d1a5bd8163ecddc6ee129160dbdca3a55e1414dba0ee828454e413fc31",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-float.png",
+      "sha256": "99771086c2d8df4cc485c4cfe2bfe69c4b0cb692205f134504f6bec41190e335",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-layout-menu.png",
+      "sha256": "58cf7fb56fedc3867dd238e61b14b0295d73e97db8df24c60cdadbafd43ca9a4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-log.png",
+      "sha256": "8b391fad431d50dc4cdc8e44e87d9689f91514ea386af05b2b6126fa1f0112e5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-narrow360.png",
+      "sha256": "daf2bf09795a034f467e415ab4b92a7addfce79b0098e0c300d3cf0140bb6653",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-popout-log.png",
+      "sha256": "633a03549811c809b641779ab7959c0f62cf05143f0d44a4813a45ca74a74da0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-popout-main.png",
+      "sha256": "26b10906c470f829126a03f7a3e8297988b8390012cf1ae89ac95dc828cef300",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-popout-reload.png",
+      "sha256": "4421bf3a3f365ed964148e5dfe265d5caf7bf2bd9843d189ae184f333c1552c8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-popout-window.png",
+      "sha256": "436dcc4964cd192360891cdfa19f9b9ecc7befd9ce73fefb22ce64dac98f377e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-right.png",
+      "sha256": "81ed38f58301b3fdfebe3565379012dfe10dcff30f28dadeadc4ecf111cb7159",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-sash-keyboard.png",
+      "sha256": "e083e37adbb9fb3299aaf13ecba674c0a6591331e50b093b83e13430d1a8eff3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-single-before.png",
+      "sha256": "e54418edc94f39c02fc8aac42e6662d11bad21a93bbacc0b51a2a0a2a6b5e2e4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-dark/dark-zh-TW-stacked.png",
+      "sha256": "c0776ea3662257b14c582be954bb024c132cd06347ba3e1ed6875e797956be92",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-drag-edge-preview.png",
+      "sha256": "62edb46de24d3dc4dee0a7c0ce35b7fbf4d5f952f4df3b305bf70934b3572932",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-float-move-resize.png",
+      "sha256": "669faac08a6c0dab156027962b6fad47edaa8b3fe0be7f2c5a4750b3ae2fd9c0",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-float.png",
+      "sha256": "d3b250aedab9f1921f928b4ad691d65ad30275319cca9a52c1c58648e878ed7b",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-layout-menu.png",
+      "sha256": "887be80f5a68794d286442a8cc4f93f38a74975e449aaa15f355891020a87146",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-log.png",
+      "sha256": "599641d121470e3697d1d77b15533d1ee20f1b02a505f6b7e266694bd942cc1f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-narrow360.png",
+      "sha256": "5573b64c64d85f0c51c7ba960faad50b0c6d951bb599fcf50d2c6588f4b1a993",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-popout-log.png",
+      "sha256": "0e6fd649d6fb3e0568f72cb064694336b4a199b62757b29b5ac643b8abc8b7be",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-popout-main.png",
+      "sha256": "7d7c97f4ad46a8a77829deb5522dabb0e40dfaa66358a11dea11aeb7d0020f16",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-popout-reload.png",
+      "sha256": "94ebce0cbca2c09b73602c87e9026a7dc431a3b0e5bd54d9310c977f405704ce",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-popout-window.png",
+      "sha256": "35fd049bc81d14058f83d750b4bbbd861c9db0325b586f055f2073bf7663838a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-right.png",
+      "sha256": "ac82969536e4414f0dd69206052233fa94fe691cc5bee69b1dd1daeca87f7a8e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-sash-keyboard.png",
+      "sha256": "8e01c5404c424097850692a3929d25ce3773fba91a33a39de412d095655278c5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-single-before.png",
+      "sha256": "e5217b47894204c30ec5c42bf50b78f9139a6dc372a8cc5c274a0447b5481795",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-en/light-en-stacked.png",
+      "sha256": "a8b0e8a36146ac1c2207c32f21e29c382934ff03008430625465aa3f9e979c7e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-drag-edge-preview.png",
+      "sha256": "36cc76cf690aab61bb3032f2712dd8aa6304d45ead578fc338d3f4c6e3106965",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-float-move-resize.png",
+      "sha256": "c1ed1b3373a79f45d61ffacd8dc87ea92c25c9976c6fc80156512552eacccf57",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-float.png",
+      "sha256": "f6de86d4e9a7970b6ce4ee6ad377ea7fc969054a7d1147eecfb248707ca8f79e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-layout-menu.png",
+      "sha256": "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-log.png",
+      "sha256": "28711115f2eb25ecbf105e2e9322f97600c9d16b6baa91987d73816db7127d4f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-narrow360.png",
+      "sha256": "02a0e511dc2e5512a03019be8a6cc99364cc0e8f36c423f66082e47b00d17742",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-popout-log.png",
+      "sha256": "dffba11cce7498a75747e5f0d3b75a9a4f6b3bd51fa69370b193fd3fe804f28a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-popout-main.png",
+      "sha256": "c538fd7c7b26bc379768ea5063c394ce4df12cb684cf296adcf4ab1240497b33",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-popout-reload.png",
+      "sha256": "ffc8336800f426453d53437180179b891e97cd3aaf71c48c35f08fb68c996fb5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-popout-window.png",
+      "sha256": "14b0a02bbf1acbe9d5108cafa6ec662d7480ae3b4b72946bdede52676b2ada19",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-right.png",
+      "sha256": "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-sash-keyboard.png",
+      "sha256": "d5a1a0b963babba890727f11b7eaeddf502b74b97283984e8c8b538f5765a0b1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-single-before.png",
+      "sha256": "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/current-light/light-zh-TW-stacked.png",
+      "sha256": "e07a74c7e84c5809e84eb1cf51fca5e88f21e7aa4d57f170e6114e1f88be9a04",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-layout-menu.png",
+      "sha256": "b81f35db4280b89c791939d44b800a4058795070102e85f4cfe7d95ada992618",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-popout-log.png",
+      "sha256": "dffba11cce7498a75747e5f0d3b75a9a4f6b3bd51fa69370b193fd3fe804f28a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-popout-main.png",
+      "sha256": "c538fd7c7b26bc379768ea5063c394ce4df12cb684cf296adcf4ab1240497b33",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-popout-reload.png",
+      "sha256": "ffc8336800f426453d53437180179b891e97cd3aaf71c48c35f08fb68c996fb5",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-popout-window.png",
+      "sha256": "14b0a02bbf1acbe9d5108cafa6ec662d7480ae3b4b72946bdede52676b2ada19",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-right.png",
+      "sha256": "f6cba70851d6a65a967951c0ed26b1bd368397a75d5905777b9a99a3f8f7d1a8",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/cycles/light-zh-TW-single-before.png",
+      "sha256": "64bd5d37e96facee84092b3a4c79b15aa410213347ece62298d8f70e9c3b8223",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/phone-current-dark/dark-zh-TW-single-before.png",
+      "sha256": "71a9c2a1c4f9144e6a68fa8579ef40df5ff86c85ad74daea10855f5be25eba5a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/desktop-split-chat-pr4/browser/phone-current-light/light-zh-TW-single-before.png",
+      "sha256": "7a9255afb1742f14cb71dc3b33da4933761cbef80d33b58f813c22a358cee950",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-contact-3160/desk-light-en.png",
+      "sha256": "a3f4441b744073004675242db5c0b5d55d15031d149bf30bb20ab2af1767e195",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-confirm.png",
+      "sha256": "c7f4eb737ee6a5916dae4194a3af32826159f2393d6ff6dc4f7dfb47e1ef2bdf",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-consent.png",
+      "sha256": "d631fb367e736b07224ab57116661556dfcb56fe63475ffe0663ec90b12f9981",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/baseline-desk-light-en-notice-banner.png",
+      "sha256": "8f8a939db16e70c50592595a1252a48ca039b6d133744a6b8f0d6525267369b9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-confirm.png",
+      "sha256": "7a5af95b8e2cfe81a0d4eb086cbadba63b80d12c95595366dd4169716ae34609",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-consent.png",
+      "sha256": "5651c7cc6af6051acaedee4c75ca434ea7672b0c36ff16301666f3793d776ebd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-name-m3172/browser/candidate-desk-light-en-notice-banner.png",
+      "sha256": "3592d2f1bbad220546622ae3d4dfa897b4ea2f9b91764d62ba1836f53b10837d",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-1-hub-line.png",
+      "sha256": "e411d9c0d0d21cf4ab09f4e61cc557ad955aa50ca43c31dc1efb651968dd9270",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-2-confirm.png",
+      "sha256": "2ba1ec17c844371b21702e884e16f588ab10aabbbdcea9e6eabb1d4c2d64ea9f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-3-started.png",
+      "sha256": "86a2409f4e4e9278dac5722178fa963cacdd852b9ee78076626d32d543ae842f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-dark-zh-TW-4-settings.png",
+      "sha256": "4b5d8e5101f492e52e3816428c48a5c9aed4db31411731380792b57dfef67acc",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-1-hub-line.png",
+      "sha256": "b4f97abf606a083712009c106898a2b6bfcf9b6f6a961acf71a2c14f4f3ce603",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-2-confirm.png",
+      "sha256": "c1380813a43855842921031b81402b8d68ff7d99eb4abd48974f9e7a8f085d61",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-3-started.png",
+      "sha256": "9a5a252dcec6481ed5c54f8a6c2b13fd8f35bea4d83697fb32f478e691f9886f",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/hub-recommended-update-m3140/desk-light-en-4-settings.png",
+      "sha256": "ff520de8d72f70d383f5839fcecec7259ee58a1a60cd68397e5bde6047957b88",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-1-before.png",
+      "sha256": "44711994da9788974bd49030d907b68550df8041e82d41e1931bea86fccaf724",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-2-carried.png",
+      "sha256": "3e4152b38cdd822fb47005fb6c06ff95a16735c0b97e8a844f4a6a8dd6b3477c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-3-walking-back.png",
+      "sha256": "92f54811fa93aa708aec82dac699e1a71f333a7b5be959c743b0cb5d3eec85b1",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-5-pat.png",
+      "sha256": "e8d2112738697a2d87d7f80fca2c69aacf508cacf69c13b1604447bdf453b839",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/desk-light-en-reduced-1-card.png",
+      "sha256": "5de22f3fb3fa9d584d53c3f0ae1f6046d2be2b977a29e18af84e50d1a51b2ba9",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-drag-pat-m3293/images/phone-light-en-1-long-press-carried.png",
+      "sha256": "74d0d9ed3eac962ebd0fd261e9305297ff24ea0d440bfccaa3eea03c4615d5f7",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-stay-in-area-m3286/images/desk-dark-zh-TW-1-edit-ticked.png",
+      "sha256": "1cb6244cf1115ff7d6f5a6f60345eaaa4f72eaf82949a37bb428b312cde0d14a",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/office-stay-in-area-m3286/images/desk-light-en-1-edit-ticked.png",
+      "sha256": "06d3eb71e848e66fbf3baa150ec9d10ef95beda677837f9e9bf2fc67d4154c5e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-en.png",
+      "sha256": "4289561100a7d672306db1b02a1da01d4e7218cdfae99fc24876959781af8fde",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-zh-TW.png",
+      "sha256": "42f0050880e5ae226eba2a5f8dc2c86b60a27fe3f9c4ef47719979afb678ba69",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-en.png",
+      "sha256": "69eeb593a58332287d95992f600315091013d99bd41bfab4a3a8f720fcd5efe4",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-zh-TW.png",
+      "sha256": "cdf4297b17b0b22370044e91669fa4111a50fdbe807cd96d12efe0e55f7a336e",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/usage-marks-fit-m3288/images/after-phone-dark-zh-TW-window-2-one-line.png",
+      "sha256": "bb737eed76af84d9662065df41f8648a4eb02cbcf498fe556e786171595d84b3",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/usage-marks-fit-m3288/images/after-phone-light-en-window-2-one-line.png",
+      "sha256": "13dafb9b483391af9ca99c8fd94f3d6faea6deb70a423b54fda77c6e76b2961c",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/usage-marks-fit-m3288/images/before-phone-dark-zh-TW-window-2-one-line.png",
+      "sha256": "7b4cb8765ef9bfdd542baf2ff9c644b063c4df6e87e0fe1e48e263245e48f8fd",
+      "privacy": "clear"
+    },
+    {
+      "path": "docs/evidence/usage-marks-fit-m3288/images/before-phone-light-en-window-2-one-line.png",
+      "sha256": "da7b5a45efa4151b26f965643aabea48701c1bf910897f1004fadfa125187751",
+      "privacy": "clear"
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # M-3160: Hub-question contact limit
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 1 affected paths recaptured, 0 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
+
 Root cause: Hub questions use a shared agent's ordinary conversation and outbound tools. Those handlers had no question-scoped contact check; a Hub asker could prompt the agent to reach its Fleet peers.
 
 The send handler now checks the calling instance's durable windows before ordinary contact admission; delegate/request/report wrappers share that path. Broadcast checks before any target is admitted. Only a claimed Hub answer is exempt, not an ordinary instance merely called `agend-hub`. The per-share choice defaults on; direct and room asks carry it to the same Fleet input hook. Windows persist before possible IPC exposure, overlap independently, expire after 30 minutes, and close on successful answer. Lumen confirmed that bounded duration. Invalid answers/uncertain input do not unlock the agent. No live agent was used.

@@ -1,0 +1,80 @@
+{
+  "scope": "Current screenshot privacy refresh only; old source/test receipts remain historical.",
+  "capture_limits": "Current-only eight-case display capture completed with effects0 and10snapshots. Default historical comparisons are unchanged. Historical unversioned routes are not proof of exercised old assets; affected old comparison PNGs are withdrawn. Dummy keys and locally generated confirmation IDs/fingerprints belong to the owned in-memory display fixture; no live credential or platform ID.",
+  "current_files": [
+    {
+      "name": "after-desk-dark-en.png",
+      "sha256": "4289561100a7d672306db1b02a1da01d4e7218cdfae99fc24876959781af8fde"
+    },
+    {
+      "name": "after-desk-dark-zh-TW.png",
+      "sha256": "42f0050880e5ae226eba2a5f8dc2c86b60a27fe3f9c4ef47719979afb678ba69"
+    },
+    {
+      "name": "after-desk-light-en.png",
+      "sha256": "69eeb593a58332287d95992f600315091013d99bd41bfab4a3a8f720fcd5efe4"
+    },
+    {
+      "name": "after-desk-light-zh-TW.png",
+      "sha256": "cdf4297b17b0b22370044e91669fa4111a50fdbe807cd96d12efe0e55f7a336e"
+    }
+  ],
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-en.png",
+      "blob": "faebc6c95dede8518d3e4fece0daf12800f79986",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "4289561100a7d672306db1b02a1da01d4e7218cdfae99fc24876959781af8fde"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-dark-zh-TW.png",
+      "blob": "a79ff9f0d4edfb92b7b731b805b135ff443ca378",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "42f0050880e5ae226eba2a5f8dc2c86b60a27fe3f9c4ef47719979afb678ba69"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-en.png",
+      "blob": "26105533a9e540389620f606797a8b0252dd6591",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "69eeb593a58332287d95992f600315091013d99bd41bfab4a3a8f720fcd5efe4"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/after-desk-light-zh-TW.png",
+      "blob": "d3820a5dffcefde368139411e0661395b21ce8a6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "cdf4297b17b0b22370044e91669fa4111a50fdbe807cd96d12efe0e55f7a336e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-dark-en.png",
+      "blob": "2d786375a51e3d6ac99a36e697774536af2da3b5",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-dark-zh-TW.png",
+      "blob": "b4926865159e96c79ade5d4a57277359d682c507",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-light-en.png",
+      "blob": "0708b61d29014d6925efce122a2ed4ab2b9998a2",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/settings-summary-page-language-3416-alpha/browser/before-desk-light-zh-TW.png",
+      "blob": "2cd94ec191426cb0b8dad4acbb8881b12414e87c",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    }
+  ]
+}

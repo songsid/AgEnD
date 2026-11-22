@@ -1,5 +1,7 @@
 # Office: drag and pat, with an opt-in Tell (M-3293, #4119)
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 6 affected paths recaptured, 0 historical dialog details cropped, 4 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. Selected ordinary light/dark/reduced/phone cases completed independently. Initial combined wrapper was interrupted143 and is not a full pass. Four full/cropped reaction-word pictures were withdrawn: both complete journeys and fresh narrowly timed frames showed no visible reaction words/hearts in that state. No crop is invented from absent effects. Current-only card navigation uses its real accessible person target; old pointer-only assertions remain default. The phone path confirms an actual tap and uses real CDP long-press. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
+
 Source `c5b95e41b1722a5ef5bc4d3fc5306b768409b5a3`, from dev tip `168125fc8`.
 
 **What.** The light version of #4119 plus the user's additions from the issue thread:

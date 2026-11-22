@@ -1,5 +1,7 @@
 # R3: Settings return lives in content
 
+> **M-3513 screenshot privacy refresh:** Affected images in this packet were refreshed or withdrawn; old behavioral/source receipts below remain historical and do not describe new PNG provenance. See the [family dispositions](../privacy-refresh-m3513.json) for exact paths, capture/crop hashes and limits.
+
 The owner rejected two meanings for the pane-header X. **Back to chat / 回到聊天** now sits at the top right of Settings content and scrolls with it. The phone category list has its return inside the scrolling list too. The pane-header X always means **Close this pane / 收起此格**. Header modules are byte-identical to stacked parent #3732 ([parity](header-parity.json)); Settings no longer passes back-to-chat metadata into them.
 
 The return reuses `PageHead`, `Icon`, Settings row/touch sizing and real links. In split mode its normal click uses that pane’s existing guarded navigation; modifier clicks remain the browser’s. A single page/pop-out uses the existing router. Cancel retains staged changes. No new confirmation, write, authority, endpoint or pairing path. Sidebar re-click/Enter and the other-agent/public-View rules are unchanged.

@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 /** Actual Fleet UI, with display DTOs from the owned TLS/WSS integration; no updater or agent launch. */
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -9,7 +10,7 @@ if (!out || !repo || !process.env.M3172_DATA) throw Error("OUT, REPO and M3172_D
 mkdirSync(out, { recursive: true });
 const data = JSON.parse(readFileSync(process.env.M3172_DATA, "utf8"));
 const { WebNotices } = await import(repo + "/src/web-notices.ts");
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48642), instances: 4, classic: false, host: true });
+const fx = await bootFixture({ roster: publicRoster(4), port: Number(process.env.HP ?? 48642), instances: 4, classic: false, host: true });
 const fm = fx.fm as any, checks: Record<string, boolean> = {}, served = new Map<string, string>();
 fm.runningAgendVersion = () => "2.4.0-beta.3";
 fm.launchInstalledUpdate = async () => { throw Error("No update may launch in the name capture"); };
@@ -35,8 +36,8 @@ try {
     try {
       await page.waitForSelector(".hub-update-consent", { timeout: 15_000 });
       const expected = value.pairing.hub.name || value.pairing.hub.memberOrigin;
-      checks[prefix + ":consent"] = (await page.locator(".hub-update-consent").innerText()).includes(expected);
-      await page.locator(".hub-update-consent").scrollIntoViewIfNeeded();
+      checks[prefix + ":consent"] = (await page.locator(".hub-update-consent").filter({ has: page.locator("#hubUpdateConsent") }).innerText()).includes(expected);
+      await page.locator(".hub-update-consent").filter({ has: page.locator("#hubUpdateConsent") }).scrollIntoViewIfNeeded();
       await page.screenshot({ path: join(out, prefix + "-consent.png") });
       await page.locator("#hubUpdateConsent").click();
       await page.waitForSelector("dialog[open]", { timeout: 5_000 });

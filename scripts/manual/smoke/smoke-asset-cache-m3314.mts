@@ -1,3 +1,4 @@
+import { publicRoster } from "../smoke-fixture/public-roster.mts";
 // M-3314 on the real app, with 150 ms of latency on every request (CDP), as the fixed link measured in M-3312:
 //   load:   /ui boots with no console error and no CSP violation; every module the page asks for is versioned
 //           (/assets/v-<V>/, /ui/js/v-<V>/) and asked for once; its modules arrive in ≤ 3 waves (≈14 before).
@@ -15,7 +16,7 @@ import { bootFixture, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-asset-cache-m3314";
 const LATENCY = 150;
-const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49030), instances: 6, classic: false });
+const fx = await bootFixture({ roster: publicRoster(6), port: 0, oldPort: Number(process.env.HP ?? 49030), instances: 6, classic: false });
 const wav = await import(`${process.env.REPO}/src/web-asset-version.ts`);
 const r: any = { cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };

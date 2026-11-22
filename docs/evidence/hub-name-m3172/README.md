@@ -1,4 +1,6 @@
 Code-only pairing never creates company-join's optional display cache. The paired API returned `hub.name:null`,
+
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 6 affected paths recaptured, 0 historical dialog details cropped, 0 unreproduced pictures withdrawn. Current rendering only; prior source/test receipts remain historical. Static captures do not establish offscreen reachability or provider/native operation. Baseline/candidate denote synthetic DTO phases on the current UI, as in the original test; they are not historical asset replay. Consent/updater apply is stubbed to throw. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for each disposition/source/hash. No live provider, CLI, pane or Fleet was used.
 and the member update/recommendation producers captured the web hostname. As a result the Fleet's connection card,
 update-consent explanation/dialog, owner request notice and recommended-update banner used an address.
 

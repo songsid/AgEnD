@@ -1,0 +1,26 @@
+{
+  "scope": "Screenshot privacy refresh with example identities; no production UI change.",
+  "limits": [
+    "Current rendering only; prior source/test receipts remain historical.",
+    "Static captures do not establish offscreen reachability or provider/native operation."
+  ],
+  "harness": "scripts/manual/smoke/smoke-m3286-office-stay-in-area.mts",
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-stay-in-area-m3286/images/desk-dark-zh-TW-1-edit-ticked.png",
+      "blob": "f8efbf6f2e18b9e0d8b6fd9adc8e57d33aefaa80",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "1cb6244cf1115ff7d6f5a6f60345eaaa4f72eaf82949a37bb428b312cde0d14a",
+      "capture_head": "560c2d668882f4f387439d932bf4e1c6090c1183"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/office-stay-in-area-m3286/images/desk-light-en-1-edit-ticked.png",
+      "blob": "045b089ae4c2cf1517adfca49a433ed169335e6c",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "06d3eb71e848e66fbf3baa150ec9d10ef95beda677837f9e9bf2fc67d4154c5e",
+      "capture_head": "560c2d668882f4f387439d932bf4e1c6090c1183"
+    }
+  ]
+}
