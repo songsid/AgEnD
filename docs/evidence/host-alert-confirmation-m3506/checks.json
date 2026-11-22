@@ -1,0 +1,35 @@
+{
+  "base": "db01bd20",
+  "baseline": {
+    "files": 1,
+    "passed": 4,
+    "failed": 1,
+    "failure": "confirmed apply expected applied, received failed"
+  },
+  "after": {
+    "files": 5,
+    "passed": 93,
+    "failed": 0
+  },
+  "commands": [
+    "vitest run tests/host-alert-confirmation-m3506.test.ts tests/host-monitoring-alert-api-m3454.test.ts tests/settings-http-confirmation-1423.test.ts tests/settings-web-apply-2170.test.ts tests/host-monitoring-alert-settings-m3454.test.ts",
+    "npm run typecheck",
+    "npm run typecheck:tests",
+    "npm run build",
+    "REPO=<checkout> PW_DIR=<dependencies> CHROME=<chromium> OUT=<artifact> tsx scripts/manual/host-alert-confirmation/readback.mts"
+  ],
+  "productionTypes": 0,
+  "testTypes": 0,
+  "build": 0,
+  "finalTestOnlyChange": "Object.assign explicitly mutates a synthetic readonly session record to simulate demotion; runtime assertion unchanged.",
+  "scannerDelta": {
+    "version": "8.24.3",
+    "beforeFindings": 1,
+    "rule": "generic-api-key",
+    "file": "docs/evidence/host-alert-confirmation-m3506/manifest.json",
+    "line": 2,
+    "afterFindings": 0,
+    "commitsScanned": 1,
+    "scope": "Pinned scanner over the one linear PR commit. CI wrapper cannot run locally: shared checkout is shallow and Git 2.34.1 lacks remerge. No merge commits in this PR; terminal CI remains required."
+  }
+}
