@@ -1,0 +1,329 @@
+{
+  "scope": "Current screenshot privacy refresh only; old source/test receipts remain historical.",
+  "capture_limits": "Current observer wrapper completed15cases/53snapshots/cleanup/exit0. Registered historical substitutions had zero served-hash matches (before0/7, retained-panels0/7, retained-shell0/3), so historical-control PNGs are withdrawn and no retained-code parity is renewed. Current synthetic read-only observations do not invoke a vendor or change a model.",
+  "current_files": [
+    {
+      "name": "after-desk-dark-en-card.png",
+      "sha256": "8e00a4076e4d793bb02e1fe80bc979d324e8bcb33b1ab6a3ea60b07b8f5ea123"
+    },
+    {
+      "name": "after-desk-dark-en-details.png",
+      "sha256": "cc506648c2abb76c5168aa789b7fa6df58301389fa5f39b138007819a8c661d7"
+    },
+    {
+      "name": "after-desk-dark-en-log.png",
+      "sha256": "e82f874e07ced03028adf61dd8ef37819f25174ff988e766ae4da47a2f6f43e8"
+    },
+    {
+      "name": "after-desk-dark-en-needs.png",
+      "sha256": "75ae7886485b7f3e13a278d709687b540830656d52d3bf18949690ef63e9c448"
+    },
+    {
+      "name": "after-desk-dark-en-office-card.png",
+      "sha256": "f040476c63fed8100a968e62450d1812d421fd2111bb4c268ddfbdca5ef2e9ea"
+    },
+    {
+      "name": "after-desk-dark-zh-TW-card.png",
+      "sha256": "b5630e05f16dc0711e9afcdabd079f7904f9b6f810d6fcfec542d133654e1c92"
+    },
+    {
+      "name": "after-desk-dark-zh-TW-details.png",
+      "sha256": "293cb9ba0037fc383cab6f5960a904606647b1b22fd946fd1c33b03f84eb1e2c"
+    },
+    {
+      "name": "after-desk-dark-zh-TW-log.png",
+      "sha256": "12ddbb523250c6eb340e6b8541130ae040f67a614bb4fa80c324b808877c6b65"
+    },
+    {
+      "name": "after-desk-dark-zh-TW-needs.png",
+      "sha256": "3095331bdb35757dd6eabf2f65517c802119553d9d28d60275adf87fecc3594e"
+    },
+    {
+      "name": "after-desk-dark-zh-TW-office-card.png",
+      "sha256": "67062b2601ec002be07121d5b92d902e22ba1ae2431c342f218fe3754956fdbf"
+    },
+    {
+      "name": "after-desk-light-en-card.png",
+      "sha256": "e952ad43713455c71ae89b4e7b99e97381b4847553dc389472812da27bb72feb"
+    },
+    {
+      "name": "after-desk-light-en-details.png",
+      "sha256": "b06d9dc0fa22b96c1aca91b1e3036ff774145692d2aa3a020ba5f56b0462bba8"
+    },
+    {
+      "name": "after-desk-light-en-log.png",
+      "sha256": "288f73df2e67852f5248b76da074ae5ef7045b6173c2a33a3f25e1f0ef4efdcf"
+    },
+    {
+      "name": "after-desk-light-en-needs.png",
+      "sha256": "d318c25bbce4c3d670ce73c3dcb4bc683174329b3f204dd0a2bd82c9b94e6c41"
+    },
+    {
+      "name": "after-desk-light-en-office-card.png",
+      "sha256": "15879fcb464fb8d32b4f3a1cbc2caf226dcccba731c88a4968da9684b117eb0b"
+    },
+    {
+      "name": "after-desk-light-zh-TW-card.png",
+      "sha256": "1f3a06f94872a60bda0f3e10c41847a3cc5b985e286b44d45df999d78e6e5b4d"
+    },
+    {
+      "name": "after-desk-light-zh-TW-details.png",
+      "sha256": "80150051df7aa1076e6c7029db83a049cc9a61398bf9eccaaaa22a6c140fefed"
+    },
+    {
+      "name": "after-desk-light-zh-TW-log.png",
+      "sha256": "ceedd712abbd62726b0a94fa0ed116e87bb82e82eef6b20c70512eaea2540ba0"
+    },
+    {
+      "name": "after-desk-light-zh-TW-needs.png",
+      "sha256": "6e188c5106f8851b7481841467178de84c81d415e79dadf9ba4c7e8db62314b0"
+    },
+    {
+      "name": "after-desk-light-zh-TW-office-card.png",
+      "sha256": "9f89f627fbd671faa7d52afc0b4ff628452bcc97bca73891ab98bd2e873789b8"
+    },
+    {
+      "name": "availability-desk-dark-zh-TW-details.png",
+      "sha256": "8fa60972e6b81cc5e26a0d3909448d7104b1f43ec73ddefc6b3bd10384df0041"
+    },
+    {
+      "name": "availability-desk-dark-zh-TW-log.png",
+      "sha256": "3d62e650d1233697a1b8a296f334c67536f956a25b7b75bf98dc8d33ffbfef97"
+    },
+    {
+      "name": "availability-desk-dark-zh-TW-needs.png",
+      "sha256": "00e67ac492c0deab8295965c1aff469cdbbd950b6140fb4073301220b5bdd67d"
+    },
+    {
+      "name": "availability-desk-light-en-details.png",
+      "sha256": "6410c3bd6818bafc5b0b2ed302a9131f9ed58af17ba8b2391282473c6c2d95fd"
+    },
+    {
+      "name": "availability-desk-light-en-log.png",
+      "sha256": "ae761adfe3f6ef976e9b5559591e9d68d9e28a09ad640043d905d160e1016a66"
+    },
+    {
+      "name": "availability-desk-light-en-needs.png",
+      "sha256": "fff7fc442f937d5beb43f0dbae17a95214b4f9c522d9884886c3bdeebb3d1575"
+    }
+  ],
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-card.png",
+      "blob": "e8f9341826b13ead8a9df8749b41b147f0419809",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8e00a4076e4d793bb02e1fe80bc979d324e8bcb33b1ab6a3ea60b07b8f5ea123"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-details.png",
+      "blob": "dc27d919a3c1e55426015b177bd7cb70f20ac91a",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "cc506648c2abb76c5168aa789b7fa6df58301389fa5f39b138007819a8c661d7"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-log.png",
+      "blob": "3e453c2b7efc140e2ff1275c73ff3064098cb872",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "e82f874e07ced03028adf61dd8ef37819f25174ff988e766ae4da47a2f6f43e8"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-needs.png",
+      "blob": "d53becfc96f7ac039392223dff86fdacd047f791",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "75ae7886485b7f3e13a278d709687b540830656d52d3bf18949690ef63e9c448"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-en-office-card.png",
+      "blob": "e4d4021cb8cd6f44011053f57938b3ab409061c3",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "f040476c63fed8100a968e62450d1812d421fd2111bb4c268ddfbdca5ef2e9ea"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-card.png",
+      "blob": "357a4879051c3b29ae93681f1dfb04a4899fdeb7",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "b5630e05f16dc0711e9afcdabd079f7904f9b6f810d6fcfec542d133654e1c92"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-details.png",
+      "blob": "387ae81bce7b60c786dcf3f81f7bcbd35c390d7e",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "293cb9ba0037fc383cab6f5960a904606647b1b22fd946fd1c33b03f84eb1e2c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-log.png",
+      "blob": "e3413b457e43d9527f56a79f6569faffdb889801",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "12ddbb523250c6eb340e6b8541130ae040f67a614bb4fa80c324b808877c6b65"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-needs.png",
+      "blob": "a1dc760d08815136a1090dcd8f202c9d1ff389e9",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "3095331bdb35757dd6eabf2f65517c802119553d9d28d60275adf87fecc3594e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-dark-zh-TW-office-card.png",
+      "blob": "fffe89dd6a48883a73946bc57c12894cbb7844f8",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "67062b2601ec002be07121d5b92d902e22ba1ae2431c342f218fe3754956fdbf"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-card.png",
+      "blob": "4bf6277fafea7933771aa0d859dd7ca389e1b47b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "e952ad43713455c71ae89b4e7b99e97381b4847553dc389472812da27bb72feb"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-details.png",
+      "blob": "4b0e4062cea96f3fec40085532edda05e04013dc",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "b06d9dc0fa22b96c1aca91b1e3036ff774145692d2aa3a020ba5f56b0462bba8"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-log.png",
+      "blob": "11bbc427a74d56590d569e12af309baf4781f33d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "288f73df2e67852f5248b76da074ae5ef7045b6173c2a33a3f25e1f0ef4efdcf"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-needs.png",
+      "blob": "1d7ca41f9a2233f5257e99d5269466557dee507f",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "d318c25bbce4c3d670ce73c3dcb4bc683174329b3f204dd0a2bd82c9b94e6c41"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-en-office-card.png",
+      "blob": "580be210bd8922399735e2f025f42632c0d02217",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "15879fcb464fb8d32b4f3a1cbc2caf226dcccba731c88a4968da9684b117eb0b"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-card.png",
+      "blob": "1bdcc773cc810865a8c30d47fbd8eed5960f6fa5",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "1f3a06f94872a60bda0f3e10c41847a3cc5b985e286b44d45df999d78e6e5b4d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-details.png",
+      "blob": "eea7fda52b07a82e224bc26c080abc57d2d6c18b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "80150051df7aa1076e6c7029db83a049cc9a61398bf9eccaaaa22a6c140fefed"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-log.png",
+      "blob": "a6618cd8214b50809e692236de8349e67a20ddc0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "ceedd712abbd62726b0a94fa0ed116e87bb82e82eef6b20c70512eaea2540ba0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-needs.png",
+      "blob": "15a51fc78053ae372232a36bf681c7c712cea36e",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6e188c5106f8851b7481841467178de84c81d415e79dadf9ba4c7e8db62314b0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/after-desk-light-zh-TW-office-card.png",
+      "blob": "329e3927046d0ee0fd55be7485e2c913498222bb",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9f89f627fbd671faa7d52afc0b4ff628452bcc97bca73891ab98bd2e873789b8"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-details.png",
+      "blob": "d57f2bb5ef5d5444f8e332f8bae8ba760b337d4e",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8fa60972e6b81cc5e26a0d3909448d7104b1f43ec73ddefc6b3bd10384df0041"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-log.png",
+      "blob": "ed039ec27585048f5f79095b0e18d542148bfa91",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "3d62e650d1233697a1b8a296f334c67536f956a25b7b75bf98dc8d33ffbfef97"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-dark-zh-TW-needs.png",
+      "blob": "1cca3940b04c31d1b84bf45a957208fae9428887",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "00e67ac492c0deab8295965c1aff469cdbbd950b6140fb4073301220b5bdd67d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-details.png",
+      "blob": "63333b6a70abb4ada56eceb2e2f6856c87ed98b4",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6410c3bd6818bafc5b0b2ed302a9131f9ed58af17ba8b2391282473c6c2d95fd"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-log.png",
+      "blob": "16a6cedcb7d7b8c279c88027130eb75f8d589ed6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "ae761adfe3f6ef976e9b5559591e9d68d9e28a09ad640043d905d160e1016a66"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/availability-desk-light-en-needs.png",
+      "blob": "d1f5c4ddada20d009dce9202618017fd6d6febef",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "fff7fc442f937d5beb43f0dbae17a95214b4f9c522d9884886c3bdeebb3d1575"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/before-desk-dark-zh-TW-details.png",
+      "blob": "78bf9eda161abcaafd10394ebceb8779e821e67c",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/before-desk-light-zh-TW-details.png",
+      "blob": "5479375fdd297ae2d4b64fdb4f2c7c6bcf901ade",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-details.png",
+      "blob": "5d678518e7dfe12e92809a1219b33c22aea8d018",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-log.png",
+      "blob": "2d6559d0caea1dc58e16ce3e829300281d687883",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/claude-model-observation-alpha/browser/retained-panels-desk-light-en-needs.png",
+      "blob": "1d7ca41f9a2233f5257e99d5269466557dee507f",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    }
+  ]
+}

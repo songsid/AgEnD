@@ -1,5 +1,7 @@
 # #3727 (M-2973): annotate a chat image and quote it to the agent — browser evidence
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 34 affected current paths recaptured using example identities; 18 affected historical controls withdrawn. The wrapper had15 failures: four zero-size hidden phone zoom controls, one old-token comparison, eight before-viewer expectations and two old/missing-editor substitution controls. Current viewer/editor/marked/composer/split PNGs are privacy refreshes only; no whole-wrapper PASS is claimed. Phone light marked frames show text without all drawn marks visible elsewhere. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every disposition/hash. No live provider, CLI, pane or Fleet was used.
+
 From `scripts/manual/smoke/smoke-chat-annotate-3727.mts` with `MATRIX=full`. It runs real headless Chrome on the shared smoke fixture: the product's own web server in a scratch HOME, guard binaries, an IPC stub agent (no CLI, tmux or account), no fleet start, loopback only. Phone drawing uses CDP touch events.
 
 **122/122 checks** (`result.json`).

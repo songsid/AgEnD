@@ -1,5 +1,7 @@
 # Claude model observations — alpha PR #3815
 
+> **Screenshot privacy refresh (M-3513, 2026-11-22):** 26 affected current paths recaptured using example identities; 5 affected historical controls withdrawn. Current observer wrapper completed15cases/53snapshots/cleanup/exit0. Registered historical substitutions had zero served-hash matches (before0/7, retained-panels0/7, retained-shell0/3), so historical-control PNGs are withdrawn and no retained-code parity is renewed. Current synthetic read-only observations do not invoke a vendor or change a model. See [privacy-refresh-m3513.json](privacy-refresh-m3513.json) for every disposition/hash. No live provider, CLI, pane or Fleet was used.
+
 Alpha twin of main #3812. Claude Code's typed fallback notices and served-model metadata were discarded while cards used only the session/statusline selection. This adds detection and presentation, with configured, actual launch, session and last-served facts kept separate. It never selects a model, changes policy/permissions or starts/restarts a CLI.
 
 Source/capture: `34d236d2d98f10440c0819b20134aee47ee36f63`; alpha base `71dbc782956047c413b9f367a572e38c39d53651`. Product checks ran at `5a3dee7fb`; later commits change only the capture harness (settled waits, resumable load checkpoints and the phone Overview route). Full bindings are in [checks.json](checks.json) and [browser/receipt.json](browser/receipt.json).

@@ -1,0 +1,210 @@
+{
+  "scope": "Current screenshot privacy refresh only; old source/test receipts remain historical.",
+  "capture_limits": "Current12 sampling frames were inspected. The pinned prior-reference replay completed, but its unversioned old-module routes do not establish exercised historical code on today's versioned URLs; no historical first-paint parity is claimed. Some early desktop second-open frames are nearly black/transitional and are not populated-editor evidence.",
+  "current_files": [
+    {
+      "name": "desk-light-en-first-1000ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "desk-light-en-first-100ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "desk-light-en-first-400ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "desk-light-en-second-1000ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "desk-light-en-second-100ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "desk-light-en-second-400ms.png",
+      "sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "name": "phone-dark-zh-TW-first-1000ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "name": "phone-dark-zh-TW-first-100ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "name": "phone-dark-zh-TW-first-400ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "name": "phone-dark-zh-TW-second-1000ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "name": "phone-dark-zh-TW-second-100ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "name": "phone-dark-zh-TW-second-400ms.png",
+      "sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    }
+  ],
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-1000ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-100ms.png",
+      "blob": "2b5814ee80b0a95db31222ccd22638e2cd48e59e",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-first-400ms.png",
+      "blob": "2b5814ee80b0a95db31222ccd22638e2cd48e59e",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-1000ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-100ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/desk-light-en-second-400ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "088935eb7b15094cb696055f9740aed4cd377f2d5c77ed9e0c9e060326545719"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-1000ms.png",
+      "blob": "4fddf104a28b3f5243f6eeac3f9c118264151aba",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-100ms.png",
+      "blob": "8a879b94444afc1bda1971dc083415fca1b8730a",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-first-400ms.png",
+      "blob": "e3de1c493d95e520cb437a3ed2657cf619db9672",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-1000ms.png",
+      "blob": "4fddf104a28b3f5243f6eeac3f9c118264151aba",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-100ms.png",
+      "blob": "4fddf104a28b3f5243f6eeac3f9c118264151aba",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/after/phone-dark-zh-TW-second-400ms.png",
+      "blob": "4fddf104a28b3f5243f6eeac3f9c118264151aba",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "9dbff3719a8803a44e7c2cd479a623b972911e63eec42b7f97091a318c63687f"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-first-1000ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-first-100ms.png",
+      "blob": "418dbd06e48e39b49ea3a047049b20268062c461",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-first-400ms.png",
+      "blob": "418dbd06e48e39b49ea3a047049b20268062c461",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-second-1000ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-second-100ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/desk-light-en-second-400ms.png",
+      "blob": "c1c5edc5ee289d3d3f438a74a3d4de540536a99b",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/phone-dark-zh-TW-first-1000ms.png",
+      "blob": "f2af7baa74c911d64a7b6c8cdc161323b5fedff9",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/phone-dark-zh-TW-second-1000ms.png",
+      "blob": "f2af7baa74c911d64a7b6c8cdc161323b5fedff9",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/phone-dark-zh-TW-second-100ms.png",
+      "blob": "f2af7baa74c911d64a7b6c8cdc161323b5fedff9",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/annotate-first-open-3168/before/phone-dark-zh-TW-second-400ms.png",
+      "blob": "f2af7baa74c911d64a7b6c8cdc161323b5fedff9",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    }
+  ]
+}

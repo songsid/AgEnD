@@ -1,0 +1,508 @@
+{
+  "scope": "Current screenshot privacy refresh only; old source/test receipts remain historical.",
+  "capture_limits": "The wrapper had15 failures: four zero-size hidden phone zoom controls, one old-token comparison, eight before-viewer expectations and two old/missing-editor substitution controls. Current viewer/editor/marked/composer/split PNGs are privacy refreshes only; no whole-wrapper PASS is claimed. Phone light marked frames show text without all drawn marks visible elsewhere.",
+  "current_files": [
+    {
+      "name": "desk-dark-en-1-viewer.png",
+      "sha256": "37637cb52788d5e64cd70b8dd67ca3eea2cae86d6049674587972c09a4a5dca9"
+    },
+    {
+      "name": "desk-dark-en-2-editor.png",
+      "sha256": "4222a71375165f1c8f98e430bd3476b19489c6e28288f92f04d250ffcfe08457"
+    },
+    {
+      "name": "desk-dark-en-3-marked.png",
+      "sha256": "6f1f1d0e13d00b7bb8f8dfa186d3303b315575f49abfe846a3c66fe39b037590"
+    },
+    {
+      "name": "desk-dark-en-4-composer.png",
+      "sha256": "07f9824d6268bcc320511159be08c967934d02ad45565be60b06d596f56fb8f6"
+    },
+    {
+      "name": "desk-dark-zh-TW-1-viewer.png",
+      "sha256": "6e2c4cdd17fd095440f13e5f34270e9d6dc9fb6747448b137036009035fe7884"
+    },
+    {
+      "name": "desk-dark-zh-TW-2-editor.png",
+      "sha256": "00c08f804ff9268a46518e9dbe7de289991a49b80032f61df490c3473f7fea95"
+    },
+    {
+      "name": "desk-dark-zh-TW-3-marked.png",
+      "sha256": "79ba2bc25660c0aee3a36811ed4b76a15b21b5d123f79b783e4bebcb271d66be"
+    },
+    {
+      "name": "desk-dark-zh-TW-4-composer.png",
+      "sha256": "6bee82347026102a1be128ef8ea9d196646ea83793332c4fd50f5a24cbdda66b"
+    },
+    {
+      "name": "desk-light-en-1-viewer.png",
+      "sha256": "eb603aa82f455ad4011b5ed23a4547ebad0abaacb4e273e3a3899ecc5509e3f4"
+    },
+    {
+      "name": "desk-light-en-2-editor.png",
+      "sha256": "71ecf49724c9ab258562ae7bb91df5a41db100408e09b0d9c30782406d678785"
+    },
+    {
+      "name": "desk-light-en-3-marked.png",
+      "sha256": "f7c5db274ca26a569bfc576085c6cc8fbd61cce2103f510751ee59fc565fc9d1"
+    },
+    {
+      "name": "desk-light-en-4-composer.png",
+      "sha256": "7ec432f5bf7177e5d9ab86e7bb2e22fca5cd19285c39986521d606d24439220b"
+    },
+    {
+      "name": "desk-light-zh-TW-1-viewer.png",
+      "sha256": "483b7edd3e747facf975d104b8482c7cf983b0851280271b5688488a3975013e"
+    },
+    {
+      "name": "desk-light-zh-TW-2-editor.png",
+      "sha256": "f0d14d1ce748e4f488c0a84881468eca9e1e8bff1a105b34921c712537fc069d"
+    },
+    {
+      "name": "desk-light-zh-TW-3-marked.png",
+      "sha256": "845fb59291c802913ba1a35b37f54b878144d8af8614c34b622255d07f76bb27"
+    },
+    {
+      "name": "desk-light-zh-TW-4-composer.png",
+      "sha256": "8042517d1ce3911f5dbf12fe2b8892b88587db8f20fc3db2c738f71d99b21846"
+    },
+    {
+      "name": "phone-dark-en-1-viewer.png",
+      "sha256": "497067e72e548e8dbd56c69f5da16cd53c4c8a9cfaa20d76527600a6ec2e99ba"
+    },
+    {
+      "name": "phone-dark-en-2-editor.png",
+      "sha256": "6652f2f0aa8ce1c9fde38126b7348ce6a6203918a321896e34f0cb8058862d2b"
+    },
+    {
+      "name": "phone-dark-en-3-marked.png",
+      "sha256": "ccc179edfb043b1166a8cd0e2683e9807c7e9d5eabea5e9ca99c5772742cd7cc"
+    },
+    {
+      "name": "phone-dark-en-4-composer.png",
+      "sha256": "be498f9492d87bad1eb9bbe006dbc9cc7d142be70379aec307ed15f26ef58fd4"
+    },
+    {
+      "name": "phone-dark-zh-TW-1-viewer.png",
+      "sha256": "cbe7bf5fc2dfa99276d1be0f6dd8e9d431b7e5c06e735bf38590f16e4401d213"
+    },
+    {
+      "name": "phone-dark-zh-TW-2-editor.png",
+      "sha256": "8ff5143ac840bf8dbb970fb745ecacd15ddac5926d84ebe77e7a9404769d65d8"
+    },
+    {
+      "name": "phone-dark-zh-TW-3-marked.png",
+      "sha256": "6e4ba43817df14613cc28175ddc3d1a5b554aaa1e9be8dad19012de18a0e55d9"
+    },
+    {
+      "name": "phone-dark-zh-TW-4-composer.png",
+      "sha256": "750c9107cf3aff60221ec54e5dcc5e27ac777f9682896292aac53626ae80e026"
+    },
+    {
+      "name": "phone-light-en-1-viewer.png",
+      "sha256": "b5756483650fc89282ac9b2e8021f351db234331fbbae9314b172416aab5d7f2"
+    },
+    {
+      "name": "phone-light-en-2-editor.png",
+      "sha256": "d1e969914a71f3bd1f47d5e94c672c1b9a54f15764a24a2e7b2405b23224298e"
+    },
+    {
+      "name": "phone-light-en-3-marked.png",
+      "sha256": "acdf89b66e99f0137b940ff5dc238ce176fe82f5b66bdb303366e52c562ecf48"
+    },
+    {
+      "name": "phone-light-en-4-composer.png",
+      "sha256": "bece1d0c4f5ed5e03c2a743171a007f4d0179bd1371a568b24958abd11169546"
+    },
+    {
+      "name": "phone-light-zh-TW-1-viewer.png",
+      "sha256": "0ae30ba0cdd5bd23140d0b16f181f3ceb02b2054f0278fb28c3fb37a2e3221e6"
+    },
+    {
+      "name": "phone-light-zh-TW-2-editor.png",
+      "sha256": "23264f28cbb5885df1197b973d2ab0d84b5a7edc148083a3b16c639cf333a8c0"
+    },
+    {
+      "name": "phone-light-zh-TW-3-marked.png",
+      "sha256": "3a4478b0d80106b65180e0e689da2e432bfb2abb021253a0603d679e7b2f461a"
+    },
+    {
+      "name": "phone-light-zh-TW-4-composer.png",
+      "sha256": "ba2326ca833a35efb5098c97985f5c9f361c1588fcadf950fa49c22cb251479c"
+    },
+    {
+      "name": "split-1-editor.png",
+      "sha256": "d6df92136d4770c0a5e8c2725e93218ed7bfd8d602b1148b87ef97d46076ad2e"
+    },
+    {
+      "name": "split-2-other-pane.png",
+      "sha256": "17d8a1028d8d75e9f7be810b233bf01ecc2983f718fbef6c1af929e28a21de24"
+    }
+  ],
+  "dispositions": [
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-dark-en-1-viewer.png",
+      "blob": "25c6fb17abc7c24ae21eb2efbce58fee11cf974f",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-dark-en-2-reply.png",
+      "blob": "b9515960713594d7c5fe14547405d1bfad66b3b3",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-dark-zh-TW-1-viewer.png",
+      "blob": "d9ba1f72ba5bc8be6310f1013af166a04876a3bb",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-dark-zh-TW-2-reply.png",
+      "blob": "ed48dec84bd9816185c6c8ad3e3999714898b554",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-light-en-1-viewer.png",
+      "blob": "ba290e923b0fbf33dc3bc6afc505089203d54be4",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-light-en-2-reply.png",
+      "blob": "d174dcb0474922dce08d13cc878eb40d7054125b",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-light-zh-TW-1-viewer.png",
+      "blob": "e9cfb86667298ded9e90d64a3c73fce3433464d9",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/desk-light-zh-TW-2-reply.png",
+      "blob": "c37e4a159a5dc1fbc287f2b378e6ef5289257eb3",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-dark-en-1-viewer.png",
+      "blob": "efb0480b051dd8239914e865486ec47753e81db0",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-dark-en-2-reply.png",
+      "blob": "a6957d522402d5303baf5dcc7d9ea40910dc1773",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-dark-zh-TW-1-viewer.png",
+      "blob": "16be6c444fec2032bb1a3fab4d274449dd372ead",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-dark-zh-TW-2-reply.png",
+      "blob": "847bf43697c4f2a361e94b92393e40c52f76a52c",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-light-en-1-viewer.png",
+      "blob": "f89a6b5e01bab879d0b48eb05680616c4cf1a796",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-light-en-2-reply.png",
+      "blob": "03a31713dc591f9e6c0ad52683b60fff0a5cf8da",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-light-zh-TW-1-viewer.png",
+      "blob": "e401032f46360f758d6e13c6b357ab54c3fd2ecc",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/before/phone-light-zh-TW-2-reply.png",
+      "blob": "1446797de5cbacddb8bcff62daac307cb8a1d165",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-1-viewer.png",
+      "blob": "0aa966687f25a4e89c750d16362454cc1101abd0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "37637cb52788d5e64cd70b8dd67ca3eea2cae86d6049674587972c09a4a5dca9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-2-editor.png",
+      "blob": "12fbc6e52a1f642b6a9047104fc8d4e46e879319",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "4222a71375165f1c8f98e430bd3476b19489c6e28288f92f04d250ffcfe08457"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-3-marked.png",
+      "blob": "184025bb20a91e853211cae471b192f37ca0cb33",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6f1f1d0e13d00b7bb8f8dfa186d3303b315575f49abfe846a3c66fe39b037590"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-en-4-composer.png",
+      "blob": "2792ad15ab935706869c1d79695b743edda2c8bf",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "07f9824d6268bcc320511159be08c967934d02ad45565be60b06d596f56fb8f6"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-1-viewer.png",
+      "blob": "eb7a0be8c941e8c426728690498095fb2a595c29",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6e2c4cdd17fd095440f13e5f34270e9d6dc9fb6747448b137036009035fe7884"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-2-editor.png",
+      "blob": "c25269a889b10d9c9a0353c7c7086de3f8a9e478",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "00c08f804ff9268a46518e9dbe7de289991a49b80032f61df490c3473f7fea95"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-3-marked.png",
+      "blob": "db1ee70188390d542ef8cce6c0096003eda1ce2d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "79ba2bc25660c0aee3a36811ed4b76a15b21b5d123f79b783e4bebcb271d66be"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-dark-zh-TW-4-composer.png",
+      "blob": "fd874c50154109b8f223571a23c96111c034f0b0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6bee82347026102a1be128ef8ea9d196646ea83793332c4fd50f5a24cbdda66b"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-1-viewer.png",
+      "blob": "b85c46c27ed3f681ddb31e72fa66bda63f4278a0",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "eb603aa82f455ad4011b5ed23a4547ebad0abaacb4e273e3a3899ecc5509e3f4"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-2-editor.png",
+      "blob": "7858f2945f93c273a17ad2445a8780f685a6358f",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "71ecf49724c9ab258562ae7bb91df5a41db100408e09b0d9c30782406d678785"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-3-marked.png",
+      "blob": "aaf78d119ee20d7e0ea8b4a37c7ab89cdd670ef2",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "f7c5db274ca26a569bfc576085c6cc8fbd61cce2103f510751ee59fc565fc9d1"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-en-4-composer.png",
+      "blob": "6de680ea87755e725d59b0129c6e5d626d8e7f15",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "7ec432f5bf7177e5d9ab86e7bb2e22fca5cd19285c39986521d606d24439220b"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-1-viewer.png",
+      "blob": "ac179731614e26f55b09e8a463fbab85f0eb3b51",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "483b7edd3e747facf975d104b8482c7cf983b0851280271b5688488a3975013e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-2-editor.png",
+      "blob": "c5831997979d16db6d82c338fd4d398f33f15e26",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "f0d14d1ce748e4f488c0a84881468eca9e1e8bff1a105b34921c712537fc069d"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-3-marked.png",
+      "blob": "d48d07185ddd42f2ab5dfbb9439146057b06d6de",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "845fb59291c802913ba1a35b37f54b878144d8af8614c34b622255d07f76bb27"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/desk-light-zh-TW-4-composer.png",
+      "blob": "48ee2fdc8a215be924d8c8b72d751bc6fd5225da",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8042517d1ce3911f5dbf12fe2b8892b88587db8f20fc3db2c738f71d99b21846"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-1-viewer.png",
+      "blob": "634d2174cf0c640e94d0106b5bdcd458204a577d",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "497067e72e548e8dbd56c69f5da16cd53c4c8a9cfaa20d76527600a6ec2e99ba"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-2-editor.png",
+      "blob": "c4737498a4ff83dbd03c3d172ec5706af03976d1",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6652f2f0aa8ce1c9fde38126b7348ce6a6203918a321896e34f0cb8058862d2b"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-3-marked.png",
+      "blob": "0542ffe6db3194cc7ec534cc87901c9618d9acf8",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "ccc179edfb043b1166a8cd0e2683e9807c7e9d5eabea5e9ca99c5772742cd7cc"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-en-4-composer.png",
+      "blob": "8a81c8fafbd9ad9f5ab2adf0cf05792200178ebc",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "be498f9492d87bad1eb9bbe006dbc9cc7d142be70379aec307ed15f26ef58fd4"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-1-viewer.png",
+      "blob": "d09ba0cd3e1a2f91e1d753e860226d6735c7aea6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "cbe7bf5fc2dfa99276d1be0f6dd8e9d431b7e5c06e735bf38590f16e4401d213"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-2-editor.png",
+      "blob": "fa9f8230c10d3772d8d512ee219ed27fdc976615",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "8ff5143ac840bf8dbb970fb745ecacd15ddac5926d84ebe77e7a9404769d65d8"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-3-marked.png",
+      "blob": "e2e43991bdaac3dd4cd1969a13e6994c1b74e6ea",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "6e4ba43817df14613cc28175ddc3d1a5b554aaa1e9be8dad19012de18a0e55d9"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-dark-zh-TW-4-composer.png",
+      "blob": "496a70dd44d0c77b7ec9f09572288f91832b3dfe",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "750c9107cf3aff60221ec54e5dcc5e27ac777f9682896292aac53626ae80e026"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-1-viewer.png",
+      "blob": "68fb687348d476e121c3eccb34f56174a53b9e5a",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "b5756483650fc89282ac9b2e8021f351db234331fbbae9314b172416aab5d7f2"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-2-editor.png",
+      "blob": "91ec61d30ff946b8cbfbc2ec6940ab3260d01023",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "d1e969914a71f3bd1f47d5e94c672c1b9a54f15764a24a2e7b2405b23224298e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-3-marked.png",
+      "blob": "edaab58d12f6d4e455d9d362a78aea3c2955318c",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "acdf89b66e99f0137b940ff5dc238ce176fe82f5b66bdb303366e52c562ecf48"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-en-4-composer.png",
+      "blob": "9e5dc2c6036e56d5dcf0b1bafee1049627c94a09",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "bece1d0c4f5ed5e03c2a743171a007f4d0179bd1371a568b24958abd11169546"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-1-viewer.png",
+      "blob": "47dbab1989fd3bec53545f6c81d068c57cecea64",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "0ae30ba0cdd5bd23140d0b16f181f3ceb02b2054f0278fb28c3fb37a2e3221e6"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-2-editor.png",
+      "blob": "a2bc5799429a02a1942a56df6a6f9da15a7d80b6",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "23264f28cbb5885df1197b973d2ab0d84b5a7edc148083a3b16c639cf333a8c0"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-3-marked.png",
+      "blob": "a2fee4f805d8e3f7c258c7f10b028917912e9181",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "3a4478b0d80106b65180e0e689da2e432bfb2abb021253a0603d679e7b2f461a"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/current/phone-light-zh-TW-4-composer.png",
+      "blob": "5a8e87cf83cea8e01c525dcb2d4162f6a0178317",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "ba2326ca833a35efb5098c97985f5c9f361c1588fcadf950fa49c22cb251479c"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/legs/skew-missing-editor.png",
+      "blob": "1c7764b9d14ac0f2c7f7337e2581b48eed7ab6ee",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/legs/skew-old-tokens-editor.png",
+      "blob": "4302296616656862b08b2320c33b8e7c2d95aab4",
+      "action": "withdrawn-unverified-historical-control",
+      "replacement_sha256": null
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/legs/split-1-editor.png",
+      "blob": "ab19d66a125b2a76d3c313b322da0dd34d3d67ff",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "d6df92136d4770c0a5e8c2725e93218ed7bfd8d602b1148b87ef97d46076ad2e"
+    },
+    {
+      "branch": "dev",
+      "path": "docs/evidence/chat-annotate-3727/legs/split-2-other-pane.png",
+      "blob": "e45e3d56a76c6312c5f15e18809f0b5f72d42738",
+      "action": "recaptured-current-rendering",
+      "replacement_sha256": "17d8a1028d8d75e9f7be810b233bf01ecc2983f718fbef6c1af929e28a21de24"
+    }
+  ]
+}
