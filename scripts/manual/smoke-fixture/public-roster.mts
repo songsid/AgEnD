@@ -1,11 +1,14 @@
-/** Explicitly synthetic identities for public screenshot refreshes. No live Fleet-derived labels. */
-import type { FixtureInstance } from "./data.mts";
+/** Synthetic identities while retaining the shared fixture's layout/role/backend stress. */
+import { fixtureInstances, type FixtureInstance } from "./data.mts";
 export function publicRoster(count = 6): FixtureInstance[] {
   if (!Number.isInteger(count) || count < 1 || count > 100) throw new Error("invalid public fixture size");
-  return Array.from({ length: count }, (_, i) => ({
-    name: i === 0 ? "general" : `example-agent-${String(i).padStart(2, "0")}`,
-    backend: i % 2 === 0 ? "claude-code" as const : "codex" as const,
-    displayName: i === 0 ? "General" : i % 3 === 0 ? `示範文件與長名稱版面測試助理 ${i}` : `Example agent ${i}`,
-    ...(i === 0 ? { general: true } : {}), status: "running" as const,
-  }));
+  const templates = fixtureInstances();
+  return Array.from({ length: count }, (_, i) => {
+    const template = templates[i % templates.length]!;
+    return { ...template,
+      name: i === 0 ? "general" : `example-agent-${String(i).padStart(2, "0")}`,
+      displayName: i === 0 ? "General" : template.general ? `Example agent ${i}` : template.displayName || `Example agent ${i}`,
+      general: i === 0,
+    };
+  });
 }
