@@ -15,7 +15,7 @@ import { bootFixture, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-asset-cache-m3314";
 const LATENCY = 150;
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49030), instances: 6, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49030), instances: 6, classic: false });
 const wav = await import(`${process.env.REPO}/src/web-asset-version.ts`);
 const r: any = { cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };

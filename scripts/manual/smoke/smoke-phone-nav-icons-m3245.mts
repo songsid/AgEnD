@@ -10,7 +10,7 @@
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-nav-icons-m3245";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49190), instances: 4 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49190), instances: 4 });
 const cases = matrix(process.env.MATRIX ?? "phone-light-en,phone-dark-zh-TW").filter((c) => c.device === "phone");
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 try {

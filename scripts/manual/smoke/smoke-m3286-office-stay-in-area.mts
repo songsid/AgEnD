@@ -10,7 +10,7 @@ import { join } from "node:path";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "m3286-office-stay-in-area";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 48886), classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 48886), classic: false });
 const fm = fx.fm, dir = fm.dataDir ?? fx.dir;
 const names = ["general", "atlas", "quill", "sage", "orbit", "ember"];
 fm.fleetConfig.instances = Object.fromEntries(names.map((name, i) => [name, { working_directory: dir, backend: ["claude-code", "codex", "kiro-cli"][i % 3], ...(name === "general" ? { general_topic: true } : {}) }]));

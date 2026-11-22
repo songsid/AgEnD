@@ -16,7 +16,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-hub-member-drawer-m3217";
 const webkit = process.env.PW_ENGINE === "webkit";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 4, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 4, classic: false });
 (fx.fm as any).saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
 const PAIRING = { pairing: { state: "paired", hub: { name: "RD1 AgEnD Hub", webOrigin: "https://hub.example.test" } },
   notices: [{ id: "notice-1", label: "Demo Fleet", source: "group", at: new Date().toISOString(), fleetId: "fleet-0123456789abcdef", generation: 1 }] };

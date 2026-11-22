@@ -16,7 +16,7 @@ import { clearDensity, density } from "../smoke-fixture/faces.mts";
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-composer-drawer-m3222";
 const webkit = process.env.PW_ENGINE === "webkit";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 8 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 8 });
 const names = fx.instances.map((i: any) => i.name);
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 /** Two agents replied just now (names[1] 30 s ago: its pulse too; names[2] 4 min ago), kept so across status frames. */

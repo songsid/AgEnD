@@ -24,7 +24,7 @@ const ROSTER = [
   { name: "bot-delta", displayName: "Delta", backend: "claude-code", team: "Studio", status: "paused" as const },
 ];
 
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49040), roster: ROSTER, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49040), roster: ROSTER, classic: false });
 const fm = fx.fm;
 
 // Mark bot-alpha as actively "working" so it sits in the Work zone playing the 6-sheet 180-frame working animation;

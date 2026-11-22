@@ -17,7 +17,7 @@ import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/inde
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-chat-scrollback-m3272";
 const BEFORE = process.env.BEFORE === "1";
 const REPO = process.env.REPO!;
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49760), instances: 2 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49760), instances: 2 });
 const fm = fx.fm as any;
 const template = fx.instances.find((i: any) => !i.general)!.name;
 const name = "demo-agent";

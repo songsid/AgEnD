@@ -25,7 +25,7 @@ const ROSTER = [
   { name: "bot-delta", displayName: "Delta", backend: "claude-code", team: "Studio", status: "paused" as const },
 ];
 
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49041), roster: ROSTER, classic: false });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49041), roster: ROSTER, classic: false });
 const fm = fx.fm;
 fm.lifecycle = { ...fm.lifecycle, isPaused: (n: string) => n === "bot-delta" };
 

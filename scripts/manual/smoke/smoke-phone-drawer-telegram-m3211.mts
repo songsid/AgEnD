@@ -12,7 +12,7 @@ import { clearDensity, density, faces, withFaces } from "../smoke-fixture/faces.
 
 const SMOKE = process.env.SMOKE_NAME ?? "smoke-phone-drawer-telegram-m3211";
 const webkit = process.env.PW_ENGINE === "webkit";
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49000), instances: 8 });
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 8 });
 const names = fx.instances.map((i: any) => i.name);
 const results: Array<{ name: string; ok: boolean; failed: string[] }> = [];
 const isOpen = (page: any) => page.evaluate(() => document.querySelector(".shell")!.classList.contains("sb-open"));

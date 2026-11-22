@@ -4,7 +4,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
 const before = process.env.STAGE === "before", smoke = `smoke-guest-sidebar-m3280-${before ? "before" : "after"}`;
-const fx = await bootFixture({ port: Number(process.env.HP ?? 49170), classic: false, webYaml: "  guests:\n    enabled: true", roster: [
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49170), classic: false, webYaml: "  guests:\n    enabled: true", roster: [
   { name: "agent-alpha", displayName: "Atlas", backend: "codex" }, { name: "agent-beta", displayName: "Beacon", backend: "claude-code" },
   { name: "shared-room", displayName: "Shared room", backend: "codex" }, { name: "hidden-agent", displayName: "Hidden helper", backend: "claude-code" },
 ] });
