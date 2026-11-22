@@ -80,7 +80,7 @@ try {
     const at = P.who.cookie.indexOf("=");
     await context.addCookies([{ name: P.who.cookie.slice(0, at), value: P.who.cookie.slice(at + 1), url: origin, httpOnly: true, secure: true, sameSite: "Strict" }]);
     await context.addInitScript(({ lang, theme }) => { localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_theme", theme); localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1");
-      new MutationObserver((_m, o) => { if (document.body) { document.body.dataset.hubName = "RD1 AgEnD Hub"; o.disconnect(); } }).observe(document.documentElement, { childList: true }); }, { lang, theme });
+      new MutationObserver((_m, o) => { if (document.body) { document.body.dataset.hubName = "Demo AgEnD Hub"; o.disconnect(); } }).observe(document.documentElement, { childList: true }); }, { lang, theme });
     await context.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
     await context.route(origin + "/hub/v1/session", async (route: any) => { const res = await route.fetch(); const j = await res.json();
       if (Array.isArray(j.features)) j.features.push("group-policy-v1", "quick-pairing-v1", "company-join-v1"); await route.fulfill({ response: res, json: j }); });
