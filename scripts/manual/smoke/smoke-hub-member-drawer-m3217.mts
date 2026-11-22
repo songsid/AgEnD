@@ -3,7 +3,7 @@
 //      the brand, and the switch pushed the filter row (its row) down. Our drawer smokes never had the switch.
 //   2. 「Fleet 安全通知」's 「在 Hub 查看並撤銷」 was a bare link styled as a button, flush under the text, unevenly spaced.
 // A real browser on the shared fixture (in-process FleetManager, scratch home, loopback only), the fleet a Hub member
-// (hub_member.enabled saved to its fleet.yaml), its member pairing answered by a route: paired with "RD1 AgEnD Hub" at an
+// (hub_member.enabled saved to its fleet.yaml), its member pairing answered by a route: paired with "Demo AgEnD Hub" at an
 // https origin, one security notice. Headless. Cases: a 500 px desk window light zh-TW and dark en, a phone dark zh-TW.
 // Judged and pictured per case: 1-banner (Settings, the notice), 2-drawer (☰ open).
 //   the drawer: one + shown, inside the drawer, off the switch, in the filter's row (centres within 6 px), right of it
@@ -18,7 +18,7 @@ const SMOKE = process.env.SMOKE_NAME ?? "smoke-hub-member-drawer-m3217";
 const webkit = process.env.PW_ENGINE === "webkit";
 const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49000), instances: 4, classic: false });
 (fx.fm as any).saveFleetConfig([{ path: ["hub_member", "enabled"], value: true }]);
-const PAIRING = { pairing: { state: "paired", hub: { name: "RD1 AgEnD Hub", webOrigin: "https://hub.example.test" } },
+const PAIRING = { pairing: { state: "paired", hub: { name: "Demo AgEnD Hub", webOrigin: "https://hub.example.test" } },
   notices: [{ id: "notice-1", label: "Demo Fleet", source: "group", at: new Date().toISOString(), fleetId: "fleet-0123456789abcdef", generation: 1 }] };
 const CASES = [
   { name: "desk500-light-zh-TW", c: { device: "desk", theme: "light", lang: "zh-TW" }, width: 500 },
