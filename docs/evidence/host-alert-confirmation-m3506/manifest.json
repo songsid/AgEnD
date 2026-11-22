@@ -1,0 +1,26 @@
+[
+  {
+    "path": "src/settings-api.ts",
+    "sha256": "3770367cbc760553c488dfe85a50173bb54df295ad2d7972dafe63f393a5f5f3"
+  },
+  {
+    "path": "tests/host-alert-confirmation-m3506.test.ts",
+    "sha256": "136bbe6b6a203d7f01f38515dda3beccdebf6c1460805a45683b892375b0632f"
+  },
+  {
+    "path": "scripts/manual/host-alert-confirmation/readback.mts",
+    "sha256": "4438a88ced3b25601246195df42c322b3a1446da184251b55533ef2e5d1da85a"
+  },
+  {
+    "path": "docs/evidence/host-alert-confirmation-m3506/checks.json",
+    "sha256": "1e7cd5307c851b3aaae50c700d27eaa50ac2a39ac1171c6c638649ae27031398"
+  },
+  {
+    "path": "docs/evidence/host-alert-confirmation-m3506/readback.json",
+    "sha256": "e54c4a4985be79c7c1c4003a9c26be78a029ba660b0f71c863ccf798b32d35c7"
+  },
+  {
+    "path": "docs/evidence/host-alert-confirmation-m3506/README.md",
+    "sha256": "c7958e4cd23b25d3cfbe20e666b600b426f2bd1eb5eef059760e74256be7663f"
+  }
+]

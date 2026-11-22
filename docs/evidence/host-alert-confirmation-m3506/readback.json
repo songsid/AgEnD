@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "scope": "Isolated real Settings app; synthetic roster; monitoring off; no collector/account/model",
+  "put": 202,
+  "confirmation": "applied",
+  "get": 200,
+  "general": true,
+  "cpuWarning": 91,
+  "sidecarMode": "0600",
+  "sidecarMatchesGet": true,
+  "yamlUnchanged": true,
+  "reloadedUiMatches": true
+}

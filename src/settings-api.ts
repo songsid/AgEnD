@@ -1597,11 +1597,19 @@ export function handleSettingsRequest(
 
   if(path==='/api/settings/fleet/host-alerts'&&(method==='GET'||method==='PUT')){
     const auth=()=>evaluateWebRequest(req as any,url,ctx.webToken??null,ctx.webSessions,{touch:false});
-    const who=auth();if(who.kind!=='allow'||who.via!=='session'||who.session.tier!=='admin'){json(res,403,{error:'admin_session_required'});return true;}
+    // Confirmed replays deliberately contain no session cookie. The server-owned
+    // execution retains the current original admin and confirmer/baseline fences.
+    const execution=method==='PUT'?settingsRequestExecution(req):undefined;
+    const who=execution?null:auth();
+    const allowed=()=>{
+      if(execution){try{return settingsRequestLocalAdmin(req);}catch{return false;}}
+      const current=auth();return who?.kind==='allow'&&who.via==='session'&&current.kind==='allow'&&current.via==='session'&&current.session.tier==='admin'&&current.session.idHash===who.session.idHash;
+    };
+    if(!allowed()){json(res,403,{error:'admin_session_required'});return true;}
     if(method==='GET'){json(res,200,ctx.hostAlertSettings?.()??null);return true;}
     void readBody(req,32*1024).then(buf=>{
       if(!permitWebContinuation(req,res,ctx))return;
-      const current=auth();if(current.kind!=='allow'||current.via!=='session'||current.session.tier!=='admin'||current.session.idHash!==who.session.idHash)return json(res,403,{error:'admin_session_required'});
+      if(!allowed())return json(res,403,{error:'admin_session_required'});
       let next;try{next=parseHostAlertSettings(JSON.parse(buf.toString('utf8')));}catch{return json(res,400,{error:'invalid_alert_settings'});}
       if(!ctx.saveHostAlertSettings)return json(res,503,{error:'host_alert_unavailable'});
       try{let result;settingsWrite(req,()=>{result=ctx.saveHostAlertSettings!(next);});json(res,200,{ok:true,alerts:result});}
