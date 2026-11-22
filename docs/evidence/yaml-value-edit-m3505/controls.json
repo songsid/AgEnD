@@ -1,0 +1,47 @@
+{
+  "base": "db01bd20529b260fc1e4fd305bd23e53840aa6ba",
+  "originalFormatterReversal": {
+    "failedAssertions": 14,
+    "structuralPositives": 3,
+    "validFixtures": true,
+    "cases": 17
+  },
+  "affected": {
+    "files": 8,
+    "passed": 99
+  },
+  "newCases": 22,
+  "testTypesExit": 0,
+  "readers": [
+    "beta.16",
+    "beta.17"
+  ],
+  "beta17Commit": "506acdf29ab9a3937aabceb5d40e90b08e13a826",
+  "liveConfigWrites": false,
+  "releaseFreeze": "beta.18; keep draft until explicit Leader lift",
+  "r1": {
+    "review": "6010404251",
+    "priorHead": "2955ade47699dbc940c04e31237069c63f4ca5f4",
+    "failedAssertions": 2,
+    "skippedDuringBaseControl": 17,
+    "focused": {
+      "files": 2,
+      "passed": 28
+    },
+    "testTypesExit": 0,
+    "broadRunRepeated": false
+  },
+  "r2": {
+    "actualFailedJob": 137099258225,
+    "priorHead": "8b4c455370201f9a3a05ab7338810bb3749280d1",
+    "baseAssertionsFailed": 3,
+    "basePositiveCases": 3,
+    "focused": {
+      "files": 3,
+      "passed": 34
+    },
+    "testTypesExit": 0,
+    "legacyIdentityTestChanged": false,
+    "full99RunRepeated": false
+  }
+}

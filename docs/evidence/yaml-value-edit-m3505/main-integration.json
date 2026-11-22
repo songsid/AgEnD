@@ -1,0 +1,15 @@
+{
+  "dev_merge": "fdaaec209931e9d70ffc1c44450bd75bd95ee3fd",
+  "main_base": "8edb28efcf8e58af41adcc86cd7e91f708168b71",
+  "formatter_byte_identical_to_dev": true,
+  "dev_owned_blobs_verified": 13,
+  "main_saver_fields": [
+    "web.usage_panel",
+    "web.echo_to_channel"
+  ],
+  "main_focused": {
+    "files": 3,
+    "passed": 34
+  },
+  "reader_scope": "beta16/17 reader proof retained on dev only; no monitoring feature backport"
+}
