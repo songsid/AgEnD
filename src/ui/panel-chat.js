@@ -1,4 +1,4 @@
-import { focusComposerPadding } from "/assets/composer-focus.js";
+import { focusComposerPadding, focusComposerStrip } from "/assets/composer-focus.js";
 // #1408 step 1: the chat panel. Behind the session gate (/ui/js/), loaded by the app with a dynamic import in "full"
 // mode only. boot() runs once per page (the chat store must hear the stream from the first frame); <ChatPanel> mounts
 // for /ui and /ui/chat/<name>.
@@ -609,6 +609,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
+    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
@@ -616,7 +617,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
     <${Composer} name=${name} inst=${inst} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
       class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t(touchScreen() ? "chat.composerHintTouch" : "chat.composerHint")}</span></div>
-  </div></div>`;
+  </div></div></div>`;
 }
 
 /** #2233: the public link's page — the dashboard's Sign in is refused there, so it is never offered (#2262 review). */

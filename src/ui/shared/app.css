@@ -595,7 +595,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .msg.user { align-self: flex-end; max-width: min(80%, 620px); }
 /* Full width (the header's ⋯ menu, this browser's choice): the thread and the composer take the panel, less their own
    padding, for wide tables and code; a person's bubble keeps its cap (above). A phone's column is the screen already. */
-@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }
+@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] /* M3540: reserve an 8px gutter in normal flow; never overlay the thread or neighboring controls. */
+.composer-hit { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); margin-inline: calc(-1 * var(--s-2)); user-select: none; -webkit-user-select: none; }
+.composer-hit .cmd-card, .composer-hit .pending-files, .composer-hit .reply-bar { user-select: text; -webkit-user-select: text; }
+.dock-col { max-width: none; } }
 .msg.user .meta { justify-content: flex-end; }
 /* #1773: the bubble hugs its text. The message is as wide as its widest child — usually the meta row (sender, a time
    such as 「昨天 下午03:58」, ticks) — and a block body would stretch to it; fit-content keeps a short message short, on

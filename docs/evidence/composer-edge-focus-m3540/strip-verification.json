@@ -1,0 +1,27 @@
+{
+  "base_head": "fdc2999ad34fb74be668992ea39e36dd3fb169db",
+  "source_sha256": [
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "e7fea7b1a73fd3f6384fea495339eb8a0d640b47c7032f8c31a694352d22c2ea"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "6c3f9fc201ac6aec5fada0b24ac007a2c870871d6836638cd4717634436caf95"
+    },
+    {
+      "path": "src/ui/shared/composer-focus.js",
+      "sha256": "e099fabbcc4ca951be9abff0282ebd8eb905aeac1aa0f1766c1d6252df50a1a0"
+    },
+    {
+      "path": "tests/web-composer-2478.test.ts",
+      "sha256": "a10dc8fe9e194e6efe4e0ac2ec60a5bee1eafe3cf79ab171c61b1f3697c8b8cb"
+    }
+  ],
+  "tests": {
+    "base": "outer gutter missing:1assertionRED/12othersPASS",
+    "current": "composer+authorization32/32PASS; test typecheck0"
+  },
+  "scope": "working line through verification row, normal flow8px gutter, controls/message list/scroll preserved",
+  "images": "all4 originals unchanged; historical pre-expansion source; user requested no new screenshot round"
+}

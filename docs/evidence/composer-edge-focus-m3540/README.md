@@ -19,4 +19,4 @@ Desktop double-clicks cover top/left/bottom padding. Phone taps cover top/bottom
 
 Reproduce with `scripts/manual/smoke/smoke-composer-focus-m3540.mts` and the standard REPO/PW_DIR/CHROME/OUT fixture environment. Source and PNG hashes are in `verification.json`. The dev twin follows actual main merge; dev uses its shared ComposerInput, so its integration will preserve that component and caller boundaries.
 
-USER LOOK HOLD: draft, no gate until explicit Leader release. Rollback reverts the padding delegate and selection CSS, with no data migration.
+The user subsequently requested an expanded background strip and explicitly waived another screenshot round. These four PNGs retain their original, pre-expansion capture bindings; they are not images of the expanded strip. See `strip-update.md` for the new source/test scope. Draft remains held until the Leader releases the new head. Rollback reverts the padding delegate and selection CSS, with no data migration.
