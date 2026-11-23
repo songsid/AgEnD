@@ -17,7 +17,7 @@ register("taskfollow", {
     watchers: "Watchers", watchersHint: "Instances that hear this card's progress: finished, waiting for confirmation, sent back, blocked or handed over",
     noWatchers: "Nobody", add: "Add", addTitle: "Add a watcher", full: "A card has at most {0} watchers: remove one to add another",
     noneToAdd: "Every instance in the fleet already watches this card", remove: "Stop {0} watching this card", gone: "{0} is no longer in the fleet",
-    fromMain: "Also from {0}: {1}", leader: "Leader", leaderNone: "None", count: "({0}/{1})",
+    fromMain: "Also from {0}: {1}", leader: "Leader", leaderNone: "None", count: " ({0}/{1})",
     leaderHint: "The instance that hears this card's progress because it leads the card's project, or the board when the card has no project lead",
     viaProject: "project lead", viaBoard: "board default",
     leaderAssignee: "It has the card, so it hears the card's own news", leaderGone: "Not in the fleet: nobody is told", leaderBoardOff: "Its task board is off: nobody is told",
@@ -93,7 +93,7 @@ export function WatchersRow(props) {
           trigger=${html`<${Icon} name="plus" size=${14} />${t("taskfollow.add")}`} />`
       : html`<span class="tc-hint muted tp-watch-note">${t("taskfollow.noneToAdd")}</span>`;
   return html`<div class="tp-row tp-block" data-follow="watchers">
-      <dt title=${t("taskfollow.watchersHint")}>${t("taskfollow.watchers")}${watchers.length ? html` <span class="muted">${t("taskfollow.count", watchers.length, WATCH_MAX)}</span>` : null}</dt>
+      <dt title=${t("taskfollow.watchersHint")}>${t("taskfollow.watchers")}${watchers.length ? html`<span class="muted">${t("taskfollow.count", watchers.length, WATCH_MAX)}</span>` : null}</dt>
       <dd class="tp-watchers">
         ${watchers.length ? html`<ul class="tp-watch-list">${watchers.map((n) => html`<li key=${n} class="tp-watch" data-watcher=${n}>${nameOf(n)}
           ${can ? html`<button type="button" class="icon-btn tp-watch-x" aria-label=${t("taskfollow.remove", n)} title=${t("taskfollow.remove", n)} onClick=${() => void follow({ remove: [n] })}><${Icon} name="close" size=${14} /></button>` : null}</li>`)}</ul>`
