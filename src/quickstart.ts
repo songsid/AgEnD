@@ -17,7 +17,6 @@ import { envLineKey } from "./env-file.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry, delayedSelfCommand } from "./cli-entry.js";
 import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
-import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 import { platformGeneralPlan } from "./platform-general.js";
 
 /** `agend restart` in 2 s, on this Node and this CLI (C5: never `sh -c agend …` through PATH): the service-aware
@@ -392,7 +391,7 @@ export async function runDiscordFlow(rl: import("node:readline/promises").Interf
 /** Build a channel config object from a PlatformResult */
 /**
  * The fleet.yaml a quickstart writes for a new fleet (or a fresh start, the old one backed up first): its connections,
- * project roots and defaults — the task board off until the person switches it on (NEW_FLEET_DASHBOARD).
+ * project roots and defaults.
  */
 export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: string[], backend: string): Record<string, any> {
   const fleetObj: Record<string, any> = {};
@@ -406,7 +405,7 @@ export function newQuickstartFleet(platforms: PlatformResult[], projectRoots: st
   }
   if (projectRoots.length > 0) fleetObj.project_roots = projectRoots;
   // #2598: a new kiro fleet runs kiro's TUI engine (an entry without kiro_ui would be classic).
-  fleetObj.defaults = { backend, ...(backend === "kiro-cli" ? { kiro_ui: "tui" } : {}), dashboard: { ...NEW_FLEET_DASHBOARD } };
+  fleetObj.defaults = { backend, ...(backend === "kiro-cli" ? { kiro_ui: "tui" } : {}) };
   return fleetObj;
 }
 
