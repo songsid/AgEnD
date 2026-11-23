@@ -1,3 +1,5 @@
+import { SharedDefaultAdoption } from "./shared-default-adoption.js";
+import { scopedDefaultModel } from "./model-defaults.js";
 import { SubagentService } from "./subagent-service.js";
 import { QuotaNotices, type QuotaNoticePolicy } from "./usage/quota-notices.js";
 import { quotaNoticeRule } from "./quota-notice-config.js";
@@ -1226,6 +1228,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   get daemons() { return this.lifecycle.daemons; }
   fleetConfig: FleetConfig | null = null;
   private rawFleetConfig: RawFleetConfig = {};
+  private readonly sharedDefaultAdoption = new SharedDefaultAdoption();
   private rawFleetDocument: ReturnType<typeof parseDocument> | null = null;
   /** #2208: the paths a saveFleetConfig() wrote, for its check that nothing else changed. */
   private fleetDocumentWrites: Array<Array<string | number>> | null = null;
@@ -3535,7 +3538,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * The returned promise is the caller's to handle; the stored one is already
    * handled, so a rejection never escapes as an unhandled rejection.
    */
-  private startExclusiveReconcile(observer?: ReconcileObserver): Promise<ReconcileOutcome> | null {
+  private startExclusiveReconcile(observer?: ReconcileObserver, defaultConsent?: ReadonlySet<object>): Promise<ReconcileOutcome> | null {
     if (this.reconcileInFlight) return null;
 
     this.reloadPending = false;
@@ -3543,7 +3546,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const caller = new Promise<ReconcileOutcome>((resolve, reject) => {
       settle = (err, outcome) => (err ? reject(err instanceof Error ? err : new Error(String(err))) : resolve(outcome ?? {}));
     });
-    this.reconcileInFlight = this.reconcileInstances(observer)
+    this.reconcileInFlight = this.reconcileInstances(observer, defaultConsent)
       .then(outcome => settle(null, outcome), err => settle(err))
       .finally(() => {
         this.reconcileInFlight = null;
@@ -4434,16 +4437,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * setting as a value of its own rather than the shared login it would fall to.
    * A switch on the same backend that loses the conversation (kiro) starts fresh.
    */
-  private classicProfileChange(name: string, backendChanged: boolean): {
+  private classicProfileChange(name: string, backendChanged: boolean, adoptedBackend?: string): {
     changed: boolean; startsFresh: boolean; from?: string; to?: string;
     /** #1753: the switch to hand to switchConversation — a same-backend move between two valid logins. */
     carry?: { backend: string; from: string | null; to: string | null };
   } {
     const launched = this.classicLaunchedProfile(name);
     if (!launched || !this.classicChannels) return { changed: false, startsFresh: false };
-    const next = this.classicChannels.getCredentialProfileByInstance(name, this.fleetConfig?.defaults);
+    const defaults = adoptedBackend ? { ...this.fleetConfig?.defaults, backend: adoptedBackend } : this.fleetConfig?.defaults;
+    const next = this.classicChannels.getCredentialProfileByInstance(name, defaults);
     if (profileKey(launched) === profileKey(next)) return { changed: false, startsFresh: false };
-    const backend = this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend);
+    const backend = adoptedBackend ?? this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend);
     return {
       changed: true,
       // A backend change keeps its own (existing) restart semantics.
@@ -4543,7 +4547,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private logSource(name: string): LogSource {
     const instances = this.fleetConfig?.instances ?? {};
     const config = Object.prototype.hasOwnProperty.call(instances, name) ? instances[name] : undefined;
-    const backend = config?.backend ?? (config ? null : this.classicRoomFor(name)?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
+    const backend = this.backendNameForInstance(name);
     const live = this.lifecycle.daemons.get(name)?.logTranscriptPath() ?? null;
     if (backend === "claude-code") {
       let path = live;
@@ -5975,7 +5979,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       instanceName,
       this.classicChannels.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
-      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
       transition, execution,
     );
@@ -5995,8 +5999,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const oldToolProgress = new Map<string, InstanceConfig["tool_progress"]>();
       const oldReplyGuard = new Map<string, boolean>();
       for (const ch of this.classicChannels.getAll()) {
-        oldBackends.set(ch.instanceName, this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
-        oldModels.set(ch.instanceName, this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel));
+        const pending = this.pendingRuntimeIdentity(ch.instanceName);
+        oldBackends.set(ch.instanceName, pending ? pending.backend || "claude-code" : this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend));
+        oldModels.set(ch.instanceName, pending ? pending.model : this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel, fleetBackend));
         oldAutoPause.set(ch.instanceName, this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after));
         oldToolProgress.set(ch.instanceName, this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress));
         oldReplyGuard.set(ch.instanceName, this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard));
@@ -6007,8 +6012,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       this.reportClassicUnrecoverableIds();
       this.reregisterClassicChannels();
       for (const ch of this.classicChannels.getAll()) {
-        const newBackend = this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend);
-        const newModel = this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel);
+        const adoption = this.sharedDefaultsView(ch.instanceName, {
+          backend: this.classicChannels.getBackendByInstance(ch.instanceName, fleetBackend),
+          model: this.classicChannels.getModel(ch.channelId, ch.adapterId, fleetModel, fleetBackend),
+        });
+        const newBackend = adoption.config.backend;
+        const newModel = adoption.config.model;
         const newAutoPause = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
         const newToolProgress = this.classicChannels.getToolProgress(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.tool_progress);
         const newReplyGuard = this.classicChannels.getReplyCompletionGuard(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.reply_completion_guard);
@@ -6018,7 +6027,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #1220: a running CLI keeps the login it was launched with, so a new
         // credential_profile only takes effect through a restart.
         const { changed: profileChanged, startsFresh: profileSwitchStartsFresh, from: profileFrom, to: profileTo, carry: profileCarry } =
-          this.classicProfileChange(ch.instanceName, backendChanged);
+          this.classicProfileChange(ch.instanceName, backendChanged, adoption.deferred ? newBackend : undefined);
         if (this.daemons.has(ch.instanceName) && (backendChanged || modelChanged || autoPauseChanged || profileChanged)) {
           this.logger.info(
             { instanceName: ch.instanceName, backendFrom: oldBackends.get(ch.instanceName), backendTo: newBackend, modelFrom: oldModels.get(ch.instanceName), modelTo: newModel,
@@ -6209,7 +6218,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       name,
       this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
-      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
       transition,
     );
@@ -6545,7 +6554,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       name,
       this.classicChannels.getBackendByInstance(name, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getPreTaskCommand(channel.channelId, channel.adapterId),
-      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model),
+      this.classicChannels.getModel(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
       this.classicChannels.getAutoPauseAfter(channel.channelId, channel.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
     );
   }
@@ -6566,7 +6575,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         ch.instanceName,
         this.classicChannels!.getBackendByInstance(ch.instanceName, this.fleetConfig?.defaults?.backend),
         this.classicChannels!.getPreTaskCommand(ch.channelId, ch.adapterId),
-        this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model),
+        this.classicChannels!.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
         this.classicChannels!.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after),
       );
       return this.daemons.has(ch.instanceName);
@@ -6579,18 +6588,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private backendNameOf(name: string): string {
-    const fleetDefault = this.fleetConfig?.defaults?.backend;
-    const fleetInstance = this.fleetConfig?.instances[name];
-    // A malformed/manual config can give a fleet and Classic entry the same
-    // instance name. Fleet ownership wins, including its inherited default;
-    // otherwise a Classic override could make backend-scoped recovery restart
-    // the shared process under the wrong login result.
-    if (fleetInstance) return fleetInstance.backend ?? fleetDefault ?? "claude-code";
-    // ClassicBot channels pick their own backend; the fleet default is only the fallback.
-    if (this.classicChannels?.getAll().some(channel => channel.instanceName === name)) {
-      return this.classicChannels.getBackendByInstance(name, fleetDefault);
-    }
-    return fleetDefault ?? "claude-code";
+    return this.backendNameForInstance(name);
   }
 
   /**
@@ -7062,7 +7060,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         name,
         this.classicChannels!.getBackendByInstance(name, fleetBackend),
         this.classicChannels!.getPreTaskCommand(channelId, adapterId),
-        this.classicChannels!.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
+        this.classicChannels!.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
         this.classicChannels!.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
         transition,
       ));
@@ -13518,6 +13516,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       Object.assign(current, resolved);
     }
     const previousCatalogConfig = this.savedFleetConfigSnapshot;
+    this.trackSharedDefaultChanges(previousCatalogConfig);
     this.savedFleetConfigSnapshot = structuredClone(this.fleetConfig);
     this.probeChangedCliEnvs(previousCatalogConfig);
     this.agentCredentialsCache?.observePolicies();
@@ -13526,6 +13525,58 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       { path: this.configPath, strippedDefaults: redundantPaths.length },
       "Saved fleet config (lossless patch)",
     );
+  }
+
+  private sharedIdentitySource(name: string): string {
+    const own = this.rawFleetConfig.instances?.[name];
+    if (own) return JSON.stringify([own.backend ?? null, own.model ?? null]);
+    const ch = this.classicChannels?.getAll().find(c => c.instanceName === name);
+    const defaults = this.classicChannels?.getDefaults();
+    return JSON.stringify([ch?.backend ?? null, ch?.model ?? null, defaults?.backend ?? null, defaults?.model ?? null]);
+  }
+
+  private sharedDefaultsView<T extends { backend?: string; model?: string }>(name: string, config: T, consent?: ReadonlySet<object>) {
+    return this.sharedDefaultAdoption.view(name, this.daemons.get(name), config,
+      this.lifecycle.isPaused(name) ? undefined : consent, this.sharedIdentitySource(name));
+  }
+
+  private pendingRuntimeIdentity(name: string): { backend?: string; model?: string } | undefined {
+    const daemon = this.daemons.get(name);
+    if (!daemon) return undefined;
+    let desired = this.fleetConfig?.instances[name];
+    if (!desired) {
+      const ch = this.classicChannels?.getAll().find(c => c.instanceName === name);
+      if (!ch) return undefined;
+      const defaults = this.fleetConfig?.defaults;
+      const identity = { backend: this.classicChannels!.getBackend(ch.channelId, ch.adapterId, defaults?.backend),
+        model: this.classicChannels!.getModel(ch.channelId, ch.adapterId, defaults?.model, defaults?.backend) };
+      return this.sharedDefaultsView(name, identity).deferred ? daemon.getConfigSnapshot?.() : undefined;
+    }
+    return this.sharedDefaultsView(name, desired).deferred ? daemon.getConfigSnapshot?.() : undefined;
+  }
+
+  /** A save is not a restart consent. Remember shared identity edits until the
+   * current runtime ends (or an apply explicitly chooses to restart it). */
+  private trackSharedDefaultChanges(previous: FleetConfig | null): void {
+    const next = this.fleetConfig;
+    if (!previous || !next || (previous.defaults.backend === next.defaults.backend
+      && previous.defaults.model === next.defaults.model)) return;
+    for (const [name, config] of Object.entries(next.instances)) {
+      const old = previous.instances[name];
+      if (!old || (old.backend === config.backend && old.model === config.model)) continue;
+      const daemon = this.daemons.get(name);
+      this.sharedDefaultAdoption.track(name, daemon, daemon?.getConfigSnapshot?.() ?? old, config, this.sharedIdentitySource(name));
+    }
+    for (const ch of this.classicChannels?.getAll() ?? []) {
+      const values = (defaults: FleetConfig["defaults"]) => ({
+        backend: this.classicChannels!.getBackend(ch.channelId, ch.adapterId, defaults.backend),
+        model: this.classicChannels!.getModel(ch.channelId, ch.adapterId, defaults.model, defaults.backend),
+      });
+      const old = values(previous.defaults), desired = values(next.defaults);
+      if (old.backend === desired.backend && old.model === desired.model) continue;
+      const daemon = this.daemons.get(ch.instanceName);
+      this.sharedDefaultAdoption.track(ch.instanceName, daemon, daemon?.getConfigSnapshot?.() ?? old, desired, this.sharedIdentitySource(ch.instanceName));
+    }
   }
 
   /** A permission tightening is effective when its save returns, independently of the later apply job or IPC. */
@@ -17656,9 +17707,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       await data.respond(t("filename.invalid"));
       return;
     }
-    const backend = target.kind === "classic"
-      ? this.classicChannels.getBackendByInstance(target.name, this.fleetConfig?.defaults?.backend)
-      : (this.fleetConfig?.instances[target.name]?.backend ?? this.fleetConfig?.defaults?.backend ?? "claude-code");
+    const backend = this.backendNameForInstance(target.name);
     // force (-f) is only meaningful for kiro/classic /chat save.
     const force = target.kind === "classic" && !!data.options?.force;
     const cmd = saveCommandForBackend(backend, filename, force);
@@ -20496,7 +20545,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
   private claudeModelKnown(
     instanceName: string, model: string,
     /** #1806: null on a switch INTO claude-code — the configured model then belongs to the backend being left. */
-    configured: string | null | undefined = this.fleetConfig?.instances[instanceName]?.model ?? this.fleetConfig?.defaults?.model,
+    configured: string | null | undefined = this.pendingRuntimeIdentity(instanceName)
+      ? this.pendingRuntimeIdentity(instanceName)?.model
+      : this.fleetConfig?.instances[instanceName]?.model ?? scopedDefaultModel(this.backendNameForInstance(instanceName), this.fleetConfig?.defaults),
   ): { known: boolean; names: string[] } {
     const aliases = ["default", "sonnet", "opus", "haiku", "opusplan", "Fable"];
     const api = (this.webModelEnv("claude-code", instanceName)?.apiModels ?? []).map(m => m.id);
@@ -20521,8 +20572,10 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
 
   /** Resolve the backend name configured for an instance (fleet or classic). */
   private backendNameForInstance(instanceName: string): string {
+    const pending = this.pendingRuntimeIdentity(instanceName);
+    if (pending) return pending.backend || "claude-code";
     const fleetCfg = this.fleetConfig?.instances[instanceName];
-    if (fleetCfg?.backend) return fleetCfg.backend;
+    if (fleetCfg) return fleetCfg.backend || this.fleetConfig?.defaults?.backend || "claude-code";
     const classic = this.classicChannels?.getChannelIdByInstance(instanceName) !== undefined
       ? this.classicChannels?.getBackendByInstance(instanceName, this.fleetConfig?.defaults?.backend)
       : undefined;
@@ -20721,10 +20774,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         : model,
     });
 
+    const pending = this.pendingRuntimeIdentity(instanceName);
+    if (pending?.model) return done(pending.model, "fleet-default", "saved shared default waits for next restart");
     const fleetInstance = this.fleetConfig?.instances[instanceName];
+    if (pending) {
+      const cliEnv = this.readCliEnv(pending.backend || "claude-code");
+      return cliEnv?.currentModel ? done(cliEnv.currentModel, "cli-default")
+        : done("default", "unresolved", "saved shared default waits for next restart");
+    }
     if (fleetInstance) {
-      if (fleetInstance.model?.trim()) return done(fleetInstance.model.trim(), "instance");
-      const fleetDefault = this.fleetConfig?.defaults?.model;
+      const own = this.rawFleetConfig.instances?.[instanceName];
+      const model = own ? own.model : fleetInstance.model;
+      if (model?.trim()) return done(model.trim(), "instance");
+      const fleetDefault = scopedDefaultModel(fleetInstance.backend, this.fleetConfig?.defaults);
       if (fleetDefault?.trim()) return done(fleetDefault.trim(), "fleet-default");
     }
 
@@ -20734,6 +20796,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         classic.channelId,
         classic.adapterId,
         this.fleetConfig?.defaults?.model,
+        this.fleetConfig?.defaults?.backend,
       );
       if (classicModel?.trim()) return done(classicModel.trim(), "classic");
     }
@@ -22548,7 +22611,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         instanceName,
         classicChannels.getBackend(channelId, adapterId, this.fleetConfig?.defaults?.backend),
         classicChannels.getPreTaskCommand(channelId, adapterId),
-        classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model),
+        classicChannels.getModel(channelId, adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
         classicChannels.getAutoPauseAfter(channelId, adapterId, this.fleetConfig?.defaults?.auto_pause_after),
       );
     }
@@ -23000,7 +23063,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * Whitelisted runtime fields are pushed into live daemons; all other instance
    * fields, plus cold fleet-level settings, retain restart semantics.
    */
-  private async reconcileInstances(observe?: ReconcileObserver): Promise<ReconcileOutcome> {
+  private async reconcileInstances(observe?: ReconcileObserver, defaultConsent?: ReadonlySet<object>): Promise<ReconcileOutcome> {
     if (!this.configPath) return {};
     const oldConfig = this.fleetConfig;
     const previousRawConfig = this.rawFleetConfig;
@@ -23075,8 +23138,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       for (const ch of this.classicChannels.getAll()) {
         const runtimeConfig = this.daemons.get(ch.instanceName)?.getConfigSnapshot?.();
         oldClassicBehavior.set(ch.instanceName, {
-          backend: this.classicChannels.getBackend(ch.channelId, ch.adapterId, oldConfig?.defaults?.backend),
-          model: this.classicChannels.getModel(ch.channelId, ch.adapterId, oldConfig?.defaults?.model),
+          backend: runtimeConfig?.backend ?? this.classicChannels.getBackend(ch.channelId, ch.adapterId, oldConfig?.defaults?.backend),
+          model: runtimeConfig ? runtimeConfig.model : this.classicChannels.getModel(ch.channelId, ch.adapterId, oldConfig?.defaults?.model, oldConfig?.defaults?.backend),
           autoPauseAfter: this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, oldConfig?.defaults?.auto_pause_after),
           // Settings mutates FleetManager's in-memory defaults before SIGHUP.
           // The live daemon is therefore the authority for the previous hot
@@ -23143,7 +23206,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     // complete snapshot: Settings mutates FleetManager's config before SIGHUP,
     // so an old/new diff alone can miss the live daemon's stale value.
     for (const [name, config] of Object.entries(newInstances)) {
+      const adoption = this.sharedDefaultsView(name, config, defaultConsent);
       if (!this.daemons.has(name)) {
+        if (adoption.deferred) { observe?.(name, "restart", "next-start"); continue; }
         // New instance — startInstance already calls connectIpcToInstance. #2482: a paused one is not started (startInstance
         // returns at its pause); say so, quietly, instead of "starting" on every reload.
         if (this.lifecycle.isPaused(name)) {
@@ -23166,7 +23231,8 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       } else if (oldConfig?.instances[name]) {
         const daemon = this.daemons.get(name)!;
         const runtimeConfig = daemon.getConfigSnapshot?.() ?? oldConfig.instances[name];
-        const change = classifyInstanceChange(runtimeConfig, config);
+        const change = classifyInstanceChange(runtimeConfig, adoption.config);
+        if (adoption.deferred) observe?.(name, "restart", "next-start");
         // (b) The person switched its task board on: tell it (its tool list shows the `task` tool at once).
         if (taskBoardSwitchedOn(runtimeConfig.dashboard, config.dashboard)) {
           this.admitTaskBoardNotice(name, TASK_BOARD_ON_NOTICE, `task-board-on:${name}:${Date.now()}`);
@@ -23189,7 +23255,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
             this.logger.warn({ name }, "Config-update IPC unavailable — applied hot config in-process");
           }
           this.logger.info({ name, fields: [...HOT_INSTANCE_CONFIG_KEYS] }, "Instance hot config reloaded");
-          observe?.(name, "hot", "done");
+          observe?.(name, "hot", adoption.deferred ? "next-start" : "done");
         }
       }
     }
@@ -23202,10 +23268,14 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       for (const ch of this.classicChannels.getAll()) {
         const old = oldClassicBehavior.get(ch.instanceName);
         if (!old || !this.daemons.has(ch.instanceName)) continue;
-        const backend = this.classicChannels.getBackend(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.backend);
-        const model = this.classicChannels.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model);
+        const adoption = this.sharedDefaultsView(ch.instanceName, {
+          backend: this.classicChannels.getBackend(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.backend),
+          model: this.classicChannels.getModel(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.model, this.fleetConfig?.defaults?.backend),
+        }, defaultConsent);
+        const { backend, model } = adoption.config;
+        if (adoption.deferred) observe?.(ch.instanceName, "restart", "next-start");
         const autoPauseAfter = this.classicChannels.getAutoPauseAfter(ch.channelId, ch.adapterId, this.fleetConfig?.defaults?.auto_pause_after);
-        const profile = this.classicProfileChange(ch.instanceName, old.backend !== backend);
+        const profile = this.classicProfileChange(ch.instanceName, old.backend !== backend, adoption.deferred ? backend : undefined);
         if (old.backend !== backend || old.model !== model || old.autoPauseAfter !== autoPauseAfter || profile.changed) {
           this.logger.info({ instanceName: ch.instanceName, ...(profile.changed ? { profileFrom: profile.from, profileTo: profile.to } : {}) },
             "Classic cold config changed — restarting");
@@ -24402,7 +24472,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     for (const [key, value] of parseEnvText(readFileSync(envPath, "utf-8"))) if (keys.has(key)) process.env[key] = value;
   }
 
-  planConfigApply(): Array<{ target: string; kind: ApplyTargetKind }> {
+  planConfigApply(defaultConsent?: ReadonlySet<object>): Array<{ target: string; kind: ApplyTargetKind }> {
     const rows: Array<{ target: string; kind: ApplyTargetKind }> = [];
     const nextConfig = this.nextFleetConfig();
     const next = nextConfig?.instances ?? {};
@@ -24418,8 +24488,11 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
         if (!this.lifecycle.isPaused(name)) rows.push({ target: name, kind: "restart" });
         continue;
       }
-      const change = classifyInstanceChange(runtime, config);
-      if (change !== "none") rows.push({ target: name, kind: change === "restart" ? "restart" : "hot" });
+      const adoption = this.sharedDefaultsView(name, config, defaultConsent);
+      if (adoption.deferred && !daemon) { rows.push({ target: name, kind: "next-start" }); continue; }
+      const change = classifyInstanceChange(runtime, adoption.config);
+      if (change === "none" && adoption.deferred) rows.push({ target: name, kind: "next-start" });
+      else if (change !== "none") rows.push({ target: name, kind: change === "restart" ? "restart" : "hot" });
     }
     for (const name of this.daemons.keys()) {
       if (!(name in next) && !classicNames.has(name)) rows.push({ target: name, kind: "restart" });
@@ -24438,7 +24511,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * the whole point: the retry after a lost response must not apply everything a
    * second time.
    */
-  startSettingsApply(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
+  startSettingsApply(key: string, sharedDefaults: "next-start" | "restart" = "next-start"): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
     // The key is checked first on purpose: a retry of the apply that is running
     // right now must get its own job back, not "busy".
     const existing = this.applyJobs.findByKey(key);
@@ -24448,18 +24521,19 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return { busy: this.activeApplyJobId ? this.applyJobs.get(this.activeApplyJobId) : null };
     }
 
-    const job = this.applyJobs.create(key, this.planConfigApply());
+    const defaultConsent = sharedDefaults === "restart" ? this.sharedDefaultAdoption.consent() : undefined;
+    const job = this.applyJobs.create(key, this.planConfigApply(defaultConsent));
     // Reserved synchronously: the work starts a microtask later, and a second
     // request arriving in that gap must see the slot taken.
     this.activeApplyJobId = job.id;
     // Start after the caller has its answer, so the first thing the page renders
     // is the whole plan with every row still pending — not a job the reconcile
     // has already half-finished synchronously.
-    queueMicrotask(() => void this.runSettingsApply(job.id));
+    queueMicrotask(() => void this.runSettingsApply(job.id, defaultConsent));
     return { job, reused: false };
   }
 
-  private async runSettingsApply(jobId: string): Promise<void> {
+  private async runSettingsApply(jobId: string, defaultConsent?: ReadonlySet<object>): Promise<void> {
     const emit = (): void => {
       const job = this.applyJobs.get(jobId);
       // An accelerator only: these frames carry no event id, so a client that
@@ -24483,7 +24557,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
     };
     emit();
     try {
-      const started = this.startExclusiveReconcile(observer);
+      const started = this.startExclusiveReconcile(observer, defaultConsent);
       if (!started) {
         // The slot was reserved before the microtask, so this means a SIGHUP
         // reconcile started in between. Report it instead of applying twice.
@@ -25704,11 +25778,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const cost = (statusline?.cost?.total_cost_usd as number | undefined) ?? 0;
       // Align with /ctx: statusline for claude-code, pane scrape for kiro/grok/codex.
       const classic = classicOnly.includes(name);
-      const backend = classic
-        ? this.classicChannels!.getBackendByInstance(name, this.fleetConfig?.defaults?.backend)
-        : (this.fleetConfig?.instances[name]?.backend
-          ?? this.fleetConfig?.defaults?.backend
-          ?? "claude-code");
+      const backend = this.backendNameForInstance(name);
       const { context } = resolveInstanceContext(this.dataDir, name, backend, { source: this.getPaneContextSource(name), statusline });
       // context_pct: null when unavailable, not 0
       const context_pct = context ?? null;

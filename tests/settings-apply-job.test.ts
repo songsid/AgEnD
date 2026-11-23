@@ -257,6 +257,30 @@ function apiContext(dir: string) {
 }
 
 describe("POST /api/settings/apply", () => {
+  it("validates and carries the explicit shared-default choice, defaulting to no restart", async () => {
+    const { ctx } = apiContext(tempDir());
+    const start = vi.spyOn(ctx, "startSettingsApply");
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-default-key" },
+    })).status).toBe(202);
+    expect(start).toHaveBeenLastCalledWith("choice-default-key", "next-start");
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-restart-key", shared_defaults: "restart" },
+    })).status).toBe(202);
+    expect(start).toHaveBeenLastCalledWith("choice-restart-key", "restart");
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-invalid-key", shared_defaults: "anything" },
+    })).status).toBe(400);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+  it("clears a previous backend's model on a backend-only default edit", async () => {
+    const { ctx } = apiContext(tempDir());
+    ctx.fleetConfig!.defaults = { backend: "claude-code", model: "haiku" };
+    const res = await request("/api/settings/fleet/defaults", ctx, "PUT", { body: { backend: "codex" } });
+    expect(res.status).toBe(200);
+    expect(ctx.fleetConfig!.defaults).toEqual({ backend: "codex" });
+  });
+
   it("answers with a job", async () => {
     const { ctx } = apiContext(tempDir());
 
@@ -417,6 +441,14 @@ describe("the settings page tells the truth about a restart it cannot perform", 
     await new Promise(r => setTimeout(r, 50));
     expect(store.appStore.get().settingsOp).not.toBeNull();
     expect(p.root.querySelector(".s-op")).not.toBeNull();
+  });
+
+  it("renders pending shared adoption without offering an AgEnD restart", async () => {
+    const card = await applyAndMount({ status: 202,
+      body: job([{ target: "one", kind: "restart", status: "next-start" }]),
+    });
+    expect(card.querySelector(".s-step.next-start .note").textContent).toBe(tn("defaultIdentityPending"));
+    expect(card.querySelector(".save-row button")).toBeNull();
   });
 
   it("names the rows the reconcile found nothing to do", async () => {

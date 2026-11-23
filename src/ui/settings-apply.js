@@ -162,7 +162,7 @@ function stop(o, failed) {
   // What did not land can be staged again, except a secret, which has to be entered again. A write whose outcome is
   // unknown goes back with its key; one the server refused, or that never ran, gets a new key when it is applied.
   o.leftover = o.steps.filter((s) => (s.status === "failed" || s.status === "skipped") && s.request && !s.request.sensitive)
-    .map(({ label, impact, request, stageKey, key, ambiguous }) => ({ label, impact, request, stageKey, ...(ambiguous ? { key } : {}) }));
+    .map(({ label, impact, request, stageKey, key, ambiguous, sharedDefaults }) => ({ label, impact, request, stageKey, sharedDefaults, ...(ambiguous ? { key } : {}) }));
   publish();
 }
 
@@ -171,7 +171,8 @@ async function postApply(o) {
     let res;
     try {
       res = await api("/api/settings/apply", { method: "POST", headers: { "Idempotency-Key": o.applyKey },
-        body: JSON.stringify({ idempotency_key: o.applyKey }) });
+        body: JSON.stringify({ idempotency_key: o.applyKey,
+          ...(o.steps.some(s => s.sharedDefaults) ? { shared_defaults: o.steps.some(s => s.sharedDefaults === "restart") ? "restart" : "next-start" } : {}) }) });
     } catch {
       // The answer was lost (a phone between networks): the same key rejoins the same job, never a second one.
       if (!mine(o)) return null;

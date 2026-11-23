@@ -1,3 +1,4 @@
+import { scopedDefaultModel } from "./model-defaults.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { ensureAgendHome } from "./agend-home.js";
 import { mergeSettingsDelta, noteSettingsWrite } from "./settings-transaction.js";
@@ -801,9 +802,12 @@ export class ClassicChannelManager {
   }
 
   /** Get model for a channel — channel override → defaults → fleet default */
-  getModel(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined {
+  getModel(channelId: string, adapterId?: string, fleetDefault?: string, fleetBackend?: string): string | undefined {
     const ch = this.find(channelId, adapterId);
-    return ch?.model || this.defaults.model || fleetDefault;
+    const backend = this.getBackend(channelId, adapterId, fleetBackend);
+    return ch?.model || scopedDefaultModel(backend, {
+      backend: this.defaults.backend || fleetBackend, model: this.defaults.model,
+    }) || scopedDefaultModel(backend, { backend: fleetBackend, model: fleetDefault });
   }
 
   /** Auto-pause fallback: per-channel → Classic defaults → fleet default. */
