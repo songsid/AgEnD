@@ -1311,8 +1311,8 @@ img.amb-p { object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .jump-latest { transition: none; } }
 .dock { flex-shrink: 0; padding: 0 max(var(--s-5), env(safe-area-inset-right)) max(var(--s-3), env(safe-area-inset-bottom)) max(var(--s-5), env(safe-area-inset-left)); }
 .dock-col { max-width: var(--col); margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-2); }
-/* M3540: reserve an 8px gutter in normal flow; never overlay the thread or neighboring controls. */
-.composer-hit { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); margin-inline: calc(-1 * var(--s-2)); user-select: none; -webkit-user-select: none; }
+/* M3540: reserve an 8px gutter in normal flow; its bottom uses existing dock padding, avoiding a double keyboard gap. */
+.composer-hit { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); margin-inline: calc(-1 * var(--s-2)); margin-bottom: calc(-1 * var(--s-2)); user-select: none; -webkit-user-select: none; }
 .composer-hit .cmd-card, .composer-hit .pending-files, .composer-hit .reply-bar { user-select: text; -webkit-user-select: text; }
 .prompts { display: flex; flex-direction: column; gap: var(--s-2); }
 .prompt { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); }

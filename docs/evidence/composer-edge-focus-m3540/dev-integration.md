@@ -9,3 +9,9 @@ Fresh dev composer/authorization suites initially passed 34/34 before adding two
 The historical main captures, browser records and main source-hash files are copied byte-for-byte and retain their original scope. The user explicitly waived another screenshot round for the expanded strip. No new dev browser, screenshots, provider, native device, live Fleet or pane campaign was run. `dev-verification.json` records the current integration hashes; earlier manifests describe their named historical main source, not the dev layout.
 
 Source review and exact-head CI are still required. Coordinator alone gates. Rollback reverts the helper/wiring/selection/gutter styles; no stored data or migration is involved.
+
+## Keyboard-spacing carry
+
+Main followup #4360 actually merged as `e6e4e324c92edafcbdee3205841cf3139e302d61` at2026-11-23T09:14:02Z; fetched main ancestry and all6approved blobs were verified before this carry. Dev's prior CI keyboard-suite failure was inspected before changes: its new8px bottom gutter stacked with existing8px dock padding. The approved equal negative bottom margin reuses that existing blank space. All helper/control/viewport motion/threshold code is unchanged.
+
+The same existing local Chromium keyboard-motion case reproduces16px before the correction and passes after it at unchanged thresholds/both event orders (details in keyboard-gutter-correction.md). Only the copied new bottom-margin invariant is rerun locally for this carry; prior42integration cases/types evidence carries outside the one CSS change. Fresh exact-head CI must verify WebKit. The independent attempt2 rerun on old7341 is not treated as the correction or current-head proof. Original4PNGs/capture bindings remain byte-identical; no user-look screenshot round was repeated. Leader explicitly confirmed release coverage for #4360 and its carry into #4359.

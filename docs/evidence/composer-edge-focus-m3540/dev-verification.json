@@ -20,7 +20,7 @@
     },
     {
       "path": "src/ui/shared/app.css",
-      "sha256": "394bd7e5eadf40977a1f62a37c5ee0d5b733a3d4d66b4455e6d13cbe67906d96"
+      "sha256": "8f7b56203992afce9eb86547dddb533e9c5b7596e253e701bfb0dce3f06d6162"
     },
     {
       "path": "src/auth-api.ts",
@@ -28,12 +28,15 @@
     },
     {
       "path": "tests/web-composer-2478.test.ts",
-      "sha256": "2b894a0c79f2f307ab5f965d4a7c996aacf4122a9484d774206568249730985e"
+      "sha256": "7eafc9bf6aaa4e8b083ebbbd3dcac202885919774910726188be29eaf8eb4eca"
     },
     {
       "path": "tests/phone-meta-line-m3166.test.ts",
       "sha256": "2e3d4052e8906e5d4d30132f2b4fc4aa433efa2d9c5b4ff81bcf540411c8994f"
     }
   ],
-  "proof": "34 initial composer/auth +1 new shared isolation +7 final phone =42 distinct; no overlapping reruns added. types0. Historical main images only; user waived new captures."
+  "proof": "34 initial composer/auth +1 new shared isolation +7 final phone =42 distinct; no overlapping reruns added. types0. Historical main images only; user waived new captures.",
+  "main_keyboard_correction_merge": "e6e4e324c92edafcbdee3205841cf3139e302d61",
+  "bottom_margin_equal_approved_main": true,
+  "keyboard_proof": "Attempt1WebKit16px failure inspected; local same existing Chromium1case/bothorders base16\u2192PASS unchangedthreshold. Fresh exactheadCI/WebKit required; oldhead rerunnotproof."
 }
