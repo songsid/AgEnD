@@ -12,17 +12,17 @@ import { Menu } from "/assets/ui-menu.js";
 /**
  * Which version an edit started from: a save sends it, so an agent's newer write is caught (409). After a conflict
  * the next save of the same draft overwrites on purpose (null: no check). After a save went through while more was
- * typed, the next save is on the card as that save left it (`followLatest`: `current()` is undefined, which the page
- * reads as "the version of the card as last read").
+ * typed, the text kept in the box is pinned to the version that save itself produced (`pin`): the next save sends
+ * that exact version, whatever the page reads in between, so a write by someone else after it is still a conflict.
  */
 export function useEditBase(version) {
   const [base, setBase] = useState(version);
-  const following = useRef(false);
+  const pinned = useRef(undefined);
   return {
-    start: () => { following.current = false; setBase(version); },
-    current: () => (following.current ? undefined : base === undefined ? version : base),
-    afterSave: (outcome) => { if (outcome === "conflict") { following.current = false; setBase(null); } },
-    followLatest: () => { following.current = true; },
+    start: () => { pinned.current = undefined; setBase(version); },
+    current: () => (pinned.current !== undefined ? pinned.current : base === undefined ? version : base),
+    afterSave: (outcome) => { if (outcome === "conflict") { pinned.current = undefined; setBase(null); } },
+    pin: (savedVersion) => { pinned.current = savedVersion; },
   };
 }
 
@@ -37,7 +37,8 @@ export function useAutoFocus(open) {
 const windowAway = () => typeof document !== "undefined" && typeof document.hasFocus === "function" && !document.hasFocus();
 
 /**
- * One text edited in place. `onSave(next, base)` resolves "ok", "conflict" or "error" (the page toasts the refusal).
+ * One text edited in place. `onSave(next, base)` resolves "ok", "conflict" or "error" (the page toasts the refusal), or
+ * `{ outcome, version }`, where `version` is the one the card has because of that save (what the answer to the write said).
  * `phase`: "idle", "saving", "conflict" (the card changed meanwhile: Ctrl+Enter / overwrite() sends it anyway) or
  * "failed" (not saved: leaving the box or Ctrl+Enter tries again).
  */
@@ -66,15 +67,21 @@ export function useInlineEdit({ value, version, onSave, valid = () => true, prep
     busy.current = true;
     leftWhileSaving.current = false;
     setPhase("saving");
-    let outcome = "error";
-    try { outcome = await onSave(next, base.current()); } finally { busy.current = false; }
+    let outcome = "error", savedVersion;
+    try {
+      const answer = await onSave(next, base.current());
+      if (answer && typeof answer === "object") { outcome = answer.outcome; savedVersion = answer.version; } else outcome = answer;
+    } finally { busy.current = false; }
     if (outcome === "ok") {
       const now = draftNow.current;
       if (now === null) return;                          // dropped (Esc) while it saved: the edit is over
       if (prepare(now) === next) { close(); return; }    // what was sent is what the box holds: done
-      // More was typed while it saved: that text is newer than what went through, so it stays — the box stays open on it,
-      // and its save is on the card as this save left it. Had the box been left meanwhile, leaving it saves it now.
-      base.followLatest();
+      // More was typed while it saved: that text is newer than what went through, so it stays — the box stays open on it.
+      // Its save is on the version THIS save produced, not on whatever the page reads later: a write by someone else after
+      // this one is then a conflict, not something it silently overwrites. (An answer that did not say its version leaves the
+      // base the edit started from, which the card has left behind: the kept text then meets a conflict, never a silent overwrite.)
+      if (savedVersion !== undefined && savedVersion !== null) base.pin(savedVersion);
+      // Had the box been left meanwhile, leaving it saves it now.
       setPhase("idle");
       if (leftWhileSaving.current && again.current) { leftWhileSaving.current = false; void again.current(); }
       return;

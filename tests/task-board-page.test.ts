@@ -598,23 +598,30 @@ describe("text edits where it is read", () => {
 
   // A save that is still on its way when more is typed: the text typed after what was sent is newer than what the server holds,
   // so it is not thrown away when the first save succeeds — the box stays open on it, and its save is on the card as the first left it.
-  const slowSave = () => {
+  // `agentRightAfter`: another agent changes the goal the instant after the first save was applied, so the page's next read of the card
+  // is the agent's revision while the first save's own answer said the revision before it. `external()`: such a write, any time.
+  const slowSave = (opts: { agentRightAfter?: boolean; omitVersion?: boolean } = {}) => {
     let version = 4, goal = M1.goal, first = true;
     let release!: () => void;
     const held = new Promise<void>((r) => { release = r; });
     const base = handler;
     handler = async (path, method, body) => {
       if (path === "/ui/tasks/cards/M-1" && method === "POST") {
+        const wasFirst = first;
         if (first) { first = false; await held; }
-        if (body.version !== version) return { __status: 409, error: "stale", key: "conflict", args: ["M-1", "alpha"] };
+        if (body.version !== undefined && body.version !== version) return { __status: 409, error: "stale", key: "conflict", args: ["M-1", "alpha"] };
         version++; goal = body.goal;
-        return { card: { ...M1, goal, version }, notes: [] };
+        const answer = { card: { ...M1, goal, version: opts.omitVersion ? undefined : version }, notes: [] };
+        if (wasFirst && opts.agentRightAfter) { version++; goal = "Another agent's goal"; }
+        return answer;
       }
       if (path === "/ui/tasks/cards/M-1") return detailOf("M-1", { card: { ...M1, goal, version } });
       return base(path, method, body);
     };
-    return { release: () => release() };
+    return { release: () => release(), external: (text: string) => { version++; goal = text; }, server: () => ({ version, goal }) };
   };
+  /** The board's "tasks" stream event, the page's own way to read the card again (once per burst, after a short pause). */
+  const refreshFromStream = async (fire_: (name: string, data: unknown) => void) => { fire_("tasks", { rev: 90 + mounts, ids: ["M-1"] }); await new Promise((r) => setTimeout(r, 330)); await settle(10); };
   it("text typed while a save is on its way is kept: the box stays open on it, and its save sends the new text on the version the first save left", async () => {
     const slow = slowSave();
     await mount();
@@ -655,6 +662,75 @@ describe("text edits where it is read", () => {
     fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
     expect(posts()).toHaveLength(1);
     expect(fieldOf("Context")?.querySelector("textarea") ?? null).toBeNull();
+  });
+  it("the kept text is pinned to the revision its own save produced: another agent's write after that, read by a normal refresh, makes it a conflict that needs an explicit Overwrite", async () => {
+    const slow = slowSave();
+    const handlers: Record<string, Array<(d: unknown) => void>> = {};
+    const before = app.appStore.get().streamOn;
+    app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (handlers[name] ??= []).push(fn); return () => {}; } });
+    try {
+      await mount();
+      await openCard("M-1");
+      const box = await open("Goal");
+      await typeInto(box, "First draft");
+      fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);
+      await typeInto(box, "First draft, and a second draft typed while it saved");
+      slow.release(); await settle(12);
+      expect(posts().map((c) => c.body)).toEqual([{ goal: "First draft", version: 4 }]);
+      expect(fieldOf("Goal").querySelector("textarea").value, "the second draft is kept, in an open box").toBe("First draft, and a second draft typed while it saved");
+      // Another agent changes the goal (revision 6); the page reads the card again by its normal refresh; the box stays open.
+      slow.external("Another agent's goal");
+      await refreshFromStream((name, data) => { for (const fn of handlers[name] ?? []) fn(data); });
+      expect(calls.filter((c) => c.method === "GET" && c.path === "/ui/tasks/cards/M-1").length, "the page did read the card again").toBeGreaterThan(1);
+      expect(fieldOf("Goal").querySelector("textarea").value, "the kept draft is still there after the refresh").toBe("First draft, and a second draft typed while it saved");
+      // Saving it sends revision 5 — its own save's — so the host refuses it and the page asks, as in any conflict.
+      fire(fieldOf("Goal").querySelector("textarea"), "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(12);
+      expect(posts()).toHaveLength(2);
+      expect(posts()[1]!.body, "the revision its own save produced, not the page's latest").toEqual({ goal: "First draft, and a second draft typed while it saved", version: 5 });
+      expect(slow.server().goal, "the other agent's text was not overwritten").toBe("Another agent's goal");
+      expect(text(fieldOf("Goal").querySelector(".tc-edit-bar .err"))).toContain("changed meanwhile");
+      expect(text(fieldOf("Goal").querySelector(".tc-edit-bar"))).toContain("Overwrite");
+      fire(fieldOf("Goal").querySelector("textarea"), "blur"); await settle(6);
+      expect(posts(), "leaving the box does not send it over the newer card").toHaveLength(2);
+      // Only an explicit Overwrite sends it over revision 6, and then with no revision check.
+      fire(fieldOf("Goal").querySelector(".tc-edit-bar .btn-primary"), "click"); await settle(12);
+      expect(posts()).toHaveLength(3);
+      expect(posts()[2]!.body).toEqual({ goal: "First draft, and a second draft typed while it saved" });
+      expect(slow.server().goal).toBe("First draft, and a second draft typed while it saved");
+      expect(fieldOf("Goal").querySelector("textarea"), "overwritten on purpose: the edit closes").toBeNull();
+    } finally { app.appStore.set({ streamOn: before }); }
+  });
+  it("the same when the box was left while the first save was pending: the automatic save of the kept text sends the first save's revision, so another agent's write meanwhile is a conflict", async () => {
+    const slow = slowSave({ agentRightAfter: true });
+    await mount();
+    await openCard("M-1");
+    const box = await open("Goal");
+    await typeInto(box, "First draft");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);
+    await typeInto(box, "First draft, plus a line typed while it saved");
+    fire(box, "blur"); await settle(4);                                                            // left while the first save is still on its way
+    slow.release(); await settle(16);                                                              // the first save is applied (revision 5), an agent writes (6), the page reads 6
+    expect(posts().map((c) => c.body)).toEqual([{ goal: "First draft", version: 4 }, { goal: "First draft, plus a line typed while it saved", version: 5 }]);
+    expect(slow.server().goal, "the agent's text survives").toBe("Another agent's goal");
+    expect(text(fieldOf("Goal").querySelector(".tc-edit-bar .err")), "the normal conflict, with the draft kept").toContain("changed meanwhile");
+    expect(fieldOf("Goal").querySelector("textarea").value).toBe("First draft, plus a line typed while it saved");
+    fire(fieldOf("Goal").querySelector(".tc-edit-bar .btn-primary"), "click"); await settle(12);
+    expect(posts()[2]!.body, "an explicit Overwrite, no revision check").toEqual({ goal: "First draft, plus a line typed while it saved" });
+    expect(slow.server().goal).toBe("First draft, plus a line typed while it saved");
+  });
+  it("an answer that does not say its revision never lets the kept text overwrite: it is sent on the revision the edit started from, and meets a conflict", async () => {
+    const slow = slowSave({ omitVersion: true });
+    await mount();
+    await openCard("M-1");
+    const box = await open("Goal");
+    await typeInto(box, "First draft");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);
+    await typeInto(box, "First draft, and more");
+    slow.release(); await settle(12);
+    fire(fieldOf("Goal").querySelector("textarea"), "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(12);
+    expect(posts().map((c) => c.body)).toEqual([{ goal: "First draft", version: 4 }, { goal: "First draft, and more", version: 4 }]);
+    expect(slow.server().goal, "nothing was overwritten").toBe("First draft");
+    expect(text(fieldOf("Goal").querySelector(".tc-edit-bar .err"))).toContain("changed meanwhile");
   });
   it("Esc while a save is on its way drops the edit; the save that was sent still goes through and does not reopen the box", async () => {
     const slow = slowSave();

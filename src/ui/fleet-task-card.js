@@ -221,19 +221,25 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     return () => document.removeEventListener("keydown", onKey);
   }, [onBack]);
 
-  /** A write and what follows: its notes, the card and the board read again. Resolves "ok", "conflict" or "error". */
-  async function run(fn) {
+  /**
+   * A write and what follows: its notes, the card and the board read again. Resolves "ok", "conflict" or "error" — or, with
+   * `detail`, `{ outcome, version }`, where `version` is the one the write's own answer gave the card (an edit kept open after
+   * its save is pinned to it).
+   */
+  async function run(fn, detail = false) {
+    const done = (outcome, version) => (detail ? { outcome, version } : outcome);
     try {
       const r = await fn();
+      const written = r && r.card && typeof r.card.version === "number" ? r.card.version : undefined;
       for (const n of notesForPeople(r && r.notes)) toast(n);
       await load();
       reloadBoard();
-      return "ok";
+      return done("ok", written);
     } catch (err) {
       const conflict = err.status === 409;
       toast(conflict ? t("taskcard.conflict", id) : errorText(err), false);
       if (conflict) await load();
-      return conflict ? "conflict" : "error";
+      return done(conflict ? "conflict" : "error");
     }
   }
   /** A move from this page: one at a time (claimed before the first await), then the card and the board read again. */
@@ -266,7 +272,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
   const finished = card.status === "done" || card.status === "cancelled";
   /** `version` guards against overwriting a newer card; null skips it (text sent over a conflict on purpose). */
   const save = (patch, version) => {
-    const job = chain.current.then(() => run(() => boardApi.update(card.id, version === null ? patch : { ...patch, version: version === undefined ? (cardRef.current || card).version : version })));
+    const job = chain.current.then(() => run(() => boardApi.update(card.id, version === null ? patch : { ...patch, version: version === undefined ? (cardRef.current || card).version : version }), true));
     chain.current = job.catch(() => {});
     return job;
   };
