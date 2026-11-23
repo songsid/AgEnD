@@ -842,7 +842,8 @@ export function OfficeKey({ pal }) {
  * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
  * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
  * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
- * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null.
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `officesKey` read the offices
+ * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -852,7 +853,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, officesKey = undefined }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -991,7 +992,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const sub = streamOn();
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
     return () => { if (off) off(); };
-  }, [lease, store]);
+  }, [lease, store, officesKey]);
   // #2578: what agents do here by their own hand (office_set) — on opening, then as the stream brings it.
   // A read a newer one or the stream overtook is dropped (it is older: review — an opening read answered after the one
   // the stream's return began brought a cleared act back); read again when the stream comes back, and — with no live

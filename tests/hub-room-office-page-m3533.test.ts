@@ -197,6 +197,48 @@ describe("the room page", () => {
   });
 });
 
+describe("the office follows the room (Prism, #4355)", () => {
+  it("an agent that joins is drawn and a renamed one keeps its place, without a remount", async () => {
+    const p = page(); mounted.push(p); i18n.setLang("en", { store: false });
+    let st: any = STATE(["e1", "e2"]);
+    const roomOfficeState = async () => ({ ok: true, ...st });
+    await p.mount(h(office.RoomOffice, { client: { roomOfficeState }, roomId: "room", members: [], pollMs: 15 }));
+    const desks = () => [...p.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.textContent).sort();
+    await until(() => desks().length === 3);
+    const oo = q(p, ".hub-room-office .oo");
+    st = { ...st, instances: [...st.instances, { name: "e3", display_name: "Planner", status: "running", execution_state: "idle", presence: "idle" }],
+      offices: { ...st.offices, offices: [{ ...st.offices.offices[0], members: [...st.offices.offices[0].members, "e3"] }] } };
+    await until(() => desks().includes("Planner"));
+    expect(desks()).toContain("Planner");
+    st = { ...st, instances: st.instances.map((i: any) => (i.name === "e3" ? { ...i, display_name: "Planner Two" } : i)) };
+    await until(() => desks().includes("Planner Two"));
+    expect([desks().includes("Planner Two"), desks().includes("Planner"), q(p, ".hub-room-office .oo") === oo]).toEqual([true, false, true]);
+  });
+  it("a drawing that fails to load says so with Try again even when the room's state reads fine; Try again loads it", async () => {
+    const p = page(); mounted.push(p); i18n.setLang("en", { store: false });
+    let tries = 0;
+    const load = () => (++tries === 1 ? Promise.reject(new Error("offline")) : office.loadDrawing());
+    await p.mount(h(office.RoomOffice, { client: { roomOfficeState: async () => ({ ok: true, ...STATE(["e1", "e2"]) }) }, roomId: "room", members: [], pollMs: 15, load }));
+    await until(() => q(p, ".hub-room-office .error-state")); await settle(20);
+    expect([!!q(p, ".hub-room-office .error-state"), !!q(p, ".skeleton")]).toEqual([true, false]);
+    fire(q(p, ".hub-room-office .error-state button"), "click"); await until(() => q(p, ".hub-room-office .oo"));
+    expect([tries, !!q(p, ".hub-room-office .oo")]).toEqual([2, true]);
+  });
+  it("names the drawing can key: long names (the Hub allows 256) and owner labels stay distinct, every one kept in the office", async () => {
+    const { officesOk } = await import("/ui/js/fleet-office-model.js");
+    i18n.setLang("en", { store: false });
+    const long = "N".repeat(201), longer = "N".repeat(256);
+    const st = { ...STATE(["a", "b"]), instances: [{ name: "a", display_name: long }, { name: "b", display_name: "Short" }, { name: "c", display_name: longer }, { name: "d", display_name: longer }, { name: "e", display_name: longer }] };
+    st.offices = { ...st.offices, offices: [{ ...st.offices.offices[0], members: ["a", "b", "c", "d", "e"] }] };
+    const members = [{ kind: "agent", id: "c", owner: { name: "O".repeat(120) } }, { kind: "agent", id: "d", owner: { name: "O".repeat(120) } }];
+    const d = office.named(st, members);
+    const keys = d.instances.map((i: any) => i.name);
+    expect(new Set(keys).size).toBe(5);
+    for (const k of keys) expect(k.length).toBeLessThanOrEqual(200);
+    expect(officesOk(d.offices.offices)[0].members).toEqual(keys);
+  });
+});
+
 describe("an office read that keeps failing", () => {
   it("one or two misses keep the picture silently; the third says it may be old; the next good read clears it", async () => {
     const p = page(); mounted.push(p); i18n.setLang("zh-TW", { store: false });

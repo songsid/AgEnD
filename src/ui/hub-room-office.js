@@ -17,6 +17,13 @@ export const ROOM_OFFICE_POLL_MS = 5000;
 export const ROOM_OFFICE_STALE_AFTER = 3;
 /** A label longer than this (an agent's name with its owner's) takes the owner's first word instead. */
 const LABEL_MAX = 24;
+/**
+ * A figure's name is also its key in the drawing's office (fleet-office-model.js nameList keeps names of at most 200 code
+ * units): an agent's name (up to 256 on the Hub) is cut to NAME_MAX characters, a label with its owner to KEY_MAX, with
+ * "…" — a name that long cannot be read on the scene anyway; the member list still says it in full.
+ */
+const NAME_MAX = 48, KEY_MAX = 64;
+const clip = (text, n) => { const c = [...text]; return c.length > n ? `${c.slice(0, n - 1).join("")}…` : text; };
 const STORAGE_PREFIX = "agend_hub_room_office:";
 
 /** The Office drawing, loaded once on first use (the Hub serves it; a fleet page has it already). */
@@ -89,7 +96,7 @@ export function officeCardRows(members, id) {
  */
 export function named(d, members = []) {
   const list = (Array.isArray(d && d.instances) ? d.instances : []).filter((i) => i && typeof i.name === "string");
-  const base = (i) => (i.assistant ? hroom("roomAssistant") : String(i.display_name || "").trim() || "?");
+  const base = (i) => clip(i.assistant ? hroom("roomAssistant") : String(i.display_name || "").trim() || "?", NAME_MAX);
   const count = new Map();
   for (const i of list) count.set(base(i), (count.get(base(i)) || 0) + 1);
   const owners = new Map((Array.isArray(members) ? members : []).filter((m) => m && m.kind === "agent").map((m) => [m.id, String(m.owner?.name || "").trim()]));
@@ -101,6 +108,7 @@ export function named(d, members = []) {
     if (count.get(b) > 1 && owner) {
       label = `${b}${open}${owner}${close}`;
       if ([...label].length > LABEL_MAX) label = `${b}${open}${owner.split(/\s+/)[0]}${close}`;
+      label = clip(label, KEY_MAX);
     }
     for (let n = 2, at = label; taken.has(label); n++) label = `${at} ${n}`;
     taken.add(label); rename.set(i.name, label);
@@ -115,11 +123,13 @@ export function named(d, members = []) {
  * `members` the room's (its detail's: owner, introduction, the list's states); `onMention(member)` the card's "@ it" (the
  * page switches to Chat with the mention in the box); `more` / `onMore` a phone's options sheet, opened from the room's ⋯.
  */
-export function RoomOffice({ client, roomId, members, onMention = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS }) {
+export function RoomOffice({ client, roomId, members, onMention = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS, load = loadDrawing }) {
   const [phase, setPhase] = useState("loading");      // loading | live | failed | off
   const [d, setD] = useState(null);
   const [kit, setKit] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  // The drawing's modules failing to load is not the room's state failing to read: a good read must not hide it.
+  const [kitFailed, setKitFailed] = useState(false);
   const [stale, setStale] = useState(false);
   const misses = useRef(0);
   const holder = useMemo(() => ({ d: null }), [roomId]);
@@ -135,7 +145,7 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
   const storage = useMemo(() => roomOfficeStorage(), []);
   useEffect(() => {
     let stopped = false;
-    loadDrawing().then((k) => { if (!stopped) setKit(k); }, () => { if (!stopped) setPhase("failed"); });
+    if (!kit) load().then((k) => { if (!stopped) { setKit(k); setKitFailed(false); } }, () => { if (!stopped) setKitFailed(true); });
     const read = async () => {
       const r = await client.roomOfficeState(roomId);
       if (stopped || !lease.current()) return;
@@ -158,8 +168,8 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
     return (Array.isArray(members) ? members : []).find((m) => m && (id === "assistant" ? m.kind === "assistant" : m.kind === "agent" && m.id === id)) || null;
   };
   if (phase === "off") return html`<div class="hub-room-office hub-room-office-note"><p class="note" role="status">${hroom("officeOff")}</p></div>`;
-  if (phase === "failed" && !view) return html`<div class="hub-room-office hub-room-office-note">
-    <${ErrorState} message=${hroom("officeFailed")} onRetry=${() => { setPhase("loading"); setAttempt((n) => n + 1); }} /></div>`;
+  if ((phase === "failed" || kitFailed) && !view) return html`<div class="hub-room-office hub-room-office-note">
+    <${ErrorState} message=${hroom("officeFailed")} onRetry=${() => { setPhase("loading"); setKitFailed(false); setAttempt((n) => n + 1); }} /></div>`;
   if (!view) return html`<div class="hub-room-office hub-room-office-loading"><${Skeleton} variant="cards" lines=${3} label=${hroom("officeLoading")} /></div>`;
   const { Office } = kit;
   return html`<div class="hub-room-office" data-trust="panel-content">
@@ -168,6 +178,6 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
       oneOffice=${true} readOnly=${true} stream=${false} storage=${storage} words=${(node) => officeWords(node, members)}
       cardRows=${(name) => officeCardRows(members, shown.instances.find((i) => i.name === name)?.member)}
       cardAction=${onMention ? (name) => { const m = memberOf(name); return m ? { label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) } : null; } : null}
-      more=${more} onMore=${onMore} />
+      more=${more} onMore=${onMore} officesKey=${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""} />
   </div>`;
 }
