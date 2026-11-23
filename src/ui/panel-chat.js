@@ -1029,15 +1029,15 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
+    <div class="composer-hit" data-composer-focus onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
       : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
     <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
-    ${metaLine ? null : html`<div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
+    ${metaLine ? null : html`<div class="composer-row" data-composer-focus>${guestPage() ? html`<span class="guest-note" data-composer-focus title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
+      class="hint" data-composer-focus title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
   </div></div></div>`;
 }
 
@@ -1327,12 +1327,12 @@ function ChatMetaLine({ name, inst, lease, exec, awaiting, ids = {} }) {
     kind !== "awaiting" && since != null ? ` ${R().formatElapsed(performance.now() - since)}` : ""}` : "";
   const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const label = `${model}${effort ? ` · ${effort}` : ""}`;
-  return html`<div class=${`chat-meta${kind ? ` busy ${kind}` : ""}`} data-trust="status" role="status">
-    ${kind ? html`<span class="chat-meta-left"><span class="chat-meta-dot" aria-hidden="true"></span><span>${doing}${tail}</span></span>`
+  return html`<div class=${`chat-meta${kind ? ` busy ${kind}` : ""}`} data-trust="status" role="status" data-composer-focus>
+    ${kind ? html`<span class="chat-meta-left" data-composer-focus><span class="chat-meta-dot" data-composer-focus aria-hidden="true"></span><span data-composer-focus>${doing}${tail}</span></span>`
       : commands ? html`<button type="button" class="chat-meta-left chat-meta-model" title=${t("chat.chipModel", label)} aria-label=${t("chat.chipModel", label)}
           onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><span>${label}${tail}</span><span class="chev" aria-hidden="true">⌄</span></button>`
-      : html`<span class="chat-meta-left"><span>${label}${tail}</span></span>`}
-    <span class="chat-meta-right">${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
+      : html`<span class="chat-meta-left" data-composer-focus><span data-composer-focus>${label}${tail}</span></span>`}
+    <span class="chat-meta-right" data-composer-focus>${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
       onClick=${() => store.cancelReply(name)}>${t("chat.stopReply")}</button>` : null}<${ComposerAuth} /></span>
   </div>`;
 }
@@ -1346,7 +1346,7 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
     const h = lease.interval(() => tick(n => n + 1), 1000);      // ticks only while it shows, cleared with the lease
     return () => lease.clear(h);
   }, [kind, lease]);
-  if (!kind) return html`<div class="work-bar idle" aria-hidden="true"></div>`;
+  if (!kind) return html`<div class="work-bar idle" data-composer-focus aria-hidden="true"></div>`;
   // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
@@ -1430,8 +1430,7 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
     const el = input.current;
     if (el) try { el.focus(); el.setSelectionRange(c, c); } catch { /* no selection API */ }
   });
-  // A row of the list has a tabindex: the dock strip's pointer handler (focusComposerStrip) leaves a press on a control alone,
-  // and a row is one — otherwise it would cancel the press and the row's mouse-down would never choose it.
+  // Task rows keep their own interaction; only exact marked background surfaces opt into strip focus.
   const chooseRef = (v) => {
     if (!v || !refAt) return;
     recordEdit(input.current);                         // #2342: a step Ctrl+Z goes back from
@@ -1496,7 +1495,7 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   const paletteId = ids.cmdPalette || "cmdPalette";
   const optId = (c) => ids.cmdPalette ? `${ids.cmdPalette}-${c.name}` : `cmd-${c.name}`;
   const refListId = `${paletteId}-tasks`, refOptId = (v) => `${refListId}-${v.code}`;
-  return html`<div class="composer-box" ref=${bindings.box}>
+  return html`<div class="composer-box" data-composer-focus ref=${bindings.box}>
     ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${t("chat.cmdCommands")}>
