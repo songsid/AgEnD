@@ -18,10 +18,10 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, scrollBox, tileStatus, waitsForYou, waitsList, waitsOn, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, COLUMNS, NO_PROJECT, boardReadOnly, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, scrollBox, tileStatus, waitsForYou, waitsList, waitsOn, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardPage, assigneeItems } from "./fleet-task-card.js";
 import { CardMenu, cardAt, cardMenuItems, pageOrder, stepsOf } from "./fleet-task-menu.js";
-import { ListView, SubList, TaskToolbar, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, startFilters, writeDisplay } from "./fleet-task-view.js";
+import { ListView, NO_REACH, SubList, TaskToolbar, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, scrollReach, startFilters, writeDisplay } from "./fleet-task-view.js";
 import { CreateMainDialog } from "./fleet-task-create.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
 import { RunMark, inProgressBy, runOf, useRunContext } from "./fleet-task-run.js";
@@ -46,7 +46,9 @@ export function TaskBoardTab({ lease }) {
   const [state, setState] = useState(null);
   // `ifMoved`: a refresh that only wants the board if its revision moved (a stream event, a reconnect).
   const [version, setVersion] = useState({ n: 0, ifMoved: false });
-  const writable = true;   // M-3278: the public link's admin too (the host refuses a read-only session)
+  // Whether this page changes the board. A guest and a read-only session over the public link only read — nothing that edits, creates or moves is
+  // drawn for them (the host refuses their writes too); an admin session over the link writes as itself (M-3278), as the dashboard does.
+  const writable = !boardReadOnly();
   const [at, setAtRaw] = useState(() => {
     let v = readStored(PROJECT_KEY, "");
     try { v = new URLSearchParams(globalThis.location?.search || "").get("tp") ?? v; } catch { /* no address bar */ }
@@ -497,6 +499,32 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
     const lost = !document.activeElement || document.activeElement === document.body;
     if (el && lost) el.focus();
   });
+  // The columns scroll sideways when they do not fit (at 1366 px the fourth is cut and the fifth is out of sight). A platform may hide its
+  // scrollbar until it is used, so while some columns are out of sight the toolbar has buttons that scroll them.
+  const scrollEl = useRef(null);
+  const [reach, setReach] = useState(NO_REACH);
+  const showsColumns = display.view !== "list" && mains.length > 0;
+  useEffect(() => {
+    const el = scrollEl.current;
+    if (!showsColumns || !el) { setReach(NO_REACH); return undefined; }
+    const measure = () => {
+      const next = scrollReach(el);
+      setReach((r) => (r.over === next.over && r.left === next.left && r.right === next.right ? r : next));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const watch = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    if (watch) { watch.observe(el); if (el.firstElementChild) watch.observe(el.firstElementChild); }
+    return () => { el.removeEventListener("scroll", measure); if (watch) watch.disconnect(); };
+  }, [showsColumns, columns.length]);
+  const scrollColumns = (direction) => {
+    const el = scrollEl.current;
+    if (!el) return;
+    const step = Math.max(272, Math.round(el.clientWidth * 0.8));
+    const calm = !!(globalThis.matchMedia && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (typeof el.scrollBy === "function") el.scrollBy({ left: direction * step, behavior: calm ? "auto" : "smooth" });
+    else el.scrollLeft += direction * step;
+  };
   async function drop(card, to, after, before) {
     if (dropping.current) return;
     dropping.current = true;
@@ -569,12 +597,13 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
         ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
       </div>
     </div>
-    <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery} />
+    <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery}
+      scroller=${display.view === "list" ? null : { reach, by: scrollColumns }} />
     ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
     : html`${html`<div class="tb-seg tb-status-seg" role="group" aria-label=${t("taskview.statusTabs")}>${columns.map((status) =>
         html`<button key=${status} type="button" aria-pressed=${current === status ? "true" : "false"} class=${`tb-seg-btn${current === status ? " active" : ""}`}
           onClick=${() => setPhoneStatus(status)}><span class=${`tb-dot st-${status}`} aria-hidden="true"></span>${t(`tasks.${status}`)} <span class="tb-count">${mains.filter((c) => c.status === status).length}</span></button>`)}</div>`}
-      <div class="tb-scroll"><div class="tb-columns">
+      <div class="tb-scroll" ref=${scrollEl}><div class="tb-columns">
       ${columns.map((status) => {
         const list = mains.filter((c) => c.status === status);
         const line = spot && spot.status === status ? spot.index : -1;

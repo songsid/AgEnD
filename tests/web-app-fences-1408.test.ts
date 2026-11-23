@@ -242,11 +242,12 @@ describe("3a. one answer per card at a time", () => {
 });
 
 // M-3278 (decision 7933bf90): the public link's admin works the board as here (the host refuses a read-only session).
-describe("3c. the public link's board is writable as here (M-3278)", () => {
-  afterEach(() => { (globalThis as any).document.body.removeAttribute("data-public-link"); });
+describe("3c. over the public link an admin session's board is writable as here (M-3278)", () => {
+  afterEach(() => { for (const a of ["data-public-link", "data-link-media"]) (globalThis as any).document.body.removeAttribute(a); });
 
   it("no read-only note; Confirm and Send back, New project; on a project, its Main task button and dragging", async () => {
     (globalThis as any).document.body.dataset.publicLink = "1";
+    (globalThis as any).document.body.dataset.linkMedia = "1";   // the page marks an admin session over the link
     const open = { ...REVIEW_CARD, id: "M-2", uuid: "u2", status: "open", needsReview: false };
     handler = (path) => (path === "/ui/tasks/board" ? { ...BOARD, cards: [REVIEW_CARD, open] } : {});
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "tasks" }, navKey: "fleet:tasks|link|en" }));

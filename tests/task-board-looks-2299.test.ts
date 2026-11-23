@@ -44,7 +44,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   (globalThis as any).localStorage.removeItem("agend_tasks_project");
-  delete (globalThis as any).document.body.dataset.publicLink;
+  for (const k of ["publicLink", "linkMedia", "tier"]) delete (globalThis as any).document.body.dataset[k];
   handler = (path) => path === "/ui/tasks/board" ? { rev: 1, projects: [PROJECT], cards: [BLOCKED], stats: STATS } : path.startsWith("/ui/tasks/cards/") ? { card: BLOCKED, parent: null, children: [], comments: [], logs: [], history: [] } : {};
   app.applyStatus({ uptime: 1, instances: [{ name: "alpha", status: "running", state: "idle", execution_state: "idle" }] });
 });
@@ -75,8 +75,9 @@ describe("#2299 the task board's looks", () => {
   });
 
   // M-3278 (decision 7933bf90): the public link's admin edits the card as here.
-  it("3. over the public link the card's project, priority, size and review are editable as here (M-3278)", async () => {
+  it("3. over the public link an admin session edits the card's project, priority, size and review as here (M-3278)", async () => {
     (globalThis as any).document.body.dataset.publicLink = "1";
+    (globalThis as any).document.body.dataset.linkMedia = "1";   // an admin session over the link
     await mount("public");
     fire(p.root.querySelector(".tb-project-open"), "click");
     await settle(8);

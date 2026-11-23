@@ -45,7 +45,7 @@ register("taskview", {
     fieldstatus: "Status", fieldassignee: "Assignee", fieldpriority: "Priority", fieldsize: "Size",
     filters: "Filters", is: "is", isNot: "is not", opTip: "Switch between is and is not", values: "{0}: choose values",
     nValues: "{0} values", remove: "Remove this filter", clear: "Clear filters", changed: "Changed {0}", inMain: "Sub task of {0} {1}",
-    fieldwaits: "Needs you", waitsYou: "Waiting for me", viewLabel: "Board or list", search: "Search", searchLabel: "Search this project's cards (numbers, titles, fields, checklists)",
+    fieldwaits: "Needs you", waitsYou: "Waiting for me", viewLabel: "Board or list", scrollColumns: "Scroll the columns", columnsLeft: "Columns to the left", columnsRight: "Columns to the right", search: "Search", searchLabel: "Search this project's cards (numbers, titles, fields, checklists)",
     "order.assignee": "Assignee", "order.code": "Number", sortBy: "Sort by {0}", sortedBy: "{0}, sorted {1}", asc: "ascending", desc: "descending",
     colId: "ID", colTitle: "Title", colPriority: "Priority", colAssignee: "Assignee", colUpdated: "Updated",
     collapse: "Collapse {0}", expand: "Expand {0}", more: "Card actions", statusTabs: "Show one status", noMatch: "No cards match “{0}”", clearSearch: "Clear search",
@@ -59,7 +59,7 @@ register("taskview", {
     fieldstatus: "狀態", fieldassignee: "負責人", fieldpriority: "優先度", fieldsize: "大小",
     filters: "篩選條件", is: "是", isNot: "不是", opTip: "切換「是」與「不是」", values: "{0}：選擇項目",
     nValues: "{0} 項", remove: "移除這個條件", clear: "清除篩選", changed: "{0}變動", inMain: "{0} {1} 的子任務",
-    fieldwaits: "等我處理", waitsYou: "等我確認", viewLabel: "看板或清單", search: "搜尋", searchLabel: "搜尋這個專案的卡片（卡號、標題、欄位、完成定義）",
+    fieldwaits: "等我處理", waitsYou: "等我確認", viewLabel: "看板或清單", scrollColumns: "捲動欄位", columnsLeft: "左邊的欄位", columnsRight: "右邊的欄位", search: "搜尋", searchLabel: "搜尋這個專案的卡片（卡號、標題、欄位、完成定義）",
     "order.assignee": "負責人", "order.code": "卡號", sortBy: "依{0}排序", sortedBy: "{0}，{1}排序", asc: "由小到大", desc: "由大到小",
     colId: "卡號", colTitle: "標題", colPriority: "優先度", colAssignee: "負責人", colUpdated: "更新",
     collapse: "收合 {0}", expand: "展開 {0}", more: "卡片動作", statusTabs: "一次看一個狀態", noMatch: "沒有符合「{0}」的卡片", clearSearch: "清除搜尋",
@@ -286,6 +286,28 @@ export function ViewToggle({ display, onChange }) {
       onClick=${() => display.view !== v && onChange({ ...display, view: v })}>${t(`taskview.${v}`)}</button>`)}</div>`;
 }
 
+/**
+ * How far the board's columns reach past their box: `over` (they do not fit, so they scroll sideways), and whether there is more
+ * to the `left` and to the `right` of what shows. Pure on the box's measures (a platform may hide its scrollbar until it is used,
+ * so the toolbar says it in buttons).
+ */
+export function scrollReach({ scrollWidth, clientWidth, scrollLeft }) {
+  const over = scrollWidth - clientWidth > 1;
+  return { over, left: over && scrollLeft > 1, right: over && scrollLeft + clientWidth < scrollWidth - 1 };
+}
+export const NO_REACH = { over: false, left: false, right: false };
+
+/**
+ * "‹ ›" at the toolbar's end while the board has columns out of sight: a click scrolls the columns by most of a screen. A button
+ * with nothing to reach is dimmed and says so (`aria-disabled`), and keeps the focus, so a key press can still land on it.
+ */
+export function ColumnScroll({ reach, onScroll }) {
+  const btn = (dir, icon, can, label) => html`<button type="button" class="tb-seg-btn tb-scroll-btn" aria-label=${label} title=${label}
+    aria-disabled=${can ? "false" : "true"} onClick=${() => { if (can) onScroll(dir); }}><${Icon} name=${icon} size=${16} /></button>`;
+  return html`<div class="tb-seg tb-scroll-nav" role="group" aria-label=${t("taskview.scrollColumns")}>
+    ${btn(-1, "prev", reach.left, t("taskview.columnsLeft"))}${btn(1, "next", reach.right, t("taskview.columnsRight"))}</div>`;
+}
+
 /** The project's search: filters what the board and the list show as you type; Esc clears it. */
 export function SearchField({ value, onChange }) {
   return html`<div class="tb-search tb-find">
@@ -296,15 +318,16 @@ export function SearchField({ value, onChange }) {
 }
 
 /**
- * One row of controls under a project's header: the board / list switch, the search, Filter and Display,
- * then the filters in force as chips. The filters, the view and the display are kept on this device.
+ * One row of controls under a project's header: the board / list switch, the search, Filter and Display, the buttons that scroll
+ * the board's columns while some are out of sight (`scroller`: its `reach` and `by(direction)`), then the filters in force as chips. The filters, the view and the display are kept on this device.
  */
-export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery }) {
+export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery, scroller = null }) {
   return html`<div class="tb-view-bar">
     <${ViewToggle} display=${display} onChange=${onDisplay} />
     <${SearchField} value=${query} onChange=${onQuery} />
     <${FilterMenu} cards=${cards} filters=${filters} onChange=${onFilters} />
     <${DisplayMenu} display=${display} onChange=${onDisplay} />
+    ${scroller && scroller.reach.over ? html`<${ColumnScroll} reach=${scroller.reach} onScroll=${scroller.by} />` : null}
     <${FilterBar} cards=${cards} filters=${filters} onChange=${onFilters} />
   </div>`;
 }

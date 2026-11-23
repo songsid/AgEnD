@@ -400,8 +400,8 @@ export function notesForPeople(notes) {
 export const onPublicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
 /**
  * A viewer whose writes the host refuses — a guest, or a session over the public link that is not an admin's (an
- * admin session over the link writes as itself, M-3278: the page marks it `data-link-media`). What changes a card at the
- * board's own tile (the avatar's picker) is not offered to them; they read.
+ * admin session over the link writes as itself, M-3278: the page marks it `data-link-media`). The Tasks tab takes it as its
+ * root permission (`writable`): nothing that edits, creates or moves a card is offered to them; they read.
  */
 export const boardReadOnly = () => {
   const d = typeof document !== "undefined" && document.body ? document.body.dataset : null;

@@ -134,6 +134,24 @@ for (const c of matrix()) {
     await page.waitForTimeout(400);
     await shot("2-board", true);
     if (phone) chk.phoneBoardNoSideScroll = await noSideScroll(page);
+    if (AFTER) {   // columns that do not fit the window: the toolbar has ‹ › buttons exactly then (a phone stacks its columns: none)
+      const nav = page.locator(".tb-scroll-nav .tb-scroll-btn");
+      const overflows = await page.evaluate(() => { const b = document.querySelector(".tb-scroll"); return !!b && b.scrollWidth - b.clientWidth > 1; });
+      chk.scrollButtonsOnlyWhenColumnsOverflow = ((await nav.count()) === 2) === overflows;
+      if (phone) chk.noScrollButtonsOnAPhone = (await nav.count()) === 0;
+      else {
+        chk.columnsOverflowOnADesk = overflows;
+        const at = () => page.evaluate(() => document.querySelector(".tb-scroll")!.scrollLeft);
+        const start = await at();
+        await nav.nth(1).click();
+        await page.waitForTimeout(700);
+        chk.scrollRightButtonScrolls = (await at()) > start;
+        await shot("2b-board-scrolled", true);
+        await nav.nth(0).click();
+        await page.waitForTimeout(700);
+        chk.scrollLeftButtonScrollsBack = (await at()) <= start + 1;
+      }
+    }
 
     // The list.
     if (AFTER) await clickVisible(page, ".tb-view-toggle button:nth-child(2)");

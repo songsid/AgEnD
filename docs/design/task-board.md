@@ -231,8 +231,8 @@ shows the newer card with the draft still open, and saving again overwrites. `?c
   an Esc, or a switch to another window, saves nothing. Every save keeps the version the edit started from. After a 409
   the box stays open with a line saying the card changed and two answers (Overwrite, Discard my change): leaving the box
   never overwrites silently. Chip saves go one after another, each on the version the one before left. A comment carries
-  no version, as before.
-- **The toolbar.** Board | List, search, Filter and Display are one row (`TaskToolbar`). The view, grouping, order and
+  no version, as before. What is typed while a save is still on its way is newer than what the server holds, so it is kept: when the save succeeds the box stays open on that text (a box left meanwhile saves it now) and its save is on the card as the first save left it (`followLatest`); only an unchanged box closes. The page's permission is one value, `writable = !boardReadOnly()` in the Tasks tab: a guest and a read-only session over the public link get a page with nothing that edits, creates or moves a card; an admin session over the link writes as itself.
+- **The toolbar.** Board | List, search, Filter and Display are one row (`TaskToolbar`). While the board's columns do not fit the window (`.tb-scroll` scrolls sideways; a platform may hide its scrollbar until it is used) it ends with ‹ › buttons that scroll them (`ColumnScroll`, `scrollReach`): shown only while some column is out of sight, the one with nothing to reach dimmed with `aria-disabled` so it keeps the focus. The view, grouping, order and
   direction (`agend_tasks_display`), the filters (`agend_tasks_filters`, also `?tf=`), the folded list groups
   (`agend_tasks_collapsed`, per project) and the search (`agend_tasks_query`) are kept on the device; a value an older build stored
   still reads, an unknown one falls back to its default. Needs you is a filter field (`waits:you`, the rule of Waiting for

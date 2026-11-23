@@ -50,7 +50,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   for (const k of ["agend_tasks_project", "agend_tasks_display", "agend_tasks_filters"]) (globalThis as any).localStorage.removeItem(k);
-  delete (globalThis as any).document.body.dataset.publicLink;
+  for (const k of ["publicLink", "linkMedia", "tier"]) delete (globalThis as any).document.body.dataset[k];
   (globalThis as any).history.replaceState(null, "", "/ui/fleet");
   calls.length = 0;
   handler = (path, method) => {
@@ -196,7 +196,7 @@ describe("a right click on a card", () => {
   });
 
   // M-3278 (decision 7933bf90): the public link's admin works the board — its card menu is the dashboard's.
-  it("anywhere else: the browser's own menu; over the public link the same card menu as here (M-3278)", async () => {
+  it("anywhere else: the browser's own menu; over the public link an admin session has the same card menu as here (M-3278)", async () => {
     await mount();
     const e = fire(q(".tb-bar-head"), "contextmenu", { cancelable: true });
     expect(e.defaultPrevented).toBe(false);
@@ -208,7 +208,8 @@ describe("a right click on a card", () => {
     await rightClick(q('[data-tile="M-1"]'));
     const here = labels();
     expect(here).toContain("To do");
-    (globalThis as any).document.body.dataset.publicLink = "1";
+    (globalThis as any).document.body.dataset.publicLink = "1";   // an admin session over the link (what the page marks `data-link-media`) writes as itself
+    (globalThis as any).document.body.dataset.linkMedia = "1";
     await mount();
     await rightClick(q('[data-tile="M-1"]'));
     expect(labels()).toEqual(here);

@@ -40,6 +40,10 @@
 /* Under the project's header, as Linear's options row: Filter, Display, then the filters in force. */
 .tb-view-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-3) 0; }
 .tb-view-bar > .menu > .menu-text.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+/* While columns are out of sight the toolbar says so: "‹ ›" at its end (a button with nothing to reach is dimmed, not removed, so the focus stays). */
+.tb-scroll-nav { margin-left: auto; }
+.tb-scroll-btn { display: inline-flex; align-items: center; justify-content: center; }
+.tb-scroll-btn[aria-disabled="true"] { opacity: 0.4; cursor: default; }
 .tb-view-bar .menu-list { left: 0; right: auto; max-height: min(70vh, 520px); overflow-y: auto; }
 .tb-filters { display: contents; }
 .tb-chip { display: inline-flex; align-items: center; min-height: 30px; max-width: 100%; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface); font-size: var(--fs-xs); }

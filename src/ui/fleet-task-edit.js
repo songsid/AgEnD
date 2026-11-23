@@ -11,14 +11,18 @@ import { Menu } from "/assets/ui-menu.js";
 
 /**
  * Which version an edit started from: a save sends it, so an agent's newer write is caught (409). After a conflict
- * the next save of the same draft overwrites on purpose (null: no check).
+ * the next save of the same draft overwrites on purpose (null: no check). After a save went through while more was
+ * typed, the next save is on the card as that save left it (`followLatest`: `current()` is undefined, which the page
+ * reads as "the version of the card as last read").
  */
 export function useEditBase(version) {
   const [base, setBase] = useState(version);
+  const following = useRef(false);
   return {
-    start: () => setBase(version),
-    current: () => (base === undefined ? version : base),
-    afterSave: (outcome) => { if (outcome === "conflict") setBase(null); },
+    start: () => { following.current = false; setBase(version); },
+    current: () => (following.current ? undefined : base === undefined ? version : base),
+    afterSave: (outcome) => { if (outcome === "conflict") { following.current = false; setBase(null); } },
+    followLatest: () => { following.current = true; },
   };
 }
 
@@ -46,7 +50,12 @@ export function useInlineEdit({ value, version, onSave, valid = () => true, prep
   const ref = useAutoFocus(draft !== null);
   const dropped = useRef(false);   // Esc: the blur that follows must not save
   const busy = useRef(false);
-  const start = (text = value) => { dropped.current = false; setPhase("idle"); setDraft(text); base.start(); };
+  // What the box holds now, whatever render a pending save was started in; the box left while a save was pending.
+  const draftNow = useRef(draft);
+  draftNow.current = draft;
+  const leftWhileSaving = useRef(false);
+  const again = useRef(null);      // the latest `commit`, for the save that follows a save
+  const start = (text = value) => { dropped.current = false; leftWhileSaving.current = false; setPhase("idle"); setDraft(text); base.start(); };
   const close = () => { setDraft(null); setPhase("idle"); if (onClose) onClose(); };
   const cancel = () => { dropped.current = true; close(); };
   async function commit() {
@@ -55,17 +64,30 @@ export function useInlineEdit({ value, version, onSave, valid = () => true, prep
     if (same(next, value) || (emptyDrops && next === "")) { close(); return; }   // nothing changed, or nothing left: as it was
     if (!valid(next)) return;
     busy.current = true;
+    leftWhileSaving.current = false;
     setPhase("saving");
     let outcome = "error";
     try { outcome = await onSave(next, base.current()); } finally { busy.current = false; }
-    if (outcome === "ok") { close(); return; }
+    if (outcome === "ok") {
+      const now = draftNow.current;
+      if (now === null) return;                          // dropped (Esc) while it saved: the edit is over
+      if (prepare(now) === next) { close(); return; }    // what was sent is what the box holds: done
+      // More was typed while it saved: that text is newer than what went through, so it stays — the box stays open on it,
+      // and its save is on the card as this save left it. Had the box been left meanwhile, leaving it saves it now.
+      base.followLatest();
+      setPhase("idle");
+      if (leftWhileSaving.current && again.current) { leftWhileSaving.current = false; void again.current(); }
+      return;
+    }
     base.afterSave(outcome);
     setPhase(outcome === "conflict" ? "conflict" : "failed");
   }
+  again.current = commit;
   /** Leaving the box saves — but not after Esc, not while a conflict waits for an explicit answer, not on a window switch. */
   const blur = () => {
     if (dropped.current) { dropped.current = false; return; }
-    if (phase === "conflict" || phase === "saving" || windowAway()) return;
+    if (phase === "saving") { if (!windowAway()) leftWhileSaving.current = true; return; }   // what is typed on meanwhile is saved when this save is over
+    if (phase === "conflict" || windowAway()) return;
     void commit();
   };
   return { draft, setDraft, phase, ref, start, cancel, commit, blur };

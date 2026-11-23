@@ -10,10 +10,14 @@
  *  - a new main task needs only a title; a phone shows one status at a time and every card has a ⋯ menu;
  *  - what an older board holds — every status, no project, dependencies, a dispatcher gone, cancelled cards — opens.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
+const UI = fileURLToPath(new URL("../src/ui", import.meta.url));
 let p: AppPage;
 let app: any, nav: any, fleet: any, view: any, activity: any, cardMod: any, create: any, common: any, workMod: any;
 const calls: Array<{ method: string; path: string; body: any }> = [];
@@ -83,7 +87,7 @@ beforeEach(async () => {
   await p.unmount();
   const ls = (globalThis as any).localStorage;
   for (const k of ["agend_tasks_project", "agend_tasks_display", "agend_tasks_filters", "agend_tasks_assignee", "agend_tasks_query", "agend_tasks_collapsed"]) ls.removeItem(k);
-  delete (globalThis as any).document.body.dataset.publicLink;
+  for (const k of ["publicLink", "linkMedia", "tier"]) delete (globalThis as any).document.body.dataset[k];
   (globalThis as any).history.replaceState(null, "", "/ui/fleet");
   (globalThis as any).history.entries.length = 1;
   (globalThis as any).history.states.length = 1;
@@ -591,6 +595,80 @@ describe("text edits where it is read", () => {
     expect(posts()).toHaveLength(1);
     expect(fieldOf("Goal").querySelector("textarea")).toBeNull();
   });
+
+  // A save that is still on its way when more is typed: the text typed after what was sent is newer than what the server holds,
+  // so it is not thrown away when the first save succeeds — the box stays open on it, and its save is on the card as the first left it.
+  const slowSave = () => {
+    let version = 4, goal = M1.goal, first = true;
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    const base = handler;
+    handler = async (path, method, body) => {
+      if (path === "/ui/tasks/cards/M-1" && method === "POST") {
+        if (first) { first = false; await held; }
+        if (body.version !== version) return { __status: 409, error: "stale", key: "conflict", args: ["M-1", "alpha"] };
+        version++; goal = body.goal;
+        return { card: { ...M1, goal, version }, notes: [] };
+      }
+      if (path === "/ui/tasks/cards/M-1") return detailOf("M-1", { card: { ...M1, goal, version } });
+      return base(path, method, body);
+    };
+    return { release: () => release() };
+  };
+  it("text typed while a save is on its way is kept: the box stays open on it, and its save sends the new text on the version the first save left", async () => {
+    const slow = slowSave();
+    await mount();
+    await openCard("M-1");
+    const box = await open("Goal");
+    await typeInto(box, "First draft");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);      // sent; the answer is held
+    expect(text(fieldOf("Goal").querySelector(".tc-edit-bar")), "it says it is saving").toContain("Saving");
+    await typeInto(box, "First draft, and more typed while it saved");                            // the box still takes text meanwhile
+    slow.release(); await settle(12);
+    expect(posts().map((c) => c.body), "only the first draft had gone").toEqual([{ goal: "First draft", version: 4 }]);
+    const again = fieldOf("Goal").querySelector("textarea");
+    expect(again, "the first save went through, and the box is still open").toBeTruthy();
+    expect(again.value, "…on the newer text").toBe("First draft, and more typed while it saved");
+    expect(fieldOf("Goal").querySelector(".tc-edit-bar .err"), "no conflict, no failure").toBeNull();
+    fire(again, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
+    expect(posts().map((c) => c.body)[1], "the new text, on the new version").toEqual({ goal: "First draft, and more typed while it saved", version: 5 });
+    expect(posts()).toHaveLength(2);
+    expect(fieldOf("Goal").querySelector("textarea"), "nothing newer is left: the edit closes").toBeNull();
+  });
+  it("leaving the box while a save is on its way saves what was typed after it, once the first save is over; and typing nothing more closes the box as before", async () => {
+    const slow = slowSave();
+    await mount();
+    await openCard("M-1");
+    let box = await open("Goal");
+    await typeInto(box, "First draft");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);
+    await typeInto(box, "First draft, plus a line");
+    fire(box, "blur"); await settle(4);                                                           // left while the first is still on its way
+    expect(posts()).toHaveLength(1);
+    slow.release(); await settle(14);
+    expect(posts().map((c) => c.body)).toEqual([{ goal: "First draft", version: 4 }, { goal: "First draft, plus a line", version: 5 }]);
+    expect(fieldOf("Goal").querySelector("textarea"), "both are saved: the box is closed").toBeNull();
+    // Nothing typed after the send: the box closes once saved, as before.
+    calls.length = 0;
+    box = await open("Context");
+    await typeInto(box, "See M-4");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
+    expect(posts()).toHaveLength(1);
+    expect(fieldOf("Context")?.querySelector("textarea") ?? null).toBeNull();
+  });
+  it("Esc while a save is on its way drops the edit; the save that was sent still goes through and does not reopen the box", async () => {
+    const slow = slowSave();
+    await mount();
+    await openCard("M-1");
+    const box = await open("Goal");
+    await typeInto(box, "First draft");
+    fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(4);
+    await typeInto(box, "First draft, more");
+    fire(box, "keydown", { key: "Escape", cancelable: true }); await settle(4);
+    slow.release(); await settle(12);
+    expect(posts().map((c) => c.body)).toEqual([{ goal: "First draft", version: 4 }]);
+    expect(fieldOf("Goal").querySelector("textarea"), "dropped means closed").toBeNull();
+  });
 });
 
 describe("the timeline and the comment box on the page", () => {
@@ -883,5 +961,125 @@ describe("what an existing user's board holds still opens, and their stored choi
     (globalThis as any).localStorage.removeItem("agend_tasks_assignee");
     await mount({ agend_tasks_project: "none", agend_tasks_display: JSON.stringify({ view: "board" }) });
     expect(qa(".tb-tile").map((t) => t.getAttribute("data-tile"))).toEqual(["M-7"]);
+  });
+});
+
+// ── Who may change the board: the Tasks tab itself decides, for every control the page draws ────────────────
+
+describe("who may change the board — through the real Tasks tab", () => {
+  // `body` flags the host sets: a guest (`tier`), a session over the public link (`publicLink`), and an admin's among them (`linkMedia`).
+  const WHO: Array<[string, Record<string, string>, boolean]> = [
+    ["a guest", { tier: "guest" }, false],
+    ["a read-only session over the public link", { publicLink: "1" }, false],
+    ["a guest over the public link", { publicLink: "1", tier: "guest" }, false],
+    ["an admin session over the public link (M-3278)", { publicLink: "1", linkMedia: "1" }, true],
+    ["the dashboard itself", {}, true],
+  ];
+  const setWho = (flags: Record<string, string>) => {
+    for (const k of ["publicLink", "linkMedia", "tier"]) delete doc().body.dataset[k];
+    Object.assign(doc().body.dataset, flags);
+  };
+  afterEach(() => setWho({}));
+
+  for (const [who, flags, writes] of WHO) {
+    it(`${who}: ${writes ? "every control that changes the board is drawn" : "the board, the list and the card are for reading — nothing that edits, creates or moves is drawn"}`, async () => {
+      setWho(flags);
+      // Home: the projects, and what waits for the person.
+      await mount({});
+      expect(!!q(".tb-home"), "the tab opens on its projects").toBe(true);
+      expect(!!q(".tb-readonly"), "the read-only note").toBe(!writes);
+      expect(!!q(".list-head .btn-primary"), "New project").toBe(writes);
+      // A project's board.
+      await mount();
+      expect(!!q(".tb-board-page")).toBe(true);
+      expect(!!q(".tb-readonly"), "the read-only note on the board").toBe(!writes);
+      expect(!!q(".tb-bar-head .btn-primary"), "the Main task button").toBe(writes);
+      expect(qa(".tb-tile").map((el) => el.getAttribute("draggable")), "a tile is dragged only by a writer").toEqual(qa(".tb-tile").map(() => (writes ? "true" : "false")));
+      expect(qa(".tb-tile .tb-owner-btn:not(.is-static)").length > 0, "the avatar picks another assignee").toBe(writes);
+      // The list.
+      fire(qa(".tb-view-toggle button").find((b) => text(b) === "List"), "click"); await settle(6);
+      expect(qa(".tb-row").length).toBeGreaterThan(0);
+      expect(qa(".tb-row .tb-owner-btn:not(.is-static)").length > 0, "the list's avatar").toBe(writes);
+      // A card's page.
+      await openCard("M-1");
+      expect(!!q(".tp"), "the card opens as a page").toBe(true);
+      const titleEl = q(".tp .tp-head .tc-title, .tp .tc-title");
+      expect(titleEl.tagName, "the title is text, or a field to edit").toBe(writes ? "BUTTON" : "H2");
+      expect(qa(".tp-side button.tp-chip").length > 0, "properties are chips that open menus").toBe(writes);
+      expect(qa(".tp-side .tp-static").length > 0, "…or values as text").toBe(!writes);
+      expect(!!q(".tp-switch input"), "the Needs my confirmation switch").toBe(writes);
+      expect(!!q(".tc-composer"), "the comment box").toBe(writes);
+      expect(!!q(".tp-body .tc-quick-add"), "adding a sub task").toBe(writes);
+      expect(qa(".tp-add").length > 0, "the + Add buttons of the empty fields").toBe(writes);
+      expect(qa(".tp-body .tc-field .tc-text").filter((el) => el.tagName === "BUTTON").length > 0, "a text opens as a box on a click").toBe(writes);
+      expect(qa(".tp-body .tb-check input").every((el) => el.disabled === !writes) && qa(".tp-body .tb-check input").length > 0, "ticks").toBe(true);
+      expect(!!q(".tp-body .tc-editlist"), "Edit the list").toBe(writes);
+      expect(qa(".tp .tc-actions button, .tp .tp-bar .tp-more, .tp .tp-bar .menu-trigger").length > 0, "Mark blocked, the ⋯ menu and the card's actions").toBe(writes);
+      expect(qa(".tp-row .tc-dep + .btn, .tp-row .btn").filter((b) => text(b) === "Edit").length > 0, "Edit the dependencies").toBe(writes);
+      // Whatever it is, nothing was written by looking.
+      expect(posts()).toEqual([]);
+    });
+  }
+});
+
+// ── Columns that do not fit: a way to reach them that can be seen ──────────────────────────────────────────
+
+describe("the columns that do not fit the window", () => {
+  // The test DOM has no layout: the scroll box is given the measures a browser would read, then told it scrolled.
+  const measure = async (box: any, m: { scrollWidth: number; clientWidth: number; scrollLeft: number }) => { Object.assign(box, m); fire(box, "scroll"); await settle(3); };
+  const buttons = () => qa(".tb-scroll-nav .tb-scroll-btn");
+  const state = () => buttons().map((b) => b.getAttribute("aria-disabled"));
+
+  it("scrollReach: columns that fit reach nowhere; past their box they reach to the right, then both ways, then only to the left", () => {
+    expect(view.scrollReach({ scrollWidth: 1000, clientWidth: 1000, scrollLeft: 0 })).toEqual({ over: false, left: false, right: false });
+    expect(view.scrollReach({ scrollWidth: 1001, clientWidth: 1000, scrollLeft: 0 }), "a pixel of rounding is not an overflow").toEqual({ over: false, left: false, right: false });
+    expect(view.scrollReach({ scrollWidth: 1900, clientWidth: 1000, scrollLeft: 0 })).toEqual({ over: true, left: false, right: true });
+    expect(view.scrollReach({ scrollWidth: 1900, clientWidth: 1000, scrollLeft: 400 })).toEqual({ over: true, left: true, right: true });
+    expect(view.scrollReach({ scrollWidth: 1900, clientWidth: 1000, scrollLeft: 900 })).toEqual({ over: true, left: true, right: false });
+  });
+  it("while columns are out of sight the toolbar has ‹ › buttons; a click scrolls by most of a screen; a button with nothing to reach is dimmed and keeps the focus", async () => {
+    await mount();
+    const box = q(".tb-scroll");
+    expect(q(".tb-scroll-nav"), "nothing out of sight: no buttons").toBeNull();
+    await measure(box, { scrollWidth: 1900, clientWidth: 1000, scrollLeft: 0 });
+    expect(q(".tb-view-bar .tb-scroll-nav"), "in the toolbar").toBeTruthy();
+    expect(q(".tb-scroll-nav").getAttribute("role")).toBe("group");
+    expect(buttons().map((b) => b.tagName), "real buttons: reachable and pressable by keyboard").toEqual(["BUTTON", "BUTTON"]);
+    expect(buttons().map((b) => b.getAttribute("aria-label"))).toEqual(["Columns to the left", "Columns to the right"]);
+    expect(state(), "at the start there is nothing to the left").toEqual(["true", "false"]);
+    fire(buttons()[0], "click"); await settle(2);
+    expect(box.scrollLeft, "a dimmed button does nothing").toBe(0);
+    fire(buttons()[1], "click"); await settle(2);
+    expect(box.scrollLeft, "80% of the box").toBe(800);
+    await measure(box, { scrollWidth: 1900, clientWidth: 1000, scrollLeft: 800 });
+    expect(state()).toEqual(["false", "false"]);
+    await measure(box, { scrollWidth: 1900, clientWidth: 1000, scrollLeft: 900 });
+    expect(state(), "at the end there is nothing to the right").toEqual(["false", "true"]);
+    fire(buttons()[0], "click"); await settle(2);
+    expect(box.scrollLeft).toBe(100);
+    await measure(box, { scrollWidth: 1000, clientWidth: 1000, scrollLeft: 0 });
+    expect(q(".tb-scroll-nav"), "the window grew: they fit again, the buttons go").toBeNull();
+  });
+  it("the list has no columns to scroll: no buttons there, and they are back on the board", async () => {
+    await mount();
+    await measure(q(".tb-scroll"), { scrollWidth: 1900, clientWidth: 1000, scrollLeft: 0 });
+    expect(q(".tb-scroll-nav")).toBeTruthy();
+    fire(qa(".tb-view-toggle button").find((b) => text(b) === "List"), "click"); await settle(6);
+    expect(q(".tb-scroll-nav"), "the list").toBeNull();
+    fire(qa(".tb-view-toggle button").find((b) => text(b) === "Board"), "click"); await settle(6);
+    expect(q(".tb-scroll-nav"), "nothing measured yet on the new board box").toBeNull();
+    await measure(q(".tb-scroll"), { scrollWidth: 1900, clientWidth: 1000, scrollLeft: 0 });
+    expect(q(".tb-scroll-nav")).toBeTruthy();
+  });
+  it("the words are in both languages, and the buttons are styled from the shared segmented control with no colour or style of their own", async () => {
+    const css = readFileSync(join(UI, "shared", "task-board.css"), "utf8");
+    const rules = css.split("\n").filter((l) => /\.tb-scroll-(nav|btn)/.test(l)).join("\n");
+    expect(rules).toMatch(/\.tb-scroll-nav \{ margin-left: auto; \}/);
+    expect(rules, "no colour literal").not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(/);
+    const i18n = await import("/assets/app-i18n.js");
+    try {
+      i18n.setLang("zh-TW", { store: false });
+      expect([i18n.t("taskview.scrollColumns"), i18n.t("taskview.columnsLeft"), i18n.t("taskview.columnsRight")]).toEqual(["捲動欄位", "左邊的欄位", "右邊的欄位"]);
+    } finally { i18n.setLang("en", { store: false }); }
   });
 });
