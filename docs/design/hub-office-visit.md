@@ -353,13 +353,16 @@ R1 comes first: it needs nothing new from any Fleet, and it shows the idea to ev
 
 ## Questions for the owner
 
-| # | Question | Recommendation |
+**Answered by the owner on 2026-11-23: all six as recommended** (「6 題都照建議」, relayed by the leader). The
+recommendation column below is therefore the decision.
+
+| # | Question | Recommendation (now the decision) |
 |---|---|---|
 | Q1 | Who may visit by default? | **Nobody until the owner chooses**, with "Everyone who can use this Hub" one click away |
 | Q2 | Should visitors see agents the owner has not shared on the Hub? | **Yes**, as on a share link, and say so in the dialog. The other choice (only shared agents) leaves most offices half empty |
 | Q3 | Pat and Feed for visitors and room members | **Not in the first build**; later, on the visitor's own screen only |
 | Q4 | Should the owner see who is visiting? | **Later, yes**: a count and names in their Office bar. Being watched without knowing is the one uncomfortable part of this feature |
-| Q5 | Is a room's office on when a room is made? | **On**, with the setting to turn it off. It shows nothing members cannot already see except the look and state, which owners control |
+| Q5 | Is a room's office on when a room is made? | **On**, with the setting to turn it off. It shows nothing members cannot already see except the look (the clause about owners controlling the look and state is out of date: the per-agent switch was dropped). Relayed by the leader as on for existing rooms too |
 | Q6 | Build order | **Room office first (R1, R2), then visiting (V1)** |
 
 ## 給擁有者的摘要（zh-TW）
