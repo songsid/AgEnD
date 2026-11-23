@@ -263,13 +263,16 @@ describe("POST /api/settings/apply", () => {
     expect((await request("/api/settings/apply", ctx, "POST", {
       body: { idempotency_key: "choice-default-key" },
     })).status).toBe(202);
-    expect(start).toHaveBeenLastCalledWith("choice-default-key", "next-start");
+    expect(start).toHaveBeenLastCalledWith("choice-default-key", "next-start", []);
     expect((await request("/api/settings/apply", ctx, "POST", {
-      body: { idempotency_key: "choice-restart-key", shared_defaults: "restart" },
+      body: { idempotency_key: "choice-restart-key", shared_defaults: "restart", shared_defaults_targets: ["one"] },
     })).status).toBe(202);
-    expect(start).toHaveBeenLastCalledWith("choice-restart-key", "restart");
+    expect(start).toHaveBeenLastCalledWith("choice-restart-key", "restart", ["one"]);
     expect((await request("/api/settings/apply", ctx, "POST", {
       body: { idempotency_key: "choice-invalid-key", shared_defaults: "anything" },
+    })).status).toBe(400);
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-missing-targets", shared_defaults: "restart" },
     })).status).toBe(400);
     expect(start).toHaveBeenCalledTimes(2);
   });

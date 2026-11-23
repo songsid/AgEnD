@@ -6,7 +6,7 @@ import { FleetManager } from "../src/fleet-manager.js";
 import type { ApplyJob } from "../src/apply-job.js";
 const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true }); });
-function setup() {
+function setup(secondRunning = false) {
   const dir = mkdtempSync(join(tmpdir(), "default-apply-")); dirs.push(dir);
   const path = join(dir, "fleet.yaml");
   writeFileSync(path, `defaults: {backend: claude-code, model: old}\ninstances:\n  one: {working_directory: /tmp/one}\n  stopped: {working_directory: /tmp/stopped}\n  other: {working_directory: /tmp/other, backend: grok}\n`);
@@ -14,6 +14,10 @@ function setup() {
   const runtime = structuredClone(fm.fleetConfig!.instances.one);
   const daemon = { getConfigSnapshot: () => runtime, applyConfigUpdate: vi.fn() };
   fm.lifecycle.daemons.set("one", daemon as never);
+  if (secondRunning) {
+    const secondConfig = structuredClone(fm.fleetConfig!.instances.stopped);
+    fm.lifecycle.daemons.set("stopped", { getConfigSnapshot: () => secondConfig } as never);
+  }
   const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
   const start = vi.spyOn(fm as any, "startInstanceUnattended").mockResolvedValue(undefined);
   fm.fleetConfig!.defaults.model = "new";
@@ -21,7 +25,7 @@ function setup() {
   return { fm, runtime, daemon, stop, start };
 }
 async function apply(fm: FleetManager, key: string, choice?: "next-start" | "restart") {
-  const { job } = fm.startSettingsApply(key, choice) as { job: ApplyJob };
+  const { job } = fm.startSettingsApply(key, choice, choice === "restart" ? ["one"] : []) as { job: ApplyJob };
   await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
   return fm.applyJobs.get(job.id)!;
 }
@@ -115,4 +119,20 @@ it("a Classic room's named login does not turn a deferred backend edit into a pr
   writeFileSync(join(dir, "classicBot.yaml"), "channels:\n  example-room:\n    channelId: example-channel\n    adapterId: discord\n    instanceName: example-room\n    description: Example room description\n");
   await (fm as any).reloadClassicConfigFromDisk();
   expect(stop).not.toHaveBeenCalled(); expect(restartClassic).not.toHaveBeenCalled();
+});
+
+it("R1: restart consent covers only the names shown in the confirmation", async () => {
+  const { fm, stop } = setup(true);
+  const { job } = fm.startSettingsApply("shared-confirmed-names", "restart", ["one"]) as { job: ApplyJob };
+  await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
+  expect(stop).toHaveBeenCalledExactlyOnceWith("one");
+  expect(fm.applyJobs.get(job.id)?.targets.find(r => r.target === "stopped")?.status).toBe("next-start");
+});
+it("R1: a restart mode without a confirmed target list never restarts", async () => {
+  const { fm, stop } = setup();
+  const { job: pending } = fm.startSettingsApply("shared-no-confirmed-names", "restart") as { job: ApplyJob };
+  await vi.waitFor(() => expect(fm.applyJobs.get(pending.id)?.status).toBe("done"));
+  const job = fm.applyJobs.get(pending.id)!;
+  expect(stop).not.toHaveBeenCalled();
+  expect(job.targets.find(r => r.target === "one")?.status).toBe("next-start");
 });

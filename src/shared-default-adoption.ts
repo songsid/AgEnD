@@ -16,7 +16,9 @@ export class SharedDefaultAdoption {
   }
 
   /** Capture consent for these exact saved values and runtime owners, not later saves. */
-  consent(): ReadonlySet<object> { return new Set(this.entries.values()); }
+  consent(targets?: ReadonlySet<string>): ReadonlySet<object> {
+    return new Set([...this.entries].filter(([name]) => !targets || targets.has(name)).map(([, entry]) => entry));
+  }
 
   view<T extends Identity>(name: string, owner: object | undefined, desired: T,
     consent?: ReadonlySet<object>, source = ""): { config: T; deferred: boolean } {

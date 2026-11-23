@@ -22,3 +22,12 @@ describe("shared default adoption", () => {
     expect(pending.view("agent", owner, { model: "own-edit" }, consent).deferred).toBe(false);
   });
 });
+
+it("R1: consent excludes other pending owners", () => {
+  const pending = new SharedDefaultAdoption(), one = {}, two = {};
+  pending.track("one", one, { model: "old" }, { model: "new" });
+  pending.track("two", two, { model: "old" }, { model: "new" });
+  const consent = (pending.consent as any)(new Set(["one"]));
+  expect(pending.view("one", one, { model: "new" }, consent).deferred).toBe(false);
+  expect(pending.view("two", two, { model: "new" }, consent).deferred).toBe(true);
+});

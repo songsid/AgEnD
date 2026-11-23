@@ -24511,7 +24511,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * the whole point: the retry after a lost response must not apply everything a
    * second time.
    */
-  startSettingsApply(key: string, sharedDefaults: "next-start" | "restart" = "next-start"): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
+  startSettingsApply(key: string, sharedDefaults: "next-start" | "restart" = "next-start", restartTargets: readonly string[] = []): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
     // The key is checked first on purpose: a retry of the apply that is running
     // right now must get its own job back, not "busy".
     const existing = this.applyJobs.findByKey(key);
@@ -24521,7 +24521,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return { busy: this.activeApplyJobId ? this.applyJobs.get(this.activeApplyJobId) : null };
     }
 
-    const defaultConsent = sharedDefaults === "restart" ? this.sharedDefaultAdoption.consent() : undefined;
+    const defaultConsent = sharedDefaults === "restart" ? this.sharedDefaultAdoption.consent(new Set(restartTargets)) : undefined;
     const job = this.applyJobs.create(key, this.planConfigApply(defaultConsent));
     // Reserved synchronously: the work starts a microtask later, and a second
     // request arriving in that gap must see the slot taken.

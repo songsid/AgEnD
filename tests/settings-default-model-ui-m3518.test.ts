@@ -4,8 +4,9 @@ import { fire } from "./helpers/mini-dom.js";
 import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
 let p: AppPage, settings: any;
 const sent: any[] = [], originalFetch = globalThis.fetch;
+let allStopped = false;
 const raw = { defaults: { backend: "claude-code", model: "sonnet" }, instances: {
-  Alpha: { working_directory: "/w/alpha" }, Beta: { working_directory: "/w/beta", backend: "codex" },
+  Alpha: { working_directory: "/w/alpha", display_name: "Example Alpha" }, Beta: { working_directory: "/w/beta", backend: "codex" },
   Gamma: { working_directory: "/w/gamma", backend: "muse" }, Delta: { working_directory: "/w/delta", model: "opus" },
 } };
 beforeAll(async () => {
@@ -15,7 +16,7 @@ beforeAll(async () => {
     const body = path === "/api/settings/schema" ? buildSettingsImpactSchema()
       : path === "/api/settings/fleet/raw" ? raw
       : path === "/api/settings/classic" ? { defaults: {}, channels: {} }
-      : path === "/api/fleet" ? { version: "fixture", instances: Object.keys(raw.instances).map(name => ({ name, status: "running" })) }
+      : path === "/api/fleet" ? { version: "fixture", instances: Object.keys(raw.instances).map(name => ({ name, status: allStopped ? "stopped" : "running" })) }
       : path.startsWith("/ui/models") ? { models: [{ id: "sonnet" }, { id: "haiku" }] }
       : path === "/api/settings/apply" ? { id: "fixture-apply", status: "done", targets: [{ target: "Alpha", kind: "restart", status: "next-start" }] }
       : init.method ? { ok: true } : [];
@@ -24,7 +25,7 @@ beforeAll(async () => {
   (await import("/assets/app-nav.js")).startRouter(p.window);
   settings = await import("/ui/js/panel-settings.js");
 });
-beforeEach(async () => { sent.length = 0; (globalThis as any).confirm = undefined; (await import("/ui/js/settings-apply.js")).resetOperation(); });
+beforeEach(async () => { sent.length = 0; allStopped = false; (globalThis as any).confirm = undefined; (await import("/ui/js/settings-apply.js")).resetOperation(); });
 afterEach(async () => { await p.unmount(); });
 afterAll(() => { p.restore(); globalThis.fetch = originalFetch; });
 const $ = (sel: string): any => p.root.querySelector(sel);
@@ -45,16 +46,19 @@ it.each(["en", "zh-TW"])("scopes the count and exposes a safe timing choice befo
   expect(sent).toEqual([]);
   expect($(".s-pending .note").textContent).not.toContain(lang === "en" ? "Restart this Agent" : "重新啟動此 Agent");
 });
-it("cancels restart before any write, then carries next-start through Apply and renders its outcome", async () => {
+it("R1: cancels restart before any write, then carries next-start through Apply and renders its outcome", async () => {
   await open("en"); await choose("g-model", "haiku"); await choose("g-default-adoption", "restart");
   $(".s-pending .btn-primary").click(); await settle(5);
   const { confirmStore, answerConfirm } = await import("/assets/ui-confirm.js");
   const q = confirmStore.get().queue[0]; expect(q.message).toContain("interrupts their current sessions");
+  expect(q.message).toContain("1");
+  expect(q.message).toContain("Example Alpha");
   expect(sent).toEqual([]); answerConfirm(q.id, false); await settle(5);
   expect(sent).toEqual([]);
   await choose("g-default-adoption", "next-start"); $(".s-pending .btn-primary").click(); await settle(14);
   expect(sent.find(s => s.path === "/api/settings/apply").body.shared_defaults).toBe("next-start");
   expect($(".s-step.next-start").textContent).toContain("Saved · applies on next restart");
+  expect($(".s-step.next-start .s-op-name").textContent).toBe("Example Alpha");
   expect($(".s-op").textContent).not.toContain("Restart this Agent");
 });
 
@@ -63,4 +67,24 @@ it("keeps the cost of other cold changes visible beside the deferred model choic
   const note = $(".s-pending .note").textContent;
   expect(note).toContain("Next restart · no restart now");
   expect(note).toContain("Other changes: Restart this Agent");
+});
+
+it("R1: disables immediate restart when no affected owner is known running", async () => {
+  allStopped = true; await open("en"); await choose("g-model", "haiku");
+  expect($("#g-default-adoption").querySelectorAll("option").find((o: any) => o.value === "restart").disabled).toBe(true);
+  expect($("#g-default-adoption").value).toBe("next-start");
+});
+it("R1: the accepted request keeps the exact names shown even if the staged scope changes while the question is open", async () => {
+  await open("en"); await choose("g-model", "haiku"); await choose("g-default-adoption", "restart");
+  $(".s-pending .btn-primary").click(); await settle(5);
+  const { confirmStore, answerConfirm } = await import("/assets/ui-confirm.js");
+  const q = confirmStore.get().queue[0]; expect(q.message).toContain("Example Alpha"); expect(q.message).not.toContain("Beta");
+  try {
+    raw.instances.Beta.backend = "claude-code";
+    await choose("g-tp", "verbose"); // simulates a recomputed draft scope; the open question still authorizes only Alpha
+    answerConfirm(q.id, true); await settle(14);
+    const request = sent.find(s => s.path === "/api/settings/apply");
+    expect(request.body.shared_defaults).toBe("restart");
+    expect(request.body.shared_defaults_targets).toEqual(["Alpha"]);
+  } finally { raw.instances.Beta.backend = "codex"; }
 });

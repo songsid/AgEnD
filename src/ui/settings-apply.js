@@ -11,6 +11,7 @@ import { appStore } from "/assets/app-store.js";
 import { t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
+import "./settings-default-model-strings.js";
 import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
 
 /**
@@ -172,7 +173,8 @@ async function postApply(o) {
     try {
       res = await api("/api/settings/apply", { method: "POST", headers: { "Idempotency-Key": o.applyKey },
         body: JSON.stringify({ idempotency_key: o.applyKey,
-          ...(o.steps.some(s => s.sharedDefaults) ? { shared_defaults: o.steps.some(s => s.sharedDefaults === "restart") ? "restart" : "next-start" } : {}) }) });
+          ...(o.steps.some(s => s.sharedDefaults) ? { shared_defaults: o.steps.some(s => s.sharedDefaults === "restart") ? "restart" : "next-start",
+            shared_defaults_targets: [...new Set(o.steps.filter(s => s.sharedDefaults === "restart").flatMap(s => s.sharedDefaultsTargets || []).map(t => t.name))] } : {}) }) });
     } catch {
       // The answer was lost (a phone between networks): the same key rejoins the same job, never a second one.
       if (!mine(o)) return null;

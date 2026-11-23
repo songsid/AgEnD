@@ -141,7 +141,7 @@ export interface SettingsApiContext extends AppShellContext {
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
-  startSettingsApply?(key: string, sharedDefaults?: "next-start" | "restart"): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
+  startSettingsApply?(key: string, sharedDefaults?: "next-start" | "restart", restartTargets?: readonly string[]): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
   requestSettingsSelfRestart?(jobId: string, key: string): Promise<SelfRestartResult>;
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
@@ -1300,7 +1300,13 @@ export function handleSettingsRequest(
       if (body.shared_defaults !== undefined && !["next-start", "restart"].includes(body.shared_defaults as string)) {
         json(res, 400, { error: "invalid shared_defaults choice" }); return;
       }
-      const result = ctx.startSettingsApply!(key, body.shared_defaults === "restart" ? "restart" : "next-start");
+      const targets = body.shared_defaults_targets;
+      if ((targets !== undefined && (!Array.isArray(targets) || targets.some(name => typeof name !== "string" || name.length < 1 || name.length > 256 || /[\x00-\x1f\x7f]/.test(name))))
+        || (body.shared_defaults === "restart" && (!Array.isArray(targets) || !targets.length))) {
+        json(res, 400, { error: "confirmed shared_defaults_targets required for restart" }); return;
+      }
+      const result = ctx.startSettingsApply!(key, body.shared_defaults === "restart" ? "restart" : "next-start",
+        body.shared_defaults === "restart" ? targets as string[] : []);
       if ("busy" in result) {
         // One reconcile at a time: two of them stop and start the same agent in
         // parallel. The running job's id lets the client watch that one instead.

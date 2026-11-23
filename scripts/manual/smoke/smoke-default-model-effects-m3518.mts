@@ -68,6 +68,9 @@ try {
     await p.page.locator(".s-pending .btn-primary").click();
     const dialog = p.page.getByRole("dialog");
     await dialog.waitFor(); assert.equal(writes.length, 0);
+    const prompt = await dialog.innerText();
+    assert.ok(prompt.includes("1") && prompt.includes("Example Claude"));
+    assert.equal(await dialog.getByRole("button", { name: c.lang === "en" ? "Restart now" : "立即重啟", exact: true }).count(), 1);
     await p.page.screenshot({ path: join(out, `${name}-restart-confirm.png`) });
     await dialog.getByRole("button", { name: c.lang === "en" ? "Cancel" : "取消", exact: true }).click();
     assert.equal(writes.length, 0);
@@ -76,6 +79,7 @@ try {
     await p.page.waitForSelector(".s-step.next-start");
     await p.page.waitForFunction(() => document.querySelectorAll(".s-step.next-start").length >= 3);
     assert.equal(runtime.model, "sonnet");
+    assert.ok((await p.page.locator(".s-step.next-start .s-op-name").allTextContents()).includes("Example Claude"));
     assert.equal(fm.fleetConfig.instances["example-codex"].model, undefined);
     assert.equal(fm.fleetConfig.instances["example-grok"].model, undefined);
     assert.equal(fm.fleetConfig.instances["example-muse"].model, undefined);

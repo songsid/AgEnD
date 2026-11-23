@@ -17,7 +17,8 @@ import { startOperation } from "./settings-apply.js";
 import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
-import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import "./settings-strings.js";
+import "./settings-default-model-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -58,7 +59,7 @@ export const choiceOptions = (field, values) => values.map((v) => ({ value: v, l
 export function Select({ value, options, onChange, disabled, id, label }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   return html`<select id=${id} value=${value} disabled=${disabled} aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
-    ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>`;
+    ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
 }
 /**
  * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
