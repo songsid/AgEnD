@@ -29,13 +29,13 @@ try {
     await p.page.emulateMedia({ reducedMotion: 'reduce' });
     const errors: string[] = []; p.page.on('pageerror', (e: Error) => errors.push(e.message));
     const routes = phase === 'before' && device === 'desk' ? [
-      ['needs', '/ui/needs'], ['settings', '/ui/settings/agents'], ['fleet', '/ui/fleet/tasks'],
+      ['needs', '/ui/needs'], ['settings', '/settings/agents'], ['fleet', '/ui/fleet/tasks'],
     ] : [['needs', '/ui/needs']];
     for (const [name, path] of routes) {
       await p.page.goto(fx.base + path);
       await p.page.locator(`.p-${name === 'settings' ? 'settings' : name === 'fleet' ? 'fleet' : 'needs'} > .panel-body > .col`).waitFor();
       if (name === 'needs') await p.page.locator('.n-item').first().waitFor();
-      if (name === 'settings') await p.page.locator('[data-settings-section="agents"] .s-group').first().waitFor();
+      if (name === 'settings') await p.page.locator('#newAgentBtn').waitFor();
       const frame = await p.page.evaluate(() => {
         const body = document.querySelector('.panel:not([hidden]) > .panel-body') || document.querySelector('.panel-body');
         const col = body!.querySelector(':scope > .col')!;
