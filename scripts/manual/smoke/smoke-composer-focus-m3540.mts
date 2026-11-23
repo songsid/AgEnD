@@ -11,13 +11,17 @@ try {
     await p.page.locator('#msgIn').waitFor();
     const errors: string[] = []; p.page.on('pageerror', (e: Error) => errors.push(e.message));
     let sends = 0; p.page.on('request', (r: any) => { if (r.method() === 'POST' && /\/ui\/send\b/.test(r.url())) sends++; });
-    const points = await p.page.evaluate(() => {
+    const pointAt = async (name: string) => p.page.evaluate((name: string) => {
       const t = document.querySelector('#msgIn')!.getBoundingClientRect(), c = document.querySelector('.composer')!.getBoundingClientRect();
-      return [{ name: 'top', x: t.x + 6, y: c.y + 2 }, { name: 'left', x: c.x + 2, y: t.y + 12 }, { name: 'bottom', x: t.x + 6, y: c.bottom - 2 }];
-    });
+      const point = name === 'top' ? { x: t.x + 6, y: c.y + 2 } : name === 'left' ? { x: c.x + 2, y: c.y + c.height / 2 } : { x: t.x + 6, y: c.bottom - 2 };
+      const hit = document.elementFromPoint(point.x, point.y);
+      return { name, ...point, hit: hit?.tagName + '.' + hit?.className };
+    }, name);
     const probes = [];
-    for (const point of points) {
+    for (const name of ['top', 'left', 'bottom']) {
       await p.page.locator('#msgIn').fill(''); await p.page.locator('#msgIn').blur();
+      await p.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const point = await pointAt(name);
       if (device === 'phone') await p.page.touchscreen.tap(point.x, point.y);
       else await p.page.mouse.dblclick(point.x, point.y);
       const focus = await p.page.evaluate(() => ({ real: document.activeElement?.id === 'msgIn', selection: getSelection()?.toString() || '' }));
@@ -28,7 +32,7 @@ try {
     }
     await p.page.screenshot({ path: join(out, `${device}-dark-zh-TW-typed.png`) });
     await p.page.locator('#msgIn').fill('');
-    const first = points[0];
+    const first = await pointAt('top');
     if (device === 'phone') await p.page.touchscreen.tap(first.x, first.y); else await p.page.mouse.dblclick(first.x, first.y);
     await p.page.screenshot({ path: join(out, `${device}-dark-zh-TW-empty.png`) });
     // Textarea selection remains native, and Attach still owns its action.
