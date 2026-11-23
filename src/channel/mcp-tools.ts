@@ -7,6 +7,7 @@
  */
 import { z, type ZodType } from "zod";
 import * as schemas from "../outbound-schemas.js";
+import { COMPOSITE_ACTIONS } from "../composite-tools.js";
 
 /** Narrow JSON-schema fragment shape that MCP tool listings need. */
 type JsonSchemaObject = {
@@ -271,12 +272,7 @@ export const COMPOSITE_TOOLS: readonly CompositeTool[] = [
     name: "web_appearance",
     description: "Your own look on the AgEnD web dashboard: read it, change your theme, identity card, widgets or ambient effect, or preview it. "
       + "Pass `action` and that action's fields in `args`; the web-appearance skill lists each action's args.",
-    actions: {
-      get: "get_web_appearance", get_theme: "get_web_theme", preview: "preview_web_appearance",
-      set_theme: "set_web_theme", set_theme_asset: "set_web_theme_asset", reset_theme: "reset_web_theme",
-      set_widget: "set_web_widget", remove_widget: "remove_web_widget",
-      set_ambient: "set_web_ambient", clear_ambient: "clear_web_ambient",
-    },
+    actions: COMPOSITE_ACTIONS.web_appearance,
   },
   {
     name: "emoji_sticker",
@@ -286,10 +282,7 @@ export const COMPOSITE_TOOLS: readonly CompositeTool[] = [
       + "set_persona_emoji {emoji, status?}: your status stamp (status default delivered; also received, queued, processing, failed, progress_prefix, photo, attachment; \"\" removes it); "
       + "list_stickers {set?, name?, limit?, refresh?}: stickers you can send; pick an id from that list and send it with reply({stickers: [id]}) in the same turn; "
       + "preview_stickers {stickers: up to 8 ids}: local image paths to Read. The persona-emoji skill has the details.",
-    actions: {
-      list_emojis: "list_emojis", preview_emojis: "preview_emojis", set_persona_emoji: "set_persona_emoji",
-      list_stickers: "list_stickers", preview_stickers: "preview_stickers",
-    },
+    actions: COMPOSITE_ACTIONS.emoji_sticker,
   },
 ];
 const COMPOSITE_BY_NAME: ReadonlyMap<string, CompositeTool> = new Map(COMPOSITE_TOOLS.map(c => [c.name, c]));

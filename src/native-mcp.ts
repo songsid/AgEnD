@@ -98,7 +98,7 @@ export class NativeMcpSessions {
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
       timer:setTimeout(()=>this.closeToken(token),TTL_MS)};
     session.timer.unref?.();this.sessions.set(token,session);
-    return {connection:{endpoint:address,token,tools:this.menu(session).map(tool=>tool.name)},close:()=>this.closeToken(token),
+    return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
   }
   hasActive(instance:string):boolean {
@@ -148,6 +148,9 @@ export class NativeMcpSessions {
       taskAllowed: value => this.canCall(session, "task", value),
     });
   }
+
+  /** M-2133: the connection's ceiling is member names (the helper adds the composites that fold them). */
+  private memberNames(session:Session):string[] { return TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>tool.name); }
 
   private menu(session:Session):Array<{name:string}> {
     return withComposites(TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>{
