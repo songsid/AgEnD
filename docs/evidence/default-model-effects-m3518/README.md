@@ -1,15 +1,31 @@
 Shared backend/model defaults
 
-The raw Fleet defaults used to be merged independently into every agent: an agent overriding the backend still received the other backend's model. The model resolver and Settings inheritance counter repeated that backend-blind fallback. Since both fields are cold settings, Settings then used the generic stop/start reconcile.
+The old loader merged the Fleet backend and model independently. An agent selecting another backend still inherited the Fleet model. The resolver and dev Settings counter repeated this fallback; model/backend differences then used the generic cold stop/start reconcile.
 
-The fix scopes a model to the exact declaring backend, preserves explicit agent models and applies the same rule to ClassicBot's room → Classic defaults → Fleet defaults chain. Changing the shared backend clears the prior model selection. The form counts only matching-backend model consumers and previews effective identity changes, including gained/lost model inheritance when the default backend changes.
+The fix scopes a model to its exact declaring backend, preserves explicit agent models, and applies the same rule to ClassicBot's room → Classic defaults → Fleet defaults chain. Changing the shared backend clears its prior model selection. Counts use matching-backend consumers; previews also include model inheritance gained/lost when a default backend changes.
 
-Settings offers a safe next-restart choice and an explicit restart-running choice before the first write. This path does not call individual model switching, which persists own overrides and may restart on an unconfirmed CLI result. Deferred identity differences stay pending through unrelated reloads, without hiding other cold changes. Consent is bound to the saved values and runtime owner; stopped/paused agents stay stopped. A new runtime adopts the saved settings. Running identity readouts/command dispatch keep the old backend/model until then.
+Before Save, choose **Next restart · no restart now** (the safe default) or **Restart running agents now** (confirmed before the first write). This shared path offers next-start adoption rather than calling individual model switching, which writes own overrides and may restart on an unconfirmed CLI result. Deferred identities survive unrelated reloads without hiding other cold changes. Restart consent is bound to the current saved value/runtime owner. Stopped and paused agents stay stopped. Runtime-facing model/backend readouts and command dispatch keep the old identity until the next start. Other edits retain their own visible apply costs.
 
-Validation (runs overlap):
-- Base loader regression: two assertion failures, demonstrating cross-backend model leakage.
-- Base manager control: the actual reconcile reports a restart as done instead of next-start. Fixed actual-manager cases cover deferred apply, unrelated hot/cold edits, stopped/paused agents, explicit consent, unchanged raw inheritance, new runtime adoption, own model edits and idempotency.
-- Config/model/Classic/Settings affected suites and types are recorded in the final packet.
-- Real-app captures use synthetic identities and runtime snapshots in a scratch home. No live Fleet or provider process is restarted, switched or probed by the capture. A confirmed real CLI model switch is not claimed.
+Main keeps its existing Settings layout. The separate dev preview uses dev's existing Shared agent settings cards; those cards are not backported. The dev PR follows the actual main merge.
 
-Capture index and final verification will be added after the clean-source capture run. This is a user-look hold; the author does not merge.
+Validation:
+- Main: 68 core cases in six files plus four mounted UI cases (72 distinct), types: zero errors. Later focused plan/copy runs overlap these cases.
+- Main loader reversal: three assertion failures. Earlier alpha loader and actual-manager controls also failed on the old behavior. No timeout or retry change.
+- Full Settings UI gate: 94 checks passed. Final affected-section gate: 14 checks passed.
+- Successful real-app capture: four cases per branch, 32 PNGs; synthetic identities, inert catalog data and runtime snapshots. Cancel writes nothing; next-start Save uses the real API/reconcile and retains the old running model. New selector targets are 44px high; no horizontal overflow, page errors or CSP reports.
+- Every current PNG was visually checked. Main's final 16 are byte-identical to the prior cleared visual delta; all 16 dev previews were inspected. EN phone result identifiers wrap at hyphens. An existing backend helper glyph is outside the changed controls; PNGs alone do not diagnose its font fallback.
+
+Reproduce the focused behavior with `vitest run tests/default-model-scope-m3518.test.ts tests/shared-default-adoption-m3518.test.ts tests/default-model-apply-m3518.test.ts tests/classic-behavior-settings.test.ts tests/settings-apply-job.test.ts tests/model-resolve.test.ts tests/settings-default-model-ui-m3518.test.ts`. Captures use `scripts/manual/smoke/smoke-default-model-effects-m3518.mts` with `REPO`, an owned `PW_DIR`/`CHROME`, and `OUT`. Main's helper uses its existing fixed-port fixture (`HP` override); dev uses its existing ephemeral fixture. Source heads, hashes, measurements and explicit proof limits are in [verification.json](verification.json).
+
+| Branch / case | Captures |
+|---|---|
+| main / desk-light-en | [Scope](main/desk-light-en-matching-backend.png) · [Choice](main/desk-light-en-next-restart-choice.png) · [Confirm](main/desk-light-en-restart-confirm.png) · [Result](main/desk-light-en-saved-next-restart.png) |
+| main / desk-dark-zh-TW | [Scope](main/desk-dark-zh-TW-matching-backend.png) · [Choice](main/desk-dark-zh-TW-next-restart-choice.png) · [Confirm](main/desk-dark-zh-TW-restart-confirm.png) · [Result](main/desk-dark-zh-TW-saved-next-restart.png) |
+| main / phone-light-en | [Scope](main/phone-light-en-matching-backend.png) · [Choice](main/phone-light-en-next-restart-choice.png) · [Confirm](main/phone-light-en-restart-confirm.png) · [Result](main/phone-light-en-saved-next-restart.png) |
+| main / phone-dark-zh-TW | [Scope](main/phone-dark-zh-TW-matching-backend.png) · [Choice](main/phone-dark-zh-TW-next-restart-choice.png) · [Confirm](main/phone-dark-zh-TW-restart-confirm.png) · [Result](main/phone-dark-zh-TW-saved-next-restart.png) |
+| dev-preview / desk-light-en | [Scope](dev-preview/desk-light-en-matching-backend.png) · [Choice](dev-preview/desk-light-en-next-restart-choice.png) · [Confirm](dev-preview/desk-light-en-restart-confirm.png) · [Result](dev-preview/desk-light-en-saved-next-restart.png) |
+| dev-preview / desk-dark-zh-TW | [Scope](dev-preview/desk-dark-zh-TW-matching-backend.png) · [Choice](dev-preview/desk-dark-zh-TW-next-restart-choice.png) · [Confirm](dev-preview/desk-dark-zh-TW-restart-confirm.png) · [Result](dev-preview/desk-dark-zh-TW-saved-next-restart.png) |
+| dev-preview / phone-light-en | [Scope](dev-preview/phone-light-en-matching-backend.png) · [Choice](dev-preview/phone-light-en-next-restart-choice.png) · [Confirm](dev-preview/phone-light-en-restart-confirm.png) · [Result](dev-preview/phone-light-en-saved-next-restart.png) |
+| dev-preview / phone-dark-zh-TW | [Scope](dev-preview/phone-dark-zh-TW-matching-backend.png) · [Choice](dev-preview/phone-dark-zh-TW-next-restart-choice.png) · [Confirm](dev-preview/phone-dark-zh-TW-restart-confirm.png) · [Result](dev-preview/phone-dark-zh-TW-saved-next-restart.png) |
+
+USER-LOOK HOLD: keep the PR draft until the Leader releases the visuals. Coordinator alone gates after exact-head Prism approval and green checks. Rollback: revert this fix's production changes; retain the synthetic evidence.

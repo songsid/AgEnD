@@ -1,0 +1,377 @@
+{
+  "mainSourceHead": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+  "mainSourceHashes": [
+    {
+      "path": "src/apply-job.ts",
+      "sha256": "3717562c2af6afad9057244ea4e2e1c8a5dcbe1d20f69a3cf0a8bc64a5316ef6"
+    },
+    {
+      "path": "src/classic-channel-manager.ts",
+      "sha256": "fab7cdd3ff17a6f2d7542a9cfb566e6c462b6bf7f9081d514496bdf1522a6fdb"
+    },
+    {
+      "path": "src/config.ts",
+      "sha256": "89850469bdb94171f6513f6bb4b51f92ff3cb4d9ecf24e915d5ebc33326ee219"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "62a6505cbbe2c122fa43720325e9e215f5b1d005a9e6c25f8bf98c7271a11f52"
+    },
+    {
+      "path": "src/general-knowledge/skills/model-discovery/SKILL.md",
+      "sha256": "0ef3c85b1db5803a7790a86094c1b41993e7dd8ce089f305c13c78d14d86eb9d"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "12a517ced9ea20345973aec57c86687ac1190ea672ea7bf10309d3c73186fbfd"
+    },
+    {
+      "path": "src/instance-lifecycle.ts",
+      "sha256": "41915bf9579f1792e60f52e468fa11bdffe6c8778e9c94493c6cadab22ca6921"
+    },
+    {
+      "path": "src/model-defaults.ts",
+      "sha256": "40f1f26f85f534c1555f202c79a98d93f6fc04b73c5ceb3f28728be7001dd6fe"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "5dbaf394986ff21635d95c60cbb5f015ab2ce4974b767226dd25a975d067a54b"
+    },
+    {
+      "path": "src/shared-default-adoption.ts",
+      "sha256": "8c6f2ca95d01ae69577819385379793d29f2b8873f7abdaeae854cdffffa9285"
+    },
+    {
+      "path": "src/ui/panel-settings.js",
+      "sha256": "4808c18c1aba7b400d67d1a3a36402fdb9dd568ee1dcd6c8e95ea80b224fc62b"
+    },
+    {
+      "path": "src/ui/settings-apply.js",
+      "sha256": "77e80ac69c25f68209091c852158ca9ea132c76498cfcb27f5888724ed19a430"
+    },
+    {
+      "path": "src/ui/settings-default-model-scope.js",
+      "sha256": "ea666bf057eff40b91d9b58d788b978f0023fcb01c14b81014416fe44aaa9d1c"
+    },
+    {
+      "path": "src/ui/settings-default-model-strings.js",
+      "sha256": "a1690c4d08aec311b9a85cb7f983b41dc4dc90be97ffa9be230c4b6dfeced74d"
+    },
+    {
+      "path": "src/ui/settings-dialogs.js",
+      "sha256": "4d2ed2786db5e1281b268fdf4ee35434bbd85e23fb4541cb4db78426953497ee"
+    },
+    {
+      "path": "src/ui/settings-model.js",
+      "sha256": "a97e2ec22ade68eb403330f4240790d79cb764f47d8a34fb3f69cab1a845a969"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "d2b14f7c1016e90e4246b4308ef0825a7932c0992f6211b0a6e79d5570b1d597"
+    }
+  ],
+  "packets": {
+    "main": {
+      "capture": {
+        "head": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+        "dirty": false,
+        "scope": "synthetic config and runtime snapshots; no actual CLI model switching or restart",
+        "results": [
+          {
+            "name": "desk-light-en",
+            "head": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 336,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "desk-dark-zh-TW",
+            "head": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 336,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "phone-light-en",
+            "head": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 318,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "phone-dark-zh-TW",
+            "head": "cd46f4b47992d3f406d951ab28cd64466411f3a3",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 318,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          }
+        ]
+      },
+      "images": [
+        {
+          "path": "main/desk-dark-zh-TW-matching-backend.png",
+          "sha256": "dd3239e822f25e9a303cc807ad0f39bfb3b2262b59d64a7c9f9bd66fbb959ac3"
+        },
+        {
+          "path": "main/desk-dark-zh-TW-next-restart-choice.png",
+          "sha256": "dd3239e822f25e9a303cc807ad0f39bfb3b2262b59d64a7c9f9bd66fbb959ac3"
+        },
+        {
+          "path": "main/desk-dark-zh-TW-restart-confirm.png",
+          "sha256": "15c696091a84e60a6e2d83b5f865825d76af657bc9ac989ea035856cef3a869b"
+        },
+        {
+          "path": "main/desk-dark-zh-TW-saved-next-restart.png",
+          "sha256": "78d6a43cbdb0b4682cdb0b90def2fa29e4b9c65e8e529c4437bcb00cdc647b5c"
+        },
+        {
+          "path": "main/desk-light-en-matching-backend.png",
+          "sha256": "9bae126b5b10160d120719389ce34968281e1e1e9977b03a1175268fc9523f7f"
+        },
+        {
+          "path": "main/desk-light-en-next-restart-choice.png",
+          "sha256": "9bae126b5b10160d120719389ce34968281e1e1e9977b03a1175268fc9523f7f"
+        },
+        {
+          "path": "main/desk-light-en-restart-confirm.png",
+          "sha256": "ed2a73216b597a1ef50b8bb4f0b4e1780c83cabfa04b018b9759941244ffc49a"
+        },
+        {
+          "path": "main/desk-light-en-saved-next-restart.png",
+          "sha256": "27845369ab728c42ee76ab2335f0ab95301a7eebe441373c7f572d41eaad14a7"
+        },
+        {
+          "path": "main/phone-dark-zh-TW-matching-backend.png",
+          "sha256": "a6a45828d85776380eb7137eb22a9af359f1ad47a6d39eb0c8c5423a93ef339c"
+        },
+        {
+          "path": "main/phone-dark-zh-TW-next-restart-choice.png",
+          "sha256": "c46665868aa8796990b93823012c25b525ffa2408823faf29970d98d5f3350b7"
+        },
+        {
+          "path": "main/phone-dark-zh-TW-restart-confirm.png",
+          "sha256": "cef11c7ee29f6a8c126db24c399b4428a2686ac64285c187babc263da35feaa7"
+        },
+        {
+          "path": "main/phone-dark-zh-TW-saved-next-restart.png",
+          "sha256": "ae5da6a7fb15fc952b72dc93221c714871a8017c54b93cb740ade4bd6f357d83"
+        },
+        {
+          "path": "main/phone-light-en-matching-backend.png",
+          "sha256": "152a9b21d6c18717ca91c6a32a1a215ee304284e96cb20de46b78a34d4905c57"
+        },
+        {
+          "path": "main/phone-light-en-next-restart-choice.png",
+          "sha256": "d1bdbc185438c71a6f5ef93f0215fd00031be56d5283a9d1382d14189707882a"
+        },
+        {
+          "path": "main/phone-light-en-restart-confirm.png",
+          "sha256": "4b442efeedba7230453fef1530649cceed56073aedb6c37619c677a5b6b1412c"
+        },
+        {
+          "path": "main/phone-light-en-saved-next-restart.png",
+          "sha256": "f477940cb9509a48a4befd627ab0c91d0698598d66950e4d141aae3ce9f67e6c"
+        }
+      ]
+    },
+    "dev-preview": {
+      "capture": {
+        "head": "a0235c4d576dfd0ff4a1a4103cc202a3a72a0289",
+        "dirty": false,
+        "scope": "synthetic config and runtime snapshots; no actual CLI model switching or restart",
+        "results": [
+          {
+            "name": "desk-light-en",
+            "head": "a0235c4d576dfd0ff4a1a4103cc202a3a72a0289",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 390,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "desk-dark-zh-TW",
+            "head": "a0235c4d576dfd0ff4a1a4103cc202a3a72a0289",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 390,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "phone-light-en",
+            "head": "a0235c4d576dfd0ff4a1a4103cc202a3a72a0289",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 324,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          },
+          {
+            "name": "phone-dark-zh-TW",
+            "head": "a0235c4d576dfd0ff4a1a4103cc202a3a72a0289",
+            "dirty": false,
+            "counter": "3/4",
+            "nextStart": true,
+            "cancelWroteNothing": true,
+            "runtimeStillOld": true,
+            "otherBackendsUntouched": true,
+            "width": 324,
+            "height": 44,
+            "writes": [
+              "/api/settings/fleet/defaults",
+              "/api/settings/apply"
+            ],
+            "errors": []
+          }
+        ]
+      },
+      "images": [
+        {
+          "path": "dev-preview/desk-dark-zh-TW-matching-backend.png",
+          "sha256": "45ea735127579e49f5553609c71d388d10e67b31626a94fb0849486085214d9e"
+        },
+        {
+          "path": "dev-preview/desk-dark-zh-TW-next-restart-choice.png",
+          "sha256": "b28b1caac6daef279b5b3c19d9c8c2caf018c85d9cb47b914319574b8cd5665b"
+        },
+        {
+          "path": "dev-preview/desk-dark-zh-TW-restart-confirm.png",
+          "sha256": "4b4d6d2ba845e2b2e1dbe800e78bc1df34182488143ff288bcc270fc5f516c25"
+        },
+        {
+          "path": "dev-preview/desk-dark-zh-TW-saved-next-restart.png",
+          "sha256": "2c886db29d496c62b7463398016a6a923716681906c504fa8d0f4271dd4fdf52"
+        },
+        {
+          "path": "dev-preview/desk-light-en-matching-backend.png",
+          "sha256": "c7bb4a65ba0f54222e6214bbce3311d7a9cde4492e938918deb397889382f04e"
+        },
+        {
+          "path": "dev-preview/desk-light-en-next-restart-choice.png",
+          "sha256": "55901d8f641f24939f9b37a7298542fb9fcc5992d29f3b9dd165221d7a8140ae"
+        },
+        {
+          "path": "dev-preview/desk-light-en-restart-confirm.png",
+          "sha256": "c7324f886614993901ca8baf13b52994675149737ecd184cfbde3b5b2c2eb2f8"
+        },
+        {
+          "path": "dev-preview/desk-light-en-saved-next-restart.png",
+          "sha256": "7d819a2feb36914113079f82b7b4b1251a46e6e449f7258d4e51211ccf0dcb32"
+        },
+        {
+          "path": "dev-preview/phone-dark-zh-TW-matching-backend.png",
+          "sha256": "8c10f5bdc0ac0ec4d5018b07275e384c04bde49ee93805cad5d2ae4c6a8424b7"
+        },
+        {
+          "path": "dev-preview/phone-dark-zh-TW-next-restart-choice.png",
+          "sha256": "84ad255b2618f6cdc648ed8086b9b03fbaa8f2bf967d52825b0ace11021faaf1"
+        },
+        {
+          "path": "dev-preview/phone-dark-zh-TW-restart-confirm.png",
+          "sha256": "d5c04cc181614d066e8eb488070b93aed49ceb4dc5f5614e6af1cd6659886b85"
+        },
+        {
+          "path": "dev-preview/phone-dark-zh-TW-saved-next-restart.png",
+          "sha256": "3d5bd2ce197607583ce2874848c28f872ea849e6bdc4494a443261a8feaf93da"
+        },
+        {
+          "path": "dev-preview/phone-light-en-matching-backend.png",
+          "sha256": "5f20d22bec595c02e80a509c473016832d3ec910e897486cdbc8dd871fa0a7e7"
+        },
+        {
+          "path": "dev-preview/phone-light-en-next-restart-choice.png",
+          "sha256": "f93996a24af6f1bfdb90cc741a3bd3c150f64b56461dec9392597675b11d9e24"
+        },
+        {
+          "path": "dev-preview/phone-light-en-restart-confirm.png",
+          "sha256": "83f09ae0adb30a559486269916f950ba90fa7099f21ee3e22cc14f72a69abcc1"
+        },
+        {
+          "path": "dev-preview/phone-light-en-saved-next-restart.png",
+          "sha256": "92bf9cc142ceb3e7151c21d6faa5507412449fa50e74e62bd5fd23e0719c3ec1"
+        }
+      ]
+    }
+  },
+  "verification": {
+    "mainDistinctTests": 72,
+    "mainCoreTests": 68,
+    "mainMountedUiTests": 4,
+    "typesErrors": 0,
+    "loaderReversalAssertionsRed": 3,
+    "uiGateFullChecks": 94,
+    "uiGateFinalAffectedChecks": 14,
+    "visualInspection": "All32 current PNGs privacy/readability clear; main16 byte-identical to prior cleared set; dev16 individually inspected.",
+    "limits": [
+      "Synthetic catalog and runtime snapshots; no confirmed provider model switch or live agent restart is claimed.",
+      "No actual restart is performed in the capture: explicit restart confirmation is canceled before writes; next-start Save uses the real API and reconcile.",
+      "Dev preview is prepared on an independent alpha worktree; it is not main production code and its PR follows the actual main merge.",
+      "Captures are desktop/phone EN/light and zh-TW/dark; no native mobile or provider campaign."
+    ]
+  }
+}
