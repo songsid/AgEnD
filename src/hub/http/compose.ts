@@ -846,7 +846,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method !== "GET") throw new HttpError(405, "method");
       if ([...query.keys()].length) throw new HubProtocolError("invalid");
       signedIn(); const roomId = uuid(r[1]);
-      if (!deps.roomOffice || !groupRooms.has(roomId)) throw new HttpError(404, "not-found");
+      if (!groupRooms.has(roomId)) throw new HttpError(404, "not-found");
       return send(res, 200, await guard(() => groupRooms.officeState(ctx, roomId)));
     }
     // M-3340: personal pins in a group room — the signed-in person's own (GET), pin (PUT) or unpin (DELETE) one message.

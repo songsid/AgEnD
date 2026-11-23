@@ -818,20 +818,14 @@ export class HubGroupRooms {
       this.member(db, id, me); const room = this.room(db, id);
       if (room.assistant_for) throw new HubRoomRefusal(404, "not-found");
       if (!officeOn(room.office_enabled)) throw new HubRoomRefusal(409, "office-off");
-      const now = this.core.now();
-      // The member list's progress reads (agents.ts progress): a personal agent's queued delivery its job is working on is sent.
-      const waiting = (this.core.deps.personal
-        ? db.prepare(`SELECT DISTINCT d.exposure_id FROM hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id WHERE d.room_id=? AND d.expires_at>?
-          AND (d.reason_code IS NULL OR d.reason_code<>'finished-without-answer') AND (d.state='sent' OR (d.state='queued' AND j.state='working'))`).all(id, now)
-        : db.prepare(`SELECT DISTINCT exposure_id FROM hub_room_deliveries WHERE room_id=? AND expires_at>? AND state='sent'
-          AND (reason_code IS NULL OR reason_code<>'finished-without-answer')`).all(id, now)) as { exposure_id: string }[];
-      const answering = new Set(waiting.map(r => r.exposure_id));
+      // What a message's progress says (agents.ts), so the two never disagree; a wait that ran out was settled by the sweep above.
+      const answering = this.agents.answering(db, id);
       const agents = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind IN ('agent','assistant') ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") { const p = this.assistant.presence(id); return officeAgent("assistant", "Hub assistant", p, p === "working", true); }
         const e = readExposure(db, m.subject), p = this.agents.presence(m.subject).presence as RoomPresence;
         return officeAgent(m.subject, e?.display_name ?? m.subject, p, answering.has(m.subject));
       });
-      return roomOfficeView({ name: room.name, style: room.office_style }, agents, now);
+      return roomOfficeView({ name: room.name, style: room.office_style }, agents, this.core.now());
     }, this.fence(ctx));
   }
   async pins(ctx: HubRequestContext, id: string): Promise<{ pins: Array<{ messageId: string; pinnedAt: number; message: RoomMessage }> }> {
