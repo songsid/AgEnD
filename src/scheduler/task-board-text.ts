@@ -39,6 +39,8 @@ export function cardText(board: TaskBoard, card: Card): string {
     where.push(`waits for ${card.deps.map((d) => board.codeOf(d)).map((c) => `${c}${unmet.has(c) ? "" : " (done)"}`).join(", ")}`);
   }
   if (card.dispatcher && card.dispatcher.name !== card.assignee) where.push(`dispatched by ${card.dispatcher.kind === "person" ? `the person (${card.dispatcher.name})` : card.dispatcher.name}`);
+  const watchers = board.watchersOf(card.uuid);
+  if (watchers.length) where.push(`watched by ${watchers.join(", ")}`);
   // #2434: the person confirms the cards they handed out; an agent's card its dispatcher (or, nobody's, its assignee).
   const confirmer = confirmerOf(card);
   where.push(!card.needsReview ? "finish it yourself" : `${confirmer} confirms it`);

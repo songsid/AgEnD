@@ -29,7 +29,9 @@
      "move",
      "projects",
      "create_project",
-     "move_project"
+     "move_project",
+     "watch",
+     "unwatch"
     ]
    },
    "title": {
@@ -215,6 +217,9 @@
     "type": "integer",
     "minimum": -9007199254740991,
     "maximum": 9007199254740991
+   },
+   "watcher": {
+    "type": "string"
    }
   },
   "required": [

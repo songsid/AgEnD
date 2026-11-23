@@ -5,12 +5,16 @@
  * when it goes out (wakeHolds), and hands it to the fleet as a notice from AgEnD: the delivery outbox holds it until
  * the instance can take it, across a restart too. What is gathered but not yet handed over is lost on a stop; the card
  * keeps the news (`task mine`, the comments new to its assignee). #2801: a notice still waiting when one of its cards
- * changes status or assignee again is withdrawn once every card on it has (its key names them); and news an instance
- * also told in its own message (naming the card, within TOLD_WINDOW_MS) is not told again.
+ * changes status or assignee again is withdrawn once every card on it has (its key names them).
+ *
+ * What an agent does to a card is told the way what a person does is — after the gather, no later. The board
+ * used to hold an agent's change for up to two minutes (#2785 (c), #2801) and drop the line when that agent had sent the
+ * instance a message naming the card. A message and a notice are two things: an agent that wants to tell someone something
+ * writes a comment with an @mention; the card's change is the board's own notice, and it always goes.
  */
 import type { Wake, WakeReason } from "./scheduler/task-board.js";
 import { gapText, oneLine } from "./scheduler/task-board-text.js";
-import { personConfirms, wrapUpGap, type Card } from "./scheduler/task-board.js";
+import { confirmerOf, personConfirms, wrapUpGap, type Card } from "./scheduler/task-board.js";
 
 export interface TaskBoardWakerDeps {
   /** Hand `message` to the instance for good (the fleet's durable delivery); false when it could not be taken. */
@@ -32,12 +36,6 @@ export interface TaskBoardWakerDeps {
    */
   buttonsHere?(instance: string, uuid: string): boolean;
   /**
-   * #2785 (c), #2801: whether `from` sent `to` a message naming one of `codes` since `sinceMs` (epoch ms). An instance
-   * that changes a card and messages the one it concerns about it (delegate_task, send_to_instance) has told them: the
-   * board's line would only repeat it. Absent: every piece of news is told.
-   */
-  messagedAbout?(from: string, to: string, codes: string[], sinceMs: number): boolean;
-  /**
    * #2801: drop AgEnD's notices still waiting whose key starts with `prefix` and that `stale` judges overtaken (the
    * delivery outbox's withdrawWaitingNotices); returns how many. Absent: a waiting notice is delivered as it is.
    */
@@ -46,39 +44,51 @@ export interface TaskBoardWakerDeps {
   changedAt?(uuid: string): string | null;
   log(level: "info" | "warn", message: string, extra?: Record<string, unknown>): void;
   gatherMs?: number;
-  /** #2785 (c), #2801: how far back, and how long ahead, a change looks for its maker's own message about it. */
-  toldWindowMs?: number;
   timers?: { set(fn: () => void, ms: number): unknown; clear(handle: unknown): void };
   now?: () => number;
 }
 
-/**
- * #2785 (c), #2801: news an instance made waits this long (from the change) for its own message about the card before
- * the board tells it; an assignment also counts a message up to this long before it.
- */
-export const TOLD_WINDOW_MS = 120_000;
 /** The start of a task board notice's key; `:cards=` and the card uuids end it (#2801). */
 const KEY_PREFIX = "task-board:";
 const cardsOfKey = (key: string) => { const at = key.lastIndexOf(":cards="); return at < 0 ? [] : key.slice(at + 7).split(",").filter(Boolean); };
 
-/**
- * Whether `text` names card `code` (M-12 is not M-123, XM-12 is not M-12): the code itself, not a pattern built from it
- * (CodeQL #97 — no character of the code is special).
- */
-export const namesCard = (text: string, code: string): boolean => {
-  if (!code) return false;
-  for (let at = text.indexOf(code); at >= 0; at = text.indexOf(code, at + 1)) {
-    if (!/[\w-]/.test(text[at - 1] ?? "") && !/\d/.test(text[at + code.length] ?? "")) return true;
-  }
-  return false;
-};
-
 /** More assignments than this in one message are told as a count, not a line each. */
 const MANY_ASSIGNED = 3;
 /** The order a card's news is told in. */
-const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "answer_kept", "wrap_up", "assigned", "start", "ready"];
+const ORDER: WakeReason[] = ["cancelled", "sent_back", "decide", "to_confirm", "confirm_own", "answered", "answer_kept", "wrap_up", "assigned", "start", "ready", "progress", "mention", "comment"];
+/** A comment (written by someone who is not the assignee) or an `@` mention: news only because of the words. */
+const isCommentNews = (r: WakeReason) => r === "comment" || r === "mention";
+const hasCommentNews = (w: Wake) => w.reasons.some(isCommentNews);
 
 const quote = (text: string | undefined) => (text ? `: "${oneLine(text, 160)}"` : "");
+/** A comment's words are the last of several gathered together: the others are on the card. */
+const earlierWords = (w: Wake) => (w.earlier ? ` (+${w.earlier} earlier comment${w.earlier === 1 ? "" : "s"}: task get ${w.code})` : "");
+
+/**
+ * A person wrote the comment, so the reply goes on the card, not to an `@name` (an agent that answered "@web-user" was
+ * told that nobody was woken). Not said for an instance's comment, which an `@` may rightly answer.
+ */
+const personReads = (w: Wake, r: WakeReason) => (w.byPerson?.[r] ? " (a person reads the card; no @ needed)" : "");
+
+const FOLLOW_WHY: Record<string, string> = { dispatcher: "you handed it out", watcher: "you watch it", leader: "you lead its project" };
+
+/** What a follower is told: the card's new state, who made it, and the words with it; the card stays the assignee's. */
+function progressLine(w: Wake, card: Card | undefined): string {
+  const by = w.by.progress ?? "someone";
+  const news = w.news;
+  const words = quote(w.texts.progress);
+  const who = card?.assignee ? ` (@${card.assignee})` : "";
+  let said: string;
+  switch (news?.kind) {
+    case "done": said = `finished by ${by}${words}`; break;
+    case "review": said = `${by} moved it to review${words} — waiting for ${card ? confirmerOf(card) : "its confirmer"} to confirm it`; break;
+    case "sent_back": said = `sent back by ${by}${words}${who ? ` — back with ${card!.assignee}` : ""}`; break;
+    case "blocked": said = `blocked${who}${words ? ` — ${words.slice(2)}` : ""} (moved by ${by})`; break;
+    case "reassigned": said = `${by} gave it to ${news.assignee ? `@${news.assignee}` : "nobody"}${news.from ? ` (it was @${news.from}'s)` : ""}`; break;
+    default: said = `it moved on (${by})`;
+  }
+  return `${said} — ${FOLLOW_WHY[news?.as ?? "watcher"]}; step in (comment, reassign, open the next card) only if it needs you`;
+}
 
 /** One reason, as a line about the card says it. */
 function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): string {
@@ -105,6 +115,11 @@ function say(w: Wake, r: WakeReason, card: Card | undefined, here = false): stri
       const gap = card ? wrapUpGap(card) : null;
       return `it is in review and nobody else confirms it — it is yours${gap ? `, though ${gapText(gap, card!.kind === "main")}` : ""}: check it, then move it to done`;
     }
+    // Comments wake (docs/design/task-board.md, "Comments and mentions"): the words are in the notice; the reply goes on the card.
+    case "comment": return `new comment from ${by}${quote(w.texts.comment)}${earlierWords(w)} — reply on the card (task update, with a comment) only if it asks or needs something from you${personReads(w, r)}`;
+    case "mention": return `${by} mentioned you in a comment${quote(w.texts.mention)}${earlierWords(w)} — reply on the card (task update, with a comment) if it asks something of you; the card is not yours unless it says so${personReads(w, r)}`;
+    // A follower (docs/design/task-board.md, "Following a card"): how the card moved on, who did it, with the words that came with it.
+    case "progress": return progressLine(w, card);
     case "cancelled": return `cancelled by ${by}${w.texts.cancelled?.startsWith("with its main task") ? ` ${oneLine(w.texts.cancelled, 160)}` : quote(w.texts.cancelled)} — stop working on it`;
     case "wrap_up": {
       const gap = card ? wrapUpGap(card) : null;
@@ -155,8 +170,15 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
   return `[Task board] ${items.length} things on your cards:\n${items.map((w) => `- ${line(w)}`).join("\n")}\nYour work: task mine`;
 }
 
+/** A merged wake's person flags: each reason takes the newer wake's word on who wrote it, else keeps the earlier. */
+function mergePerson(had: Wake, w: Wake): Partial<Record<WakeReason, true>> {
+  const out: Partial<Record<WakeReason, true>> = { ...had.byPerson };
+  for (const r of w.reasons) { if (w.byPerson?.[r]) out[r] = true; else delete out[r]; }
+  return out;
+}
+
 export class TaskBoardWaker {
-  private readonly gathering = new Map<string, { wakes: Map<string, Wake>; at: Map<string, number>; timer: unknown }>();
+  private readonly gathering = new Map<string, { wakes: Map<string, Wake>; timer: unknown }>();
   private stopped = false;
   private seq = 0;
   private readonly timers: NonNullable<TaskBoardWakerDeps["timers"]>;
@@ -172,14 +194,17 @@ export class TaskBoardWaker {
       if (!this.deps.isInstance(w.instance)) continue;
       let batch = this.gathering.get(w.instance);
       if (!batch) {
-        batch = { wakes: new Map(), at: new Map(), timer: this.timers.set(() => this.flush(w.instance), this.deps.gatherMs ?? 10_000) };
+        batch = { wakes: new Map(), timer: this.timers.set(() => this.flush(w.instance), this.deps.gatherMs ?? 10_000) };
         this.gathering.set(w.instance, batch);
       }
-      if (!batch.at.has(w.uuid)) batch.at.set(w.uuid, (this.deps.now ?? Date.now)());
       const had = batch.wakes.get(w.uuid);
+      // The latest progress news says it all: the words of an earlier one stay behind with it.
+      if (had && w.news && w.texts.progress === undefined) delete had.texts.progress;
+      // A second comment on the card in the same window: the notice quotes the last and counts the ones before it.
+      const earlier = (had?.earlier ?? 0) + (had && hasCommentNews(had) && hasCommentNews(w) ? 1 : 0);
       batch.wakes.set(w.uuid, had
-        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts } }
-        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts } });
+        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}) }
+        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}) });
     }
   }
 
@@ -215,10 +240,8 @@ export class TaskBoardWaker {
     this.gathering.delete(instance);
     if (!batch || this.stopped) return;
     if (this.deps.boardOff?.(instance)) { this.deps.log("info", "Task board news not sent: the instance has the task board switched off", { instance }); return; }
-    // #2785 (c), #2801: news an instance made is told by its own message; the board waits for it, then drops its line.
-    const told = this.foldToldNews(instance, batch);
     // Only what still holds as it goes out: not finished meanwhile, still theirs, still waiting on them.
-    const wakes = told.map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null);
+    const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null);
     if (!wakes.length) return;
     const codes = wakes.map((w) => w.code);
     const key = `${KEY_PREFIX}${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}:cards=${wakes.map((w) => w.uuid).join(",")}`;
@@ -229,57 +252,5 @@ export class TaskBoardWaker {
     }
     if (taken) this.deps.log("info", "Task board wake handed to delivery", { instance, codes });
     else this.deps.log("warn", "Task board wake not taken; the cards keep the news", { instance, codes });
-  }
-
-  /**
-   * #2785 (c), #2801: the batch's wakes with each piece of news dropped where the instance that made it messaged this
-   * one naming the card (or, for a sub task, its main task) about it: for an assignment since shortly before it (a
-   * delegate_task often comes first); for anything else only since the change (#2801 review: an earlier message about
-   * the card did not tell what came after it). A card whose maker has not yet done so waits, up to TOLD_WINDOW_MS from
-   * the change, in a batch of its own; after that the board tells it. A cancel is told at once, never folded ("stop
-   * working on it" must not wait); so are a person's change and the board's own.
-   */
-  private foldToldNews(instance: string, batch: { wakes: Map<string, Wake>; at: Map<string, number> }): Wake[] {
-    const ask = this.deps.messagedAbout;
-    if (!ask) return [...batch.wakes.values()];
-    const now = (this.deps.now ?? Date.now)();
-    const window = this.deps.toldWindowMs ?? TOLD_WINDOW_MS;
-    const out: Wake[] = [];
-    const waiting = new Map<string, Wake>();
-    for (const [uuid, w] of batch.wakes) {
-      if (w.reasons.includes("cancelled")) { out.push(w); continue; }
-      const at = batch.at.get(uuid) ?? now;
-      const codes = [w.code, ...(w.parent ? [w.parent] : [])];
-      const asked = new Map<string, boolean | "failed">();
-      const told: WakeReason[] = [];
-      let pending = false;
-      for (const r of w.reasons) {
-        const by = w.by[r];
-        if (!by || !this.deps.isInstance(by)) continue;
-        const since = r === "assigned" ? at - window : at;
-        let messaged = asked.get(`${by}\u0000${since}`);
-        if (messaged === undefined) {
-          try { messaged = ask(by, instance, codes, since); }
-          catch (err) {
-            this.deps.log("warn", "Task board could not look for the maker's message; telling it", { instance, code: w.code, err: (err as Error).message });
-            messaged = "failed";
-          }
-          asked.set(`${by}\u0000${since}`, messaged);
-        }
-        if (messaged === true) told.push(r);
-        else if (messaged === false && now - at < window) pending = true;
-      }
-      if (pending) { waiting.set(uuid, w); continue; }
-      if (told.length) this.deps.log("info", "Task board news already told by its maker", { instance, code: w.code, reasons: told });
-      const rest = w.reasons.filter((r) => !told.includes(r));
-      if (rest.length) out.push(told.length ? { ...w, reasons: rest } : w);
-    }
-    if (waiting.size && !this.stopped) {
-      const left = Math.min(...[...waiting.keys()].map((uuid) => window - (now - (batch.at.get(uuid) ?? now))));
-      const again = this.gathering.get(instance) ?? { wakes: new Map(), at: new Map(), timer: this.timers.set(() => this.flush(instance), Math.max(1, left)) };
-      for (const [uuid, w] of waiting) { again.wakes.set(uuid, w); again.at.set(uuid, batch.at.get(uuid) ?? now); }
-      this.gathering.set(instance, again);
-    }
-    return out;
   }
 }

@@ -1,9 +1,10 @@
 /**
  * #2801 (subtraction ③): one card sent 6–10 notices (163 on the host in 7 days). Now a card notifies only when its
- * status or assignee changes, and only to the one instance that acts next. A comment notifies nobody; neither does a
- * confirmation (the work is finished). An auto-review with gaps is one notice, to the dispatcher. News whose maker
- * messaged the recipient about the card within 2 minutes is not repeated (#2785 (c), widened). A notice still waiting
- * is withdrawn once every card on it has changed again.
+ * status or assignee changes, and only to the one instance that acts next. A confirmation notifies nobody (the work is
+ * finished); a comment did not either, until comments and @mentions woke (tests/task-board-comment-wakes.test.ts). An auto-review with gaps is one notice, to the dispatcher. News whose maker
+ * messaged the recipient about the card used to be dropped, after up to 2 minutes' wait (#2785 (c), widened): took that out —
+ * a message and the board's notice are two things, and what an agent does to a card is told after the 10 s gather like what a person does
+ * (the cases below; and tests/task-board-no-told-wait.test.ts). A notice still waiting is withdrawn once every card on it has changed again.
  *
  * Isolation: temp databases; fake timers and clock; the delivery outbox has no pump, so every notice stays queued.
  */
@@ -14,7 +15,7 @@ import { tmpdir } from "node:os";
 import { SchedulerDb } from "../src/scheduler/db.js";
 import { Scheduler } from "../src/scheduler/index.js";
 import type { Actor, TaskBoard } from "../src/scheduler/task-board.js";
-import { TOLD_WINDOW_MS, TaskBoardWaker, namesCard } from "../src/task-board-waker.js";
+import { TaskBoardWaker } from "../src/task-board-waker.js";
 import { DeliveryOutbox } from "../src/delivery-outbox.js";
 import { FleetManager } from "../src/fleet-manager.js";
 
@@ -23,8 +24,8 @@ const LEAD: Actor = { kind: "instance", name: "lead" };
 const DEV: Actor = { kind: "instance", name: "dev-a" };
 const DEV2: Actor = { kind: "instance", name: "dev-b" };
 const REV: Actor = { kind: "instance", name: "rev" };
-/** Longer than any notice waits: the 10 s gather and the 2-minute wait for its maker's own message. */
-const SETTLE = TOLD_WINDOW_MS + 15_000;
+/** Longer than any notice waits: the 10 s gather. */
+const SETTLE = 15_000;
 
 const dirs: string[] = [];
 const closers: Array<() => void> = [];
@@ -45,7 +46,6 @@ function rig() {
   const waker = new TaskBoardWaker({
     deliver: (instance, message, key) => { outbox.admitSystemNotice(instance, key, message, new Date()); return true; },
     isInstance: (n) => ["lead", "dev-a", "dev-b", "rev"].includes(n),
-    messagedAbout: (from, to, codes, since) => outbox.recentTextsFrom(to, from, new Date(since).toISOString()).some((t) => codes.some((c) => namesCard(t, c))),
     withdraw: (prefix, stale, reason) => outbox.withdrawWaitingNotices(prefix, stale, reason).length,
     changedAt: (uuid) => board.lastChangeAt(uuid),
     holds: (w) => board.wakeHolds(w),
@@ -83,7 +83,9 @@ describe("#2801: one card's life — who is told what (the issue's table)", () =
     board.updateCard(REV, card.code, { comment: "mind the cache" });
     board.updateCard(LEAD, card.code, { comment: "see #12" });
     board.updateCard(ANN, card.code, { comment: "weekly, not daily" });
-    expect(settle()).toEqual([]);                                     // comments: nobody
+    // Comments wake since (tests/task-board-comment-wakes.test.ts; #2801's "a comment notifies nobody" no longer stands): the
+    // assignee is told once for the three in the window — the last one quoted, the two before it counted — and reads them on the card.
+    expect(settle()).toEqual([["dev-a", has('new comment from Ann: "weekly, not daily" (+2 earlier comments: task get')]]);
     board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
     expect(settle()).toEqual([["lead", has('you handed it out and it is blocked (@dev-a): "which API?"')]]);
     board.moveCard(LEAD, card.code, "claimed", { comment: "the v2 one" });
@@ -127,51 +129,41 @@ describe("#2801: one card's life — who is told what (the issue's table)", () =
   });
 });
 
-describe("#2801: news its maker already told in a message (within 2 minutes) is not repeated", () => {
-  it("an assignment told before or after, a block, an answer and a review told after: no board notice", () => {
+describe("a message of its maker does not stand in for the board's notice, and nothing waits past the gather", () => {
+  it("an assignment, a block, an answer and a review are told even though their maker also messaged the recipient — before or after", () => {
     const { board, say, settle } = rig();
     const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     say("lead", "dev-a", `Board card ${card.code}: build it`);
-    expect(settle()).toEqual([]);
+    expect(settle()).toEqual([["dev-a", has(`assigned to you by lead`)]]);
     board.moveCard(DEV, card.code, "claimed");
     board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
     vi.advanceTimersByTime(60_000);
     say("dev-a", "lead", `${card.code} is blocked: which API?`);            // a minute after the change
-    expect(settle()).toEqual([]);
+    expect(settle()).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
     board.moveCard(LEAD, card.code, "claimed", { comment: "the v2 one" });
     vi.advanceTimersByTime(5_000);
     say("lead", "dev-a", `${card.code}: answered on the card — the v2 one`);
-    expect(settle()).toEqual([]);
+    expect(settle()).toEqual([["dev-a", has('lead answered your blocked question: "the v2 one"')]]);
     board.moveCard(DEV, card.code, "review", { result: "r" });
     say("dev-a", "lead", `PR ready for ${card.code}`);
-    expect(settle()).toEqual([]);
+    expect(settle()).toEqual([["lead", has("ready for your confirmation (@dev-a)")]]);
   });
 
-  it("an older message, another sender's or one about another card does not count: the board tells it", () => {
-    const { board, say, settle } = rig();
-    const card = main(board, LEAD, { assignee: "dev-a" });
-    settle();
-    board.moveCard(DEV, card.code, "claimed");
-    say("dev-a", "lead", `${card.code}: starting`);
-    vi.advanceTimersByTime(TOLD_WINDOW_MS + 1_000);
-    say("rev", "lead", `${card.code} looks blocked`);
-    say("dev-a", "lead", "M-99 is blocked");
-    board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
-    expect(settle()).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
-  });
-
-  it("a message before a change other than an assignment did not tell it (#2801 review): the board does", () => {
-    const { board, say, settle } = rig();
+  it("an agent's change is told after the 10 s gather, as a person's is: at 10 s it is there, and nothing more comes after", () => {
+    const { board, rows } = rig();
     const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
-    settle();
+    vi.advanceTimersByTime(SETTLE); const before = rows().length;
     board.moveCard(DEV, card.code, "claimed");
-    say("dev-a", "lead", `${card.code} going well so far`);
-    vi.advanceTimersByTime(60_000);
     board.moveCard(DEV, card.code, "blocked", { reason: "which API?" });
-    expect(settle()).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
+    vi.advanceTimersByTime(9_000);
+    expect(rows().length).toBe(before);                                       // still gathering
+    vi.advanceTimersByTime(2_000);
+    expect(rows().slice(before).map((r) => [r.t, r.text])).toEqual([["lead", has("you handed it out and it is blocked (@dev-a)")]]);
+    vi.advanceTimersByTime(5 * 60_000);
+    expect(rows().length).toBe(before + 1);                                   // not repeated later
   });
 
-  it("a cancel is told at once — after a message about the card, or one right after it — never held or folded", () => {
+  it("a cancel is told at once, after a message about the card or one right after it", () => {
     const { board, say, settle } = rig();
     const card = main(board, LEAD, { assignee: "dev-a" });
     settle();
@@ -180,11 +172,11 @@ describe("#2801: news its maker already told in a message (within 2 minutes) is 
     vi.advanceTimersByTime(60_000);
     board.moveCard(LEAD, card.code, "cancelled", { reason: "dropped" });
     say("lead", "dev-a", `${card.code} is cancelled, stop`);
-    vi.advanceTimersByTime(10_000);                                           // the gather only: no 2-minute wait
+    vi.advanceTimersByTime(10_000);                                           // the gather only
     expect(settle()).toEqual([["dev-a", has('cancelled by lead: "dropped" — stop working on it')]]);
   });
 
-  it("a person's change is told at once, without waiting for a message", () => {
+  it("a person's change is told after the gather too, without waiting for a message", () => {
     const { board, settle } = rig();
     const card = main(board, ANN, { assignee: "dev-a" });
     board.moveCard(DEV, card.code, "claimed");

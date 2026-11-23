@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **任務板卡片的派工者、關注它的 instance，以及它所屬專案的 leader，會收到卡片進度的通知。** 卡片完成、進入待確認、被退回、卡住或換負責人時，他們會收到一則 `[Task board]` 通知，寫出誰做的、帶著什麼說明——專案 leader 不必被叫，就能來看進度或派下一張卡。關注者用新的 `task watch` / `task unwatch`，或 `POST /ui/tasks/cards/<id>/watchers` 設定（每張卡最多 10 個；主任務的關注者也會收到它子任務的消息）；leader 是專案的 lead（先前只決定 Needs you 的按鈕放在哪裡），或 `defaults.task_board.leader`。做出改變的人自己不會收到；留言不算；使用者開的卡若沒有關注者也沒有 leader，就沒有人被通知；派工者若已因為卡片卡在它要回答的問題、或等它確認而收到通知，不會再收到一次。agent 在同一張卡上來回改，30 分鐘內 6 次之後就不再通知關注者，直到使用者動了這張卡。預設開啟，既有的 fleet 也一樣：`defaults.task_board.progress_wakes: false` 可關閉。升級之前發生的事不會補發；唯一動到儲存資料的是只增不改的 `task_watchers` 表。
