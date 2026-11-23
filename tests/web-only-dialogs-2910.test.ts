@@ -135,7 +135,7 @@ describe("#2910 D4 put to the person: its options only; Esc refused", () => {
     const card = selectionCard(fixture("claude-2.1.291-background-work-exit.pane.txt"), "Claude Code")!;
     const p = remoteCardPrompt("agent-1", card);
     expect([p.choices.map(c => c.action), p.webInput]).toEqual([["opt-1", "opt-2", "opt-3"], null]);
-    expect(p.message.split("\n").at(-1)).toBe("Choose one below — it is keyed into the agent's terminal as you chose. Or answer it yourself in its View.");
+    expect(p.message.split("\n").at(-1)).toBe("Choose one below. We'll press it in the agent's terminal for you.");
     // A kiro question card keeps its Skip (unchanged).
     const kiro = { ...card, noSkip: undefined, webOnly: undefined } as RemoteQuestionCard;
     expect(remoteCardPrompt("agent-1", kiro).choices.at(-1)?.action).toBe("skip");
