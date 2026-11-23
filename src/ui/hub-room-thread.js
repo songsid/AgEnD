@@ -22,7 +22,7 @@ import { toast } from "/assets/ui-toast.js";
 import { register, t } from "/assets/app-i18n.js";
 import "./hub-strings.js";
 import { firstCharacter } from "/assets/instance-nav.js";
-import { hroom } from "./hub-room-strings.js";
+import { hroom, styleName } from "./hub-room-strings.js";
 import {ha} from "./hub-ai-apps-strings.js";
 import { RoomComposer } from "./hub-room-composer.js";
 import { TextSizeButton, TEXT_SIZES, setTextSize, textSizeStore } from "/assets/header-tools.js";
@@ -96,6 +96,8 @@ const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "ad
 export function systemText(m) {
   if(m?.system?.kind==="purpose-changed"&&typeof m.system.purpose==="string"&&typeof m.system.name==="string")return hroom(m.system.purpose?"purposeSetSys":"purposeClearedSys",m.system.name,m.system.purpose);
   if (m?.system?.kind === "office-changed" && typeof m.system.enabled === "boolean" && typeof m.system.name === "string") return hroom(m.system.enabled ? "officeOnSys" : "officeOffSys", m.system.name);
+  // M-3533 R1b: the style in this reader's words (a style this page does not know: its id, as stored).
+  if (m?.system?.kind === "office-style-changed" && typeof m.system.style === "string" && typeof m.system.name === "string") return hroom("officeStyleSys", m.system.name, styleName(m.system.style));
   if(m?.system?.kind==="app-rate-limited")return ha("rateLimited",m.system.name||"");
   if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];

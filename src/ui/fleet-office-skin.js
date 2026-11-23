@@ -551,6 +551,40 @@ function drawFurniture(ctx, f, active, ms, env) {
 const studioMatte = (env) => (ZONE_FLOOR[env.mode] || ZONE_FLOOR.dark).hall;
 export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, matte: studioMatte };
 
+// ── M-3533 R1b: the studio for a large Hub room — the same canvas, desks and spacing; a big room runs out of seats to
+// rest in, not desks (most agents are idle most of the time), so its lounge is as large as the work area beside it, a
+// 6×5 grid a full name tag apart (TAG_TEXT_W + its padding: 94), and help and nap a strip below both. Drawn
+// procedurally like the studio. ──
+const STUDIO_LARGE_AREAS = {
+  desks: { name: "desks", rect: { x: 24, y: 64, w: 632, h: 448 }, seats: grid([104, 248, 392, 536], [190, 320, 450]) },
+  lounge: { name: "lounge", rect: { x: 696, y: 64, w: 560, h: 448 }, seats: grid([739, 833, 927, 1021, 1115, 1209], [146, 232, 318, 404, 490]) },
+  alert: { name: "alert", rect: { x: 24, y: 532, w: 632, h: 172 }, seats: grid([96, 216, 336, 456, 576], [606, 680]).slice(0, 9) },
+  nap: { name: "nap", rect: { x: 696, y: 532, w: 560, h: 172 }, seats: grid([800, 976, 1152], [606, 680]) },
+};
+const STUDIO_LARGE_FURNITURE = [
+  { id: "board", shape: "board", x: 340, y: 100, depth: 5 },
+  { id: "rack-work", shape: "rack", tone: "ok", x: 610, y: 160, depth: 6, activeWhen: ["working"] },
+  ...STUDIO_LARGE_AREAS.desks.seats.map((s, i) => ({ id: `desk-${i}`, shape: "desk", x: s.x, y: s.y, depth: 1100 })),
+  { id: "coffee", shape: "coffee", x: 1232, y: 100, depth: 20, activeWhen: ["idle"] },
+  { id: "plant-1", shape: "plant", x: 716, y: 96, depth: 20 },
+  { id: "rack-alert", shape: "rack", tone: "danger", x: 630, y: 620, depth: 900, activeWhen: ["needs", "stuck", "crashed"] },
+  ...STUDIO_LARGE_AREAS.nap.seats.map((s, i) => ({ id: `bag-${i}`, shape: "beanbag", x: s.x, y: s.y + 4, depth: 990 })),
+].sort((a, b) => a.depth - b.depth);
+export const STUDIO_LARGE_PACK = {
+  ...STUDIO_PACK, id: "studio-large", areas: STUDIO_LARGE_AREAS, furniture: STUDIO_LARGE_FURNITURE, ...studioGraph(STUDIO_LARGE_AREAS),
+};
+export const studioLargeSkin = { ...studioSkin, id: "studio-large", pack: STUDIO_LARGE_PACK };
+/**
+ * A built-in style's seats, from its layout (never typed): `total` every seat, `rest` the seats of the area its idle
+ * people go to (its pack's stateZones.idle) — what a large room runs out of. null for a style that has no areas.
+ */
+export function styleSeats(id) {
+  const pack = SKINS.get(id)?.pack;
+  if (!pack || !pack.areas) return null;
+  const areas = Object.values(pack.areas), idle = pack.stateZones?.idle;
+  return { total: areas.reduce((n, a) => n + a.seats.length, 0), rest: (pack.areas[idle]?.seats || []).length };
+}
+
 // ── Skin packs ──
 
 /**
@@ -846,8 +880,11 @@ const PICTURES = new Map([COZY_PACK, GUILD_PACK, SCHOOL_PACK].map((pack) => [pac
 export const PICTURE_SKINS = [...PICTURES.keys()];
 
 /** The skins built into this page; an uploaded pack is loaded by loadPackSkin. */
-export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ["studio-large", studioLargeSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+/** The styles the Fleet's own office offers (M-3533: "studio-large" is a Hub room's, drawable here, not offered there). */
 export const BUILT_IN_SKINS = ["pixel", "studio", ...PICTURE_SKINS];
+/** M-3533 R1b: the styles a Hub room's office offers, largest first (the zones styles: no desks-per-team layout). */
+export const ROOM_STYLES = ["studio-large", "studio", ...PICTURE_SKINS];
 /**
  * #2631/#2947: a picture-backed built-in's picture, loaded once; the skin drawn from it then takes the bare one's place
  * in SKINS (skinFor). The skin, or null while it cannot load (the bare one stays; tried again next time); null for an id

@@ -13,7 +13,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Menu } from "/assets/ui-menu.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
 import { hubClient } from "./hub-client.js";
-import { hroom } from "./hub-room-strings.js";
+import { hroom, styleName } from "./hub-room-strings.js";
 import { hs } from "./hub-room-settings-strings.js";
 import {ha} from "./hub-ai-apps-strings.js";
 import { RoomPicker } from "./hub-room-new.js";
@@ -40,6 +40,22 @@ export function invitedLabel(row) {
   return owner ? hroom("inviteRow", row.name, owner) : hs("pendingRowNoOwner", row.name);
 }
 
+/**
+ * M-3533 R1b: the room office's styles with their seats, and — when the room's agents (its assistant too) outnumber the
+ * picked style's rest seats and a larger style has more — the hint to pick a larger one.
+ */
+function OfficeStyles({ styles, value, saved, busy, members, onPick, onSave }) {
+  const agents = members.filter((m) => m.kind === "agent").length, figures = agents + members.filter((m) => m.kind === "assistant").length;
+  const picked = styles.find((x) => x.id === value) || null;
+  const larger = picked && styles.some((x) => x.seats.rest > picked.seats.rest);
+  return html`<fieldset class="field hub-room-office-styles"><legend>${hroom("officeStyle")}</legend>
+    ${styles.map((x) => html`<label class="check" key=${x.id}><input type="radio" name="hubRoomOfficeStyle" value=${x.id} checked=${value === x.id} disabled=${busy}
+      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)} · ${hroom("seatsN", x.seats.total)}</span></label>`)}
+    ${picked && larger && figures > picked.seats.rest ? html`<p class="note hub-room-office-fit">${hroom("officeFitHint", agents, styleName(picked.id), picked.seats.rest)}</p>` : null}
+    <div class="field-row"><button type="button" class="btn hub-room-office-style-save" disabled=${busy || value === saved} onClick=${onSave}>${hroom("officeStyleSave")}</button></div>
+  </fieldset>`;
+}
+
 /** Props: client, roomId, detail (the shell's GET /hub/v1/rooms/:id answer), onClose(), onChanged(), assistant (the Hub offers the room assistant; read from the list when not given). */
 export function RoomSettings({ client = hubClient(), roomId, detail, onClose, onChanged, assistant } = {}) {
   const room = detail?.room ?? {}, settings = detail?.settings ?? {}, members = Array.isArray(detail?.members) ? detail.members : [];
@@ -61,6 +77,15 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   const [office, setOffice] = useState(settings.office?.enabled === true);
   useEffect(() => { setName(room.name ?? ""); setAllMention(settings.allMention !== false); setHistory(settings.historyForNew === "all" ? "all" : "since-join"); setOffice(settings.office?.enabled === true); }, [detail]);
   useEffect(()=>setAiApps(settings.aiApps!==false),[detail]);
+  // M-3533 R1b (§2.1b): the office's style — the room styles, each with its seats from its own layout (the drawing's
+  // fleet-office-skin.js, loaded with import() as the office tab does); picked here, saved once with Save style.
+  const savedStyle = typeof settings.office?.style === "string" ? settings.office.style : "studio";
+  const [style, setStyle] = useState(savedStyle), [styles, setStyles] = useState(null);
+  useEffect(() => { setStyle(savedStyle); }, [detail]);
+  useEffect(() => {
+    if (!officeShown) return;
+    import("./fleet-office-skin.js").then((m) => { if (live.current) setStyles(m.ROOM_STYLES.map((id) => ({ id, seats: m.styleSeats(id) })).filter((x) => x.seats)); }, () => {});
+  }, [officeShown]);
   useEffect(() => {
     if (typeof assistant === "boolean") { setOffered(assistant); return; }
     void client.roomList().then(r => { if (live.current) setOffered(r?.ok === true && r.me?.assistant === true); });
@@ -155,6 +180,8 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
     ${officeShown ? html`<section class="form hub-room-office-settings"><h4>${hroom("officeSection")}</h4>
       <label class="check"><input id="hubRoomOffice" class="s-ui-toggle" type="checkbox" role="switch" checked=${office} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked; setOffice(v); void act(() => client.updateRoom(roomId, { office: { enabled: v } }), () => setOffice(!v)); }} /><span>${hroom("officeSetting")}</span></label>
+      ${office && styles ? html`<${OfficeStyles} styles=${styles} value=${style} saved=${savedStyle} busy=${busy} members=${members} onPick=${setStyle}
+        onSave=${() => { void act(() => client.updateRoom(roomId, { office: { style } })); }} />` : null}
     </section>` : null}
     <section class="form"><h4>${hroom("other")}</h4>
       <button type="button" class="btn btn-danger" disabled=${busy || room.archived === true} onClick=${() => { void archive(); }}>${hroom("archiveRoom")}</button>
