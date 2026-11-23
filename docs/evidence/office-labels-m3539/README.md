@@ -3,13 +3,13 @@
 These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real room office, headless Chromium, taken from two commits:
 
 - **before**: #4370's head `ce5f6556`;
-- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. The walk-in pair and the zoomed pair are from `5530e2e5`, which adds the minimap to what tags keep clear of, slides a tag sideways past such a control instead of dropping it, and keeps bubbles off the area names. Their before is the same `ce5f6556`. Later commits change nothing in these scenes. `bc82159b` only matters for a style whose calling states fall back to a default or first area, and the Studio styles name theirs.
+- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. The zoomed pair is from `5530e2e5`, which adds the minimap to what tags keep clear of, slides a tag sideways past such a control instead of dropping it, and keeps bubbles off the area names. The walk-in pair's after is from `33a82c46`, which adds the stroll rules below and keeps a tag within its area's sides. Both pairs' before is the same `ce5f6556`. Later commits change nothing in these scenes. `bc82159b` only matters for a style whose calling states fall back to a default or first area, and the Studio styles name theirs.
 
 The room has 12 people and 30 agents of 6 owners, plus the room assistant, all with made-up names. Two agents are working, one is paused, and one owner's Fleet is offline, so its 5 agents are stopped and go to the nap corner. Each shot is taken 3 s after the office opens, with normal motion (idle agents stroll).
 
 | What | Captures |
 |---|---|
-| **The final scene:** Studio (large) in normal motion, taken with #4370's own capture script at `b0b881a4`, the same view as #4370's `desk-zh-TW-light-r1b-5-office-large.png` (its before). Every name is separate, nobody stands on anybody, nothing is under the zoom control | `desk-zh-TW-light-after-r1b-5-office-large.png` |
+| **The final scene:** Studio (large) in normal motion, taken with #4370's own capture script at `33a82c46`, the same view as #4370's `desk-zh-TW-light-r1b-5-office-large.png` (its before). Every name is separate, nobody stands on anybody, nothing is under the zoom control | `desk-zh-TW-light-after-r1b-5-office-large.png` |
 | **The same moment on both commits:** the first frame of the office, the page clock paused and stepped alike. In before, everyone walks in from the old style's seats and tags pile up: Yarrow/Zephyr and Birch/Pebble in Studio, 13 pairs in Studio (large). In after, everyone is in place, with no tag on another | `desk-zh-TW-light-{before,after}-studio-walkin.png`, `desk-zh-TW-light-{before,after}-studio-large-walkin.png` |
 | Studio, desktop | `desk-zh-TW-light-{before,after}-studio.png`, `desk-en-dark-{before,after}-studio.png` |
 | Studio (large), desktop | `desk-en-dark-{before,after}-studio-large.png` |
@@ -44,7 +44,8 @@ What changed:
   - People walking are tagged after everyone at their place, so a stroll no longer covers a seated person's name.
 - **An area's name a figure stands on** (休息區 under the crowd at the top of the Studio lounge) is written again over the people, on a plate of the page's surface.
 - **The idle never stroll or visit to the help desk.** Someone standing there reads as "needs you". These are the areas a style sends the calling to; strolls and visits elsewhere are unchanged (#3685).
-- **A stroll never ends on someone else.** It ends only where the figure stands clear of everyone (a seat in use, a visitor, another stroll), and its tag stays inside its area. Before, a row's aisle points sat just under its seats, so in a full room strollers stood on the seated, and the bottom row's tags spilled past the area's edge.
+- **A tag stays within the sides of its area.** A wide name at the large lounge's first column poked past its edge.
+- **A stroll never ends on someone else, nor in the hall.** It ends only inside an area (the hall between areas is narrower than a name tag), where the figure stands clear of everyone (a seat in use, a visitor, another stroll), and its tag stays inside the area. Before, a row's aisle points sat just under its seats, so in a full room strollers stood on the seated, and the bottom row's tags spilled past the area's edge.
 - **A new office or style places everyone at once**, stopping any walk under way, even one going to the same seat. Before, a room's office opened on the Studio's seats, then read its style, and everyone walked across. The asleep stood in the help desk for seconds, so 午睡角 6 had nobody drawn in it.
 
 Not changed:
