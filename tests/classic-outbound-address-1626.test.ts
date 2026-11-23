@@ -35,7 +35,7 @@ function harness(type: "discord" | "telegram" = "discord", classic = true) {
   fm.worlds.set("owner", { id: "owner", adapter } as never);
   fm.fleetConfig = {
     defaults: {},
-    instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic", dashboard: { office: true }, office_pack_access: true } },   // office, office packs: off unless set (#2578, #2692)
+    instances: { classic: { working_directory: root, tool_set: "full", topic_id: "fleet-topic", dashboard: { appearance: true, office: true }, office_pack_access: true } },   // appearance, office, office packs: off unless set (M-2133, #2578, #2692)
   } as never;
   if (classic) {
     const channels = new ClassicChannelManager(root, fm.logger);

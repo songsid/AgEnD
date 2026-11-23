@@ -1,3 +1,5 @@
+import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
+import type {MonitoringPlatform} from './host-monitoring.js';
 /** Owner-fenced cache and delivery coordinator. All incident I/O belongs to the existing worker. */
 import {randomBytes} from 'node:crypto';
 import {HostAlertWindow,validateHostAlertRule,type HostAlertRecord,type HostAlertTransition} from './host-monitoring-alert-policy.js';
@@ -7,6 +9,7 @@ import {hostAlertResources} from './host-monitoring-alert-resources.js';
 import type {HostHealthSnapshot} from './host-monitoring.js';
 type Answer={ok:boolean;value?:{sequence:number;document:HostAlertDocument};reason?:string};
 interface Options {
+ platform?:MonitoringPlatform;
  persistence:{incidentRead():Promise<Answer>;incidentSave(sequence:number,document:HostAlertDocument):Promise<Answer>};
  now?:()=>number;monotonic?:()=>number;token?:()=>string;
  deliver(records:Array<{transition:HostAlertPending['transition'];record:HostAlertRecord}>,ack:(delivered:boolean)=>void):boolean;
@@ -19,8 +22,8 @@ export class HostMonitoringAlerts {
  private settings=defaultHostAlertSettings();private sequence=0;private document=emptyHostAlerts();private windows=new Map<string,HostAlertWindow>();
  private busy=false;private edits:Array<{run:()=>Promise<void>;resolve:(ok:boolean)=>void}>=[];private latest:HostHealthSnapshot|null=null;
  private receipt:{flight:Flight;delivered:boolean}|null=null;private flight:Flight|null=null;
- private now:()=>number;private monotonic:()=>number;
- constructor(private readonly options:Options){this.now=options.now??Date.now;this.monotonic=options.monotonic??(()=>performance.now());}
+ private now:()=>number;private monotonic:()=>number;private platform:MonitoringPlatform;
+ constructor(private readonly options:Options){this.platform=options.platform??detectMonitoringPlatform();this.now=options.now??Date.now;this.monotonic=options.monotonic??(()=>performance.now());}
  configure(enabled:boolean,settings:HostAlertSettings=this.settings):void {
   const next=parseHostAlertSettings(settings),changed=JSON.stringify(next)!==JSON.stringify(this.settings);this.settings=next;
   if(enabled===this.enabled&&!changed)return;
@@ -33,11 +36,21 @@ export class HostMonitoringAlerts {
  ready():void {
   this.workerReady=true;if(!this.enabled||this.loaded||this.busy||this.failure)return;
   const epoch=this.epoch;this.busy=true;
-  void this.options.persistence.incidentRead().then(answer=>{
+  void this.options.persistence.incidentRead().then(async answer=>{
    if(!this.current(epoch))return;
    if(!answer.ok||!answer.value)throw Error('incident_load_failed');validateHostAlertDocument(answer.value.document);
    this.sequence=answer.value.sequence;this.document=answer.value.document;
-   for(const record of this.document.active)this.windows.set(record.key,new HostAlertWindow(record.key,hostAlertRuleFor(this.settings,record.key,record.kind),record));
+   // Reconcile saved warnings before publishing Ready or dispatching their outbox.
+   // Retire by policy change, without sending a false pressure-recovery message.
+   const retired=this.document.active.filter(record=>record.kind==='memory'&&record.level==='warning'&&hostAlertRuleFor(this.settings,record.key,record.kind,this.platform).criticalOnly===true);
+   if(retired.length){
+    const document=structuredClone(this.document),keys=new Set(retired.map(record=>record.key)),now=this.now();
+    document.active=document.active.filter(record=>!keys.has(record.key));
+    document.resolved=[...document.resolved,...retired.map(record=>({...record,revision:record.revision+1,updatedAt:now,resolvedAt:now}))].slice(-500);
+    document.pending=document.pending.filter(p=>!keys.has(p.key)&&(p.transition!=='resolved'||document.resolved.some(r=>r.key===p.key&&r.revision===p.revision)));
+    await this.save(document,epoch);if(!this.current(epoch))return;
+   }
+   for(const record of this.document.active)this.windows.set(record.key,new HostAlertWindow(record.key,hostAlertRuleFor(this.settings,record.key,record.kind,this.platform),record));
    this.loaded=true;this.publish();
   }).catch(()=>{if(this.current(epoch))this.fail('incident_load_failed');}).finally(()=>{this.busy=false;this.drain();});
  }
@@ -76,7 +89,7 @@ export class HostMonitoringAlerts {
   const document=structuredClone(this.document),now=this.now(),mono=this.monotonic(),seen=new Set<string>();let changed=false;
   for(const resource of hostAlertResources(snapshot,now)){
    seen.add(resource.key);let window=this.windows.get(resource.key);
-   if(!window){if(this.windows.size>=64)throw Error('incident_capacity');const rule=hostAlertRuleFor(this.settings,resource.key,resource.kind);if(rule.kind!==resource.kind)throw Error('invalid_alert_resource');validateHostAlertRule(rule,this.settings.rules[resource.key]?resource.capacity:undefined);window=new HostAlertWindow(resource.key,rule,undefined,Math.max(0,...document.resolved.filter(r=>r.key===resource.key).map(r=>r.revision)));this.windows.set(resource.key,window);}
+   if(!window){if(this.windows.size>=64)throw Error('incident_capacity');const rule=hostAlertRuleFor(this.settings,resource.key,resource.kind,this.platform);if(rule.kind!==resource.kind)throw Error('invalid_alert_resource');validateHostAlertRule(rule,this.settings.rules[resource.key]?resource.capacity:undefined);window=new HostAlertWindow(resource.key,rule,undefined,Math.max(0,...document.resolved.filter(r=>r.key===resource.key).map(r=>r.revision)));this.windows.set(resource.key,window);}
    const transition=window.observe({sampledAt:resource.sampledAt,monotonicAt:mono,wallAt:now,value:resource.value});
    if(transition){this.transition(document,transition);changed=true;}
    const record=window.snapshot();

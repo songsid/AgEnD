@@ -42,7 +42,7 @@ export const TIME_SLACK_MS = 5000;
 /** A reply call this recent, with no row yet, is assumed to be about to get one. */
 export const AWAIT_ROW_MS = 15000;
 /** The steps a timeline shows (the rest — the user's prompt, the turn's end, compaction notes — are bubbles or noise). */
-const SHOWN = new Set(["thinking", "assistant", "tool", "error"]);
+export const SHOWN = new Set(["thinking", "assistant", "tool", "error"]);
 const REPLY_TOOL = /^(?:mcp__agend[\w-]*__|agend[\w-]*:)?reply$/;
 const REPLY_TEXT = 200;
 

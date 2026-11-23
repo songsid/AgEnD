@@ -84,7 +84,7 @@ function acts(opts: { offices?: ReturnType<typeof offices>; clock?: { t: number 
 describe("the `office` feature: off unless set true", () => {
   it("a feature with its two tools, in the profiles a worker's appearance tools are in; the page lists it too", () => {
     expect(DASHBOARD_FEATURES).toContain("office");
-    expect([...OFF_UNLESS_ON]).toEqual(["office", "office_packs"]);                     // #2692: office_packs too
+    expect([...OFF_UNLESS_ON]).toEqual(["appearance", "office", "office_packs"]);       // #2692: office_packs too; M-2133: appearance
     expect(DASHBOARD_FEATURE_TOOLS.office).toEqual(["office_view", "office_set"]);
     const names = TOOLS.map(t => t.name);
     for (const t of ["office_view", "office_set"]) {
@@ -99,15 +99,16 @@ describe("the `office` feature: off unless set true", () => {
 
   it("unset (or null, or false) is off, true is on; the refusal says how it is switched on", () => {
     // #2692: office_packs is off unless set true too (its own switch).
-    expect(dashboardFeaturesOff(undefined)).toEqual(["office", "office_packs"]);
-    expect(dashboardFeaturesOff({ office: null, office_packs: true })).toEqual(["office"]);
-    expect(dashboardFeaturesOff({ office: false, task_board: false, office_packs: true })).toEqual(["task_board", "office"]);
-    expect(dashboardFeaturesOff({ office: true, office_packs: true })).toEqual([]);
+    // M-2133: appearance is off unless set true as well.
+    expect(dashboardFeaturesOff(undefined)).toEqual(["appearance", "office", "office_packs"]);
+    expect(dashboardFeaturesOff({ office: null, office_packs: true })).toEqual(["appearance", "office"]);
+    expect(dashboardFeaturesOff({ office: false, task_board: false, office_packs: true })).toEqual(["appearance", "task_board", "office"]);
+    expect(dashboardFeaturesOff({ appearance: true, office: true, office_packs: true })).toEqual([]);
     expect(dashboardRefusal({}, "office_set")).toMatch(/office_set is not available.*"office" is off until the person switches it on \(office_access: true\).*Do not retry/);
     expect(dashboardRefusal({ office: true }, "office_view")).toBeNull();
     // Its own switch, else the default's.
-    const fleet = { defaults: { dashboard: { office: true }, office_pack_access: true }, instances: { a: { dashboard: { office: false } }, b: {} } };
-    expect([dashboardFeaturesOffIn(fleet, "a"), dashboardFeaturesOffIn(fleet, "b"), dashboardFeaturesOffIn({ instances: {} }, "c")]).toEqual([["office"], [], ["office", "office_packs"]]);
+    const fleet = { defaults: { dashboard: { appearance: true, office: true }, office_pack_access: true }, instances: { a: { dashboard: { office: false } }, b: {} } };
+    expect([dashboardFeaturesOffIn(fleet, "a"), dashboardFeaturesOffIn(fleet, "b"), dashboardFeaturesOffIn({ instances: {} }, "c")]).toEqual([["office"], [], ["appearance", "office", "office_packs"]]);
   });
 
   it("left out of the tool menu while off", () => {
@@ -137,7 +138,7 @@ describe("the `office` feature: off unless set true", () => {
   }, 30_000);
 
   it("Settings: the page's default is off; switching it on is confirmed, off is direct", () => {
-    expect([dashboardDefault({}, "office"), dashboardDefault({ dashboard: { office: true } }, "office"), dashboardDefault({}, "appearance")]).toEqual([false, true, true]);
+    expect([dashboardDefault({}, "office"), dashboardDefault({ dashboard: { office: true } }, "office"), dashboardDefault({}, "appearance")]).toEqual([false, true, false]);   // M-2133: appearance off unless set
     const config = () => ({ defaults: { backend: "claude-code" } as Record<string, any>,
       channels: [{ id: "main", type: "telegram", mode: "topic", group_id: "-1001", bot_token_env: "BOT", access: { mode: "locked", allowed_users: ["1"] } }],
       instances: { dev: { working_directory: "/tmp/dev" } as Record<string, any> } });

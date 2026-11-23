@@ -3,7 +3,7 @@ import { constants } from "node:fs";
 import { open, realpath, lstat, opendir } from "node:fs/promises";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import { createHash } from "node:crypto";
-import { projectSubagents, subagentLaunches, type SubagentArtifact, type SubagentRun } from "./subagent-records.js";
+import { projectSubagents, subagentLaunches, SUBAGENT_DIAGNOSTIC_TYPES, type SubagentArtifact, type SubagentRun } from "./subagent-records.js";
 export interface SubagentSource { backend: "claude-code" | "codex"; sessionId: string; cwd: string; path: string; root: string; owner: string }
 export interface SubagentAnswer { subagents: 1; owner: string | null; status: "ok" | "unavailable" | "busy"; runs: SubagentRun[] }
 export const SUBAGENT_READ_BYTES = 2 * 1024 * 1024;
@@ -43,11 +43,29 @@ export async function readSubagentFile(root: string, file: string, max = SUBAGEN
   } catch { return null; }
   finally { if (handle) await handle.close(); }
 }
-function jsonl(text: string | null): unknown[] | null {
+/** Past this a line refuses the window, unless it is a Claude Code API diagnostic (api-request-shape passes 190 KB, M-3541). */
+export const SUBAGENT_LINE_MAX = 128000;
+/** An oversized diagnostic as only what the parser checks of one: its type and its session/child binding. */
+const diagnosticStub = (r: Record<string, unknown>) => {
+  const out: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+  for (const k of ["type", "sessionId", "agentId", "cwd", "isSidechain", "timestamp"]) if (Object.hasOwn(r, k)) out[k] = r[k];
+  return { ...out };
+};
+export function jsonl(text: string | null): unknown[] | null {
   if (text === null || (text.length > 0 && !text.endsWith("\n"))) return null;
   const lines = text.split("\n").filter(Boolean);
-  if (lines.length > 20000 || lines.some(s => s.length > 128000)) return null;
-  try { return lines.map(s => JSON.parse(s)); } catch { return null; }
+  if (lines.length > 20000) return null;
+  try {
+    return lines.map(s => {
+      const r: unknown = JSON.parse(s);
+      if (s.length <= SUBAGENT_LINE_MAX) return r;
+      // M-3541: one oversized diagnostic used to reject the whole window, and with it every run. Only a positively
+      // identified diagnostic is admitted, as an identity stub (the child checks still see its binding); any other
+      // oversized record still refuses the window — it could be a resumed prompt or a result the projection must see.
+      if (r && typeof r === "object" && !Array.isArray(r) && SUBAGENT_DIAGNOSTIC_TYPES.has((r as Record<string, unknown>).type as string)) return diagnosticStub(r as Record<string, unknown>);
+      throw Error("oversized record");
+    });
+  } catch { return null; }
 }
 const identity = (s: SubagentSource) => JSON.stringify([s.owner, s.backend, s.sessionId, s.cwd, s.path, s.root]);
 const token = (s: string) => createHash("sha256").update(s).digest("hex").slice(0, 24);

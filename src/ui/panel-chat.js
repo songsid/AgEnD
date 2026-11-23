@@ -240,7 +240,7 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
 }
 linkWorkBarCss();
 
-import { activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
+import { activityDrawCtx, activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
@@ -364,10 +364,7 @@ const agentBusy = (name) => R().isBusy(store.state.exec[name]);
 const agentSince = (name) => { const t = store.state.workingSince[name]; return t == null ? null : Date.now() - (performance.now() - t); };
 const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name), Date.now(), { busy: agentBusy(name), since: agentSince(name) }) : store.threadRows(name));
 /** What a chat's activity blocks need to draw: its paths to shorten, and whether thinking is shown. */
-const activityCtx = (name) => () => {
-  const info = activityInfo(name);
-  return { paths: info ? { cwd: info.cwd, home: info.home } : null, thinking: activityPrefs.get().thinking && !!info && info.thinking === true };
-};
+const activityCtx = (name) => () => activityDrawCtx(name);
 
 // ── Announcements: one polite, visually hidden line for the coarse events only (a reply arrived, the agent started,
 // finished, or waits on you). Messages themselves are not read out as they arrive; the list is a log to browse.

@@ -385,19 +385,34 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   **Send back** finished work, **Answer** a blocked card — #2756: only the cards the person handed out, as Needs you;
   an agent's card in review says "Waiting for <agent>"); **No project** holds `task`-tool tasks. A project is a board
   of main tasks (M-n) by status — To do, In progress, Blocked, To confirm, Done — with drag to move and each main
-  task's sub tasks (S-n). **Filter** (status, assignee or nobody, priority, size; each chip **is** / **is not**; a main
-  task stays when it or a sub task matches) and **Display** (board or **list**; the list grouped by status, assignee or
-  priority, ordered by board order, priority, last change, newest or title; **Sub tasks as rows of their own**;
-  finished cards last 7 days / all / hidden). The project and filters are in the address (`?tp=`, `?tf=`): a link opens
-  that filtered board; the choices are remembered per device (`agend_tasks_display`, `agend_tasks_filters`). A card opens in a dialog: every field editable, its sub tasks, comments,
-  progress log, history. **Search cards** in the header. Only a signed-in person confirms the work they handed out
+  task's sub tasks (S-n). One toolbar row under the project's header: **Board | List**, **Search** (every word, in the
+  number, title, fields, checklist or assignee), **Filter** (status, assignee or nobody, priority, size, **Needs you**;
+  each chip **is** / **is not**; a main task stays when it or a sub task matches) and **Display** (the list grouped by
+  status, assignee or priority, ordered by board order, priority, last change, newest, assignee or title;
+  **Sub tasks as rows of their own**; finished cards last 7 days / all / hidden). The list shows every row's priority,
+  sorts by its column headers (again: reversed) and folds its groups. The project and filters are in the address
+  (`?tp=`, `?tf=`): a link opens that filtered board; the choices are remembered per device (`agend_tasks_display`,
+  `agend_tasks_filters`, `agend_tasks_query`, `agend_tasks_collapsed`). **A card is a page** (`?card=`; Back returns to
+  the board or list): its text on the left (goal, scope, definition of done, context — an empty one is a small "+ Add"
+  button, opened in place; then the agent's block: state, result and activity, one line while there is nothing to show; then
+  the sub tasks, a bordered list with done / total) and its activity — comments, progress log and history as one timeline,
+  the comment box last — and its properties on the right in three groups (status, assignee,
+  priority, size / project, dispatched by / a "needs my confirmation" switch, dependencies; "Mark blocked"
+  is in the toolbar at the top; on a phone one column: title, spec, agent line, sub tasks, properties, activity). A property is a chip: pick from its menu and it is saved; text saves when
+  you leave the box or press Ctrl+Enter (Esc drops it); after a conflict the edit stays open and asks before it
+  overwrites. **Main task** (new) needs only a title; project, assignee and priority are optional chips, the rest is
+  under More options. On a phone the board shows one status at a time and each card has a ⋯ menu (Move to…). Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
-  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Position row on a phone). A right
-  click on a card (tile, list row, waiting row; or the menu key / Shift+F10) opens its menu: Open, Confirm / Send
+  delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Status chip and Position row on a
+  phone). A right click on a card (tile, list row, waiting row; or the menu key / Shift+F10; or its ⋯) opens its menu: Open, Confirm / Send
   back / Answer when it waits for the person, Move to, Assignee, Priority, Copy link / number, Cancel (Shift+right
   click keeps the browser's menu). An open card's arrows (or K / J) step to the previous / next card the page showed
   (a sub task: its siblings). A main
-  task's tile shows the sub task at work and who is on it; a card waiting for review that is not wrapped up says
+  task's tile shows the sub task at work and who is on it; a card in progress whose assignee is working says **Running**
+  (tile, list row; a main task for a sub task of its own), and the card's page has an **Agent activity** block — who,
+  their state, **Open conversation** (their chat) and, for an admin with the agent's `tool_progress` on, the live steps
+  since the card was put in progress. That is an inference (card in progress + assignee working): with several cards in
+  progress each says **Busy · N cards** instead. The timeline tags an agent's own entries **Agent**. A card waiting for review that is not wrapped up says
   **To fill in** and Confirm asks first. A card's **Dispatched by** row: who handed it out (a blocked question goes
   to them first). An agent with the task board off (Dashboard access) is greyed out as an assignee: the board hands
   it no cards. **Insights** (beside the project's numbers): its cards counted per assignee / status / priority / size,
@@ -824,6 +839,9 @@ under **Manual options**, a pairing code. Each computer: its CLIs (**Install a C
 that PC's owner allowed it there), its accounts, and its update status. See docs/remote-runtime.md.
 
 **Notifications → Host monitoring** (「主機監測」): **Monitor this computer** and **Include agent footprint** are off by default; off is explicitly saved as false. On a supported computer, **View host health** opens Fleet → Host health. Sampling runs every 30–60 seconds; local history is capped at 64 MiB. It uses a background history worker; memory and write costs vary by computer. Agent footprint is a separate opt-in: one bounded process snapshot per minute. The administrator page shows CPU as a share of total computer capacity, descendant RSS estimates, known output-file sizes, and shared service overhead separately. Workspaces are not scanned. Turning monitoring off asks before deleting its history, then waits for physical close and cleanup; a failed cleanup is not a clean Off state. Off starts no monitoring collector, timer, worker or history file.
+
+Under **Host alert settings → Resource → Memory**, **Alert only at critical** (「只在嚴重時警示」) defaults on for a new macOS memory rule and off on Linux/WSL. An explicitly saved choice wins; an older saved memory rule without this option keeps it off. Turn it on to suppress Elevated warnings; Critical still needs its usual one-minute hold and Normal still needs two minutes to recover. Applying it retires an existing Elevated warning and its queued notice without sending a recovery message; an existing Critical incident stays open until normal recovery. The choice is saved with that memory rule in the separate alert-settings sidecar, not fleet.yaml. It changes alerts, not memory collection or the computer's pressure state. Reading the page does not rewrite saved rules. Saved rules also apply next time monitoring starts.
+
 
 **Fleet → Host health** (「主機狀態」, administrator only) shows current CPU, memory/pressure and relevant disks, with 1h / 24h / 7d / 30d recorded trends. Refresh reads caches/history; it does not start a new probe or turn monitoring on. Missing data stays unavailable, stale values keep their last-success time, and chart gaps are not zero. New history says **Collecting history…** until enough recorded buckets exist for a trend. WSL CPU/memory are WSL's figures; the Windows drive holding its virtual disk is separate. If that drive is unknown, choose it in Monitoring settings. The drive choice is kept in a private local sidecar, separate from fleet.yaml, so this choice does not prevent an older release from starting; missing or invalid sidecar data uses automatic detection. macOS APFS volumes can share free space: never add those values together; available memory is an estimate and unknown pressure is not Normal. Unsupported computers say so instead of offering a misleading enable link.
 

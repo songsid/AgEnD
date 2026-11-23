@@ -1,0 +1,34 @@
+[
+  {
+    "name": "kernel-alarm",
+    "path": "src/host-monitoring/darwin/interpretation.ts",
+    "baselineSha256": "d90a02ab861049f6fa8ef98adcf8fdc3d8d837e94f1f67f3c3e29fcbb01e3b28",
+    "mutatedSha256": "9c9e4fa51d14cf50300272c2059a86d8827448ea3a440cab17cc2107b338aff2",
+    "exit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "legacy-rule",
+    "path": "src/host-monitoring-alert-settings.ts",
+    "baselineSha256": "c4d2bc2c8d2fb5cc5a0c4928e25a0e643761602857903755d62771cf26fa0b9d",
+    "mutatedSha256": "024bbb682f016fe47d6f34ca1282bb1548f2b09bfa65cac4bc776a8e53105061",
+    "exit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "page-size",
+    "path": "src/host-monitoring/darwin/interpretation.ts",
+    "baselineSha256": "d90a02ab861049f6fa8ef98adcf8fdc3d8d837e94f1f67f3c3e29fcbb01e3b28",
+    "mutatedSha256": "4df9faf430d5e27a15c654f9350e8cc5a5b29e162d517ab75f4611aa51f01b9d",
+    "exit": 1,
+    "assertionRed": true
+  },
+  {
+    "name": "mac-default",
+    "path": "src/host-monitoring/darwin/defaults.ts",
+    "baselineSha256": "8bede15905604bd3ee261b8024bb2bba5579fd207007af3815941450a282159d",
+    "mutatedSha256": "b60395f55f874ff6dc5b68168125a4e9db0e68776a4d3e77eab5739135b0e05c",
+    "exit": 1,
+    "assertionRed": true
+  }
+]

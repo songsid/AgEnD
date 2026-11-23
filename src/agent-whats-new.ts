@@ -123,6 +123,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3528: the fleet prompt says each rule once; `since` is this line's next beta, as 2.4-go-ahead-scope's.
   { id: "2.4-prompt-dedupe", since: "2.4.0-beta.19",
     text: "Your instructions are shorter: Active Decisions list titles only (read a rule with `list_decisions { id, detail: true }` before applying it), and the web-chat receipt checks for a go-ahead action are in the cross-instance-messaging skill's web-chat section — load it before acting on one." },
+  // M-2133 / M-3526 (inventory recs 1 and 2): fewer, shorter tool schemas.
+  { id: "2.4-tool-diet", since: "2.4.0-beta.19",
+    text: "Tool changes: the emoji and sticker tools are one `emoji_sticker` tool (action list_emojis, preview_emojis, set_persona_emoji, list_stickers or preview_stickers, with that action's fields in `args`). Your look tools are one `web_appearance` tool, listed only when a person switches your look on (Settings → Agents); the web-appearance skill lists its actions. The task tool's full rules are in the `task-board` skill." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

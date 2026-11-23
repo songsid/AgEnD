@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { TOOLS } from "../src/channel/mcp-tools.js";
+import { TOOLS, COMPOSITE_TOOLS } from "../src/channel/mcp-tools.js";
 import { THEME_ASSET_LIMITS, THEME_ASSET_SLOTS } from "../src/web-theme-store.js";
 import { APPEARANCE_DEFAULTS } from "../src/web-appearance-limits.js";
 import { APPEARANCE_LIMITS } from "../src/web-appearance-policy.js";
@@ -25,7 +25,9 @@ describe("the web-appearance skill", () => {
     expect(SKILL).not.toMatch(/upload_web_effect|list_web_effects|apply_web_effect|export_web_mod|propose_web_mod|### Try:/);
   });
   it("names only real tools, and every appearance tool", () => {
-    const names = new Set(TOOLS.map((t: { name: string }) => t.name));
+    // M-2133: the actions of web_appearance are named too, in the "Calling these tools" table.
+    const names = new Set([...TOOLS.map((t: { name: string }) => t.name), ...COMPOSITE_TOOLS.flatMap(c => Object.keys(c.actions))]);
+    expect(SKILL).toContain("`web_appearance`");
     const named = [...SKILL.matchAll(/`([a-z_]+)`/g)].map(m => m[1]!).filter(n => /^(get|set|reset|preview)_/.test(n));
     expect(named.filter(n => !names.has(n))).toEqual([]);
     for (const t of ["get_web_theme", "set_web_theme", "set_web_theme_asset", "reset_web_theme", "get_web_appearance", "preview_web_appearance", "set_web_widget", "remove_web_widget", "set_web_ambient", "clear_web_ambient"]) expect(SKILL, t).toContain(`\`${t}\``);

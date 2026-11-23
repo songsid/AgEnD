@@ -44,7 +44,7 @@ afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
 beforeEach(async () => {
   await p.unmount();
   (globalThis as any).localStorage.removeItem("agend_tasks_project");
-  delete (globalThis as any).document.body.dataset.publicLink;
+  for (const k of ["publicLink", "linkMedia", "tier"]) delete (globalThis as any).document.body.dataset[k];
   handler = (path) => path === "/ui/tasks/board" ? { rev: 1, projects: [PROJECT], cards: [BLOCKED], stats: STATS } : path.startsWith("/ui/tasks/cards/") ? { card: BLOCKED, parent: null, children: [], comments: [], logs: [], history: [] } : {};
   app.applyStatus({ uptime: 1, instances: [{ name: "alpha", status: "running", state: "idle", execution_state: "idle" }] });
 });
@@ -75,16 +75,17 @@ describe("#2299 the task board's looks", () => {
   });
 
   // M-3278 (decision 7933bf90): the public link's admin edits the card as here.
-  it("3. over the public link the card's project, priority, size and review are editable as here (M-3278)", async () => {
+  it("3. over the public link an admin session edits the card's project, priority, size and review as here (M-3278)", async () => {
     (globalThis as any).document.body.dataset.publicLink = "1";
+    (globalThis as any).document.body.dataset.linkMedia = "1";   // an admin session over the link
     await mount("public");
     fire(p.root.querySelector(".tb-project-open"), "click");
     await settle(8);
     fire(p.root.querySelector(".tb-tile-title"), "click");
     await settle(8);
-    const meta = p.root.querySelector("dialog .tc-meta") ?? (globalThis as any).document.querySelector("dialog .tc-meta");
-    expect(meta, "the card is open").toBeTruthy();
-    expect(meta.querySelectorAll("select").length).toBeGreaterThan(0);
+    const meta = p.root.querySelector(".tp-side");   // the properties are three groups (the switch is in the last)
+    expect(meta, "the card is open as a page").toBeTruthy();
+    expect(meta.querySelectorAll("button.tp-chip").length, "the properties are chips that open menus").toBeGreaterThan(0);
     expect(meta.querySelectorAll("input[type=checkbox]").length).toBeGreaterThan(0);
   });
 
@@ -102,7 +103,9 @@ describe("#2299 the task board's looks", () => {
   });
 
   it("5. the CSS: columns fit from 1280 px, a phone's gutter and targets, the board's toasts above the tabs, two at most", () => {
-    expect(CSS).toMatch(/\.tb-columns \{ display: grid; grid-template-columns: repeat\(5, minmax\(176px, 1fr\)\)/);
+    // Columns are 272–360 px however many there are (the number is not fixed); more than fit scroll sideways.
+    expect(CSS).toMatch(/\.tb-columns \{ display: grid; grid-auto-flow: column; grid-auto-columns: minmax\(272px, 360px\)/);
+    expect(CSS).not.toMatch(/\.tb-columns \{[^}]*repeat\(5/);
     const phone = CSS.slice(CSS.indexOf("@media (max-width: 899px)"));
     expect(CSS).toMatch(/\n  \.col \{ padding: var\(--s-3\) var\(--s-4\) var\(--s-8\); \}/);
     expect(CSS).toMatch(/\.panel-head \.icon-btn \{ min-width: var\(--tap\); min-height: var\(--tap\); \}/);

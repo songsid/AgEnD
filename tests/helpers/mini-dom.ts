@@ -373,10 +373,29 @@ export function installDom(opts: { url?: string; lang?: string; storage?: Record
     get host() { return url.host; }, get hostname() { return url.hostname; },
     assign: (h: string) => { location.assigned = h; }, replace: (h: string) => { location.replaced = h; }, assigned: null as string | null, replaced: null as string | null,
   };
+  // A session history that keeps each entry's state and moves with go() / back() / forward(), firing popstate as a browser does.
   const history: any = {
     entries: [url.pathname + url.search + url.hash],
-    pushState: (_s: unknown, _t: string, p: string) => { const u = new URL(p, url); url.pathname = u.pathname; url.search = u.search; url.hash = u.hash; history.entries.push(p); },
-    replaceState: (_s: unknown, _t: string, p: string) => { const u = new URL(p, url); url.pathname = u.pathname; url.search = u.search; url.hash = u.hash; history.entries[history.entries.length - 1] = p; },
+    states: [null as unknown],
+    at: 0,
+    get state() { return history.states[history.at] ?? null; },
+    pushState: (s: unknown, _t: string, p: string) => {
+      const u = new URL(p, url); url.pathname = u.pathname; url.search = u.search; url.hash = u.hash;
+      history.entries.length = history.at + 1; history.states.length = history.at + 1;   // what was ahead is gone
+      history.entries.push(p); history.states.push(s ?? null); history.at = history.entries.length - 1;
+    },
+    replaceState: (s: unknown, _t: string, p: string) => {
+      const u = new URL(p, url); url.pathname = u.pathname; url.search = u.search; url.hash = u.hash;
+      history.entries[history.at] = p; history.states[history.at] = s ?? null;
+    },
+    go: (n: number) => {
+      const to = Math.max(0, Math.min(history.entries.length - 1, history.at + n));
+      if (to === history.at) return;
+      history.at = to;
+      const u = new URL(history.entries[to], url); url.pathname = u.pathname; url.search = u.search; url.hash = u.hash;
+      win.dispatchEvent(new MiniEvent("popstate"));
+    },
+    back: () => history.go(-1), forward: () => history.go(1),
   };
   const win: any = Object.assign(new Target(), { document, location, history, innerHeight: 844, visualViewport: null });
   const define = (k: string, v: any) => Object.defineProperty(g, k, { value: v, configurable: true, writable: true });

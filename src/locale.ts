@@ -2523,7 +2523,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "inst.mcp_never_connected_auto": "⚠️ `{0}` 的 CLI 在執行，但 AgEnD 的 MCP server 一直沒有連上 —— 這個 instance 目前沒有 agend 工具（無法 reply / 跨 instance 通訊）。等它閒置後會自動重啟再試一次（session 會保留）。若重複發生，請看它 pane 裡 CLI 的 MCP 啟動訊息。",
     "inst.mcp_never_connected_manual": "⚠️ `{0}` 的 CLI 在執行，但 AgEnD 的 MCP server 一直沒有連上 —— 這個 instance 目前沒有 agend 工具（無法 reply / 跨 instance 通訊）。請用 `restart_instance(\"{0}\")` 或 `/restart` 重啟，並看它 pane 裡 CLI 的 MCP 啟動訊息。",
     "inst.mcp_connected_late": "✅ `{0}` 的 MCP server 後來還是連上了 —— 先前「一直沒有連上」的警報作廢，不會重啟。",
-    "inst.mcp_recovered": "✅ `{0}` 的 MCP server 仍在服務 —— 先前的「MCP server 已終止」警報作廢，不會重啟。（是替換或子 agent 的 server 留下了死 pid；活的連線已在 IPC 層驗證。）",
+    "inst.mcp_recovered": "✅ `{0}` 的 MCP server 仍在服務 —— 先前的「MCP server 已終止」警報作廢，不會重啟。（是替換或子 Agent 的 server 留下了死 pid；活的連線已在 IPC 層驗證。）",
     "inst.muse_relay_exhausted": "⚠️ {0}：Muse 用量 relay 失效且無法恢復 —— 用量暫不可用，CLI 正移回直接連線（session 保留）。",
     "inst.crashed_respawned": "⚠️ {0} 已崩潰並重生。",
     "prompt_file.fleet_dir_fallback": "⚠️ {0}：file: 參照解析為 {2}，但該檔案不存在，所以改用了 {1}（相對於 Fleet 目錄）。相對路徑現在以 instance 的 working_directory 為準；請改成絕對路徑或搬移檔案。之後的版本會移除這個退回機制。",

@@ -1,4 +1,4 @@
-import {RoomPurposeHeader} from "./hub-room-purpose.js";
+import {RoomPurposeCard} from "./hub-room-purpose.js";
 import { hi } from "./hub-agent-intro.js";
 import {hp} from "./hub-personal-agent-strings.js";
 // M-3092 PR 2 (Hub rooms, track U): one room of a Hub with rooms, on the Fleet chat's own thread (/assets/chat-thread.js
@@ -581,13 +581,17 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
         <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
           onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
-        <span class=${`av${group ? " av-square" : ""}`} aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>
-        <span class="hub-chat-title"><strong>${title}</strong>${group&&typeof room.purpose==="string"?html`<${RoomPurposeHeader} purpose=${room.purpose} onEdit=${detail?.me?.role==="manager"&&client.roomPurposeV1===true?openSettings:undefined} />`:null}<span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
+        ${/* M-3533 H1 (r3): a room's header is one line — its name, its counts beside it — and its picture is in the purpose card
+           under the header. A one-to-one chat keeps its picture here. */ ""}
+        ${group ? null : html`<span class="av" aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>`}
+        <span class=${`hub-chat-title${group ? " one-line" : ""}`}><strong>${title}</strong><span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
         <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
+      ${group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
+        onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       ${room.closureReason === "owner-stopped-sharing" ? html`<p class="note" role="status">${hroom("noAnswerStopped", room.ownerName || room.agent?.owner?.name || "")}</p>` : null}
       <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}

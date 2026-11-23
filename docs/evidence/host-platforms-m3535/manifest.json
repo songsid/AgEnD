@@ -1,0 +1,194 @@
+[
+  {
+    "path": "docs/evidence/host-platforms-m3535/README.md",
+    "sha256": "385e4c0c4496258f09c0e722e19407ddd5baffd28f482cba133060a4ecf3357f"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/assets-final.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/build-final.log",
+    "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/capture-checks.json",
+    "sha256": "d3b0343183f503d93f2bd808247d52428e924098370a614138b138099cfa9ffc"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/compatibility-inputs.json",
+    "sha256": "e12f1edf11420ab290401a1dae07bc3c10b5607f6200370aff69abd4d356400a"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/darwin-health-desk-light-en.png",
+    "sha256": "0046135818e78a254779c8d6c62b28a539b5276090e2815ed4a5e45900833a03"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/darwin-health-phone-dark-zh-TW.png",
+    "sha256": "1fe900cdd6a38768bebebe9c27566f768ea89fa19833f1949eb667c504c61ed4"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/darwin-settings-desk-dark-zh-TW.png",
+    "sha256": "254a7cd0675ed832f7f5ad37afe71ea93d652fc64b3768184864b7122b708e91"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/darwin-settings-phone-light-en.png",
+    "sha256": "62a44272143e2ec54a050ab583214ed5967cf0620d87efd4a4432e84c33d5a19"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/disk-compat-runner.mts.txt",
+    "sha256": "0cc4c05b3f95e09b4f8733d1f1f39dcac46399b8b965d08e409af9319f7019ea"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/disk-compat.log",
+    "sha256": "b00234bb2d1d7d1ec96c5aa259d9f2408b477d65f8f687fc637e93d4ed3e4bbe"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/focused-final.log",
+    "sha256": "f1ec4fba34b679d9c4e4a1d8172d05bb541ee9deb7d64a57115b9135c5f0a9f7"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/gallery.md",
+    "sha256": "9a7b997f09a10bfa42486d52aa181371c02d26637cca3d47cda2bc24b50f2154"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/i18n-skill-final.log",
+    "sha256": "102c87a13c8d03b52565841aaee469af76f476ee5e0fe78b47d1ac64d33549f2"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/image-review.json",
+    "sha256": "fab627377b08ca2767f4cdafb8123a27b25b400c0856c10aa3215fcd143d7a61"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/kernel-alarm-mutant.log",
+    "sha256": "acccc0026fdd128587af89b3d6aed33ce8b52499b3817213cde7613034946847"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/kernel-alarm.patch",
+    "sha256": "b0e60e1784a8db064daca6352eb450fb82e5114eeb62dc3f01adb1ce3b070ad6"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/legacy-import-adaptation.patch",
+    "sha256": "f970037e393d6135a764212ef1a5e1eaa19afb4de40a0babff5ce80ba014217a"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/legacy-rule-mutant.log",
+    "sha256": "7cbab2a372bbe825f0bf47846131e319e07c1324f78b2c64d88b8fe5c454e302"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/legacy-rule.patch",
+    "sha256": "c6e35537bbfbdcf95e0257e7a25f1cbd320de571e43e2f91709b62ac501accd6"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/linux-health-desk-light-en.png",
+    "sha256": "9bc622f08a414e147470951a9f5c37dfcf3e5514f7d77cdf2a0afe3aef99cfe6"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/linux-health-phone-dark-zh-TW.png",
+    "sha256": "8ac665b68adbc68011828cbdd31752dca484dcf0a5a84aa9233d3910c1d6c101"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/linux-settings-desk-dark-zh-TW.png",
+    "sha256": "6207e38988459fe058dc60c302a9c2066aa1ecd25ea91c29fa74797990e7f31c"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/linux-settings-phone-light-en.png",
+    "sha256": "97a560d402bab8a34c00f7cabc915dd6dc08caee8be1da8cc651f8ede28de042"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/mac-default-mutant.log",
+    "sha256": "197df2511826cc9273732414912458953961c04ffa5ee9e11acad003b2460fb8"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/mac-default.patch",
+    "sha256": "85a9cb6e7ae2a76d8b1371392dc8a7ba6fd73353a2825d15981919fa85bade64"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/module-admission-final.log",
+    "sha256": "51e5a7e198f04014829c106a1c58674c46b72c44f305922ce64aa44417f0c33f"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/mutations.json",
+    "sha256": "4bbabdb333a80e9b856c7e406b4e133829eab5ae8050507858083f516c015539"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/page-size-mutant.log",
+    "sha256": "60f69ad1215e123235e54608b7e8456c5951441ca6130559073794b1db3968bf"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/page-size.patch",
+    "sha256": "d07934218a9ba1258f80d47931cdd4db1fa66ed1ae0dc77860295b93dcd47c59"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-assets-final.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-fallback-final.log",
+    "sha256": "36d11f98fa91895b86b516f92bcb00efa654c90ccd8c092c6ce89f0680eddd44"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-i18n.log",
+    "sha256": "f9fdef0649c5a590423b449eff52bb03027a2c096eb5abc38caa7679ab20e203"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-production-delta.json",
+    "sha256": "7cf722241e92a1b3987036f582967b23cadc70cbc16410c0069aa3e783ce76e4"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-test-types-final.log",
+    "sha256": "df1f42f89b5ec973b140db6d4ac7391415870d26750e3c2ed3f89ad7b7fb6e05"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/readback.json",
+    "sha256": "ee934df4f7316c7e834c9fb7e68c8765d79c3b560e2fc268e46ec7290e9feeb9"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/settings-gate-r1.log",
+    "sha256": "39b44fcfb1b60c9872d2a7504d0e168b706aa82d935199c8fc59d0b2750ac3bd"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/settings-gate.log",
+    "sha256": "884ec38682a79ce4ec36bdf32aba5071f25992cf44c7edd77d4827dd7e04d25d"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/source-inputs-r0.json",
+    "sha256": "f5ac49fde0aa33a45a2fd697f1db8770a85699448d705056ac2b185ebe46c118"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/source-inputs.json",
+    "sha256": "15e7f1e914da8c55f4ab729dccca3f6785aaaa465b89bc854c04ceee4e4a62f6"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/test-types-final.log",
+    "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/ui-r1-corrected.log",
+    "sha256": "1bab9e04ee982e9b3a8931071bfde66239876033f58fff4b637e94fd1c058bbd"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/ui-r1-fail-first.log",
+    "sha256": "9b7f0c7bc53fdac40c02c09512fd2749b6f8b4eb84f40f874f99d843dd315f90"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-health-desk-light-en.png",
+    "sha256": "1295a0327c8bb4c606ef0f9f2348c7b2646661cc8f28d655b5f033300f64362f"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-health-phone-dark-zh-TW.png",
+    "sha256": "8ba6f65b16deb2555a4a87144d337cf539e7739d195e614407417ff436b2b694"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-settings-desk-dark-zh-TW.png",
+    "sha256": "b59a815a9c2b4edc8c61e1ca8755438d289eb954fdd9767c9180349807757935"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-settings-phone-light-en.png",
+    "sha256": "b2b783be56f32dacdd04c9c32ac16a81664ff8559724d8e22379c7eafbbc923c"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-storage-phone-dark-zh-TW.png",
+    "sha256": "e30269017d272a3dde2fe4dc491570fec4d0a54dbcf61ae15b742b886976cee0"
+  }
+]

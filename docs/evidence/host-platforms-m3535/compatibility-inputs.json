@@ -1,0 +1,14 @@
+[
+  {
+    "path": "platform-before.ts",
+    "sha256": "bc4403b35133217e1e1020b608eeffb92b119d16e35678c26cc4c7b13fccba08"
+  },
+  {
+    "path": "legacy-platform.mts",
+    "sha256": "3511c44328a744e84fbda82117f63cfb4cd85f790add9a6cd9c2209386747bfa"
+  },
+  {
+    "path": "disk-compat.mts",
+    "sha256": "0cc4c05b3f95e09b4f8733d1f1f39dcac46399b8b965d08e409af9319f7019ea"
+  }
+]

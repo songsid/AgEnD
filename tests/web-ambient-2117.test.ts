@@ -631,7 +631,7 @@ describe("the fleet: the agent's door, General's, GET /ui/themes and a person's 
     const quiet = () => {};
     fm.logger = { info: quiet, warn: quiet, error: quiet, debug: quiet, trace: quiet, fatal: quiet, child: () => fm.logger };
     vi.spyOn(fm, "notifyFleetError").mockImplementation(() => true);
-    fm.fleetConfig = { instances: { alpha: { working_directory: "/tmp" } }, defaults: {} };
+    fm.fleetConfig = { instances: { alpha: { working_directory: "/tmp" } }, defaults: { dashboard: { appearance: true } } };   // M-2133: off unless set
     fm.initializeWebAuthTokens(); fm.startHealthServer(0);
     await vi.waitFor(() => expect(fm.getDashboardAccess().ready).toBe(true));
     const port = ((fm.healthServer as Server).address() as { port: number }).port, origin = `http://127.0.0.1:${port}`;

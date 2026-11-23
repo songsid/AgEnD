@@ -1,3 +1,4 @@
+import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
 import {HostFootprint} from "./host-monitoring-footprint.js";
@@ -1320,7 +1321,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private startHostMonitoringRuntime(): void {
     if(!this.hostAlertSettingsLoaded){this.hostAlertSettingsLoaded=true;try{this.hostAlertConfig=readHostAlertSettings(this.dataDir);}catch{this.hostAlertSettingsFailed=true;}}
     this.hostHistory ??= new HostMonitoringHistory({path:join(this.dataDir,'host-monitoring.sqlite'),incidents:true,incidentReady:()=>this.hostAlerts?.ready(),unblocked:()=>this.hostMonitor?.apply()});
-    this.hostAlerts ??= new HostMonitoringAlerts({persistence:this.hostHistory,changed:()=>this.needsYou?.poke(),deliver:(changes,ack)=>{
+    this.hostAlerts ??= new HostMonitoringAlerts({platform:this.hostMonitoringPlatform(),persistence:this.hostHistory,changed:()=>this.needsYou?.poke(),deliver:(changes,ack)=>{
       return this.notifyFleetError(hostAlertSummary(changes,getLocale()),{throttle:false,ack});
     }});
     this.hostFootprint ??= new HostFootprint({roots:()=>this.hostFootprintRoots(),changed:()=>this.hostHistory?.ingest(this.hostHealthSnapshotInternal())});
@@ -1339,6 +1340,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.hostMonitor.start();
   }
   hostHistoryQuery(range:unknown,series:unknown):Promise<import('./host-monitoring-history.js').HostHistoryResult> {return this.hostHistory?.query(range,series)??Promise.resolve({ok:false,reason:'history_unavailable'});}
+  hostMonitoringPlatform():import('./host-monitoring.js').MonitoringPlatform{return this.hostHealthSnapshotInternal().platform??detectMonitoringPlatform();}
   hostMonitoringAvailable(): boolean { return this.hostMonitor?.available() === true; }
   private hostHealthSnapshotInternal(): import("./host-monitoring.js").HostHealthSnapshot {return this.hostMonitor?.snapshot()??disabledHostHealth();}
   hostHealthSnapshot(agentOffset=0): import("./host-monitoring.js").HostHealthSnapshot {

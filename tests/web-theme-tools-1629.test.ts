@@ -202,7 +202,7 @@ describe("the doors", () => {
     const { FleetManager } = fleetManagerModule;
     const fm = new FleetManager(dir) as any;
     fm.logger = pino({ level: "silent" });
-    fm.fleetConfig = { defaults: {}, instances: { worker: { working_directory: dir }, other: { working_directory: dir } } };
+    fm.fleetConfig = { defaults: { dashboard: { appearance: true } }, instances: { worker: { working_directory: dir }, other: { working_directory: dir } } };   // M-2133: off unless set
     vi.spyOn(fm, "getUiStatus").mockReturnValue({});
     return { fm, dir };
   }

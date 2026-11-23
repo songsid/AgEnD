@@ -1,0 +1,167 @@
+{
+  "base": "ffe38322808e28822079c02a3473cbf507ae3c62",
+  "changedInputs": [
+    {
+      "path": "scripts/manual/host-platforms/capture.mts",
+      "sha256": "9a410b2895b46442a9d5f8cf4941fe7c37cc2e8a449dee20ed93a49ecc4cb2c8"
+    },
+    {
+      "path": "scripts/manual/host-platforms/readback.mts",
+      "sha256": "a8c3063ec5cc8890f884607a121df3d25ee555ad197392a8bfb00f7f869c7861"
+    },
+    {
+      "path": "src/darwin-memory.ts",
+      "sha256": "3959e3bf8c059e736e3da6d92d705f9439ca22e631e1f93d2d3a78b6da4b6310"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "a1d02db2210868bf2303de36fd261ccd1c881cc0c056a7a6bd251d43d9fb3deb"
+    },
+    {
+      "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+      "sha256": "353b4a072ed634afa2e831cbf2c6f314a8e197d1c7cb99b6dda0ff0a65e24075"
+    },
+    {
+      "path": "src/host-memory.ts",
+      "sha256": "122b702bba40c654625195f47a9123a8671130d7d899ee65a4d6f749ebc3bdca"
+    },
+    {
+      "path": "src/host-monitoring-alert-settings.ts",
+      "sha256": "c4d2bc2c8d2fb5cc5a0c4928e25a0e643761602857903755d62771cf26fa0b9d"
+    },
+    {
+      "path": "src/host-monitoring-alerts.ts",
+      "sha256": "8cce19ca9256ada86eddfe48ff47539518b801156f4337441e920a2ba8c901cd"
+    },
+    {
+      "path": "src/host-monitoring-defaults.ts",
+      "sha256": "e9b5b23ca4abf9187cde9ea5246ece5dbbc83bde7599631451bf594540f99095"
+    },
+    {
+      "path": "src/host-monitoring-platform.ts",
+      "sha256": "ae6ab2e582d01117a3e2168072224d8d54cd1e6c9bbf072de6d6cda081c9bdba"
+    },
+    {
+      "path": "src/host-monitoring.ts",
+      "sha256": "e091fefd2a8280133f55e480d98258af36fbcb3450805909af15703226c74fb7"
+    },
+    {
+      "path": "src/host-monitoring/darwin/collector.ts",
+      "sha256": "e90d2964aeb505a971942988f3457b6a1f0644f6952a9286e8d290a4d0b8ab74"
+    },
+    {
+      "path": "src/host-monitoring/darwin/defaults.ts",
+      "sha256": "8bede15905604bd3ee261b8024bb2bba5579fd207007af3815941450a282159d"
+    },
+    {
+      "path": "src/host-monitoring/darwin/interpretation.ts",
+      "sha256": "d90a02ab861049f6fa8ef98adcf8fdc3d8d837e94f1f67f3c3e29fcbb01e3b28"
+    },
+    {
+      "path": "src/host-monitoring/linux/collector.ts",
+      "sha256": "92e003abc1693dab5649729ebbe31fa44bda08afb10f7054fa328c2d2cbc5c88"
+    },
+    {
+      "path": "src/host-monitoring/linux/defaults.ts",
+      "sha256": "b60395f55f874ff6dc5b68168125a4e9db0e68776a4d3e77eab5739135b0e05c"
+    },
+    {
+      "path": "src/host-monitoring/linux/interpretation.ts",
+      "sha256": "67afc1744aa57721adc9bd9d4a6842fe7e53b3fcb06a10707690a41058da6560"
+    },
+    {
+      "path": "src/host-monitoring/transport.ts",
+      "sha256": "d4868dce34b6954579a42fcc6e94347f33b8877ce445488153d0f328557d216d"
+    },
+    {
+      "path": "src/host-monitoring/wsl/collector.ts",
+      "sha256": "262fa25cb57dd15408ef400a6c9db0af429457280346c6535bf4e3e3c040498b"
+    },
+    {
+      "path": "src/host-monitoring/wsl/defaults.ts",
+      "sha256": "b60395f55f874ff6dc5b68168125a4e9db0e68776a4d3e77eab5739135b0e05c"
+    },
+    {
+      "path": "src/host-monitoring/wsl/interpretation.ts",
+      "sha256": "0fd3b011c4df27894d4253fc5e0b06c29d273ee91e05c796e261821aea68775c"
+    },
+    {
+      "path": "src/settings-api.ts",
+      "sha256": "da4a1405c18e0b49f791760bfa70f65837bb33999830d5d40437e4ef3ffc6510"
+    },
+    {
+      "path": "src/ui/host-health.js",
+      "sha256": "77703c3684792188035951874431483b22a980d31439b7716f66815b1473b2ad"
+    },
+    {
+      "path": "src/ui/host-monitoring-darwin.js",
+      "sha256": "6159f6a2e6a740d59d62a2afb63b6f0dbbf21fea470eae67e517b2e5d2bec8ba"
+    },
+    {
+      "path": "src/ui/host-monitoring-help.js",
+      "sha256": "5cb21035b4fdefca421efbe6d71abf588da49da6a0bae94f5e070ede93c4ffb4"
+    },
+    {
+      "path": "src/ui/host-monitoring-linux.js",
+      "sha256": "37208d2386889417217c995d07510221e0d9966c2fa859e7e1ef93a55f7d0f04"
+    },
+    {
+      "path": "src/ui/host-monitoring-wsl.js",
+      "sha256": "a2f27464b07810e893ea43671a424b77fab4f7e9383a08615e87d10b0e4691b7"
+    },
+    {
+      "path": "src/ui/settings-host-alerts.js",
+      "sha256": "ad3c11f6385f8a5fce948eac48d8af21757d048a1df0512e84311ad26b3e5987"
+    },
+    {
+      "path": "src/ui/settings-host-monitoring.js",
+      "sha256": "0b0277a10d912a7c4509d63f1818250e0192e5725ff8963d1134a8eb6538eaa4"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "d478cd11c79a18fd55ed136e447f9d7782a979ee3611987b94969b0b759d9b5c"
+    },
+    {
+      "path": "tests/fixtures/host-platforms-m3535/README.md",
+      "sha256": "ed82c1370c1a428347a070f4767f05c62ea93a760a69da88339a4c995dd335a2"
+    },
+    {
+      "path": "tests/fixtures/host-platforms-m3535/disk-legacy-recording.json",
+      "sha256": "ea9c733d9c87ffe5cc5f2cba229bdb79832320caf62a44cff70462f890cf2e2e"
+    },
+    {
+      "path": "tests/host-health-ui-m3454.test.ts",
+      "sha256": "96bf560dfe24b8693eb1bbacf70bddfcc04b102b951035db922466e7e2201ac5"
+    },
+    {
+      "path": "tests/host-monitoring-alert-api-m3454.test.ts",
+      "sha256": "3507afebb97c747a8b3c3ffdd2a72906db75da20069f8372ce36b319c01fd322"
+    },
+    {
+      "path": "tests/host-platform-split-m3535.test.ts",
+      "sha256": "05ecc7c7b43b390466490fd175c7871232fc0678654b6c98db68dad7c38db30b"
+    },
+    {
+      "path": "tests/host-platform-ui-m3535.test.ts",
+      "sha256": "fcf350dcd7e64752e00b99f12e148b1feead9067d37dd3a97d0c6f6575b3dc36"
+    }
+  ],
+  "unchangedInfrastructure": [
+    {
+      "path": "src/memory-pressure.ts",
+      "sha256": "46aeab104ae7180685872ece99476d674051e53b1568ea193d29477dd3d15b4b"
+    },
+    {
+      "path": "src/host-monitoring-history.ts",
+      "sha256": "29d350274fd3542e6fc598225c4170b6051eb7945d5339a0c3e12f548d78b58d"
+    },
+    {
+      "path": "src/host-monitoring-alert-policy.ts",
+      "sha256": "ab114f33e51fba97771be777e2bc58364222097b8719cd5ea731d114dfba46fb"
+    },
+    {
+      "path": "src/host-monitoring-settings-store.ts",
+      "sha256": "faeb1a99714093c5c7c391a73bcead2aacfafd45759e93c6b661e992c2d01792"
+    }
+  ]
+}

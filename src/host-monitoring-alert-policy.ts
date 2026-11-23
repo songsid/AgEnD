@@ -4,6 +4,8 @@ export type HostAlertLevel = 'warning' | 'urgent';
 export interface HostAlertRule {
   kind: HostAlertKind; direction: 'above' | 'below'; warning: number; urgent: number; clear: number;
   warningMs: number; urgentMs: number; clearMs: number; warningSamples: number; urgentSamples: number; intervalMs: number;
+  /** Memory only: suppress elevated warnings, retaining critical dwell and normal recovery. */
+  criticalOnly?: boolean;
 }
 export interface HostAlertRecord {
   key: string; kind: HostAlertKind; level: HostAlertLevel; revision: number;
@@ -28,7 +30,8 @@ const number = (value: unknown): value is number => typeof value === 'number' &&
 export const hostAlertKey = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9:_-]{1,128}$/.test(value);
 /** Volume capacity is a cached value, never a request-time filesystem probe. */
 export function validateHostAlertRule(rule: HostAlertRule, capacity?: number): void {
-  if (!rule || typeof rule!=='object' || Array.isArray(rule) || Object.keys(rule).some(key=>!['kind','direction','warning','urgent','clear','warningMs','urgentMs','clearMs','warningSamples','urgentSamples','intervalMs'].includes(key))) throw Error('invalid_alert_rule');
+  if (!rule || typeof rule!=='object' || Array.isArray(rule) || Object.keys(rule).some(key=>!['kind','direction','warning','urgent','clear','warningMs','urgentMs','clearMs','warningSamples','urgentSamples','intervalMs','criticalOnly'].includes(key))) throw Error('invalid_alert_rule');
+  if (Object.hasOwn(rule,'criticalOnly') && (rule.kind!=='memory' || typeof rule.criticalOnly!=='boolean')) throw Error('invalid_alert_pressure');
   const base = Object.hasOwn(HOST_ALERT_DEFAULTS,rule.kind) ? HOST_ALERT_DEFAULTS[rule.kind] : undefined;
   if (!base || rule.direction !== base.direction || ![rule.warning,rule.urgent,rule.clear].every(number)) throw Error('invalid_alert_rule');
   if (rule.direction === 'above' ? !(rule.clear < rule.warning && rule.warning < rule.urgent) : !(rule.urgent < rule.warning && rule.warning < rule.clear)) throw Error('invalid_alert_order');
@@ -70,7 +73,7 @@ export class HostAlertWindow {
     if (this.lastMonotonic !== null && (sample.monotonicAt < this.lastMonotonic || sample.monotonicAt-this.lastMonotonic > this.rule.intervalMs*2)) this.reset();
     this.lastSample=sample.sampledAt; this.lastMonotonic=sample.monotonicAt;
     const at=sample.monotonicAt, value=sample.value, r=this.rule;
-    const warning = r.direction === 'above' ? value >= r.warning : value < r.warning;
+    const warning = !(r.kind==='memory' && r.criticalOnly===true) && (r.direction === 'above' ? value >= r.warning : value < r.warning);
     const urgent = r.direction === 'above' ? value >= r.urgent : value < r.urgent;
     const clear = r.kind === 'cpu' ? value < r.clear : r.direction === 'above' ? value <= r.clear : value >= r.clear;
     this.warning=this.streak(this.warning,warning,at); this.urgent=this.streak(this.urgent,urgent,at); this.recovery=this.streak(this.recovery,clear,at);

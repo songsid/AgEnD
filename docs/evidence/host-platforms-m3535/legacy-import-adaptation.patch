@@ -1,0 +1,9 @@
+--- a/platform-before.ts
++++ b/legacy-platform.mts
+@@ -5,3 +5,3 @@
+-import { execFile } from './child-process.js';
+-import type { MemoryPressureSnapshot } from './memory-pressure.js';
+-import type { CpuReading, DiskReading, DiskVolume, HostMonitoringProvider, MonitoringPlatform, MonitoringProbe } from './host-monitoring.js';
++import { execFile } from '../../src/child-process.js';
++import type { MemoryPressureSnapshot } from '../../src/memory-pressure.js';
++import type { CpuReading, DiskReading, DiskVolume, HostMonitoringProvider, MonitoringPlatform, MonitoringProbe } from '../../src/host-monitoring.js';
