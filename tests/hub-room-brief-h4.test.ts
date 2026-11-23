@@ -27,3 +27,10 @@ it.each(["en","zh-TW"] as const)("H4 renders the first block or delta only when 
  const brief=buildRoomBrief("Purpose",[],null)!;expect(formatRoomAskPrompt({...ask,brief},"cid",locale)).toContain(formatRoomBrief(brief,locale));
  const delta=buildRoomBrief("",[{id:"p",kind:"person",name:"Reader"}],[])!;const text=formatRoomAskPrompt({...ask,brief:delta},"cid",locale);expect(text).toContain(formatRoomBrief(delta,locale));expect(text).not.toMatch(/About this room|關於這個房間/);
 });
+
+it.each(["en", "zh-TW"] as const)("first brief scopes room hand-offs and Fleet delegation (%s)", locale => {
+ const first=formatRoomBrief({kind:"first",purpose:"",people:1,agents:1},locale);
+ expect(first).toContain(locale==="en"?"@-hand-offs are for rooms; use delegate_task for Fleet work.":"@ 轉交只用於房間內；Fleet 工作請用 delegate_task。");
+ const delta=formatRoomBrief({kind:"delta",joined:[],left:[],omitted:0},locale);
+ expect(delta).not.toContain("delegate_task");
+});

@@ -593,7 +593,7 @@ import { KEEP_DAYS, type HourTotals } from "./cache-ledger.js";
 import { ratesFor } from "./cache-prices.js";
 import { ownTranscript } from "./log-transcript-paths.js";
 
-/** #2163: `classic` — a ClassicBot room's agent: only the skills about its own look and the dashboard. */
+/** Classic rooms receive role-eligible skills; restricted rooms omit appearance mutations. */
 type ManagedSkillRole = "general" | "worker" | "classic";
 
 /** #2348: how a guest sign-in code's issuance ended (issueGuestCode), for Settings → Guests' Send sign-in code. */
@@ -9509,13 +9509,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.logger.warn({ err, name, backend }, "Failed to sync worker skills — continuing startup");
         }
       } else if (!isWindowsInstance(config) && kind === "classic") {
-        // #2163: a Classic bot gets only the skills marked `classic` (its own look, the dashboard) — never the fleet's
+        // #2163: a Classic bot gets only the skills marked `classic` (appearance only in legacy rooms) — never the fleet's
         // coordination playbooks (#557 kept those out of end-user bots) — and only into a workspace AgEnD manages: the
         // room's own folder under <AGEND_HOME>/workspaces/. Anywhere else, nothing is written; `agend-agent skill <name>`
         // reads any bundled skill on demand.
         try {
           const skillsWorkDir = this.resolveKnowledgeWorkDir(config.working_directory, backend, name);
-          if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic"));
+          if (insideManagedWorkspaces(skillsWorkDir)) measureSyncWork("fleet.classicSkills", () => this.syncRoleSkills(skillsWorkDir, backend, "classic", undefined, this.classicContactRestricted(name)));
           else this.logger.debug({ name, skillsWorkDir }, "Classic workspace is not AgEnD-managed — no skills published");
         } catch (err) {
           this.logger.warn({ err, name, backend }, "Failed to sync classic skills — continuing startup");
@@ -25308,7 +25308,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Publish only the bundled skills eligible for an instance role. */
-  private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string): void {
+  private syncRoleSkills(workDir: string, backend: string, role: ManagedSkillRole, knowledgeDir?: string, restrictedClassic = false): void {
     const skillSegments = FleetManager.SKILLS_DIR_SEGMENTS[backend];
     if (!skillSegments) return;
     const root = knowledgeDir ?? join(dirname(fileURLToPath(import.meta.url)), "general-knowledge");
@@ -25326,6 +25326,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       // #2163: a Classic bot's skills folder (or a skill in it) may be a link out of its workspace; every path is
       // checked where it really lands, just before it is written.
       role === "classic" ? (path: string) => insideManagedWorkspaces(path) : undefined,
+      role === "classic" && restrictedClassic ? new Set(["persona-emoji", "web-appearance"]) : undefined,
     );
     this.logger.debug({ workDir, backend, role }, "Synced role-based bundled skills");
   }
@@ -25442,6 +25443,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     role: ManagedSkillRole,
     adoptLegacyUnmanaged = false,
     confined?: (path: string) => boolean,
+    excluded?: ReadonlySet<string>,
   ): void {
     if (!existsSync(srcSkills)) return;
     const refuse = (path: string) => {
@@ -25485,6 +25487,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     }
 
     const eligible = bundled.filter(name => {
+      if (excluded?.has(name)) return false;
       const roles = this.readManagedSkillRoles(join(srcSkills, name, "SKILL.md"));
       // General is the coordinator and receives every playbook. Workers and Classic bots receive only skills
       // explicitly marked for their role (#2163).

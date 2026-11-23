@@ -182,6 +182,14 @@ describe("buildFleetInstructions", () => {
     expect(result).toContain("set_display_name");
   });
 
+  it("omits the display-name nudge only for restricted Classic rooms", () => {
+    const classic = { ...base, runtimeIdentity: { kind: "classic" as const, backend: "codex", model: "default" }, workflow: false as const };
+    expect(buildFleetInstructions({ ...classic, restrictedClassic: true })).not.toContain("Use set_display_name");
+    expect(buildFleetInstructions(classic)).toContain("Use set_display_name");
+    expect(buildFleetInstructions({ ...classic, restrictedClassic: true, runtimeIdentity: { ...classic.runtimeIdentity, kind: "fleet-topic" } })).toContain("Use set_display_name");
+    expect(buildFleetInstructions({ ...classic, restrictedClassic: true, displayName: "Example" })).toContain('Your display name is "Example"');
+  });
+
   it("includes description as role", () => {
     const result = buildFleetInstructions({ ...base, description: "Code reviewer" });
     expect(result).toContain("## Role");
