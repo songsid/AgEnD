@@ -32,15 +32,17 @@ async function fixture(cli: "codex" | "claude-code" = "codex") {
 it("the worker instruction path stays byte-identical, while native General gets the host role and coordinator boundary", () => {
   const params = { instanceName: "general", workingDirectory: "C:\\owned", workflow: false as const };
   expect(buildNativeFleetInstructions(params, false)).toBe(buildFleetInstructions(params));
-  const general = buildNativeFleetInstructions(params, true); expect(general).toContain(GENERAL_ROLE_INSTRUCTIONS);
-  expect(general).toContain("Do NOT modify project files directly"); expect(general).toContain("Human confirmation stays with the person");
+  // M-3529: the role reaches native General once, from its workspace pack (loadGeneralKnowledge), not also from here.
+  const general = buildNativeFleetInstructions(params, true); expect(general).not.toContain(GENERAL_ROLE_INSTRUCTIONS);
+  expect(loadGeneralKnowledge("codex").files["AGENTS.md"]).toContain(GENERAL_ROLE_INSTRUCTIONS);
+  expect(general).toContain("## Windows execution boundary"); expect(general).toContain("Human confirmation stays with the person");
   expect(general).toContain("C:\\owned"); expect(general).not.toContain("/home/");
 });
 it("a new General launch carries an exact prepared role pack without reserving or starting a process", async () => {
   const f = await fixture(), native = await f.manager.prepare("general", f.config, () => {});
   const manifest = JSON.parse(readFileSync(join(f.root, "native-panes", f.agent.id, "active.json"), "utf8"));
   expect(manifest.launch.generalWorkspace).toEqual({ bindingId: f.config.native_general_binding, packHash: loadGeneralKnowledge("codex").hash });
-  expect(manifest.launch.instructions).toContain("# Fleet Coordinator"); expect(manifest.launch.cwd).toBe(f.agent.cwd);
+  expect(manifest.launch.instructions).toContain("## Windows execution boundary"); expect(manifest.launch.cwd).toBe(f.agent.cwd);
   expect(f.endpoint.call.mock.calls.map(([request]) => request.action)).toEqual(["list", "general-workspace"]);
   expect(f.store.get(f.agent.id).activeId).toBeUndefined(); await native.release("detach");
 });

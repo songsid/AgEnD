@@ -1,4 +1,3 @@
-import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
 import { APP_MESSAGE_RULE } from "./app-message-origin.js";
 import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
@@ -337,8 +336,11 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   return sections.join("\n\n");
 }
 
-/** Native General adds the same role as the host, with an explicit coordinator/Windows filesystem boundary. */
+/**
+ * Native General adds an explicit coordinator/Windows filesystem boundary. Its role text reaches it once, through the
+ * dedicated workspace's CLAUDE.md / AGENTS.md (loadGeneralKnowledge), not again here (M-3529).
+ */
 export function buildNativeFleetInstructions(params: FleetInstructionsParams, general: boolean): string {
-  return (general ? GENERAL_ROLE_INSTRUCTIONS + "\n\n"
-    + "## Windows execution boundary\nAgEnD and its chat, settings, receipts and configuration run on the coordinator host. Use your authenticated AgEnD tools; a local Windows command or file edit does not control that host. Your General skills are in this dedicated workspace. Do not copy login credentials or assume access to the host filesystem. Human confirmation stays with the person, never this model.\n\n" : "") + buildFleetInstructions(params);
+  return (general
+    ? "## Windows execution boundary\nAgEnD and its chat, settings, receipts and configuration run on the coordinator host. Use your authenticated AgEnD tools for anything there; a local Windows command or file edit acts only on this computer. Your role and General skills are in this dedicated workspace. Keep login credentials where they are and reach the host only through those tools. Human confirmation stays with the person, never this model.\n\n" : "") + buildFleetInstructions(params);
 }
