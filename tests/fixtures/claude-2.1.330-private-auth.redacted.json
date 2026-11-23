@@ -1,0 +1,9 @@
+{
+  "source": "Claude Code 2.1.330; private-output transport; tmux 3.8; network namespace disabled",
+  "redactions": [
+    "control-bearing excerpt only; other output omitted",
+    "Kitty probe payload replaced with synthetic data",
+    "authorization URL replaced with a synthetic fixture URL"
+  ],
+  "raw": "\u001b_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\u001b\\\nOpen the sign-in page:\nhttps://claude.ai/oauth/authorize?fixture=1\nPaste code here if prompted >\n"
+}
