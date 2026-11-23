@@ -57,3 +57,10 @@ it("cancels restart before any write, then carries next-start through Apply and 
   expect($(".s-step.next-start").textContent).toContain("Saved · applies on next restart");
   expect($(".s-op").textContent).not.toContain("Restart this Agent");
 });
+
+it("keeps the cost of other cold changes visible beside the deferred model choice", async () => {
+  await open("en"); await choose("g-model", "haiku"); await choose("g-ts", "full");
+  const note = $(".s-pending .note").textContent;
+  expect(note).toContain("Next restart · no restart now");
+  expect(note).toContain("Other changes: Restart this Agent");
+});

@@ -55,6 +55,7 @@ try {
     await p.page.waitForSelector("#g-default-adoption");
     assert.equal(await p.page.inputValue("#g-default-adoption"), "next-start");
     assert.equal(writes.length, 0);
+    assert.ok(!(await p.page.locator(".s-pending .note").innerText()).includes(c.lang === "en" ? "Restart this Agent" : "重新啟動此 Agent"));
     const modelField = p.page.locator(".field").filter({ has: p.page.locator("#g-model") });
     assert.match(await modelField.innerText(), /3/);
     await p.page.locator("#g-model").scrollIntoViewIfNeeded();
@@ -78,6 +79,7 @@ try {
     assert.equal(fm.fleetConfig.instances["example-codex"].model, undefined);
     assert.equal(fm.fleetConfig.instances["example-grok"].model, undefined);
     assert.equal(fm.fleetConfig.instances["example-muse"].model, undefined);
+    assert.ok(!(await p.page.locator(".s-op").innerText()).includes(c.lang === "en" ? "Restart this Agent" : "重新啟動此 Agent"));
     await p.page.locator(".s-op").scrollIntoViewIfNeeded();
     await p.page.screenshot({ path: join(out, `${name}-saved-next-restart.png`) });
     assert.equal(await p.page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

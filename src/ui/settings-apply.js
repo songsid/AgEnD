@@ -33,7 +33,7 @@ function view() {
   return {
     id: op.id, phase: op.phase, error: op.error, job: op.job, lostJob: op.lostJob, restart: op.restart,
     // stageKey: which staged change a step is (#2367 review: the panel tells that change's section how it went).
-    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey, sharedDefaults }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(sharedDefaults ? { sharedDefaults } : {}), ...(stageKey ? { stageKey } : {}) })),
+    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey, sharedDefaults, notes }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(sharedDefaults ? { sharedDefaults } : {}), ...(notes?.length ? { notes } : {}), ...(stageKey ? { stageKey } : {}) })),
     leftover: op.leftover,
   };
 }

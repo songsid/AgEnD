@@ -352,7 +352,7 @@ export function SettingsPanel({ route, navKey }) {
       if (failed) toast(tn("youSaveFailed"), false);
       if (!stagedRef.current.size) { if (!failed) toast(tn("youSaved")); setDraftEpoch((n) => n + 1); return; }
     }
-    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults }) => ({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults }));
+    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes }) => ({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));
     if (startOperation(list)) {
       results.current = handlers; submitted.current = new Map(drafts.current); submittedStaged.current = new Map(stagedRef.current);
@@ -1105,7 +1105,8 @@ function General({ ctx, part = "all" }) {
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
       sharedDefaults: dKeys.some(k => k === "backend" || k === "model") ? (f.defaultAdoption || "next-start") : undefined,
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
-      ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn(f.defaultAdoption === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext")] } : {}),
+      ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn(f.defaultAdoption === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext"),
+        ...(dKeys.some(k => k !== "backend" && k !== "model") ? [tn("defaultIdentityOtherEdits", impactText(batchImpact(schema, dKeys.filter(k => k !== "backend" && k !== "model"), k => defaultsImpact(schema, k))))] : [])] } : {}),
       request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
@@ -1595,7 +1596,7 @@ function OperationCard({ op, schema }) {
     ${op.steps.length ? html`<ul class="s-op-steps">${op.steps.map((s, i) => html`<li key=${i} class=${`s-step ${s.status}`}>
       <span class="s-step-icon" aria-hidden="true">${icon(s.status) ? html`<${Icon} name=${icon(s.status)} size=${14} />` : "·"}</span>
       <span class="grow">${s.label}</span>
-      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || (s.sharedDefaults ? tn(s.sharedDefaults === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext") : impactText(s.impact))}</span></li>`)}</ul>` : null}
+      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || (s.notes?.length ? s.notes.join(" · ") : s.sharedDefaults ? tn(s.sharedDefaults === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext") : impactText(s.impact))}</span></li>`)}</ul>` : null}
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
       <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>
