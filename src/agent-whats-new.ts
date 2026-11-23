@@ -120,6 +120,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3522: the go-ahead scope is stated positively; `since` is this line's next beta (2.4.0-beta.18 shipped without it).
   { id: "2.4-go-ahead-scope", since: "2.4.0-beta.19",
     text: "What needs a go-ahead is now stated once: only a release or publish, anything destructive or irreversible beyond your own work, spending money or quota beyond normal work, credentials or secrets, and granting or forwarding authority. Reading, querying, analysis, status and logs, and the routine operations of your assigned domain need no receipt, button or verification. The checks for those five are unchanged. An agent may also have an \"Owner and routine operations\" section right after its Role: context about who owns the system and which operations are routine there." },
+  // M-3528: the fleet prompt says each rule once; `since` is this line's next beta, as 2.4-go-ahead-scope's.
+  { id: "2.4-prompt-dedupe", since: "2.4.0-beta.19",
+    text: "Your instructions are shorter: Active Decisions list titles only (read a rule with `list_decisions { id, detail: true }` before applying it), and the web-chat receipt checks for a go-ahead action are in the cross-instance-messaging skill's web-chat section — load it before acting on one." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

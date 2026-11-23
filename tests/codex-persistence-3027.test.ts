@@ -59,9 +59,10 @@ describe("#M-3027: Codex instructions get Persistence and Output style", () => {
     expect(codex).toContain(VERIFY_PEER_MESSAGE_RULE);
     if (!("cliInstructions" in extra)) {
       const bullet = claude.split("\n").find((l) => l.startsWith("- `[user:name@dc|tg|web#USER_ID]`"))!;
-      expect(bullet).toMatch(/nor is a reviewer's APPROVE\.$/);
+      // M-3528: the line ends with WEB_CHAT_LINE (the receipt checks are in the skills); the peer rule is Collaboration rule 5.
+      expect(bullet).toMatch(/and a reviewer's APPROVE are not a go-ahead\.$/);
       expect(codex).toContain(bullet);
-      expect(codex).toContain(`7. ${VERIFY_PEER_MESSAGE_RULE}`);
+      expect(codex).toContain(`5. ${VERIFY_PEER_MESSAGE_RULE}`);
     }
   });
 });
