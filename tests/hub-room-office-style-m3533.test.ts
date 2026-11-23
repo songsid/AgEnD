@@ -82,11 +82,13 @@ describe("Room settings → Room office → Style (§2.1b)", () => {
       await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: detail(30, "studio", true), assistant: false }));
       await until(() => p.root.querySelectorAll(".hub-room-office-styles input[type=radio]").length);
       const rows = [...p.root.querySelectorAll(".hub-room-office-styles label")].map((l: any) => l.textContent.trim());
-      expect(rows).toEqual(skin.ROOM_STYLES.map((id: string) => { const n = i18n.t(`hubRoom.style_${id}`); return `${n}${n.endsWith("）") ? "· " : " · "}${skin.styleSeats(id).total} 個座位`; }));
-      // Lumen's form: no space after a full-width bracket.
-      expect(rows.slice(0, 2)).toEqual(["工作室（大）· 57 個座位", "工作室 · 41 個座位"]);
+      expect(rows).toEqual(skin.ROOM_STYLES.map((id: string) => { const n = i18n.t(`hubRoom.style_${id}`); return `${n} · ${skin.styleSeats(id).total} 個座位`; }));
+      // One spacing rule for every style, a full-width bracket too (the user-look check).
+      expect(rows.slice(0, 2)).toEqual(["工作室（大） · 57 個座位", "工作室 · 41 個座位"]);
       // With the room assistant (it takes a seat too), the hint names it, so it counts what the office and its chips count.
       expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent 和房間助理。「工作室」的休息區有 14 個座位，換成較大的風格就能讓每一位都有位子。");
+      // The last words stay on one line, so a wrap never leaves 「子。」 alone.
+      expect(p.root.querySelector(".hub-room-office-fit .hub-nowrap")?.textContent).toBe("都有位子。");
       const save = p.root.querySelector(".hub-room-office-style-save") as any;
       expect(save.disabled).toBe(true);
       // Clicking through the list saves nothing; Save style saves the last pick, once.
@@ -109,6 +111,16 @@ describe("Room settings → Room office → Style (§2.1b)", () => {
       const off = detail(30); off.settings.office.enabled = false;
       await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: off, assistant: false })); await settle(20);
       expect(p.root.querySelector(".hub-room-office-styles")).toBeNull();
+    } finally { await p.unmount(); p.restore(); }
+  });
+  it("keeps the hint's last words on one line: four characters with the full stop in Chinese, two words in English", async () => {
+    const p = page();
+    try {
+      const tail = async (text: string) => { await p.mount(h("p", null, settings.keepTail(text))); await settle(2); return [p.root.querySelector(".hub-nowrap")?.textContent ?? null, p.root.textContent]; };
+      expect(await tail("…換成較大的風格就能讓每個 Agent 都有位子。")).toEqual(["都有位子。", "…換成較大的風格就能讓每個 Agent 都有位子。"]);
+      expect(await tail("This room has 30 agents. Studio has 14 seats to rest in; a larger style gives everyone a seat.")).toEqual(["a seat.", "This room has 30 agents. Studio has 14 seats to rest in; a larger style gives everyone a seat."]);
+      // Too short to wrap: no span.
+      expect(await tail("seat.")).toEqual([null, "seat."]);
     } finally { await p.unmount(); p.restore(); }
   });
   it.each([["en", "Owner changed the room office's style to “Studio (large)”"], ["zh-TW", "Owner 把房間辦公室的風格換成「工作室（大）」"]])("the style line in the reader's words (%s)", (lang, line) => {
