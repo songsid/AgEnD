@@ -14021,7 +14021,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * callback is separate from the fetch so reactions are only marked once the
    * message actually went out — a failed delivery keeps them queued.
    */
-  private pendingReactionsMeta(instanceName: string): { meta: Record<string, string>; consume: () => void } {
+  pendingReactionsMeta(instanceName: string): { meta: Record<string, string>; consume: () => void } {
     const pending = this.eventLog?.pendingReactions(instanceName);
     if (!pending) return { meta: {}, consume: () => {} };
     return {
