@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 // Run the actual component and useDraft with controllable hook lifetimes. Remount
 // models leaving Settings, ctx.reload(), then returning with the retained edits.
-function mount(ctx: any) {
+function mount(ctx: any, locale = "en") {
   const slots: any[] = []; let cursor = 0, effects: Array<() => void> = [];
   const html = (strings: TemplateStringsArray, ...values: any[]) => ({ strings: [...strings], values });
   const hook = (build: () => any) => { const i = cursor++; if (!(i in slots)) slots[i] = build(); return i; };
@@ -12,7 +12,7 @@ function mount(ctx: any) {
   const useState = (init: any) => { const i = hook(() => typeof init === "function" ? init() : init); return [slots[i], (v: any) => { slots[i] = typeof v === "function" ? v(slots[i]) : v; }]; };
   const useEffect = (fn: () => void, deps: any[]) => { const i = cursor++, prev = slots[i]; if (!prev || deps.some((v, n) => v !== prev[n])) effects.push(fn); slots[i] = deps; };
   const source = (file: string) => readFileSync(new URL(`../src/ui/${file}`, import.meta.url), "utf8").replace(/^import .*;\n/gm, "").replace(/export /g, "");
-  const vm = { ctx, html, useMemo, useState, useEffect, lang: () => "en", sameValue: (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b), result: null as any };
+  const vm = { ctx, html, useMemo, useState, useEffect, lang: () => locale, sameValue: (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b), result: null as any };
   const renderCode = source("settings-draft.js") + "\n" + source("settings-quota-notice.js") + "\nresult = QuotaNoticeSettings({ctx});";
   // Each render has the same hooks but new lexical bindings, as a component call.
   const render = () => { cursor = 0; effects = []; runInNewContext("{\n" + renderCode + "\n}", vm); effects.forEach(fn => fn()); };
@@ -28,7 +28,8 @@ function mount(ctx: any) {
     }; return search(vm.result);
   };
   render();
-  return { value: (id: string) => control(id).value, edit: (id: string, value: string) => { control(id).edit({ target: { value } }); render(); } };
+  const flatten = (node: any): string => node == null ? "" : Array.isArray(node) ? node.map(flatten).join("") : typeof node !== "object" ? String(node) : node.strings ? node.strings.map((s: string, i: number) => s + flatten(node.values[i])).join("") : "";
+  return { summary: () => flatten(vm.result).match(/data-quota-effective>([^<]+)</)?.[1], value: (id: string) => control(id).value, edit: (id: string, value: string) => { control(id).edit({ target: { value } }); render(); } };
 }
 function fixture() {
   const staged = new Map();
@@ -65,5 +66,23 @@ describe("quota notice field drafts across Settings reload", () => {
     ctx.fleet.instances.worker.quota_notice = { enabled: false }; staged.clear();
     const next = mount(ctx); next.edit("qn-scope", "agent:worker");
     expect(next.value("qn-enabled")).toBe("off"); expect(staged.has("quota:agent:worker")).toBe(false);
+  });
+});
+
+ describe("quota notice summary locale", () => {
+  it("translates all zh-TW periods and colon without translating stored input", () => {
+    const { ctx } = fixture(); const view = mount(ctx, "zh-TW");
+    expect(view.summary()).toBe("目前生效：開啟 · 10% · 每週");
+    view.edit("qn-periods", "session, hourly, daily, weekly, monthly");
+    expect(view.summary()).toBe("目前生效：開啟 · 10% · 工作階段, 每小時, 每日, 每週, 每月");
+    expect(view.value("qn-periods")).toBe("session, hourly, daily, weekly, monthly");
+    view.edit("qn-periods", "none");
+    expect(view.summary()).toBe("目前生效：開啟 · 10% · —");
+  });
+  it("keeps the English summary unchanged", () => {
+    const { ctx } = fixture(); const view = mount(ctx);
+    expect(view.summary()).toBe("In effect: On · 10% · weekly");
+    view.edit("qn-periods", "session, hourly, daily, weekly, monthly");
+    expect(view.summary()).toBe("In effect: On · 10% · session, hourly, daily, weekly, monthly");
   });
 });
