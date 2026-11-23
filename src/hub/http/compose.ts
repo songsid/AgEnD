@@ -53,6 +53,7 @@ import { HubRoomsService } from "../rooms.js";
 import { HubRoomAdmin } from "../rooms/admin.js";
 import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
 import { HUB_ROOM_OFFICE_FEATURE } from "../rooms/office.js";
+import { SHARE_MODULES } from "../../office-share-page.js";
 import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
@@ -74,6 +75,11 @@ export const migrations = HUB_HTTP_MIGRATIONS;
 export type { HubHttpDeps, HubTxDatabase };
 
 /** The Hub's lazy modules a Hub page may load (the fleet's /ui/js/ modules are never served here). */
+/**
+ * M-3533 R1: the Office drawing a room's office loads (hub-room-office.js's import(), never a static import): the share
+ * page's modules but its own page — the same drawing a share link shows, read-only, no fleet read behind it.
+ */
+export const HUB_OFFICE_MODULES: readonly string[] = Object.freeze(SHARE_MODULES.filter(f => f !== "office-share-page.js"));
 export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent.js", "hub-personal-agent-strings.js", "runtime-commands.js", "hub-client.js", "hub-strings.js", "hub-chat-store.js", "hub-chat-strings.js", "hub-quota.js", "hub-agent-intro.js", "hub-intro-notice.js", "hub-owner-strings.js", "hub-grant-strings.js", "hub-button-actions.js", "hub-preview.js", "hub-attachments.js",
   // #3298 S-89 (lazy; loaded only when the session says "group-policy-v1"): the welcome, Group permissions and their words.
   "hub-welcome.js", "hub-group-policy.js", "hub-group-strings.js", "hub-read-strings.js", "hub-quick-pairing.js", "hub-quick-strings.js", "hub-company-join.js", "hub-company-join-strings.js", "hub-this-hub.js", "hub-directory-notices.js", "hub-directory-notice-strings.js", "hub-directory-editor.js", "hub-directory-editor-strings.js",
@@ -1107,7 +1113,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     }
     if (path.startsWith("/ui/js/")) {
       const file = path.slice("/ui/js/".length);
-      if (!HUB_UI_MODULES.includes(file)) return false;
+      if (!HUB_UI_MODULES.includes(file) && !HUB_OFFICE_MODULES.includes(file)) return false;
       try {
         const js = readFileSync(join(uiDir, file));
         res.writeHead(200, { "Content-Type": "application/javascript; charset=utf-8", "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache" });

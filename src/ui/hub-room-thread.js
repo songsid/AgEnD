@@ -94,6 +94,7 @@ export function authorLine(author, mine = false, direct = false) {
 const SYSTEM = { "room-created": "createdSys", "member-joined": "sysJoined", "admin-joined": "sysAdminJoined", "poll-closed": "sysPollClosed" };
 export function systemText(m) {
   if(m?.system?.kind==="purpose-changed"&&typeof m.system.purpose==="string"&&typeof m.system.name==="string")return hroom(m.system.purpose?"purposeSetSys":"purposeClearedSys",m.system.name,m.system.purpose);
+  if (m?.system?.kind === "office-changed" && typeof m.system.enabled === "boolean" && typeof m.system.name === "string") return hroom(m.system.enabled ? "officeOnSys" : "officeOffSys", m.system.name);
   if(m?.system?.kind==="app-rate-limited")return ha("rateLimited",m.system.name||"");
   if (m?.system?.kind === "agent-mention-stopped") return agentStopText(m.system) ?? String(m.text || "");
   const key = m && m.system && SYSTEM[m.system.kind];

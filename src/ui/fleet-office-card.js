@@ -52,9 +52,10 @@ export function dayOf(first, nowMs = Date.now()) {
 /**
  * What the card says (pure, for the component and the tests): `node` the org chart's node; `lv` levelsOk's answer (or
  * null); `levels` the style's pack `levels` (or null); `share` a share link's page; `state` the state's words; `now`
- * the tooltip's activity line; `where` the office (and area) in words.
+ * the tooltip's activity line; `where` the office (and area) in words. M-3533: `rows` ({ key, label, value }[]) the
+ * card's rows instead of the office's own (a Hub room's office: the agent's owner and introduction).
  */
-export function cardModel({ node, lv, levels, share = false, state, now, where }) {
+export function cardModel({ node, lv, levels, share = false, state, now, where, rows: given = null }) {
   const it = node.i || {};
   const names = node.i ? namesOf(node.i) : { primary: node.name, secondary: "" };
   const fx = fixedOf(node.name, levels);
@@ -64,13 +65,13 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
   const title = on && fx ? fx.title : e ? titleOf(e.level, levels && levels.titles) : null;
   const detail = !share && !!e && e.workTokens !== undefined;
   const xp = showLevel && detail ? xpOf(e.level, e.workTokens, lv.unit) : null;
-  const rowItems = [{ key: "office", label: tc("office"), value: where }];
-  if (!share && it.model) rowItems.push({
+  const rowItems = Array.isArray(given) ? given.filter((r) => r && r.value) : [{ key: "office", label: tc("office"), value: where }];
+  if (!given && !share && it.model) rowItems.push({
     key: "model",
     label: it.model_observation ? observationLabel("selection") : tc("model"),
     value: it.model_observation ? (modelName(it.model_observation.session) || observationLabel("unresolved")) : modelText(it),
   });
-  if (!share && it.backend) rowItems.push({ key: "backend", label: tc("backend"), value: backendLabel(it.backend) });
+  if (!given && !share && it.backend) rowItems.push({ key: "backend", label: tc("backend"), value: backendLabel(it.backend) });
   if (detail) rowItems.push({ key: "today", label: tc("today"), value: tc("todayN", tokens(e.today.workTokens), e.today.requests) });
   if (detail && e.firstSeen) rowItems.push({ key: "firstSeen", label: tc("firstSeen"), value: tc("day", dayOf(e.firstSeen)) });
   const rows = rowItems.map((r) => [r.label, r.value]);
