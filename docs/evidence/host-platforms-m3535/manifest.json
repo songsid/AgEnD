@@ -1,7 +1,7 @@
 [
   {
     "path": "docs/evidence/host-platforms-m3535/README.md",
-    "sha256": "58344c3ddf6c406ef97e9bdcd5186d06f8930ea303c2bf39145b5be15f1e1e27"
+    "sha256": "385e4c0c4496258f09c0e722e19407ddd5baffd28f482cba133060a4ecf3357f"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/assets-final.log",
@@ -13,7 +13,7 @@
   },
   {
     "path": "docs/evidence/host-platforms-m3535/capture-checks.json",
-    "sha256": "a247ea5d969d00e03a6741b02eea893e23c5131e986038544951ce341f12ea6c"
+    "sha256": "d3b0343183f503d93f2bd808247d52428e924098370a614138b138099cfa9ffc"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/compatibility-inputs.json",
@@ -21,19 +21,19 @@
   },
   {
     "path": "docs/evidence/host-platforms-m3535/darwin-health-desk-light-en.png",
-    "sha256": "368882929a637e0752b87fd889c9e933a1ae20e90a4fc0c224e4c15a26caafeb"
+    "sha256": "0046135818e78a254779c8d6c62b28a539b5276090e2815ed4a5e45900833a03"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/darwin-health-phone-dark-zh-TW.png",
-    "sha256": "0e3863804b9397f6848e1ff61c854d19b289fd7cc5f04c51057e733a1b9cc6d3"
+    "sha256": "1fe900cdd6a38768bebebe9c27566f768ea89fa19833f1949eb667c504c61ed4"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/darwin-settings-desk-dark-zh-TW.png",
-    "sha256": "809b91598bb1987662419f2e934735f4f39beac18ea329e5f3c61c4b6ae20865"
+    "sha256": "254a7cd0675ed832f7f5ad37afe71ea93d652fc64b3768184864b7122b708e91"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/darwin-settings-phone-light-en.png",
-    "sha256": "57f52c43081bd0dfbcdd8ed1deba988bfc33b20fa461fbe469fb312144e47166"
+    "sha256": "62a44272143e2ec54a050ab583214ed5967cf0620d87efd4a4432e84c33d5a19"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/disk-compat-runner.mts.txt",
@@ -49,7 +49,7 @@
   },
   {
     "path": "docs/evidence/host-platforms-m3535/gallery.md",
-    "sha256": "3bedf71b8421e2bac189c4821947001ac2754b83f5652279c771c0455c9abc3b"
+    "sha256": "9a7b997f09a10bfa42486d52aa181371c02d26637cca3d47cda2bc24b50f2154"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/i18n-skill-final.log",
@@ -57,7 +57,7 @@
   },
   {
     "path": "docs/evidence/host-platforms-m3535/image-review.json",
-    "sha256": "998444d52d740be2e6ebcd9a7a323c46c1c3992f2331a004b9605f89bc15dfe9"
+    "sha256": "fab627377b08ca2767f4cdafb8123a27b25b400c0856c10aa3215fcd143d7a61"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/kernel-alarm-mutant.log",
@@ -81,19 +81,19 @@
   },
   {
     "path": "docs/evidence/host-platforms-m3535/linux-health-desk-light-en.png",
-    "sha256": "38dc6ee992cd65add9a80007659253ba9620b60499d030c1133fcadea7a4fcfb"
+    "sha256": "9bc622f08a414e147470951a9f5c37dfcf3e5514f7d77cdf2a0afe3aef99cfe6"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/linux-health-phone-dark-zh-TW.png",
-    "sha256": "50b665f3f8f8dd81c2721e8e1b13a077ee0b7341940bb8a1c006e0d8a3e90a7e"
+    "sha256": "8ac665b68adbc68011828cbdd31752dca484dcf0a5a84aa9233d3910c1d6c101"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/linux-settings-desk-dark-zh-TW.png",
-    "sha256": "04f30ecedd25867024c7d65d102e4522b1ec512b48deacc90d1e2eccffeda683"
+    "sha256": "6207e38988459fe058dc60c302a9c2066aa1ecd25ea91c29fa74797990e7f31c"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/linux-settings-phone-light-en.png",
-    "sha256": "ce298849ff62cd3db6192316d47437a0671af6e0bd978fb73a528db492707a55"
+    "sha256": "97a560d402bab8a34c00f7cabc915dd6dc08caee8be1da8cc651f8ede28de042"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/mac-default-mutant.log",
@@ -120,35 +120,75 @@
     "sha256": "d07934218a9ba1258f80d47931cdd4db1fa66ed1ae0dc77860295b93dcd47c59"
   },
   {
+    "path": "docs/evidence/host-platforms-m3535/r1-assets-final.log",
+    "sha256": "76e56537e24bf320a636bb9c5f8f101dd0e3401bc64be607dd112182eb31d115"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-fallback-final.log",
+    "sha256": "36d11f98fa91895b86b516f92bcb00efa654c90ccd8c092c6ce89f0680eddd44"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-i18n.log",
+    "sha256": "f9fdef0649c5a590423b449eff52bb03027a2c096eb5abc38caa7679ab20e203"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-production-delta.json",
+    "sha256": "7cf722241e92a1b3987036f582967b23cadc70cbc16410c0069aa3e783ce76e4"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/r1-test-types-final.log",
+    "sha256": "df1f42f89b5ec973b140db6d4ac7391415870d26750e3c2ed3f89ad7b7fb6e05"
+  },
+  {
     "path": "docs/evidence/host-platforms-m3535/readback.json",
     "sha256": "ee934df4f7316c7e834c9fb7e68c8765d79c3b560e2fc268e46ec7290e9feeb9"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/settings-gate-r1.log",
+    "sha256": "39b44fcfb1b60c9872d2a7504d0e168b706aa82d935199c8fc59d0b2750ac3bd"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/settings-gate.log",
     "sha256": "884ec38682a79ce4ec36bdf32aba5071f25992cf44c7edd77d4827dd7e04d25d"
   },
   {
-    "path": "docs/evidence/host-platforms-m3535/source-inputs.json",
+    "path": "docs/evidence/host-platforms-m3535/source-inputs-r0.json",
     "sha256": "f5ac49fde0aa33a45a2fd697f1db8770a85699448d705056ac2b185ebe46c118"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/source-inputs.json",
+    "sha256": "15e7f1e914da8c55f4ab729dccca3f6785aaaa465b89bc854c04ceee4e4a62f6"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/test-types-final.log",
     "sha256": "fd725ec1850ddf2db63551fad9f33bf35aeebb2c610a4f4fcbe763d9a0d16748"
   },
   {
+    "path": "docs/evidence/host-platforms-m3535/ui-r1-corrected.log",
+    "sha256": "1bab9e04ee982e9b3a8931071bfde66239876033f58fff4b637e94fd1c058bbd"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/ui-r1-fail-first.log",
+    "sha256": "9b7f0c7bc53fdac40c02c09512fd2749b6f8b4eb84f40f874f99d843dd315f90"
+  },
+  {
     "path": "docs/evidence/host-platforms-m3535/wsl-health-desk-light-en.png",
-    "sha256": "2ab90afa3cb53cec3b2f668fa81c6826be78ae8c42291c212285d242b7929b42"
+    "sha256": "1295a0327c8bb4c606ef0f9f2348c7b2646661cc8f28d655b5f033300f64362f"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/wsl-health-phone-dark-zh-TW.png",
-    "sha256": "fd767c69b8d75c69c5aab328f1c76892c7d81a7b94258f364edf81af7619121c"
+    "sha256": "8ba6f65b16deb2555a4a87144d337cf539e7739d195e614407417ff436b2b694"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/wsl-settings-desk-dark-zh-TW.png",
-    "sha256": "e2af62c64025f2001e8535e0228f7825b96a407a60454afdcb650a79f8fc0044"
+    "sha256": "b59a815a9c2b4edc8c61e1ca8755438d289eb954fdd9767c9180349807757935"
   },
   {
     "path": "docs/evidence/host-platforms-m3535/wsl-settings-phone-light-en.png",
-    "sha256": "a7c925ccf7eaaefdf5ced75d53cd56e34dba79077a3ca977743977ffdb33d2b5"
+    "sha256": "b2b783be56f32dacdd04c9c32ac16a81664ff8559724d8e22379c7eafbbc923c"
+  },
+  {
+    "path": "docs/evidence/host-platforms-m3535/wsl-storage-phone-dark-zh-TW.png",
+    "sha256": "e30269017d272a3dde2fe4dc491570fec4d0a54dbcf61ae15b742b886976cee0"
   }
 ]

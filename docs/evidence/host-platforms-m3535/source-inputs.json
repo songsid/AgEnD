@@ -3,7 +3,7 @@
   "changedInputs": [
     {
       "path": "scripts/manual/host-platforms/capture.mts",
-      "sha256": "b029f2ca50f1362e24ecae4e7ec06c8bf26471f6b70bc66d659444c84c26a00d"
+      "sha256": "9a410b2895b46442a9d5f8cf4941fe7c37cc2e8a449dee20ed93a49ecc4cb2c8"
     },
     {
       "path": "scripts/manual/host-platforms/readback.mts",
@@ -91,7 +91,7 @@
     },
     {
       "path": "src/ui/host-health.js",
-      "sha256": "594e8ddead8a8d4a02abaed51dde71280f1c352d452f3cb58e658e6e9b2c0827"
+      "sha256": "77703c3684792188035951874431483b22a980d31439b7716f66815b1473b2ad"
     },
     {
       "path": "src/ui/host-monitoring-darwin.js",
@@ -103,11 +103,11 @@
     },
     {
       "path": "src/ui/host-monitoring-linux.js",
-      "sha256": "2bbce941c0e4b2efc29256948288c6e6cda1f889f82dd0c377ed34087de2c479"
+      "sha256": "37208d2386889417217c995d07510221e0d9966c2fa859e7e1ef93a55f7d0f04"
     },
     {
       "path": "src/ui/host-monitoring-wsl.js",
-      "sha256": "d866cabcac7561270252e13beb4cb5d1eb08218ca8a72f76b6a7d4f0b90ec06f"
+      "sha256": "a2f27464b07810e893ea43671a424b77fab4f7e9383a08615e87d10b0e4691b7"
     },
     {
       "path": "src/ui/settings-host-alerts.js",
@@ -118,12 +118,20 @@
       "sha256": "0b0277a10d912a7c4509d63f1818250e0192e5725ff8963d1134a8eb6538eaa4"
     },
     {
+      "path": "src/ui/shared/app.css",
+      "sha256": "d478cd11c79a18fd55ed136e447f9d7782a979ee3611987b94969b0b759d9b5c"
+    },
+    {
       "path": "tests/fixtures/host-platforms-m3535/README.md",
       "sha256": "ed82c1370c1a428347a070f4767f05c62ea93a760a69da88339a4c995dd335a2"
     },
     {
       "path": "tests/fixtures/host-platforms-m3535/disk-legacy-recording.json",
       "sha256": "ea9c733d9c87ffe5cc5f2cba229bdb79832320caf62a44cff70462f890cf2e2e"
+    },
+    {
+      "path": "tests/host-health-ui-m3454.test.ts",
+      "sha256": "96bf560dfe24b8693eb1bbacf70bddfcc04b102b951035db922466e7e2201ac5"
     },
     {
       "path": "tests/host-monitoring-alert-api-m3454.test.ts",
@@ -135,7 +143,7 @@
     },
     {
       "path": "tests/host-platform-ui-m3535.test.ts",
-      "sha256": "a6f98dcf963edd646723b01ac921f2d0a4cf8e63f4b1c50b536877543e0f4da1"
+      "sha256": "fcf350dcd7e64752e00b99f12e148b1feead9067d37dd3a97d0c6f6575b3dc36"
     }
   ],
   "unchangedInfrastructure": [

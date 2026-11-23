@@ -1,54 +1,58 @@
 {
-  "scope": "All12 final viewport originals inspected individually by image-only subagent; no source/test/browser campaign. Earlier element screenshots rejected as clipped and not published.",
-  "result": "No blocking text-fit/layout/privacy finding; all6 Settings choices visible (Mac ON, Linux/WSL OFF), all6 memory meanings readable. Phone wrapping is narrow but legible.",
+  "scope": "All13 current R1-final viewport originals inspected individually by image-only subagent; no tests/browser/native campaign.",
+  "result": "No visible overflow/readability/privacy/broken-word issue. Units joined, Chinese labels plain, \u6b77\u53f2/\u53d6\u6a23 intact; desktopAPFS shared capacity visible, WSLstorageE suffix visible; Mac switchON/LinuxWSLOFF. Unrendered fallback and exact punctuation are source/test scope, not pixel proof.",
   "images": [
     {
       "path": "darwin-health-desk-light-en.png",
-      "sha256": "368882929a637e0752b87fd889c9e933a1ae20e90a4fc0c224e4c15a26caafeb"
+      "sha256": "0046135818e78a254779c8d6c62b28a539b5276090e2815ed4a5e45900833a03"
     },
     {
       "path": "darwin-health-phone-dark-zh-TW.png",
-      "sha256": "0e3863804b9397f6848e1ff61c854d19b289fd7cc5f04c51057e733a1b9cc6d3"
+      "sha256": "1fe900cdd6a38768bebebe9c27566f768ea89fa19833f1949eb667c504c61ed4"
     },
     {
       "path": "darwin-settings-desk-dark-zh-TW.png",
-      "sha256": "809b91598bb1987662419f2e934735f4f39beac18ea329e5f3c61c4b6ae20865"
+      "sha256": "254a7cd0675ed832f7f5ad37afe71ea93d652fc64b3768184864b7122b708e91"
     },
     {
       "path": "darwin-settings-phone-light-en.png",
-      "sha256": "57f52c43081bd0dfbcdd8ed1deba988bfc33b20fa461fbe469fb312144e47166"
+      "sha256": "62a44272143e2ec54a050ab583214ed5967cf0620d87efd4a4432e84c33d5a19"
     },
     {
       "path": "linux-health-desk-light-en.png",
-      "sha256": "38dc6ee992cd65add9a80007659253ba9620b60499d030c1133fcadea7a4fcfb"
+      "sha256": "9bc622f08a414e147470951a9f5c37dfcf3e5514f7d77cdf2a0afe3aef99cfe6"
     },
     {
       "path": "linux-health-phone-dark-zh-TW.png",
-      "sha256": "50b665f3f8f8dd81c2721e8e1b13a077ee0b7341940bb8a1c006e0d8a3e90a7e"
+      "sha256": "8ac665b68adbc68011828cbdd31752dca484dcf0a5a84aa9233d3910c1d6c101"
     },
     {
       "path": "linux-settings-desk-dark-zh-TW.png",
-      "sha256": "04f30ecedd25867024c7d65d102e4522b1ec512b48deacc90d1e2eccffeda683"
+      "sha256": "6207e38988459fe058dc60c302a9c2066aa1ecd25ea91c29fa74797990e7f31c"
     },
     {
       "path": "linux-settings-phone-light-en.png",
-      "sha256": "ce298849ff62cd3db6192316d47437a0671af6e0bd978fb73a528db492707a55"
+      "sha256": "97a560d402bab8a34c00f7cabc915dd6dc08caee8be1da8cc651f8ede28de042"
     },
     {
       "path": "wsl-health-desk-light-en.png",
-      "sha256": "2ab90afa3cb53cec3b2f668fa81c6826be78ae8c42291c212285d242b7929b42"
+      "sha256": "1295a0327c8bb4c606ef0f9f2348c7b2646661cc8f28d655b5f033300f64362f"
     },
     {
       "path": "wsl-health-phone-dark-zh-TW.png",
-      "sha256": "fd767c69b8d75c69c5aab328f1c76892c7d81a7b94258f364edf81af7619121c"
+      "sha256": "8ba6f65b16deb2555a4a87144d337cf539e7739d195e614407417ff436b2b694"
     },
     {
       "path": "wsl-settings-desk-dark-zh-TW.png",
-      "sha256": "e2af62c64025f2001e8535e0228f7825b96a407a60454afdcb650a79f8fc0044"
+      "sha256": "b59a815a9c2b4edc8c61e1ca8755438d289eb954fdd9767c9180349807757935"
     },
     {
       "path": "wsl-settings-phone-light-en.png",
-      "sha256": "a7c925ccf7eaaefdf5ced75d53cd56e34dba79077a3ca977743977ffdb33d2b5"
+      "sha256": "b2b783be56f32dacdd04c9c32ac16a81664ff8559724d8e22379c7eafbbc923c"
+    },
+    {
+      "path": "wsl-storage-phone-dark-zh-TW.png",
+      "sha256": "e30269017d272a3dde2fe4dc491570fec4d0a54dbcf61ae15b742b886976cee0"
     }
   ]
 }

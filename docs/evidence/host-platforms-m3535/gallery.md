@@ -1,6 +1,6 @@
 # Platform views
 
-Recorded platform inputs in the real app; controlled CPU/storage, empty history and synthetic resource aliases. No native Mac/Ubuntu execution claim. Scroll positions focus on memory meaning or the saved-rule choice.
+Current Leader R1: refreshed 12 views plus one WSL storage view. Recorded platform inputs in the real app; controlled CPU/storage, empty history and synthetic resource aliases. No native Mac/Ubuntu execution claim. Scroll positions focus on memory meaning or the saved-rule choice.
 
 ## macOS
 
@@ -55,3 +55,9 @@ Recorded platform inputs in the real app; controlled CPU/storage, empty history 
 ### 手機 zh-TW · 記憶體意義
 
 ![WSL — 手機 zh-TW · 記憶體意義](wsl-health-phone-dark-zh-TW.png)
+
+## WSL storage · phone zh-TW
+
+Fixed synthetic valid disk aliases; Windows backing drive and exact source suffix `（E:）`.
+
+![WSL storage phone zh-TW](wsl-storage-phone-dark-zh-TW.png)

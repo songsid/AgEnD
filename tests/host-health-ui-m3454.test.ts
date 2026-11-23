@@ -25,8 +25,8 @@ async function mounted(fetcher:any){
 const reply=(value:any,status=200)=>({ok:status===200,status,json:async()=>value});
 describe('real Host health UI',()=>{
  it.each(['en','zh-TW'])('shows WSL and its separate backing drive with real numeric charts (%s)',async language=>{
-  const p=await view(health(),language);const text=p.root.textContent;expect(text).toContain(language==='en'?'Windows backing drive':'存放 WSL 的 Windows 磁碟');expect(text).toContain('40.0 GiB');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(2);expect(p.root.querySelectorAll('.host-chart svg polyline')).toHaveLength(2);
-  expect(text).toContain(language==='en'?'not the physical Windows computer':'不是實體 Windows 電腦');expect(text).toContain(language==='en'?'Gaps mean no sample':'缺口代表沒有記錄取樣');expect(p.root.querySelector('a[href="/settings/notifications#host-monitoring"]')).not.toBeNull();
+  const p=await view(health(),language);const text=p.root.textContent;expect(text).toContain(language==='en'?'Windows backing drive':'存放 WSL 的 Windows 磁碟');expect(text).toContain('40.0\u00a0GiB');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(2);expect(p.root.querySelectorAll('.host-chart svg polyline')).toHaveLength(2);
+  expect(text).toContain(language==='en'?'not all Windows RAM':'不是整台 Windows 電腦的 RAM');expect(text).toContain(language==='en'?'Gaps mean no sample':'缺口代表沒有記錄取樣');expect(p.root.querySelector('a[href="/settings/notifications#host-monitoring"]')).not.toBeNull();
  });
  it.each(['en','zh-TW'])('keeps the drive suffix and pressure value readable (%s)',async language=>{
   const p=await view(health(),language);expect(p.root.querySelector('.host-volume h4')?.textContent).toBe(language==='en'?'Windows backing drive (D:)':'存放 WSL 的 Windows 磁碟（D:）');expect(p.root.querySelector('.host-pressure-value')?.textContent).toBe(language==='en'?'Normal':'正常');
@@ -41,7 +41,7 @@ describe('real Host health UI',()=>{
  });
  it('represents macOS APFS sharing and unknown pressure without a healthy substitute',async()=>{
   const s=health('darwin');s.memory.value!.pressure='unknown';s.disks.value!.volumes[0].shared=true;const p=await view(s);
-  expect(p.root.textContent).toContain('Memory pressure: Unknown');expect(p.root.textContent).toContain('Shared APFS capacity');expect(p.root.textContent).toContain('Do not add their free space together');expect(p.root.textContent).not.toContain('Windows backing drive');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(1);
+  expect(p.root.textContent).toContain('Memory pressure: Unknown');expect(p.root.textContent).toContain('Shared APFS capacity');expect(p.root.textContent).toContain('Do not add free space across volumes');expect(p.root.textContent).not.toContain('Windows backing drive');expect(p.root.querySelectorAll('.host-volume')).toHaveLength(1);
  });
  it('shows Linux unavailable/stale readings and per-metric last-good times, never healthy zero',async()=>{
   const s=health('linux');s.cpu.value!.usedPercent=null;s.cpu.status='unavailable';s.memory.sampledAt=Date.now()-120000;s.memory.value!.availableBytes=null;s.memory.value!.pressure='unknown';const p=await view(s);

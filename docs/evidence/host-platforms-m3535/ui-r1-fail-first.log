@@ -1,0 +1,29 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-platform-ui-m3535.test.ts (16 tests | 1 failed | 15 skipped) 62ms
+     × keeps byte value/unit tokens together and uses plain zh labels 60ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-platform-ui-m3535.test.ts > per-platform Host health and Settings meaning > keeps byte value/unit tokens together and uses plain zh labels
+AssertionError: expected '主機狀態這台電腦 · WSL 2依最新記錄的取樣查看 CPU、記憶體與儲存…' to contain '可用記憶體：'
+
+Expected: "可用記憶體："
+Received: "主機狀態這台電腦 · WSL 2依最新記錄的取樣查看 CPU、記憶體與儲存空間。最後成功取樣：11月23日 07:43:14 3 項讀數中，2 項有最新資料重新整理監測設定主機警示目前沒有主機警示1h24h7d30dWSL CPU使用率 25.0%4 個邏輯 CPU平均負載：1.00 / 2.00 / 3.00最後成功取樣：11月23日 07:43:14CPU 歷史這段期間尚無記錄的取樣WSL 記憶體記憶體壓力：偏高WSL MemAvailable：8.0 GiB／16.0 GiB記憶體與交換空間屬於 WSL 環境，不是整台 Windows 電腦的 RAM。壓力依 Linux 的 RAM、交換空間與 PSI 規則判斷。WSL 可用交換空間：0 KiBWSL 記憶體停滯：部分 1.0%（60 秒）· 全部 7.0%（10 秒）最後成功取樣：11月23日 07:43:14WSL 可用記憶體 歷史這段期間尚無記錄的取樣儲存空間尚未確認 Windows 磁碟只有 Linux 的可用空間，無法判斷存放 WSL 的 Windows 磁碟是否還有空間。到設定選擇磁碟無法取得WSL 的記憶體與交換空間不代表 Windows 主機的全部用量。存放虛擬磁碟的 Windows 磁碟另有可用空間讀數；無法辨識時不會猜測。主機每 30 秒 · 儲存空間每 60 秒 · 重新整理只讀取已保存的取樣，不會啟動新的探測。配對的 Windows 電腦是另一台，不算在這裡的數字裡。缺口代表沒有記錄取樣，不是零。歷史資料最多 64 MiB；原始取樣最多保留 24 小時，彙整最多 30 天。較舊的取樣可能提早清除。Agent 資源用量Agent 資源用量已關閉，請在監測設定中另外開啟。"
+
+ ❯ tests/host-platform-ui-m3535.test.ts:17:30
+     15|  it('keeps byte value/unit tokens together and uses plain zh labels',a…
+     16|   const p=page();pages.push(p);setLang('zh-TW');await p.mount(h(HostHe…
+     17|   expect(p.root.textContent).toContain('可用記憶體：');expect(p.root.textCon…
+       |                              ^
+     18|   const words=[...p.root.querySelectorAll('.host-word')].map((el:any)=…
+     19|  });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 15 skipped (16)
+   Start at  15:43:14
+   Duration  848ms (transform 470ms, setup 116ms, import 490ms, tests 62ms, environment 0ms)

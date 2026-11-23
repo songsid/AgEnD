@@ -1,0 +1,22 @@
+[
+  {
+    "path": "src/ui/host-health.js",
+    "beforeSha256": "594e8ddead8a8d4a02abaed51dde71280f1c352d452f3cb58e658e6e9b2c0827",
+    "afterSha256": "77703c3684792188035951874431483b22a980d31439b7716f66815b1473b2ad"
+  },
+  {
+    "path": "src/ui/host-monitoring-linux.js",
+    "beforeSha256": "2bbce941c0e4b2efc29256948288c6e6cda1f889f82dd0c377ed34087de2c479",
+    "afterSha256": "37208d2386889417217c995d07510221e0d9966c2fa859e7e1ef93a55f7d0f04"
+  },
+  {
+    "path": "src/ui/host-monitoring-wsl.js",
+    "beforeSha256": "d866cabcac7561270252e13beb4cb5d1eb08218ca8a72f76b6a7d4f0b90ec06f",
+    "afterSha256": "a2f27464b07810e893ea43671a424b77fab4f7e9383a08615e87d10b0e4691b7"
+  },
+  {
+    "path": "src/ui/shared/app.css",
+    "beforeSha256": "c3fe25e1d6fa27beebd1aebb841e2e61067f03e9024e993a805f7bc1967b2cb9",
+    "afterSha256": "d478cd11c79a18fd55ed136e447f9d7782a979ee3611987b94969b0b759d9b5c"
+  }
+]
