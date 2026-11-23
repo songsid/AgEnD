@@ -133,11 +133,11 @@ export interface OutboundContext {
     options?: OutboundDeliveryOptions,
   ): Promise<void | boolean>;
   /** Connected, caller-scoped room operations; tool arguments never select an agent. */
-  hubSetIntro?(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string):Promise<import("./hub/agent-intro-model.js").HubAgentIntroResult>;
+  hubSetIntro?(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string):Promise<import("./hub/agent-intro-model.js").HubAgentIntroResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomToolsAvailable?(): boolean;
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
-  hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions): Promise<import("./hub/types.js").HubRoomMembersResult>;
-  hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult>;
+  hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions): Promise<import("./hub/types.js").HubRoomMembersResult|import("./hub/member/room-post.js").ShareLapsed>;
+  hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
   /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
   hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
