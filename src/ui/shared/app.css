@@ -5040,7 +5040,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-approver-add select, .contact-mcp-add .input { flex: 1; min-width: 0; }
 .contact-owner-warning { display: flex; align-items: center; gap: var(--s-1); margin: 0; }
 .card.contact-ticket { margin: 0; min-width: 0; }
-.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > * { margin: 0; }
+.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > :not(.dlg) { margin: 0; }
 .contact-ticket[data-state="pending"] { --lbar-color: var(--warn); }
 .contact-ticket.focus { outline: 2px solid var(--focus); outline-offset: 2px; }
 .contact-ticket-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-size: var(--fs-md); line-height: var(--lh-md); }
@@ -5225,3 +5225,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-page-lead { text-wrap: pretty; }
 
 .p-settings .s-default-lead-tail { white-space: nowrap; }
+
+/* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
+.contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }

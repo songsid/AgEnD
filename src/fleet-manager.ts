@@ -5728,8 +5728,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if ((input.approvers || input.grants) && !before.canManage) throw Error("forbidden");
     if (input.approvers?.some(person => !before.eligibleApprovers.some(allowed => sameContactPerson(person, allowed)))) throw Error("invalid-approver");
     if ((input.mode || input.roomTools) && !before.canSetMode) throw Error("forbidden");
-    if (input.grants?.some(grant => grant.target !== name || !this.webChatOwner(grant.source)
-      || Date.parse(grant.expiresAt) <= Date.now())) throw Error("invalid-grant");
+    // Replacing the table may retain expired historical rows unchanged while editing/revoking another row.
+    // Only an exact retained image is exempt; new or changed permissions still need a live source and future expiry.
+    const grantImage = (grant: NonNullable<ContactPermissionsWrite["grants"]>[number]) =>
+      JSON.stringify([grant.person.platform, grant.person.adapterId, grant.person.userId, grant.person.label,
+        grant.source, grant.target, grant.verbs, grant.expiresAt, grant.remainingUses]);
+    if (input.grants?.some(grant => {
+      if (grant.target !== name) return true;
+      const previous = before.grants.find(row => row.id === grant.id);
+      if (previous && grantImage(previous) === grantImage(grant)) return false;
+      return !this.webChatOwner(grant.source) || Date.parse(grant.expiresAt) <= Date.now();
+    })) throw Error("invalid-grant");
     // Configuration does not prove an external MCP's account independence. Preserve a conservative warning.
     if (input.roomTools) input.roomTools.allowedMcpTools = input.roomTools.allowedMcpTools.map(tool => ({ ...tool,
       usesOwnerAccount: true, accountWarning: t("contact.mcpAccountWarning") }));
