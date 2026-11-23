@@ -1,3 +1,4 @@
+import { scopedDefaultModel } from "./model-defaults.js";
 import { monitoringConfig } from "./host-monitoring-config.js";
 import { DEFAULT_REPLY_TRIGGERS } from "./reply-triggers.js";
 import { ensureAgendHome } from "./agend-home.js";
@@ -241,6 +242,13 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
       getEffectiveInstanceDefaults(fleetDefaults),
       overrides,
     ) as Partial<InstanceConfig>;
+
+    // A model name belongs to the backend whose defaults declare it. An explicit
+    // agent model remains authoritative; a blank/null override follows the default.
+    const model = overrides?.model?.trim() || (merged.runtime === "windows" ? undefined
+      : scopedDefaultModel(merged.backend, fleetDefaults));
+    if (model) merged.model = model;
+    else delete merged.model;
 
     if (!merged.working_directory && merged.runtime === "windows") throw new Error(`Windows instance ${name} requires its native working_directory`);
     if (!merged.working_directory) {

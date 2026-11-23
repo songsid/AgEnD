@@ -279,6 +279,16 @@ describe("who uses a field", () => {
   });
 });
 
+// Shared backend/model edits no longer promise an automatic restart. Other cold fields retain that contract.
+const MODEL_NEXT = "Next restart · no restart now";
+const MODEL_HINT = "Saved defaults wait for the next restart unless you choose to restart running agents now. Stopped and paused agents stay stopped. Other edited settings keep their own apply rules.";
+const MODEL_ROOMS = (n = 1) => `Also changes ${n} ClassicBot room(s), with the same timing choice.`;
+const MODEL_NOTES = (n = 5, rooms = 0, names = "dev-t1, reviewer-t2, tester-t4, ops-t5, general") => [
+  `Changes backend or model for ${n} agents. Other backends keep their own model defaults.`,
+  ...(n ? [`Affected: ${names}`] : []), ...(rooms ? [MODEL_ROOMS(rooms)] : []), MODEL_HINT,
+];
+const roomModelNotes = () => notes("g-model").filter((n: string) => n.startsWith("Also changes"));
+
 describe("what an edit costs", () => {
   it("shows nothing until a field is edited — and nothing for a field that applies at once", async () => {
     await open();
@@ -291,8 +301,8 @@ describe("what an edit costs", () => {
   it("an agent restart names how many agents it reaches and which it does not — from the schema, not a fixed word", async () => {
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"]);
-    expect(bar()).toBe("↻ 5 agent(s) restart after saving");
+    expect(notes("g-model")).toEqual(MODEL_NOTES());
+    expect(bar()).toBe(MODEL_NEXT);
     expect(field("g-model").className).toContain("s-dirty");
   });
 
@@ -300,7 +310,7 @@ describe("what an edit costs", () => {
     await open();
     const was = $("#g-model").value;
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toHaveLength(1);
+    expect(notes("g-model")).toHaveLength(3);
     await choose("g-model", was);
     expect(notes("g-model")).toEqual([]);
     expect($(".s-pending")).toBeNull();
@@ -312,7 +322,7 @@ describe("what an edit costs", () => {
     await choose("g-model", "gpt-5.5-mini");                       // reaches 5 (not artist)
     await choose("g-ts", "full");                                  // reaches 5 (not tester): together all 6
     expect(notes("g-ts")).toEqual(["↻ After saving, 5 agent(s) restart (tester set their own — not affected)"]);
-    expect(bar()).toBe("↻ 6 agent(s) restart after saving");
+    expect(bar()).toBe(`↻ 5 agent(s) restart after saving · ${MODEL_NEXT}`);
   });
 
   it("a fleet restart (the language) says AgEnD restarts, not an agent", async () => {
@@ -326,7 +336,7 @@ describe("what an edit costs", () => {
     raw = fleet(); for (const i of Object.values<any>(raw.instances)) i.model = "own";
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["Every agent sets this on its own, so none is affected."]);
+    expect(notes("g-model")).toEqual(MODEL_NOTES(0));
     expect(bar() ?? "").not.toContain("restart after saving");
   });
 
@@ -335,23 +345,23 @@ describe("what an edit costs", () => {
     await open();
     expect(pill("g-model")).toBeNull();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["No agents yet — agents you create later start with this value."]);
+    expect(notes("g-model")).toEqual(MODEL_NOTES(0));
   });
 
-  it("every agent without its own value takes it, but only a running one restarts — the note says which", async () => {
+  it("every agent without its own value takes it, but the timing choice remains safe for stopped/paused agents", async () => {
     status = { "dev-t1": "stopped", "reviewer-t2": "paused" };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
-    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+    expect(notes("g-model")).toEqual(MODEL_NOTES());
+    expect(bar()).toBe(MODEL_NEXT);
   });
 
   it("a crashed agent is restarted too (the fleet restarts a crash-looping daemon); a paused or stopped one is not", async () => {
     status = { "dev-t1": "crashed", "reviewer-t2": "paused", "tester-t4": "stopped" };
     await open();
     await choose("g-model", "gpt-5.5-mini");                       // reaches 5: dev (crashed), reviewer (paused), tester (stopped), ops, general
-    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) use the new value; the 3 running restart (artist set their own — not affected)"]);
-    expect(bar()).toBe("↻ 5 agent(s) use the new value; the 3 running restart");
+    expect(notes("g-model")).toEqual(MODEL_NOTES());
+    expect(bar()).toBe(MODEL_NEXT);
   });
 
   it("when the agents' state cannot be read it does not claim that none is running", async () => {
@@ -359,7 +369,7 @@ describe("what an edit costs", () => {
       fleetMode = mode;
       await open();
       await choose("g-model", "gpt-5.5-mini");
-      expect([mode, notes("g-model"), bar()]).toEqual([mode, ["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"], "↻ 5 agent(s) restart after saving"]);
+      expect([mode, notes("g-model"), bar()]).toEqual([mode, MODEL_NOTES(), MODEL_NEXT]);
       await p.unmount();
     }
   });
@@ -368,8 +378,8 @@ describe("what an edit costs", () => {
     status = Object.fromEntries(Object.keys(fleet().instances).map((n) => [n, "stopped"]));
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["After saving, 5 agent(s) use the new value; none is running, so none restarts (artist set their own — not affected)"]);
-    expect(bar()).toBe("5 agent(s) use the new value; none is running");
+    expect(notes("g-model")).toEqual(MODEL_NOTES());
+    expect(bar()).toBe(MODEL_NEXT);
     expect(`${notes("g-model")}${bar()}`).not.toMatch(/↻/);
   });
 
@@ -451,9 +461,9 @@ describe("ClassicBot rooms that follow a shared value", () => {
     classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b", { model: "gpt-5.5-nano" })) };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)", ROOM_RESTARTS]);
-    expect(bar()).toContain("↻ 5 agent(s) restart after saving");
-    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+    expect(notes("g-model")).toEqual(MODEL_NOTES(5, 1));
+    expect(bar()).toContain(MODEL_NEXT);
+    expect(bar()).toContain(MODEL_ROOMS());
   });
 
   it("with only a room, it names the room's restart and does not say there are no agents", async () => {
@@ -461,8 +471,8 @@ describe("ClassicBot rooms that follow a shared value", () => {
     classic = { defaults: {}, channels: rooms(room("classic-a")) };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual([ROOM_RESTARTS]);
-    expect(bar()).toBe("↻ 1 ClassicBot room(s) restart after saving");
+    expect(notes("g-model")).toEqual(MODEL_NOTES(0, 1));
+    expect(bar()).toBe(`${MODEL_ROOMS()} · ${MODEL_NEXT}`);
     expect(`${notes("g-model")}${bar()}`).not.toContain("No agents yet");
   });
 
@@ -470,12 +480,12 @@ describe("ClassicBot rooms that follow a shared value", () => {
     classic = { defaults: { model: "gpt-5.5-nano" }, channels: rooms(room("classic-a")) };
     await open();
     await choose("g-model", "gpt-5.5-mini");                        // ClassicBot's defaults set the model: the room follows those
-    expect(notes("g-model")).toEqual(["↻ After saving, 5 agent(s) restart (artist set their own — not affected)"]);
+    expect(notes("g-model")).toEqual(MODEL_NOTES());
     await p.unmount();
     classic = { defaults: {}, channels: rooms(room("classic-a", { model: "" }), room("classic-b", { auto_pause_after: 0 }), room("classic-c", { backend: "claude-code" })) };
     await open();
     await choose("g-model", "gpt-5.5-mini");                        // an empty model follows
-    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS.replace("1 ClassicBot", "3 ClassicBot")]);
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS(2)]);
     await choose("g-model", "gpt-5.5");                              // put back: gone
     await type("g-auto", "10");                                      // auto-pause: classic-b's 0 is its own value
     // Auto-pause applies to an agent at once but restarts a room (ClassicBot takes only tool progress and the reply guard hot): rooms alone are named.
@@ -483,43 +493,43 @@ describe("ClassicBot rooms that follow a shared value", () => {
     expect(bar()).toBe("↻ 2 ClassicBot room(s) restart after saving");
   });
 
-  it("a stopped room takes the value at its next start; with the state unreadable the page does not claim none is running", async () => {
+  it("room changes stay deferred even with stopped or unreadable live status", async () => {
     classic = { defaults: {}, channels: rooms(room("classic-a")) };
     status = { "classic-a": "stopped" };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model").slice(1)).toEqual(["After saving, 1 ClassicBot room(s) use the new value; none is running, so none restarts"]);
-    expect(bar()).toContain("1 ClassicBot room(s) use the new value; none is running");
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS()]);
+    expect(bar()).toContain(MODEL_ROOMS());
     await p.unmount();
     fleetMode = "down";
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS()]);
   });
 
-  it("a mix of running and idle rooms says how many restart", async () => {
+  it("a mix of running and idle rooms shares the explicit timing choice", async () => {
     classic = { defaults: {}, channels: rooms(room("classic-a"), room("classic-b")) };
     status = { "classic-b": "paused" };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
-    expect(bar()).toContain("↻ 2 ClassicBot room(s) use the new value; the 1 running restart");
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS(2)]);
+    expect(bar()).toContain(MODEL_ROOMS(2));
   });
 
-  it("a room of the older classicBot.yaml format has no instanceName in the file, so its state cannot be looked up — it counts as restarting", async () => {
+  it("a room of the older classicBot.yaml format has no instanceName in the file, so its state cannot be looked up — it still gets the timing choice", async () => {
     // Old format: the key is the channel id, with no instanceName/adapterId (the manager makes the name up when it loads).
     classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" } } };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model").slice(1)).toEqual([ROOM_RESTARTS]);                       // not "none is running": nothing says it is stopped
-    expect(bar()).toContain("↻ 1 ClassicBot room(s) restart after saving");
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS()]);                       // not "none is running": nothing says it is stopped
+    expect(bar()).toContain(MODEL_ROOMS());
     await p.unmount();
     // Beside a room the page can see is stopped: the old-format one still restarts, the stopped one does not.
     classic = { defaults: {}, channels: { "-1005823000001": { name: "Old room" }, "discord:1": room("classic-b") } };
     status = { "classic-b": "stopped" };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model").slice(1)).toEqual(["↻ After saving, 2 ClassicBot room(s) use the new value; the 1 running restart"]);
+    expect(roomModelNotes()).toEqual([MODEL_ROOMS(2)]);
   });
 
   it("only what the reconciliation restarts a room for is counted: a hot value, or a field a room does not take from here, says nothing about rooms", async () => {
@@ -546,8 +556,8 @@ describe("ClassicBot rooms that follow a shared value", () => {
     classic = { defaults: {}, channels: rooms(room("classic-a")) };
     await open();
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）", "↻ 儲存後，沿用這個值的 1 個 ClassicBot 房間會重新啟動"]);
-    expect(bar()).toContain("↻ 儲存後 1 個 ClassicBot 房間會重新啟動");
+    expect(notes("g-model")).toEqual(["5 個 Agent 的後端或模型會改變；其他後端保留各自的預設模型。", "受影響：dev-t1, reviewer-t2, tester-t4, ops-t5, general", "另有 1 個 ClassicBot 房間受影響，沿用相同的套用時間選擇。", "儲存的預設值會等到下次重啟才套用，除非你選擇立即重啟。已停止或暫停的 Agent 不會啟動；其他修改仍依各自的套用方式處理。"]);
+    expect(bar()).toContain("另有 1 個 ClassicBot 房間受影響，沿用相同的套用時間選擇。");
     expect(pillTip("g-model")).toContain("另有 1 個 ClassicBot 房間也沿用這個值（不在上面的數字裡）。");
     setLang("en");
   });
@@ -573,7 +583,7 @@ describe("what is written", () => {
     await type("g-stag", "700");
     await save();
     expect(written()).toEqual([{
-      backend: "claude-code", locale: "zh-TW", auto_pause_after: 10, agent_mode: "cli", tool_set: "coordinator", tool_progress: "verbose",
+      backend: "claude-code", model: null, locale: "zh-TW", auto_pause_after: 10, agent_mode: "cli", tool_set: "coordinator", tool_progress: "verbose",
       cross_instance_visibility: "hidden", tips: false, reply_triggers: true, reply_completion_guard: false, log_level: "debug",
       hang_detector: { enabled: false, timeout_minutes: 20 }, startup: { concurrency: 3, stagger_delay_ms: 700 },
     }]);
@@ -614,7 +624,7 @@ describe("the words", () => {
     const { setLang } = await import("/assets/app-i18n.js");
     setLang("zh-TW");
     await open();
-    expect(text($(".s-page-lead"))).toBe("改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。");
+    expect(text($(".s-page-lead"))).toBe("設定會套用到所有未自行設定的 Agent，包括之後新增的。");
     expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("h3")))).toEqual(["Agent 共用設定", "系統與頻道", "Agent 共用設定", "系統與頻道"]);
     expect(text($("details.drawer summary"))).toBe("進階設定（11 項）");
     expect(p.root.querySelectorAll(".s-shared .s-group").map((c: any) => text(c.querySelector("p.note")))).toEqual(["個別 Agent 可以自己改掉", "整個 Fleet 一起，不能個別改",
@@ -625,8 +635,8 @@ describe("the words", () => {
     expect($("#g-tp").querySelectorAll(".s-seg-opt").map(text)).toEqual(["關", "標準", "詳細"]);
     expect(text(field("g-be").querySelector(".s-info"))).toContain("只檢查這台主機。Windows 電腦上的 CLI，請在個別 Agent 的設定裡按「切換 Runtime／CLI」。");
     await choose("g-model", "gpt-5.5-mini");
-    expect(notes("g-model")).toEqual(["↻ 儲存後，5 個 Agent 會重新啟動（artist 自訂，不受影響）"]);
-    expect(text($(".s-pending .note"))).toBe("↻ 儲存後 5 個 Agent 會重新啟動");
+    expect(notes("g-model")).toEqual(["5 個 Agent 的後端或模型會改變；其他後端保留各自的預設模型。", "受影響：dev-t1, reviewer-t2, tester-t4, ops-t5, general", "儲存的預設值會等到下次重啟才套用，除非你選擇立即重啟。已停止或暫停的 Agent 不會啟動；其他修改仍依各自的套用方式處理。"]);
+    expect(text($(".s-pending .note"))).toBe("下次重啟時（現在不重啟）");
     setLang("en");
   });
 });
@@ -663,9 +673,9 @@ describe("on the alpha line: Windows agents and the Runtime page", () => {
   it("a Windows agent with its own CLI, model and mode is counted as custom for them — an edit to the default backend does not reach it", async () => {
     raw = withWindows();
     await open();
-    expect([pill("g-be"), pill("g-model"), pill("g-am")]).toEqual(["2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom", "2/4 in use · 2 agents custom"]);
+    expect([pill("g-be"), pill("g-model"), pill("g-am")]).toEqual(["2/4 in use · 2 agents custom", "2/2 in use", "2/4 in use · 2 agents custom"]);
     await choose("g-be", "kiro-cli");
-    expect(notes("g-be")).toEqual(["↻ After saving, 2 agent(s) restart (win-exec, win-pane set their own — not affected)"]);
+    expect(notes("g-be")).toEqual(MODEL_NOTES(2, 0, "dev-t1, reviewer-t2"));
   });
 
   it("a Windows agent that runs one command at a time has no process to restart; a persistent Windows pane does", async () => {
@@ -687,5 +697,58 @@ describe("on the alpha line: Windows agents and the Runtime page", () => {
       expect([mode, notes("g-ts").join("").includes("↻"), bar().includes("↻")]).toEqual([mode, false, false]);
       await p.unmount();
     }
+  });
+});
+
+describe("backend-scoped model defaults", () => {
+  it.each(["en", "zh-TW"])("counts only the matching backend and offers the safe timing choice before Save (%s)", async (lang) => {
+    (await import("/assets/app-i18n.js")).setLang(lang);
+    raw.defaults = { backend: "claude-code", model: "old" };
+    raw.instances = {
+      Alpha: { working_directory: "/w/alpha" },
+      Beta: { working_directory: "/w/beta", backend: "codex" },
+      Gamma: { working_directory: "/w/gamma", backend: "muse" },
+      Delta: { working_directory: "/w/delta", model: "own" },
+    };
+    await open();
+    expect(pill("g-model")).toContain("1/2");
+    expect($("#g-default-adoption")).toBeNull();
+    await choose("g-model", "new");
+    const choice = $("#g-default-adoption");
+    expect(choice).not.toBeNull();
+    expect(choice.value).toBe("next-start");
+    expect(notes("g-model").join(" ")).toContain("Alpha");
+    expect(notes("g-model").join(" ")).not.toContain("Beta");
+    expect(notes("g-model").join(" ")).not.toContain("Gamma");
+    expect(sent).toEqual([]);
+    await choose("g-default-adoption", "restart");
+    expect($("#g-default-adoption").value).toBe("restart");
+  });
+  it("canceling the explicit restart question writes nothing", async () => {
+    await open(); await choose("g-model", "gpt-5.5-mini");
+    await choose("g-default-adoption", "restart");
+    (globalThis as any).confirm = undefined;
+    fire($(".s-pending .btn-primary"), "click"); await settle(4);
+    const { confirmStore, answerConfirm } = await import("/assets/ui-confirm.js");
+    const q = confirmStore.get().queue[0];
+    expect(q.message).toContain("interrupts their current sessions");
+    expect(sent).toEqual([]);
+    answerConfirm(q.id, false); await settle(4);
+    expect(sent).toEqual([]);
+    expect($(".s-pending")).not.toBeNull();
+  });
+  it("carries the next-start choice through the actual Apply request", async () => {
+    await open(); await choose("g-model", "gpt-5.5-mini");
+    await save();
+    expect(sent.find(s => s.path === "/api/settings/apply")?.body.shared_defaults).toBe("next-start");
+    expect(written()).toEqual([{ model: "gpt-5.5-mini" }]);
+  });
+  it("includes model inheritance gained/lost when the default backend changes", async () => {
+    const { defaultIdentityTargets } = await import("/ui/js/settings-shared.js");
+    const fleet = { defaults: { backend: "claude-code", model: "old" }, instances: {
+      Alpha: {}, Beta: { backend: "claude-code" }, Gamma: { backend: "codex" },
+      Delta: { backend: "muse", model: "own" },
+    } };
+    expect(defaultIdentityTargets(fleet, { backend: "codex", model: "new" })).toEqual(["Alpha", "Beta", "Gamma"]);
   });
 });

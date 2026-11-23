@@ -2974,13 +2974,12 @@ export class InstanceLifecycle {
         ...(args.tags ? { tags: args.tags } : {}),
         ...(worktreePath ? { worktree_source: directory } : {}),
       } as InstanceConfig;
-      // defaults.model is inherited by every instance via the spread above, but
-      // a Claude model (etc.) must not be forced onto a backend that can't run
-      // it (e.g. codex/agy → CLI errors on --model claude-*). Drop an INHERITED
-      // (non-explicit) model that's incompatible with the resolved backend; an
-      // explicitly-passed args.model is always respected.
-      if (!args.model && instanceConfig.model && instanceConfig.backend
-          && !isModelCompatible(instanceConfig.backend, instanceConfig.model)) {
+      // Match the loader: a shared model belongs to its declaring backend,
+      // including CLIs whose ids cannot be classified by a model-name pattern.
+      // Retain the existing advisory guard for newly created agents; explicit ids win.
+      if (!args.model && instanceConfig.model
+          && ((instanceConfig.backend || "claude-code") !== (this.ctx.fleetConfig?.defaults.backend || "claude-code")
+            || !isModelCompatible(instanceConfig.backend || "claude-code", instanceConfig.model))) {
         delete instanceConfig.model;
       }
       // #2598: a new kiro instance is written with the TUI engine, explicitly (an unset one is classic).

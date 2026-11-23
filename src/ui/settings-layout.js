@@ -11,6 +11,7 @@ register("settingsLayout", {
     lead_preferences: "Your identity, language and content preferences.",
     lead_look: "Choose how AgEnD looks and keep your workspace comfortable.",
     lead_agents: "Manage agents across runtimes, with their CLI, model and status in one place.",
+    "lead_agent-defaults-tail": "including agents you create later.",
     "lead_agent-defaults": "Changes here apply to every agent that has no setting of its own — including agents you create later.",
     lead_chat: "Connect chat services and choose how messages are received and delivered.",
     "lead_web-dashboard": "Manage fleet-wide dashboard features, branding and resource limits.",
@@ -28,7 +29,8 @@ register("settingsLayout", {
     lead_preferences: "你的身分、語言與內容偏好。",
     lead_look: "調整顯示方式，保留你的工作習慣。",
     lead_agents: "集中管理各個 Runtime 的 Agent、CLI、模型與狀態。",
-    "lead_agent-defaults": "改了會套用到所有沒有自己設定的 Agent，包括之後新建立的。",
+    "lead_agent-defaults-tail": "包括之後新增的。",
+    "lead_agent-defaults": "設定會套用到所有未自行設定的 Agent，包括之後新增的。",
     lead_chat: "連接聊天服務，設定訊息如何進入與送出。",
     "lead_web-dashboard": "管理整個 Fleet 的網頁功能、品牌與資源限制。",
     lead_access: "管理登入、網頁授權、訪客與對外分享。",
@@ -100,8 +102,11 @@ register("settingsLayout", {
 
 export function SettingsPageHead({ section, children }) {
   const scope = section === "preferences" ? "account" : section === "look" ? "personal" : "fleet";
+  const lead = layoutText(`lead_${section}`);
+  const tail = section === "agent-defaults" ? layoutText("lead_agent-defaults-tail") : "";
+  const leadContent = tail && lead.endsWith(tail) ? html`${lead.slice(0, -tail.length)}<span class="s-default-lead-tail">${tail}</span>` : lead;
   const hub = section === "hub";   // M-3108: the Hub is a preview in 2.4.0-beta.1
-  return html`<${PageHead} title=${t(`settings.sec_${section}`)} scope=${layoutText(scope)} lead=${layoutText(`lead_${section}`)}
+  return html`<${PageHead} title=${t(`settings.sec_${section}`)} scope=${layoutText(scope)} lead=${leadContent}
     tag=${hub ? layoutText("preview") : null} note=${hub ? layoutText("previewHub") : null}>${children}</${PageHead}>`;
 }
 

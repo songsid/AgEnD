@@ -5171,3 +5171,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .host-footprint-memory { white-space: nowrap; }
 
 .host-footprint-managed { white-space: nowrap; }
+
+/* Shared-default adoption is an explicit choice before Save, including touch. */
+.s-default-adoption select { min-height: var(--tap); max-width: 100%; width: 100%; }
+
+/* Let operation labels take a readable line before their outcome on narrow screens. */
+.s-op .s-step .grow { flex-basis: 12rem; }
+.s-op-name, .s-op-slug { display: block; overflow-wrap: anywhere; }
+.p-settings .s-page-lead { text-wrap: pretty; }
+
+.p-settings .s-default-lead-tail { white-space: nowrap; }

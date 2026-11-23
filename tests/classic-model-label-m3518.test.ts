@@ -1,0 +1,20 @@
+import { afterAll, expect, it } from "vitest";
+import { h, page, settle } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+import { buildSettingsImpactSchema } from "../src/instance-config-impact.js";
+const p = page({ url: "http://127.0.0.1:19284/settings/agent-defaults" });
+const oldFetch = globalThis.fetch;
+globalThis.fetch = (async () => ({ ok: true, status: 200, json: async () => ({ models: [] }) })) as any;
+afterAll(async () => { await p.unmount(); p.restore(); globalThis.fetch = oldFetch; });
+it("R2: Classic inheritance label scopes both default layers to the selected backend", async () => {
+  const { ClassicDialog } = await import("/ui/js/settings-dialogs.js");
+  (await import("/assets/app-i18n.js")).setLang("en");
+  const ctx = { fleet: { defaults: { backend: "claude-code", model: "opus" }, instances: {} }, classic: { defaults: { backend: "grok", model: "grok-model" } }, schema: buildSettingsImpactSchema(), classicRuntime: () => ({ execution: "stopped" }) };
+  await p.mount(h(ClassicDialog, { room: { instanceName: "example-room", backend: "codex" }, ctx, onClose: () => {} }));
+  await settle(8);
+  const model = () => p.root.querySelector("#cl-model")!.closest(".field")!.textContent;
+  expect(model()).not.toContain("opus"); expect(model()).not.toContain("grok-model");
+  const backend = p.root.querySelector("#cl-be") as any;
+  backend.value = "claude-code"; fire(backend, "change"); await settle(5); expect(model()).toContain("opus");
+  backend.value = "grok"; fire(backend, "change"); await settle(5); expect(model()).toContain("grok-model");
+});
