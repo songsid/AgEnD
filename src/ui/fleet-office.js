@@ -199,6 +199,26 @@ const SIZE0 = { w: 960, h: 600 };
 const FIT_PAD = 60;
 /** #2860: how far below its place a crowded area's compact tag drops when a neighbour's is in the way (a tag's height + 1). */
 const COMPACT_ROW = 12;
+/** M-3539: how far below its place a full name tag drops when another tag or an area's name is in the way (a tag's height + 2). */
+const TAG_ROW = 16;
+/** M-3539: the controls drawn over the scene that name tags keep clear of: the zoom stack, and the phone's zone chips where they float over it. */
+const KEEP_CLEAR = ".oo-zoom, .oo-stage > .oo-zone-pills";
+/** M-3539: those controls' boxes in the scene's logical units at the view `v` ({ k, x, y }: CSS px a unit, the origin), 4 CSS px round each. */
+export function keepClearOf(cv, v) {
+  const root = cv && typeof cv.closest === "function" ? cv.closest(".oo") : null;
+  if (!root || typeof cv.getBoundingClientRect !== "function" || !(v.k > 0)) return [];
+  const c = cv.getBoundingClientRect(), out = [];
+  for (const el of root.querySelectorAll(KEEP_CLEAR)) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.right <= c.left || r.left >= c.right || r.bottom <= c.top || r.top >= c.bottom) continue;
+    out.push({ x: (r.left - c.left - 4 - v.x) / v.k, y: (r.top - c.top - 4 - v.y) / v.k, w: (r.width + 8) / v.k, h: (r.height + 8) / v.k });
+  }
+  return out;
+}
+/** Whether two boxes ({ x, y, w, h }) overlap. */
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+/** M-3539: the box a person's figure covers where they are now (the skin's own, else the built-in figure's). */
+const figureBox = (sk, q) => (sk.charBox ? sk.charBox(q.look, q.at) : { x: q.at.x - 24, y: q.at.y - 52, w: 48, h: 66 });
 /** #2554: in All offices a tile's name tags show (always) from this many CSS px a unit up; below it on hover only. */
 export const TAG_MIN_K = 0.75;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -615,20 +635,39 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
-    // In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps a compact tag (#2860:
-    // in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels); one that would touch
-    // a tag already drawn, its badge included, is left to hover or focus. The full tags go first.
-    const over = p.L.over || new Set();
-    const crowded = (q) => over.has(q.d.area) && q.d.key !== hot && !q.look.match;
-    const tagged = (q) => !((tagsOff || over.has(q.d.area)) && q.d.key !== hot && !q.look.match);
-    const taken = [];
-    const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
-    for (const q of people) {
-      if ((live.hidden.has(q.look.name) && q.look.name !== heldName) || !tagged(q)) continue;
-      sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
-      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
-      tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
+    // M-3539: an area's name a figure stands on is written again over the people (休息區 under a crowd's heads).
+    const titles = sk.areaTitleBox ? Object.values(p.L.areas || {}).map((ar) => ({ ar, box: sk.areaTitleBox(ctx, ar, env) })) : [];
+    if (sk.drawAreaTitle) for (const { ar, box } of titles) {
+      if (people.some((q) => !live.hidden.has(q.look.name) && overlaps(figureBox(sk, q), box))) sk.drawAreaTitle(ctx, ar, env);
     }
+    // Name tags never cover each other, an area's name or what the page keeps clear over the scene (`env.keepClear`:
+    // the zoom control, M-3539). In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps
+    // a compact tag (#2860: in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels).
+    // The full tags go first: the one hovered or found, then the people at their place, then those walking (a stroll
+    // passes others' tags, M-3539); each where it is, else a row lower, else compact (there, then a row lower); one
+    // that fits nowhere is left to hover or focus. Then an item's own name and the row it carries; then the crowd's.
+    const over = p.L.over || new Set();
+    const pinned = (q) => q.d.key === hot || !!q.look.match;
+    const crowded = (q) => over.has(q.d.area) && !pinned(q);
+    const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
+    const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
+    const taken = [];
+    const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
+    /** Draws `look`'s tag at (x, y) at the first of `tries` ([dy, compact]) clear of the others; `force`: at the first. */
+    const place = (x, y, look, tries, force = false) => {
+      for (const [dy, compact] of tries) {
+        const box = tagBox(ctx, x, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
+        if (!force && touches(foot)) continue;
+        sk.drawTag(ctx, x, y + dy, look, env, compact);
+        tags.push(box); taken.push(foot);
+        return box;
+      }
+      return null;
+    };
+    const FULL_TRIES = [[0, false], [TAG_ROW, false], [0, true], [COMPACT_ROW, true]];
+    const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
+      .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
+    for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, q.look, FULL_TRIES, rank === 0);
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
     // its place in the row while another's tag is left out), and their bubbles, over its picture. The tags drawn are
@@ -637,10 +676,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) {
       const on = people.filter((q) => live.hidden.get(q.look.name) === f.id && q.look.name !== heldName);
       if (!on.length) {
-        if (!tagsOff && f.label) {
-          const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
-          sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge));
-        }
+        if (!tagsOff && f.label) place(f.x, f.y, npcLook(p, f), [[0, false], [TAG_ROW, false]]);
         continue;
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
@@ -651,10 +687,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         const q = f.label ? on[i - 1] : on[i];
         if (q) speakers.push({ look: q.look, x: r.x + 10, y: top, area: q.d.area });
         if (q ? !tagged(q) : tagsOff) continue;
-        sk.drawTag(ctx, r.x, f.y, r.look, env);
-        const box = tagBox(ctx, r.x, f.y, r.look.label);
-        tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));
-        if (q) held.push({ name: q.look.name, id: f.id, box });
+        // The row stays one row (each keeps its place): drawn there, covering nothing else's, or left to hover.
+        const box = place(r.x, f.y, r.look, [[0, false]], !!q && pinned(q));
+        if (q && box) held.push({ name: q.look.name, id: f.id, box });
       }
     }
     p.heldTags = held;
@@ -663,13 +698,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // neighbour's tag goes a row lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows.
     if (!tagsOff) for (const q of people) {
       if (live.hidden.has(q.look.name) || !crowded(q)) continue;
-      for (const dy of [0, COMPACT_ROW]) {
-        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
-        if (touches(foot)) continue;
-        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
-        tags.push(box); taken.push(foot);
-        break;
-      }
+      place(q.at.x, q.at.y, q.look, [[0, true], [COMPACT_ROW, true]]);
     }
   } else {
     for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
@@ -946,6 +975,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const walkers = useMemo(() => createWalkers(), []);
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
   const seatPrefsRef = useRef({}), seatKeyRef = useRef(""), seatDropRef = useRef(null);
+  const placedRef = useRef(null);                                    // M-3539: the office and style the walkers were last placed for
+  // M-3539: the phone's zone chips scroll sideways when they do not fit (English); a fade at the side there is more
+  // (data-more-left / data-more-right) says so.
+  const pillsRef = useRef(null);
+  const pillsCue = () => {
+    const e = pillsRef.current;
+    if (!e || typeof e.toggleAttribute !== "function") return;
+    const more = e.scrollWidth - e.clientWidth;
+    e.toggleAttribute("data-more-left", more > 1 && e.scrollLeft > 1);
+    e.toggleAttribute("data-more-right", more > 1 && e.scrollLeft < more - 1);
+  };
+  useLayoutEffect(pillsCue);
   const [seatRev, setSeatRev] = useState(0);
   // #2554: All offices' tiles keep their own: seats (by tile and style), walkers and flights (by tile); and the items
   // flying between tiles.
@@ -1319,7 +1360,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
-      walkers.sync(to, t, L, still);
+      // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
+      // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
+      const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
+      placedRef.current = placed;
+      walkers.sync(to, t, L, still || fresh);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
@@ -1633,7 +1678,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""), false, null, s.bubbleHits);
+      const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -2442,7 +2488,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <rect ref=${miniViewRef} class="oc-mini-view oo-mini-view" />
       </svg>
     </div>
-    ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
+    ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")} ref=${pillsRef} onScroll=${pillsCue}>
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
         ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
       </div>` : null}
