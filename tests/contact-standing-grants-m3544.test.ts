@@ -110,3 +110,21 @@ it("the real Permissions writer can retain an unchanged expired row while extend
   grants[0]!.verbs = ["broadcast"];
   expect(() => fm.writeContactPermissions("worker", { revision: view().revision, grants }, admin)).toThrow("invalid-grant");
 });
+
+it("ticket grant references name exactly the persisted selected-person rows, preserving neighbors and transactional rollback", () => {
+  const h = rig();
+  const prior = h.store.writePolicy("worker", { revision: 0, grants: [{ id: "", person: admin, source: "room", target: "worker", verbs: ["request_information"], expiresAt: new Date(10_000).toISOString(), remainingUses: null }] }, admin, n => n === "worker" ? "worker-one" : "room-one");
+  const ticket = h.store.hold(h.request());
+  const result = h.store.decide(ticket.id, { revision: 1, decision: "approve-once", grant: h.grant([bob]) }, admin, h.authority);
+  const saved = h.store.policy("worker", "worker-one");
+  expect(saved.grants[0]).toEqual(prior.grants[0]);
+  expect(saved.grants.slice(1).map(row => contactPersonKey(row.person))).toEqual([contactPersonKey(bob)]);
+  expect(result.grantIds).toEqual(saved.grants.slice(1).map(row => row.id));
+  expect(h.store.get(ticket.id)?.grantIds).toEqual(result.grantIds);
+  const pending = h.store.hold(h.request());
+  expect(() => h.store.decide(pending.id, { revision: 1, decision: "approve-once", grant: h.grant([alice]) }, admin,
+    { ...h.authority, admit: () => { throw Error("admission-failed"); } })).toThrow("admission-failed");
+  expect(h.store.policy("worker", "worker-one")).toEqual(saved);
+  expect(h.store.get(pending.id)).toMatchObject({ state: "pending" });
+  expect(h.store.get(pending.id)?.grantIds).toBeUndefined();
+});

@@ -23,3 +23,7 @@ The conditional user-look corrections include localized administrator labels, di
 ## Risk and rollback
 
 No schema migration. Retaining an unchanged expired rule does not reactivate it; modifying it requires a future expiry and current source. Old single-person decision callers remain compatible. Revert this PR to restore the checkbox and single-person creation UI. Existing durable grants keep their existing matcher and revoke support. The General path is not shipped by this slice.
+
+## Review correction
+
+The policy writer assigns final IDs to new rows. Ticket references now come from its persisted return value rather than the temporary input rows. The regression fails before the correction, then checks the selected person's saved ID, the reread ticket, unchanged neighboring rows and rollback after failed admission. Three affected store/API files pass 22 tests. Runtime-only correction; the approved UI and captures are unchanged.

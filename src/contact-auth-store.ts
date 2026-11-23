@@ -327,9 +327,10 @@ export class ContactAuthStore {
             target: request.target, sourceGeneration: request.sourceGeneration, targetGeneration: request.targetGeneration,
             verbs: [request.verb], expiresAt: choice.expiresAt, remainingUses: choice.remainingUses,
             createdAt: ticket.decidedAt!, createdBy: actor }));
-          this.writePolicy(request.target, { revision: previous.revision, grants: [...previous.grants, ...grants] }, actor,
+          const saved = this.writePolicy(request.target, { revision: previous.revision, grants: [...previous.grants, ...grants] }, actor,
             name => name === request.target ? request.targetGeneration : name === request.source ? request.sourceGeneration : "unavailable");
-          ticket.grantIds = grants.map(grant => grant.id);
+          // writePolicy assigns fresh ids to appended rows; reference the persisted images.
+          ticket.grantIds = saved.grants.slice(previous.grants.length).map(grant => grant.id);
         }
         ticket.deliveryId = authority.admit(request, ticket.id);
         ticket.state = "approved";
