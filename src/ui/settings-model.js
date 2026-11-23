@@ -191,7 +191,8 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     backend: form.backend, model: form.model.trim() || null,
     working_directory: form.working_directory, channel_id: form.channel_id || undefined,
     description: form.description || undefined, systemPrompt: form.systemPrompt || undefined,
-    operations: form.operations.trim() || undefined,
+    // M-3522: null clears it (settings-instance-patch.ts removes the key); undefined would be dropped from the JSON body.
+    operations: form.operations.trim() || null,
     tags: form.tags.length ? form.tags : undefined, general_topic: form.general_topic,
     auto_pause_after: form.inherit.auto_pause_after ? null : Number(form.auto_pause_after),
     hang_detector: { timeout_minutes: form.inherit.hang ? null : Number(form.hang) },
@@ -221,7 +222,7 @@ export function agentPatch(form, inst, defaults, visibilityBaseline, statusEmoji
     channel_id: inst.channel_id || undefined,
     description: inst.description || undefined,
     systemPrompt: inst.systemPrompt || undefined,
-    operations: inst.operations || undefined,
+    operations: (typeof inst.operations === "string" && inst.operations.trim()) || null,
     tags: inst.tags && inst.tags.length ? inst.tags : undefined,
     general_topic: !!inst.general_topic,
     auto_pause_after: hasOwn(inst, "auto_pause_after") ? inst.auto_pause_after : null,

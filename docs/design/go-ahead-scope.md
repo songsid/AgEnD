@@ -47,7 +47,7 @@ What does not change: receipt checks, `forwards`, `@web:v` / `authority.kind`, g
   - for Claude Code, the auto-memory index in the agent's Claude configuration folder.
 
   The values are cached by mtime.
-- The Details page shows a "Loaded every session" card: each file with its size, and the total. A file over 50 KB (51,200 bytes) is flagged with a warning. Codex's `AGENTS.md` is flagged at Codex's own cut-off, `project_doc_max_bytes` = 32 KiB by default (read from the audited 0.169 and 0.171 binaries), and the warning says Codex never sees the rest.
+- The Details page shows a "Loaded every session" card: each file with its size, and the total. A file over 50 KB (51,200 bytes) is flagged with a warning. Codex's `AGENTS.md` is flagged at Codex's own cut-off, `project_doc_max_bytes` = 32 KiB by default (read from the audited 0.169 and 0.171 binaries), and the warning says that by default Codex never sees the rest (a person's own Codex configuration can change the cut-off). Claude Code's memory index is looked up under the repository's root, as Claude Code keys it (a worktree's main checkout). On backends that append the fleet instructions to `AGENTS.md` (Codex, Grok, Muse, Antigravity), Agent instructions and Owner and routine operations are shown as already in that file and not added to the total again.
 - The card is administrators only and never blocks anything. The page has zh-TW and English strings.
 
 ## Tests

@@ -198,6 +198,8 @@ export class FleetWindowsRuntime {
     const id = this.id(name), old = this.store.get(id);
     const checked=this.previewUpdate(name,patch);
     const next = {...before,...structuredClone(patch)};
+    // M-3522: an emptied "Owner and routine operations" leaves no key behind.
+    if(Object.hasOwn(patch,"operations")&&!(patch.operations??"").trim())delete (next as Record<string,unknown>).operations;
     // Persist the provider validator's canonical values as well as the profile: launch ownership compares both.
     const fields={display_name:"name",description:"description",systemPrompt:"instructions",model:"model",working_directory:"cwd",native_sandbox:"sandbox"} as const;
     for(const field of Object.keys(fields) as Array<keyof typeof fields>)if(Object.hasOwn(patch,field))(next as Record<string,unknown>)[field]=checked[fields[field]]??"";

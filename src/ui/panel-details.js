@@ -148,11 +148,13 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const kb = (n) => (n < 1024 ? `${n.toLocaleString()} B` : `${(n / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`);
   const loaded = (f) => {
     if (!f || !Array.isArray(f.files) || !f.files.length) return null;
-    const over = f.files.filter((x) => x.bytes > x.limit);
+    const over = f.files.filter((x) => !x.includedIn && x.bytes > x.limit);
     return html`<section class="card d-loaded" data-instruction-files>
       <h3>${pt("loadedTitle")}</h3>
       ${f.files.map((x) => row(x.kind === "inline" ? html`${x.label}` : html`<span class="mono">${x.label}</span>`,
-        html`<span class=${x.bytes > x.limit ? "warn" : ""} data-over=${x.bytes > x.limit ? "1" : undefined}>${kb(x.bytes)}</span>`))}
+        // Text the CLI's project file already holds (its fleet instructions block) is shown for reference, not counted again.
+        x.includedIn ? html`<span class="muted" data-included-in=${x.includedIn}>${pt("loadedIncluded", x.includedIn, kb(x.bytes))}</span>`
+          : html`<span class=${x.bytes > x.limit ? "warn" : ""} data-over=${x.bytes > x.limit ? "1" : undefined}>${kb(x.bytes)}</span>`))}
       <div class="kv d-loaded-total"><span class="k">${pt("loadedTotal")}</span><span class="v">${kb(f.total)}</span></div>
       ${over.length ? html`<p class="note warn" role="status" data-instruction-warning>${over.some((x) => x.truncates) ? pt("loadedTruncates", kb(over.find((x) => x.truncates).limit)) : ""}${over.some((x) => !x.truncates) ? pt("loadedWarn", kb(f.warnBytes)) : ""}</p>`
         : html`<p class="note">${pt("loadedNote")}</p>`}

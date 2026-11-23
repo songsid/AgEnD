@@ -307,7 +307,7 @@ import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
-import { INSTRUCTIONS_FILENAME } from "./instruction-file-sizes.js";
+import { INSTRUCTIONS_FILE } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
@@ -25166,7 +25166,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   // ── Topic icon + auto-archive ─────────────────────────────────────────────
 
   /** Each CLI's project instructions file (one table, shared with the Details size card: instruction-file-sizes.ts). */
-  private static INSTRUCTIONS_FILENAME: Readonly<Record<string, string>> = INSTRUCTIONS_FILENAME;
+  private static INSTRUCTIONS_FILENAME: Readonly<Record<string, string>> = Object.fromEntries(Object.entries(INSTRUCTIONS_FILE).map(([id, e]) => [id, e.file]));
 
   private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 

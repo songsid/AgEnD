@@ -39,6 +39,7 @@ import { EFFORT_CAPABILITIES } from "./effort-metadata.js";
 import { codexEffort } from "./launch-effort.js";
 import { codexSpeed } from "./codex-speed.js";
 import { appendWithMarker, removeMarker } from "./marker-utils.js";
+import { CODEX_PROJECT_DOC_MAX_BYTES } from "../instruction-file-sizes.js";
 import { type CodexResumePlan, type ExactCwdSession, checkResumeId, codexSiblingState, codexStateDbAbsent, codexThreadRowExists, cwdRolloutsProvenAbsent, findExactCwdCodexSession, planCodexResume, newestResumableRollout } from "./codex-session-lookup.js";
 import { t } from "../locale.js";
 import { snapshotCodexQuotaHistory, snapshotCodexSessionQuotaHistory } from "./codex-quota-history.js";
@@ -53,7 +54,6 @@ import { selectionCard } from "../selection-card.js";
  */
 const codexSelectionCard = (pane: string) => (/Sign in with ChatGPT|Provide your own API key|Sign in with Device Code/.test(pane) ? null : selectionCard(pane, "Codex"));
 
-const CODEX_PROJECT_DOC_MAX_BYTES = 32_768;
 const SAFE_MODEL_ID_RE = /^[A-Za-z0-9._:/-]+$/;
 
 /**

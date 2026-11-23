@@ -18,6 +18,9 @@ import { validateFleetConfig } from "../src/config-validator.js";
 import { buildAgentExport, parseAgentExport } from "../src/agent-export.js";
 import { CODEX_PROJECT_DOC_MAX_BYTES, INSTRUCTION_FILE_WARN_BYTES, instructionFileSizes } from "../src/instruction-file-sizes.js";
 import { claudeProjectKey } from "../src/backend/claude-code.js";
+// @ts-expect-error — a JS module of the app, with no types
+import { agentForm, agentPatch } from "../src/ui/settings-model.js";
+import { normalizeSettingsInstancePatch } from "../src/settings-instance-patch.js";
 import { matrixCases } from "./helpers/instructions-matrix.js";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
@@ -168,6 +171,27 @@ describe("Owner and routine operations", () => {
     expect(v("x".repeat(OPERATIONS_MAX_CHARS + 1))).toHaveLength(1);
     expect(v(42)).toHaveLength(1);
   });
+  it("Settings: clearing it sends an explicit null that removes the key; an edit saves and reads back", () => {
+    const inst = { working_directory: "/w", backend: "codex", operations: "Restarts are routine." };
+    const cleared = { ...agentForm(inst, {}, "w"), operations: "  " };
+    const patch = agentPatch(cleared, inst, {}, null, null);
+    expect(patch).toEqual({ operations: null });
+    // The body the page sends is JSON: null survives it (undefined would be dropped, leaving the old text saved).
+    const sent = JSON.parse(JSON.stringify(patch));
+    expect(sent).toEqual({ operations: null });
+    const saved = normalizeSettingsInstancePatch(inst, sent);
+    expect(Object.hasOwn(saved, "operations")).toBe(false);
+    expect(buildFleetInstructions(base("codex", { operations: saved.operations }))).not.toContain("## Owner and routine operations");
+    // Unchanged: nothing sent. Edited: the new text saves and reads back into the form.
+    expect(agentPatch(agentForm(inst, {}, "w"), inst, {}, null, null)).toEqual({});
+    const edited = JSON.parse(JSON.stringify(agentPatch({ ...agentForm(inst, {}, "w"), operations: "Log reads are routine." }, inst, {}, null, null)));
+    expect(edited).toEqual({ operations: "Log reads are routine." });
+    const after = normalizeSettingsInstancePatch(inst, edited);
+    expect(agentForm(after, {}, "w").operations).toBe("Log reads are routine.");
+    // Nothing saved yet and nothing typed: no patch at all.
+    const none = { working_directory: "/w", backend: "codex" };
+    expect(agentPatch(agentForm(none, {}, "w"), none, {}, null, null)).toEqual({});
+  });
   it("template export carries it only when asked, and loads it back", () => {
     const inst = { description: "Build server", operations: "Restarts are routine." };
     expect(buildAgentExport("server", inst, ["identity", "systemPrompt", "runtime", "behavior"]).text).not.toContain("operations");
@@ -202,6 +226,45 @@ describe("Loaded every session: sizes, stat only", () => {
     expect(by["Agent instructions"]).toMatchObject({ kind: "inline", bytes: 9 });
     expect(by["Owner and routine operations"]).toMatchObject({ kind: "inline" });
     expect(r.total).toBe(r.files.reduce((n, f) => n + f.bytes, 0));
+  });
+  it("Claude Code memory is keyed by the repository root, as Claude Code keys it: nested folder and worktree", () => {
+    const repo = dir("repo"), home = dir("repo-home");
+    mkdirSync(join(repo, ".git", "worktrees", "wt"), { recursive: true });
+    const nested = join(repo, "packages", "server");
+    mkdirSync(nested, { recursive: true });
+    const worktree = dir("repo-wt");
+    writeFileSync(join(worktree, ".git"), `gitdir: ${join(repo, ".git", "worktrees", "wt")}\n`);
+    writeFileSync(join(repo, ".git", "worktrees", "wt", "commondir"), "../..\n");
+    const mem = join(home, "projects", claudeProjectKey(repo), "memory");
+    mkdirSync(mem, { recursive: true });
+    writeFileSync(join(mem, "MEMORY.md"), "m".repeat(52224));
+    for (const cwd of [repo, nested, worktree]) {
+      const row = instructionFileSizes({ working_directory: cwd }, "claude-code", { home }).files.find(f => f.kind === "memory");
+      expect(row, cwd).toMatchObject({ bytes: 52224 });
+      expect(row!.bytes > row!.limit).toBe(true);
+    }
+    // Control: a memory folder under the working directory's own key (not the repository's) is not what Claude reads.
+    const wrong = join(home, "projects", claudeProjectKey(nested), "memory");
+    mkdirSync(wrong, { recursive: true });
+    writeFileSync(join(wrong, "MEMORY.md"), "w");
+    expect(instructionFileSizes({ working_directory: nested }, "claude-code", { home }).files.find(f => f.kind === "memory")!.bytes).toBe(52224);
+  });
+  it("text already inside AGENTS.md (the fleet instructions block) is shown but not counted twice; a separate file is counted", () => {
+    const cwd = dir("embedded");
+    writeFileSync(join(cwd, "AGENTS.md"), "a".repeat(100));
+    writeFileSync(join(cwd, "CLAUDE.md"), "c".repeat(100));
+    const inst = { working_directory: cwd, systemPrompt: "Be terse.", operations: "Restarts are routine." };
+    for (const backend of ["codex", "grok", "muse"]) {
+      const r = instructionFileSizes(inst, backend);
+      expect(r.total, backend).toBe(100);
+      expect(r.files.filter(f => f.kind === "inline").map(f => f.includedIn)).toEqual(["AGENTS.md", "AGENTS.md"]);
+    }
+    // Claude Code and OpenCode read the fleet instructions from their own file: the texts add to the total.
+    for (const backend of ["claude-code", "opencode"]) {
+      const r = instructionFileSizes(inst, backend);
+      expect(r.total, backend).toBe(100 + 9 + Buffer.byteLength(inst.operations));
+      expect(r.files.every(f => f.includedIn === undefined)).toBe(true);
+    }
   });
   it("Codex AGENTS.md is flagged at Codex's own 32 KiB cut-off and marked as cut off", () => {
     const cwd = dir("codex");
