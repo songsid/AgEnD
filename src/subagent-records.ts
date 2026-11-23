@@ -38,6 +38,11 @@ export function subagentLaunches(i: Omit<SubagentProjection, "children" | "now" 
       if (r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.isSidechain !== false) continue;
       if (r.type === "user" && r.origin?.kind === "human" && uuid(r.promptId)) {
         turn = r.promptId; parentStartedAt = at(r.timestamp); parentTask = text(r.message?.content, 200);
+      } else if (r.type === "user" && uuid(r.promptId) && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
+        && r.promptSource === "system") {
+        // M-3541: a turn a finished background task started (the shape parentEnds admits) launches children too. Its text
+        // is the notification — another child's report — so no parent task is taken from it.
+        turn = r.promptId; parentStartedAt = at(r.timestamp); parentTask = "";
       }
       if (r.type === "assistant" && turn) for (const b of blocks(r)) {
         // The captured schema is Agent. Unsupported legacy spellings need their own fixtures.
@@ -104,7 +109,9 @@ function parentEnds(i: SubagentProjection): Map<string, number> {
   }
   return ends;
 }
-const diagnostic = (r: Obj) => r.type === "api-request-shape" || r.type === "api-request-blob" || r.type === "api-request";
+/** Claude Code's API diagnostic records: never activity. The reader keeps them only as identity stubs when oversized (M-3541). */
+export const SUBAGENT_DIAGNOSTIC_TYPES: ReadonlySet<string> = new Set(["api-request-shape", "api-request-blob", "api-request"]);
+const diagnostic = (r: Obj) => SUBAGENT_DIAGNOSTIC_TYPES.has(r.type);
 /** M-3270: a launch that names no subagent_type runs Claude Code's built-in general-purpose agent (its meta says so). */
 const DEFAULT_AGENT = "general-purpose";
 /** M-3270: an interim notification — the child stopped with background work of its own still running (Claude Code 2.1.326). */

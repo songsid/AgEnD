@@ -460,6 +460,8 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 :is(.p-log, .act-block) .log-status.done { color: var(--ok); }
 :is(.p-log, .act-block) .log-status.failed { color: var(--danger); }
 :is(.p-log, .act-block) .log-status.interrupted { color: var(--warn, var(--text-3)); }
+/* M-3541: a subagent started in the background: the call is done, the work goes on (the Subagents row). */
+:is(.p-log, .act-block) .log-status.background { color: var(--text-2); }
 :is(.p-log, .act-block) .log-status .spinner { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--accent); animation: pulse 1.2s ease-in-out infinite; }
 :is(.p-log, .act-block) .log-repeat { flex: none; font-size: var(--fs-xs); padding: 0 6px; border-radius: 8px; background: var(--surface-2); color: var(--text-2); }
 :is(.p-log, .act-block) .log-text { white-space: pre-wrap; margin-top: var(--s-1); font-size: var(--fs-sm); }
