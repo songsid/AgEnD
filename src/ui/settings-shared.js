@@ -85,11 +85,13 @@ export const FIELDS = Object.freeze({
     parts: [{ keys: ["hangOn"], own: ["hang_detector.enabled"] }, { keys: ["hang"], own: ["hang_detector.timeout_minutes"] }] },
   // #3647: telling a card's dispatcher when its assignee stops (fleet-level; no agent overrides it).
   liveness: { keys: ["liveOn", "liveQuiet", "livePrompt", "liveCrash"], path: "defaults.task_board" },
+  // Which task board news wakes an agent (fleet-level; no agent overrides it; read at every card write, so it applies at once).
+  taskWakes: { keys: ["wakeComment", "wakeProgress", "wakeLeader"], path: "defaults.task_board" },
   concurrency: { keys: ["concurrency"], path: "fleet.spawn_concurrency" },
   stagger: { keys: ["stagger"], path: "fleet.spawn_stagger_ms" },
 });
 /** How many fields the Advanced drawer holds (the title says so). */
-export const ADVANCED_COUNT = 11;
+export const ADVANCED_COUNT = 12;
 
 /** The parts of a field that agents override one by one (one part: the field itself). */
 const partsOf = (spec) => spec.parts || [{ keys: spec.keys, own: spec.own, owns: spec.owns }];
@@ -359,6 +361,10 @@ export function SharedAgentSettings({ ctx, form }) {
       <div class="s-checks">${DASHBOARD_FEATURES.map((k) => html`<label key=${k} class="check"><input type="checkbox" checked=${f[`dash_${k}`]}
         onChange=${(e) => set(`dash_${k}`)(e.target.checked)} /><span>${tn(`dashboard_${k}`)}</span></label>`)}</div>${note("dash")}</div>`;
 
+  // The board's leader is one of the fleet's agents (or none); a saved name that is no agent now is kept, said so, never dropped on a save.
+  const leaderOptions = [{ value: "", label: tn("wakesLeaderNone") },
+    ...agentsOf(fleet).map(([name, inst]) => ({ value: name, label: shortName(name, inst) })).sort((a, b) => a.label.localeCompare(b.label)),
+    ...(f.wakeLeader && !agentsOf(fleet).some(([name]) => name === f.wakeLeader) ? [{ value: f.wakeLeader, label: tn("wakesLeaderGone", f.wakeLeader) }] : [])];
   const systemAdvanced = html`
     <div class=${fc("field s-hang", "hangOn", "hang")}>${head("hang", "g-hang-on", tn("hangEnabled"), tn("tipHang"), { mark: mark("hangOn", "hang"), bare: true })}
       <div class="s-hang-row"><${Switch} id="g-hang-on" name=${tn("hangEnabled")} checked=${f.hangOn} onChange=${set("hangOn")} />
@@ -371,6 +377,12 @@ export function SharedAgentSettings({ ctx, form }) {
         <div key=${k} class="s-hang-row"><label for=${id}>${tn(label)}</label>
           <input id=${id} type="number" min="1" max="1440" step="1" class=${errors[k] ? "invalid" : ""} value=${f[k]} onInput=${(e) => set(k)(e.target.value)} />
           <span class="s-unit">${tn("livenessUnit")}</span></div><${Feedback} error=${errors[k]} />`)}${note("liveness")}</div>
+    <div id="g-wakes" class=${fc("field s-wide", "wakeComment", "wakeProgress", "wakeLeader")}>${head("taskWakes", "g-wake-comment", tn("wakesTitle"), null, { mark: mark("wakeComment", "wakeProgress", "wakeLeader"), bare: true })}
+      <${Info}>${tn("wakesHint")}</${Info}>
+      ${[["wakeComment", "g-wake-comment", "wakesComment", "wakesCommentHint"], ["wakeProgress", "g-wake-progress", "wakesProgress", "wakesProgressHint"]].map(([k, id, label, hint]) => html`
+        <div key=${k} class="s-hang-row"><${Switch} id=${id} name=${tn(label)} checked=${f[k]} onChange=${set(k)} /><span>${tn(label)}</span></div><${Info}>${tn(hint)}</${Info}>`)}
+      <div class="s-hang-row"><label for="g-wake-leader">${tn("wakesLeader")}</label>
+        <${Select} id="g-wake-leader" value=${f.wakeLeader} onChange=${set("wakeLeader")} options=${leaderOptions} /></div><${Info}>${tn("wakesLeaderHint")}</${Info}>${note("taskWakes")}</div>
     <div class=${fc("field", "concurrency")}>${head("concurrency", "g-conc", tn("concurrency"), tn("tipConcurrency"), { mark: mark("concurrency") })}
       <input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} />
       <${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} tip=${defaultTip} />` : null}${note("concurrency")}</div>

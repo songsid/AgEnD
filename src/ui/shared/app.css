@@ -844,6 +844,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings #g-liveness input { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
+  /* The same for "When the task board wakes an agent" (its switches and the leader menu). */
+  .p-settings #g-wakes select { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
      top and the actions at the bottom, inside it. The app's own questions (ask()) stay bottom sheets. */
   .p-settings .dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
@@ -2326,15 +2330,13 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-notify .n-notify-icon { color: var(--text-2); }
 /* M-3503: no word left alone on the note's last line (a phone's zh line ended with 「知。」 by itself). */
 .n-notify-note { text-wrap: balance; }
-/* M-3503: one left edge and one rhythm. The column starts at the header's leading edge (its title on a desk with the
-   sidebar open; its ☰/‹ button otherwise, as on a phone), not centred away from it; the first section label sits one
-   step under the header, a label one small step above its cards, sections one step apart. */
-.p-needs > .panel-body > .col { margin-inline: 0; padding-top: var(--s-3); padding-inline: max(var(--s-3), env(safe-area-inset-left)) max(var(--s-3), env(safe-area-inset-right)); }
+/* M-3545: use the shared centered desktop column; retain M-3503's section rhythm and phone leading edge. */
+.p-needs > .panel-body > .col { margin-inline: auto; padding-top: var(--s-3); padding-inline: max(var(--s-3), env(safe-area-inset-left)) max(var(--s-3), env(safe-area-inset-right)); }
 /* A plain heading only: the suggestions group's head is its <summary>, a control that keeps its own padding (and a
    phone's tap height, below). */
 .p-needs :is(h2.n-group-head, .n-settings-head) { padding: 0 0 var(--s-2); }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
-  .p-needs > .panel-body > .col { padding-inline: max(var(--s-4), env(safe-area-inset-left)) max(var(--s-4), env(safe-area-inset-right)); }
+  .p-needs > .panel-body > .col { margin-inline: 0; padding-inline: max(var(--s-4), env(safe-area-inset-left)) max(var(--s-4), env(safe-area-inset-right)); }
   .p-needs .n-suggestions > summary { min-height: var(--tap); }
 }
 /* #2910 D2: Notices (a web-only fleet's General) — the Needs you rows; a new one has an accent edge and a "New" tag. */
@@ -2566,6 +2568,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-people-list { list-style: none; margin: 0; padding: 0; }
 .oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
 .oo-note { font-size: var(--fs-xs); }
+/* M-3547: why "Drag and pat" is locked, inside its label (kept beside the box when the bar wraps; read with its name). */
+.oo-play .oo-play-still { min-width: 0; }
+.oo-play .oo-play-still::before { content: "· "; }
+.oo-bar .oo-play:has(.oo-play-still) { margin-inline-end: var(--s-3); }
+.oo-play:has(input:disabled) > span:not(.oo-play-still) { opacity: 0.45; }   /* disabled, as .btn:disabled */
 .oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* #2554: clip, not a scroll container — nothing past the edge (a tile's label) can scroll the stage and its controls. */
 .oo-stage { overflow: clip; }
@@ -2645,6 +2652,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-rows dd { margin: 0; overflow-wrap: anywhere; }
 .oo-card-now { margin-top: var(--s-3); overflow-wrap: anywhere; }
 .oo-card-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.oo-card-play-off { flex-basis: 100%; margin: 0; font-size: var(--fs-xs); text-align: start; }
+.oo-card-play-off .oo-nowrap { white-space: nowrap; }
 /* M-3433 (#4256): skin-pack custom agent card — CSS custom properties set via CSSOM only (no inline styles, no CSS url()). */
 .oo-card-custom { width: var(--oo-card-w, 320px); max-width: calc(100% - 2 * var(--s-3)); padding: 0; overflow: hidden;
   color: var(--oo-card-text, var(--text)); background: var(--oo-card-bg, var(--surface));
@@ -3029,6 +3038,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #1682: a mention, as Discord draws one — accent text on a tint of it; the id (or the Telegram handle) on hover. */
 .md .mention { display: inline; padding: 0 0.2em; border-radius: var(--r-sm); color: var(--accent); background: var(--accent-dim);
   font-weight: var(--fw-medium); white-space: nowrap; }
+/* A task card in a person's message — number, title, status; a link to the card (Fleet › Tasks). The status is the
+   board's own pill (.tb-pill, below); the colours are the page's tokens. */
+.msg .md a.task-ref, .md a.task-ref { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); text-decoration: none; vertical-align: baseline; line-height: 1.6; }
+.md a.task-ref:hover { border-color: var(--accent); }
+.md a.task-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.md .task-ref-code { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--accent); flex-shrink: 0; }
+.md .task-ref-title { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md a.task-ref .tb-pill { flex-shrink: 0; }
+/* …and the list the composer opens while `#` is typed: the command palette's own look, the title taking the row's room. */
+.task-ref-list .cmd-desc { flex: 1; }
+.task-ref-list .tb-pill { flex-shrink: 0; }
 
 /* #1629 r4 §1 / r4.1 Q3 (a): the identity card (identity-card.js). The size is a class token; its heights are here
    (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240). Never a style attribute.
@@ -5043,7 +5064,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-approver-add select, .contact-mcp-add .input { flex: 1; min-width: 0; }
 .contact-owner-warning { display: flex; align-items: center; gap: var(--s-1); margin: 0; }
 .card.contact-ticket { margin: 0; min-width: 0; }
-.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > * { margin: 0; }
+.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > :not(.dlg) { margin: 0; }
 .contact-ticket[data-state="pending"] { --lbar-color: var(--warn); }
 .contact-ticket.focus { outline: 2px solid var(--focus); outline-offset: 2px; }
 .contact-ticket-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-size: var(--fs-md); line-height: var(--lh-md); }
@@ -5228,3 +5249,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-page-lead { text-wrap: pretty; }
 
 .p-settings .s-default-lead-tail { white-space: nowrap; }
+
+/* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
+.contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
+}

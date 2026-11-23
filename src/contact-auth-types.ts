@@ -143,7 +143,9 @@ export interface ContactTicketDecision {
   revision: number;
   decision: "approve-once" | "decline";
   /** Separate, explicit opt-in; never inferred from clicking Approve once. */
-  grant?: { expiresAt: string; remainingUses: number | null };
+  grant?: { expiresAt: string; remainingUses: number | null;
+    /** Explicit subset of this ticket’s server-owned originating people; absent keeps the legacy single-person contract. */
+    personKeys?: string[] };
 }
 export interface ContactHeldResult {
   sent: false;

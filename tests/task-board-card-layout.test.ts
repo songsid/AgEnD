@@ -47,7 +47,7 @@ const build = () => {
 const detailOf = (id: string) => {
   const c: any = CARDS.find((x: any) => x.id === id) ?? card({ id });
   return { card: c, parent: c.parentId ? { id: "M-2", title: "Add the shop", status: "open" } : null, children: c.kind === "main" ? CARDS.filter((x: any) => x.parentId === c.id) : [],
-    comments: [], logs: [], history: [] };
+    comments: [], logs: [], history: [], watchers: [], inheritedWatchers: [], leader: null, followsProgress: true };
 };
 
 beforeAll(async () => {
@@ -273,7 +273,7 @@ describe("the properties in three groups", () => {
     const rows = (i: number) => qa(".tp-group")[i].querySelectorAll(".tp-row dt").map((d: any) => text(d));
     expect(qa(".tp-group").length).toBe(3);
     expect(rows(0)).toEqual(["Status", "Assignee", "Priority", "Size"]);
-    expect(rows(1)).toEqual(["Project", "Dispatched by"]);
+    expect(rows(1)).toEqual(["Project", "Leader", "Dispatched by", "Watchers"]);
     expect(rows(2), "(Position: this card has a neighbour to move past)").toEqual(["Needs my confirmation", "Waits for", "Position"]);
     expect(qa(".tp-group").map((g) => g.getAttribute("role"))).toEqual(["group", "group", "group"]);
     expect(qa(".tp-props .tp-row dt").map((d) => text(d))).not.toContain("Now");
@@ -283,7 +283,7 @@ describe("the properties in three groups", () => {
   it("a sub task's group has its main task where the project is", async () => {
     await mount(); await openCard("M-2");
     fire(qa(".tc-children button").find((b) => text(b)!.includes("S-2")), "click"); await settle(10);
-    expect(qa(".tp-group")[1].querySelectorAll(".tp-row dt").map((d: any) => text(d))).toEqual(["Main task", "Dispatched by"]);
+    expect(qa(".tp-group")[1].querySelectorAll(".tp-row dt").map((d: any) => text(d))).toEqual(["Main task", "Leader", "Dispatched by", "Watchers"]);
   });
 
   it("needs my confirmation is a switch that saves at once", async () => {

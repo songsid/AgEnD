@@ -8,13 +8,15 @@
 // page's settings Save. The server decides who may see or change anything (canManage / canSetMode); nothing here grants.
 // It reads again on the stream's contact-auth frame for this agent (a newer revision) and when the page is shown again.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { appStore } from "/assets/app-store.js";
+import { appStore, useStore } from "/assets/app-store.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { confirmDialog } from "/assets/ui-confirm.js";
-import { ca } from "./contact-auth-strings.js";
+import { ca, contactPersonLabel, contactWhen } from "./contact-auth-strings.js";
 import { getPermissions, putPermissions, clearOrigin, shortTicketId } from "./contact-auth-client.js";
+import { labelOf } from "/assets/instance-nav.js";
+import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { REASONS } from "./contact-authorizations.js";
 import { groupWouldDisable } from "./contact-tool-groups.js";
 
@@ -94,10 +96,14 @@ export function wouldDisableMore(roomTools) {
 
 export function ContactPermissionsPanel({ name }) {
   const perm = usePermissions(name);
+  const { instances } = useStore(appStore);
+  const agentLabel = value => labelOf((instances || []).find(row => row.name === value) || { name: value });
   const [busy, setBusy] = useState(false);
   const [mcpDraft, setMcpDraft] = useState("");
   const [pick, setPick] = useState("");
+  const [editing, setEditing] = useState(null), [grantFilter, setGrantFilter] = useState("");
   const p = perm.data;
+  useEffect(() => { setEditing(null); }, [name, p?.revision]);
   if (!p && perm.loading !== false && !perm.error) return html`<${Skeleton} lines=${5} label=${ca("loading")} />`;
   if (!p) return perm.error === "forbidden" ? html`<p class="note contact-forbidden">${ca("forbidden")}</p>`
     : html`<${ErrorState} message=${ca(perm.error === "unavailable" ? "unavailable" : "loadFailed")} onRetry=${() => void perm.read()} />`;
@@ -146,6 +152,7 @@ export function ContactPermissionsPanel({ name }) {
   };
   const grantsWrite = (rows) => write({ grants: rows.map(({ id, person, source, target, verbs, expiresAt, remainingUses }) => ({ id, person, source, target, verbs, expiresAt, remainingUses })) });
   const g = guardState(p.nativeGuard);
+  const shownGrants = p.grants.filter(gr => (gr.person.label || gr.person.userId).toLocaleLowerCase().includes(grantFilter.toLocaleLowerCase()));
   return html`<div class="contact-perm" aria-busy=${busy ? "true" : undefined}>
     ${p.originRestriction?.active && REASONS.has(p.originRestriction.reason) ? html`<p class="feedback warning contact-origin-restriction" role="status" data-reason=${p.originRestriction.reason}>
       ${ca(`reason_${p.originRestriction.reason}`)} ${ca("resetNote")}</p>` : null}
@@ -205,16 +212,22 @@ export function ContactPermissionsPanel({ name }) {
       })() : null}
       <p class="note">${ca("approverAdmins")}</p>
     </section>
+`}
     <section class="card contact-grants">
       <h3>${ca("grantsTitle")}</h3>
       <p class="note">${ca("grantsNote")}</p>
-      ${p.grants.length ? html`<ul class="contact-list">${p.grants.map((gr) => html`<li key=${gr.id}>
-          <div><strong>${personLabel(gr.person)}</strong> <span class="muted">${ca("grantRow", gr.source, gr.target)}</span></div>
-          <div class="muted">${ca("grantVerbs", gr.verbs.map((v) => ca(`verb_${v}`)).join(", "))} · ${ca("grantExpires", when(gr.expiresAt))} · ${gr.remainingUses == null ? ca("grantUnlimited") : ca("grantUses", gr.remainingUses)}</div>
-          ${canManage ? html`<button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${async () => {
+      <label class="field"><span>${ca("grantFilter")}</span><input class="input" type="search" value=${grantFilter} onInput=${e => setGrantFilter(e.currentTarget.value)} /></label>
+      ${p.grants.length && !shownGrants.length ? html`<p class="note">${ca("grantNoMatches")}</p>` : null}
+      ${p.grants.length ? html`<ul class="contact-list">${shownGrants.map((gr) => html`<li key=${gr.id}>
+          <div><strong>${personLabel(gr.person)}</strong> <span class="muted">${ca("grantRow", agentLabel(gr.source), agentLabel(gr.target))}</span></div>
+          <div class="muted contact-grant-meta"><span>${ca("grantVerbs", gr.verbs.map((v) => ca(`verb_${v}`)).join(", "))}</span><span>${ca("grantExpires", contactWhen(gr.expiresAt))}</span><span>${gr.remainingUses == null ? ca("grantUnlimited") : ca("grantUses", gr.remainingUses)}</span></div>
+          <p class="note">${ca("grantCreated", contactPersonLabel(gr.createdBy), contactWhen(gr.createdAt))}</p>
+          ${canManage ? html`<div class="s-actions"><button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => setEditing({ grant: gr, revision: p.revision })}>${ca("grantAdjust")}</button><button type="button" class="btn btn-sm btn-ghost" disabled=${busy} onClick=${async () => {
             if (await confirmDialog({ message: ca("grantRemoveConfirm"), confirmLabel: ca("grantRemove"), danger: true })) void grantsWrite(p.grants.filter((x) => x.id !== gr.id));
-          }}>${ca("grantRemove")}</button>` : null}</li>`)}</ul>` : html`<p class="note">${ca("grantsNone")}</p>`}
-    </section>`}
+          }}>${ca("grantRemove")}</button></div>` : null}</li>`)}</ul>` : html`<p class="note">${ca("grantsNone")}</p>`}
+    </section>
+    ${editing && editing.revision === p.revision && canManage ? html`<${ContactGrantEditor} key=${`${name}:${p.revision}:${editing.grant.id}`} grant=${editing.grant} people=${[editing.grant.person]} source=${agentLabel(editing.grant.source)} target=${agentLabel(editing.grant.target)}
+      onClose=${() => setEditing(null)} onSave=${choice => grantsWrite(p.grants.map(row => row.id === editing.grant.id ? { ...row, expiresAt: choice.expiresAt, remainingUses: choice.remainingUses, verbs: choice.verbs } : row))} />` : null}
     ${p.originState ? html`<section class="card contact-origin">
       <h3>${ca("originTitle")}</h3>
       <p class="contact-origin-state"><strong>${ca(`originKind_${p.originState.kind}`)}</strong></p>
