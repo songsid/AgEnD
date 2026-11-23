@@ -1,0 +1,57 @@
+{
+  "base_source": "08e447d5ba6cbe5e5691ca4d5af6afdce235f223",
+  "base": [
+    {
+      "name": "top-padding",
+      "value": "",
+      "hit": "DIV.composer",
+      "active": "MAIN#main",
+      "selection": " ",
+      "editable": false
+    },
+    {
+      "name": "left-padding",
+      "value": "",
+      "hit": "DIV.composer",
+      "active": "MAIN#main",
+      "selection": "\n\n",
+      "editable": false
+    },
+    {
+      "name": "placeholder",
+      "value": "probe",
+      "hit": "TEXTAREA.",
+      "active": "TEXTAREA#msgIn",
+      "selection": "",
+      "editable": false
+    }
+  ],
+  "fixed_production_source": "8ea551f97",
+  "fixed": [
+    {
+      "name": "top-padding",
+      "value": "probe",
+      "hit": "DIV.composer",
+      "active": "TEXTAREA#msgIn",
+      "selection": "",
+      "editable": false
+    },
+    {
+      "name": "left-padding",
+      "value": "probe",
+      "hit": "DIV.composer",
+      "active": "TEXTAREA#msgIn",
+      "selection": "",
+      "editable": false
+    },
+    {
+      "name": "placeholder",
+      "value": "probe",
+      "hit": "TEXTAREA.",
+      "active": "TEXTAREA#msgIn",
+      "selection": "",
+      "editable": false
+    }
+  ],
+  "note": "Actual Chromium desktop dark probe; event target/activeElement/document selection and keyboard input. Fixed preliminary run after adding required static helper registration. Final harness/capture source is in capture.json."
+}
