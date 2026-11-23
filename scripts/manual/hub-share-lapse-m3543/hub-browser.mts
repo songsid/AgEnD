@@ -86,6 +86,9 @@ try {
         const carried = r.db.prepare("SELECT exposure_revision FROM hub_grants WHERE exposure_id=? AND state='active'").get(exposureId) as { exposure_revision: number };
         check(tag + ": grant carried to revision 2", carried.exposure_revision === 2);
         await page.reload(); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(800);
+        // The page offers "who may ask it" right after a share; the people kept are the point here, so close it.
+        for (let i = 0; i < 3 && await page.locator('[role="dialog"]').count(); i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(300); }
+        check(tag + ": still 1 person may ask", (await page.locator("[data-my-agents]").innerText()).includes("1 person may ask"));
         check(tag + ": no Share again after", await page.locator('[data-share-again="mira"]').count() === 0);
         await page.screenshot({ path: join(out, tag + "-shared-again.png") });
       }
