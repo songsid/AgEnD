@@ -101,3 +101,20 @@
 .hub-owner-agent-choices small { display:block; }
 .hub-owner-agent-requests blockquote { overflow-wrap:anywhere; margin:var(--s-2) 0; padding-left:var(--s-3); border-left:3px solid var(--border-strong); color:var(--text-2); }
 .hub-owner-agent-requests a { color:var(--accent); text-decoration:underline; }
+/* M-3533 M1 (docs/design/hub-office-visit.md §2.6): a large room's compact member list — a summary, a filter, one line a
+   row (the name left, its state right; an agent's owner and introduction in its card), folded groups. */
+.hub-members-sum { margin: 0; }
+/* The dashboard's placeholder colour (as its other boxes'): readable in dark and light (≥ 4.5:1 on --surface). */
+.hub-members-filter::placeholder { color: var(--text-3); opacity: 1; }
+.hub-members-filter { width: 100%; min-height: 36px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); font: inherit; box-sizing: border-box; }
+.hub-member-group > summary { cursor: pointer; padding: var(--s-1) 0; font-size: var(--fs-sm); min-height: 32px; display: flex; align-items: center; gap: 6px; list-style: none; }
+.hub-member-group > summary::-webkit-details-marker { display: none; }
+.hub-member-group > summary::before { content: "▸"; color: var(--text-2); }
+.hub-member-group[open] > summary::before { content: "▾"; }
+.hub-member-group > ul { padding-inline-start: var(--s-3) !important; }
+.hub-room-members.compact .hub-member:not(.hub-member-agent), .hub-room-members.compact .hub-member-open { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.hub-room-members.compact .hub-member-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hub-room-members.compact .hub-member-state { flex: none; flex-wrap: nowrap; }
+/* On a touch screen every interactive row is a fingertip high: the filter, a fold, an agent's row (a person's row is not
+   pressed, and a desk stays dense). */
+@media (pointer: coarse) { .hub-room-members .hub-members-filter, .hub-member-group > summary, .hub-room-members.compact .hub-member-open { min-height: var(--tap); } }
