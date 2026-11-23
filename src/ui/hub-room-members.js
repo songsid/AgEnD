@@ -13,6 +13,7 @@ import { hroom } from "./hub-room-strings.js";
 import { collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
 import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { roomSource, RoomSourceMark } from "./hub-room-source.js";
+import { firstCharacter } from "/assets/instance-nav.js";
 
 linkRoomsU2Css();
 
@@ -61,6 +62,28 @@ export function memberStatus(m) {
   const note = v.noteKey ? hroom(v.noteKey) : v.noteText;
   // M-3137 (versions spec §2.4): an agent whose Fleet needs an AgEnD update says whom to ask, not only whose it is.
   return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word, ...(v.word === "needsUpdate" ? { update: true } : {}) };
+}
+
+/**
+ * M-3533 R2a: an agent's avatar as its owner's Fleet shows it — its persona emoji, else its initial — on its identity
+ * colour (the room detail's `look`, from the owner's catalog), else on the default tint. Text on the colour is whichever
+ * of near-black and white reads better on it.
+ */
+export function agentAvatar(m) {
+  const color = typeof m?.look?.color === "string" && /^#[0-9a-f]{6}$/i.test(m.look.color) ? m.look.color.toLowerCase() : null;
+  const emoji = typeof m?.look?.emoji === "string" && m.look.emoji.trim() ? m.look.emoji.trim() : "";
+  const rgb = color ? [1, 3, 5].map((i) => parseInt(color.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)) : null;
+  const lum = rgb ? 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2] : null;
+  return { color, text: emoji || firstCharacter(m?.name || "") || "?", emoji: !!emoji, ink: lum === null ? null : (1.05 / (lum + 0.05) >= (lum + 0.05) / 0.05 ? "#ffffff" : "#111111") };
+}
+/**
+ * The avatar in the row (the emoji or initial drawn from `data-av`, so the row's text is still the name alone), and
+ * M-3256's source badge on its bottom-right corner, ringed in the row's colour: one slot, the row stays one line.
+ */
+function AgentAvatar({ m }) {
+  const a = agentAvatar(m), source = roomSource(m);
+  return html`<span class="hub-agent-av-wrap" aria-hidden="true"><span class=${`hub-agent-av${a.emoji ? " emoji" : ""}`} data-av=${a.text}
+    style=${a.color ? `--av:${a.color};--av-ink:${a.ink}` : undefined}></span>${source ? html`<span class="hub-agent-av-src"><${RoomSourceMark} source=${source} decorative=${true} /></span>` : null}</span>`;
 }
 
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
@@ -113,7 +136,9 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M1: in a compact list a row is one line — the name, its state — and the owner and introduction move into its card.
   const row = (m, extra = null) => {
     const v = memberStatus(m), owner = !compact && (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
+    // R2a: an agent's avatar takes the source mark's slot, the mark on its corner (the source also in the title and card).
+    const agentRow = m.kind === "agent" || m.kind === "later";
+    return html`<span class="hub-member-name">${agentRow ? html`<${AgentAvatar} m=${m} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;
   const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id}>
