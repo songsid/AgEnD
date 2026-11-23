@@ -244,11 +244,12 @@ function NeedsItem({ item, nowMs, owner }) {
     // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
-    setClaim("prompts", item.nonce, "busy");
     const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
+    setClaim("prompts", item.nonce, confirmation ? "confirming" : "busy");
     if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
       setClaim("prompts", item.nonce, null); return;
     }
+    setClaim("prompts", item.nonce, "busy");
     let r = null;
     try {
       const res = await fetch("/ui/prompt", { method: "POST", headers: { "Content-Type": "application/json" },
@@ -285,7 +286,7 @@ function NeedsItem({ item, nowMs, owner }) {
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
         ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}

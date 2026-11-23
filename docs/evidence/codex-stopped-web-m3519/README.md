@@ -24,3 +24,11 @@ The requested synthetic reproduction uses the real FleetManager and NeedsYouHub 
 ## Limits and rollback
 
 No live pane was touched. No provider/model call, real credential or live content enters the recipe or evidence. The missing live badge remains an evidence limitation, not a claimed fix. Reverting the parser option and confirmation plumbing returns to the informational stopped card; no storage or migration change is involved.
+
+### Capture review corrections
+
+Confirmation now retains the choice label without an answering indicator; that indicator starts only after confirmation. The eight-case browser recipe explicitly refuses a premature answering indicator. The zh-TW status uses the product's existing localized safety-review string. Confirmation says to provide needed background explicitly rather than referring to a nonexistent summary. Selection guidance no longer suggests typing into read-only View.
+
+The retained question-mark emoji's missing-glyph square is specific to the capture host: `fc-list ':charset=2753'` reports no matching installed font, while `fc-match` falls back to DejaVu Sans. The existing shared prompt prefix is unchanged; no font is installed by the recipe.
+
+After these scoped copy/confirmation corrections, the five affected UI/parser/poll/i18n files pass 102 tests. The original wider 393-test result covers the preceding runtime implementation; no CLI or provider campaign was repeated.

@@ -19,6 +19,7 @@ it("Chat and Needs you share a confirmation, cancellation sends nothing, and onl
   await settle();
   expect(h.confirm).toHaveBeenCalledWith({ ...confirmation, danger: true });
   expect(h.fetch).not.toHaveBeenCalled();
+  expect(h.prompt()).toMatchObject({ busy: true, confirming: true });
   await h.store.answerPrompt(h.prompt(), "opt-1");
   expect(h.confirm).toHaveBeenCalledTimes(1);
   h.decide(false); await pending;
