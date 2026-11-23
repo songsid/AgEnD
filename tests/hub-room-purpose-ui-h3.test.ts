@@ -42,7 +42,7 @@ it.each(["en","zh-TW"])("M-3533 H1: the purpose is the identity-card strip — t
   .toEqual([true,"範",label,"Release planning",label]);
  fire(button(manager,edit),"click");await settle();expect(onEdit).toHaveBeenCalledTimes(1);
  const managerEmpty=await mount({initial:"範",purpose:"",onEdit});
- expect([!!managerEmpty.root.querySelector(".hub-room-card"),button(managerEmpty,add)?.className,button(managerEmpty,edit)]).toEqual([true,"link-btn hub-room-card-add",undefined]);
+ expect([!!managerEmpty.root.querySelector(".hub-room-card"),button(managerEmpty,add)?.className,button(managerEmpty,edit),managerEmpty.root.querySelector(".id-bio")]).toEqual([true,"btn btn-sm hub-room-card-edit hub-room-card-add",undefined,null]);
  const member=await mount({initial:"範",purpose:"Release planning"});
  expect([member.root.querySelector(".id-bio")?.textContent,button(member,edit)]).toEqual(["Release planning",undefined]);
  const memberEmpty=await mount({initial:"範",purpose:""});

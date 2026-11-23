@@ -28,8 +28,8 @@ export function RoomPurposeCard({initial="?",purpose="",onEdit}){
  if(!purpose&&!onEdit)return null;
  return html`<div class="chat-card open hub-room-card" data-trust="panel-content"><section class="id-card card-c" aria-label=${rp("title")}><div class="id-row">
   <span class="av av-square hub-room-card-av" aria-hidden="true"><span class="av-text">${initial}</span></span>
-  <div class="id-text"><p class="id-tagline">${rp("title")}</p>${purpose?html`<p class="id-bio">${purpose}</p>`
-   :html`<p class="id-bio"><button type="button" class="link-btn hub-room-card-add" onClick=${onEdit}>${rp("add")}</button></p>`}</div>
-  ${purpose&&onEdit?html`<button type="button" class="btn btn-sm hub-room-card-edit" onClick=${onEdit}>${rp("edit")}</button>`:null}
+  <div class="id-text"><p class="id-tagline">${rp("title")}</p>${purpose?html`<p class="id-bio">${purpose}</p>`:null}</div>
+  ${/* The card's one action is the same button with or without a purpose: Edit, or Add a purpose (Lumen, #4349). */ ""}
+  ${onEdit?html`<button type="button" class=${`btn btn-sm hub-room-card-edit${purpose?"":" hub-room-card-add"}`} onClick=${onEdit}>${purpose?rp("edit"):rp("add")}</button>`:null}
  </div></section></div>`;
 }

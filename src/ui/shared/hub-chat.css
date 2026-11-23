@@ -117,7 +117,9 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 .hub-room-card .id-row { align-items: center; }
 .hub-room-card .hub-room-card-av { width: 40px; height: 40px; font-size: var(--fs-lg); }
 .hub-room-card .id-tagline { margin: 0; font-weight: var(--fw-regular); font-size: var(--fs-sm); color: var(--text-2); }
-.hub-room-card .id-bio { color: var(--text); }
+/* CJK words stay whole: a line breaks at the punctuation (「…決定，」 / 「以及每週…」), not inside 以及; a run too long for
+   the line still wraps (.id-bio's overflow-wrap: anywhere in app.css). English is unaffected (keep-all only changes CJK). */
+.hub-room-card .id-bio { color: var(--text); word-break: keep-all; }
 .hub-room-card .hub-room-card-edit { flex: none; }
 .hub-back { flex: none; }
 /* S-150: the phone's back to the list is a full tap target, as the header's other buttons are. */
@@ -211,7 +213,7 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
   .hub-room-page .hub-chat-head { padding-block: var(--s-1); }
   .hub-room-page .hub-chat-head .hub-chat-title.one-line { flex-direction: column; align-items: stretch; gap: 0; }
   .hub-room-page .hub-chat-head .hub-chat-title.one-line .s { font-size: var(--fs-xs); }
-  .hub-room-card .hub-room-card-edit, .hub-room-card .hub-room-card-add { min-height: var(--tap); }
+  .hub-room-card .hub-room-card-edit { min-height: var(--tap); }
   .hub-room-page .hub-chat-head .hub-head-tools { display: none; }
   /* …and its members and ⋯ are full tap targets, as its back is (S-150). */
   .hub-room-page .hub-chat-head .hub-room-menu > .icon-btn, .hub-room-page .hub-chat-head .hub-room-rail-toggle { min-width: var(--tap); min-height: var(--tap); }

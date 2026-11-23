@@ -6,7 +6,8 @@ The real Hub (HTTPS and SQLite through the s3b test rig) and its real UI, with n
 |---|---|
 | A manager, with a purpose: the card has Edit | `*-after-1-manager.png` |
 | A member, with a purpose: the card, no Edit | `*-after-2-member.png` |
-| A manager, no purpose: the card with "Add a purpose" (a member sees no card) | `*-after-3-manager-no-purpose.png` |
+| A manager, no purpose: the card with "Add a purpose" (the same button as Edit) | `*-after-3-manager-no-purpose.png` |
+| A member, no purpose: no card; the header is the same one-line header | `*-after-4-member-no-purpose.png` |
 | Before (the base): the picture and the purpose button in the header | `*-before-1-manager.png` |
 
 Devices and themes: `desk-zh-TW-light`, `phone-zh-TW-dark` (as r3), `desk-en-dark`, `phone-en-light`.
