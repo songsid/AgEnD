@@ -456,9 +456,8 @@ tailnet, or opt-in over a link). A session carries the account's authority —
 its messages read as `@web:v` — only after that account confirms
 on Discord or Telegram (#1939); a guest session never qualifies. Agents check a
 `web-verified` receipt like a Discord or Telegram message. A go-ahead action
-(anything destructive, irreversible, spending, or authority-granting) needs a
-Discord/Telegram receipt or a `web (verified)` one — an open browser alone
-proves nothing.
+(see "go-ahead" below) needs a Discord/Telegram receipt or a `web (verified)`
+one — an open browser alone proves nothing.
 
 Device-code sign-in (alpha experiment): on a web-only fleet with web
 authorization on, a new device shows an 8-character code and the verified owner
@@ -478,6 +477,32 @@ the verified owner may end another session.
   `src/config-validator.ts:517-522` (`web.verified_authority`);
   `src/fleet-manager.ts` (`deviceApprovalOwner`, `mayEndOtherSessions`).
 - Refs: #1939, #3165.
+
+## go-ahead (what needs one) and "Owner and routine operations"
+
+Only five kinds of action need a go-ahead: a release or publish; anything
+destructive or irreversible beyond the agent's own work; spending money or
+quota beyond normal work; credentials or secrets; granting or forwarding
+authority to another instance. Everything else — reading, querying, analysis,
+status and logs, and the routine operations of the agent's assigned domain —
+needs no receipt, button or verification. Every agent's instructions say so in
+"What needs a go-ahead" (M-3522).
+
+An agent can also have "Owner and routine operations" (Settings → the agent →
+Agent instructions; `operations` in fleet.yaml, up to 2,000 characters): who
+owns the system it works on and which operations are routine there. It sits
+right after the agent's Role, with a fixed preface.
+
+- Can: tell the agent that, say, restarting a service or reading its logs is
+  its normal work when the owner or an administrator asks.
+- Can't: approve any of the five kinds — those keep their checks even when
+  listed there. No code reads it to grant or skip anything. Template export
+  leaves it out unless the person ticks it (it names people and systems).
+- Also: Details → "Loaded every session" lists the files the agent's CLI reads
+  each session with their sizes, and warns over 50 KB per file (Codex: over its
+  32 KiB project-doc cut-off, past which Codex never sees the rest).
+- Code: `src/instructions.ts` (`GO_AHEAD_SCOPE_RULE`, `OPERATIONS_PREFACE`);
+  `src/instruction-file-sizes.ts`.
 
 ## Mismatches
 

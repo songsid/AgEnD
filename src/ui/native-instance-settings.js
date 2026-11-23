@@ -25,7 +25,7 @@ export function useNativeForm({ name, inst, ctx }) {
   const machine = machines.data?.machines?.find(item => item.id === machineId);
   const native = (machineId ? machine?.inventory : catalog.data)?.clis?.find(cli => cli.id === inst.backend);
   const state = (key, initial) => paneState.usePaneState ? paneState.usePaneState(ctx.formMemory, key, initial) : useState(initial);
-  const [form,setForm] = state("native", () => ({display_name:inst.display_name || name,description:inst.description || "",model:inst.model || "",systemPrompt:inst.systemPrompt || "",native_sandbox:inst.native_sandbox || "read-only",tags:Array.isArray(inst.tags) ? [...inst.tags] : []}));
+  const [form,setForm] = state("native", () => ({display_name:inst.display_name || name,description:inst.description || "",model:inst.model || "",systemPrompt:inst.systemPrompt || "",operations:inst.operations || "",native_sandbox:inst.native_sandbox || "read-only",tags:Array.isArray(inst.tags) ? [...inst.tags] : []}));
   const set = key => value => setForm(current => ({...current,[key]:value}));
   const dirty=Object.entries(form).some(([key,value])=>JSON.stringify(typeof value==="string"?value.trim():value)!==JSON.stringify(key==="display_name"?inst.display_name||name:key==="native_sandbox"?inst.native_sandbox||"read-only":key==="tags"?inst.tags||[]:inst[key]||""));
   const ready = !!form.display_name.trim() && !(form.native_sandbox === "read-only" && native?.readOnlySupport === false);
@@ -67,7 +67,9 @@ export function NativeFields({ m, cat, idPrefix = "" }) {
       <p class="s-info"><span aria-hidden="true">ⓘ</span><span>${pt("nativeLimits")}</span></p></${Card}></div>`;
   return html`<div class="ap-grid"><${Card} title=${pt("cardSystemPrompt")} span=${true}>
       <div class="field"><${Lab} id=${fieldId("ni-sys")} text=${tn("systemPrompt")} tip=${pt("tip_systemPromptNative")} /><textarea id=${fieldId("ni-sys")} rows="5" maxLength=${8000} value=${form.systemPrompt} onInput=${event => set("systemPrompt")(event.target.value)} /></div>
-      <p class="note">${pt("note_systemPrompt")}</p></${Card}></div>`;
+      <p class="note">${pt("note_systemPrompt")}</p>
+      <div class="field"><${Lab} id=${fieldId("ni-ops")} text=${pt("lbl_operations")} tip=${pt("tip_operations")} /><textarea id=${fieldId("ni-ops")} rows="4" maxLength=${2000} placeholder=${pt("ph_operations")} value=${form.operations} onInput=${event => set("operations")(event.target.value)} /></div>
+      <p class="note">${pt("note_operations")}</p></${Card}></div>`;
 }
 NativeFields.paneIds = true;
 

@@ -111,7 +111,7 @@ describe("the redesigned panel loses nothing", () => {
     expect(patchKeys("settings-model.js", "const next = {")).toEqual([
       "agent_mode", "auto_pause_after", "backend", "board_cards_at_once", "channel_id", "cross_instance_visibility", "dashboard", "description",
       "display_name", "general_topic", "hang_detector", "lightweight", "log_level", "mcp_proxy_reply", "model", "model_failover",
-      "office_access", "office_pack_access", "reply_completion_guard", "resume_interrupted_work",
+      "office_access", "office_pack_access", "operations", "reply_completion_guard", "resume_interrupted_work",
       "status_emojis", "systemPrompt", "tags", "tool_progress", "tool_set", "working_directory",
     ]);
   });

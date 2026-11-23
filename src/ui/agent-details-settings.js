@@ -50,13 +50,13 @@ export const categoryPath = (name, cat) => (cat ? `${detailsPath(name)}?cat=${ca
 
 /** Which category each key of a patch belongs to (a dot on the nav says "this one has changes"). */
 const AGENT_KEYS = {
-  basic: ["display_name", "description", "systemPrompt", "tags"],
+  basic: ["display_name", "description", "systemPrompt", "operations", "tags"],
   runtime: ["backend", "model", "model_failover", "backend_options"],
   work: ["working_directory", "auto_pause_after", "hang_detector", "agent_mode", "tool_set", "reply_completion_guard", "lightweight"],
   channel: ["channel_id", "general_topic", "tool_progress", "cross_instance_visibility", "status_emojis"],
   adv: ["log_level", "resume_interrupted_work", "mcp_proxy_reply", "board_cards_at_once", "dashboard", "office_access", "office_pack_access"],
 };
-const NATIVE_KEYS = { basic: ["display_name", "description", "tags"], runtime: ["model"], work: ["native_sandbox"], adv: ["systemPrompt"] };
+const NATIVE_KEYS = { basic: ["display_name", "description", "tags"], runtime: ["model"], work: ["native_sandbox"], adv: ["systemPrompt", "operations"] };
 const CLASSIC_KEYS = { runtime: ["backend", "model", "auto_pause_after", "backend_options"], channel: ["tool_progress", "reply_completion_guard", "reply_triggers", "collab", "web_echo", "context_lines"] };
 export function dirtyCategories(kind, patch) {
   const map = kind === "classic" ? CLASSIC_KEYS : kind === "native" ? NATIVE_KEYS : AGENT_KEYS;

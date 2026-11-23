@@ -1,0 +1,18 @@
+{
+  "originalSourceSha256": "ce7104e3dc1fcc4954685585f187754883bed613a006a9ea61bd9bdc2b661614",
+  "restoredSourceSha256": "ce7104e3dc1fcc4954685585f187754883bed613a006a9ea61bd9bdc2b661614",
+  "results": [
+    {
+      "mutant": "quadratic",
+      "exitCode": 1,
+      "failure": "secret scan exceeded deterministic work budget",
+      "mutatedSourceSha256": "3302e16dfbfd9a06c4ec0353c8435cbc34bb8b8b9a9b3dd99326e647c4950569"
+    },
+    {
+      "mutant": "unbounded-piece",
+      "exitCode": 1,
+      "failure": "secret scan exceeded deterministic work budget",
+      "mutatedSourceSha256": "ad82bdf13abab1f0efdd95a958ef8043ffe5e2568b7184f08416710121af606e"
+    }
+  ]
+}

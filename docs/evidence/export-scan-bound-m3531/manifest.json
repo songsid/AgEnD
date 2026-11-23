@@ -1,0 +1,26 @@
+[
+  {
+    "path": "tests/agent-export-163.test.ts",
+    "sha256": "a9a643383def5ecd5f90d09f9d511b3b31b3b01a1715ad3c0b187cda53bb248e"
+  },
+  {
+    "path": "src/agent-export.ts",
+    "sha256": "ce7104e3dc1fcc4954685585f187754883bed613a006a9ea61bd9bdc2b661614"
+  },
+  {
+    "path": "docs/evidence/export-scan-bound-m3531/mutation-results.json",
+    "sha256": "7d58e0602b166876fcd2903add29a719485b995cff195d983b71c77e0d2c7ede"
+  },
+  {
+    "path": "docs/evidence/export-scan-bound-m3531/README.md",
+    "sha256": "91a49af650f434045d3993c5bddf96bc9e943b90a5a364e64a49c4f533495403"
+  },
+  {
+    "path": "docs/evidence/export-scan-bound-m3531/unbounded-piece.patch",
+    "sha256": "0091da23a0d977788087064e2d7b3531fac64cd4dc2d220c7e38a04b7ff035b6"
+  },
+  {
+    "path": "docs/evidence/export-scan-bound-m3531/quadratic.patch",
+    "sha256": "36ff4fe0faddf1c330c40810a60998363a9d9a7f02c211ca75c9a8242922589f"
+  }
+]

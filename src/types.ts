@@ -234,6 +234,11 @@ export interface InstanceConfig {
   lightweight?: boolean;
   /** System prompt — supports comma-separated file: paths for modularization */
   systemPrompt?: string;
+  /**
+   * M-3522: "Owner and routine operations" — who owns the system this agent works on and which operations are routine
+   * there. Injected right after Role with a fixed preface; context for the model, never a permission override.
+   */
+  operations?: string;
   /** Skip permission checks (dangerously-skip-permissions) */
   skipPermissions?: boolean;
   /** Claude model to use (e.g. "sonnet", "opus", "haiku", or full model ID) */

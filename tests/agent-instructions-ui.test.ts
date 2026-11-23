@@ -80,7 +80,7 @@ describe("where it lives", () => {
     expect(f.$('[data-cat="basic"]').textContent).toContain("Agent instructions");
     expect(f.$('[data-cat="basic"]').textContent).toContain("Formerly");
     expect(f.$('[data-cat="adv"]').textContent).not.toContain("System prompt");
-    expect(p.root.querySelectorAll('[data-cat="basic"] .info-tip-btn').length).toBe(4);   // name, tags, description, agent instructions
+    expect(p.root.querySelectorAll('[data-cat="basic"] .info-tip-btn').length).toBe(5);   // name, tags, description, agent instructions, owner and routine operations (M-3522)
   });
   it("a Windows agent in this form keeps the old field in Advanced, unchanged", async () => {
     const f = await form({ ...inst, runtime: "windows", native_agent_id: "12345678-1234-4321-abcd-123456789012" }, ["basic", "adv"]);

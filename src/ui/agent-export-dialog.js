@@ -9,7 +9,8 @@ import { toast } from "/assets/ui-toast.js";
 import "./agent-export-strings.js";
 import { xt } from "./agent-export-strings.js";
 
-const GROUPS = ["identity", "systemPrompt", "runtime", "behavior"];
+const GROUPS = ["identity", "systemPrompt", "operations", "runtime", "behavior"];
+// M-3522: "Owner and routine operations" names people and systems: carried only when ticked.
 const DEFAULT_GROUPS = ["identity", "systemPrompt", "runtime", "behavior"];
 /** The largest file the loader reads (agent-export.ts AGENT_EXPORT_MAX_CHARS). */
 const MAX_FILE_CHARS = 200000;
@@ -24,7 +25,7 @@ async function post(path, body) {
 
 /** The form's fields a file's values land in (names as agent-export.ts's FillValues; `inherit` = the key of "use the default"). */
 const FILL = {
-  description: { to: "description" }, tags: { to: "tags" }, systemPrompt: { to: "systemPrompt" }, model: { to: "model" },
+  description: { to: "description" }, tags: { to: "tags" }, systemPrompt: { to: "systemPrompt" }, operations: { to: "operations" }, model: { to: "model" },
   model_failover: { to: "model_failover", inherit: "model_failover" }, tool_set: { to: "tool_set", inherit: "tool_set" }, lightweight: { to: "lightweight", inherit: "lightweight" },
   hang_detector: { to: "hang", inherit: "hang", text: true }, tool_progress: { to: "tool_progress", inherit: "tool_progress" }, reply_completion_guard: { to: "reply_completion_guard", inherit: "reply_completion_guard" },
   log_level: { to: "log_level", inherit: "log_level" }, auto_pause_after: { to: "auto_pause_after", inherit: "auto_pause_after", text: true }, agent_mode: { to: "agent_mode", inherit: "agent_mode" },
@@ -131,7 +132,7 @@ export function LoadDialog({ current, onFill, onClose, idPrefix = "" }) {
   };
   const ok = res && res.ok;
   const fillKeys = ok ? FILL_KEYS.filter((k) => Object.prototype.hasOwnProperty.call(res.fill, k)) : [];
-  const replaces = (k) => (k === "description" || k === "systemPrompt") && current && String(current[k] || "").trim() !== "" && current[k] !== res.fill[k];
+  const replaces = (k) => (k === "description" || k === "systemPrompt" || k === "operations") && current && String(current[k] || "").trim() !== "" && current[k] !== res.fill[k];
   const doFill = () => { onFill(res.fill); toast(xt("filled", fillKeys.length)); onClose(); };
   return html`<${Dialog} title=${xt("loadTitle")} onClose=${onClose} wide=${true} busy=${busy}
     actions=${html`<button type="button" class="btn" onClick=${check} disabled=${busy || !text.trim()} data-load-check>${busy ? xt("checking") : xt("check")}</button>

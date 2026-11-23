@@ -17,6 +17,7 @@ import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
 import { VERIFIED_SESSION_HOURS } from "./authority/web-authority.js";
 import { existsSync } from "node:fs";
 import { isUnsupportedHomeRef, resolveFileRefPath, systemPromptParts } from "./prompt-file-ref.js";
+import { OPERATIONS_MAX_CHARS } from "./instructions.js";
 import { isRemovedBackend, removedBackendMessage } from "./backend/removed.js";
 import { CROSS_INSTANCE_VISIBILITY_MODES, isCrossInstanceVisibility } from "./cross-instance-notice.js";
 import { dashboardAccessProblem } from "./dashboard-permissions.js";
@@ -170,6 +171,9 @@ export function validateFleetConfig(config: unknown, opts: { rooms?: Iterable<st
     if (value.log_level !== undefined && !["trace", "debug", "info", "warn", "error"].includes(String(value.log_level))) err(`${path}.log_level`, "must be trace, debug, info, warn, or error");
     if (value.lightweight !== undefined && typeof value.lightweight !== "boolean") err(`${path}.lightweight`, "must be a boolean");
     if (value.display_name !== undefined && typeof value.display_name !== "string") err(`${path}.display_name`, "must be a string");
+    // M-3522: the "Owner and routine operations" text — context for the model, so only its shape is checked.
+    if (value.operations !== undefined && typeof value.operations !== "string") err(`${path}.operations`, "must be a string");
+    else if (typeof value.operations === "string" && value.operations.length > OPERATIONS_MAX_CHARS) err(`${path}.operations`, `must be at most ${OPERATIONS_MAX_CHARS} characters`);
     if (value.model_failover !== undefined && (!Array.isArray(value.model_failover) || !value.model_failover.every(v => typeof v === "string" && v.length > 0))) err(`${path}.model_failover`, "must be a list of non-empty model names");
     if (value.backend_options !== undefined) {
       if (!isObj(value.backend_options)) {

@@ -682,6 +682,12 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
 .kv { display: flex; gap: var(--s-3); font-size: var(--fs-sm); align-items: center; }
 .kv .k { color: var(--text-3); min-width: 110px; }
 .kv .v { min-width: 0; overflow-wrap: anywhere; display: flex; align-items: center; gap: var(--s-2); }
+/* M-3522: Details → Loaded every session — a file over its limit, and the warning under the list. */
+.d-loaded .v .warn { color: var(--warn); font-weight: 600; }
+.d-loaded .kv { justify-content: space-between; }
+.d-loaded .kv .v { font-variant-numeric: tabular-nums; }
+.d-loaded .d-loaded-total { border-top: 1px solid var(--border); padding-top: var(--s-2); font-weight: 600; }
+.d-loaded .note.warn { color: var(--warn); background: var(--warn-bg); border: 1px solid var(--warn-line); border-radius: var(--r-sm); padding: var(--s-2) var(--s-3); line-height: 1.5; }
 .pct { font-weight: var(--fw-semibold); font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
 .progress-bar { display: inline-block; width: 120px; height: 8px; background: var(--surface-2); border-radius: var(--r-full); overflow: hidden; }
 .progress-fill { display: block; height: 100%; width: 0; border-radius: var(--r-full); background: var(--accent); transition: width 0.4s var(--ease); }
