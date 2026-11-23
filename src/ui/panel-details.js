@@ -145,7 +145,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const bar = (pct, level) => html`<span class="progress-bar"><span class=${`progress-fill${level ? ` ${level}` : ""}`} data-pct=${Math.max(0, Math.min(Number(pct) || 0, 100))}></span></span>`;
   const row = (k, v) => html`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   // M-3522: what the agent's CLI loads every session, with a warning per file over its limit (50 KB, or Codex's cut-off).
-  const kb = (n) => `${(n / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`;
+  const kb = (n) => (n < 1024 ? `${n.toLocaleString()} B` : `${(n / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`);
   const loaded = (f) => {
     if (!f || !Array.isArray(f.files) || !f.files.length) return null;
     const over = f.files.filter((x) => x.bytes > x.limit);
@@ -153,8 +153,8 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
       <h3>${pt("loadedTitle")}</h3>
       ${f.files.map((x) => row(x.kind === "inline" ? html`${x.label}` : html`<span class="mono">${x.label}</span>`,
         html`<span class=${x.bytes > x.limit ? "warn" : ""} data-over=${x.bytes > x.limit ? "1" : undefined}>${kb(x.bytes)}</span>`))}
-      ${row(pt("loadedTotal"), kb(f.total))}
-      ${over.length ? html`<p class="note warn" role="status" data-instruction-warning>${over.some((x) => x.truncates) ? pt("loadedTruncates", kb(over.find((x) => x.truncates).limit)) : ""}${pt("loadedWarn", kb(f.warnBytes))}</p>`
+      <div class="kv d-loaded-total"><span class="k">${pt("loadedTotal")}</span><span class="v">${kb(f.total)}</span></div>
+      ${over.length ? html`<p class="note warn" role="status" data-instruction-warning>${over.some((x) => x.truncates) ? pt("loadedTruncates", kb(over.find((x) => x.truncates).limit)) : ""}${over.some((x) => !x.truncates) ? pt("loadedWarn", kb(f.warnBytes)) : ""}</p>`
         : html`<p class="note">${pt("loadedNote")}</p>`}
     </section>`;
   };

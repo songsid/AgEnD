@@ -24,10 +24,10 @@ try {
   // Every fixture agent works in the scratch home (smoke-fixture writes one working_directory for all).
   writeFileSync(join(fx.dir, "CLAUDE.md"), "# Notes\n" + "x".repeat(51 * 1024));
   writeFileSync(join(fx.dir, "AGENTS.md"), "# Notes\n" + "y".repeat(40 * 1024));
-  const inst = fx.fm.fleetConfig.instances;
-  inst["build-server"].systemPrompt = "Be terse. Report what you did, then the next step.";
+  fx.fm.saveFleetConfig([{ path: ["instances", "build-server", "systemPrompt"], value: "Be terse. Report what you did, then the next step." }]);
   for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) {
-    inst["build-server"].operations = c.lang === "zh-TW" ? OPS_ZH : OPS;
+    // Saved the way Settings saves it (fleet.yaml), so the form reads it back.
+    fx.fm.saveFleetConfig([{ path: ["instances", "build-server", "operations"], value: c.lang === "zh-TW" ? OPS_ZH : OPS }]);
     for (const [view, path, sel] of [
       ["settings", "/ui/fleet/agent/build-server?cat=basic", "#ag-ops"],
       ["details-claude", "/ui/fleet/agent/build-server?cat=overview", "[data-instruction-files]"],
