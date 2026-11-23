@@ -1,0 +1,230 @@
+{
+  "phase": "before",
+  "source": "63f390413f6dd35fac770eddd375695f09f9e2e6",
+  "frames": [
+    {
+      "width": 1366,
+      "device": "desk",
+      "page": "needs",
+      "pane": {
+        "x": 260,
+        "y": 52,
+        "width": 1106,
+        "height": 848
+      },
+      "col": {
+        "x": 260,
+        "y": 52,
+        "width": 768,
+        "height": 513
+      },
+      "left": 0,
+      "right": 338,
+      "padding": [
+        "12px",
+        "12px",
+        "48px",
+        "12px"
+      ],
+      "margin": [
+        "0px",
+        "0px"
+      ],
+      "maxWidth": "768px",
+      "overflow": false,
+      "items": 2
+    },
+    {
+      "width": 1366,
+      "device": "desk",
+      "page": "settings",
+      "pane": {
+        "x": 480,
+        "y": 53,
+        "width": 886,
+        "height": 847
+      },
+      "col": {
+        "x": 480,
+        "y": 53,
+        "width": 886,
+        "height": 1070.21875
+      },
+      "left": 0,
+      "right": 0,
+      "padding": [
+        "16px",
+        "20px",
+        "48px",
+        "20px"
+      ],
+      "margin": [
+        "0px",
+        "0px"
+      ],
+      "maxWidth": "1200px",
+      "overflow": false,
+      "items": 0
+    },
+    {
+      "width": 1366,
+      "device": "desk",
+      "page": "fleet",
+      "pane": {
+        "x": 260,
+        "y": 52,
+        "width": 1106,
+        "height": 848
+      },
+      "col": {
+        "x": 260,
+        "y": 52,
+        "width": 1106,
+        "height": 238
+      },
+      "left": 0,
+      "right": 0,
+      "padding": [
+        "16px",
+        "20px",
+        "48px",
+        "20px"
+      ],
+      "margin": [
+        "0px",
+        "0px"
+      ],
+      "maxWidth": "1240px",
+      "overflow": false,
+      "items": 0
+    },
+    {
+      "width": 1920,
+      "device": "desk",
+      "page": "needs",
+      "pane": {
+        "x": 260,
+        "y": 52,
+        "width": 1660,
+        "height": 848
+      },
+      "col": {
+        "x": 260,
+        "y": 52,
+        "width": 768,
+        "height": 513
+      },
+      "left": 0,
+      "right": 892,
+      "padding": [
+        "12px",
+        "12px",
+        "48px",
+        "12px"
+      ],
+      "margin": [
+        "0px",
+        "0px"
+      ],
+      "maxWidth": "768px",
+      "overflow": false,
+      "items": 2
+    },
+    {
+      "width": 1920,
+      "device": "desk",
+      "page": "settings",
+      "pane": {
+        "x": 480,
+        "y": 53,
+        "width": 1440,
+        "height": 847
+      },
+      "col": {
+        "x": 600,
+        "y": 53,
+        "width": 1200,
+        "height": 809.6875
+      },
+      "left": 120,
+      "right": 120,
+      "padding": [
+        "16px",
+        "20px",
+        "48px",
+        "20px"
+      ],
+      "margin": [
+        "120px",
+        "120px"
+      ],
+      "maxWidth": "1200px",
+      "overflow": false,
+      "items": 0
+    },
+    {
+      "width": 1920,
+      "device": "desk",
+      "page": "fleet",
+      "pane": {
+        "x": 260,
+        "y": 52,
+        "width": 1660,
+        "height": 848
+      },
+      "col": {
+        "x": 470,
+        "y": 52,
+        "width": 1240,
+        "height": 538
+      },
+      "left": 210,
+      "right": 210,
+      "padding": [
+        "16px",
+        "20px",
+        "48px",
+        "20px"
+      ],
+      "margin": [
+        "210px",
+        "210px"
+      ],
+      "maxWidth": "1240px",
+      "overflow": false,
+      "items": 0
+    },
+    {
+      "width": 390,
+      "device": "phone",
+      "page": "needs",
+      "pane": {
+        "x": 0,
+        "y": 52,
+        "width": 390,
+        "height": 792
+      },
+      "col": {
+        "x": 0,
+        "y": 52,
+        "width": 390,
+        "height": 625
+      },
+      "left": 0,
+      "right": 0,
+      "padding": [
+        "12px",
+        "16px",
+        "48px",
+        "16px"
+      ],
+      "margin": [
+        "0px",
+        "0px"
+      ],
+      "maxWidth": "768px",
+      "overflow": false,
+      "items": 2
+    }
+  ]
+}
