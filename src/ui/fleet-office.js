@@ -192,6 +192,8 @@ const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
 /** What a pose says in words (the tooltip, the desk list); `state`, when its words differ from its pose's. */
 export const caption = (pose, state) => to(CAPTION_OF_STATE[state] || CAPTION[pose] || "capIdle");
 
+/** M-3556: the most a dropdown starting at `top` may be tall to end `margin` px above `bottom` (never under `min`). */
+export const popMaxHeight = (bottom, top, margin = 8, min = 96) => Math.max(min, Math.floor(bottom - top - margin));
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** The device's ratio (CSS px → device px), kept sane. */
 const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixelRatio) || 1));
@@ -2310,7 +2312,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   useEffect(() => {
     if (!dispOpen) return undefined;
     const away = (e) => { if (displayRef.current && !displayRef.current.contains(e.target)) setDisp(false); };
-    const esc = (e) => { if (e.key === "Escape") setDisp(false); };
+    // Esc from inside it hands focus back to its button (as the sheet did), so the keyboard is not left on nothing.
+    const esc = (e) => {
+      if (e.key !== "Escape") return;
+      const box = displayRef.current, back = !!box && typeof box.contains === "function" && box.contains(globalThis.document?.activeElement);
+      setDisp(false);
+      if (back) box.querySelector("button")?.focus?.();
+    };
     document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
   }, [dispOpen]);
@@ -2369,8 +2377,15 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const hasScope = !oneOffice || auto, hasActions = (canEdit && storedRev !== null) || canLayout || canShare;
   const barItems = html`${scopeItems}${hasScope ? html`<h3 class="oo-sheet-h">${to("display")}</h3>` : null}${optionItems}
     ${hasActions ? html`<hr class="oo-sheet-rule" />` : null}${actionItems}`;
+  // A room's dropdown hangs from the zoom stack's top, inside the stage (which clips): it is never taller than the
+  // stage's room below its top (Prism #3556 P2: a 340 px stage); a longer list scrolls.
+  const fitPop = (el) => {
+    if (!el || !roomGear || !stageRef.current || typeof el.getBoundingClientRect !== "function") return;
+    const st = stageRef.current.getBoundingClientRect(), top = el.getBoundingClientRect().top;
+    if (st && st.height > 0) el.style.maxHeight = `${popMaxHeight(st.bottom, top)}px`;
+  };
   const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
-    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
+    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
     ${folded ? null : html`<div class="oo-bar oo-bar-row">
       <div class="oo-bar-scope">${scopeItems}</div>

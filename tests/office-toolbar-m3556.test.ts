@@ -90,8 +90,11 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       fire(q(".oo-bar-scope"), "pointerdown", {}); await settle(2);
       expect([q(".oo-display-pop"), btn().getAttribute("aria-expanded")]).toEqual([null, "false"]);
       btn().click(); await settle(2);
+      // Esc from a focused tick: closed, and the keyboard is back on ⚙ (Prism #3556 P3).
+      q(".oo-display-pop .oo-night input").focus();
       fire(p.document as any, "keydown", { key: "Escape" }); await settle(2);
       expect(q(".oo-display-pop")).toBeNull();
+      expect(p.document.activeElement).toBe(btn());
       btn().click(); await settle(2); btn().click(); await settle(2);           // the button toggles it too
       expect(q(".oo-display-pop")).toBeNull();
     });
@@ -104,6 +107,13 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       fire(key.querySelector("input"), "change"); await settle(3);
       expect(localStorage.getItem("agend_org_office_key")).toBe("1");
       expect(!!q(".oo-key")).toBe(true);
+    });
+
+    it("popMaxHeight: a dropdown ends a margin above its bound, never under the minimum (a room's, in a short stage)", async () => {
+      const F = await import("/ui/js/fleet-office.js");
+      expect(F.popMaxHeight(352, 12)).toBe(332);                               // a 340 px stage: room for the four options (158)
+      expect(F.popMaxHeight(352, 12, 8, 96)).toBeGreaterThan(158);
+      expect(F.popMaxHeight(120, 60)).toBe(96);                                // tiny: the minimum, the list scrolls
     });
 
     it("zh-TW: 顯示選項", async () => {

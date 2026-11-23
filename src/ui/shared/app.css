@@ -2551,7 +2551,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-display-list .oo-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .oo-display-list .check { min-height: 32px; }
 .oo-display-list :is(.check, .oo-pick) { font-size: var(--fs-sm); color: var(--text); }   /* one style for every option, as in the sheet */
-.oo-display-zoom { border-top: 1px solid var(--border); }
+.oo-display-zoom { position: static; border-top: 1px solid var(--border); }   /* the dropdown hangs from the stack's top, not the gear's */
 .oo-display-zoom .oo-display-pop { top: 0; right: calc(100% + 6px); }
 .oo-zoom:has(.oo-display-pop) { overflow: visible; }
 /* In the dropdown the reduced-motion note goes on its own line under the label (the panel is narrow). */

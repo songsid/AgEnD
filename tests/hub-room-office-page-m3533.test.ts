@@ -170,9 +170,11 @@ describe("the room page", () => {
       expect([!!q(pg, ".oo-zoom .oo-display-pop .oo-hide-asleep"), !!q(pg, ".oo-display-pop .oo-key-tick"), q(pg, ".oo-sheet"), q(pg, ".oo-display-pop .oo-style"),
         q(pg, ".oo-display-pop .oo-office"), q(pg, ".oo-edit"), q(pg, ".oo-share")]).toEqual([true, true, null, null, null, null, null]);
       expect(q(pg, ".oo-zoom .oo-options").getAttribute("aria-expanded")).toBe("true");
-      // The room page keeps the state: Escape closes it.
+      // The room page keeps the state: Escape (from a focused tick) closes it and hands focus back to the gear.
+      q(pg, ".oo-display-pop .oo-dialogue input").focus();
       fire(pg.document as any, "keydown", { key: "Escape" }); await until(() => !q(pg, ".oo-display-pop"));
       expect(q(pg, ".oo-zoom .oo-options").getAttribute("aria-expanded")).toBe("false");
+      expect(pg.document.activeElement).toBe(q(pg, ".oo-zoom .oo-options"));
     } finally { restore(); }
   });
   it("a draft in the box is still there after a look at the office", async () => {
