@@ -41,6 +41,8 @@ describe("the member list", () => {
       ["Planner", "P", "--av:#1a2b6d;--av-ink:#ffffff", null],
     ]);
     expect(got).toHaveLength(3);
+    // Only the neutral avatar (no look) is ringed.
+    expect(rows.map((b) => [b.querySelector(".hub-member-name").textContent.trim(), b.querySelector(".hub-agent-av").classList.contains("neutral")]).sort()).toEqual([["Notes", false], ["Old", true], ["Planner", false]]);
     // The source is still said, in each row's title and accessible name (a personal agent's apart from a Fleet's).
     const titles = Object.fromEntries(rows.map((b) => [b.querySelector(".hub-member-name").textContent.trim(), b.getAttribute("title")]));
     expect(titles.Old).not.toBe(titles.Notes);

@@ -83,7 +83,7 @@ export function agentAvatar(m) {
  */
 function AgentAvatar({ m }) {
   const a = agentAvatar(m);
-  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}`} aria-hidden="true" data-av=${a.text}
+  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}${a.color ? "" : " neutral"}`} aria-hidden="true" data-av=${a.text}
     style=${a.color ? `--av:${a.color};--av-ink:${a.ink}` : undefined}></span>`;
 }
 

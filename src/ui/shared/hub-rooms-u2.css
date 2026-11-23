@@ -125,3 +125,5 @@
   background: var(--av, var(--surface-2)); color: var(--av-ink, var(--text-2)); }
 .hub-agent-av::before { content: attr(data-av); }
 .hub-agent-av.emoji { font-size: 13px; font-weight: normal; }
+/* The default tint is pale on a light panel: the neutral avatar (no look) alone gets a ring in the border colour. */
+.hub-agent-av.neutral { box-shadow: inset 0 0 0 1px var(--border); }
