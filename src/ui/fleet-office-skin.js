@@ -566,7 +566,6 @@ const STUDIO_LARGE_FURNITURE = [
   { id: "rack-work", shape: "rack", tone: "ok", x: 610, y: 160, depth: 6, activeWhen: ["working"] },
   ...STUDIO_LARGE_AREAS.desks.seats.map((s, i) => ({ id: `desk-${i}`, shape: "desk", x: s.x, y: s.y, depth: 1100 })),
   { id: "coffee", shape: "coffee", x: 1232, y: 100, depth: 20, activeWhen: ["idle"] },
-  { id: "plant-1", shape: "plant", x: 716, y: 96, depth: 20 },
   { id: "rack-alert", shape: "rack", tone: "danger", x: 630, y: 620, depth: 900, activeWhen: ["needs", "stuck", "crashed"] },
   ...STUDIO_LARGE_AREAS.nap.seats.map((s, i) => ({ id: `bag-${i}`, shape: "beanbag", x: s.x, y: s.y + 4, depth: 990 })),
 ].sort((a, b) => a.depth - b.depth);
