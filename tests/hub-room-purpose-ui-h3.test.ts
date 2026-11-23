@@ -31,3 +31,20 @@ it.each(["en","zh-TW"])("opens the full purpose and localizes set/clear events w
  expect(thread.systemText({system:{kind:"purpose-changed",name:"Owner",purpose:""}})).toBe(lang==="en"?"Owner cleared the purpose.":"Owner 清除了用途。");
  expect(thread.systemText({system:{kind:"purpose-changed",name:"Owner"},text:"legacy fallback"})).toBe("legacy fallback");
 });
+it.each(["en","zh-TW"])("M-3533 H1: the purpose is the identity-card strip — the room's picture, the label and the text; a manager edits it; no purpose shows only to a manager (%s)",async lang=>{
+ const label=lang==="en"?"Purpose":"用途",edit=lang==="en"?"Edit":"編輯",add=lang==="en"?"Add a purpose":"新增用途";
+ const p=page();pages.push(p);words.setLang(lang,{store:false});
+ const mount=async(props:any)=>{await p.mount(h(purpose.RoomPurposeCard,props));await settle();return p;};
+ const onEdit=vi.fn();
+ const manager=await mount({initial:"範",purpose:"Release planning",onEdit});
+ const card=manager.root.querySelector(".chat-card.hub-room-card .id-card.card-c");
+ expect([!!card,manager.root.querySelector(".hub-room-card-av")?.textContent,manager.root.querySelector(".id-tagline")?.textContent,manager.root.querySelector(".id-bio")?.textContent,card?.getAttribute("aria-label")])
+  .toEqual([true,"範",label,"Release planning",label]);
+ fire(button(manager,edit),"click");await settle();expect(onEdit).toHaveBeenCalledTimes(1);
+ const managerEmpty=await mount({initial:"範",purpose:"",onEdit});
+ expect([!!managerEmpty.root.querySelector(".hub-room-card"),button(managerEmpty,add)?.className,button(managerEmpty,edit),managerEmpty.root.querySelector(".id-bio")]).toEqual([true,"btn btn-sm hub-room-card-edit hub-room-card-add",undefined,null]);
+ const member=await mount({initial:"範",purpose:"Release planning"});
+ expect([member.root.querySelector(".id-bio")?.textContent,button(member,edit)]).toEqual(["Release planning",undefined]);
+ const memberEmpty=await mount({initial:"範",purpose:""});
+ expect(memberEmpty.root.querySelector(".hub-room-card")).toBeNull();
+});
