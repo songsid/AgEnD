@@ -175,7 +175,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   // M-3533: the mentions put in the box for a member, where they were put; each edit moves or retires them by its own
   // range (editRange: the selection when it began, the caret after), never by guessing from the text.
-  const bindings = useRef([]), sel = useRef(null);
+  const bindings = useRef([]), edit = useRef({ input: null, key: null, ime: null, composing: false });
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
@@ -195,13 +195,21 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     });
     setTimeout(() => input.current?.focus(), 0);
   };
-  // Where the box's selection was when an edit began (its first beforeinput — a key's, a paste's, an IME's — or keydown).
+  // Where the box's selection was when this edit began: the edit's own beforeinput (each one, so a caret moved since is
+  // never stale); an IME's, where its composition started (kept to its end: the text arrives once, at compositionend);
+  // the latest key's (each keydown, an arrow too, replaces it) only where no beforeinput came. Spent by each edit.
   useEffect(() => {
     const el = input.current;
     if (!el?.addEventListener) return undefined;
-    const note = () => { if (!sel.current) sel.current = { start: el.selectionStart, end: el.selectionEnd }; };
-    el.addEventListener("beforeinput", note); el.addEventListener("keydown", note); el.addEventListener("cut", note); el.addEventListener("drop", note);
-    return () => { el.removeEventListener("beforeinput", note); el.removeEventListener("keydown", note); el.removeEventListener("cut", note); el.removeEventListener("drop", note); };
+    const at = () => ({ start: el.selectionStart, end: el.selectionEnd });
+    const on = {
+      beforeinput: () => { if (!edit.current.composing) edit.current.input = at(); },
+      keydown: () => { edit.current.key = at(); },
+      compositionstart: () => { edit.current.composing = true; edit.current.ime = at(); },
+      compositionend: () => { edit.current.composing = false; },
+    };
+    for (const [k, fn] of Object.entries(on)) el.addEventListener(k, fn);
+    return () => { for (const [k, fn] of Object.entries(on)) el.removeEventListener(k, fn); };
   }, [input.current]);
   const complete = (o) => {
     const next = `${value.slice(0, at.start)}${o.label} ${value.slice(caret)}`;
@@ -226,7 +234,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   };
   const track = (v) => {
     const c = input.current ? input.current.selectionStart ?? v.length : v.length;
-    bindings.current = shiftBindings(value, v, bindings.current, editRange(value, v, sel.current, c)); sel.current = null;
+    const e = edit.current, began = e.ime || e.input || e.key;
+    bindings.current = shiftBindings(value, v, bindings.current, editRange(value, v, began, c));
+    edit.current = { input: null, key: null, ime: null, composing: e.composing };
     setValue(v); setMsg(null); setCaret(c);
   };
   // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste, through the room's own
