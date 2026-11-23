@@ -23,6 +23,7 @@
 .hub-room-name-row .field-row > .btn { flex: none; min-height: 40px; }
 .hub-room-settings h4, .hub-room-members h4, .hub-agent-rooms h4 { margin: 0 0 var(--s-2); font-size: var(--fs-sm); color: var(--text-2); }
 .hub-room-settings fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.hub-room-settings .hub-nowrap { white-space: nowrap; }
 .hub-settings-people, .hub-settings-agents, .hub-settings-invited, .hub-agent-rooms ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .hub-settings-row, .hub-agent-rooms li { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); padding: var(--s-1) 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
 .hub-settings-row > span { min-width: 0; overflow-wrap: anywhere; }
