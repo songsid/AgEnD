@@ -1,6 +1,6 @@
 import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
 /** Owner-browser admission and a bounded, durable Hub → member outbox. Snapshots remain publication truth. */
-import { carryLapsePermissions, HUB_LAPSE_CARRY } from "./lapse-carry.js";
+import { carryLapsePermissions, HUB_LAPSE_CARRY, ownedBy } from "./lapse-carry.js";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { HubAgentCatalogs } from "./agent-catalog.js";
@@ -139,7 +139,9 @@ export class HubSharingRequests {
         if (item.ok && (!same(item.before, plan.pointer) || item.after.revision !== (plan.pointer?.revision ?? 0) + 1
           || plan.pointer && item.after.id !== plan.pointer.id || item.after.state !== (share ? "published" : "withdrawn"))) throw new HubProtocolError("invalid");
         // M-3543: a lapsed agent's Share again keeps the people who could ask it (active grants, original expiry).
-        if (item.ok && share && plan.lapse && plan.pointer && this.carryOnLapse && !row.result)
+        // The pointer came from the Fleet's catalog: carry only for an exposure the Hub holds as this Fleet's and owner's.
+        if (item.ok && share && plan.lapse && plan.pointer && this.carryOnLapse && !row.result
+          && ownedBy(db, plan.pointer.id, link.fleetId, row.owner) !== null)
           carryLapsePermissions(db, plan.pointer.id, plan.pointer.revision, item.after.revision, this.core.now());
         if (item.ok && !share && plan.stopped && plan.pointer) {
           keepCoalescedList(db, this.core, plan.target, result.noticeAt, plan.stopped);

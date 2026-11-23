@@ -151,3 +151,54 @@ describe("#4361 review: Share again from the Fleet's Settings, and a stop of a l
     expect(jump.read(g3).exposure_revision).toBe(1);
   });
 });
+
+describe("#4361 review (P1): a Fleet's catalog never moves another Fleet's grants", () => {
+  it("Fleet A claiming Fleet B's exposure (catalog lapsed → republished, its own snapshot, a Hub-page Share again) leaves B unchanged", async () => {
+    let now = 1_800_000_000_000;
+    const r = rig = await s3bRig({ now: () => now });
+    const ownerA = r.addPerson("attacker", "Attacker"), ownerB = r.addPerson("victim", "Victim"), reader = r.addPerson("reader", "Reader");
+    const fleetA = randomUUID(), fleetB = randomUUID();
+    r.store.mutate({ requestId: randomUUID(), at: now, actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
+      state.fleets.push({ id: fleetA, owner: ownerA, generation: 1, credentialHash: "a".repeat(64), status: "active" });
+      state.fleets.push({ id: fleetB, owner: ownerB, generation: 1, credentialHash: "b".repeat(64), status: "active" });
+    });
+    const caps = ["welcome-caps-v1", "room-ask-v1", "agent-catalog-v1", "exposure-request-v1", HUB_AGENT_CATALOG_LAPSE_CAPABILITY];
+    const linkA = r.link(fleetA, ownerA, 1, caps), linkB = r.link(fleetB, ownerB, 1, caps);
+    r.http.memberConnected!(linkA); r.http.memberConnected!(linkB);
+    const victim = randomUUID();
+    await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: victim, owner: ownerB, fleetId: fleetB, displayName: "Victim agent", revision: 1,
+      state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, linkB) as never, linkB);
+    const grant = randomUUID();
+    r.db.prepare(`INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state)
+      VALUES(?,1,?,?,1,?,?,?,'["ask"]',?,?,'active')`).run(grant, personKeyString(ownerB), victim, personKeyString(ownerB), now, personKeyString(reader), now - 1, now + 86_400_000);
+    const read = () => r.db.prepare("SELECT exposure_revision, revision, expires_at, state FROM hub_grants WHERE id=?").get(grant);
+    const unchanged = { exposure_revision: 1, revision: 1, expires_at: now + 86_400_000, state: "active" };
+    let n = 0;
+    const catalogA = async (revision: number, lapsed: boolean) => {
+      const body: HubAgentCatalog = { enabled: true, requests: true, revision: String(++n).padStart(64, "0"), agents: [{ instance: "X", displayName: "X", description: "", avatar: null,
+        kind: "agent", general: false, shareable: true, exposure: { id: victim, revision, state: "published", ...(lapsed ? { lapsed: true as const } : {}) } }] };
+      await r.http.receive(r.frame("agent.catalog", body, linkA), linkA); return body;
+    };
+    // 1. The catalog-first order, from the wrong Fleet: evidence only, no write.
+    await catalogA(1, true); await catalogA(2, false);
+    expect(read()).toEqual(unchanged);
+    // 2. Fleet A's snapshot naming B's exposure is refused by its binding; nothing moves.
+    await expect(r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [{ id: victim, owner: ownerA, fleetId: fleetA, displayName: "X", revision: 2,
+      state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, linkA) as never, linkA)).rejects.toBeTruthy();
+    expect(read()).toEqual(unchanged);
+    // 3. A Hub-page Share again by A's owner whose catalog points at B's exposure: the result is answered, nothing carries.
+    const report = await catalogA(1, true);
+    const browser = await r.signIn("attacker");
+    const accepted = await r.call(browser, "POST", "/hub/v1/me/agent-sharing", { idempotencyKey: randomUUID(), fleetId: fleetA, catalogRevision: report.revision, share: ["X"], stop: [] });
+    if (accepted.status === 200) {
+      await r.http.receive({ ...r.frame("exposure.request-result", { noticeAt: now, undoUntil: now + 86_400_000,
+        results: [{ instance: "X", ok: true, before: { id: victim, revision: 1, state: "published" }, after: { id: victim, revision: 2, state: "published" } }] }, linkA),
+        requestId: accepted.json.id } as Exclude<HubMemberFrame, { type: "hello" }>, linkA).catch(() => undefined);
+    }
+    expect(read()).toEqual(unchanged);
+    // B's own later republish is not authorized by A's evidence either.
+    await r.http.receive(r.frame("exposure.snapshot", { revision: 2, exposures: [{ id: victim, owner: ownerB, fleetId: fleetB, displayName: "Victim agent", revision: 2,
+      state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, linkB) as never, linkB);
+    expect(read()).toEqual(unchanged);
+  });
+});

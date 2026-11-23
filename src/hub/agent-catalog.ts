@@ -1,5 +1,5 @@
 /** Separate owner-only inventory: never used by the shared-agent directory or app tools. */
-import { carryLapsePermissions, HUB_LAPSE_CARRY, lapsedRevision } from "./lapse-carry.js";
+import { HUB_LAPSE_CARRY, lapsedRevision, rememberLapse } from "./lapse-carry.js";
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
@@ -42,11 +42,12 @@ export class HubAgentCatalogs {
       const previous=db.prepare("SELECT * FROM hub_agent_catalogs WHERE fleet_id=?").get(fleet.id) as Row|undefined;
       const bytes=canonicalArguments(body);
       if(previous?.owner===personKeyString(fleet.owner)&&previous.generation===fleet.generation&&previous.revision===body.revision&&previous.body!==bytes)throw new HubProtocolError("conflict");
-      // #4361 review (M-3543): the other order — the Fleet's catalog shows the lapsed exposure republished (same id, next
-      // revision, no longer lapsed) before its snapshot did. Its grants follow, as at the snapshot; idempotent either way.
+      // #4361 review (M-3543): the other order — this Fleet's catalog shows its lapsed exposure republished (next revision,
+      // no longer lapsed) before the snapshot. A catalog authorizes nothing: keep the evidence for that Fleet; the snapshot,
+      // whose binding the Hub checks, decides.
       if(HUB_LAPSE_CARRY&&previous?.owner===personKeyString(fleet.owner)&&previous.generation===fleet.generation)for(const row of body.agents){
         const e=row.exposure,from=e?lapsedRevision(previous.body,e.id):null;
-        if(e&&from!==null&&e.state==="published"&&!e.lapsed&&e.revision===from+1)carryLapsePermissions(db,e.id,from,e.revision,this.core.now());
+        if(e&&from!==null&&e.state==="published"&&!e.lapsed&&e.revision===from+1)rememberLapse(db,e.id,fleet.id,from);
       }
       db.prepare(`INSERT INTO hub_agent_catalogs VALUES(?,?,?,?,?,?) ON CONFLICT(fleet_id) DO UPDATE SET owner=excluded.owner,generation=excluded.generation,revision=excluded.revision,body=excluded.body,received_at=excluded.received_at`)
         .run(fleet.id,personKeyString(fleet.owner),fleet.generation,body.revision,bytes,this.core.now());

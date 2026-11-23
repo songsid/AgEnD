@@ -44,3 +44,27 @@ export function catalogLapse(db: Database.Database, fleetId: string, exposureId:
   const row = db.prepare("SELECT body FROM hub_agent_catalogs WHERE fleet_id=?").get(fleetId) as { body: string } | undefined;
   return lapsedRevision(row?.body, exposureId);
 }
+
+/**
+ * #4361 review (P1): a catalog is a Fleet's claim, never authority over an exposure. When a catalog shows the republish
+ * before its snapshot (previous catalog: lapsed at R; this one: published at R+1), only this pending evidence is kept —
+ * in memory, per database, keyed by exposure AND the reporting Fleet — and no permission is written. The snapshot, whose
+ * exposure binding (Fleet, owner) the Hub checks, consumes it. Lost on a restart: then nothing carries (owner grants again).
+ */
+const pending = new WeakMap<Database.Database, Map<string, { fleetId: string; from: number }>>();
+export function rememberLapse(db: Database.Database, exposureId: string, fleetId: string, from: number): void {
+  let m = pending.get(db); if (!m) { m = new Map(); pending.set(db, m); }
+  m.set(exposureId, { fleetId, from });
+  while (m.size > 256) m.delete(m.keys().next().value!);
+}
+export function takeLapse(db: Database.Database, exposureId: string, fleetId: string): number | null {
+  const m = pending.get(db), v = m?.get(exposureId);
+  if (!v) return null;
+  m!.delete(exposureId);
+  return v.fleetId === fleetId ? v.from : null;
+}
+/** The exposure as the Hub holds it belongs to this Fleet and owner (never a catalog's word for it). */
+export function ownedBy(db: Database.Database, exposureId: string, fleetId: string, owner: string): { revision: number; state: string } | null {
+  const row = db.prepare("SELECT fleet_id, owner, revision, state FROM hub_exposures WHERE id=?").get(exposureId) as { fleet_id: string; owner: string; revision: number; state: string } | undefined;
+  return row && row.fleet_id === fleetId && row.owner === owner ? { revision: row.revision, state: row.state } : null;
+}
