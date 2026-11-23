@@ -261,12 +261,14 @@ describe("precaution cards require a person", () => {
     expect(h.answer).toHaveBeenCalledOnce();
     expect(h.answer).toHaveBeenCalledWith(card.identity, { kind: "option", n: 1 });
   });
-  it("keeps the no-findings card visible without any session-changing buttons", async () => {
+  it("offers a person-only fresh-chat action with explicit context-loss confirmation", async () => {
     const h = fleet("web");
     const pane = readFileSync(new URL("./fixtures/codex-0169-precaution-stopped.pane.txt", import.meta.url), "utf8");
     await h.fm.postRemoteCard("worker", codexPrecaution(pane)!.card);
-    expect(h.currentPrompt().text).toContain("safety review");
-    expect(h.currentPrompt().actions).toEqual([]);
+    expect(h.currentPrompt().text).toContain("cannot continue");
+    expect(h.currentPrompt().actions).toMatchObject([{ id: "opt-1", confirmation: { confirmLabel: "Start a new chat" } }]);
+    const nonce = h.currentPrompt().nonce;
+    expect((await h.fm.clickWebPrompt("worker", nonce, "opt-1")).status).toBe(403);
     expect(h.answer).not.toHaveBeenCalled();
   });
 });

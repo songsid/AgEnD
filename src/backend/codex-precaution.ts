@@ -22,7 +22,7 @@ export function codexPrecaution(pane: string): CodexPrecaution | null {
   while (rows.length && !rows.at(-1)) rows.pop();
   const make = (stage: CodexPrecautionStage, options: RemoteCardOption[], cursor: number | null, identityRows: string[]) => ({ stage,
     card: { kind: "question" as const, identity: createHash("sha256").update(`codex-precaution:${stage}\n${identityRows.join("\n")}`).digest("hex"),
-      title: "Codex", question: t("codex.precaution.summary"), page: "options" as const, options,
+      title: "Codex", question: t(stage === "stopped" ? "codex.precaution.stopped" : "codex.precaution.summary"), page: "options" as const, options,
       freeText: false, cursor, typed: null, rowWidth: Math.max(...rows.map(r => r.length)), noSkip: true as const,
       webOnly: true as const, humanOnly: true as const } });
   const option = (n: number, key: string, row: number, submitKey?: "q"): RemoteCardOption => ({
@@ -74,7 +74,8 @@ export function codexPrecaution(pane: string): CodexPrecaution | null {
   if (!stopped && same(ROOT) && numbers.every((n, i) => n === i + 1)) {
     return make("root", [option(1, "codex.precaution.review", 0)], cursor, identityRows);
   }
-  if (stopped && same(FALLBACK) && numbers.every((n, i) => n === i + 1)) return make("stopped", [], cursor, identityRows);
+  if (stopped && same(FALLBACK) && numbers.every((n, i) => n === i + 1)) return make("stopped", [{ ...option(1, "codex.precaution.new_chat", 0),
+    confirmation: { title: t("codex.precaution.new_chat"), message: t("codex.precaution.new_chat_confirm"), confirmLabel: t("codex.precaution.new_chat") } }], cursor, identityRows);
   if (!stopped && same(CONFIRM)) {
     if (numbers[0] === 1 && numbers[1] === 2) return make("confirmation", [option(1, "codex.precaution.ack", 0), option(2, "codex.precaution.back", 1)], cursor, identityRows);
     // Disabled rows have no shortcut; Back is renumbered to 1. Never offer the disabled acknowledgement.

@@ -24,6 +24,7 @@ import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
@@ -119,7 +120,7 @@ appStore.subscribe((st) => {
     handedTo = st.chatOwner;
     const items = Array.isArray(st.needs) ? st.needs : [];
     for (const nonce of Object.keys(claims.get().prompts)) {
-      handedTo.holdPrompt(items.find((i) => i.nonce === nonce) || { nonce, instance: "" });
+      handedTo.holdPrompt(items.find((i) => i.nonce === nonce) || { nonce, instance: "" }, claims.get().prompts[nonce] === "confirming");
     }
   }
   const items = Array.isArray(st.needs) ? st.needs : [];
@@ -243,6 +244,14 @@ function NeedsItem({ item, nowMs, owner }) {
     // Only before Chat has booted: the page's own claim on this nonce, taken now (synchronously), kept until the
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
+    const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
+    setClaim("prompts", item.nonce, confirmation ? "confirming" : "busy");
+    if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
+      setClaim("prompts", item.nonce, null);
+      // Chat may have adopted this confirmation while its dialog was open. Give its claim back too.
+      chatOwner()?.releasePrompt(item.nonce);
+      return;
+    }
     setClaim("prompts", item.nonce, "busy");
     let r = null;
     try {
@@ -280,7 +289,7 @@ function NeedsItem({ item, nowMs, owner }) {
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
-            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+            disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
         ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}

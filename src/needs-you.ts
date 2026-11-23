@@ -31,7 +31,7 @@ export interface NeedsYouItem {
   since: number;
   /** prompt: the nonce the web answers through POST /ui/prompt, its buttons, and where the buttons are. */
   nonce?: string;
-  actions?: Array<{ id: string; label: string; input?: true }>;
+  actions?: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   promptAt?: { adapterId: string; chatId: string; threadId?: string; messageId?: string };
   /** delivery: the outbox row; Acknowledge offered. */
   deliveryId?: string;
@@ -101,7 +101,7 @@ export interface PromptInput {
   prefix: string;
   instance: string;
   text: string;
-  actions: Array<{ id: string; label: string; input?: true }>;
+  actions: Array<{ id: string; label: string; input?: true; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
   createdAt: number;
   adapterId: string;
   chatId: string;

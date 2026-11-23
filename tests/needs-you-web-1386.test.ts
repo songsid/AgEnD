@@ -204,3 +204,15 @@ it("does not publish operator configuration diagnostics through the public link"
   handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, pub), c);
   expect(h.status()).toBe(200); expect(h.json().needs).toEqual(ITEMS);
 });
+
+it("M3519 poll retains a safety-review empty card and its derived Needs item", async () => {
+  const { deriveNeedsYou } = await import("../src/needs-you.js");
+  const prompt = { nonce: "b".repeat(32), prefix: "card-answer:", instance: "demo", text: "Codex stopped this chat", actions: [], createdAt: 1, adapterId: "dc", chatId: "demo" };
+  const needs = deriveNeedsYou({ prompts: [prompt], instances: [{ name: "demo", state: "awaiting_input", interaction: { kind: "safety_review", since: 1 } }], deliveries: [], ownerOf: () => "dc" });
+  const store = new WebSessionStore();
+  const session = store.create({ tier: "admin", surface: "local", label: "demo", tokenEpoch: tokenEpoch(token) });
+  const h = request("/ui/poll", "GET", { cookie: `agend_session=${session.sessionId}` });
+  await handleWebRequest(h.req as never, h.res as never, new URL(h.req.url, local), ctx(store, { listWebPrompts: () => [prompt], needsYouItems: () => needs }));
+  expect(h.json().prompts).toMatchObject([{ instance: "demo", actions: [] }]);
+  expect(h.json().needs).toMatchObject([{ instance: "demo", type: "prompt", actions: [] }]);
+});

@@ -264,7 +264,16 @@ export function createChatStore(deps) {
   /** `text`: #2675 — the typed answer, for an action the prompt shows a text box for. */
   async function answerPrompt(p, action, text) {
     if (p.busy || p.resolved) return;
-    p.busy = true; changed(p.instance);
+    const confirmation = p.actions?.find(a => a.id === action)?.confirmation;
+    p.busy = true; p.confirming = !!confirmation; changed(p.instance);
+    if (confirmation) {
+      const yes = deps.confirm ? await deps.confirm({ ...confirmation, danger: true }) : false;
+      p.confirming = false;
+      if (!yes || p.resolved || s.prompts[p.nonce] !== p) {
+        p.busy = false; changed(p.instance); return;
+      }
+    }
+    changed(p.instance);
     let r;
     try { r = await api("POST", "/ui/prompt", { instance: p.instance, nonce: p.nonce, action, ...(text !== undefined ? { text } : {}) }); }
     catch (err) { r = { error: err && err.message ? err.message : t("chat.disconnected") }; }
@@ -286,16 +295,16 @@ export function createChatStore(deps) {
     return answerPrompt(p, action);
   }
   /** A claim taken elsewhere before this store existed (Needs you, before Chat booted): held here from now on. */
-  function holdPrompt(item) {
+  function holdPrompt(item, confirming = false) {
     if (!item || typeof item.nonce !== "string") return;
     let p = s.prompts[item.nonce];
     if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
-    if (!p.resolved) { p.busy = true; changed(p.instance); }
+    if (!p.resolved) { p.busy = true; p.confirming = confirming; changed(p.instance); }
   }
   /** That claim's answer was refused: the prompt can be answered again (unless it was settled meanwhile). */
   function releasePrompt(nonce) {
     const p = s.prompts[nonce];
-    if (p && !p.resolved) { p.busy = false; changed(p.instance); }
+    if (p && !p.resolved) { p.busy = false; p.confirming = false; changed(p.instance); }
   }
   const promptsFor = (instance) => Object.values(s.prompts).filter(p => p.instance === instance);
 
