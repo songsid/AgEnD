@@ -145,6 +145,7 @@ describe("the fleet's /effort levels for an agy instance are its model's", () =>
       expect(fm.effortLevelsFor("gem")).toEqual(["low", "medium", "high"]);
       expect(fm.effortLevelsFor("own")).toEqual(["low", "medium", "high"]);
       expect(fm.effortStrategyFor("oss")).toBe("runtime");
+      fm.fleetConfig.defaults.backend = "antigravity"; // model defaults belong to their declaring backend
       fm.fleetConfig.defaults.model = "gpt-oss-120b-medium";
       expect(fm.effortLevelsFor("own")).toEqual(["medium"]);
     } finally { fm.stormWindow.shutdown(); fm.spawnGate.shutdown(); fm.memoryPressure.stop(); }

@@ -148,7 +148,8 @@ export const groupOf = (inst) => (inst && inst.tags && inst.tags[0]) || "Other";
 export function effectiveSummary(live, config, fleetDefaults, classicDefaults) {
   const defaults = classicDefaults || fleetDefaults || {};
   const backend = live.backend || config.backend || defaults.backend || (fleetDefaults && fleetDefaults.backend) || "claude-code";
-  const model = live.model_display || config.model || defaults.model || (fleetDefaults && fleetDefaults.model) || "default";
+  const scoped = (d, fallbackBackend) => backend === (d?.backend || fallbackBackend || "claude-code") ? d?.model : undefined;
+  const model = live.model_display || config.model || scoped(defaults, fleetDefaults?.backend) || scoped(fleetDefaults) || "default";
   const effortSupported = live.effort_supported ?? EFFORT_BACKENDS.has(backend);
   const effort = effortSupported ? (live.effort || config.effort || (fleetDefaults && fleetDefaults.effort) || "auto") : "—";
   return { backend, model, effort };

@@ -25,8 +25,9 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
+import { GroupMark, groupLabel, groupOf as navGroupOf, modelText, labelOf } from "/assets/instance-nav.js";
 import "./settings-strings.js";
+import "./settings-default-model-strings.js";
 import "./settings-shared-strings.js";   // see settings-shared.js: the words Shared agent settings added, which an older settings-strings.js in an open tab lacks
 import "./agent-page-strings.js";   // the confirmation text of the MCP proxy reply
 import "./settings-restart-strings.js";   // S-92: the restart words for a fleet with no chat connection (a file of its own: an open tab may hold an old settings-strings.js)
@@ -46,6 +47,7 @@ import {
   AgentDialog, BackendSelect, BotDialog, ChipList, ClassicDialog, DefaultMark, Feedback, Impact, InEffect, Inherited, Label,
   NewBotDialog, Override, Select, ask, impactText, inAgentDefaults, valueText,
 } from "./settings-dialogs.js";
+import { defaultIdentityRecord, runningDefaultIdentityTargets } from "./settings-default-model-scope.js";
 import { InfoTip, SharedAgentSettings, sharedNotes } from "./settings-shared.js";
 import { QuotaNoticeSettings, quotaNoticeText } from "./settings-quota-notice.js";
 import { SetupWizard } from "./settings-wizard.js";
@@ -140,7 +142,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities, machine_id:i.machine_id, machine_name:i.machine_name, machine_status:i.machine_status };
+    live[i.name] = { display_name: i.display_name || i.classicName, status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported, runtime:i.runtime, capabilities:i.capabilities, machine_id:i.machine_id, machine_name:i.machine_name, machine_status:i.machine_status };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -349,7 +351,19 @@ export function SettingsPanel({ route, navKey }) {
     // Every confirmation before the first write: a cancelled one must not leave earlier changes applied and later
     // ones pending (a surprising partial apply).
     applying.current = true;
+    let confirmedRestartTargets = [];
+    const confirmedDefaultRequests = new Map();
     try {
+      if ([...stagedRef.current.values()].some(c => c.sharedDefaults === "restart")) {
+        const shown = new Map([...stagedRef.current.values()].filter(c => c.sharedDefaults === "restart")
+          .flatMap(c => c.sharedDefaultsTargets || []).map(target => [target.name, target]));
+        confirmedRestartTargets = [...shown.values()];
+        for (const c of stagedRef.current.values()) if (c.sharedDefaults === "restart") confirmedDefaultRequests.set(c.stageKey, structuredClone(c.request));
+        const names = confirmedRestartTargets.map(({ name, label }) => name === label ? label : tn("defaultIdentityNamedTarget", label, name)).join("\n");
+        if (!(await ask(tn(confirmedRestartTargets.length === 1 ? "defaultIdentityRestartConfirmOne" : "defaultIdentityRestartConfirm", confirmedRestartTargets.length, names),
+          { title: tn("defaultIdentityWhen"), confirmLabel: tn("defaultIdentityRestartButton"), danger: true }))) return;
+        if (!mount.current()) return;
+      }
       // A panel that went while a question was open asks nothing more, and says nothing.
       for (const c of [...stagedRef.current.values()]) {
         for (const k of c.confirms || []) {
@@ -372,7 +386,9 @@ export function SettingsPanel({ route, navKey }) {
       if (failed) toast(tn("youSaveFailed"), false);
       if (!stagedRef.current.size) { if (!failed) toast(tn("youSaved")); setDraftEpoch((n) => n + 1); return; }
     }
-    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
+    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes }) => ({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes,
+      sharedDefaultsTargets: sharedDefaults === "restart" ? confirmedRestartTargets : [],
+      ...(sharedDefaults === "restart" && confirmedDefaultRequests.has(stageKey) ? { request: confirmedDefaultRequests.get(stageKey) } : {}) }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));
     if (startOperation(list)) {
       results.current = handlers; submitted.current = new Map(drafts.current); submittedStaged.current = new Map(stagedRef.current);
@@ -537,7 +553,7 @@ export function SettingsPanel({ route, navKey }) {
       ${section !== "runtimes" ? html`<${SettingsPageHead} section=${section}>${section === "agents" && ctx ? html`<button type="button" id="newAgentBtn" class="btn btn-primary" disabled=${yamlStaged(staged)} onClick=${() => toDialog({ kind: "create" })}><${Icon} name="plus" size=${16} />${tn("newAgent")}</button>` : null}</${SettingsPageHead}>` : null}
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
-      ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
+      ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} fleet=${data && data.fleet} classic=${data && data.classic} live=${data && data.live} />` : null}
       <${PendingChanges} inline=${true} />
       ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${openWizard} />` : null}
       <div class="s-section-layout" data-section=${section}>${sectionBody}</div>
@@ -1116,6 +1132,9 @@ function General({ ctx, part = "all" }) {
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const base = useMemo(() => generalForm(d, c, ctx.fleet, schema), []);
   const [f, setF] = useDraft(ctx, "general", () => base);
+  const restartTargets = runningDefaultIdentityTargets(ctx.fleet, ctx.classic, ctx.live, { ...d, backend: f.backend, model: f.model });
+  const restartTargetSignature = JSON.stringify(restartTargets);
+  const sharedDefaultMode = f.defaultAdoption === "restart" && restartTargets.length ? "restart" : "next-start";
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   /** The class of a field's row: `field`, and `s-dirty` while one of its keys differs from what is saved. */
   const fc = (cls, ...keys) => `${cls}${keys.some((k) => !sameValue(f[k], base[k])) ? " s-dirty" : ""}`;
@@ -1142,7 +1161,7 @@ function General({ ctx, part = "all" }) {
     }
     ctx.unstage("defaults:invalid");
     const defaultsPatch = changedFields({
-      backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
+      backend: f.backend, model: f.model || null, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All of them go, because the write
@@ -1153,7 +1172,7 @@ function General({ ctx, part = "all" }) {
       task_board: taskBoardDefaults(d, f),
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
-      backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
+      backend: d.backend || "claude-code", model: d.model || null, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, dashboardDefault(d, k)])),
@@ -1185,12 +1204,15 @@ function General({ ctx, part = "all" }) {
     const dKeys = Object.keys(defaultsPatch), cKeys = Object.keys(classicPatch);
     // The bar says what this Save costs in the page's own words (how many agents restart), not a bare impact label.
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
+      sharedDefaults: dKeys.some(k => k === "backend" || k === "model") ? sharedDefaultMode : undefined,
+      sharedDefaultsTargets: restartTargets,
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)), notes: notes.bar.defaults,
-      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
+      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: sharedDefaultMode === "restart" && dKeys.some(k => k === "backend" || k === "model")
+        ? { ...defaultsPatch, backend: f.backend, model: f.model || null } : defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
       request: { method: "PUT", url: "/api/settings/classic/defaults", body: classicPatch } } : null);
-  }, [f, ready]);
+  }, [f, ready, restartTargetSignature]);
   // #2347 §10: a default nobody set in fleet.yaml shows the built-in value it holds, marked "default" until it is edited;
   // ClassicBot's inherited ones say what they inherit from Agent defaults.
   const unset = {
@@ -1663,7 +1685,7 @@ export function PendingBar({ staged, busy, onApply, onDiscard, section }) {
 }
 
 /** The Apply in hand (the app's, settings-apply.js): its writes, its job, and a restart when one is needed. */
-export function OperationCard({ op, schema }) {
+export function OperationCard({ op, schema, fleet, classic, live }) {
   const [restarting, setRestarting] = useState(false);
   const busy = opBusy(op);                                 // nothing to dismiss while it, or its restart, runs
   const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);
@@ -1705,11 +1727,12 @@ export function OperationCard({ op, schema }) {
     ${op.steps.length ? html`<ul class="s-op-steps">${op.steps.map((s, i) => html`<li key=${i} class=${`s-step ${s.status}`}>
       <span class="s-step-icon" aria-hidden="true">${icon(s.status) ? html`<${Icon} name=${icon(s.status)} size=${14} />` : "·"}</span>
       <span class="grow">${s.label}</span>
-      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || impactText(s.impact)}</span></li>`)}</ul>` : null}
+      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || (s.notes?.length ? s.notes.join(" · ") : s.sharedDefaults ? tn(s.sharedDefaults === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext") : impactText(s.impact))}</span></li>`)}</ul>` : null}
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
-      <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>
-      <span class="note">${r.target === "fleet" && r.status === "running" ? tn(r.kind === "hot" ? "connStartingNow" : "restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded")
+      <span class="grow"><span class="s-op-name">${r.target === "fleet" ? "AgEnD" : labelOf(defaultIdentityRecord(r.target, fleet, classic, live))}</span>
+        ${r.target !== "fleet" && labelOf(defaultIdentityRecord(r.target, fleet, classic, live)) !== r.target ? html`<small class="note s-op-slug">${r.target}</small>` : null}</span>
+      <span class="note">${r.target === "fleet" && r.status === "running" ? tn(r.kind === "hot" ? "connStartingNow" : "restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded") : r.status === "next-start" || r.kind === "next-start" ? tn("defaultIdentityPending")
         : r.settled_by === "no-change" ? tn("applyNoChange") : r.settled_by === "fleet-restart" ? tn("viaRestart") : r.kind === "hot" ? tn("impactNow") : tn("impactAgent")}</span>
       ${r.error ? html`<span class="feedback error">${r.error}</span>` : null}</li>`)}</ul>` : null}
     ${job && job.error ? html`<p class="feedback error">${job.error}</p>` : null}

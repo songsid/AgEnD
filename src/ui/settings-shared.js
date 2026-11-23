@@ -12,6 +12,10 @@ import { t } from "/assets/app-i18n.js";
 import { settingsPath } from "/assets/app-route.js";
 import { InfoTip as SharedInfoTip } from "/assets/info-tip.js";
 import "./settings-strings.js";
+import "./settings-default-model-strings.js";
+import { labelOf } from "/assets/instance-nav.js";
+import { defaultIdentityTargets, defaultClassicTargets, defaultIdentityRecord, runningDefaultIdentityTargets } from "./settings-default-model-scope.js";
+export { defaultIdentityTargets } from "./settings-default-model-scope.js";
 import "./settings-shared-strings.js";   // the words this page added: a tab that already ran an older settings-strings.js has none of them (#3087)
 import {
   AGENT_MODES, DASHBOARD_FEATURES, LOG_LEVELS, SEPARATE_FEATURE_KEYS, TOOL_PROGRESS, TOOL_SETS, VISIBILITY_MODES,
@@ -43,6 +47,7 @@ export function ownsDashboardFeature(inst, feature) {
 /** An agent's own `a` or `a.b`, with a value (the hang detector's two settings are merged one by one: setting the timeout leaves `enabled` inherited). */
 const ownsPath = (inst, path) => {
   const [a, b] = path.split(".");
+  if (path === "model") return !!inst?.model?.trim();
   return b ? given((inst && inst[a]) || {}, b) : given(inst, a);
 };
 
@@ -96,7 +101,8 @@ const ownsPart = (part, inst) => (part.owns ? part.owns(inst) : (part.own || [])
  * sets each part (`byPart`, for the list under the pill).
  */
 export function usageOf(fleet, field, parts = partsOf(FIELDS[field])) {
-  const agents = agentsOf(fleet);
+  const agents = agentsOf(fleet).filter(([, inst]) => field !== "model" || (inst.runtime !== "windows"
+    && (inst.backend || fleet?.defaults?.backend || "claude-code") === (fleet?.defaults?.backend || "claude-code")));
   const who = (name, inst) => ({ name, label: shortName(name, inst) });
   const owners = agents.filter(([, inst]) => parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => who(name, inst));
   const partial = parts.length > 1 ? agents.filter(([, inst]) => parts.some((part) => ownsPart(part, inst)) && !parts.every((part) => ownsPart(part, inst))).map(([name, inst]) => who(name, inst)) : [];
@@ -113,12 +119,19 @@ const roomGiven = (obj, key) => (key === "auto_pause_after" ? obj != null && obj
  * defaults (room → ClassicBot defaults → the fleet's: ClassicChannelManager.getBackend / getModel / getAutoPauseAfter).
  * Fields the fleet's reconciliation leaves alone (it compares only backend, model and auto-pause) have none.
  */
-export function roomsFollowing(classic, field) {
+export function roomsFollowing(classic, field, fleet = {}) {
   const key = FIELDS[field].room;
   if (!key) return [];
   const defaults = (classic && classic.defaults) || {};
-  if (roomGiven(defaults, key)) return [];
-  return roomsOf(classic).filter(([, room]) => !roomGiven(room, key)).map(([k, room]) => ({ key: k, instanceName: room.instanceName }));
+  if (key !== "model" && roomGiven(defaults, key)) return [];
+  return roomsOf(classic).filter(([, room]) => {
+    if (roomGiven(room, key)) return false;
+    if (key !== "model") return true;
+    const fleetBackend = fleet.defaults?.backend || "claude-code";
+    const classicBackend = defaults.backend || fleetBackend;
+    const backend = room.backend || classicBackend;
+    return backend === fleetBackend && !(defaults.model && backend === classicBackend);
+  }).map(([k, room]) => ({ key: k, instanceName: room.instanceName }));
 }
 const NAMES_SHOWN = 5;
 /** A list of agent names for a sentence: the first few, then how many more. */
@@ -147,7 +160,7 @@ export function sharedNotes({ schema, fleet, classic, classicStatus = () => "sto
   // so its state cannot be looked up here: like an unreadable state, it counts as restarting.
   const roomRestarts = (room) => !known || !room.instanceName || ["running", "crashed"].includes(classicStatus(room.instanceName));
   const roomsText = (rooms, kind) => { const n = rooms.filter(roomRestarts).length; return n === rooms.length ? tn(`${kind}RestartRooms`, rooms.length) : n ? tn(`${kind}ApplyRooms`, rooms.length, n) : tn(`${kind}IdleRooms`, rooms.length); };
-  let fleetRestart = false;
+  let fleetRestart = false, identityHintShown = false;
   const add = (list, text) => { if (!list.includes(text)) list.push(text); };
   for (const [field, spec] of Object.entries(FIELDS)) {
     if (!edited(f, base, field) || errors[field]) continue;
@@ -155,8 +168,22 @@ export function sharedNotes({ schema, fleet, classic, classicStatus = () => "sto
     // The ClassicBot rooms that follow it. A room has its own idea of "hot" (a ClassicBot channel takes tool progress and the reply
     // guard at once, nothing else): auto-pause applies at once to an agent but restarts a room, so this does not depend on `kind`.
     // A fleet restart (`kind` "fleet") restarts them with everything else.
-    const rooms = kind !== "fleet" && spec.room && impactOf(schema, `classic.${spec.room}`) === "instance" ? roomsFollowing(classic, field) : [];
-    for (const room of rooms) hitRooms.set(room.key, room);
+    const rooms = (field === "model" || field === "backend")
+      ? defaultClassicTargets(classic, fleet?.defaults || {}, { ...fleet?.defaults, backend: f.backend, model: f.model })
+      : kind !== "fleet" && spec.room && impactOf(schema, `classic.${spec.room}`) === "instance" ? roomsFollowing(classic, field, fleet) : [];
+    if (field !== "model" && field !== "backend") for (const room of rooms) hitRooms.set(room.key, room);
+    if (field === "model" || field === "backend") {
+      const next = { ...fleet?.defaults, backend: f.backend, model: f.model };
+      const reached = defaultIdentityTargets(fleet, next);
+      notes.push({ text: tn("defaultIdentityAffected", reached.length) });
+      if (reached.length) notes.push({ text: tn("defaultIdentityNames", nameList(reached.map(n => labelOf(defaultIdentityRecord(n, fleet, classic, live))))) });
+      if (rooms.length) notes.push({ text: tn("defaultIdentityRooms", rooms.length) });
+      if (!identityHintShown) { notes.push({ text: tn("defaultIdentityChoiceHint") }); identityHintShown = true; }
+      fields[field] = notes;
+      if (rooms.length) add(bar.defaults, tn("defaultIdentityRooms", rooms.length));
+      add(bar.defaults, tn(f.defaultAdoption === "restart" && runningDefaultIdentityTargets(fleet, classic, live, next).length ? "defaultIdentityRestart" : "defaultIdentityNext"));
+      continue;
+    }
     if (kind === "fleet") { notes.push({ text: tn("noteRestartFleet") }); fleetRestart = true; }
     else if (kind === "instance") {
       // Only the parts that were edited count: an agent is left alone when it sets all of them itself.
@@ -282,7 +309,10 @@ export function SharedAgentSettings({ ctx, form }) {
   const primary = channelsOf(fleet)[0];
   const defaultTip = tn("defaultMarkTip");
   const mark = (...ks) => (ks.every((k) => unset[k] && sameValue(f[k], base[k])) ? html`<${DefaultMark} tip=${defaultTip} />` : null);
-  const u = (field) => ({ ...usageOf(fleet, field), rooms: roomsFollowing(ctx.classic, field).length });
+  const preview = { ...fleet, defaults: { ...fleet?.defaults, backend: f.backend, model: f.model } };
+  const restartTargets = runningDefaultIdentityTargets(fleet, ctx.classic, ctx.live, preview.defaults);
+  const sharedDefaultMode = f.defaultAdoption === "restart" && restartTargets.length ? "restart" : "next-start";
+  const u = (field) => ({ ...usageOf(preview, field), rooms: roomsFollowing(ctx.classic, field, preview).length });
   const note = (field) => html`<${Notes} notes=${notes.fields[field]} />`;
   const head = (field, id, text, tip, extra = {}) => html`<${FieldHead} id=${id} text=${text} tip=${tip} usage=${FIELDS[field].agentGroup ? u(field) : null} ...${extra} />`;
   const seg = (kind, values) => values.map((v) => ({ value: v, label: tn(`seg_${kind}_${v}`) }));
@@ -290,10 +320,15 @@ export function SharedAgentSettings({ ctx, form }) {
 
   const agentMain = html`
     <div class=${fc("field", "backend")}>${head("backend", "g-be", tn("defaultBackend"), tn("tipBackend"), { mark: mark("backend"), host: true })}
-      <${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} hostOnly /><${Info}>${tn("backendInfo")} <a href=${settingsPath("runtimes")}>${tn("backendInfoLink")}<span aria-hidden="true"> →</span></a></${Info}>${note("backend")}</div>
+      <${BackendSelect} id="g-be" value=${f.backend} onChange=${(backend) => { set("backend")(backend); set("model")(""); }} hostOnly /><${Info}>${tn("backendInfo")} <a href=${settingsPath("runtimes")}>${tn("backendInfoLink")}<span aria-hidden="true"> →</span></a></${Info}>${note("backend")}</div>
     <div class=${fc("field", "model")}>${head("model", "g-model", tn("defaultModel"), tn("tipModel"), { mark: mark("model") })}
       <${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")} backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} />${note("model")}</div>
-    <div class=${fc("field", "auto")}>${head("auto", "g-auto", `${tn("autoPause")} (${tn("minutes")})`, tn("tipAutoPause"), { mark: mark("auto") })}
+    ${edited(f, base, "model") || edited(f, base, "backend") ? html`<div class="field s-default-adoption">
+      <label for="g-default-adoption">${tn("defaultIdentityWhen")}</label>
+      <${Select} id="g-default-adoption" value=${sharedDefaultMode} onChange=${set("defaultAdoption")}
+        options=${[{ value: "next-start", label: tn("defaultIdentityNext") }, { value: "restart", label: tn("defaultIdentityRestart"), disabled: !restartTargets.length }]} />
+    </div>` : null}
+    <div class=${fc("field", "auto")}>${head("auto", "g-auto", tn("defaultLabelWithUnit", tn("autoPause"), tn("minutes")), tn("tipAutoPause"), { mark: mark("auto") })}
       <input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} />${note("auto")}</div>
     <div class=${fc("field", "tool_progress")}>${head("tool_progress", "g-tp", tn("toolProgress"), tn("tipToolProgress"), { mark: mark("tool_progress"), bare: true })}
       <${Seg} id="g-tp" labelledBy="g-tp-l" value=${f.tool_progress} onChange=${set("tool_progress")} options=${seg("tool_progress", TOOL_PROGRESS)} />${note("tool_progress")}</div>`;
@@ -339,7 +374,7 @@ export function SharedAgentSettings({ ctx, form }) {
     <div class=${fc("field", "concurrency")}>${head("concurrency", "g-conc", tn("concurrency"), tn("tipConcurrency"), { mark: mark("concurrency") })}
       <input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} />
       <${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} tip=${defaultTip} />` : null}${note("concurrency")}</div>
-    <div class=${fc("field", "stagger")}>${head("stagger", "g-stag", `${tn("staggerDelay")} (ms)`, tn("tipStagger"), { mark: mark("stagger") })}
+    <div class=${fc("field", "stagger")}>${head("stagger", "g-stag", tn("defaultLabelWithUnit", tn("staggerDelay"), "ms"), tn("tipStagger"), { mark: mark("stagger") })}
       <input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} />
       <${Feedback} error=${errors.stagger} warning=${warnings.stagger} />${note("stagger")}</div>`;
 

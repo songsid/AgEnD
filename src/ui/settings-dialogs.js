@@ -19,7 +19,8 @@ import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
 import {AgentRuntimeSettings} from "./agent-runtime-settings.js";
-import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import "./settings-strings.js";
+import "./settings-default-model-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import "./settings-shared-strings.js";
 import { pt } from "./agent-page-strings.js";
 import { ew } from "./effort-field-strings.js";   // the effort field's words: lazy and fixed (a retained old agent-page-strings lacks them)
@@ -68,7 +69,7 @@ export const choiceOptions = (field, values) => values.map((v) => ({ value: v, l
 export function Select({ value, options, onChange, disabled, id, label }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   return html`<select id=${id} value=${value} disabled=${disabled} aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
-    ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>`;
+    ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
 }
 /**
  * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
@@ -447,7 +448,7 @@ export function AgentFields({ m, cat, onDelete, idPrefix = "" }) {
     </${Card}>
     <${Card} title=${pt("cardModel")}>
       <div class="field">${L(tn("model"), "instance.model", "ag-model", pt("tip_model"))}<${ModelSelect} id=${fieldId("ag-model")} value=${f.model} onChange=${set("model")}
-        backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+        backend=${acctBackend} instance=${name} profile=${windows ? undefined : acct} inherit=${tn("inheritValue", (!windows && acctBackend === (defaults.backend || "claude-code") && defaults.model) || tn("modelCliDefault"))} /></div>
       <${EffortField} m=${m} id=${fieldId("ag-effort")} />
       ${acctBackend === "codex" && !windows ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed", pt("tip_codexSpeed"))}
         <${Select} id=${fieldId("ag-speed")} value=${f.codex_speed} onChange=${set("codex_speed")}
@@ -844,7 +845,7 @@ export function useClassicForm({ room, ctx }) {
   const { fleet, classic, schema } = ctx;
   const cd = (classic && classic.defaults) || {}, fd = fleet.defaults || {};
   const inherited = {
-    backend: cd.backend || fd.backend || "claude-code", model: cd.model || fd.model || "",
+    backend: cd.backend || fd.backend || "claude-code",
     auto_pause_after: cd.auto_pause_after ?? fd.auto_pause_after ?? 0, tool_progress: cd.tool_progress ?? fd.tool_progress ?? "off",
     reply_triggers: Boolean(cd.reply_triggers ?? fd.reply_triggers ?? schema.reply_triggers_default),
     reply_completion_guard: cd.reply_completion_guard ?? fd.reply_completion_guard ?? true,
@@ -921,6 +922,7 @@ export function useClassicForm({ room, ctx }) {
 
 /** The fields of one category of a ClassicBot room: the dialog's fields, grouped, each with its ⓘ. */
 export function ClassicFields({ m, cat, idPrefix = "" }) {
+  const cd = m.ctx.classic?.defaults || {};
   const { c, f, set, setInherit, errors, classicMode, fd, inherited, roomInh, schema, L: originalLabel, acct, setAcct, acctBackend } = m;
   const fieldId = key => key == null ? key : `${idPrefix}${key}`;
   const L = (text, field, key, tip) => originalLabel(text, field, fieldId(key), tip);
@@ -929,7 +931,7 @@ export function ClassicFields({ m, cat, idPrefix = "" }) {
         ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}
         ${capsOf(acctBackend)?.namedAccounts ? html`<${AccountSelect} id=${fieldId("cl-account")} backend=${acctBackend} value=${acct} onChange=${setAcct} />` : null}</div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model", pt("tip_classicModel"))}<${ModelSelect} id=${fieldId("cl-model")} value=${f.model} onChange=${set("model")}
-        backend=${f.backend} instance=${c.instanceName} profile=${acct} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend} instance=${c.instanceName} profile=${acct} inherit=${tn("inheritValue", ((f.backend === (cd.backend || fd.backend || "claude-code") && cd.model?.trim()) || (f.backend === (fd.backend || "claude-code") && fd.model?.trim())) || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto", pt("tip_classicAutoPause"))}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
           <input id=${fieldId("cl-auto")} type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}

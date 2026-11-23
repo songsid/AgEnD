@@ -86,3 +86,14 @@ describe("Classic behavior setting fallback", () => {
     ]));
   });
 });
+
+it("scopes fleet and Classic model defaults to their declaring backend", () => {
+  const m = manager({ defaults: { backend: "codex", model: "classic-codex" }, channels: {
+    "alpha#discord": { channelId: "alpha", adapterId: "discord", instanceName: "room-alpha", backend: "muse" },
+    "beta#discord": { channelId: "beta", adapterId: "discord", instanceName: "room-beta", backend: "claude-code" },
+    "gamma#discord": { channelId: "gamma", adapterId: "discord", instanceName: "room-gamma" },
+  } });
+  expect(m.getModel("alpha", "discord", "fleet-claude", "claude-code")).toBeUndefined();
+  expect(m.getModel("beta", "discord", "fleet-claude", "claude-code")).toBe("fleet-claude");
+  expect(m.getModel("gamma", "discord", "fleet-claude", "claude-code")).toBe("classic-codex");
+});

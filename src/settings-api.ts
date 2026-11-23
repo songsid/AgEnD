@@ -220,7 +220,8 @@ export interface SettingsApiContext extends AppShellContext {
   };
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
-  startSettingsApply?(key: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
+  captureSharedDefaultsConsent?(): string;
+  startSettingsApply?(key: string, sharedDefaults?: "next-start" | "restart", restartTargets?: readonly string[], receipt?: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
   /** `jobId` null (S-92): the pending changes' own restart — the restart notice with no Settings job behind it. */
   requestSettingsSelfRestart?(jobId: string | null, key: string): Promise<SelfRestartResult>;
   /** Non-null when the running config and fleet.yaml disagree on a
@@ -1921,6 +1922,10 @@ export function handleSettingsRequest(
       const restored = restoreRedactedSecrets(body, cfg.defaults);
       if ("path" in restored) return json(res, 400, { error: `redacted value has no stored credential: defaults.${restored.path}` });
       const merged = { ...cfg.defaults, ...officeInputPatch(restored.value) };
+      // A backend-only edit must not relabel the previous backend's model as a
+      // default for the new CLI. An explicitly supplied model still passes through.
+      if ((body.backend !== undefined && body.backend !== cfg.defaults.backend && !Object.hasOwn(body, "model"))
+        || body.model === null || body.model === "") delete (merged as Record<string, unknown>).model;
       // #3212: backend_options is replaced whole, like every nested map in this write (the top-level keys merge): Settings
       // → Accounts sends the whole map, and so does the Advanced editor, where leaving a key out removes it.
       if (body.backend_options !== undefined && body.backend_options && typeof body.backend_options === "object" && !Array.isArray(body.backend_options)) {
@@ -1941,10 +1946,12 @@ export function handleSettingsRequest(
       const before = validateFleet(cfg);
       const after = validateFleet({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
+      let sharedDefaultsConsent: string | undefined;
       settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults;
         if (typeof body.tips === "boolean" || body.tips === "dm") setNoticeMode(cfg, "tips", body.tips);
-        ctx.saveFleetConfig(); });
-      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+        ctx.saveFleetConfig();
+        sharedDefaultsConsent = ctx.captureSharedDefaultsConsent?.(); });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after), shared_defaults_consent: sharedDefaultsConsent });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -2261,7 +2268,18 @@ export function handleSettingsRequest(
         json(res, 400, { error: "Idempotency-Key required (8-128 chars of [A-Za-z0-9_.:-])" });
         return;
       }
-      const result = ctx.startSettingsApply!(key);
+      if (body.shared_defaults !== undefined && !["next-start", "restart"].includes(body.shared_defaults as string)) {
+        json(res, 400, { error: "invalid shared_defaults choice" }); return;
+      }
+      const targets = body.shared_defaults_targets;
+      const receipt = body.shared_defaults_consent;
+      if ((targets !== undefined && (!Array.isArray(targets) || targets.some(name => typeof name !== "string" || name.length < 1 || name.length > 256 || /[\x00-\x1f\x7f]/.test(name))))
+        || (body.shared_defaults === "restart" && (!Array.isArray(targets) || !targets.length || typeof receipt !== "string" || !/^[0-9a-f-]{36}$/.test(receipt)))) {
+        json(res, 400, { error: "confirmed shared_defaults_targets required for restart" }); return;
+      }
+      const result = ctx.startSettingsApply!(key, body.shared_defaults === "restart" ? "restart" : "next-start",
+        body.shared_defaults === "restart" ? targets as string[] : [],
+        body.shared_defaults === "restart" ? receipt as string : undefined);
       if ("busy" in result) {
         // One reconcile at a time: two of them stop and start the same agent in
         // parallel. The running job's id lets the client watch that one instead.
