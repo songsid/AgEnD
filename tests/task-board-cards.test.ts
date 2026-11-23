@@ -598,7 +598,7 @@ describe("the card page's activity is a stream: a card for what is said, a thin 
       const m = /^\/ui\/tasks\/cards\/([^/]+)$/.exec(path);
       if (m && method === "GET") {
         const c = CARDS.find((x: any) => x.id === decodeURIComponent(m[1]!)) ?? CARDS[0];
-        return { card: c, parent: null, children: CARDS.filter((x: any) => x.parentId === c.id),
+        return { card: c, parent: null, children: CARDS.filter((x: any) => x.parentId === c.id), watchers: [], inheritedWatchers: [], leader: null, followsProgress: true,
           comments: [{ id: 1, author: "Ann", authorKind: "person", text: "Please **check** this", at: AT(50) }, { id: 2, author: "alpha", authorKind: "instance", text: "Will do.", at: AT(30) }],
           logs: [{ id: 3, author: "alpha", authorKind: "instance", text: "Endpoint done", at: AT(20) }],
           history: [ev(10, "Ann", 90, "created", {}), ev(11, "alpha", 80, "moved", { from: "open", to: "claimed", auto: true }, "instance"), ev(12, "Ann", 70, "updated", { changes: { acceptance: [] } })], ...over };
@@ -750,7 +750,7 @@ describe("the card page's activity is a stream: a card for what is said, a thin 
     expect(kids(q(".tp-activity")).at(-1)).toBe(box);
     expect(box.querySelector("textarea")).toBeTruthy();
     expect(box.querySelector(".btn-primary"), "Send is in the box").toBeTruthy();
-    expect(box.querySelector("textarea").getAttribute("placeholder")).toBe("Comment (Ctrl+Enter sends)");
+    expect(box.querySelector("textarea").getAttribute("placeholder")).toBe("Comment to alpha — @ names an instance (Ctrl+Enter sends)");
     const ta = box.querySelector("textarea"); ta.value = "hello"; fire(ta, "input"); await settle(3);
     fire(ta, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
     expect(posts().map((c) => c.body)).toEqual([{ comment: "hello" }]);
@@ -1060,7 +1060,7 @@ describe("round 7: a comment is formatted as the instance chat's window formats 
       const m = /^\/ui\/tasks\/cards\/([^/]+)$/.exec(path);
       if (m && method === "GET") {
         const c = CARDS.find((x: any) => x.id === decodeURIComponent(m[1]!)) ?? CARDS[0];
-        return { card: c, parent: null, children: [], comments: list, logs, history: [] };
+        return { card: c, parent: null, children: [], watchers: [], inheritedWatchers: [], leader: null, followsProgress: true, comments: list, logs, history: [] };
       }
       return { card: CARDS[0], notes: [] };
     };

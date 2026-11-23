@@ -844,6 +844,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings #g-liveness input { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
+  /* The same for "When the task board wakes an agent" (its switches and the leader menu). */
+  .p-settings #g-wakes select { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
      top and the actions at the bottom, inside it. The app's own questions (ask()) stay bottom sheets. */
   .p-settings .dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
@@ -3029,6 +3033,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #1682: a mention, as Discord draws one — accent text on a tint of it; the id (or the Telegram handle) on hover. */
 .md .mention { display: inline; padding: 0 0.2em; border-radius: var(--r-sm); color: var(--accent); background: var(--accent-dim);
   font-weight: var(--fw-medium); white-space: nowrap; }
+/* A task card in a person's message — number, title, status; a link to the card (Fleet › Tasks). The status is the
+   board's own pill (.tb-pill, below); the colours are the page's tokens. */
+.msg .md a.task-ref, .md a.task-ref { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); text-decoration: none; vertical-align: baseline; line-height: 1.6; }
+.md a.task-ref:hover { border-color: var(--accent); }
+.md a.task-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.md .task-ref-code { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--accent); flex-shrink: 0; }
+.md .task-ref-title { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md a.task-ref .tb-pill { flex-shrink: 0; }
+/* …and the list the composer opens while `#` is typed: the command palette's own look, the title taking the row's room. */
+.task-ref-list .cmd-desc { flex: 1; }
+.task-ref-list .tb-pill { flex-shrink: 0; }
 
 /* #1629 r4 §1 / r4.1 Q3 (a): the identity card (identity-card.js). The size is a class token; its heights are here
    (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240). Never a style attribute.

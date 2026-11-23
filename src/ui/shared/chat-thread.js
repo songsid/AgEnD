@@ -112,11 +112,15 @@ const mdCache = new Map();
 const EMOJI_IDS = /<a?:[A-Za-z0-9_]{2,32}:(\d{15,25})>/g;
 const MENTION_IDS = /<(@!?|@&|#)(\d{15,25})>/g;
 const MENTION_KINDS = { "@": "u", "@!": "u", "@&": "r", "#": "c" };
-export function renderedMarkdown(text, cards, emojis, mentions, labels) {
+/** A text that may name a task card (#M-3, #s3): the quick test before the exact one. */
+const TASK_REF_HINT = /#[MmSs]-?\d/;
+export function renderedMarkdown(text, cards, emojis, mentions, labels, taskRefs) {
   const src = typeof text === "string" ? text : String(text == null ? "" : text);
   let sig = cards ? "c" : "-";
   // M-3092: a Hub room's mention labels change the drawing, so they are part of its key.
   if (Array.isArray(labels) && labels.length) sig += `|L${labels.join("\u0001")}`;
+  // A person's task numbers are chips while the page knows the card (what it knows, its words included, is in the key).
+  if (typeof taskRefs === "function" && typeof R().taskRefCodes === "function" && TASK_REF_HINT.test(src)) for (const code of R().taskRefCodes(src)) { const info = taskRefs(code); sig += `|t${code}=${info && typeof info === "object" ? JSON.stringify(info) : "-"}`; }
   if (src.includes("<")) {
     // Read as renderMarkdown reads it: it drops NUL first (its placeholder mark), so "<@\0id>" is a mention there too.
     const seen = src.includes("\u0000") ? src.replace(/\u0000/g, "") : src;
@@ -127,6 +131,7 @@ export function renderedMarkdown(text, cards, emojis, mentions, labels) {
   let html = mdCache.get(key);
   // The fleet's call is unchanged; only a Hub room passes its mention labels (M-3092).
   if (html === undefined) html = Array.isArray(labels) && labels.length ? R().renderMarkdown(src, { htmlCards: cards, emojis, mentions, mentionLabels: labels })
+    : typeof taskRefs === "function" ? R().renderMarkdown(src, { htmlCards: cards, emojis, mentions, taskRefs })
     : R().renderMarkdown(src, { htmlCards: cards, emojis, mentions });
   else mdCache.delete(key);
   mdCache.set(key, html);
@@ -214,7 +219,7 @@ export function createThread(list, scroller, opts) {
     // M-3339: a contact request's badge (聯絡申請 #R… / 已准轉交 #R…) — escaped HTML from the Fleet chat's hook; a Hub passes none.
     const contact = typeof opts.contactBadge === "function" && x.contactTicket ? String(opts.contactBadge(x) || "") : "";
     // M-3092 (Hub rooms): another person's message, a bubble on the left (`msg-person`); the fleet never sets x.person.
-    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}${contact}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}${resend}</div>`;
+    return `<div class="msg ${u ? "user" : "agent"}${x.person ? " msg-person" : ""}" data-key="${escAttr(key)}" tabindex="-1">${act}<div class="meta"><span class="sender"${badge}>${escAttr(x.sender)}</span>${time}${ticks}${contact}</div>${quoteHtml(x.replyTo)}<div class="body">${clicked ? clickHtml(x.click) : `<div class="md">${renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.(), x.role === "user" ? opts.taskRefs : undefined)}</div>`}${R().attachmentsHtml(x.attachments, { htmlCards: x.role === "agent", goneTitle: tr(x.archived ? "chat.attNotKeptTitle" : "chat.attGone"), goneLabel: tr(x.archived ? "chat.attNotKept" : "chat.attUnavailable"), inlinePreviews: !PUBLIC_LINK(), textPreviews: true })}${buttons}</div>${Array.isArray(x.reactionBar) ? reactBarHtml(x, key, reactable) : R().reactionsHtml(x.reactions, tr("chat.reactedBy", x.instance || ""))}${tools}${resend}</div>`;
   }
   /** M-3127: a room's words for its reaction controls (opts.reactText(key)), English when the page gives none. */
   function reactText(k, ...a) {
@@ -282,7 +287,7 @@ export function createThread(list, scroller, opts) {
       + `<button type="button" class="btn btn-sm" data-act="deleteOut" data-arg="${escAttr(x.clientId)}">${escAttr(tr("chat.deleteUnsent"))}</button></span></div>` : "";
     const state = going ? `<span class="out-state" role="status"><span class="out-spin" aria-hidden="true"></span>${escAttr(tr("chat.sending"))}</span>` : "";
     return `<div class="msg user out out-${st}" data-out="${escAttr(x.clientId)}"${going ? ' aria-busy="true"' : ""} tabindex="-1"><div class="meta"><span class="sender">${escAttr(x.sender)}</span>${state}</div>`
-      + `${quoteHtml(x.replyTo)}<div class="body">${x.text ? `<div class="md">${renderedMarkdown(x.text, false, opts.emojis, opts.mentions, opts.mentionLabels?.())}</div>` : ""}`
+      + `${quoteHtml(x.replyTo)}<div class="body">${x.text ? `<div class="md">${renderedMarkdown(x.text, false, opts.emojis, opts.mentions, opts.mentionLabels?.(), opts.taskRefs)}</div>` : ""}`
       + `${files ? `<div class="out-files">${files}</div>` : ""}</div>${failed}</div>`;
   }
   /** The pending bubbles' upload bars and percentages, as their files stand now (in place: CSSOM, no redraw). */

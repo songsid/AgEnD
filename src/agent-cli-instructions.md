@@ -41,15 +41,21 @@ agend-agent list                                  # List running agents
 agend-agent describe NAME                         # Get agent details
 agend-agent start NAME                            # Start stopped agent
 
-# Task Board
-agend-agent task create "title"                   # Create task
-agend-agent task list                             # List tasks
+# Task Board (same actions and fields as the `task` tool; a flag takes its value as the next word or --flag=value, `--` ends the flags)
+agend-agent task create "title" [desc] [priority] [assignee] [FLAGS]   # FLAGS: --project P --parent M-3 --scope TXT --acceptance ITEM (repeat) --context TXT --needs-review --size S|M|L --dispatcher NAME --depends-on ID,… — any of project/parent/scope/acceptance/context/needs-review/size/dispatcher opens a board card (M-n; S-n with --parent), none of them a plain task
+agend-agent task list [assignee] [status,…] [--project P] [--parent M-3] [--stale] [--detail] [--limit N] [--cursor C]   # live cards unless a status is named; --stale: claimed cards whose assignee stopped; follow next_cursor with the same filters
 agend-agent task claim ID                         # Claim task
 agend-agent task done ID "result"                 # Complete task
 agend-agent task mine                             # Your work on the board (start here after a reset)
 agend-agent task get M-3 --detail                 # Full card, with comments new to you
-agend-agent task move M-3 STATUS ["text"]         # claimed (from blocked: "the answer"); blocked "who must answer what"; review/done "result"
-agend-agent task comment M-3 "text"               # Comment on a card
+agend-agent task move M-3 STATUS ["text"] [--comment TXT] [--version N]   # claimed (from blocked: "the answer"); blocked "who must answer what"; review/done "result"
+agend-agent task update M-3 [STATUS [priority]] [--title T] [--description D] [--priority P] [--assignee A] [--scope S] [--context C] [--state S] [--log L] [--comment C] [--acceptance ITEM] [--check N,…] [--uncheck N,…] [--needs-review|--no-needs-review] [--size S|M|L] [--dispatcher NAME|none] [--project ID|none] [--depends-on ID,…] [--result R] [--version N]   # one write: all the flags together; --version N: the version you read, refused if the card moved on
+agend-agent task comment M-3 "text" [--version N]   # Comment on a card; @<instance> in it wakes that instance
+agend-agent task projects                         # Projects (with their ids)
+agend-agent task create-project "name" ["description"]   # A project you may add cards to; renaming and archiving are a person's
+agend-agent task move-project PROJECT_ID M-3 [M-4…]      # Main tasks into (or, with none, out of) a project; each moves or is refused on its own
+agend-agent task watch M-3 [INSTANCE]             # Follow a card (you by default; another instance only on a card you may edit)
+agend-agent task unwatch M-3 [INSTANCE]           # Stop following it
 
 # Decisions
 agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)

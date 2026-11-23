@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **`agend-agent task` can do everything the `task` tool can.** An agent in CLI mode (`agent_mode: cli`) could not follow a card, open a sub task or a card in a project, or make a project. The command line now has `watch`, `unwatch`, `create-project` and `move-project`; `create` takes `--project`, `--parent`, `--scope`, `--acceptance`, `--context`, `--needs-review`, `--size`, `--dispatcher` and `--depends-on`; `list` takes `--project`, `--parent`, `--stale`, `--detail`, `--limit` and `--cursor`; `update` and `move` take every field the tool does (`--check`, `--uncheck`, `--state`, `--log`, `--comment`, `--version`, …). The fleet judges these by the same rules as a tool call (who may edit a card, a stale `version`, one card at a time, the tool profile), and the words that always had a place keep it.
