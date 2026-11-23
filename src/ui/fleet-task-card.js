@@ -20,6 +20,7 @@ import { StepButtons, movesFor } from "./fleet-task-menu.js";
 import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
 import { Composer, Timeline } from "./fleet-task-activity.js";
 import { AgentRun } from "./fleet-task-run.js";
+import { LeaderRow, WatchersRow } from "./fleet-task-follow.js";
 
 register("taskcard", {
   en: {
@@ -42,10 +43,11 @@ register("taskcard", {
     subs: "Sub tasks", quickAdd: "New sub task: type a title and press Enter (small work needs no split)",
     activity: "Activity", activityShow: "Show", "show.all": "All", "show.comments": "Comments", "show.log": "Progress", "show.history": "History",
     noActivity: "Nothing yet — a comment, a progress note or a change shows here", nothingHere: "Nothing of this kind yet",
-    rejectTag: "Sent back", approveTag: "Confirmed", commentHint: "Comment (Ctrl+Enter sends)", send: "Send",
+    rejectTag: "Sent back", approveTag: "Confirmed", commentTo: "Comment to {0} — @ names an instance (Ctrl+Enter sends)", commentHint: "Comment — @ names an instance (Ctrl+Enter sends)", send: "Send",
+    mentionList: "Instances to mention", boardOffShort: "task board off",
     rowMoved: "changed status from {0} to {1}", rowAssigned: "changed assignee from {0} to {1}", activities: "{0} activities", activity1: "1 activity",
     logTip: "A one-line work note an agent or member wrote down — not a comment",
-    evCreated: "opened it", evMoved: "{0} → {1}", evAuto: " (automatic)", evAssigned: "assignee {0} → {1}", evUpdated: "changed {0}", evCommented: "commented", evLogged: "log: {0}",
+    evCreated: "opened it", evMoved: "{0} → {1}", evAuto: " (automatic)", evAssigned: "assignee {0} → {1}", evUpdated: "changed {0}", evCommented: "commented", evLogged: "log: {0}", evWatchers: "changed watchers: {0}",
     fTitle: "title", fGoal: "goal", fScope: "scope", fContext: "context", fState: "state", fResult: "result", fBlockedReason: "blocked reason", fSize: "size",
     fPriority: "priority", fNeedsReview: "needs review", fDependsOn: "dependencies", fAcceptance: "acceptance", fProjectId: "project",
     position: "Position", moveUp: "Move up", moveDown: "Move down", properties: "Properties", crumbs: "Where this card is", backBoard: "Back to the board", backList: "Back to the list",
@@ -76,10 +78,11 @@ register("taskcard", {
     subs: "子任務", quickAdd: "新增子任務：輸入標題後按 Enter（小事可以不拆）",
     activity: "動態", activityShow: "顯示", "show.all": "全部", "show.comments": "留言", "show.log": "進度", "show.history": "歷史",
     noActivity: "還沒有動態 — 留言、進度紀錄與變更都會出現在這裡", nothingHere: "這類還沒有內容",
-    rejectTag: "退回", approveTag: "確認", commentHint: "留言（Ctrl+Enter 送出）", send: "送出",
+    rejectTag: "退回", approveTag: "確認", commentTo: "留言給 {0} — 輸入 @ 可選 Agent（Ctrl+Enter 送出）", commentHint: "留言 — 輸入 @ 可選 Agent（Ctrl+Enter 送出）", send: "送出",
+    mentionList: "可提及的 Agent", boardOffShort: "任務板已關閉",
     rowMoved: "把狀態從 {0} 改成 {1}", rowAssigned: "把負責人從 {0} 改成 {1}", activities: "{0} 項動態", activity1: "1 項動態",
     logTip: "agent 或成員記下的一行工作紀錄，不是留言",
-    evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}",
+    evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}", evWatchers: "修改關注者：{0}",
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
     fPriority: "優先度", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
     position: "位置", moveUp: "往上移", moveDown: "往下移", properties: "屬性", crumbs: "這張卡的位置", backBoard: "回到看板", backList: "回到清單",
@@ -104,7 +107,7 @@ export function describeEvent(ev) {
     case "assigned": return t("taskcard.evAssigned", d.from || "—", d.to || "—");
     case "updated": return t("taskcard.evUpdated", Object.keys(d.changes || {}).map((k) => fieldName(k)).join(", "));
     case "commented": return t("taskcard.evCommented");
-    case "logged": return t("taskcard.evLogged", d.text || "");
+    case "logged": return d.watchers ? t("taskcard.evWatchers", watcherChange(d)) : t("taskcard.evLogged", d.text || "");
     default: return ev.type;
   }
 }
@@ -118,6 +121,16 @@ export function describeRow(ev) {
   if (ev.type === "assigned") return t("taskcard.rowAssigned", d.from || "—", d.to || "—");
   return describeEvent(ev);
 }
+/**
+ * A watcher change as the board wrote it (`data.watchers`: { added, removed }): "+ops, −dev-b" — the true minus sign, not a hyphen,
+ * so a narrow line never breaks between the sign and the name; the event's own text when the lists are not there.
+ */
+const watcherChange = (d) => {
+  const w = d.watchers || {};
+  const names = (list) => (Array.isArray(list) ? list.filter((n) => typeof n === "string") : []);
+  const parts = [...names(w.added).map((n) => `+${n}`), ...names(w.removed).map((n) => `\u2212${n}`)];
+  return parts.length ? parts.join(", ") : String(d.text || "").replace(/^watchers:\s*/, "");
+};
 const fieldName = (k) => { const key = `taskcard.f${k[0].toUpperCase()}${k.slice(1)}`; const s = t(key); return s === key ? k : s; };
 
 // ── What each chip offers (pure: tests import these) ────────
@@ -277,6 +290,13 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     return job;
   };
   const names = [...new Set([...instances.map((i) => i.name), card.assignee].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  // Only the fleet's instances can be mentioned (an assignee that has left the fleet, or a person, would wake nobody); the
+  // card's assignee comes first.
+  const fleet = instances.map((i) => i.name);
+  const mentionNames = [...(fleet.includes(card.assignee) ? [card.assignee] : []), ...fleet.filter((n) => n !== card.assignee)].map((name) => ({ name, off: boardOff.includes(name) }));
+
+  /** Who watches the card: no version (a watch is not an edit of the card), the card and the board read again after. */
+  const follow = (change) => run(() => boardApi.watchers(card.id, change));
 
   async function chooseAssignee(value) {
     if (value === "\u0000other") {
@@ -391,8 +411,10 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
             items=${can ? [{ key: "none", label: t("tasks.noProject"), checked: card.projectId === null, onSelect: () => save({ projectId: null }) },
               ...projects.filter((p) => !p.archived || p.id === card.projectId).map((p) => ({ key: String(p.id), label: p.name, checked: card.projectId === p.id, onSelect: () => save({ projectId: p.id }) }))] : null} />`) : null}
           ${parent ? row(t("taskcard.parent"), html`<button type="button" class="tb-link" onClick=${() => onOpen(parent.id)}><span class="tb-code">${parent.id}</span> ${parent.title}</button>`) : null}
+          <${LeaderRow} detail=${detail} names=${fleet} boardOff=${boardOff} can=${can} follow=${follow} />
           ${row(t("taskcard.dispatcher"), html`<${PropChip} label=${t("taskcard.dispatcher")} items=${can ? dispatcherItems(card, names, (v) => save({ dispatcher: dispatcherValue(v) })) : null}
-            value=${html`<span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone") : card.dispatcher.kind === "person" ? t("taskcard.dispatcherPerson", card.dispatcher.name) : card.dispatcher.name}</span>`} />`)}`)}
+            value=${html`<span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone") : card.dispatcher.kind === "person" ? t("taskcard.dispatcherPerson", card.dispatcher.name) : card.dispatcher.name}</span>`} />`)}
+          <${WatchersRow} detail=${detail} names=${fleet} boardOff=${boardOff} can=${can} follow=${follow} />`)}
         ${group("flow", t("taskcard.groupFlow"), html`
           ${row(t("taskcard.review"), can ? html`<label class="tp-switch"><input type="checkbox" role="switch" class="s-ui-toggle" aria-label=${t("taskcard.reviewBox")} checked=${card.needsReview} onChange=${(e) => void save({ needsReview: e.target.checked })} /><span class="tc-hint muted">${t("taskcard.reviewShort")}</span></label>`
             // #2299: read-only: the values as text, not controls that look usable and are not.
@@ -408,7 +430,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
 
       <div class="tp-activity">
         <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} />
-        ${can ? html`<${Composer} placeholder=${t("taskcard.commentHint")}
+        ${can ? html`<${Composer} names=${mentionNames} assignee=${card.assignee} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")}
           onSend=${(text) => run(() => boardApi.update(card.id, { comment: text }))} />` : null}
       </div>
     </div>

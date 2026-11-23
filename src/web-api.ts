@@ -190,6 +190,12 @@ const CardMoveSchema = z.object({
   version: z.number().int().optional(),
 }).strict();
 
+/** Following a card (docs/design/task-board.md): instances to start and to stop watching it, in one write. */
+const CardWatchersSchema = z.object({
+  add: z.array(z.string().min(1).max(256)).max(10).optional(),
+  remove: z.array(z.string().min(1).max(256)).max(10).optional(),
+}).strict();
+
 const CardReorderSchema = z.object({ after: CardRef.nullable().optional(), before: CardRef.nullable().optional() }).strict();
 
 const ProjectCreateSchema = z.object({ name: z.string().max(256), description: z.string().max(BOARD_TEXT).optional(), leadInstance: z.string().max(256).nullable().optional() }).strict();
@@ -4066,11 +4072,15 @@ export function handleWebRequest(
       card: unnumbered(d.card),
       parent: d.card.parentId && hiddenRef(d.card.parentId) ? null : d.parent,
       children: d.children.filter((c) => !hidden(c)).map(unnumbered),
+      watchers: d.watchers.filter((n) => !hiddenName(n)),
+      // A main task kept out of sight is not named here either: its watchers go with it (the `parent` above reads as none).
+      inheritedWatchers: d.card.parentId && hiddenRef(d.card.parentId) ? [] : d.inheritedWatchers.filter((n) => !hiddenName(n)),
+      leader: d.leader && hiddenName(d.leader.name) ? null : d.leader,       // as a project's hidden lead: read as none
       comments: d.comments.filter((e) => !hiddenName(e.author)),
       logs: d.logs.filter((e) => !hiddenName(e.author)),
       history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)).flatMap((e) => unnumberedEvent(e) ?? []),
     };
-    const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder))?$/.exec(path);
+    const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder|watchers))?$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
     try {
       const ref = card ? decodeURIComponent(card[1]!) : "";
@@ -4174,6 +4184,11 @@ export function handleWebRequest(
           boardWrite(req, res, url, ctx, board, CardMoveSchema, ({ to, ...move }, person) => {
             const { card: moved, said } = board.moveCard(person, ref, to, move);
             return { card: board.view(moved, {}, ctx.dispatcherGone), notes: said };
+          });
+        } else if (card[2] === "watchers") {
+          boardWrite(req, res, url, ctx, board, CardWatchersSchema, (change, person) => {
+            const { card: watched, watchers, said } = board.setWatchers(person, ref, change);
+            return { card: board.view(watched, {}, ctx.dispatcherGone), watchers: watchers.filter((n) => !hiddenName(n)), notes: said };
           });
         } else if (card[2] === "reorder") {
           boardWrite(req, res, url, ctx, board, CardReorderSchema, ({ after, before }, person) => ({ card: board.view(board.reorder(person, ref, after ?? null, before ?? null), {}, ctx.dispatcherGone) }));

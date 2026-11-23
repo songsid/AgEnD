@@ -561,6 +561,7 @@ describe("4g. no other card number of a card kept out of sight over the link —
   const fleetConfig = { defaults: {}, instances: { "dev-a": {}, ops: {}, spy: { cross_instance_visibility: "hidden" } } };
   const seed = () => {
     const db = scratchDb();
+    db.board.setCommentRouting({ instances: () => ["dev-a", "ops", "spy"], enabled: () => true });
     // `hidden` is held by a hidden instance, `plain` by a visible one; `work` (visible) depends on both, `only` (visible) on the hidden one alone.
     const hidden = db.board.createCards(ANN, { cards: [{ title: "Hidden dependency", assignee: "spy" }] }).cards[0]!;
     const plain = db.board.createCards(ANN, { cards: [{ title: "Plain dependency", assignee: "ops" }] }).cards[0]!;
@@ -665,6 +666,7 @@ describe("4g. no other card number of a card kept out of sight over the link —
 
   it("a sub task taken down with a main task kept out of sight (and brought back) does not carry that main task's number in its \"moved\" events; a visible main task's is kept", async () => {
     const db = scratchDb();
+    db.board.setCommentRouting({ instances: () => ["dev-a", "ops", "spy"], enabled: () => true });
     const hiddenMain = db.board.createCards(ANN, { cards: [{ title: "Hidden main", assignee: "spy" }] }).cards[0]!;
     const sub = db.board.createCards(ANN, { cards: [{ parent: hiddenMain.code, title: "Visible sub", assignee: "dev-a" }] }).cards[0]!;
     const openMain = db.board.createCards(ANN, { cards: [{ title: "Open main", assignee: "dev-a" }] }).cards[0]!;
@@ -695,6 +697,131 @@ describe("4g. no other card number of a card kept out of sight over the link —
         .toEqual([{ from: [], to: [hidden.code] }, { from: [hidden.code], to: [] }]);
       expect((await get(db, "/ui/tasks/board", opts)).body.cards.find((c: any) => c.id === work.code).dependsOn, JSON.stringify(opts)).toEqual([plain.code, hidden.code]);
     }
+  });
+});
+
+describe("4h. who follows a card, from the dashboard", () => {
+  const fleetConfig = { defaults: {}, instances: { "dev-a": {}, ops: {}, spy: { cross_instance_visibility: "hidden" } } };
+  const named = () => {
+    const db = scratchDb();
+    db.board.setCommentRouting({ instances: () => ["dev-a", "ops", "spy"], enabled: () => true });
+    db.board.createCards(ANN, { cards: [{ title: "Work", assignee: "dev-a" }] });
+    return db;
+  };
+
+  it("a signed-in person adds and removes watchers; the card's read lists them; a name that is no instance, or a field it does not take, is a 400", async () => {
+    const db = named();
+    const set = (body: unknown, opts: { tier?: "admin" | "read" } = {}) => viaLink(db, "POST", "/ui/tasks/cards/M-1/watchers", body, { local: true, fleetConfig, ...opts });
+    const added = await set({ add: ["ops", "dev-a"] });
+    expect(added.status).toBe(200);
+    expect(added.body.watchers).toEqual(["ops", "dev-a"]);
+    expect(added.body.card).toMatchObject({ id: "M-1", version: 1 });                 // watching does not bump the card's version
+    expect((await viaLink(db, "GET", "/ui/tasks/cards/M-1", undefined, { local: true, fleetConfig })).body.watchers).toEqual(["ops", "dev-a"]);
+    expect((await set({ remove: ["dev-a"] })).body.watchers).toEqual(["ops"]);
+    const ghost = await set({ add: ["ghost"] });
+    expect([ghost.status, ghost.body.code, ghost.body.key]).toEqual([400, "invalid", "watcher_unknown"]);
+    expect((await set({ add: ["ops"], nothing: 1 })).status).toBe(400);
+    expect((await set({ add: ["ops"] }, { tier: "read" })).status).toBe(403);
+    expect((await viaLink(db, "POST", "/ui/tasks/cards/M-9/watchers", { add: ["ops"] }, { local: true, fleetConfig })).status).toBe(404);
+  });
+
+  it("over the link a read-only session does not see a hidden instance among a card's watchers — not in the card's read as a whole, its history, its logs, a search for it or the board (an admin session and the local page do)", async () => {
+    const db = named();
+    db.board.setWatchers(ANN, "M-1", { add: ["ops", "spy"] });
+    db.board.setWatchers(ANN, "M-1", { remove: ["spy"] });
+    db.board.setWatchers(ANN, "M-1", { add: ["spy"] });
+    const get = (path: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", path, undefined, { fleetConfig, ...opts });
+    const card = await get("/ui/tasks/cards/M-1", { tier: "read" });
+    expect(card.body.watchers).toEqual(["ops"]);
+    expect(JSON.stringify(card.body), "the whole read").not.toContain("spy");
+    for (const path of ["/ui/tasks/search?q=spy", "/ui/tasks/search?q=watchers", "/ui/tasks/search?q=%2Bspy", "/ui/tasks/board"]) {
+      const body = (await get(path, { tier: "read" })).body;
+      expect(JSON.stringify(body), `${path} for a read-only session`).not.toContain("spy");
+    }
+    expect((await get("/ui/tasks/search?q=spy", { tier: "read" })).body.results).toEqual([]);
+    // An event that names a hidden instance goes whole (the first one here added ops and spy together); what the person
+    // did about visible instances only stays in the history the link shows.
+    db.board.setWatchers(ANN, "M-1", { add: ["dev-a"] });
+    const after = (await get("/ui/tasks/cards/M-1", { tier: "read" })).body;
+    expect(after.history.filter((e: any) => e.type === "logged").map((e: any) => e.data.text)).toEqual(["watchers: +dev-a"]);
+    // The admin session over the link and the local page see all of it.
+    for (const opts of [{}, { local: true }] as const) {
+      const full = (await get("/ui/tasks/cards/M-1", opts)).body;
+      expect(full.watchers).toEqual(["ops", "spy", "dev-a"]);
+      expect(full.history.filter((e: any) => e.type === "logged").map((e: any) => e.data.text)).toContain("watchers: +ops, +spy");
+    }
+  });
+
+  it("the card's read names its leader and a sub task's inherited watchers; over the link a hidden instance is named in neither (the leader reads as none), and the local page sees all", async () => {
+    const db = named();
+    const project = db.board.createProject(ANN, { name: "Game" });
+    db.board.updateProject(ANN, project.id, { leadInstance: "spy" });
+    db.board.setProgressRouting({ enabled: () => true, leader: () => "ops" });
+    const main = db.board.createCards(ANN, { project: "Game", cards: [{ title: "Main", assignee: "dev-a" }] }).cards[0]!;
+    db.board.setWatchers(ANN, main.code, { add: ["ops", "spy"] });
+    const sub = db.board.createCards(ANN, { cards: [{ parent: main.code, title: "Sub" }] }).cards[0]!;
+    const get = (code: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", `/ui/tasks/cards/${code}`, undefined, { fleetConfig, ...opts });
+
+    const local = (await get(sub.code, { local: true })).body;
+    expect(local.leader).toEqual({ name: "spy", via: "project" });
+    expect(local.inheritedWatchers).toEqual(["ops", "spy"]);
+    expect(local.followsProgress).toBe(true);
+    const link = (await get(sub.code, { tier: "read" })).body;
+    expect(link.leader, "a hidden lead reads as none").toBeNull();
+    expect(link.inheritedWatchers).toEqual(["ops"]);
+    expect(JSON.stringify(link)).not.toContain("spy");
+    // A visible leader is named over the link too, and the project's lead (here none) falls back to the board's default.
+    db.board.updateProject(ANN, project.id, { leadInstance: null });
+    expect((await get(main.code, { tier: "read" })).body.leader).toEqual({ name: "ops", via: "board" });
+  });
+
+  it("a sub task whose main task is kept out of sight reads no inherited watchers over the link (its `parent` reads as none): not even the visible instances among them; the local page still sees them", async () => {
+    const db = named();
+    // The main task is held by a hidden instance; a visible instance watches it. Its sub task is held by a visible one.
+    const main = db.board.createCards(ANN, { cards: [{ title: "Hidden main", assignee: "spy" }] }).cards.find((c) => c.title === "Hidden main")!;
+    db.board.setWatchers(ANN, main.code, { add: ["ops", "dev-a"] });
+    const sub = db.board.createCards(ANN, { cards: [{ parent: main.code, title: "Visible sub", assignee: "dev-a" }] }).cards[0]!;
+    const get = (code: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", `/ui/tasks/cards/${code}`, undefined, { fleetConfig, ...opts });
+
+    const link = (await get(sub.code, { tier: "read" })).body;
+    expect(link.card.id).toBe(sub.code);
+    expect(link.parent, "the hidden main task is not named").toBeNull();
+    expect(link.inheritedWatchers, "…nor are the visible instances that watch it").toEqual([]);
+    // The local page and an admin session over the link see the main task, and what follows the sub task from it.
+    for (const opts of [{ local: true }, {}] as const) {
+      const full = (await get(sub.code, opts)).body;
+      expect(full.parent?.id, JSON.stringify(opts)).toBe(main.code);
+      expect(full.inheritedWatchers, JSON.stringify(opts)).toEqual(["ops", "dev-a"]);
+    }
+  });
+});
+
+describe("4i. a card as a chat shows it (`/ui/tasks/refs`), over the link", () => {
+  const fleetConfig = { defaults: {}, instances: { "dev-a": {}, ops: {}, spy: { cross_instance_visibility: "hidden" } } };
+  const seed = () => {
+    const db = scratchDb();
+    const hidden = db.board.createCards(ANN, { cards: [{ title: "Hidden main for the link", assignee: "spy" }] }).cards[0]!;
+    const sub = db.board.createCards(ANN, { cards: [{ parent: hidden.code, title: "Visible sub of it", assignee: "dev-a" }] }).cards[0]!;
+    const open = db.board.createCards(ANN, { cards: [{ title: "Open main for the link", assignee: "ops" }] }).cards[0]!;
+    return { db, hidden, sub, open };
+  };
+  const ask = (db: SchedulerDb, query: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", `/ui/tasks/refs${query}`, undefined, { fleetConfig, ...opts });
+  const codes = (body: any) => (body.refs as Array<{ code: string }>).map((r) => r.code);
+
+  it("a card kept out of sight is neither answered by its number nor offered by its words, and nothing in the answer names it; the dashboard reads every card", async () => {
+    const { db, hidden, sub, open } = seed();
+    const byNumber = `?codes=${[hidden.code, sub.code, open.code].join(",")}`;
+    const link = (await ask(db, byNumber, { tier: "read" })).body;
+    expect(codes(link)).toEqual([sub.code, open.code]);
+    expect(JSON.stringify(link), "the hidden card's number and title are nowhere in the answer").not.toContain(hidden.code);
+    expect(JSON.stringify(link)).not.toContain("Hidden main");
+    const offered = (await ask(db, "?q=", { tier: "read" })).body;
+    expect(codes(offered).sort()).toEqual([sub.code, open.code].sort());
+    expect(codes((await ask(db, "?q=Hidden", { tier: "read" })).body), "searched by its title").toEqual([]);
+    expect(codes((await ask(db, `?q=${hidden.code}`, { tier: "read" })).body), "searched by its number").toEqual([]);
+    // An admin session over the link, and the dashboard itself, read as they did before.
+    expect(codes((await ask(db, byNumber, { tier: "admin" })).body)).toEqual([hidden.code, sub.code, open.code]);
+    expect(codes((await ask(db, byNumber, { local: true })).body)).toEqual([hidden.code, sub.code, open.code]);
   });
 });
 

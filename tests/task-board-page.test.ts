@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
+import { parseMentions } from "../src/scheduler/task-board-mentions.js";
 
 const UI = fileURLToPath(new URL("../src/ui", import.meta.url));
 let p: AppPage;
@@ -149,6 +150,28 @@ describe("the timeline: comments, progress log and history in one list", () => {
   });
 });
 
+describe("a change of the card's watchers is a line of the timeline", () => {
+  const WATCH = { id: 36, actor: "Ann", type: "logged", data: { text: "watchers: +ops, -dev-b", watchers: { added: ["ops"], removed: ["dev-b"] } }, at: "2026-11-04T08:00:00.000Z" };
+  it("the history event that carries `data.watchers` stays in the merge, among the other history lines; a plain log's event is still dropped (its entry is shown)", () => {
+    const tl = activity.timelineOf(detailOf("M-1", { history: [...ENTRIES.history, WATCH] }));
+    expect(tl.map((e: any) => `${e.type}:${e.key}`)).toEqual(["event:h31", "event:h32", "comment:c11", "log:l21", "comment:c12", "event:h35", "comment:c13", "event:h36"]);
+    expect(activity.timelineShown(tl, "history").map((e: any) => e.key)).toEqual(["h31", "h32", "h35", "h36"]);
+    expect(activity.timelineShown(tl, "log").map((e: any) => e.key), "the log filter lists log entries only").toEqual(["l21"]);
+  });
+  it("it is worded in English and in Traditional Chinese, from the names the board wrote (the event's text when the lists are missing)", async () => {
+    const i18n = await import("/assets/app-i18n.js");
+    try {
+      i18n.setLang("en", { store: false });
+      expect(cardMod.describeEvent(WATCH)).toBe("changed watchers: +ops, \u2212dev-b");
+      expect(cardMod.describeEvent({ ...WATCH, data: { text: "watchers: +ops", watchers: { added: ["ops"] } } })).toBe("changed watchers: +ops");
+      expect(cardMod.describeEvent({ ...WATCH, data: { text: "watchers: -dev-b", watchers: {} } }), "no lists: the text without its prefix").toBe("changed watchers: -dev-b");
+      expect(cardMod.describeEvent(ENTRIES.history[3]), "a plain log line is worded as before").toBe("log: Endpoint skeleton done");
+      i18n.setLang("zh-TW", { store: false });
+      expect(cardMod.describeEvent(WATCH)).toBe("修改關注者：+ops, \u2212dev-b");
+    } finally { i18n.setLang("en", { store: false }); }
+  });
+});
+
 describe("a card that waits for a card kept out of sight (the public link says how many, never which)", () => {
   // `hiddenUnmet` is the link's: the unfinished dependencies its read left out (the numbers are not in `unmetDeps`).
   const ONE = card({ id: "M-5", title: "Waits for a hidden card", assignee: "beta", sort: 5, unmetDeps: [], hiddenUnmet: 1 });
@@ -208,6 +231,67 @@ describe("a card that waits for a card kept out of sight (the public link says h
     expect(two).toContain("M-2");
     expect(two).toContain("2 cards that are not public");
     expect(await open("M-7")).toContain("None");
+  });
+});
+
+describe("completing an @ in the comment box", () => {
+  it("the @name at the caret: after a space, a bracket or the start — never inside a word (an e-mail)", () => {
+    expect(activity.mentionAt("hi @al", 6)).toEqual({ start: 3, query: "al" });
+    expect(activity.mentionAt("@", 1)).toEqual({ start: 0, query: "" });
+    expect(activity.mentionAt("(@x-y.z", 7)).toEqual({ start: 1, query: "x-y.z" });
+    expect(activity.mentionAt("ask @小金", 7)).toEqual({ start: 4, query: "小金" });
+    expect(activity.mentionAt("mail me@host", 12)).toBeNull();
+    expect(activity.mentionAt("hi @al", 2)).toBeNull();            // the caret is before the @
+    expect(activity.mentionAt("hi @al and", 10)).toBeNull();       // past the name
+    expect(activity.mentionAt("", 0)).toBeNull();
+  });
+  it("not offered where the board would not read it as a mention: after @, / or \\, a letter, digit, _ . - (an address, a path)", () => {
+    for (const [text, why] of [["@@x", "a doubled @"], ["a/@x", "a path"], ["C:\\@x", "a Windows path"], ["me@x", "an e-mail"], ["v1.@x", "after a dot"], ["x-@x", "after a dash"], ["_@x", "after an underscore"], ["9@x", "after a digit"]] as const) {
+      expect(activity.mentionAt(text, text.length), `${text}: ${why}`).toBeNull();
+    }
+    // …and where the board reads it, it is: a space, a bracket, a quote, a colon, a newline, CJK text or another script's letter before it.
+    for (const text of ["hi @x", "(@x", "\"@x", "see:@x", "a\n@x", "請@x", "é@x", "，@x", "> @x"]) {
+      expect(activity.mentionAt(text, text.length), text).toEqual({ start: text.length - 2, query: "x" });
+    }
+  });
+  it("not offered inside code — inline, or in a fenced block (closed or not): the board reads none of it", () => {
+    const none = (text: string) => activity.mentionAt(text, text.length);
+    expect(none("`ask @x"), "an inline code never closed is not code (yet)").toEqual({ start: 5, query: "x" });
+    expect(activity.mentionAt("`ask @x`", 7), "inline code, caret before its closing backtick").toBeNull();
+    expect(activity.mentionAt("`ask @x`", 7 + 1)).toBeNull();
+    expect(none("see `a` and `b @x"), "an earlier closed code does not reach the next @").toEqual({ start: 15, query: "x" });
+    expect(none("```\n@x"), "a fence not closed runs to the end").toBeNull();
+    expect(none("```js\nlet a = 1;\n@x"), "inside an open fence").toBeNull();
+    expect(activity.mentionAt("```\n@x\n```", 6), "inside a closed fence").toBeNull();
+    expect(none("```\ncode\n```\n@x"), "after a closed fence").toEqual({ start: 13, query: "x" });
+    expect(none("`code`@x"), "right after code: the board blanks the code, so the @ stands alone").toEqual({ start: 6, query: "x" });
+    expect(none("a `b` @x"), "after a closed inline code and a space").toEqual({ start: 6, query: "x" });
+    expect(activity.withoutCode("a `b` d")).toBe("a     d");
+    expect(activity.withoutCode("x\n```\nc\n```\ny")).toBe("x\n   \n \n   \ny");
+  });
+  it("a name is typed as it is read: when the text after the caret would run it on into a longer instance's name, the box adds a space", () => {
+    const names = ["a", "a b", "alpha"];
+    const at = (text: string, caret: number) => activity.mentionAt(text, caret);
+    let t = "Ping @a b later";
+    let m = at(t, 7);
+    expect(activity.insertMention(t, m, 7, "a", names), "@a before \" b\" would read as @a b").toEqual({ text: "Ping @a  b later", caret: 8 });
+    expect(activity.insertMention(t, m, 7, "a", ["a"]), "no longer name: the space already there serves").toEqual({ text: "Ping @a b later", caret: 8 });
+    t = "Ping @a x";
+    m = at(t, 7);
+    expect(activity.insertMention(t, m, 7, "a", names), "after the space comes something else").toEqual({ text: "Ping @a x", caret: 8 });
+  });
+  it("names that start with the query first, then those that contain it; case does not matter; at most eight", () => {
+    const names = ["beta", "alpha", "Alphonse", "gamma-al", "delta"];
+    expect(activity.mentionMatches(names, "al")).toEqual(["alpha", "Alphonse", "gamma-al"]);
+    expect(activity.mentionMatches(names, "")).toEqual(names);
+    expect(activity.mentionMatches(names, "zz")).toEqual([]);
+    expect(activity.mentionMatches(Array.from({ length: 20 }, (_, i) => `a${i}`), "a")).toHaveLength(8);
+  });
+  it("a choice replaces the @query with @name and a space; an existing space or newline is not doubled; the caret lands after", () => {
+    const m = activity.mentionAt("Ping @al now", 8);
+    expect(activity.insertMention("Ping @al now", m, 8, "alpha")).toEqual({ text: "Ping @alpha now", caret: 12 });
+    expect(activity.insertMention("Ping @al", activity.mentionAt("Ping @al", 8), 8, "alpha")).toEqual({ text: "Ping @alpha ", caret: 12 });
+    expect(activity.insertMention("@a\nnext", activity.mentionAt("@a\nnext", 2), 2, "alpha")).toEqual({ text: "@alpha\nnext", caret: 6 });
   });
 });
 
@@ -387,9 +471,9 @@ describe("a card is a page of its own", () => {
     await openCard("M-1");
     expect(qa(".tp-group").map((g) => text(g.querySelector(".tp-group-title"))), "three groups").toEqual(["Core", "Project and people", "Flow"]);
     expect(qa(".tp-props .tp-row dt").map((d) => text(d))).toEqual(["Status", "Assignee", "Priority", "Size",
-      "Project", "Dispatched by",
+      "Project", "Leader", "Dispatched by", "Watchers",
       "Needs my confirmation", "Waits for"]);
-    expect(qa(".tp-group").map((g) => qa(".tp-group").indexOf(g) + ":" + g.querySelectorAll(".tp-row").length)).toEqual(["0:4", "1:2", "2:2"]);
+    expect(qa(".tp-group").map((g) => qa(".tp-group").indexOf(g) + ":" + g.querySelectorAll(".tp-row").length)).toEqual(["0:4", "1:4", "2:2"]);
     // M-1: its goal and definition of done are filled (the spec); scope and context are buttons; the agent has written nothing (a line); no sub tasks yet (the list is there to add one).
     expect(qa(".tp-body > *").map((el) => el.className.split(" ")[0])).toEqual(["tp-spec", "tp-adders", "tr-run", "tp-subs"]);
     expect(qa(".tp-spec .tc-field h3").map((h) => text(h))).toEqual(["Goal", "Definition of done"]);
@@ -768,25 +852,90 @@ describe("the timeline and the comment box on the page", () => {
     fire(filters[0], "click"); await settle(4);
     expect(qa(".tl-item").length, "a fold opened stays open when the filter comes back").toBe(7);
   });
+  it("a watcher change is a history line on the card's page (not a log entry), in the existing line style and under the History filter", async () => {
+    const watched = { id: 36, actor: "Ann", actorKind: "person", type: "logged", data: { text: "watchers: +beta", watchers: { added: ["beta"], removed: [] } }, at: "2026-11-04T08:00:00.000Z" };
+    handler = (path, method) => (path.startsWith("/ui/tasks/board") ? { rev: 1, projects: [PROJECT], cards: CARDS } : method === "GET" ? detailOf("M-1", { history: [...ENTRIES.history, watched] }) : {});
+    await mount();
+    await openCard("M-1");
+    await unfold();
+    expect(qa(".tl-item").length).toBe(8);
+    const last = qa(".tl-item")[7];
+    expect(last.className).toContain("tl-line tl-event");
+    expect([text(last.querySelector(".tl-who")), text(last.querySelector(".tl-text"))], "who and what are columns of the line").toEqual(["Ann", "changed watchers: +beta"]);
+    const filters = qa(".tl-filter button");
+    expect(filters.map((b) => text(b))).toEqual(["All", "Comments 3", "Progress 1", "History 4"]);
+    fire(filters[3], "click"); await settle(4);
+    expect(qa(".tl-item").map((li) => text(li.querySelector(".tl-who")) + " " + text(li.querySelector(".tl-text")))).toContain("Ann changed watchers: +beta");
+    fire(filters[2], "click"); await settle(4);
+    expect(text(q(".tl-list"))).not.toContain("changed watchers");
+  });
   it("a card with no activity says what shows here", async () => {
     handler = (path, method) => (path.startsWith("/ui/tasks/board") ? { rev: 1, projects: [PROJECT], cards: CARDS } : method === "GET" ? detailOf("M-1", { comments: [], logs: [], history: [] }) : {});
     await mount();
     await openCard("M-1");
     expect(text(q(".tl-none"))).toContain("Nothing yet");
   });
-  it("the comment box is a plain text box: Ctrl+Enter posts what was typed as written (an @ is a character like another, nothing is listed), Esc leaves the box", async () => {
+  it("typing @ lists the instances; the arrows and Enter type the name; the box keeps its text and Esc closes only the list", async () => {
+    boardOff = ["gamma"];
     await mount();
     await openCard("M-1");
     const box = q(".tc-composer textarea");
-    await typeInto(box, "Ping @al");
-    expect(q(".tc-mentions"), "no list opens while @ is typed").toBeNull();
-    expect(box.getAttribute("aria-autocomplete")).toBeNull();
+    await typeInto(box, "Ping @");
+    expect(qa(".tc-mentions li").map((li) => li.textContent.replace(/\s+/g, " ").trim())).toEqual(["@alpha", "@beta", "@gammatask board off"]);   // the card's assignee first
+    expect(qa(".tc-mentions li")[0].getAttribute("aria-selected")).toBe("true");
+    await typeInto(box, "Ping @b");
+    expect(qa(".tc-mentions li").map((li) => li.textContent)).toEqual(["@beta"]);
+    fire(box, "keydown", { key: "Enter", cancelable: true }); await settle(6);
+    expect(box.value).toBe("Ping @beta ");
+    expect(q(".tc-mentions")).toBeNull();
+    expect(posts(), "choosing a name sends nothing").toEqual([]);
+    await typeInto(box, "Ping @beta and @g");
+    expect(qa(".tc-mentions button")[0].disabled, "a board-off instance cannot be chosen").toBe(true);
+    fire(box, "keydown", { key: "Enter", cancelable: true }); await settle(4);
+    expect(box.value, "Enter on a disabled name types nothing").toBe("Ping @beta and @g");
     fire(box, "keydown", { key: "Escape", cancelable: true }); await settle(4);
-    expect(box.value, "Esc leaves the box and keeps its text").toBe("Ping @al");
+    expect(q(".tc-mentions")).toBeNull();
+    expect(box.value).toBe("Ping @beta and @g");
+  });
+  it("only the fleet's instances are listed: an assignee that has left the fleet (or a person) is not, and the assignee that is one comes first", async () => {
+    handler = (path, method, body) => (path === "/ui/tasks/cards/M-1" && method === "GET" ? detailOf("M-1", { card: { ...M1, assignee: "ghost" } }) : path.startsWith("/ui/tasks/board") ? { rev: 1, projects: [PROJECT], cards: CARDS } : {});
+    await mount();
+    await openCard("M-1");
+    const box = q(".tc-composer textarea");
+    await typeInto(box, "Ping @");
+    expect(qa(".tc-mentions li").map((li) => li.textContent.replace(/\s+/g, " ").trim()), "no @ghost").toEqual(["@alpha", "@beta", "@gamma"]);
+    await typeInto(box, "Ping @gh");
+    expect(q(".tc-mentions"), "nothing completes a name that is no instance").toBeNull();
+    handler = (path, method, body) => (path === "/ui/tasks/cards/M-1" && method === "GET" ? detailOf("M-1", { card: { ...M1, assignee: "gamma" } }) : path.startsWith("/ui/tasks/board") ? { rev: 1, projects: [PROJECT], cards: CARDS } : {});
+    (globalThis as any).history.replaceState(null, "", "/ui/fleet");
+    await mount();
+    await openCard("M-1");
+    await typeInto(q(".tc-composer textarea"), "@");
+    expect(qa(".tc-mentions li").map((li) => li.textContent.replace(/\s+/g, " ").trim()), "the assignee, when it is an instance, first").toEqual(["@gamma", "@alpha", "@beta"]);
+  });
+  it("no list where the board would not read the @ — after a path's / or \\, after another @, inside code or a fence — and one after CJK text", async () => {
+    await mount();
+    await openCard("M-1");
+    const box = q(".tc-composer textarea");
+    for (const text of ["@@al", "see src/@al", "C:\\@al", "`ask @al", "```\n@al"].map((t, i) => (i === 3 ? "`ask @al`" : t))) {
+      await typeInto(box, text, text === "`ask @al`" ? text.length - 1 : text.length);
+      expect(q(".tc-mentions"), text).toBeNull();
+    }
+    await typeInto(box, "請@al");
+    expect(qa(".tc-mentions li").map((li) => li.textContent), "after CJK text the board reads it, so the list is there").toEqual(["@alpha"]);
+  });
+  it("an @ inside a word is not offered; clicking a name types it; sending posts the plain text", async () => {
+    await mount();
+    await openCard("M-1");
+    const box = q(".tc-composer textarea");
+    await typeInto(box, "write to me@host");
+    expect(q(".tc-mentions")).toBeNull();
+    await typeInto(box, "@al");
+    fire(qa(".tc-mentions button")[0], "click"); await settle(6);
+    expect(box.value).toBe("@alpha ");
     await typeInto(box, "@alpha please look");
     fire(box, "keydown", { key: "Enter", ctrlKey: true, cancelable: true }); await settle(10);
-    expect(posts().map((c) => c.body), "the text as written").toEqual([{ comment: "@alpha please look" }]);   // a comment carries no version: it never conflicts
-    expect(box.value, "the box is cleared once it is posted").toBe("");
+    expect(posts().map((c) => c.body), "the plain text, `@alpha` and all (what it does is the board's business)").toEqual([{ comment: "@alpha please look" }]);   // a comment carries no version: it never conflicts
   });
 });
 
@@ -1060,16 +1209,22 @@ describe("who may change the board — through the real Tasks tab", () => {
   for (const [who, flags, writes] of WHO) {
     it(`${who}: ${writes ? "every control that changes the board is drawn" : "the board, the list and the card are for reading — nothing that edits, creates or moves is drawn"}`, async () => {
       setWho(flags);
+      // A card with a watcher and a leader, and an instance with the task board off: the rows and the note a writer gets.
+      boardOff = ["gamma"];
+      const base = handler;
+      handler = (path, method, body) => (method === "GET" && path === "/ui/tasks/cards/M-1"
+        ? detailOf("M-1", { watchers: ["beta"], inheritedWatchers: [], leader: { name: "alpha", via: "project" }, followsProgress: true }) : base(path, method, body));
       // Home: the projects, and what waits for the person.
       await mount({});
       expect(!!q(".tb-home"), "the tab opens on its projects").toBe(true);
-      expect(!!q(".tb-readonly"), "the read-only note").toBe(!writes);
+      expect(!!q(".tb-readonly:not(.tb-boardoff)"), "the read-only note").toBe(!writes);
       expect(!!q(".list-head .btn-primary"), "New project").toBe(writes);
       // A project's board.
       await mount();
       expect(!!q(".tb-board-page")).toBe(true);
-      expect(!!q(".tb-readonly"), "the read-only note on the board").toBe(!writes);
+      expect(!!q(".tb-readonly:not(.tb-boardoff)"), "the read-only note on the board").toBe(!writes);
       expect(!!q(".tb-bar-head .btn-primary"), "the Main task button").toBe(writes);
+      expect(!!q(".tb-boardoff"), "the note that names an instance with the task board off and where to turn it on").toBe(writes);
       expect(qa(".tb-tile").map((el) => el.getAttribute("draggable")), "a tile is dragged only by a writer").toEqual(qa(".tb-tile").map(() => (writes ? "true" : "false")));
       expect(qa(".tb-tile .tb-owner-btn:not(.is-static)").length > 0, "the avatar picks another assignee").toBe(writes);
       // The list.
@@ -1085,6 +1240,11 @@ describe("who may change the board — through the real Tasks tab", () => {
       expect(qa(".tp-side .tp-static").length > 0, "…or values as text").toBe(!writes);
       expect(!!q(".tp-switch input"), "the Needs my confirmation switch").toBe(writes);
       expect(!!q(".tc-composer"), "the comment box").toBe(writes);
+      expect([!!q('[data-follow="watchers"]'), !!q('[data-follow="leader"]')], "the Watchers and Leader rows are read by every reader").toEqual([true, true]);
+      expect(qa(".tp-watch").map((el) => el.getAttribute("data-watcher")), "the watcher is listed").toEqual(["beta"]);
+      expect(!!q(".tp-watch-x"), "a watcher's ✕").toBe(writes);
+      expect(!!q(".tp-watch-add"), "Add a watcher").toBe(writes);
+      expect(!!q(".tc-mentions"), "no @ list without a comment box").toBe(false);
       expect(!!q(".tp-body .tc-quick-add"), "adding a sub task").toBe(writes);
       expect(qa(".tp-add").length > 0, "the + Add buttons of the empty fields").toBe(writes);
       expect(qa(".tp-body .tc-field .tc-text").filter((el) => el.tagName === "BUTTON").length > 0, "a text opens as a box on a click").toBe(writes);
@@ -1157,5 +1317,40 @@ describe("the columns that do not fit the window", () => {
       i18n.setLang("zh-TW", { store: false });
       expect([i18n.t("taskview.scrollColumns"), i18n.t("taskview.columnsLeft"), i18n.t("taskview.columnsRight")]).toEqual(["捲動欄位", "左邊的欄位", "右邊的欄位"]);
     } finally { i18n.setLang("en", { store: false }); }
+  });
+});
+
+// ── The comment box and the board read an @ the same way ─────────────────────────────
+
+describe("whenever the comment box offers a name, the board reads the text it types as that instance", () => {
+  const NAMES = ["alpha", "beta", "dev", "dev-a", "Lead", "lead-2", "a", "a b", "小金", "x.y", "docs writer"];
+  const BEFORE = ["", "hi ", "(", "\n", "請", "é", "a", "a.", "x-", "_", "9", "/", "a/", "C:\\", "@", "`", "`x ", "```\n", "```\nx\n```\n", "`a` ", "a`b` ", "> ", "，"];
+  const AFTER = ["", " tail", "\n", ", ok", ".", "`", "`\n", "\n```", " b", " b c", " writer", "請看", "-1", " -1"];
+  it("over every prefix, instance name, part of it typed and text after the caret of a battery (the board's own parser reads each result)", async () => {
+    const board = { parseMentions };
+    let offered = 0;
+    const wrong: string[] = [];
+    for (const before of BEFORE) for (const name of NAMES) for (let k = 0; k <= name.length; k++) for (const after of AFTER) {
+      const text = `${before}@${name.slice(0, k)}${after}`, caret = before.length + 1 + k;
+      const m = activity.mentionAt(text, caret);
+      if (!m || !activity.mentionMatches(NAMES, m.query).includes(name)) continue;
+      offered++;
+      const typed = activity.insertMention(text, m, caret, name, NAMES);
+      const read = board.parseMentions(typed.text, NAMES).names;
+      if (!read.includes(name)) wrong.push(JSON.stringify({ text, caret, typed: typed.text, read }));
+    }
+    expect(offered, "the battery offers the list in many places").toBeGreaterThan(2000);
+    expect(wrong.slice(0, 5), `${wrong.length} of ${offered} offers type a name the board does not read as that instance`).toEqual([]);
+  });
+  it("and the places the board refuses are the places the box does not offer", async () => {
+    const board = { parseMentions };
+    for (const text of ["@@alpha", "a/@alpha", "C:\\@alpha", "me@alpha", "`@alpha`", "```\n@alpha", "```\n@alpha\n```"]) {
+      expect(board.parseMentions(text, NAMES).names, `the board: ${text}`).toEqual([]);
+      expect(activity.mentionAt(text, text.indexOf("@alpha") + 6), `the box: ${text}`).toBeNull();
+    }
+    for (const text of ["請@alpha", "é@alpha", "(@alpha)"]) {
+      expect(board.parseMentions(text, NAMES).names, `the board: ${text}`).toEqual(["alpha"]);
+      expect(activity.mentionAt(text, text.indexOf("@alpha") + 6), `the box: ${text}`).not.toBeNull();
+    }
   });
 });

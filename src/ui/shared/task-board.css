@@ -197,6 +197,15 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tp-row .tc-now .tc-child-title { flex-basis: 100%; order: 3; }
 .tp-row .tb-check { align-items: flex-start; }
 .tp-row .tb-check input { margin-top: 3px; }
+/* Who hears the card (fleet-task-follow.js): each watcher a small chip — the instance and a ✕ — then Add; the leader is text. */
+.tp-watchers { gap: var(--s-1) var(--s-2); padding-top: var(--s-1); }
+.tp-watch-list { display: flex; flex-wrap: wrap; gap: var(--s-1); margin: 0; padding: 0; list-style: none; min-width: 0; }
+.tp-watch { display: inline-flex; align-items: center; gap: var(--s-1); min-width: 0; max-width: 100%; padding-left: var(--s-2); border: 1px solid var(--border); border-radius: var(--r-full); background: var(--bg); }
+.tp-watch-x { width: 26px; height: 26px; flex: none; }
+.tp-watch-note { flex-basis: 100%; margin: 0; }
+.tp-leader-via { font-size: var(--fs-xs); }
+.tp-leader-note { order: 3; }
+
 /* "Needs my confirmation" is a switch: the app's `.s-ui-toggle` (its rules are in app.css, which now covers the Fleet page too, as Settings and the Hub). */
 .tp-switch { display: inline-flex; align-items: center; gap: var(--s-2); min-width: 0; cursor: pointer; }
 
@@ -358,6 +367,11 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tc-composer .tc-compose-box textarea { display: block; min-height: 56px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
 .tc-composer .tc-compose-box textarea:focus { border-color: transparent; box-shadow: none; }
 .tc-composer > .btn { align-self: flex-end; }
+.tc-mentions { position: absolute; left: 0; bottom: calc(100% + var(--s-1)); z-index: 5; min-width: 220px; max-width: 100%; max-height: 220px; overflow-y: auto; margin: 0; padding: var(--s-1); list-style: none; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-2); }
+.tc-mentions button { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; min-height: 32px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.tc-mentions li.active button, .tc-mentions button:hover:not(:disabled) { background: var(--surface-2); }
+.tc-mentions button:disabled { opacity: 0.55; cursor: default; }
+.tc-mention-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */
 .tb-qc-title { width: 100%; min-height: 40px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
