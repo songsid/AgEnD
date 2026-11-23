@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { signIn } from "../scripts/manual/smoke-fixture/from-defaults.mjs";
+import { signIn } from "../scripts/manual/smoke-fixture/sign-in.js";
 
 function fixture(auto = true, refused = false) {
   let navigated = false, inFlight = false, sends = 0;

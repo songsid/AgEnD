@@ -28,6 +28,7 @@ SOURCES = [
     "scripts/manual/smoke/smoke-office-play-m3293.mts",
     "scripts/manual/smoke-fixture/office-smoke-card.ts", "scripts/manual/smoke-fixture/office-smoke-pointer.ts",
     "scripts/manual/smoke-fixture/index.mts", "scripts/manual/smoke-fixture/from-defaults.mts",
+    "scripts/manual/smoke-fixture/sign-in.ts", "tests/smoke-signin-race-m3551.test.ts",
     "scripts/manual/smoke-fixture/public-roster.mts",
     "scripts/manual/smoke-fixture/office-capture-cases.ts",
     "src/ui/fleet-office.js", "src/ui/fleet-office-card.js", "src/ui/fleet-office-play.js",

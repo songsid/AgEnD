@@ -19,6 +19,7 @@
  *   not just the empty #app the page ships with.
  */
 import type { MatrixCase } from "./index.mts";
+import { signIn } from "./sign-in.js";
 
 /** The non-loopback name a LAN browser uses; the fixture's browser resolves it to 127.0.0.1. */
 export const LAN_HOST = "dashboard.lan.example";
@@ -97,20 +98,6 @@ function untouched(fm: any, viewer: string | null): void {
   if (keys.length) throw new Error(`from-defaults: ${viewer ?? "the public-link viewer"} would read prefs already set (${keys.join(", ")}): not a default state`);
 }
 
-/**
- * Fill and submit in one page turn, as the seeded fixture does. A complete code also auto-submits on input; the
- * product deduplicates input + submit while in flight. Never inspect #go after an awaited navigation timeout:
- * automatic sign-in may have removed the form in that gap (M-3551 contention run 24). Wait only for the destination.
- */
-export async function signIn(page: any, code: string, home: string) {
-  await page.waitForSelector("#code", { timeout: 10000 });
-  await page.locator("#code").evaluate((input: HTMLInputElement, value: string) => {
-    input.value = value;
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-    input.form!.requestSubmit();
-  }, code);
-  await page.waitForURL(home, { timeout: 15000 });
-}
 
 /**
  * The app mounted: a visible navigation holding at least one control — the sidebar, the phone's tab bar, inside an
