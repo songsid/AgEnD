@@ -1,0 +1,11 @@
+--- a/src/agent-export.ts
++++ b/src/agent-export.ts
+@@ -82,7 +82,7 @@
+   text.split(/\r?\n/).forEach((line, i) => {
+     // A very long line is read in overlapping pieces, so the patterns' cost stays small however long a line is.
+     for (let at = 0; at === 0 || at < line.length; at += 3000) {
+-      const piece = line.slice(at, at + 4000);
++      const piece = line.slice(at);
+       const hit = SECRET_PATTERNS.find(([, re]) => re.test(piece));
+       if (hit) { found.push({ field, line: i + 1, kind: hit[0] }); break; }
+     }

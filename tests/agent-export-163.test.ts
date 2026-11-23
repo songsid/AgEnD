@@ -340,12 +340,37 @@ describe("review follow-ups (AGEND-166)", () => {
     expect(buildAgentExport("r", { systemPrompt: fake.hfToken() }, ["systemPrompt"]).text).toBeNull();
     expect(buildAgentExport("r", { tags: ["ok", fake.anthropicKey()] }, ["identity"]).findings[0]).toMatchObject({ field: "tags" });
   });
-  it("a secret deep inside a very long line is still found, and a long line does not take long to scan", () => {
+  it("finds a deep secret while bounding regex input size and total scan work linearly", () => {
+    // Protect the overlapping-window work bound, not a CI machine's speed. Nine
+    // patterns see at most 4,000 characters per call, once per 3,000-character
+    // advance. This bounds input handed to the regex engine, not its internal
+    // backtracking steps (a separate property of the individual expressions).
+    const boundedScan = (text: string) => {
+      const maxCalls = 9 * Math.max(1, Math.ceil(text.length / 3000));
+      const maxCharacters = 4000 * maxCalls;
+      const original = RegExp.prototype.test;
+      let calls = 0, characters = 0;
+      const spy = vi.spyOn(RegExp.prototype, "test").mockImplementation(function (this: RegExp, input: string) {
+        calls++; characters += input.length;
+        // Fail before executing excess work, so a quadratic regression is also
+        // cheap to reject. Never replace the actual regex matching on success.
+        if (input.length > 4000 || calls > maxCalls || characters > maxCharacters) {
+          throw new Error("secret scan exceeded deterministic work budget");
+        }
+        return original.call(this, input);
+      });
+      let findings;
+      try { findings = scanForSecrets("systemPrompt", text); }
+      finally { spy.mockRestore(); }
+      expect(calls).toBeGreaterThan(0); // no vacuous pass if the scanner stops checking
+      expect(characters).toBeGreaterThan(0);
+      return findings;
+    };
     const long = `${"a-".repeat(40_000)} ${fake.anthropicKey()} ${"b".repeat(1000)}`;
-    const t0 = Date.now();
-    expect(scanForSecrets("systemPrompt", long)).toEqual([{ field: "systemPrompt", line: 1, kind: "api_key" }]);
-    expect(scanForSecrets("systemPrompt", "a-".repeat(100_000))).toEqual([]);
-    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(boundedScan(long)).toEqual([{ field: "systemPrompt", line: 1, kind: "api_key" }]);
+    for (const size of [6_000, 12_000, 24_000, 200_000]) {
+      expect(boundedScan("a-".repeat(size / 2))).toEqual([]);
+    }
   });
 });
 
