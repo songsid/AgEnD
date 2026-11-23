@@ -1,0 +1,44 @@
+{
+  "source": "7fdce31a5b30ea37c7d0ff3553c1d496e06de1e5",
+  "records": [
+    {
+      "device": "desk",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "labels": [
+        "任務",
+        "團隊"
+      ],
+      "footer": "Example owner 開的 · 剛剛 · 最後更新 剛剛",
+      "horizontalOverflow": false,
+      "pageErrors": [],
+      "csp": []
+    },
+    {
+      "device": "phone",
+      "theme": "dark",
+      "lang": "zh-TW",
+      "labels": [
+        "任務",
+        "團隊"
+      ],
+      "footer": "Example owner 開的 · 剛剛 · 最後更新 剛剛",
+      "horizontalOverflow": false,
+      "pageErrors": [],
+      "csp": []
+    },
+    {
+      "device": "desk",
+      "theme": "light",
+      "lang": "en",
+      "labels": [
+        "Tasks",
+        "Teams"
+      ],
+      "footer": "Opened by Example owner just now · changed just now",
+      "horizontalOverflow": false,
+      "pageErrors": [],
+      "csp": []
+    }
+  ]
+}
