@@ -38,6 +38,11 @@ export function subagentLaunches(i: Omit<SubagentProjection, "children" | "now" 
       if (r.sessionId !== i.sessionId || r.cwd !== i.cwd || r.isSidechain !== false) continue;
       if (r.type === "user" && r.origin?.kind === "human" && uuid(r.promptId)) {
         turn = r.promptId; parentStartedAt = at(r.timestamp); parentTask = text(r.message?.content, 200);
+      } else if (r.type === "user" && uuid(r.promptId) && r.origin?.kind === "task-notification" && r.origin.producer === "session-task"
+        && r.promptSource === "system") {
+        // M-3541: a turn a finished background task started (the shape parentEnds admits) launches children too. Its text
+        // is the notification — another child's report — so no parent task is taken from it.
+        turn = r.promptId; parentStartedAt = at(r.timestamp); parentTask = "";
       }
       if (r.type === "assistant" && turn) for (const b of blocks(r)) {
         // The captured schema is Agent. Unsupported legacy spellings need their own fixtures.

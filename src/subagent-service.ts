@@ -43,10 +43,13 @@ export async function readSubagentFile(root: string, file: string, max = SUBAGEN
   } catch { return null; }
   finally { if (handle) await handle.close(); }
 }
-function jsonl(text: string | null): unknown[] | null {
+/** Longer lines are skipped, one by one: Claude Code's diagnostic records (api-request-shape, …) pass 190 KB (M-3541). */
+export const SUBAGENT_LINE_MAX = 128000;
+export function jsonl(text: string | null): unknown[] | null {
   if (text === null || (text.length > 0 && !text.endsWith("\n"))) return null;
-  const lines = text.split("\n").filter(Boolean);
-  if (lines.length > 20000 || lines.some(s => s.length > 128000)) return null;
+  // M-3541: one oversized record used to reject the whole window, and with it every run in it.
+  const lines = text.split("\n").filter(s => s && s.length <= SUBAGENT_LINE_MAX);
+  if (lines.length > 20000) return null;
   try { return lines.map(s => JSON.parse(s)); } catch { return null; }
 }
 const identity = (s: SubagentSource) => JSON.stringify([s.owner, s.backend, s.sessionId, s.cwd, s.path, s.root]);

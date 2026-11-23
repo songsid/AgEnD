@@ -12,7 +12,7 @@ register("log", {
   en: {
     user: "Asked", assistant: "Replied", error: "Error", errorCode: "Error {0}", turnEnd: "Turn ended", turnEndIn: "Turn ended · {0}",
     compacted: "Conversation compacted", turn: "Turn",
-    running: "running", done: "done", failed: "failed", interrupted: "interrupted", exit: "exit {0}",
+    running: "running", done: "done", failed: "failed", interrupted: "interrupted", background: "started in the background", exit: "exit {0}",
     showScreen: "Show what was on screen", hideScreen: "Hide what was on screen",
     showOutput: "Show output", hideOutput: "Hide output", args: "Arguments", output: "Output", noOutput: "No output.",
     showAll: "Show all", showLess: "Show less", cut: "… {0} more characters not shown.", tooLarge: "Output of {0}: only its start is shown.",
@@ -25,7 +25,7 @@ register("log", {
   "zh-TW": {
     user: "收到要求", assistant: "回覆", error: "錯誤", errorCode: "錯誤 {0}", turnEnd: "回合結束", turnEndIn: "回合結束 · {0}",
     compacted: "對話已壓縮", turn: "回合",
-    running: "執行中", done: "完成", failed: "失敗", interrupted: "中斷", exit: "結束碼 {0}",
+    running: "執行中", done: "完成", failed: "失敗", interrupted: "中斷", background: "已在背景啟動", exit: "結束碼 {0}",
     showScreen: "顯示當時的畫面", hideScreen: "隱藏當時的畫面",
     showOutput: "顯示輸出", hideOutput: "隱藏輸出", args: "參數", output: "輸出", noOutput: "沒有輸出。",
     showAll: "顯示全部", showLess: "收合", cut: "… 還有 {0} 個字元沒有顯示。", tooLarge: "輸出共 {0}，只顯示開頭。",
@@ -279,7 +279,9 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
     const failed = x.status === "failed" || x.status === "interrupted" || (typeof x.exitCode === "number" && x.exitCode !== 0);
     const running = x.status === "running";
     const mark = running ? html`<span class="log-status running"><span class="spinner" aria-hidden="true"></span>${tl("running")}</span>`
-      : failed ? html`<span class=${`log-status ${x.status === "interrupted" ? "interrupted" : "failed"}`}>${tl(x.status === "interrupted" ? "interrupted" : "failed")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>` : null;
+      : failed ? html`<span class=${`log-status ${x.status === "interrupted" ? "interrupted" : "failed"}`}>${tl(x.status === "interrupted" ? "interrupted" : "failed")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>` 
+      // M-3541: a subagent started in the background: the call is done, the subagent runs on (the Subagents row).
+      : x.background ? html`<span class="log-status background">${tl("background")}</span>` : null;
     const view = inputView(x, cat);
     const has = !!(x.body || x.bodyBytes || (view && (view.code || view.diff || view.raw)));
     const middle = subject || x.tool || tl(`cat_${cat}`);
@@ -323,7 +325,7 @@ export function LogRow({ x, prev, paths, chat, compact, latest }) {
     const cat = x.cat || "other";
     const subject = cat === "plan" && x.subject ? tl("plan_items", x.subject) : short(x.subject || "");
     const quiet = compact && (x.status || "done") === "done" && !(typeof x.exitCode === "number" && x.exitCode !== 0);
-    const status = quiet ? null : html`<span class=${`log-status ${x.status || "done"}`}>${x.status === "running" ? html`<span class="spinner" aria-hidden="true"></span>` : null}${tl(x.status || "done")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>`;
+    const status = quiet ? null : html`<span class=${`log-status ${x.background && x.status === "done" ? "background" : x.status || "done"}`}>${x.status === "running" ? html`<span class="spinner" aria-hidden="true"></span>` : null}${tl(x.background && x.status === "done" ? "background" : x.status || "done")}${typeof x.exitCode === "number" && x.exitCode !== 0 ? ` · ${tl("exit", x.exitCode)}` : ""}${x.durationMs ? ` · ${duration(x.durationMs)}` : ""}</span>`;
     const label = html`<span class="log-cat">${tl(`cat_${cat}`)}</span>${subject ? html` <span class="log-subject mono" title=${x.subject && subject !== x.subject ? x.subject : null}>${subject}</span>` : null}${x.tool && !subject ? html` <span class="log-tool mono muted">${x.tool}</span>` : null}`;
     const has = !!(x.body || x.input || x.bodyBytes);
     row = html`${head(CAT_ICON[cat] || CAT_ICON.other, label, html`${x.repeat ? html`<span class="log-repeat">${tl("times", x.repeat)}</span>` : null}${status}`)}
