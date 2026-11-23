@@ -25100,11 +25100,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * own words it carries (a comment, a mention, a follower's progress) with their contact origin as they wrote; the
    * instance inherits each, as admitDurableDelivery does for a peer's message, so the words do not shed the origin.
    */
-  private admitTaskBoardNotice(instance: string, message: string, key: string, origins: Record<string, unknown> = {}): boolean {
+  private admitTaskBoardNotice(instance: string, message: string, key: string, origins: Record<string, unknown[]> = {}): boolean {
     this.ensureDeliveryOutbox();
     const outbox = this.deliveryOutbox;
     if (!outbox) return false;
-    const inherited = Object.values(origins).filter((o): o is ContactOrigin => !!o && typeof o === "object" && Array.isArray((o as ContactOrigin).chain));
+    const inherited = Object.values(origins).flat().filter((o): o is ContactOrigin => !!o && typeof o === "object" && Array.isArray((o as ContactOrigin).chain));
     if (inherited.length) {
       const store = this.contactService().host.store;
       for (const origin of inherited) store.inheritOrigin(instance, { ...origin, chain: [...origin.chain, instance] });
@@ -25114,13 +25114,14 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * Whether `source`'s words may reach `target` by the task board without a contact approval: the rule a peer message
-   * meets before it is admitted (ContactAuthService.needsApplication; a hub-restricted source needs one too). A
-   * board notice is never an application, so what needs one is not sent and its writer is told to use send_to_instance.
-   * A standing grant is not read here: it is honoured there. Fails closed.
+   * Whether `source`'s words may reach `target` by the task board on their own: the rules a peer message meets before it
+   * is admitted — no active Hub contact restriction (M-3160: send_to_instance and broadcast refuse it, whatever the
+   * origin; #4367 review) and no retained origin that needs a contact application (M-3384, ContactAuthService.
+   * needsApplication). A board notice is never an application, so what needs one is not sent and its writer is told to
+   * use send_to_instance. A standing grant is not read here: it is honoured there. Fails closed.
    */
   private taskBoardMayReach(source: string, _target: string): boolean {
-    try { return !this.contactService().needsApplication(source); } catch { return false; }
+    try { return !this.hubContactRestricted(source) && !this.contactService().needsApplication(source); } catch { return false; }
   }
 
   /** The board's wakes as the write commits, each writer whose words they carry stamped with its contact origin now. */
@@ -25130,8 +25131,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { service = this.contactService(); } catch { return [...wakes]; }
     return wakes.map((w) => {
       if (!w.principals?.length) return w;
-      const origins: Record<string, unknown> = {};
-      for (const p of w.principals) origins[p] = service.host.legacyClassic?.(p) ? null : service.origin(p) ?? null;
+      const origins: Record<string, unknown[]> = {};
+      for (const p of w.principals) { const o = service.host.legacyClassic?.(p) ? undefined : service.origin(p); origins[p] = o ? [o] : []; }
       return { ...w, origins };
     });
   }

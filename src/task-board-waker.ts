@@ -22,7 +22,7 @@ export interface TaskBoardWakerDeps {
    * the writers whose own words the message carries (Wake.principals) with their contact origin as they wrote — the
    * instance inherits each, as from a peer's message.
    */
-  deliver(instance: string, message: string, key: string, origins: Record<string, unknown>): boolean;
+  deliver(instance: string, message: string, key: string, origins: Record<string, unknown[]>): boolean;
   /**
    * The fleet's contact rules, asked again as the news goes out: whether `source`'s words may reach `instance` (a
    * conversation's origin can be restricted during the gather). What it refuses is left out of the notice — every
@@ -181,14 +181,31 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
 }
 
 /**
- * A merged wake's writers whose words it carries, each with the origin it wrote with (the first seen is kept: the words
- * gathered are the earliest of that writer's in the batch, and an origin only grows).
+ * A merged wake's writers whose words it carries, each with every origin snapshot its gathered writes came with. None
+ * is dropped: the notice quotes the latest comment and points to the earlier ones on the card, so the recipient
+ * inherits each (#4367 review: keeping only the first lost a later comment's origin).
  */
 function mergePrincipals(had: Wake | undefined, w: Wake): Pick<Wake, "principals" | "origins"> {
   const principals = [...new Set([...(had?.principals ?? []), ...(w.principals ?? [])])];
   if (!principals.length) return {};
-  const origins = { ...(w.origins ?? {}), ...(had?.origins ?? {}) };
+  const origins: Record<string, unknown[]> = {};
+  for (const p of principals) {
+    const all = unionOrigins(had?.origins?.[p], w.origins?.[p]);
+    if (all.length) origins[p] = all;
+  }
   return { principals, ...(Object.keys(origins).length ? { origins } : {}) };
+}
+
+/** Origin snapshots, each once (by value), in the order first seen. */
+function unionOrigins(...lists: Array<readonly unknown[] | undefined>): unknown[] {
+  const out: unknown[] = [];
+  const seen = new Set<string>();
+  for (const list of lists) for (const o of list ?? []) {
+    if (o === null || o === undefined) continue;
+    const k = JSON.stringify(o);
+    if (!seen.has(k)) { seen.add(k); out.push(o); }
+  }
+  return out;
 }
 
 /** A merged wake's person flags: each reason takes the newer wake's word on who wrote it, else keeps the earlier. */
@@ -285,8 +302,9 @@ export class TaskBoardWaker {
     const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null)
       .map((w) => this.contactHolds(instance, w)).filter((w): w is Wake => w !== null);
     if (!wakes.length) return;
-    const origins: Record<string, unknown> = {};
-    for (const w of wakes) for (const p of w.principals ?? []) if (!(p in origins)) origins[p] = w.origins?.[p] ?? null;
+    // Every card's snapshots of each writer, not the first card's only.
+    const origins: Record<string, unknown[]> = {};
+    for (const w of wakes) for (const p of w.principals ?? []) origins[p] = unionOrigins(origins[p], w.origins?.[p]);
     const codes = wakes.map((w) => w.code);
     const key = `${KEY_PREFIX}${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}:cards=${wakes.map((w) => w.uuid).join(",")}`;
     let taken = false;

@@ -518,18 +518,20 @@ well as mentions: a loop can run through the assignee alone (`lead: ok` wakes de
 An agent's send-back or log neither counts nor breaks the chain. Past the limit the comment is kept and wakes nobody
 (`comment_chain` says so to its writer) until a person writes on the card or the older comments leave the window. It is
 computed from the card's own `task_entries` — no counter, no new column. An agent's comment also wakes at most
-`MAX_COMMENT_WAKES` (5) instances in all, the card's assignee included when it hears it (so at most 4 mentions then).
+`MAX_COMMENT_WAKES` (5) instances in all, each counted once: the card's assignee, when it hears the comment, takes one place
+whether or not it is named and wherever its name is, and the other instances named share the rest in the order written.
 A person's comment has neither limit.
 
 **Contact rules.** A comment, an `@` mention and a follower's progress carry an agent's own words to another instance, so
-they meet the rule a peer message meets (M-3160 / M-3384; `ContactAuthService.needsApplication`): while the writer's
-conversation has an origin that needs a contact approval (unknown, mixed, or not an administrator's; a hub-restricted
-source), its words wake no other instance by the board. The board asks it per recipient as it writes
+they meet the rules a peer message meets: while an active Hub contact window restricts the writer (M-3160, whatever its
+origin), or its conversation has an origin that needs a contact approval (M-3384, `ContactAuthService.needsApplication`:
+unknown, mixed, or not an administrator's), its words wake no other instance by the board. The board asks it per recipient as it writes
 (`setContactGate`; `contact_held` / `progress_contact_held` tell the writer, who is pointed to `send_to_instance`, where
 the application and any standing grant are), and the waker asks again as the notice goes out (a writer restricted
 during the gather: its words are left out, the board's own news on the card still goes). A wake names the writers whose
-words it carries (`principals`); the fleet stamps each one's origin as the write commits, and the recipient inherits it
-when the notice is admitted, as `admitDurableDelivery` does for a peer's message. A person's words are not held to it,
+words it carries (`principals`); the fleet stamps each one's origin as the write commits, the waker keeps every snapshot of
+every write it merges (within a card and across the notice's cards), and the recipient inherits each when the notice is
+admitted, as `admitDurableDelivery` does for a peer's message. A person's words are not held to it,
 and the board's own news (an assignment, a send-back, a question to its dispatcher) is unchanged.
 
 *Per card only.* The guard bounds the talk on one card; it is not a global or per-instance rate limit. Two agents

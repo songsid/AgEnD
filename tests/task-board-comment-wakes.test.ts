@@ -500,6 +500,22 @@ describe("4. the loop guard", () => {
     expect(r.take()).toHaveLength(MAX_COMMENT_WAKES);
     expect(noteKeys(all)).toEqual(["comment_wakes"]);
   });
+
+  it(`the assignee named last, after ${MAX_COMMENT_WAKES} others, is still one of the ${MAX_COMMENT_WAKES}: the cap is on the final audience, in any order (#4367 re-review)`, () => {
+    const many = Array.from({ length: 6 }, (_, i) => `inst-${i + 1}`);
+    const r = rig(undefined, [...INSTANCES, ...many]);
+    const c = card(r.board, ANN, { assignee: "inst-6" });
+    r.take();
+    const res = r.board.updateCard(LEAD, c.code, { comment: many.map((n) => `@${n}`).join(" ") });      // @inst-1 … @inst-5 @inst-6 (the assignee)
+    const woke = r.take().map((w) => w.to).sort();
+    expect(woke).toEqual(["inst-1", "inst-2", "inst-3", "inst-4", "inst-6"]);
+    expect(noteKeys(res)).toEqual(["mention_cap", "comment_wakes"]);
+    // And in the middle.
+    const d = card(r.board, ANN, { assignee: "inst-6" });
+    r.take();
+    r.board.updateCard(LEAD, d.code, { comment: "@inst-1 @inst-2 @inst-6 @inst-3 @inst-4 @inst-5" });
+    expect(r.take().map((w) => w.to).sort()).toEqual(["inst-1", "inst-2", "inst-3", "inst-4", "inst-6"]);
+  });
 });
 
 describe("5. the notice", () => {

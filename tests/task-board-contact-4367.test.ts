@@ -35,6 +35,7 @@ function rig() {
   const db = new SchedulerDb(join(directory, "scheduler.db"));
   cleanups.push(() => { db.close(); outbox.close(); rmSync(directory, { recursive: true, force: true }); });
   const room = { instanceName: "room", channelId: "fake-room", adapterId: "fake-dc", restrictedMode: true };
+  const hub = new Set<string>();       // the instances an active Hub contact window restricts (M-3160)
   const fm: any = Object.assign(Object.create(FleetManager.prototype), {
     dataDir: directory, deliveryOutbox: outbox, managerBootId: "fake-manager",
     fleetConfig: { defaults: {}, instances: { worker: { working_directory: directory }, peer: { working_directory: directory } } },
@@ -42,7 +43,7 @@ function rig() {
     adapters: new Map([["fake-dc", { id: "fake-dc", type: "discord" }]]), worlds: new Map(), getPrimaryAdapterId: () => "fake-dc",
     adminListOf: (id: string) => id === "fake-dc" ? [admin.userId] : [],
     getDaemonBootId: (name: string) => `${name}-boot`, hubAgentToken: (name: string) => `${name}-gen`,
-    hubContactRestricted: () => false, generalLocationDeliveryHold: () => null,
+    hubContactRestricted: (name: string) => hub.has(name), generalLocationDeliveryHold: () => null,
     scheduleDeliveryOutboxPump: vi.fn(), publishTraffic: vi.fn(), emitSseEvent: vi.fn(), needsYouItems: () => [],
     lifecycle: { daemons: new Map() }, logger: { info: vi.fn(), debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
   });
@@ -70,7 +71,7 @@ function rig() {
     timers: { set: (fn) => { flushAll.push(fn); return fn; }, clear: () => undefined },
   });
   const flush = () => { const fns = flushAll; flushAll = []; for (const f of fns) f(); };
-  return { fm, store, board, heard, take: () => heard.splice(0), card, waker, flush, delivered };
+  return { fm, store, board, heard, take: () => heard.splice(0), card, waker, flush, delivered, hub };
 }
 const keys = (r: { said: Array<{ key: string }> }) => r.said.map((n) => n.key);
 const brief = (wakes: Wake[]) => wakes.map((w) => `${w.instance}:${w.reasons.join("+")}`).sort();
@@ -106,13 +107,13 @@ describe("an agent's comment and @mention, held to the contact rules", () => {
     expect(keys(r.board.updateCard(WORKER, c.code, { comment: "@room please look" }))).toEqual(["comment_wakes"]);
     const plain = r.take();
     expect(brief(plain)).toEqual(["peer:comment", "room:mention"]);
-    expect(plain.every((w) => w.principals?.[0] === "worker" && w.origins?.worker === null)).toBe(true);
+    expect(plain.every((w) => w.principals?.[0] === "worker" && Array.isArray(w.origins?.worker) && w.origins!.worker!.length === 0)).toBe(true);
     r.store.inheritOrigin("room", human(admin, ["room"]));
     expect(r.fm.contactService().needsApplication("room")).toBe(false);
     r.board.updateCard(ROOM, c.code, { comment: "@worker over to you" });
     const fromRoom = r.take();
     expect(brief(fromRoom)).toEqual(["peer:comment", "worker:mention"]);
-    expect(fromRoom[0]!.origins).toEqual({ room: human(admin, ["room"]) });
+    expect(fromRoom[0]!.origins).toEqual({ room: [human(admin, ["room"])] });
   });
 });
 
@@ -182,5 +183,75 @@ describe("a follower's progress, held to the contact rules", () => {
     r2.take();
     r2.board.moveCard(WORKER, c2.code, "done", { result: "ranked by score" });
     expect(brief(r2.take())).toEqual(["peer:progress"]);
+  });
+});
+
+describe("an active Hub contact restriction holds the words too, whatever the origin (#4367 re-review)", () => {
+  it("a Hub-restricted writer with no origin, and one with an administrator's origin, wakes nobody by a comment or its progress", () => {
+    const r = rig();
+    r.store.inheritOrigin("room", human(admin, ["room"]));
+    expect([r.fm.contactService().needsApplication("worker"), r.fm.contactService().needsApplication("room")]).toEqual([false, false]);
+    r.hub.add("worker"); r.hub.add("room");
+    const c = r.card(ANN, { assignee: "peer" });
+    r.take();
+    expect(keys(r.board.updateCard(WORKER, c.code, { comment: "@room look" }))).toEqual(["contact_held"]);
+    expect(keys(r.board.updateCard(ROOM, c.code, { comment: "@worker look" }))).toEqual(["contact_held"]);
+    expect(r.take()).toEqual([]);
+    const d = r.card(ANN, { assignee: "worker" });
+    r.board.setWatchers(ANN, d.code, { add: ["peer"] });
+    r.board.moveCard(WORKER, d.code, "claimed");
+    r.take();
+    expect(keys(r.board.moveCard(WORKER, d.code, "done", { result: "r" }))).toContain("progress_contact_held");
+    expect(r.take()).toEqual([]);
+    // The window closed: the same writers reach again.
+    r.hub.clear();
+    r.board.updateCard(WORKER, c.code, { comment: "@room look again" });
+    expect(brief(r.take())).toEqual(["peer:comment", "room:mention"]);
+  });
+
+  it("a writer the Hub restricts while its notice gathers: the words are left out as it goes out", () => {
+    const r = rig();
+    r.store.inheritOrigin("room", human(admin, ["room"]));
+    const c = r.card(ANN);
+    r.take();
+    r.board.updateCard(ROOM, c.code, { comment: "@worker over to you" });
+    r.waker.note(r.take());
+    r.hub.add("room");
+    r.flush();
+    expect(r.delivered).toEqual([]);
+    expect(r.store.origin("worker")).toBeUndefined();
+  });
+});
+
+describe("every origin the gathered words came with is inherited (#4367 re-review)", () => {
+  it("within one gather: a comment with no origin, then one with an administrator's — the later origin is not lost", () => {
+    const r = rig();
+    const c = r.card(ANN, { assignee: "peer" });
+    r.take();
+    r.board.updateCard(WORKER, c.code, { comment: "first" });
+    r.waker.note(r.take());
+    r.store.inheritOrigin("worker", human(admin, ["room", "worker"]));
+    expect(r.fm.contactService().needsApplication("worker")).toBe(false);
+    r.board.updateCard(WORKER, c.code, { comment: "second" });
+    r.waker.note(r.take());
+    r.flush();
+    expect(r.delivered.map((d) => d.instance)).toEqual(["peer"]);
+    expect(r.delivered[0]!.message).toContain("second");
+    expect(r.store.origin("peer")).toEqual(human(admin, ["room", "worker", "peer"]));
+  });
+
+  it("across cards in one notice: the first card's writer had no origin, the second card's words came with one", () => {
+    const r = rig();
+    const a = r.card(ANN, { assignee: "peer" });
+    const b = r.card(ANN, { assignee: "peer" });
+    r.take();
+    r.board.updateCard(WORKER, a.code, { comment: "on the first card" });
+    r.waker.note(r.take());
+    r.store.inheritOrigin("worker", human(admin, ["room", "worker"]));
+    r.board.updateCard(WORKER, b.code, { comment: "on the second card" });
+    r.waker.note(r.take());
+    r.flush();
+    expect(r.delivered).toHaveLength(1);
+    expect(r.store.origin("peer")).toEqual(human(admin, ["room", "worker", "peer"]));
   });
 });

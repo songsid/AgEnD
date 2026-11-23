@@ -344,11 +344,11 @@ export interface Wake {
    */
   principals?: string[];
   /**
-   * Set by the fleet as the write commits, never the board: each principal's contact origin at that moment (opaque
-   * here), carried through the waker's gathering so the recipient inherits what the words came with, not what the
-   * writer has later.
+   * Set by the fleet as the write commits, never the board: each principal's contact origins at that moment (opaque
+   * here; none when it has none), carried through the waker's gathering — every snapshot of every write merged into the
+   * wake is kept — so the recipient inherits all the words came with, not what the writer has later.
    */
-  origins?: Record<string, unknown>;
+  origins?: Record<string, unknown[]>;
 }
 
 /** The reasons that carry a writer's own words to an instance by the board's routes, not by a handover of the card. */
@@ -2596,8 +2596,8 @@ export class TaskBoard {
         add(card, name, "progress", e.actor, words || undefined, { ...found, as });
       }
     }
-    if (held.length) this.say("progress_contact_held", [held.join(", ")], `${held.join(", ")} not told how the card changed: this conversation needs a contact approval to reach another instance `
-      + `(its origin is unknown or not an administrator's). The change is on the card; to tell them, use send_to_instance, which asks for the approval`);
+    if (held.length) this.say("progress_contact_held", [held.join(", ")], `${held.join(", ")} not told how the card changed: this conversation may not reach another instance on its own `
+      + `(its origin is unknown or not an administrator's, or a Hub contact restriction is on). The change is on the card; to tell them, use send_to_instance, which asks for the approval where one can be given`);
   }
 
   /** A finished card readies the open cards that waited only for it (a sub task also waits for its main task's). */
@@ -2848,8 +2848,8 @@ export class TaskBoard {
     if (assigneeHeld) { if (!held.includes(card.assignee!)) held.push(card.assignee!); asAssignee = false; }
     if (held.length) {
       mentions = mentions.filter((n) => !held.includes(n));
-      this.say("contact_held", [held.join(", ")], `${held.join(", ")} not woken by this comment: this conversation needs a contact approval to reach another instance `
-        + `(its origin is unknown or not an administrator's). The comment is kept on the card; to reach them, use send_to_instance, which asks for the approval`);
+      this.say("contact_held", [held.join(", ")], `${held.join(", ")} not woken by this comment: this conversation may not reach another instance on its own `
+        + `(its origin is unknown or not an administrator's, or a Hub contact restriction is on). The comment is kept on the card; to reach them, use send_to_instance, which asks for the approval where one can be given`);
     }
     if (parsed.unknown.length) {
       this.say("mention_unknown", [parsed.unknown.map((w) => `@${w}`).join(", ")], `${parsed.unknown.map((w) => `@${w}`).join(", ")}: no such instance, nobody was woken for it`);
@@ -2860,11 +2860,16 @@ export class TaskBoard {
         + `comments wake again once a person writes on it, or when these are ${AGENT_COMMENT_WINDOW_MS / 60_000} minutes old`);
       return none;
     }
-    // The limit is for everyone the comment wakes: the card's assignee, when it hears it, takes one of the places.
-    const room = MAX_COMMENT_WAKES - (asAssignee ? 1 : 0);
-    if (agent && mentions.length > room) {
+    // The limit is for everyone the comment wakes, counted once each: the card's assignee, when it hears the comment —
+    // named or not, wherever its name is in the text (settleWakes adds it to a comment that does not name it) — takes one
+    // place, and the instances named besides it share the rest in the order written (#4367 review).
+    const assigneeWakes = !kept && !assigneeHeld && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee);
+    const others = mentions.filter((n) => !(assigneeWakes && n === card.assignee));
+    const room = MAX_COMMENT_WAKES - (assigneeWakes ? 1 : 0);
+    if (agent && others.length > room) {
       this.say("mention_cap", [room], `only the first ${room} instances you mentioned were woken (an agent's comment wakes at most ${MAX_COMMENT_WAKES}, the card's assignee included)`);
-      mentions = mentions.slice(0, room);
+      const kept = new Set(others.slice(0, room));
+      mentions = mentions.filter((n) => kept.has(n) || (assigneeWakes && n === card.assignee));
     }
     const heard = [...mentions.map((n) => `${n} (mentioned)`), ...(asAssignee ? [`${card.assignee} (assignee)`] : [])];
     if (heard.length) this.say("comment_wakes", [heard.join(", ")], `this comment is told to ${heard.join(", ")} as a [Task board] notice: no need to message them about it`);
