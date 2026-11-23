@@ -27,10 +27,12 @@ SOURCES = [
     "scripts/manual/test-office-play-contention-m3551_test.py",
     "scripts/manual/smoke/smoke-office-play-m3293.mts",
     "scripts/manual/smoke-fixture/office-smoke-card.ts", "scripts/manual/smoke-fixture/office-smoke-pointer.ts",
-    "scripts/manual/smoke-fixture/index.mts", "scripts/manual/smoke-fixture/public-roster.mts",
+    "scripts/manual/smoke-fixture/index.mts", "scripts/manual/smoke-fixture/from-defaults.mts",
+    "scripts/manual/smoke-fixture/public-roster.mts",
     "scripts/manual/smoke-fixture/office-capture-cases.ts",
     "src/ui/fleet-office.js", "src/ui/fleet-office-card.js", "src/ui/fleet-office-play.js",
     "src/ui/fleet-office-zones.js", "src/ui/fleet-canvas-view.js",
+    "src/ui/shared/signin.js", "src/ui/signin.html",
 ]
 
 def read_result(path):

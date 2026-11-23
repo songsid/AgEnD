@@ -98,18 +98,17 @@ function untouched(fm: any, viewer: string | null): void {
 }
 
 /**
- * Sign in on the page that is open at /signin with `code`, as a person would: type it — since the one sign-in box
- * (#3562) a whole code signs in by itself (the button turns "Signing in…" and the page moves on) — and press the button
- * only when it didn't. M-3124: pressing it regardless waited on a button that never came back (every from-defaults smoke
- * timed out on #go).
+ * Fill and submit in one page turn, as the seeded fixture does. A complete code also auto-submits on input; the
+ * product deduplicates input + submit while in flight. Never inspect #go after an awaited navigation timeout:
+ * automatic sign-in may have removed the form in that gap (M-3551 contention run 24). Wait only for the destination.
  */
-async function signIn(page: any, code: string, home: string) {
+export async function signIn(page: any, code: string, home: string) {
   await page.waitForSelector("#code", { timeout: 10000 });
-  await page.fill("#code", code);
-  const went = await page.waitForURL(home, { timeout: 3000 }).then(() => true, () => false);
-  if (went) return;
-  // Still signing in by itself on a slow host (the button disabled, "Signing in…"): wait for it; else press it (Fable).
-  if (await page.locator("#go").isEnabled()) await page.click("#go");
+  await page.locator("#code").evaluate((input: HTMLInputElement, value: string) => {
+    input.value = value;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.form!.requestSubmit();
+  }, code);
   await page.waitForURL(home, { timeout: 15000 });
 }
 
