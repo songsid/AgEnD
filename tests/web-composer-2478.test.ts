@@ -154,6 +154,13 @@ describe("#2478: the chat composer (the real page modules)", () => {
     expect(css).toMatch(/^\.dock-col \{ max-width: var\(--col\);/m);
   });
 
+  it("M3540: bottom gutter reuses dock padding instead of adding a keyboard-close band", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    const gutter = css.match(/\.composer-hit \{([^}]+)\}/)?.[1];
+    expect(gutter).toMatch(/margin-bottom: calc\(-1 \* var\(--s-2\)\)/);
+    expect(css).toContain(".dock { padding: 0 max(var(--s-2), env(safe-area-inset-right)) var(--s-2) max(var(--s-2), env(safe-area-inset-left)); }");
+  });
+
   const ph = (c: { p: AppPage }) => c.p.root.querySelector(".composer-field .composer-ph") as any;
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {
     const named = await chatPage({ over: { display_name: "Release captain" } });
