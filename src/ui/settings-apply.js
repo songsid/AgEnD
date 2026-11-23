@@ -106,6 +106,7 @@ async function run(o) {
       stop(o, step);
       return;
     }
+    if (step.sharedDefaults === "restart") step.sharedDefaultsConsent = res.body?.shared_defaults_consent;
     step.status = "done"; publish();
   }
   if (!mine(o)) return;
@@ -174,6 +175,7 @@ async function postApply(o) {
       res = await api("/api/settings/apply", { method: "POST", headers: { "Idempotency-Key": o.applyKey },
         body: JSON.stringify({ idempotency_key: o.applyKey,
           ...(o.steps.some(s => s.sharedDefaults) ? { shared_defaults: o.steps.some(s => s.sharedDefaults === "restart") ? "restart" : "next-start",
+            shared_defaults_consent: o.steps.find(s => s.sharedDefaults === "restart")?.sharedDefaultsConsent,
             shared_defaults_targets: [...new Set(o.steps.filter(s => s.sharedDefaults === "restart").flatMap(s => s.sharedDefaultsTargets || []).map(t => t.name))] } : {}) }) });
     } catch {
       // The answer was lost (a phone between networks): the same key rejoins the same job, never a second one.

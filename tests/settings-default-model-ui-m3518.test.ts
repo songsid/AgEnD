@@ -19,7 +19,7 @@ beforeAll(async () => {
       : path === "/api/fleet" ? { version: "fixture", instances: Object.keys(raw.instances).map(name => ({ name, status: allStopped ? "stopped" : "running" })) }
       : path.startsWith("/ui/models") ? { models: [{ id: "sonnet" }, { id: "haiku" }] }
       : path === "/api/settings/apply" ? { id: "fixture-apply", status: "done", targets: [{ target: "Alpha", kind: "restart", status: "next-start" }] }
-      : init.method ? { ok: true } : [];
+      : init.method ? { ok: true, shared_defaults_consent: "00000000-0000-4000-8000-000000000001" } : [];
     return { ok: true, status: 200, json: async () => body };
   }) as any;
   (await import("/assets/app-nav.js")).startRouter(p.window);
@@ -81,10 +81,24 @@ it("R1: the accepted request keeps the exact names shown even if the staged scop
   const q = confirmStore.get().queue[0]; expect(q.message).toContain("Example Alpha"); expect(q.message).not.toContain("Beta");
   try {
     raw.instances.Beta.backend = "claude-code";
+    await choose("g-model", "opus"); // the confirmed write must stay haiku, not this later draft
     await choose("g-tp", "verbose"); // simulates a recomputed draft scope; the open question still authorizes only Alpha
     answerConfirm(q.id, true); await settle(14);
     const request = sent.find(s => s.path === "/api/settings/apply");
     expect(request.body.shared_defaults).toBe("restart");
     expect(request.body.shared_defaults_targets).toEqual(["Alpha"]);
+    expect(request.body.shared_defaults_consent).toBe("00000000-0000-4000-8000-000000000001");
+    expect(sent.find(s => s.path === "/api/settings/fleet/defaults").body).toMatchObject({ backend: "claude-code", model: "haiku" });
   } finally { raw.instances.Beta.backend = "codex"; }
+});
+
+it("R2: Classic model inheritance label follows the selected backend", async () => {
+  const { ClassicDialog } = await import("/ui/js/settings-dialogs.js");
+  (await import("/assets/app-i18n.js")).setLang("en");
+  const ctx = { fleet: { defaults: { backend: "claude-code", model: "opus" }, instances: {} }, classic: { defaults: {} }, schema: buildSettingsImpactSchema(), classicRuntime: () => ({ execution: "stopped" }) };
+  await p.mount(h(ClassicDialog, { room: { instanceName: "example-room", backend: "codex" }, ctx, onClose: () => {} }));
+  await settle(8);
+  expect($("#cl-model").closest(".field").textContent).not.toContain("opus");
+  await choose("cl-be", "claude-code");
+  expect($("#cl-model").closest(".field").textContent).toContain("opus");
 });

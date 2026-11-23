@@ -141,7 +141,8 @@ export interface SettingsApiContext extends AppShellContext {
   captureClassicSettingsRestoration?(instanceName: string, changedFields: string[], execution?: SettingsExecution): () => Promise<void>;
   /** Present on a real fleet; absent in unit contexts that only exercise CRUD. */
   applyJobs?: ApplyJobStore;
-  startSettingsApply?(key: string, sharedDefaults?: "next-start" | "restart", restartTargets?: readonly string[]): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
+  captureSharedDefaultsConsent?(): string;
+  startSettingsApply?(key: string, sharedDefaults?: "next-start" | "restart", restartTargets?: readonly string[], receipt?: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null };
   requestSettingsSelfRestart?(jobId: string, key: string): Promise<SelfRestartResult>;
   /** Non-null when the running config and fleet.yaml disagree on a
    * startup-only key, in which case a restart cannot clear the fleet row. */
@@ -1031,10 +1032,12 @@ export function handleSettingsRequest(
       const before = validateFleet(cfg);
       const after = validateFleet({ ...cfg, defaults: merged });
       if (rejectIfWorse(res, before, after)) return;
+      let sharedDefaultsConsent: string | undefined;
       settingsWrite(req, () => { cfg.defaults = merged as typeof cfg.defaults;
         if (typeof body.tips === "boolean" || body.tips === "dm") setNoticeMode(cfg, "tips", body.tips);
-        ctx.saveFleetConfig(); });
-      json(res, 200, { ok: true, warnings: saveWarnings(before, after) });
+        ctx.saveFleetConfig();
+        sharedDefaultsConsent = ctx.captureSharedDefaultsConsent?.(); });
+      json(res, 200, { ok: true, warnings: saveWarnings(before, after), shared_defaults_consent: sharedDefaultsConsent });
     }).catch(() => json(res, 400, { error: "bad request" }));
     return true;
   }
@@ -1301,12 +1304,14 @@ export function handleSettingsRequest(
         json(res, 400, { error: "invalid shared_defaults choice" }); return;
       }
       const targets = body.shared_defaults_targets;
+      const receipt = body.shared_defaults_consent;
       if ((targets !== undefined && (!Array.isArray(targets) || targets.some(name => typeof name !== "string" || name.length < 1 || name.length > 256 || /[\x00-\x1f\x7f]/.test(name))))
-        || (body.shared_defaults === "restart" && (!Array.isArray(targets) || !targets.length))) {
+        || (body.shared_defaults === "restart" && (!Array.isArray(targets) || !targets.length || typeof receipt !== "string" || !/^[0-9a-f-]{36}$/.test(receipt)))) {
         json(res, 400, { error: "confirmed shared_defaults_targets required for restart" }); return;
       }
       const result = ctx.startSettingsApply!(key, body.shared_defaults === "restart" ? "restart" : "next-start",
-        body.shared_defaults === "restart" ? targets as string[] : []);
+        body.shared_defaults === "restart" ? targets as string[] : [],
+        body.shared_defaults === "restart" ? receipt as string : undefined);
       if ("busy" in result) {
         // One reconcile at a time: two of them stop and start the same agent in
         // parallel. The running job's id lets the client watch that one instead.

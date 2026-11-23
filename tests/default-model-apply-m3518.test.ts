@@ -25,7 +25,7 @@ function setup(secondRunning = false) {
   return { fm, runtime, daemon, stop, start };
 }
 async function apply(fm: FleetManager, key: string, choice?: "next-start" | "restart") {
-  const { job } = fm.startSettingsApply(key, choice, choice === "restart" ? ["one"] : []) as { job: ApplyJob };
+  const { job } = fm.startSettingsApply(key, choice, choice === "restart" ? ["one"] : [], choice === "restart" ? fm.captureSharedDefaultsConsent() : undefined) as { job: ApplyJob };
   await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
   return fm.applyJobs.get(job.id)!;
 }
@@ -123,7 +123,7 @@ it("a Classic room's named login does not turn a deferred backend edit into a pr
 
 it("R1: restart consent covers only the names shown in the confirmation", async () => {
   const { fm, stop } = setup(true);
-  const { job } = fm.startSettingsApply("shared-confirmed-names", "restart", ["one"]) as { job: ApplyJob };
+  const { job } = fm.startSettingsApply("shared-confirmed-names", "restart", ["one"], fm.captureSharedDefaultsConsent()) as { job: ApplyJob };
   await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
   expect(stop).toHaveBeenCalledExactlyOnceWith("one");
   expect(fm.applyJobs.get(job.id)?.targets.find(r => r.target === "stopped")?.status).toBe("next-start");
@@ -135,4 +135,27 @@ it("R1: a restart mode without a confirmed target list never restarts", async ()
   const job = fm.applyJobs.get(pending.id)!;
   expect(stop).not.toHaveBeenCalled();
   expect(job.targets.find(r => r.target === "one")?.status).toBe("next-start");
+});
+
+it("R2: a later save between the confirmed write and Apply never inherits restart consent", async () => {
+  const { fm, stop, start } = setup();
+  const receipt = fm.captureSharedDefaultsConsent();
+  fm.fleetConfig!.defaults.backend = "codex";
+  fm.fleetConfig!.defaults.model = "later";
+  fm.saveFleetConfig();
+  const { job } = fm.startSettingsApply("shared-gap-other-save", "restart", ["one"], receipt) as { job: ApplyJob };
+  await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
+  expect(stop).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled();
+  expect(fm.applyJobs.get(job.id)?.targets.find(r => r.target === "one")?.status).toBe("next-start");
+});
+
+it("R2: a replacement runtime cannot inherit the confirmed owner's restart", async () => {
+  const { fm, stop } = setup();
+  const receipt = fm.captureSharedDefaultsConsent();
+  const snapshot = structuredClone(fm.lifecycle.daemons.get("one")!.getConfigSnapshot!());
+  fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => snapshot } as never);
+  const { job } = fm.startSettingsApply("shared-replaced-owner", "restart", ["one"], receipt) as { job: ApplyJob };
+  await vi.waitFor(() => expect(fm.applyJobs.get(job.id)?.status).toBe("done"));
+  expect(stop).not.toHaveBeenCalled();
+  expect(fm.applyJobs.get(job.id)?.targets.find(r => r.target === "one")?.status).toBe("next-start");
 });

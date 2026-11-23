@@ -326,11 +326,13 @@ export function SettingsPanel({ route, navKey }) {
     // ones pending (a surprising partial apply).
     applying.current = true;
     let confirmedRestartTargets = [];
+    const confirmedDefaultRequests = new Map();
     try {
       if ([...stagedRef.current.values()].some(c => c.sharedDefaults === "restart")) {
         const shown = new Map([...stagedRef.current.values()].filter(c => c.sharedDefaults === "restart")
           .flatMap(c => c.sharedDefaultsTargets || []).map(target => [target.name, target]));
         confirmedRestartTargets = [...shown.values()];
+        for (const c of stagedRef.current.values()) if (c.sharedDefaults === "restart") confirmedDefaultRequests.set(c.stageKey, structuredClone(c.request));
         const names = confirmedRestartTargets.map(({ name, label }) => name === label ? label : tn("defaultIdentityNamedTarget", label, name)).join("\n");
         if (!(await ask(tn(confirmedRestartTargets.length === 1 ? "defaultIdentityRestartConfirmOne" : "defaultIdentityRestartConfirm", confirmedRestartTargets.length, names),
           { title: tn("defaultIdentityWhen"), confirmLabel: tn("defaultIdentityRestartButton"), danger: true }))) return;
@@ -359,7 +361,8 @@ export function SettingsPanel({ route, navKey }) {
       if (!stagedRef.current.size) { if (!failed) toast(tn("youSaved")); setDraftEpoch((n) => n + 1); return; }
     }
     const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes }) => ({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes,
-      sharedDefaultsTargets: sharedDefaults === "restart" ? confirmedRestartTargets : [] }));
+      sharedDefaultsTargets: sharedDefaults === "restart" ? confirmedRestartTargets : [],
+      ...(sharedDefaults === "restart" && confirmedDefaultRequests.has(stageKey) ? { request: confirmedDefaultRequests.get(stageKey) } : {}) }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));
     if (startOperation(list)) {
       results.current = handlers; submitted.current = new Map(drafts.current); submittedStaged.current = new Map(stagedRef.current);
@@ -1118,7 +1121,8 @@ function General({ ctx, part = "all" }) {
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
       ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn(sharedDefaultMode === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext"),
         ...(dKeys.some(k => k !== "backend" && k !== "model") ? [tn("defaultIdentityOtherEdits", impactText(batchImpact(schema, dKeys.filter(k => k !== "backend" && k !== "model"), k => defaultsImpact(schema, k))))] : [])] } : {}),
-      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
+      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: sharedDefaultMode === "restart" && dKeys.some(k => k === "backend" || k === "model")
+        ? { ...defaultsPatch, backend: f.backend, model: f.model || null } : defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
       request: { method: "PUT", url: "/api/settings/classic/defaults", body: classicPatch } } : null);

@@ -4547,7 +4547,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private logSource(name: string): LogSource {
     const instances = this.fleetConfig?.instances ?? {};
     const config = Object.prototype.hasOwnProperty.call(instances, name) ? instances[name] : undefined;
-    const backend = this.backendNameForInstance(name);
+    const backend = this.pendingRuntimeIdentity(name)?.backend ?? config?.backend ?? (config ? null : this.classicRoomFor(name)?.backend) ?? this.fleetConfig?.defaults?.backend ?? "claude-code";
     const live = this.lifecycle.daemons.get(name)?.logTranscriptPath() ?? null;
     if (backend === "claude-code") {
       let path = live;
@@ -6588,7 +6588,15 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   private backendNameOf(name: string): string {
-    return this.backendNameForInstance(name);
+    const pending = this.pendingRuntimeIdentity(name);
+    if (pending) return pending.backend || "claude-code";
+    const fleetDefault = this.fleetConfig?.defaults?.backend;
+    const fleetInstance = this.fleetConfig?.instances[name];
+    if (fleetInstance) return fleetInstance.backend ?? fleetDefault ?? "claude-code";
+    if (this.classicChannels?.getAll().some(channel => channel.instanceName === name)) {
+      return this.classicChannels.getBackendByInstance(name, fleetDefault);
+    }
+    return fleetDefault ?? "claude-code";
   }
 
   /**
@@ -13529,7 +13537,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private sharedIdentitySource(name: string): string {
     const own = this.rawFleetConfig.instances?.[name];
-    if (own) return JSON.stringify([own.backend ?? null, own.model ?? null]);
+    if (own || this.fleetConfig?.instances[name]) return JSON.stringify([own?.backend ?? null, own?.model ?? null]);
     const ch = this.classicChannels?.getAll().find(c => c.instanceName === name);
     const defaults = this.classicChannels?.getDefaults();
     return JSON.stringify([ch?.backend ?? null, ch?.model ?? null, defaults?.backend ?? null, defaults?.model ?? null]);
@@ -13537,10 +13545,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   private sharedDefaultsView<T extends { backend?: string; model?: string }>(name: string, config: T, consent?: ReadonlySet<object>) {
     return this.sharedDefaultAdoption.view(name, this.daemons.get(name), config,
-      this.lifecycle.isPaused(name) ? undefined : consent, this.sharedIdentitySource(name));
+      this.lifecycle.isPaused(name) ? undefined : consent, this.sharedIdentitySource(name), this.daemons.get(name)?.getConfigSnapshot?.());
   }
 
   private pendingRuntimeIdentity(name: string): { backend?: string; model?: string } | undefined {
+    if (!this.sharedDefaultAdoption?.has(name)) return undefined;
     const daemon = this.daemons.get(name);
     if (!daemon) return undefined;
     let desired = this.fleetConfig?.instances[name];
@@ -20786,7 +20795,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       const own = this.rawFleetConfig.instances?.[instanceName];
       const model = own ? own.model : fleetInstance.model;
       if (model?.trim()) return done(model.trim(), "instance");
-      const fleetDefault = scopedDefaultModel(fleetInstance.backend, this.fleetConfig?.defaults);
+      const fleetDefault = scopedDefaultModel(this.backendNameForInstance(instanceName), this.fleetConfig?.defaults);
       if (fleetDefault?.trim()) return done(fleetDefault.trim(), "fleet-default");
     }
 
@@ -24511,7 +24520,9 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
    * the whole point: the retry after a lost response must not apply everything a
    * second time.
    */
-  startSettingsApply(key: string, sharedDefaults: "next-start" | "restart" = "next-start", restartTargets: readonly string[] = []): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
+  captureSharedDefaultsConsent(): string { return this.sharedDefaultAdoption.receipt(); }
+
+  startSettingsApply(key: string, sharedDefaults: "next-start" | "restart" = "next-start", restartTargets: readonly string[] = [], receipt?: string): { job: ApplyJob; reused: boolean } | { busy: ApplyJob | null } {
     // The key is checked first on purpose: a retry of the apply that is running
     // right now must get its own job back, not "busy".
     const existing = this.applyJobs.findByKey(key);
@@ -24521,7 +24532,7 @@ Plus the operational skills (fleet-health, instance-lifecycle, scheduling, sessi
       return { busy: this.activeApplyJobId ? this.applyJobs.get(this.activeApplyJobId) : null };
     }
 
-    const defaultConsent = sharedDefaults === "restart" ? this.sharedDefaultAdoption.consent(new Set(restartTargets)) : undefined;
+    const defaultConsent = sharedDefaults === "restart" ? this.sharedDefaultAdoption.fromReceipt(receipt, new Set(restartTargets)) : undefined;
     const job = this.applyJobs.create(key, this.planConfigApply(defaultConsent));
     // Reserved synchronously: the work starts a microtask later, and a second
     // request arriving in that gap must see the slot taken.

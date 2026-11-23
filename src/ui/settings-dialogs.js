@@ -668,7 +668,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
   const { fleet, classic, schema } = ctx;
   const cd = (classic && classic.defaults) || {}, fd = fleet.defaults || {};
   const inherited = {
-    backend: cd.backend || fd.backend || "claude-code", model: cd.model || fd.model || "",
+    backend: cd.backend || fd.backend || "claude-code",
     auto_pause_after: cd.auto_pause_after ?? fd.auto_pause_after ?? 0, tool_progress: cd.tool_progress ?? fd.tool_progress ?? "off",
     reply_triggers: Boolean(cd.reply_triggers ?? fd.reply_triggers ?? schema.reply_triggers_default),
     reply_completion_guard: cd.reply_completion_guard ?? fd.reply_completion_guard ?? true,
@@ -725,7 +725,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
         ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model")}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", ((f.backend === (cd.backend || fd.backend || "claude-code") && cd.model?.trim()) || (f.backend === (fd.backend || "claude-code") && fd.model?.trim())) || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto")}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
           <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}

@@ -8,7 +8,7 @@ describe("shared default adoption", () => {
     const desired = { backend: "codex", model: "new", working_directory: "/changed", log_level: "debug" };
     expect(pending.view("agent", owner, desired)).toEqual({ config: { ...desired, model: "old" }, deferred: true });
     expect(pending.view("agent", owner, desired).deferred).toBe(true);
-    expect(pending.view("agent", {}, desired)).toEqual({ config: desired, deferred: false });
+    expect(pending.view("agent", {}, desired, undefined, "", desired)).toEqual({ config: desired, deferred: false });
   });
   it("consent covers only that running owner/value; stopped agents never start from this choice", () => {
     const pending = new SharedDefaultAdoption(), owner = {};
@@ -30,4 +30,16 @@ it("R1: consent excludes other pending owners", () => {
   const consent = (pending.consent as any)(new Set(["one"]));
   expect(pending.view("one", one, { model: "new" }, consent).deferred).toBe(false);
   expect(pending.view("two", two, { model: "new" }, consent).deferred).toBe(true);
+});
+
+it("R2: a receipt binds its entries/owner without authorizing later values", () => {
+  const pending = new SharedDefaultAdoption(), owner = {};
+  pending.track("one", owner, { model: "old" }, { model: "new" });
+  const receipt = pending.receipt();
+  pending.track("one", owner, { model: "old" }, { model: "later" });
+  expect(pending.view("one", owner, { model: "later" }, pending.fromReceipt(receipt, new Set(["one"]))).deferred).toBe(true);
+  const ownerReceipt = pending.receipt(), replacement = {};
+  const consent = pending.fromReceipt(ownerReceipt, new Set(["one"]));
+  expect(pending.view("one", replacement, { model: "later" }, consent, "", { model: "old" }).deferred).toBe(true);
+  expect(pending.view("one", replacement, { model: "later" }, pending.fromReceipt("missing", new Set(["one"]))).deferred).toBe(true);
 });
