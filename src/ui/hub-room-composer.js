@@ -86,20 +86,41 @@ export function mentionsIn(text, detail) {
  */
 const tokenAt = (s, b) => s.startsWith(`@${b.name}`, b.start) && !/[\w-]/.test(s.charAt(b.start + 1 + b.name.length));
 /**
- * The bindings after the text changed from `prev` to `next`: the edit is what lies between their common start and end; a
- * mention before it stays, one after it moves by the change in length, one the edit touches is gone (deleted or edited:
- * a later pick or a name retyped by hand cannot revive it).
+ * The edit that turned `prev` into `next`, from the box's selection when it began ({ start, end }) and its caret after
+ * (`caret`): prev[a, b) became next[a, caret) — typing, a paste, a cut, Backspace or Delete, an IME's composed text — or
+ * null when those do not account for the change (the change is then not the box's own: see shiftBindings).
  */
-export function shiftBindings(prev, next, bindings = []) {
-  const a = String(prev || ""), b = String(next || "");
-  if (a === b) return bindings;
-  let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
-  let q = 0; while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
-  const editEnd = a.length - q, delta = b.length - a.length;
-  return (Array.isArray(bindings) ? bindings : []).flatMap((x) => {
+export function editRange(prev, next, sel, caret) {
+  const a0 = String(prev || ""), b0 = String(next || "");
+  if (!sel || !Number.isInteger(sel.start) || !Number.isInteger(sel.end) || !Number.isInteger(caret)) return null;
+  const a = Math.min(sel.start, caret), b = caret - (b0.length - a0.length);
+  if (a < 0 || b < a || b > a0.length || caret > b0.length) return null;
+  return a0.slice(0, a) === b0.slice(0, a) && a0.slice(b) === b0.slice(caret) ? { a, b, c: caret } : null;
+}
+/**
+ * The bindings after the text changed from `prev` to `next` by `range` (editRange: prev[a, b) became next[a, c)): a
+ * mention wholly before the edit stays, one wholly after it moves by the change in length, one the edit touches is gone
+ * (deleted or edited: a later pick or a name retyped by hand cannot revive it). With no range, the edit could be anywhere
+ * the two texts allow (two identical mentions: either one) — every binding it could have touched is gone, none is moved
+ * onto another member's mention.
+ */
+export function shiftBindings(prev, next, bindings = [], range = null) {
+  const a0 = String(prev || ""), b0 = String(next || ""), list = Array.isArray(bindings) ? bindings : [];
+  if (a0 === b0) return list;
+  const d = b0.length - a0.length;
+  let lo, hi;
+  if (range) { lo = range.a; hi = range.b; } else {
+    // The earliest and the latest the edit can be: the longest common start first, and the longest common end first.
+    let p = 0; while (p < a0.length && p < b0.length && a0[p] === b0[p]) p++;
+    let q = 0; while (q < a0.length - p && q < b0.length - p && a0[a0.length - 1 - q] === b0[b0.length - 1 - q]) q++;
+    let q2 = 0; while (q2 < a0.length && q2 < b0.length && a0[a0.length - 1 - q2] === b0[b0.length - 1 - q2]) q2++;
+    let p2 = 0; while (p2 < a0.length - q2 && p2 < b0.length - q2 && a0[p2] === b0[p2]) p2++;
+    lo = Math.min(p, p2); hi = Math.max(a0.length - q, a0.length - q2);
+  }
+  return list.flatMap((x) => {
     const end = x.start + 1 + x.name.length;
-    if (end <= p) return [x];
-    if (x.start >= editEnd) return [{ ...x, start: x.start + delta }];
+    if (end <= lo) return [x];
+    if (x.start >= hi) return [{ ...x, start: x.start + d }];
     return [];
   });
 }
@@ -152,13 +173,9 @@ export function refusalText(r) {
  */
 export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
-  // M-3533: the mentions put in the box for a member, where they were put; every change of the text moves or retires
-  // them (shiftBindings) before a new one is added (`adding`: the one an insertion carries, at its place).
-  const bindings = useRef([]), seen = useRef(""), adding = useRef([]);
-  useEffect(() => {
-    bindings.current = shiftBindings(seen.current, value, bindings.current); seen.current = value;
-    if (adding.current.length) { bindings.current = [...bindings.current, ...adding.current]; adding.current = []; }
-  }, [value]);
+  // M-3533: the mentions put in the box for a member, where they were put; each edit moves or retires them by its own
+  // range (editRange: the selection when it began, the caret after), never by guessing from the text.
+  const bindings = useRef([]), sel = useRef(null);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
@@ -172,14 +189,23 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   if (insertRef) insertRef.current = (text, bind = null) => {
     setValue((v) => {
       const base = v && !/\s$/.test(v) ? `${v} ` : v;
-      // Appended: the binding goes in after the text's own change is applied (an edit at the end touches nothing before).
-      if (bind) adding.current = [...adding.current, { ...bind, start: base.length + text.indexOf(`@${bind.name}`) }];
+      // Appended after everything: no mention already in the box moves; this one is bound where it is put.
+      if (bind) bindings.current = [...bindings.current, { ...bind, start: base.length + text.indexOf(`@${bind.name}`) }];
       return `${base}${text} `;
     });
     setTimeout(() => input.current?.focus(), 0);
   };
+  // Where the box's selection was when an edit began (its first beforeinput — a key's, a paste's, an IME's — or keydown).
+  useEffect(() => {
+    const el = input.current;
+    if (!el?.addEventListener) return undefined;
+    const note = () => { if (!sel.current) sel.current = { start: el.selectionStart, end: el.selectionEnd }; };
+    el.addEventListener("beforeinput", note); el.addEventListener("keydown", note); el.addEventListener("cut", note); el.addEventListener("drop", note);
+    return () => { el.removeEventListener("beforeinput", note); el.removeEventListener("keydown", note); el.removeEventListener("cut", note); el.removeEventListener("drop", note); };
+  }, [input.current]);
   const complete = (o) => {
     const next = `${value.slice(0, at.start)}${o.label} ${value.slice(caret)}`;
+    bindings.current = shiftBindings(value, next, bindings.current, { a: at.start, b: caret, c: at.start + o.label.length + 1 });
     setValue(next); setPick(0);
     setTimeout(() => { const el = input.current; if (el) { const n = at.start + o.label.length + 1; el.focus(); try { el.setSelectionRange(n, n); } catch { /* not a text field */ } setCaret(n); } }, 0);
   };
@@ -189,7 +215,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     setBusy(true); setMsg(null);
     const r = await store.send(text, { mentions: boundMentions(value, detail, bindings.current), ...(reply ? { replyTo: reply.roomMessage } : {}) });
     setBusy(false);
-    if (r.ok) { setValue(""); onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
+    if (r.ok) { setValue(""); bindings.current = []; onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
   };
   const onKeyDown = (e) => {
     if (palette && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPick((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length); return; }
@@ -198,7 +224,11 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     // Enter sends, Shift+Enter is a new line — the Fleet chat's own rule (and a phone's).
     if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); void send(); }
   };
-  const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
+  const track = (v) => {
+    const c = input.current ? input.current.selectionStart ?? v.length : v.length;
+    bindings.current = shiftBindings(value, v, bindings.current, editRange(value, v, sel.current, c)); sel.current = null;
+    setValue(v); setMsg(null); setCaret(c);
+  };
   // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste, through the room's own
   // Attach and its file rules (hub-attachments.js pasteToAttach). A room that takes no files keeps the text (as before).
   const onPaste = (e) => { if (!closed) pasteToAttach(e, attach); };

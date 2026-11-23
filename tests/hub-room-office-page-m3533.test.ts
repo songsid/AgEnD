@@ -297,8 +297,7 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       expect([typed.text, typed.mentions.includes(a.id), typed.mentions.includes(b.id)]).toEqual([`@${a.name} again`, true, true]);
     } finally { restore(); }
   });
-  it.each([["second"], ["first"]])("two picked mentions of one name (A then B): deleting the %s sends only the other's member", async (which) => {
-    const left = (n: string) => (which === "second" ? `@${n} ` : ` @${n} `);
+  it.each([["second"], ["first"], ["first, not its space"]])("two picked mentions of one name (A then B): deleting the %s sends only the other's member", async (which) => {
     const { pg, room, posts, restore } = await roomPage({ sameName: true });
     try {
       const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
@@ -307,8 +306,12 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => labels().length === 2);
       let box = await askFrom(pg, (l) => l === labels().find((x) => x !== `Notes (${a.owner.name})`));
       expect(box.value).toBe(`@${a.name} @${b.name} `);
-      const kept = which === "second" ? a : b, gone = which === "second" ? b : a;
-      box = q(pg, ".hub-dock textarea"); box.value = left(a.name); box.selectionStart = box.value.length; fire(box, "input"); await settle(3);
+      const kept = which === "second" ? a : b, gone = which === "second" ? b : a, bare = which === "first, not its space";
+      // The user selects one mention with its space and deletes it: the box's selection when the edit began, then the text.
+      box = q(pg, ".hub-dock textarea");
+      const len = a.name.length + 2, from = which === "second" ? len : 0, cut = bare ? len - 1 : len;
+      box.selectionStart = from; box.selectionEnd = from + cut; fire(box, "beforeinput");
+      box.value = bare ? ` @${a.name} ` : `@${a.name} `; box.selectionStart = box.selectionEnd = from; fire(box, "input"); await settle(3);
       const post = await send(pg, posts, box);
       expect([post.mentions.includes(kept.id), post.mentions.includes(gone.id)]).toEqual([true, false]);
     } finally { restore(); }
@@ -343,16 +346,28 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
     const detail = { me: { id: "me" }, members: [{ kind: "agent", id: "e1", name: "Notes" }, { kind: "agent", id: "e2", name: "Notes" }] };
     const text = "@Notes @Notes ", A = { name: "Notes", id: "e1", start: 0 }, B = { name: "Notes", id: "e2", start: 7 };
     expect(composer.boundMentions(text, detail, [A, B]).sort()).toEqual(["e1", "e2"]);
-    const noB = "@Notes  ", left = composer.shiftBindings(text, noB, [A, B]);
+    const noB = "@Notes  ", left = composer.shiftBindings(text, noB, [A, B], composer.editRange(text, noB, { start: 7, end: 13 }, 7));
     expect([left, composer.boundMentions(noB, detail, left)]).toEqual([[A], ["e1"]]);
-    const noA = " @Notes ", right = composer.shiftBindings(text, noA, [A, B]);
+    const noA = " @Notes ", right = composer.shiftBindings(text, noA, [A, B], composer.editRange(text, noA, { start: 0, end: 6 }, 0));
     expect([right, composer.boundMentions(noA, detail, right)]).toEqual([[{ ...B, start: 1 }], ["e2"]]);
     // Edited inside the mention: gone; typed before it: moved; a hand-typed @Notes beside a bound one reads as typed.
-    expect(composer.shiftBindings("@Notes hi", "@Note hi", [A])).toEqual([]);
-    expect(composer.shiftBindings("@Notes hi", "so @Notes hi", [A])).toEqual([{ ...A, start: 3 }]);
+    expect(composer.shiftBindings("@Notes hi", "@Note hi", [A], composer.editRange("@Notes hi", "@Note hi", { start: 6, end: 6 }, 5))).toEqual([]);
+    expect(composer.shiftBindings("@Notes hi", "so @Notes hi", [A], composer.editRange("@Notes hi", "so @Notes hi", { start: 0, end: 0 }, 3))).toEqual([{ ...A, start: 3 }]);
     expect(composer.boundMentions("@Notes and @Notes", detail, [A]).sort()).toEqual(["e1", "e2"]);
     // A binding whose text no longer stands at its place binds nothing.
     expect(composer.intactBindings("hello @Notes", [A])).toEqual([]);
+    // Two identical mentions, the first deleted with its space: the box's range says which (B stays, moved to 0); with
+    // no range the text cannot say, so neither binding survives — no member is moved onto the other's mention.
+    const r1 = composer.editRange(text, "@Notes ", { start: 0, end: 7 }, 0);
+    expect(r1).toEqual({ a: 0, b: 7, c: 0 });
+    expect(composer.shiftBindings(text, "@Notes ", [A, B], r1)).toEqual([{ ...B, start: 0 }]);
+    expect(composer.shiftBindings(text, "@Notes ", [A, B], composer.editRange(text, "@Notes ", { start: 7, end: 14 }, 7))).toEqual([A]);
+    expect(composer.shiftBindings(text, "@Notes ", [A, B])).toEqual([]);
+    // Backspace, Delete and typing over a selection are ranges too; a range that does not explain the change is none.
+    expect(composer.editRange("@Notes hi", "@Note hi", { start: 6, end: 6 }, 5)).toEqual({ a: 5, b: 6, c: 5 });
+    expect(composer.editRange("@Notes hi", "@Notes i", { start: 7, end: 7 }, 7)).toEqual({ a: 7, b: 8, c: 7 });
+    expect(composer.editRange("@Notes hi", "@Notes yo", { start: 7, end: 9 }, 9)).toEqual({ a: 7, b: 9, c: 9 });
+    expect(composer.editRange("@Notes hi", "@Notes yo", { start: 0, end: 0 }, 0)).toBeNull();
   });
   it.each([["en", "@Room assistant"], ["zh-TW", "@房間助理"]])("the room assistant, by the box's own word for it (%s)", async (lang, word) => {
     const { pg, posts, restore } = await roomPage({ lang });
