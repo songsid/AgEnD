@@ -169,3 +169,33 @@ describe("M-3539 the idle never stroll or visit to the help desk", () => {
     expect(Z.callingAreas({ ...base, stateZones: { idle: "lounge", default: "lounge" } })).toEqual([]);
   });
 });
+
+describe("M-3539 a new office or style places everyone at once (Prism #4376 P2)", () => {
+  const graph = { waypoints: [], edges: [] };
+  /** Someone half-way along a walk to `to`. */
+  const walkingTo = (to: any) => {
+    const w = Z.createWalkers();
+    w.sync(new Map([["Quill", { x: 100, y: 100 }]]), 0, graph);
+    w.sync(new Map([["Quill", to]]), 0, graph);
+    const mid = w.at("Quill", 500);
+    expect(mid.walking).toBe(true);                                 // under way: what the test is about
+    return w;
+  };
+  it("a walk under way to the very seat the new layout gives (Studio and Studio (large) share the work seats) stops there", () => {
+    const to = { x: 400, y: 100 }, w = walkingTo(to);
+    w.sync(new Map([["Quill", to]]), 500, graph, false, true);
+    expect(w.at("Quill", 501)).toEqual({ x: 400, y: 100, walking: false });
+  });
+  it("and to another seat: there at once", () => {
+    const w = walkingTo({ x: 400, y: 100 });
+    w.sync(new Map([["Quill", { x: 50, y: 300 }]]), 500, graph, false, true);
+    expect(w.at("Quill", 501)).toEqual({ x: 50, y: 300, walking: false });
+  });
+  it("an ordinary sync in the same style keeps the walk going", () => {
+    const to = { x: 400, y: 100 }, w = walkingTo(to);
+    const before = w.at("Quill", 600);
+    w.sync(new Map([["Quill", to]]), 500, graph);
+    expect(w.at("Quill", 600)).toEqual(before);
+    expect(before.walking).toBe(true);
+  });
+});

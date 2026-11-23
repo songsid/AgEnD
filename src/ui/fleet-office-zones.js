@@ -503,9 +503,10 @@ export function createMail({ max = MAIL.MAX } = {}) {
 }
 
 /**
- * Where each character is. `sync(targets, now, graph, still)`: targets name → { x, y }; someone new is already there;
+ * Where each character is. `sync(targets, now, graph, still, fresh)`: targets name → { x, y }; someone new is already there;
  * someone whose target moved walks from where they are now along the graph (routeVia; each diagonal leg an L when the
- * graph is `straight`, #2634) — or is there at once when `still` (reduced motion); someone gone is forgotten. `at(name, now)` → { x, y, walking } and, while walking, `heading`: the
+ * graph is `straight`, #2634) — or is there at once when `still` (reduced motion); with `fresh` (M-3539: a new office or
+ * style) everyone is at their target at once, a walk under way stopped even when it was going there; someone gone is forgotten. `at(name, now)` → { x, y, walking } and, while walking, `heading`: the
  * current step's { dx, dy }, which picks a pack's walkDown / walkUp / walkSide strip; `moving(now)`.
  */
 export function createWalkers() {
@@ -518,10 +519,11 @@ export function createWalkers() {
     return { x: p.x, y: p.y, walking: true, heading: headingAt(w.pts, Math.max(0, t)) };
   };
   return {
-    sync(targets, now, graph, still = false) {
+    sync(targets, now, graph, still = false, fresh = false) {
       for (const name of [...by.keys()]) if (!targets.has(name)) by.delete(name);
       for (const [name, to] of targets) {
         const w = by.get(name);
+        if (fresh) { by.set(name, { pts: null, to }); continue; }
         if (!w || still) { if (!w || w.to.x !== to.x || w.to.y !== to.y) by.set(name, { pts: null, to }); continue; }
         if (w.to.x === to.x && w.to.y === to.y) continue;
         const here = posAt(w, now), via = routeVia(graph, { x: here.x, y: here.y }, { x: to.x, y: to.y });

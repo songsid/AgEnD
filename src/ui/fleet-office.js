@@ -1364,7 +1364,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
       const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
       placedRef.current = placed;
-      walkers.sync(to, t, L, still || fresh);
+      walkers.sync(to, t, L, still, fresh);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
