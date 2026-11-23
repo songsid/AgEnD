@@ -398,6 +398,8 @@ A regular instance bound to the Telegram General Topic. Auto-created on fleet st
 - Project-specific tasks — uses `list_instances()` to find the right agent, `start_instance()` if needed, then `send_to_instance()` to delegate
 - New project requests — uses `create_instance()` to set up a new agent
 
+AgEnD keeps the coordinator role text in a managed block at the top of that file (between the `agend:general-role` markers) and the core rules in another (`agend:core-rules`), and refreshes both every time General starts, so wording updates reach an existing General. Add your own instructions outside the blocks; a file where you rewrote the coordinator text yourself is left as you wrote it.
+
 Use `/status` in the General topic for a fleet overview. All other project management is handled by the General instance through natural language.
 
 ## External session support

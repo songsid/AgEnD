@@ -1,12 +1,16 @@
 ---
 name: instance-lifecycle
-description: restart vs replace vs pause/wake; when to use each
+description: creating an instance (working directory, tool profile); restart vs replace vs pause/wake and when to use each
 roles: [general]
 ---
 
 ## Create with a tool profile
 
 General may supply `tool_set` to `create_instance` directly, without a confirmation card, or change another agent’s profile through `update_instance_config`. See the fleet-config skill for valid profiles. `skipPermissions` remains refused even for General. General cannot change its own `tool_set` through either tool, including a create operation that resolves to the existing General; a person may still change it in Settings or fleet.yaml. Do not add a redundant reload after creation; the fleet reconciles itself. This direct exception covers portable/local agents only. Native Windows keeps its separate admin request for creation and for display name, description or model changes; set its `tool_set` in Settings on the host.
+
+## Choose a working directory
+
+Give each instance a dedicated directory, such as `~/projects/my-project`, or leave `directory` out and let AgEnD create a workspace (then pass `topic_name`). `create_instance` refuses `.`, `./`, `~`, `/root` and `/`: an agent started there would write its CLI's configuration into shared places (kiro, for example, would write MCP settings into the global `~/.kiro/`) and affect every instance. When the fleet sets `project_roots`, the directory must sit inside one of them. A directory another instance already uses returns `already_exists` with that instance, so reuse it. After creating, confirm with `describe_instance` that the instance reached "running", and read its log if it stopped.
 
 ## Restart vs Replace vs Stop / Delete
 
