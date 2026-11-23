@@ -1,7 +1,7 @@
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
-import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, withLook, type RoomOfficeLook, type RoomPresence } from "./office.js";
+import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, withLook, memberLook, type RoomOfficeLook, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -606,9 +606,15 @@ export class HubGroupRooms {
     }
     return this.core.atomic(db => {
       const own = this.member(db, id, me), room = this.room(db, id);
+      // M-3533 R2a: each shared agent's look (its owner's catalog colour and emoji), each Fleet's catalog read once.
+      const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const lookOf = (fleetId: string, exposureId: string) => {
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        return catalogs.get(fleetId)?.get(exposureId) ?? null;
+      };
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
-        if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...agentIntro(db,m.subject), role: m.role,
+        if (m.kind === "agent") { const e = readExposure(db, m.subject), look = memberLook(e?.fleet_id ? lookOf(e.fleet_id, m.subject) : null); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...(look ? { look } : {}), ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
           ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
