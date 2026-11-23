@@ -259,10 +259,12 @@ describe("an office read that keeps failing", () => {
 });
 
 describe("the card's @ it sends to the member picked (#4355 review)", () => {
+  const cardTitles: string[] = [];
   const askFrom = async (pg: AppPage, pick: (label: string) => boolean) => {
     fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo-desk"));
     const desk = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].find((e: any) => pick(e.textContent)) as any;
     fire(desk, "click"); await until(() => q(pg, ".oo-card-action"));
+    cardTitles.push(q(pg, ".oo-card-name").textContent);
     fire(q(pg, ".oo-card-action"), "click"); await until(() => q(pg, ".hub-dock textarea")?.value);
     return q(pg, ".hub-dock textarea");
   };
@@ -274,6 +276,8 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       // The office's state names both "Notes"; the first (a's figure) is labelled with its owner alone.
       const box = await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
       expect(box.value).toBe(`@${a.name} `);
+      // The card says the agent's own name: the owner the scene's label adds is on the card's Owner row already (Lumen).
+      expect(cardTitles.at(-1)).toBe("Notes");
       const post = await send(pg, posts, box);
       expect(post.mentions).toContain(a.id); expect(post.mentions).not.toContain(b.id);
 

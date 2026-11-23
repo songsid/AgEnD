@@ -842,7 +842,8 @@ export function OfficeKey({ pal }) {
  * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
  * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
  * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
- * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `officesKey` read the offices
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `cardName(name)` a card's
+ * title instead of the person's name (the room's: the agent's own, without the owner its scene label carries); `officesKey` read the offices
  * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
  */
 function ensureDialogueStyle() {
@@ -853,7 +854,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, officesKey = undefined }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -2367,7 +2368,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
       </div>` : null}
       ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
-        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null,
+        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
