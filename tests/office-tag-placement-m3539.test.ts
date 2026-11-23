@@ -131,3 +131,41 @@ describe("M-3539 keepClearOf: the controls over the stage in scene units", () =>
     expect(F.keepClearOf({ closest: () => null, getBoundingClientRect: () => ({}) }, { k: 1, x: 0, y: 0 })).toEqual([]);
   });
 });
+
+describe("M-3539 the idle never stroll or visit to the help desk", () => {
+  const inR = (r: any, p: any) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+  /** Every idle person's walk target over `turns` wander turns, in `L` (a layout), from `t0`. */
+  const targets = (L: any, turns = 400) => {
+    const desks = L.rooms.flatMap((r: any) => r.desks), out: any[] = [];
+    for (let i = 0; i < turns; i++) for (const [name, at] of Z.walkTargets(desks, L, i * 1700, true, [], false, null, false)) out.push({ name, at });
+    return out;
+  };
+  const nodes = NAMES.map((name) => ({ name, state: "idle", i: { name } }));
+
+  for (const style of ["studio", "studio-large"]) {
+    it(`${style}: the help desk is where the calling go, and no idle stroll ends there — while one would without the rule`, () => {
+      const pack = K.SKINS.get(style).pack, L = Z.zonesLayout(pack, nodes), alert = L.areas.alert.rect;
+      expect(Z.callingAreas(pack)).toEqual(["alert"]);
+      expect(L.idleAvoid).toEqual(["alert"]);
+      const now = targets(L), was = targets({ ...L, idleAvoid: [] });
+      expect(was.some((x) => inR(alert, x.at)), "the old rule sent someone there: what this test is about").toBe(true);
+      expect(now.filter((x) => inR(alert, x.at)).map((x) => x.name)).toEqual([]);
+      expect(now.some((x) => !L.seats.has(x.name) || x.at.x !== L.seats.get(x.name).x || x.at.y !== L.seats.get(x.name).y)).toBe(true);   // still strolling
+    });
+  }
+
+  it("a pack's idle visit to the help desk is never taken; its visits elsewhere still are (#3685)", () => {
+    const base = K.SKINS.get("studio").pack;
+    const pack = { ...base, idleVisits: [{ area: "alert", weight: 100, minSeconds: 5, maxSeconds: 10 }, { area: "nap", weight: 100, minSeconds: 5, maxSeconds: 10 }] };
+    const L = Z.zonesLayout(pack, nodes), home = L.seats.get("Quill");
+    const seen = new Set<string>();
+    for (let i = 0; i < 2000; i++) { const v = Z.visitAt("Quill", home, L, i * 1000, "lounge"); if (v) seen.add(v.area); }
+    expect([...seen]).toEqual(["nap"]);
+  });
+
+  it("no calling area when a pack sends the calling where the idle live, or names none", () => {
+    const base = K.SKINS.get("studio").pack;
+    expect(Z.callingAreas({ ...base, stateZones: { ...base.stateZones, needs: "lounge", crashed: "lounge", stuck: "lounge" } })).toEqual([]);
+    expect(Z.callingAreas({ ...base, stateZones: { idle: "lounge", default: "lounge" } })).toEqual([]);
+  });
+});

@@ -11,6 +11,14 @@ export function zoneOf(pack, state) {
   const z = pack.stateZones || {};
   return own(z, state) || own(z, "default") || Object.keys(pack.areas)[0];
 }
+/**
+ * M-3539: the areas the idle never stroll or visit to — where a pack sends the people calling for you (needs, crashed,
+ * stuck): someone standing there reads as "needs you". Never the area the idle live in.
+ */
+export function callingAreas(pack) {
+  const z = pack.stateZones || {}, idle = zoneOf(pack, "idle");
+  return [...new Set(["needs", "crashed", "stuck"].map((st) => own(z, st)).filter((a) => a && a !== idle && own(pack.areas, a)))];
+}
 
 /**
  * How far apart overflow spots are, and how far they stay from the area's seats (logical units); TITLE: the band at
@@ -148,7 +156,7 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false, seat
   });
   return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: LOGICAL.w, h: LOGICAL.h, desks }], areas: pack.areas,
     waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null,
-    idleVisits: pack.idleVisits || [], width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets
+    idleVisits: pack.idleVisits || [], idleAvoid: callingAreas(pack), width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets; M-3539: idleAvoid
 }
 
 // ── Walking ──
@@ -240,6 +248,11 @@ export function routeStaysInArea(from, to, graph, home, returnTo = from) {
   const strictIn = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
   return legs.every((pts) => pts.every((p, i) => !others.some((r) => strictIn(r, p) || (i > 0 && crosses(r, pts[i - 1], p)))));
 }
+/** M-3539: `points` outside the graph's `idleAvoid` areas (callingAreas): no idle stroll ends in the help desk. */
+function awayFromCalling(points, graph) {
+  const areas = graph.areas || {}, off = (graph.idleAvoid || []).map((a) => own(areas, a)?.rect).filter(Boolean);
+  return off.length ? points.filter((w) => !off.some((r) => inRect(r, w))) : points;
+}
 /**
  * Where `name`, seated at `seat`, should be at `t` (ms) while idle: a spot near the seat, or the seat. `area` (M-3286:
  * the office keeps idle people in their own area): the id of the area they are seated in — only spots inside it, and
@@ -249,6 +262,7 @@ export function wanderTarget(name, seat, graph, t, seats = [], area = null) {
   let near = (graph.waypoints || []).filter((w) => Math.hypot(w.x - seat.x, w.y - seat.y) <= WANDER.REACH
     && !seats.some((s) => Math.hypot(w.x - s.x, w.y - s.y) < 4));
   if (area !== null && near.length) near = withinArea(near, seat, graph, area);
+  near = awayFromCalling(near, graph);
   if (!near.length) return seat;
   const h = nameHash(name), k = t + (h % WANDER.PERIOD), turn = Math.floor(k / WANDER.PERIOD);
   if (k - turn * WANDER.PERIOD >= WANDER.AWAY) return seat;
@@ -297,7 +311,8 @@ const spotsOf = (area) => (area.seats && area.seats.length ? area.seats : [{ x: 
  * `from`; none: always null (strolls as before). Pure: which seat is free is walkTargets' to say.
  */
 export function visitAt(name, home, graph, t, from = null) {
-  const areas = graph.areas || {}, opts = (graph.idleVisits || []).filter((v) => v.area !== from && own(areas, v.area));
+  const avoid = graph.idleAvoid || [];
+  const areas = graph.areas || {}, opts = (graph.idleVisits || []).filter((v) => v.area !== from && own(areas, v.area) && !avoid.includes(v.area));
   if (!opts.length) return null;
   const sum = opts.reduce((n, v) => n + v.weight, 0), P = WANDER.PERIOD, phase = nameHash(name) % P;
   const turn = Math.floor((t + phase) / P), first = Math.floor(turn / VISIT.EPOCH) * VISIT.EPOCH, edge = (first + VISIT.EPOCH) * P;
