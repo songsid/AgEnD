@@ -284,6 +284,39 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       expect([typed.text, typed.mentions.includes(a.id), typed.mentions.includes(b.id)]).toEqual([`@${a.name} again`, true, true]);
     } finally { restore(); }
   });
+  it("a mention deleted or edited takes its binding with it: A, deleted, then B sends B only; A, deleted, retyped by hand is unbound", async () => {
+    const { pg, room, posts, restore } = await roomPage({ sameName: true });
+    try {
+      const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
+      const notes = (l: string) => /^Notes/.test(l);
+      const labels = () => [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.textContent).filter(notes);
+      const type = async (text: string) => { const box = q(pg, ".hub-dock textarea"); box.value = text; box.selectionStart = text.length; fire(box, "input"); await settle(3); return box; };
+      // A (its card), deleted; then B (its card): only B.
+      let box = await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
+      await type("");
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => labels().length === 2);
+      const other = labels().find((l) => l !== `Notes (${a.owner.name})`)!;
+      box = await askFrom(pg, (l) => l === other);
+      expect(box.value).toBe(`@${b.name} `);
+      const onlyB = await send(pg, posts, box);
+      expect([onlyB.mentions.includes(a.id), onlyB.mentions.includes(b.id)]).toEqual([false, true]);
+      await settle(40);
+      // A, edited away and retyped by hand: the ordinary reading (the name means both).
+      box = await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
+      await type(`@${a.name.slice(0, -1)} `);
+      box = await type(`@${a.name} hello`);
+      const unbound = await send(pg, posts, box);
+      expect([unbound.text, unbound.mentions.includes(a.id), unbound.mentions.includes(b.id)]).toEqual([`@${a.name} hello`, true, true]);
+    } finally { restore(); }
+  });
+  it("liveBindings keeps, per name, only as many as the text mentions, newest first", async () => {
+    const composer = await import("/ui/js/hub-room-composer.js");
+    const A = { name: "Notes", id: "e1" }, B = { name: "Notes", id: "e2" }, P = { name: "Planner", id: "e3" };
+    expect(composer.liveBindings("@Notes hi", [A, B])).toEqual([B]);
+    expect(composer.liveBindings("@Notes and @Notes", [A, B])).toEqual([A, B]);
+    expect(composer.liveBindings("@Note hi", [A, P])).toEqual([]);
+    expect(composer.liveBindings("@Planner", [A, P])).toEqual([P]);
+  });
   it.each([["en", "@Room assistant"], ["zh-TW", "@房間助理"]])("the room assistant, by the box's own word for it (%s)", async (lang, word) => {
     const { pg, posts, restore } = await roomPage({ lang });
     try {
