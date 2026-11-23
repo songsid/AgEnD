@@ -41,6 +41,15 @@ export function invitedLabel(row) {
 }
 
 /**
+ * The hint's last words on one line, so a wrap never leaves 「子。」 or "seat." alone: the last four characters (with the
+ * full stop) of a Chinese sentence, the last two words of an English one. Short enough never to overflow a phone.
+ */
+export function keepTail(text) {
+  const m = /[\u3000-\u9fff\uff00-\uffef]/.test(text) ? /^([\s\S]*?)(\S{1,4}[。！？]?)$/.exec(text) : /^([\s\S]*?)(\S+ \S+)$/.exec(text);
+  return m && m[1] ? html`${m[1]}<span class="hub-nowrap">${m[2]}</span>` : text;
+}
+
+/**
  * M-3533 R1b: the room office's styles with their seats, and — when the room's agents (its assistant too) outnumber the
  * picked style's rest seats and a larger style has more — the hint to pick a larger one.
  */
@@ -50,8 +59,8 @@ function OfficeStyles({ styles, value, saved, busy, members, onPick, onSave }) {
   const larger = picked && styles.some((x) => x.seats.rest > picked.seats.rest);
   return html`<fieldset class="field hub-room-office-styles"><legend>${hroom("officeStyle")}</legend>
     ${styles.map((x) => html`<label class="check" key=${x.id}><input type="radio" name="hubRoomOfficeStyle" value=${x.id} checked=${value === x.id} disabled=${busy}
-      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)}${/[）」]$/.test(styleName(x.id)) ? "· " : " · "}${hroom("seatsN", x.seats.total)}</span></label>`)}
-    ${picked && larger && figures > picked.seats.rest ? html`<p class="note hub-room-office-fit">${hroom(figures > agents ? "officeFitHintAssistant" : "officeFitHint", agents, styleName(picked.id), picked.seats.rest)}</p>` : null}
+      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)} · ${hroom("seatsN", x.seats.total)}</span></label>`)}
+    ${picked && larger && figures > picked.seats.rest ? html`<p class="note hub-room-office-fit">${keepTail(hroom(figures > agents ? "officeFitHintAssistant" : "officeFitHint", agents, styleName(picked.id), picked.seats.rest))}</p>` : null}
     <div class="field-row"><button type="button" class="btn hub-room-office-style-save" disabled=${busy || value === saved} onClick=${onSave}>${hroom("officeStyleSave")}</button></div>
   </fieldset>`;
 }
