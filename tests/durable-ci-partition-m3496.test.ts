@@ -8,7 +8,7 @@ import { PWSH_CI_SUITES } from "./support/pwsh-ci-suites.js";
 
 describe("durable CI fixture scheduling (M-3496)", () => {
   it("runs every present affected suite once, outside the parallel shards", () => {
-    const affected = ["tests/fleet-manager.test.ts", "tests/hub-compose.test.ts", "tests/hub-directory-settings-decision.test.ts"].filter(existsSync);
+    const affected = ["tests/fleet-manager.test.ts", "tests/hub-compose.test.ts", "tests/hub-directory-settings-decision.test.ts", "src/delivery-outbox.test.ts"].filter(existsSync);
     expect(DURABLE_CI_SUITES).toEqual(affected);
     const local = unitTestConfig("").test!, shards = unitTestConfig("unit").test!, serial = durableTestConfig().test!;
     expect(serial.include).toEqual(DURABLE_CI_SUITES);
