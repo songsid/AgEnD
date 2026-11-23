@@ -44,7 +44,7 @@ async function world() {
   const grant = (state: "active" | "revoked", expiresAt: number) => {
     const id = randomUUID();
     r.db.prepare(`INSERT INTO hub_grants(id,revision,owner,exposure_id,exposure_revision,approved_by,approved_at,subject,permissions,starts_at,expires_at,state)
-      VALUES(?,1,?,?,1,?,?,?,'ask',?,?,?)`).run(id, personKeyString(owner), exposureId, "x", now, "reader", now - 1, expiresAt, state);
+      VALUES(?,1,?,?,1,?,?,?,'["ask"]',?,?,?)`).run(id, personKeyString(owner), exposureId, "x", now, "reader", now - 1, expiresAt, state);
     return id;
   };
   const read = (id: string) => r.db.prepare("SELECT exposure_revision, expires_at, state FROM hub_grants WHERE id=?").get(id) as { exposure_revision: number; expires_at: number; state: string };
