@@ -2861,9 +2861,11 @@ export class TaskBoard {
       return none;
     }
     // The limit is for everyone the comment wakes, counted once each: the card's assignee, when it hears the comment —
-    // named or not, wherever its name is in the text (settleWakes adds it to a comment that does not name it) — takes one
-    // place, and the instances named besides it share the rest in the order written (#4367 review).
-    const assigneeWakes = !kept && !assigneeHeld && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee);
+    // named or not, wherever its name is in the text (settleWakes adds it to a comment that does not name it), and also
+    // when the comment is a dispatcher's answer kept for a busy assignee (its baseline `answer_kept` notice, #2303, which
+    // no gate holds) — takes one place, and the instances named besides it share the rest in the order written (#4367
+    // review). It is counted whenever settleWakes would add it, so the board's own wakes never pass the limit.
+    const assigneeWakes = card.assignee !== null && card.assignee !== author.name && (kept || !assigneeHeld);
     const others = mentions.filter((n) => !(assigneeWakes && n === card.assignee));
     const room = MAX_COMMENT_WAKES - (assigneeWakes ? 1 : 0);
     if (agent && others.length > room) {

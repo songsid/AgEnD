@@ -518,7 +518,8 @@ well as mentions: a loop can run through the assignee alone (`lead: ok` wakes de
 An agent's send-back or log neither counts nor breaks the chain. Past the limit the comment is kept and wakes nobody
 (`comment_chain` says so to its writer) until a person writes on the card or the older comments leave the window. It is
 computed from the card's own `task_entries` — no counter, no new column. An agent's comment also wakes at most
-`MAX_COMMENT_WAKES` (5) instances in all, each counted once: the card's assignee, when it hears the comment, takes one place
+`MAX_COMMENT_WAKES` (5) instances in all, each counted once: the card's assignee, when it hears the comment (a dispatcher's answer kept for it
+included), takes one place
 whether or not it is named and wherever its name is, and the other instances named share the rest in the order written.
 A person's comment has neither limit.
 

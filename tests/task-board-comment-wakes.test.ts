@@ -501,6 +501,33 @@ describe("4. the loop guard", () => {
     expect(noteKeys(all)).toEqual(["comment_wakes"]);
   });
 
+  it(`a dispatcher's answer kept for a busy assignee: the assignee's answer_kept notice is one of the ${MAX_COMMENT_WAKES} (#4367 re-review)`, () => {
+    const many = Array.from({ length: 5 }, (_, i) => `inst-${i + 1}`);
+    // dev-a is busy with b; a waits blocked on a question to its dispatcher, the lead. A fresh board each time.
+    const setup = () => {
+      const r = rig(undefined, [...INSTANCES, ...many]);
+      const [a, b] = [card(r.board, LEAD, { assignee: "dev-a" }), card(r.board, LEAD, { assignee: "dev-a" })];
+      r.board.moveCard(DEV, a.code, "claimed");
+      r.board.moveCard(DEV, a.code, "blocked", { reason: "which scores count?" });
+      r.board.moveCard(DEV, b.code, "claimed");
+      r.take();
+      return { r, a };
+    };
+    // The control: an ordinary answer, no mention — kept, the card stays blocked, only the assignee hears it.
+    const c = setup();
+    const p = c.r.board.moveCard(LEAD, c.a.code, "claimed", { comment: "the best of three" });
+    expect(p.card.status).toBe("blocked");
+    expect(c.r.take().map((w) => `${w.to}:${w.reasons.join("+")}`)).toEqual(["dev-a:answer_kept"]);
+    // Five others named in the kept answer: four of them, and the assignee — five in all, never six.
+    const { r, a } = setup();
+    const res = r.board.moveCard(LEAD, a.code, "claimed", { comment: `the best of three; ${many.map((n) => `@${n}`).join(" ")} please note` });
+    expect(res.card.status).toBe("blocked");
+    const woke = r.take();
+    expect(woke).toHaveLength(MAX_COMMENT_WAKES);
+    expect(woke.map((w) => `${w.to}:${w.reasons.join("+")}`).sort()).toEqual(["dev-a:answer_kept", "inst-1:mention", "inst-2:mention", "inst-3:mention", "inst-4:mention"]);
+    expect(noteKeys(res)).toContain("mention_cap");
+  });
+
   it(`the assignee named last, after ${MAX_COMMENT_WAKES} others, is still one of the ${MAX_COMMENT_WAKES}: the cap is on the final audience, in any order (#4367 re-review)`, () => {
     const many = Array.from({ length: 6 }, (_, i) => `inst-${i + 1}`);
     const r = rig(undefined, [...INSTANCES, ...many]);
