@@ -62,7 +62,7 @@ try {
     await p.page.locator("#g-default-adoption").scrollIntoViewIfNeeded();
     await p.page.screenshot({ path: join(out, `${name}-next-restart-choice.png`) });
     const size = await p.page.locator("#g-default-adoption").boundingBox();
-    assert.ok(size && size.width > 44 && (c.device !== "phone" || size.height >= 44));
+    assert.ok(size && size.width > 44 && (c.device !== "phone" || size.height >= 44), JSON.stringify({ name, size }));
     await p.page.selectOption("#g-default-adoption", "restart");
     await p.page.locator(".s-pending .btn-primary").click();
     const dialog = p.page.getByRole("dialog");

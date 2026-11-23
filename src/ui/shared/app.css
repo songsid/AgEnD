@@ -2810,3 +2810,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 
 /* Quota preferences obey the panel CSP: no inline styles. */
 .p-settings .s-quota-fields { border: 0; padding: 0; min-width: 0; }
+
+/* Shared-default adoption is an explicit choice before Save, including touch. */
+.s-default-adoption select { min-height: var(--tap); max-width: 100%; width: 100%; }

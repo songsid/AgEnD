@@ -1141,7 +1141,7 @@ function General({ ctx, part = "all" }) {
         <div class=${fc("field", "model")}><label for="g-model">${tn("defaultModel")} ${dm("model")}</label><${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
           backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} />
           <p class="note">${tn("defaultModelCount", following, matching.length)}</p></div>
-        ${identityEdited ? html`<div class="field">
+        ${identityEdited ? html`<div class="field s-default-adoption">
           <label for="g-default-adoption">${tn("defaultIdentityWhen")}</label>
           <${Select} id="g-default-adoption" value=${f.defaultAdoption || "next-start"} onChange=${set("defaultAdoption")}
             options=${[{ value: "next-start", label: tn("defaultIdentityNext") }, { value: "restart", label: tn("defaultIdentityRestart") }]} />
