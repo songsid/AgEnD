@@ -120,6 +120,9 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 /* CJK words stay whole: a line breaks at the punctuation (「…決定，」 / 「以及每週…」), not inside 以及; a run too long for
    the line still wraps (.id-bio's overflow-wrap: anywhere in app.css). English is unaffected (keep-all only changes CJK). */
 .hub-room-card .id-bio { color: var(--text); word-break: keep-all; }
+/* The purpose wraps to as many lines as it needs (design §2.1a; at most 200 characters): a phone's compact identity card
+   clamps its tagline and bio (app.css, card-c), which would cut a long purpose here (Prism, #4349). */
+.hub-room-card .id-card.card-c .id-tagline, .hub-room-card .id-card.card-c .id-bio { display: block; overflow: visible; -webkit-line-clamp: unset; line-clamp: none; }
 .hub-room-card .hub-room-card-edit { flex: none; }
 .hub-back { flex: none; }
 /* S-150: the phone's back to the list is a full tap target, as the header's other buttons are. */
