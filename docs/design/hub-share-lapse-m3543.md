@@ -76,3 +76,20 @@ never automatic (#3147).
   re-share.
 - The catalog `lapsed` flag only with the capability (A).
 - A real-app capture of the Fleet mark and (A) the Hub mark, with a user-look HOLD.
+
+## Decisions (2026-11-23)
+
+- **Hub page: A.** `agent-catalog-lapse-v1` is negotiated with exposure requests. A catalog row's exposure may carry
+  `lapsed: true` (only on a link that negotiated it), and the 我分享的 Agent page shows "Needs re-share" with **Share
+  again**. A Hub without the capability never sees the field.
+- **Share again republishes in place.** It keeps the same exposure id, takes the next revision, and gives a new consent
+  bound to the agent's current token. Both the Hub and the member accept it only for a lapsed agent. Re-ticking a
+  working share is still refused.
+- **The user chose to carry grants (hmsg-c4e6c789).** On a lapse republish, the exposure's active, unexpired grants
+  move to the new revision with their original expiry (`hub/lapse-carry.ts`, one switchable step, `HUB_LAPSE_CARRY`).
+  Their grant rooms follow by grant id, and so does the agent's room-discovery preference. Live AD membership and
+  group permissions are still checked as before. Stop-then-share still revokes.
+- **The user's own re-share showed:** group-room membership is keyed by the exposure id, so it survives any republish
+  of the same id. Only grants, and the grant rooms tied to them, needed carrying.
+- **The Open question is answered:** the Hub page had no Share again for a published agent, and the member refused it.
+  Both are built here. The Fleet's Settings → Hub "Share again" (`share_lapsed`) is the same republish.

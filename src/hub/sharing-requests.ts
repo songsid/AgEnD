@@ -1,5 +1,6 @@
 import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
 /** Owner-browser admission and a bounded, durable Hub → member outbox. Snapshots remain publication truth. */
+import { carryLapsePermissions, HUB_LAPSE_CARRY } from "./lapse-carry.js";
 import type Database from "better-sqlite3";
 import { z } from "zod";
 import { HubAgentCatalogs } from "./agent-catalog.js";
@@ -27,14 +28,17 @@ const inputSchema = z.strictObject({ idempotencyKey: uuid, fleetId: uuid, catalo
 interface Row { id: string; fleet_id: string; owner: string; generation: number; digest: string; body: string; before_rows: string;
   created_at: number; expires_at: number; state: "queued" | "expired" | "complete" | "revoked"; result: string | null;
   undo_id: string | null; undo: string | null; restores: string; last_sent_at: number; sent_epoch: number }
-interface Before { target: string; pointer: HubExposurePointer | null; stopped: StoppedImage | null }
+/** `lapse`: M-3543's Share again of a published agent whose share lapsed (its grants carry to the new revision). */
+interface Before { target: string; pointer: HubExposurePointer | null; stopped: StoppedImage | null; lapse?: true }
 const same = (a: unknown, b: unknown) => canonicalArguments(a) === canonicalArguments(b);
 export class HubSharingRequests {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private running = false;
   private dirty = false;
   private closed = false;
-  constructor(private readonly core: HubCore, private readonly catalogs: HubAgentCatalogs, private readonly settled?: (value: SharingSettlement) => void) {}
+  constructor(private readonly core: HubCore, private readonly catalogs: HubAgentCatalogs, private readonly settled?: (value: SharingSettlement) => void,
+    /** M-3543: carry a lapsed agent's grants on its Share again (switchable; HUB_LAPSE_CARRY). */
+    private readonly carryOnLapse: boolean = HUB_LAPSE_CARRY) {}
   private project(row: Row) {
     return { id: row.id, fleetId: row.fleet_id, state: row.state, expiresAt: row.expires_at,
       result: row.result ? validated(exposureRequestResultSchema, JSON.parse(row.result)) : null,
@@ -87,8 +91,11 @@ export class HubSharingRequests {
         || (db.prepare("SELECT count(*) n FROM hub_sharing_requests WHERE fleet_id=? AND state='queued' AND expires_at>?").get(input.fleetId, now) as { n: number }).n >= 8) throw new HubProtocolError("backpressure");
       const before: Before[] = [...input.share.map(target => {
         const agent = report.catalog.agents.find(row => row.instance === target);
-        if (!agent || !agent.shareable || agent.exposure && agent.exposure.state !== "withdrawn") throw new HubProtocolError("denied");
-        return { target, pointer: agent.exposure ?? null, stopped: null };
+        // M-3543: a published agent may be shared again only when its share lapsed (the member said so in its catalog).
+        const lapse = !!agent?.exposure && agent.exposure.state === "published" && agent.exposure.lapsed === true;
+        if (!agent || !agent.shareable || agent.exposure && agent.exposure.state !== "withdrawn" && !lapse) throw new HubProtocolError("denied");
+        const pointer = agent.exposure ? { id: agent.exposure.id, revision: agent.exposure.revision, state: agent.exposure.state } : null;
+        return { target, pointer, stopped: null, ...(lapse ? { lapse: true as const } : {}) };
       }), ...input.stop.map(target => {
         const agent = report.catalog.agents.find(row => row.exposure?.id === target);
         const stopped = stoppedImage(db, target);
@@ -130,6 +137,9 @@ export class HubSharingRequests {
         if ((share ? !("instance" in item) || item.instance !== plan.target : !("exposureId" in item) || item.exposureId !== plan.target)) throw new HubProtocolError("invalid");
         if (item.ok && (!same(item.before, plan.pointer) || item.after.revision !== (plan.pointer?.revision ?? 0) + 1
           || plan.pointer && item.after.id !== plan.pointer.id || item.after.state !== (share ? "published" : "withdrawn"))) throw new HubProtocolError("invalid");
+        // M-3543: a lapsed agent's Share again keeps the people who could ask it (active grants, original expiry).
+        if (item.ok && share && plan.lapse && plan.pointer && this.carryOnLapse && !row.result)
+          carryLapsePermissions(db, plan.pointer.id, plan.pointer.revision, item.after.revision, this.core.now());
         if (item.ok && !share && plan.stopped && plan.pointer) {
           keepCoalescedList(db, this.core, plan.target, result.noticeAt, plan.stopped);
           const retired = settleSharingWithdrawal(db, this.core, tx, [plan.target], plan.pointer.revision);

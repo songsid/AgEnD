@@ -4,15 +4,23 @@ import { epoch, hash, person, plain, uuid } from "./validation.js";
 
 export const HUB_AGENT_CATALOG_CAPABILITY = "agent-catalog-v1";
 export const HUB_EXPOSURE_REQUEST_CAPABILITY = "exposure-request-v1";
+/**
+ * M-3543: a catalog row's exposure may say `lapsed` — shared, but the agent's backend or folder changed since (#3147: the
+ * consent does not carry over) — and the owner may "Share again" that published agent. Negotiated with exposure requests;
+ * a peer without it never sees the field, and a Hub without it refuses a lapsed row's catalog.
+ */
+export const HUB_AGENT_CATALOG_LAPSE_CAPABILITY = "agent-catalog-lapse-v1";
 export const HUB_SHARE_REQUEST_TTL = 10 * 60_000;
 export const HUB_AGENT_CATALOG_MAX = 128;
 const instance = plain(128).refine(s => !!s && s === s.trim() && !/[\u0000-\u001f\u007f]/.test(s));
 const label = (max: number) => plain(max).refine(s => !/[\u0000-\u001f\u007f]/.test(s));
 const reason = z.enum(["delivery-unavailable", "remote-windows", "ambiguous-agent"]);
 export const exposurePointerSchema = z.strictObject({ id: uuid, revision: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER), state: z.enum(["published", "withdrawn", "frozen"]) });
+/** A row's exposure: the pointer, and (agent-catalog-lapse-v1) whether a published share lapsed. */
+export const catalogExposureSchema = exposurePointerSchema.extend({ lapsed: z.literal(true).optional() });
 const rowBase = z.strictObject({ instance, displayName: label(256), description: label(512),
   avatar: z.strictObject({ emoji: label(64).nullable(), color: z.string().regex(/^#[a-f0-9]{6}$/i).nullable() }).nullable(),
-  kind: z.enum(["agent", "classic-room"]), general: z.boolean(), exposure: exposurePointerSchema.nullable().optional() });
+  kind: z.enum(["agent", "classic-room"]), general: z.boolean(), exposure: catalogExposureSchema.nullable().optional() });
 export const agentCatalogRowSchema = z.union([
   rowBase.extend({ shareable: z.literal(true) }),
   rowBase.extend({ shareable: z.literal(false), reason }),

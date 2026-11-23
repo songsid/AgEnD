@@ -19,6 +19,8 @@ export interface HubMemberSharingOptions {
   agents(): MemberCatalogAgent[];
   current(): boolean;
   enabled(): boolean;
+  /** M-3543: the agent's published share lapsed (backend/folder changed since); Share again may republish it. */
+  lapsed?(agent: string): boolean;
   now(): number;
   /** Upsert the same web notice durably. False means definitely not saved; a throw is uncertain. */
   notice(record: SharingRecord): Promise<boolean>;
@@ -93,8 +95,10 @@ export class HubMemberSharing {
     const expected = undo ? row.after : row.before;
     if (!refusal && !same(this.local(row.agent!), expected)) refusal = "stale-list";
     const publishing = (row.action === "share") !== undo;
-    // Ticking an already shared agent is not permission to revise it; only a withdrawn/absent mapping can be shared.
-    if (!refusal && !undo && publishing && expected?.exposure.state !== undefined && expected.exposure.state !== "withdrawn") refusal = "stale-list";
+    // Ticking an already shared agent is not permission to revise it; only a withdrawn/absent mapping can be shared —
+    // except M-3543's Share again of a lapsed one (the owner re-consents for the agent as it is now; #3147 holds).
+    const lapsedAgain = !undo && publishing && expected?.exposure.state === "published" && (() => { try { return this.options.lapsed?.(row.agent!) === true; } catch { return false; } })();
+    if (!refusal && !undo && publishing && expected?.exposure.state !== undefined && expected.exposure.state !== "withdrawn" && !lapsedAgain) refusal = "stale-list";
     if (!refusal && !publishing && (!expected || expected.exposure.state === "withdrawn")) refusal = "stale-list";
     if (refusal) { this.options.journal.refuse(record.id, index, refusal, undo); return; }
     try {

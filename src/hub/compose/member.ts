@@ -763,7 +763,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agentToken: options.representative.agentToken, current: sharingLive, now });
       const sharing = options.catalogAgents && options.sharingNotice && options.attachSharing ? new HubMemberSharing({
         journal: sharingJournal, store: exposures, api, current: sharingLive, now, enabled: () => catalogEnabled,
-        agents: catalogAgents, catalog: () => memberAgentCatalog(catalogEnabled, catalogEnabled ? catalogAgents() : [], true),
+        agents: catalogAgents, catalog: (): ReturnType<typeof memberAgentCatalog> => memberAgentCatalog(catalogEnabled, catalogEnabled ? catalogAgents() : [], true,
+          catalog?.lapseActive() ? agent => shareLapsed(agent) : undefined),
+        lapsed: agent => shareLapsed(agent),
         notice: record => options.sharingNotice!(sharingNotice(record, hubName())),
         snapshot: () => sender.afterCommit(),
       }) : null;
@@ -783,7 +785,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       } : null;
       teardown.add("Hub sharing requests", () => { sharingLink?.close(); options.attachSharing?.(null); });
 
-      const catalog = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing,
+      const catalog: HubMemberAgentCatalog | null = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing, lapsed: agent => shareLapsed(agent),
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
       client = new HubMemberClient({
