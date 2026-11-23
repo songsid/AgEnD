@@ -72,6 +72,12 @@ describe("Room settings → Room office → Style (§2.1b)", () => {
       expect(p.root.querySelector(".hub-room-office-fit")).toBeNull();
       fire(p.root.querySelector(".hub-room-office-style-save"), "click"); await settle(10);
       expect(update.mock.calls).toEqual([["room", { office: { style: "studio-large" } }]]);
+      // Cozy's 14 seats are its whole layout (6 desks, 3 lounge, 2 help, 3 nap); a 30-agent room on it gets the hint, with
+      // its rest seats (3), as on any style a larger one beats.
+      expect([skin.styleSeats("cozy"), skin.STUDIO_PACK && Object.values(skin.SKINS.get("cozy").pack.areas).map((a: any) => a.seats.length)]).toEqual([{ total: 14, rest: 3 }, [6, 3, 2, 3]]);
+      await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: detail(30, "cozy"), assistant: false }));
+      await until(() => p.root.querySelector(".hub-room-office-fit"));
+      expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent。溫馨 的休息區有 3 個座位，換成較大的風格就能讓每個 Agent 都有位子。");
       // A room that fits its style: no hint.
       await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: detail(10), assistant: false }));
       await until(() => p.root.querySelectorAll(".hub-room-office-styles input[type=radio]").length); expect(p.root.querySelector(".hub-room-office-fit")).toBeNull();
