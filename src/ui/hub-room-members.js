@@ -77,7 +77,7 @@ function oneGrapheme(text) {
 /**
  * M-3533 R2a: an agent's avatar as its owner's Fleet shows it — its persona emoji, else its initial — on its identity
  * colour (the room detail's `look`, from the owner's catalog), else on the default tint. An emoji label longer than one
- * character (the catalog allows up to 64) is not drawn: the initial instead. Text on the colour is whichever of the two
+ * character (the catalog allows 64 bytes) is not drawn: the initial instead. Text on the colour is whichever of the two
  * inks actually painted (#111111, white) has the higher contrast on it.
  */
 export function agentAvatar(m) {

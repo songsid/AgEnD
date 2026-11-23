@@ -23,7 +23,7 @@ describe("agentAvatar (pure)", () => {
     // Anything that is not a #rrggbb colour or a non-blank emoji is ignored: the initial on the default tint.
     expect(panel.agentAvatar({ name: "Notes", look: { color: "red", emoji: "  " } })).toEqual({ color: null, text: "N", emoji: false, ink: null });
   });
-  it("an emoji label longer than one character (the catalog allows 64) gives the initial; one emoji with joiners or modifiers stays", () => {
+  it("an emoji label longer than one character (the catalog allows 64 bytes) gives the initial; one emoji with joiners or modifiers stays", () => {
     const long = "x".repeat(64);
     for (const label of [long, "🦊🐙", ":party-parrot:", "ab"]) expect(panel.agentAvatar({ name: "Notes", look: { emoji: label } })).toMatchObject({ text: "N", emoji: false });
     for (const one of ["👩‍💻", "👍🏽", "🇹🇼", "🦊"]) expect(panel.agentAvatar({ name: "Notes", look: { emoji: one } })).toMatchObject({ text: one, emoji: true });
@@ -61,10 +61,10 @@ describe("the member list", () => {
     expect(rows.every((b) => (b.getAttribute("aria-label") || "").includes(b.getAttribute("title") || "\u0000"))).toBe(true);
   });
 
-  it.each([[false], [true]])("an accepted 64-character emoji label never fills the disc: the initial, in one line (compact %s)", async (compact) => {
+  it.each([[false], [true]])("an accepted 64-byte emoji label (16 emoji) never fills the disc: the initial, in one line (compact %s)", async (compact) => {
     const p = page(); mounted.push(p);
     const client = clientModule.createHubWebClient({ fetchImpl: async () => ({ ok: true, status: 200, json: async () => ({}) }) });
-    await p.mount(h(panel.RoomMembersPanel, { client, roomId: "r", detail: detail([agent("e1", "Notes", { look: { color: "#d97757", emoji: "🦊".repeat(32) } })]), compact })); await settle(20);
+    await p.mount(h(panel.RoomMembersPanel, { client, roomId: "r", detail: detail([agent("e1", "Notes", { look: { color: "#d97757", emoji: "🦊".repeat(16) } })]), compact })); await settle(20);
     if (compact) for (const d of [...p.root.querySelectorAll("details")] as any[]) { d.setAttribute("open", ""); d.open = true; }
     await settle(5);
     const av = p.root.querySelector(".hub-member-agent .hub-agent-av") as any;
