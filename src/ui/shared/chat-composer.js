@@ -59,7 +59,7 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
   // The composed text is the draft now (some engines send no input after it); a blur ends one that never ended.
   // Lower-case props below: an element has no oncomposition… property, so Preact would listen for "CompositionStart".
   const onCompositionEnd = (e) => { if (!composing.current) return; composing.current = false; onValue(e.target.value); };
-  return html`<div class="composer" onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
+  return html`<div class="composer" data-composer-focus onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
       ${attach ? html`<button id=${ids.attachBtn || "attachBtn"} type="button" class="icon-btn" title=${attach.title} aria-label=${attach.title} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { attach.onFiles(e.target.files); e.target.value = ""; }} />` : null}
@@ -67,11 +67,11 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
           never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
           placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
           IME's composing text included, with no change to the page. */ ""}
-      <span class="composer-field"><textarea id=${ids.msgIn || "msgIn"} ref=${input} rows="1" value=${boxValue} aria-label=${placeholder}
+      <span class="composer-field" data-composer-focus><textarea id=${ids.msgIn || "msgIn"} ref=${input} rows="1" value=${boxValue} aria-label=${placeholder}
         enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${controls} aria-expanded=${expanded ? "true" : "false"}
         aria-activedescendant=${activeDescendant} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
-        placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${placeholder}</span></span>
+        placeholder=" "></textarea><span class="composer-ph" data-composer-focus aria-hidden="true">${placeholder}</span></span>
       ${/* M-3115 (phone v2): what the row holds beside the box (the Fleet chat's context ring and model picker); none elsewhere. */ ""}
       ${tools || null}
       ${/* M-3115: `send.stop` — the button stops the reply instead (a phone's empty box while the agent works). */ ""}
@@ -87,9 +87,9 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
  * `stop` (M-2904): { disabled, title, label, onClick } — Stop, beside what it stops; null: none.
  */
 export function WorkBarView({ kind, label, note, noteTitle, elapsed, elapsedTitle, stop = null, ids = {} }) {
-  return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
-    ${kind === "awaiting" ? html`<span class="note" title=${noteTitle}>${note}</span>`
-      : html`<span class="elapsed" title=${elapsedTitle} aria-hidden="true">${elapsed}</span>`}
+  return html`<div class=${`work-bar ${kind}`} data-composer-focus><span class="pulse" data-composer-focus aria-hidden="true"></span><span class="lbl" data-composer-focus>${label}</span>
+    ${kind === "awaiting" ? html`<span class="note" data-composer-focus title=${noteTitle}>${note}</span>`
+      : html`<span class="elapsed" data-composer-focus title=${elapsedTitle} aria-hidden="true">${elapsed}</span>`}
     ${stop ? html`<button id=${ids.stopBtn || "stopBtn"} type="button" class="btn btn-sm btn-stop" title=${stop.title} aria-label=${stop.label}
       disabled=${stop.disabled} onClick=${stop.onClick}><${Icon} name="stop" size=${14} /><span class="stop-label">${stop.label}</span></button>` : null}</div>`;
 }
