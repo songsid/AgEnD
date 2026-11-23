@@ -15,7 +15,7 @@ const roster = [
   { name: "example-grok", displayName: "Example Grok", backend: "grok", status: "running" },
   { name: "example-muse", displayName: "Example Muse", backend: "muse", status: "running" },
 ] as any;
-const fx = await bootFixture({ port: 0, roster, classic: false, host: true });
+const fx = await bootFixture({ port: Number(process.env.HP || 19953), instances: 0, classic: false });
 // A catalog read is fixture data too: passive model discovery must never invoke a vendor CLI here.
 fx.fm.ensureModelCatalog = async () => undefined;
 fx.fm.modelCatalogForWeb = fx.fm.modelCatalogFor = () => [
@@ -33,6 +33,10 @@ try {
     const name = caseName(c), fm = fx.fm;
     const config = fm.getRawFleetConfig();
     config.defaults = { backend: "claude-code", model: "sonnet" };
+    config.instances = Object.fromEntries(roster.map((i: any) => [i.name, { working_directory: fx.dir,
+      backend: i.backend, display_name: i.displayName, ...(i.general ? { general_topic: true } : {}) }]));
+    config.teams = {};
+    fm.getInstanceStatus = (n: string) => roster.find((i: any) => i.name === n)?.status || "stopped";
     delete config.instances["example-claude"].backend;
     config.instances["example-own"].model = "opus";
     writeFileSync(join(fx.dir, "fleet.yaml"), JSON.stringify(config));
@@ -41,7 +45,7 @@ try {
     const runtime = structuredClone(fm.fleetConfig.instances["example-claude"]);
     fm.lifecycle.daemons.set("example-claude", { getConfigSnapshot: () => runtime });
     fm.stopInstance = fm.startInstanceUnattended = fm.startClassicInstanceUnattended = async () => { throw Error("capture forbids lifecycle starts/stops"); };
-    const p = await fx.page(c, { path: process.env.SETTINGS_PATH || "/settings/agent-defaults" });
+    const p = await fx.page(c, { path: process.env.SETTINGS_PATH || "/settings/general" });
     const pageErrors: string[] = [], writes: string[] = [];
     p.page.on("pageerror", (e: Error) => pageErrors.push(e.message));
     p.page.on("request", (r: any) => { if (r.method() !== "GET") writes.push(new URL(r.url()).pathname); });
