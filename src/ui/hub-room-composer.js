@@ -85,6 +85,18 @@ export function mentionsIn(text, detail) {
  * reading the text gives for that name (two agents called Notes: the one picked, not both); one no longer in the text
  * (removed or edited) binds nothing.
  */
+/**
+ * The bindings `text` still carries: for each name, the newest as many as the text mentions it (`@name` tokens) — a
+ * mention deleted or edited takes its binding with it at once, so a later pick or a retyped name cannot revive it.
+ */
+export function liveBindings(text, bindings = []) {
+  const s = String(text || ""), list = Array.isArray(bindings) ? bindings.filter((b) => b && typeof b.name === "string" && typeof b.id === "string") : [];
+  const left = new Map();
+  for (const b of list) if (!left.has(b.name)) left.set(b.name, (s.match(atName(b.name, "g")) || []).length);
+  const out = [];
+  for (const b of [...list].reverse()) { const n = left.get(b.name); if (n > 0) { out.unshift(b); left.set(b.name, n - 1); } }
+  return out;
+}
 export function boundMentions(text, detail, bindings = []) {
   const s = String(text || ""), out = mentionsIn(s, detail);
   const live = (Array.isArray(bindings) ? bindings : []).filter((b) => b && typeof b.name === "string" && typeof b.id === "string" && atName(b.name).test(s));
@@ -121,6 +133,8 @@ export function refusalText(r) {
 export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   const bindings = useRef([]);
+  // A binding lives as long as its mention: every change of the text retires the ones it no longer carries.
+  useEffect(() => { bindings.current = liveBindings(value, bindings.current); }, [value]);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
