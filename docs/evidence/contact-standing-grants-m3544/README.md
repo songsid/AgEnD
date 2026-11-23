@@ -27,3 +27,9 @@ No schema migration. Retaining an unchanged expired rule does not reactivate it;
 ## Review correction
 
 The policy writer assigns final IDs to new rows. Ticket references now come from its persisted return value rather than the temporary input rows. The regression fails before the correction, then checks the selected person's saved ID, the reread ticket, unchanged neighboring rows and rollback after failed admission. Three affected store/API files pass 22 tests. Runtime-only correction; the approved UI and captures are unchanged.
+
+## UI-gate integration correction
+
+The authorization-layout smoke still waited for the removed implicit checkbox. It now opens the explicit grant dialog, checks phone input font size and the 44px control/label targets, checks dialog and page overflow, cancels, then runs every prior filter/card/typography check. This exposed real 24/40/42px targets inside the new dialog. A phone-only rule now applies the shared tap token to its fields and checkbox labels; desktop layout and permission behavior are unchanged.
+
+The exact layout smoke passes all 11 cases. Four phone locale/theme cases were recaptured (24 states); the three affected retained dialog originals are replaced here. Static inspection finds readable wrapping and footer actions. Long dialog content scrolls inside the shared sheet; a viewport capture is not proof of all off-screen prose. The new layout and phone capture result files accompany this correction. This phone sizing change requires the head-specific user-look release; the earlier runtime-only correction did not change images.
