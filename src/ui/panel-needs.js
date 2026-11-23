@@ -120,7 +120,7 @@ appStore.subscribe((st) => {
     handedTo = st.chatOwner;
     const items = Array.isArray(st.needs) ? st.needs : [];
     for (const nonce of Object.keys(claims.get().prompts)) {
-      handedTo.holdPrompt(items.find((i) => i.nonce === nonce) || { nonce, instance: "" });
+      handedTo.holdPrompt(items.find((i) => i.nonce === nonce) || { nonce, instance: "" }, claims.get().prompts[nonce] === "confirming");
     }
   }
   const items = Array.isArray(st.needs) ? st.needs : [];
@@ -247,7 +247,10 @@ function NeedsItem({ item, nowMs, owner }) {
     const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
     setClaim("prompts", item.nonce, confirmation ? "confirming" : "busy");
     if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
-      setClaim("prompts", item.nonce, null); return;
+      setClaim("prompts", item.nonce, null);
+      // Chat may have adopted this confirmation while its dialog was open. Give its claim back too.
+      chatOwner()?.releasePrompt(item.nonce);
+      return;
     }
     setClaim("prompts", item.nonce, "busy");
     let r = null;

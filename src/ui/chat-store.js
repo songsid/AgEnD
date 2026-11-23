@@ -295,16 +295,16 @@ export function createChatStore(deps) {
     return answerPrompt(p, action);
   }
   /** A claim taken elsewhere before this store existed (Needs you, before Chat booted): held here from now on. */
-  function holdPrompt(item) {
+  function holdPrompt(item, confirming = false) {
     if (!item || typeof item.nonce !== "string") return;
     let p = s.prompts[item.nonce];
     if (!p) p = s.prompts[item.nonce] = { instance: item.instance, nonce: item.nonce, text: item.text || item.detail || "", actions: item.actions || [], resolved: false, busy: false };
-    if (!p.resolved) { p.busy = true; changed(p.instance); }
+    if (!p.resolved) { p.busy = true; p.confirming = confirming; changed(p.instance); }
   }
   /** That claim's answer was refused: the prompt can be answered again (unless it was settled meanwhile). */
   function releasePrompt(nonce) {
     const p = s.prompts[nonce];
-    if (p && !p.resolved) { p.busy = false; changed(p.instance); }
+    if (p && !p.resolved) { p.busy = false; p.confirming = false; changed(p.instance); }
   }
   const promptsFor = (instance) => Object.values(s.prompts).filter(p => p.instance === instance);
 

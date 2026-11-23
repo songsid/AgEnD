@@ -32,3 +32,7 @@ Confirmation now retains the choice label without an answering indicator; that i
 The retained question-mark emoji's missing-glyph square is specific to the capture host: `fc-list ':charset=2753'` reports no matching installed font, while `fc-match` falls back to DejaVu Sans. The existing shared prompt prefix is unchanged; no font is installed by the recipe.
 
 After these scoped copy/confirmation corrections, the five affected UI/parser/poll/i18n files pass 102 tests. The original wider 393-test result covers the preceding runtime implementation; no CLI or provider campaign was repeated.
+
+### Review correction: Chat arrives during confirmation
+
+A mounted Needs-you regression starts confirmation before Chat exists, then lets the real Chat store adopt the fallback claim. Before correction, Cancel left the adopted prompt busy and retry was ignored. Cancellation now releases the current Chat owner's claim as well as the fallback claim; adoption retains the confirming state so it does not imply an action was sent. The regression proves zero POSTs on cancellation, a second confirmation on retry, and exactly one POST after that confirmation. The four affected confirmation/chat/module files pass 91 tests. No additional browser or native campaign is needed for this handoff-only correction.

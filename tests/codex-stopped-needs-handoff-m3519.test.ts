@@ -1,0 +1,40 @@
+import { beforeAll, afterAll, expect, it, vi } from "vitest";
+import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+let p: AppPage, app: any, panel: any, confirmation: any, make: any;
+beforeAll(async () => {
+  p = page({ url: "http://127.0.0.1:19280/ui/needs" });
+  (globalThis as any).confirm = undefined;
+  app = await import("/assets/app-store.js");
+  panel = await import("/ui/js/panel-needs.js");
+  confirmation = await import("/assets/ui-confirm.js");
+  make = (await import("/ui/js/chat-store.js") as any).createChatStore;
+});
+afterAll(async () => { await p.unmount(); p.restore(); delete (globalThis as any).fetch; });
+it("releases the adopted current Chat claim on Cancel, so the same Needs-you choice can be confirmed and submitted once", async () => {
+  const fetch = vi.fn(async () => ({ ok: true, json: async () => ({ answered: true }) }));
+  (globalThis as any).fetch = fetch;
+  const nonce = "b".repeat(32);
+  const item = { id: `prompt:${nonce}`, type: "prompt", reason: "question", instance: "demo", nonce, since: Date.now(), detail: "Stopped chat",
+    actions: [{ id: "opt-1", label: "Start a new chat", confirmation: { title: "Start a new chat", message: "Context is not carried over.", confirmLabel: "Start a new chat" } }] };
+  app.appStore.set({ chatOwner: null, ready: true, needsLoaded: true, needs: [item], instances: [{ name: "demo" }], proposals: [] });
+  await p.mount(h(panel.NeedsPanel, { navKey: "needs|m3519" }));
+  const button = () => p.root.querySelectorAll("button").find((b: any) => b.textContent.trim() === "Start a new chat");
+  fire(button(), "click"); await settle();
+  expect(confirmation.confirmStore.get().queue).toHaveLength(1);
+  expect(fetch).not.toHaveBeenCalled();
+  const store = make({ fetch, confirm: confirmation.confirmDialog, t: (k: string) => k, toast: vi.fn(), announce: vi.fn(), setTimeout: vi.fn() });
+  app.appStore.set({ chatOwner: store }); await settle();
+  expect(store.state.prompts[nonce]).toMatchObject({ busy: true, confirming: true });
+  expect(p.root.textContent).not.toContain("Answering");
+  confirmation.answerConfirm(confirmation.confirmStore.get().queue[0].id, false); await settle();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(panel.claims.get().prompts[nonce]).toBeUndefined();
+  expect(store.state.prompts[nonce]).toMatchObject({ busy: false, confirming: false });
+  fire(button(), "click"); await settle();
+  expect(confirmation.confirmStore.get().queue).toHaveLength(1);
+  expect(fetch).not.toHaveBeenCalled();
+  confirmation.answerConfirm(confirmation.confirmStore.get().queue[0].id, true); await settle();
+  expect(fetch).toHaveBeenCalledTimes(1);
+  expect(JSON.parse((fetch.mock.calls as any)[0][1].body)).toMatchObject({ instance: "demo", nonce, action: "opt-1" });
+});
