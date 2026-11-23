@@ -257,7 +257,7 @@ describe("M-3539 a new office or style places everyone at once (Prism #4376 P2)"
 describe("M-3539 a stroll never ends on someone else, nor with its tag past its area's edge", () => {
   const stacked = (a: any, b: any) => Math.abs(a.x - b.x) < 44 && Math.abs(a.y - b.y) < 60;
   for (const style of ["studio", "studio-large"]) {
-    it(`${style}: 31 people (23 idle) over 400 turns — nobody stands on anybody; the idle still stroll`, () => {
+    it(`${style}: 31 people (23 idle) over 400 samples 1.7 s apart — nobody stands on anybody or ends a stroll in the hall; the idle still stroll`, () => {
       const pack = K.SKINS.get(style).pack, nodes = NAMES.map((name, i) => ({ name, state: stateOf(i), i: { name } }));
       const L = Z.zonesLayout(pack, nodes), desks = L.rooms.flatMap((r: any) => r.desks);
       let strolled = 0;
@@ -268,14 +268,13 @@ describe("M-3539 a stroll never ends on someone else, nor with its tag past its 
           const seat = L.seats.get(x.name);
           if (seat && (x.at.x !== seat.x || x.at.y !== seat.y)) {
             strolled++;
-            for (const ar of Object.values(L.areas) as any[]) {
-              const r = ar.rect, inside = x.at.x >= r.x && x.at.x <= r.x + r.w && x.at.y >= r.y && x.at.y <= r.y + r.h;
-              if (inside) expect(x.at.y + 18 <= r.y + r.h, `${i}: ${x.name}'s tag past ${ar.name}'s edge`).toBe(true);
-            }
+            const ar: any = Object.values(L.areas).find((a: any) => x.at.x >= a.rect.x && x.at.x <= a.rect.x + a.rect.w && x.at.y >= a.rect.y && x.at.y <= a.rect.y + a.rect.h);
+            expect(ar, `${i}: ${x.name} ends a stroll in the hall`).toBeTruthy();
+            expect(x.at.y + 18 <= ar.rect.y + ar.rect.h, `${i}: ${x.name}'s tag past ${ar.name}'s edge`).toBe(true);
           }
         }
       }
-      expect(strolled).toBeGreaterThan(100);
+      expect(strolled).toBeGreaterThan(50);                         // fewer in a full plain Studio, but they stroll
     });
   }
 });

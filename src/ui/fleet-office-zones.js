@@ -362,18 +362,22 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   // M-3286: `ownArea` (the office's "Idle people stay in their own area"): a stroll stays in the area the person (or
   // NPC: the area its spot is in; none: as before) is in, and nobody goes on a visit.
   const areaAt = (p) => Object.keys(graph.areas || {}).find((k) => graph.areas[k].rect && inRect(graph.areas[k].rect, p)) ?? null;
-  // M-3539: a stroll ends where its figure stands clear of everyone else's (a seat in use, a visitor's, another
-  // stroll's end) and its name tag stays inside the area it is in; else the person stays seated this turn. An aisle
+  // M-3539: a stroll ends inside an area (the hall between areas is narrower than a name tag), where its figure stands
+  // clear of everyone else's (a seat in use, a visitor's, another stroll's end) and its name tag stays inside the
+  // area; else the person stays seated this turn. An aisle
   // point is under a row's seats, so in a full room a stroll stood on the person seated there and its tag spilled
   // past the area's edge.
   const ends = [];
   const clear = (name, p) => {
     if (desks.some((d) => d.node.name !== name && stacks(d.seat, p)) || ends.some((q) => stacks(q, p)) || [...away.values()].some((q) => stacks(q, p))) return false;
-    return !Object.values(graph.areas || {}).some((a) => a.rect && inRect(a.rect, p) && p.y + STROLL_TAG > a.rect.y + a.rect.h);
+    // Inside an area, with room for the tag under the feet: the hall between areas is narrower than a name tag.
+    const rects = Object.values(graph.areas || {}).filter((a) => a.rect), homeArea = rects.find((a) => inRect(a.rect, p));
+    if (!rects.length) return true;                                 // a layout with no areas: anywhere, as before
+    return !!homeArea && p.y + STROLL_TAG <= homeArea.rect.y + homeArea.rect.h;
   };
-  const stroll = (name, home, area = null) => {
+  const stroll = (name, home, area = null, person = true) => {
     const p = wanderTarget(name, home, graph, t, seats, ownArea ? area ?? areaAt(home) : null), k = `${p.x},${p.y}`;
-    if (p === home || used.has(k) || !clear(name, p)) return home;
+    if (p === home || used.has(k) || (person && !clear(name, p))) return home;
     used.add(k); ends.push(p);
     return p;
   };
@@ -412,7 +416,7 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   }
   if (memo) { memo.claims = claims; memo.idle = new Set(desks.filter(idle).map((d) => d.node.name)); }
   const out = new Map(desks.map((d) => [d.node.name, !idle(d) ? d.seat : away.get(d.node.name) || stroll(d.node.name, d.seat, d.area ?? null)]));
-  if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }));
+  if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }, null, false));   // an NPC's stroll: as before (#2596)
   return out;
 }
 
