@@ -375,6 +375,27 @@
     "pass": true,
     "detail": []
    }
+  },
+  "desk-dark-en-short": {
+   "mounted": true,
+   "short: last option on screen": {
+    "pass": true,
+    "detail": {
+     "lb": {
+      "x": 1019,
+      "y": 369,
+      "width": 314,
+      "height": 32
+     },
+     "vh": 520
+    }
+   },
+   "short: last option works": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
   }
  },
  "pass": true

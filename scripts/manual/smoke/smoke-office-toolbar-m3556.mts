@@ -19,6 +19,7 @@ const CASES = [
   { device: "desk", theme: "light", lang: "zh-TW", rm: false }, { device: "desk", theme: "dark", lang: "en", rm: false },
   { device: "desk", theme: "light", lang: "zh-TW", rm: true }, { device: "desk", theme: "dark", lang: "en", rm: true },
   { device: "phone", theme: "light", lang: "zh-TW", rm: false }, { device: "phone", theme: "dark", lang: "en", rm: false },
+  { device: "desk", theme: "dark", lang: "en", rm: false, short: true },
 ] as const;
 const W = { en: { office: "Office", display: "Display options", note: "Off while reduced motion is on" }, "zh-TW": { office: "辦公室", display: "顯示選項", note: "開啟「減少動態效果」時關閉" } } as const;
 
@@ -28,7 +29,8 @@ const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail 
 const box = (page: any, s: string) => page.locator(s).first().boundingBox();
 
 for (const c of CASES) {
-  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`, w = W[c.lang];
+  const short = "short" in c && c.short;
+  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}${short ? "-short" : ""}`, w = W[c.lang];
   const res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
@@ -36,6 +38,7 @@ for (const c of CASES) {
   try {
     ok(res, "mounted", await mounted(page, 30000));
     await page.emulateMedia({ reducedMotion: c.rm ? "reduce" : "no-preference" });
+    if (short) await page.setViewportSize({ width: 1366, height: 520 });   // Prism #3556 P2: a short window
     // Two stored offices, as a fleet that uses them has (the page's own PUT: an admin's).
     await page.evaluate(async () => {
       const g = await fetch("/ui/offices").then((x) => x.json());
@@ -46,7 +49,15 @@ for (const c of CASES) {
     await page.goto(`${base}/ui/fleet/org`);
     await page.locator(".oc-tools .seg-inline button", { hasText: w.office }).click();
     await page.waitForSelector(".oo-canvas", { timeout: 15000 }); await page.waitForTimeout(2000);
-    if (c.device === "desk") {
+    if (short) {
+      // The whole list is reachable on a short window: the last option is on screen and takes a click.
+      await page.locator(".oo-display-btn").click(); await page.waitForTimeout(300);
+      const last = page.locator(".oo-display-pop .oo-display-list > .check").last(), lb = await last.boundingBox(), vh = await page.evaluate(() => innerHeight);
+      ok(res, "short: last option on screen", !!lb && lb.y >= 0 && lb.y + lb.height <= vh, { lb, vh });
+      const was = await last.locator("input").isChecked(); await last.locator("input").click(); await page.waitForTimeout(200);
+      ok(res, "short: last option works", (await last.locator("input").isChecked()) !== was);
+      await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
+    } else if (c.device === "desk") {
       const bar = await box(page, ".oo > .oo-bar"), scope = await box(page, ".oo-bar-scope"), btn = await box(page, ".oo-display-btn");
       ok(res, "one row", !!bar && bar.height < 44, bar);
       ok(res, "scope left, ⚙ right", !!scope && !!btn && scope.x < btn.x && Math.abs(scope.y + scope.height / 2 - (btn.y + btn.height / 2)) < 8, { scope, btn });
