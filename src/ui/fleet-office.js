@@ -505,7 +505,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const blit = (c) => { if (!c) return; ctx.setTransform(a / ls, 0, 0, a / ls, ox, oy); ctx.drawImage(c, 0, 0); T(); };
   blit(p.layers.back);
   T();
-  const speakers = [], tags = [];
+  const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
@@ -651,16 +651,26 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const crowded = (q) => over.has(q.d.area) && !pinned(q);
     const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
     const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
+    titleBoxes.push(...titles.map((x) => x.box));
     const taken = [];
     const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
-    /** Draws `look`'s tag at (x, y) at the first of `tries` ([dy, compact]) clear of the others; `force`: at the first. */
+    /**
+     * Draws `look`'s tag at (x, y) at the first of `tries` ([dy, compact]) clear of the others; `force`: at the first.
+     * None clear: slid sideways just past what it would touch of `keep` (an area's name, the minimap: never another
+     * tag), at most its own width, at its place — so a name beside the minimap reads instead of going (leader's check).
+     */
     const place = (x, y, look, tries, force = false) => {
-      for (const [dy, compact] of tries) {
-        const box = tagBox(ctx, x, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
-        if (!force && touches(foot)) continue;
-        sk.drawTag(ctx, x, y + dy, look, env, compact);
+      const at = (dx, dy, compact) => {
+        const box = tagBox(ctx, x + dx, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
+        if (!force && touches(foot)) return null;
+        sk.drawTag(ctx, x + dx, y + dy, look, env, compact);
         tags.push(box); taken.push(foot);
         return box;
+      };
+      for (const [dy, compact] of tries) { const b = at(0, dy, compact); if (b) return b; }
+      const [dy0, c0] = tries[0], b0 = tagFootprint(ctx, tagBox(ctx, x, y + dy0, look.label, c0), look.badge, c0);
+      for (const o of keep.filter((k) => overlaps(b0, k))) {
+        for (const dx of [o.x - (b0.x + b0.w) - 2, o.x + o.w - b0.x + 2]) if (Math.abs(dx) <= b0.w) { const b = at(dx, dy0, c0); if (b) return b; }
       }
       return null;
     };
@@ -759,7 +769,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
-  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
+  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, titleBoxes.length ? [...tags, ...titleBoxes] : tags);
   const say = () => { T(); for (const { sp, b, dy } of placed) {
     const text = [...b.text].slice(0, b.shown).join("");
     sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);

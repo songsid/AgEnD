@@ -26,25 +26,28 @@ const touch = (a: any, b: any) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.
 
 function scene(style: string, { walkers = null as any, n = NAMES.length } = {}) {
   const base = K.SKINS.get(style), drawn: any[] = [], titled: string[] = [];
-  const skin = { ...base, drawCharacter() {}, drawFurniture() {}, drawBubble() {}, drawBackground() {}, drawAreaTitle: (ctx: any, area: any) => { titled.push(area.name); },
+  const bubbles: any[] = [];
+  const skin = { ...base, drawCharacter() {}, drawFurniture() {}, drawBackground() {},
+    drawBubble: (ctx: any, x: number, y: number, text: string, env: any, lift = 0) => { if (text) bubbles.push(K.bubbleBox(ctx, x, y, text, lift)); }, drawAreaTitle: (ctx: any, area: any) => { titled.push(area.name); },
     drawTag: (ctx: any, x: number, y: number, look: any, env: any, compact = false) => { drawn.push({ label: look.label, x, y, compact, badge: look.badge }); } };
   const nodes = NAMES.slice(0, n).map((name, i) => ({ name, state: stateOf(i), i: { name } }));
   const L = Z.zonesLayout(base.pack, nodes);
   const looks = new Map(L.rooms.flatMap((r: any) => r.desks).filter((d: any) => d.node).map((d: any) => [d.key,
     { name: d.node.name, label: d.node.name, state: d.node.state, pose: d.node.state }]));
   const part = F.partOf(L, looks, skin, true, walkers || Z.createWalkers(), { frame: () => [], size: () => 0 });
-  // Text 6 px a character at the tags' 10 px font, 9 at the area names' 16 px: names as wide as the browser draws them.
-  const ctx = new Proxy({ measureText(t: string) { return { width: [...t].length * (/16px/.test(this.font) ? 9 : /9px/.test(this.font) ? 5 : 6) }; }, font: "" } as any,
+  // Text as wide as the browser draws it: a CJK character a full em, any other about 0.6 em, at the font's px size.
+  const ctx = new Proxy({ measureText(t: string) { const px = Number(/(\d+)px/.exec(this.font)?.[1] ?? 10);
+    return { width: [...t].reduce((w, c) => w + (c.codePointAt(0)! >= 0x2e80 ? px : px * 0.6), 0) }; }, font: "" } as any,
     { get(o, k) { if (k in o) return typeof o[k] === "function" ? o[k].bind(o) : o[k]; return () => {}; }, set(o, k, v) { o[k] = v; return true; } });
   const env = { pal: { ...K.DEFAULT_PAL }, mode: "light", labels: { areas: { desks: "工作區", lounge: "休息區", alert: "求救區", nap: "午睡角" } } };
   const draw = ({ hot = null as string | null, ms = 0, keepClear = null as any[] | null } = {}) => {
-    drawn.length = 0; titled.length = 0;
+    drawn.length = 0; titled.length = 0; bubbles.length = 0;
     F.drawPart(ctx, part, 1, 0, 0, ms, ms === 0, hot, keepClear ? { ...env, keepClear } : env);
     return [...drawn];
   };
   const box = (t: any) => K.tagFootprint(ctx, K.tagBox(ctx, t.x, t.y, t.label, t.compact), t.badge, t.compact);
   const titles = Object.values(L.areas).map((a: any) => K.areaTitleBox(ctx, a, env));
-  return { L, part, draw, box, titles, titled, ctx, env };
+  return { L, part, draw, box, titles, titled, ctx, env, bubbles };
 }
 const noneTouch = (boxes: any[], what: string) => {
   for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) expect(touch(boxes[i], boxes[j]), `${what}: ${i}×${j}`).toBe(false);
@@ -85,6 +88,27 @@ describe("M-3539 name tags in a crowded Studio", () => {
     expect(under.length).toBeGreaterThan(0);                       // the box is over tags: what the test is about
     const after = s.draw({ keepClear: [keep] });
     for (const t of after) expect(touch(s.box(t), keep), t.label).toBe(false);
+  });
+
+  it("a tag that only a control is in the way of slides sideways past it, at its place, instead of going (the minimap and Cedar)", () => {
+    const s = scene("studio-large"), seat = new Map([...s.L.seats]);
+    const t0 = s.draw().find((t) => t.label === "Cedar"), b = s.box(t0);
+    const keep = { x: b.x + Math.round(b.w / 2), y: b.y - 20, w: 120, h: 67 };     // the minimap over Cedar's tag's right half
+    const t1 = s.draw({ keepClear: [keep] }).find((t) => t.label === "Cedar");
+    expect(t1, "Cedar's tag is still drawn").toBeTruthy();
+    expect([t1.y, t1.compact]).toEqual([(seat.get("Cedar") as any).y, false]);
+    expect(touch(s.box(t1), keep)).toBe(false);
+    expect(Math.abs(t1.x - t0.x)).toBeLessThanOrEqual(b.w);
+  });
+
+  it("no bubble covers an area's name (Studio (large)'s first lounge row speaks right under 休息區)", () => {
+    const s = scene("studio-large");
+    let n = 0;
+    for (let ms = 1; ms < 120_000; ms += 1500) {
+      s.draw({ ms });
+      for (const b of s.bubbles) { n++; for (const t of s.titles) expect(touch(b, t), `${ms}: a bubble on ${t.text}`).toBe(false); }
+    }
+    expect(n).toBeGreaterThan(20);
   });
 
   it("an area's name is written again over the people only when a figure stands on it", () => {
