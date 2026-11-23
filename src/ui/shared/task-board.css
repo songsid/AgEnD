@@ -370,7 +370,8 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tc-mentions { position: absolute; left: 0; bottom: calc(100% + var(--s-1)); z-index: 5; min-width: 220px; max-width: 100%; max-height: 220px; overflow-y: auto; margin: 0; padding: var(--s-1); list-style: none; border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--bg); box-shadow: var(--shadow-2); }
 .tc-mentions button { display: flex; align-items: center; justify-content: space-between; gap: var(--s-3); width: 100%; min-height: 32px; padding: 0 var(--s-2); border: 0; border-radius: var(--r-sm); background: none; color: var(--text); font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .tc-mentions li.active button, .tc-mentions button:hover:not(:disabled) { background: var(--surface-2); }
-.tc-mentions button:disabled { opacity: 0.55; cursor: default; }
+/* A board-off instance: --text-3 (at least 4.5:1 on the menu in every theme), never an opacity that drops it below. */
+.tc-mentions button:disabled { color: var(--text-3); cursor: default; }
 .tc-mention-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */

@@ -31,7 +31,7 @@ register("taskowner", {
     conflict: "{0} 在你選擇時被改過了。看板已更新，請再選一次。",
     running: "執行中", needs: "等你回應", stuck: "似乎卡住", idle: "閒置", offline: "離線",
     person: "人", openAgent: "開啟 Agent 頁面",
-    now: "目前", nowNothing: "沒有進行中的卡", cards: "手上", cardsN: "{0} 張", lead: "角色", leadValue: "專案 leader", dispatcher: "派工者",
+    now: "目前", nowNothing: "沒有進行中的卡", cards: "手上", cardsN: "{0} 張", lead: "角色", leadValue: "專案負責人", dispatcher: "派工者",
     part_claimed: "{0} 進行中", part_open: "{0} 待辦", part_blocked: "{0} 卡住", part_review: "{0} 待確認",
   },
 });

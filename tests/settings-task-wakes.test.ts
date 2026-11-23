@@ -168,7 +168,9 @@ describe("the switches", () => {
     expect(text(card.querySelector(".s-lab-text"))).toBe("任務板何時叫醒 Agent");
     const infos = card.querySelectorAll(".s-info").map(text);
     expect(infos[1]).toContain("關掉後：卡片上的留言不會叫醒負責人");
-    expect(infos[2]).toContain("派工者、關注者和 leader 都不會被叫醒");
+    expect(infos[2]).toContain("派工者、關注者和看板負責人都不會被叫醒");
+    // #4367 review: 「訊息」, not 「消息」; and the leader's label is Chinese too.
+    expect(infos.join("")).not.toMatch(/消息|leader/i);
     expect(infos[3]).toContain("不指定：這類卡片只有派工者和關注者會收到");
     expect($("#g-wake-leader").querySelectorAll("option").map(text)[0]).toBe("不指定");
     setLang("en");

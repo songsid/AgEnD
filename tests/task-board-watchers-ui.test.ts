@@ -158,8 +158,11 @@ describe("a card's page: Watchers and Leader in the property column", () => {
     expect(hint).toBe("Nobody is named as this card's leader");
     expect(hint).not.toMatch(/set|lead on|defaults|project/i);
     i18n.setLang("zh-TW", { store: false });
-    expect(i18n.t("taskfollow.leaderNoneHint")).toBe("這張卡沒有指定 leader");
+    expect(i18n.t("taskfollow.leaderNoneHint")).toBe("這張卡沒有看板負責人");
     expect(i18n.t("taskfollow.leaderNoneHint")).not.toMatch(/設定|設/);
+    // #4367 review: Leader is a Chinese word in the Chinese page (plain 負責人 is the card's assignee), and the count takes full-width brackets.
+    expect([i18n.t("taskfollow.leader"), i18n.t("taskfollow.count", 2, 10), i18n.t("settings.wakesLeader")]).toEqual(["看板負責人", "（2/10）", "看板負責人"]);
+    expect(i18n.t("settings.wakesHint") + i18n.t("settings.wakesProgressHint")).not.toMatch(/消息|leader/i);
     i18n.setLang("en", { store: false });
     expect(q("[data-watcher]")).toBeNull();
     expect(q(".tp-watch-add")).toBeTruthy();
@@ -277,13 +280,13 @@ describe("the rows read-only, and in Traditional Chinese", () => {
 
   it("every word of the rows and every refusal the watchers route can make is in both languages", () => {
     const keys = ["watchers", "watchersHint", "noWatchers", "add", "addTitle", "full", "noneToAdd", "remove", "gone", "fromMain", "leader", "leaderNone", "leaderHint", "viaProject", "viaBoard",
-      "leaderAssignee", "leaderGone", "leaderBoardOff", "leaderNoNotices", "leaderNoneHint"].map((k) => `taskfollow.${k}`)
+      "leaderAssignee", "leaderGone", "leaderBoardOff", "leaderNoNotices", "leaderNoneHint", "count"].map((k) => `taskfollow.${k}`)
       .concat(["watcher_unknown", "watcher_board_off", "watchers_max", "watch_not_board"].map((k) => `tasks.err.${k}`));
     for (const key of keys) {
       const en = i18n.tIn("en", key), zh = i18n.tIn("zh-TW", key);
       expect(en, key).not.toBe(key);
       expect(zh, key).not.toBe(key);
-      if (key !== "taskfollow.leader") expect(zh, `${key} is translated`).not.toBe(en);       // "Leader" is the word in both
+      expect(zh, `${key} is translated`).not.toBe(en);
       // The values a sentence takes are the same in both languages.
       const holes = (s: string) => [...new Set(s.match(/\{\d\}/g) ?? [])].sort().join();
       expect(holes(zh), `${key} placeholders`).toBe(holes(en));

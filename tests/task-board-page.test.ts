@@ -1318,6 +1318,23 @@ describe("the columns that do not fit the window", () => {
       expect([i18n.t("taskview.scrollColumns"), i18n.t("taskview.columnsLeft"), i18n.t("taskview.columnsRight")]).toEqual(["捲動欄位", "左邊的欄位", "右邊的欄位"]);
     } finally { i18n.setLang("en", { store: false }); }
   });
+  it("the @ list's board-off row reads at 4.5:1 or more in every theme: its colour is --text-3 on the menu's --bg, never dimmed by an opacity (#4367 review)", () => {
+    const css = readFileSync(join(UI, "shared", "task-board.css"), "utf8");
+    const rule = css.split("\n").find((l) => l.startsWith(".tc-mentions button:disabled"))!;
+    expect(rule).toMatch(/color: var\(--text-3\)/);
+    expect(rule).not.toMatch(/opacity/);
+    expect(css.split("\n").find((l) => l.startsWith(".tc-mentions {"))).toMatch(/background: var\(--bg\)/);
+    const lum = (hex: string) => {
+      const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+    };
+    const ratio = (a: string, b: string) => { const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m); return (x! + 0.05) / (y! + 0.05); };
+    // Every theme block of the tokens that sets both.
+    const tokens = readFileSync(join(UI, "shared", "tokens.css"), "utf8");
+    const blocks = tokens.split("}").map((b) => ({ bg: /--bg: (#[0-9a-fA-F]{6});/.exec(b)?.[1], text3: /--text-3: (#[0-9a-fA-F]{6});/.exec(b)?.[1] })).filter((b) => b.bg && b.text3);
+    expect(blocks.length).toBeGreaterThan(4);
+    for (const b of blocks) expect(ratio(b.text3!, b.bg!), `${b.text3} on ${b.bg}`).toBeGreaterThanOrEqual(4.5);
+  });
 });
 
 // ── The comment box and the board read an @ the same way ─────────────────────────────
