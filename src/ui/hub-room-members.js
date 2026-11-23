@@ -124,14 +124,14 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     const filtering = !!q.trim();
     return html`<p class="note hub-members-sum">${hm("summary", people.length, online.length, agents.length, owners.length)}</p>
     <input class="hub-members-filter" type="search" value=${q} placeholder=${hm("filter")} aria-label=${hm("filterLabel")} onInput=${(e) => setQ(e.target.value)} />
+    ${filtering && !on.length && !off.length && !groups.length ? html`<p class="note hub-members-none" role="status">${hm("noMatch")}</p>` : null}
     <section class="hub-members-people"><h4>${heads.member}</h4>
       ${on.length ? html`<ul>${on.map(person)}</ul>` : null}
       ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
     </section>
     ${agents.length ? html`<section><h4>${heads.agent}</h4>
       ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.owner} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
-    </section>` : null}
-    ${filtering && !on.length && !off.length && !groups.length ? html`<p class="note hub-members-none" role="status">${hm("noMatch")}</p>` : null}`;
+    </section>` : null}`;
   };
   return html`<aside class=${`hub-room-members${compact ? " compact" : ""}`}>
     ${detail.room?.purpose?html`<section class="hub-room-purpose-panel"><h4>${rp("title")}</h4><p>${detail.room.purpose}</p></section>`:manager&&client.roomPurposeV1===true&&typeof detail.room?.purpose==="string"?html`<button type="button" class="btn btn-link" onClick=${()=>onSettings?.()}>${rp("add")}</button>`:null}
