@@ -77,13 +77,14 @@ export function agentAvatar(m) {
   return { color, text: emoji || firstCharacter(m?.name || "") || "?", emoji: !!emoji, ink: lum === null ? null : (1.05 / (lum + 0.05) >= (lum + 0.05) / 0.05 ? "#ffffff" : "#111111") };
 }
 /**
- * The avatar in the row (the emoji or initial drawn from `data-av`, so the row's text is still the name alone), and
- * M-3256's source badge on its bottom-right corner, ringed in the row's colour: one slot, the row stays one line.
+ * The avatar in the row (the emoji or initial drawn from `data-av`, so the row's text is still the name alone), in the
+ * slot M-3256's source badge had: every agent row's badge was the same logo, so the avatar now says "an agent" (people's
+ * rows have none) and the source is said by the row's title, its accessible name and the agent's card (the design check).
  */
 function AgentAvatar({ m }) {
-  const a = agentAvatar(m), source = roomSource(m);
-  return html`<span class="hub-agent-av-wrap" aria-hidden="true"><span class=${`hub-agent-av${a.emoji ? " emoji" : ""}`} data-av=${a.text}
-    style=${a.color ? `--av:${a.color};--av-ink:${a.ink}` : undefined}></span>${source ? html`<span class="hub-agent-av-src"><${RoomSourceMark} source=${source} decorative=${true} /></span>` : null}</span>`;
+  const a = agentAvatar(m);
+  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}`} aria-hidden="true" data-av=${a.text}
+    style=${a.color ? `--av:${a.color};--av-ink:${a.ink}` : undefined}></span>`;
 }
 
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
@@ -136,7 +137,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M1: in a compact list a row is one line — the name, its state — and the owner and introduction move into its card.
   const row = (m, extra = null) => {
     const v = memberStatus(m), owner = !compact && (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    // R2a: an agent's avatar takes the source mark's slot, the mark on its corner (the source also in the title and card).
+    // R2a: an agent's avatar takes the source mark's slot (the source in the row's title, accessible name and card).
     const agentRow = m.kind === "agent" || m.kind === "later";
     return html`<span class="hub-member-name">${agentRow ? html`<${AgentAvatar} m=${m} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };

@@ -119,13 +119,9 @@
    pressed, and a desk stays dense). */
 @media (pointer: coarse) { .hub-room-members .hub-members-filter, .hub-member-group > summary, .hub-room-members.compact .hub-member-open { min-height: var(--tap); } }
 /* M-3533 R2a: an agent's avatar in the member list (its emoji or initial on its identity colour), in the source mark's
-   slot, with M-3256's source badge on its bottom-right corner, ringed in the panel's colour: a one-line row stays one line. */
-.hub-agent-av-wrap { position: relative; display: inline-flex; flex: none; width: 20px; height: 20px; margin-inline-end: 8px; vertical-align: middle; }
-.hub-agent-av { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%;
-  font-size: 11px; font-weight: var(--fw-semibold); line-height: 1; background: var(--av, var(--surface-2)); color: var(--av-ink, var(--text-2)); }
+   slot: a one-line row stays one line. */
+.hub-agent-av { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 20px; height: 20px; border-radius: 50%;
+  margin-inline-end: 6px; vertical-align: middle; font-size: 11px; font-weight: var(--fw-semibold); line-height: 1;
+  background: var(--av, var(--surface-2)); color: var(--av-ink, var(--text-2)); }
 .hub-agent-av::before { content: attr(data-av); }
 .hub-agent-av.emoji { font-size: 13px; font-weight: normal; }
-.hub-agent-av-src { position: absolute; right: -4px; bottom: -4px; width: 12px; height: 12px; border-radius: 50%; display: inline-flex;
-  align-items: center; justify-content: center; background: var(--bg); box-shadow: 0 0 0 1.5px var(--bg); }
-.hub-agent-av-src .hub-source-mark { display: inline-flex; margin: 0; }
-.hub-agent-av-src .hub-source-mark img, .hub-agent-av-src .hub-source-mark svg { width: 10px; height: 10px; }
