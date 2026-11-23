@@ -26,13 +26,13 @@ const roots: string[] = [];
 afterEach(() => { for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 
 /** The session as it stood at `now`, on disk: parent and children cut at `now`; a child's meta `finished` only once notified. */
-function disk(now: number): string {
+function disk(now: number, extra: Record<string, object[]> = {}): string {
   const root = mkdtempSync(join(tmpdir(), "agend-m3541-")); roots.push(root);
   mkdirSync(join(root, SID, "subagents"), { recursive: true });
   const parent = raw("claude-parent.jsonl").filter((l) => T(JSON.parse(l).timestamp) <= now);
   writeFileSync(join(root, `${SID}.jsonl`), parent.join("\n") + "\n");
   for (const id of [FIRST, SECOND]) {
-    const rs = raw(`claude-agent-${id}.jsonl`).filter((l) => T(JSON.parse(l).timestamp) <= now);
+    const rs = [...raw(`claude-agent-${id}.jsonl`), ...(extra[id] ?? []).map((r) => JSON.stringify(r))].filter((l) => T(JSON.parse(l).timestamp) <= now);
     if (!rs.length) continue;
     writeFileSync(join(root, SID, "subagents", `agent-${id}.jsonl`), rs.join("\n") + "\n");
     const meta = JSON.parse(readFileSync(join(DIR, `claude-agent-${id}.meta.json`), "utf8"));
@@ -41,24 +41,41 @@ function disk(now: number): string {
   }
   return root;
 }
-async function runs(now: number) {
-  const root = disk(now);
+async function runs(now: number, extra: Record<string, object[]> = {}) {
+  const root = disk(now, extra);
   const svc = new SubagentService(() => ({ backend: "claude-code", sessionId: SID, cwd: CWD, path: join(root, `${SID}.jsonl`), root, owner: "o" }), undefined, () => now);
   const answer = await svc.read("leader");
   return { status: answer.status, runs: answer.runs.map((r) => ({ name: r.name, state: r.state })) };
 }
 
 describe("A: one oversized record no longer hides every run", () => {
-  it("the fixture carries one line over the limit, and the tail is still read", () => {
+  it("the fixture carries one diagnostic over the limit, and the tail is still read (the diagnostic as a stub)", () => {
     const lines = raw("claude-parent.jsonl");
     expect(lines.filter((l) => l.length > SUBAGENT_LINE_MAX)).toHaveLength(1);
     const records = jsonl(lines.join("\n") + "\n")!;
-    expect(records).toHaveLength(lines.length - 1);
+    expect(records).toHaveLength(lines.length);
+    expect(records[1]).toEqual({ type: "api-request-shape", sessionId: SID, timestamp: JSON.parse(lines[1]!).timestamp });
   });
-  it("jsonl() skips only the oversized lines; a broken line or an unfinished last line still refuses the tail", () => {
-    expect(jsonl(`{"a":1}\n${"x".repeat(SUBAGENT_LINE_MAX + 1)}\n{"b":2}\n`)).toEqual([{ a: 1 }, { b: 2 }]);
+  it("jsonl() admits an oversized line only when it is a diagnostic; any other oversized record still refuses the window", () => {
+    const pad = "x".repeat(SUBAGENT_LINE_MAX);
+    expect(jsonl(`{"a":1}\n${JSON.stringify({ type: "api-request-blob", sessionId: SID, agentId: SECOND, body: pad })}\n`))
+      .toEqual([{ a: 1 }, { type: "api-request-blob", sessionId: SID, agentId: SECOND }]);
+    expect(jsonl(`{"a":1}\n${JSON.stringify({ type: "user", sessionId: SID, message: { content: pad } })}\n`)).toBeNull();
+    expect(jsonl(`{"a":1}\n${JSON.stringify({ type: "api-request-shape", pad })}x\n`)).toBeNull();   // oversized and broken
     expect(jsonl(`{"a":1}\n{broken\n`)).toBeNull();
     expect(jsonl(`{"a":1}\n{"b":2}`)).toBeNull();
+  });
+  it("an oversized resumed prompt in a child never lets the old completion stand (#4358 review)", async () => {
+    const done = T("2026-11-23T07:36:25Z"), resumed = { type: "user", sessionId: SID, cwd: CWD, agentId: SECOND, isSidechain: true,
+      promptId: "00000000-0000-4000-8000-000000000001", timestamp: "2026-11-23T07:36:20.000Z", message: { role: "user", content: "x".repeat(SUBAGENT_LINE_MAX) } };
+    expect((await runs(done)).runs).toEqual([{ name: "Describe second screenshot", state: "completed" }]);
+    expect((await runs(done, { [SECOND]: [resumed] })).runs).toEqual([{ name: "Describe second screenshot", state: "unknown" }]);
+  });
+  it("an oversized child diagnostic is admitted with its binding: the right child keeps its completion, another child's does not", async () => {
+    const done = T("2026-11-23T07:36:25Z"), diag = (agentId: string) => ({ type: "api-request-shape", sessionId: SID, agentId,
+      timestamp: "2026-11-23T07:36:00.000Z", shape: "x".repeat(SUBAGENT_LINE_MAX) });
+    expect((await runs(done, { [SECOND]: [diag(SECOND)] })).runs).toEqual([{ name: "Describe second screenshot", state: "completed" }]);
+    expect((await runs(done, { [SECOND]: [diag(FIRST)] })).runs).toEqual([{ name: "Describe second screenshot", state: "unknown" }]);
   });
   it("the leader's first subagent is running while it works, from the real service on the recorded files", async () => {
     expect(await runs(T("2026-11-23T07:35:15Z"))).toEqual({ status: "ok", runs: [{ name: "Describe the user's screenshot", state: "running" }] });
