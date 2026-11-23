@@ -158,11 +158,15 @@ Changed, following the Fleet agent page:
 **Room settings → Room office** (captures `r4-1`):
 
 1. **Show the room office**: on or off.
-2. **Style**: the built-in zones styles, each with its number of work seats, so a manager can see whether the
-   room fits. A new built-in style for large rooms, **Studio (large)**: 36 work seats (Studio has 12), with a
-   larger rest area. The office guide describes Cozy, Guild and School as one picture each and Studio as a scene
-   of four areas, so I expect a larger Studio needs no new artwork; a builder should confirm that before sizing
-   it. A room with more agents than work seats suggests it.
+2. **Style**: the built-in zones styles, each with its number of seats, so a manager can see whether the room
+   fits. A new built-in style for large rooms, **Studio (large)**.
+   **Corrected 2026-11-23 after the builder's check.** I first asked for 36 work seats. The builder confirmed
+   Studio is drawn in code (no artwork needed) on a fixed 1280×720 canvas, and the captures of the 30-agent room
+   show what really runs out: three or four agents are at desks while about 25 stand in a rest area with 14
+   seats, because agents are idle most of the time. So the large style keeps 12 desks and gives the rest area
+   about 30 seats, spaced at least one name label apart, on the same canvas: about 57 seats against Studio's 41.
+   The list shows total seats, and a room with more agents than the chosen style has rest seats is told that a
+   larger style gives everyone a seat.
 3. **Arrange seats…** opens the room's office with the Fleet's own layout editor.
 
 **The model is the Fleet's, reused** (captures `r4-5`, `r4-6`, the real Fleet editor today):
@@ -379,7 +383,7 @@ recommendation column below is therefore the decision.
 不新增讓 Agent 編輯辦公室的 MCP 工具。個人辦公室只能在擁有者自己的 Fleet 編輯，Hub 只管分享。
 設計上直接沿用 Fleet 辦公室編輯器的模型：同一種「辦公室」資料（名稱、風格、座位覆寫）、同一個「編輯配置」
 畫面（拖曳座位、指定「保留給」誰、不在時借給別人）、同樣的儲存檢查。成員名單固定是房間裡的 Agent。
-另外新增一個大房間用的內建風格「工作室（大）」：36 個工作座位（現在的工作室是 12 個），30 個 Agent 的房間
+另外新增一個大房間用的內建風格「工作室（大）」：休息區約 30 個座位（現在的工作室是 14 個；實測 30 個 Agent 的房間不夠的是休息座位，不是辦公桌），30 個 Agent 的房間
 會建議用它。座位數不能自己加，要更多座位就換大的風格。
 
 **第二版（依你的回饋修改）：** 房間的辦公室改成房間頁面上的一個分頁，和 Agent 頁面的「聊天／檢視／紀錄」
