@@ -1,6 +1,6 @@
 ---
 name: fleet-config
-description: fleet.yaml and classicBot.yaml structure, validation, common mistakes
+description: fleet.yaml and classicBot.yaml structure, access modes, validation, common mistakes
 roles: [general]
 ---
 
@@ -82,6 +82,26 @@ defaults`. Both `reply_completion_guard` and `tool_progress` use that chain and
 hot-reload without restarting the agent. The switch only enables or disables
 recovery; it does not change which trusted human messages require a reply, and
 it does not turn tool-call text into proof that the reply reached the channel.
+
+## Access modes
+
+`channel.access.mode` in fleet.yaml decides who may talk to the bot:
+
+| Mode | Who can interact | Use it for |
+|------|------------------|------------|
+| `locked` | Only the allowlist (`allowed_users`) | Production, a private bot, anything sensitive |
+| `open` | Everyone in the channel | A public demo, a shared team bot, testing |
+
+`pairing` is an older name for `locked` that configurations may still carry; write `locked` in new ones.
+
+```yaml
+channel:
+  access:
+    mode: locked
+    allowed_users: [123456789]   # used in locked mode
+```
+
+Add allowed users in Settings → Chat & connections → Chat connections → the bot → Allowed users (primary bot), through its usual confirmation. Runtime and Hub pairing are separate.
 
 ## Config Validation
 

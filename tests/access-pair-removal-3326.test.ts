@@ -30,7 +30,7 @@ describe("D8 removes the legacy people-access code surface", () => {
   });
 
   it("current EN/zh-TW guidance uses in-page allowed users, not code generation", () => {
-    const paths = ["docs/cli.md", "docs/cli.zh-TW.md", "docs/configuration.md", "docs/configuration.zh-TW.md", "docs/use-cases.md", "docs/use-cases.zh-TW.md", "docs/concepts.md", "docs/concepts.zh-TW.md", "src/general-knowledge/steering/core-rules.md", "src/general-knowledge/skills/concepts/SKILL.md"];
+    const paths = ["docs/cli.md", "docs/cli.zh-TW.md", "docs/configuration.md", "docs/configuration.zh-TW.md", "docs/use-cases.md", "docs/use-cases.zh-TW.md", "docs/concepts.md", "docs/concepts.zh-TW.md", "src/general-knowledge/skills/fleet-config/SKILL.md", "src/general-knowledge/skills/concepts/SKILL.md"];
     for (const path of paths) {
       const text = read(path);
       expect(text, path).not.toMatch(/\/pair\b|agend access pair/);

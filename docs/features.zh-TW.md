@@ -398,6 +398,8 @@ Tasks 分頁就是看板本身（設計：[task-board](design/task-board.md)，�
 - 特定專案的任務 — 用 `list_instances()` 找到對的 agent，必要時先 `start_instance()`，再用 `send_to_instance()` 委派
 - 新專案的請求 — 用 `create_instance()` 建立新的 agent
 
+AgEnD 把協調者的角色說明放在這個檔案最上面的受管理區塊（`agend:general-role` 標記之間），核心規則放在另一個區塊（`agend:core-rules`），每次 General 啟動都會更新這兩塊，所以既有的 General 也會拿到新的說明。你自己的指示請寫在區塊外；如果你親手改寫過協調者說明，AgEnD 會保留你寫的版本。
+
 在 General topic 裡用 `/status` 可以看 fleet 概況。其他專案管理工作，都由 General instance 透過自然語言處理。
 
 ## 外部 session 支援 (External session support)
