@@ -316,7 +316,7 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       expect([post.mentions.includes(kept.id), post.mentions.includes(gone.id)]).toEqual([true, false]);
     } finally { restore(); }
   });
-  it.each([["beforeinput"], ["keydown only"], ["an IME"]])("A then B, the caret moved before the edit (%s): only B's mention is touched, the untouched A is sent", async (how) => {
+  it.each([["beforeinput"], ["keydown only"], ["an IME"], ["a click, no key"]])("A then B, the caret moved before the edit (%s): only B's mention is touched, the untouched A is sent", async (how) => {
     const { pg, room, posts, restore } = await roomPage({ sameName: true });
     try {
       const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
@@ -333,6 +333,12 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
         box.selectionStart = second; box.selectionEnd = box.value.length - 1; fire(box, "compositionstart");
         box.selectionStart = box.selectionEnd = second + 1; fire(box, "beforeinput");
         box.value = `@${a.name} 你好 `; box.selectionStart = box.selectionEnd = second + 2; fire(box, "compositionend"); fire(box, "input");
+      } else if (how === "a click, no key") {
+        // Arrows left the caret at 0; a click puts it at B's @ (no key) and a context-menu cut deletes that @: the edit's
+        // own beforeinput is where it began, not the last key's.
+        box.selectionStart = box.selectionEnd = 0; fire(box, "keydown", { key: "ArrowLeft" });
+        box.selectionStart = second; box.selectionEnd = second + 1; fire(box, "beforeinput");
+        box.value = `@${a.name} ${b.name} `; box.selectionStart = box.selectionEnd = second; fire(box, "input");
       } else {
         fire(box, "keydown", { key: "Delete" });
         if (how === "beforeinput") fire(box, "beforeinput");
