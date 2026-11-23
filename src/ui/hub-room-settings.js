@@ -50,7 +50,7 @@ function OfficeStyles({ styles, value, saved, busy, members, onPick, onSave }) {
   const larger = picked && styles.some((x) => x.seats.rest > picked.seats.rest);
   return html`<fieldset class="field hub-room-office-styles"><legend>${hroom("officeStyle")}</legend>
     ${styles.map((x) => html`<label class="check" key=${x.id}><input type="radio" name="hubRoomOfficeStyle" value=${x.id} checked=${value === x.id} disabled=${busy}
-      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)} · ${hroom("seatsN", x.seats.total)}</span></label>`)}
+      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)}${/[）」]$/.test(styleName(x.id)) ? "· " : " · "}${hroom("seatsN", x.seats.total)}</span></label>`)}
     ${picked && larger && figures > picked.seats.rest ? html`<p class="note hub-room-office-fit">${hroom("officeFitHint", agents, styleName(picked.id), picked.seats.rest)}</p>` : null}
     <div class="field-row"><button type="button" class="btn hub-room-office-style-save" disabled=${busy || value === saved} onClick=${onSave}>${hroom("officeStyleSave")}</button></div>
   </fieldset>`;
