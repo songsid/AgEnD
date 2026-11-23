@@ -10,9 +10,24 @@ import { ROOM_HUMAN_RECEIPT, type RoomReceiptProof } from "./room-post-receipt.j
 import { HubRoomPostAnswers, verifyRoomPostAnswers, type RoomPostAnswerLink, type RoomPostNotification, type RoomPostSource } from "./room-post-answers.js";
 export interface RoomCaller { agent: string; current(): boolean }
 export interface RoomIdentity { exposureId: string; revision: number; consentId: string; token: string }
-export type RoomListResult = HubRoomListResult | { ok:false; code:"unavailable"|"stale" };
+/**
+ * M-3543: the agent is shared, but its share's consent no longer matches it — its backend or folder changed (#3147: consent
+ * never carries over). Said instead of a bare "unavailable", so the agent can tell the person what to do.
+ */
+export interface ShareLapsed { ok: false; code: "share_needs_reshare"; message: string }
+export const SHARE_LAPSED_MESSAGE = "Your Hub share lapsed when your backend or working folder changed. Ask the person to share you again on the Hub (My shared agents → Share again).";
+export const shareLapsed = (): ShareLapsed => ({ ok: false, code: "share_needs_reshare", message: SHARE_LAPSED_MESSAGE });
+/**
+ * M-3543: lapsed = a published share whose consent names this agent, while the agent's current token (non-null) is another.
+ * No share, a withdrawn one, a consent of another agent or no token at all is not "lapsed" (those stay what they were).
+ */
+export function isShareLapsed(agent: string, committed: { consentId: string; exposure: { state: string } } | null | undefined,
+  consent: { agent: string; token: string } | null | undefined, token: string | null): boolean {
+  return !!committed && committed.exposure.state === "published" && !!consent && consent.agent === agent && token !== null && token !== consent.token;
+}
+export type RoomListResult = HubRoomListResult | { ok:false; code:"unavailable"|"stale" } | ShareLapsed;
 export type RoomPostResult = HubRoomPostResult | { ok:false; code:"uncertain" }
-  | { ok:false; code:"denied"; reason:string };
+  | { ok:false; code:"denied"; reason:string } | ShareLapsed;
 export interface RoomPostLink {
   features: ReadonlySet<string>; current(): boolean;
   list(exposureId: string): Promise<HubRoomListResult>;
@@ -24,13 +39,15 @@ export interface RoomPostLink {
 export interface AgentRoomPort {
   available(): boolean;
   rooms(caller: RoomCaller): Promise<RoomListResult>;
-  members(caller: RoomCaller, room: string,options?:RoomMemberOptions): Promise<HubRoomMembersResult>;
-  people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult>;
+  members(caller: RoomCaller, room: string,options?:RoomMemberOptions): Promise<HubRoomMembersResult | ShareLapsed>;
+  people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult | ShareLapsed>;
   post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult>;
 }
 export interface RoomPostOptions {
   db: Database.Database; binding: string; encryptionKey: Buffer;
   current(): boolean; local(agent: string): RoomIdentity | null;
+  /** M-3543: the agent's published share whose consent no longer matches it (shareLapsed). */
+  lapsed?(agent: string): boolean;
   receipt?(caller: RoomCaller, receiptId: string): RoomReceiptProof | null;
   notify?(input: RoomPostNotification): Promise<boolean>;
   held?(id: string): void;
@@ -113,7 +130,12 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     catch { return false; }
   }
   private local(agent: string): RoomIdentity | null { try { const value=this.options.local(agent); return value ? {...value} : null; } catch { return null; } }
+  /** M-3543: a caller with no current identity because its share lapsed — said before any other check. */
+  private lapse(caller: RoomCaller): ShareLapsed | null {
+    try { return !this.local(caller.agent) && this.options.lapsed?.(caller.agent) === true ? shareLapsed() : null; } catch { return null; }
+  }
   async rooms(caller: RoomCaller): Promise<RoomListResult> {
+    const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link = this.link, local = this.local(caller.agent);
     if (!link || !local || !this.current(caller, local, link)) return { ok: false, code: "unavailable" };
     try {
@@ -123,7 +145,8 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       return result;
     } catch { return { ok: false, code: "unavailable" }; }
   }
-  async members(caller: RoomCaller, room: string,options:RoomMemberOptions={}): Promise<HubRoomMembersResult> {
+  async members(caller: RoomCaller, room: string,options:RoomMemberOptions={}): Promise<HubRoomMembersResult | ShareLapsed> {
+    const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link=this.link,local=this.local(caller.agent);
     const modern=link?.features?.has(HUB_ROOM_MEMBERS_CAPABILITY);
     if(!modern&&Object.values(options).some(v=>v!==undefined))return {ok:false,code:"unavailable",message:"This Hub does not support bounded room-member lookup yet."};
@@ -133,7 +156,8 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       if(modern&&(Buffer.byteLength(JSON.stringify(result))>8192||result.ok&&!("v2" in result))||!modern&&result.ok&&"v2" in result)return {ok:false,code:"unavailable"};
       return this.current(caller,local,link)?result:{ok:false,code:"stale"};}catch{return {ok:false,code:"unavailable"};}
   }
-  async people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult> {
+  async people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult | ShareLapsed> {
+    const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link=this.link,local=this.local(caller.agent);
     if(!peopleSearchSchema.safeParse({exposureId:local?.exposureId,q}).success)return {ok:false,code:"invalid"};
     if(!link?.people||!local||!this.current(caller,local,link))return {ok:false,code:"unavailable"};
@@ -148,6 +172,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     this.options.db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?) ON CONFLICT(operation_id) DO UPDATE SET value=excluded.value").run(id, this.options.binding, value);
   }
   async post(caller: RoomCaller, input: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult> {
+    const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link = this.link, local = this.local(caller.agent), id = input.operationId;
     if (!UUID.test(id) || !roomPostSchema.safeParse({exposureId:local?.exposureId,room:input.room,text:input.text,idempotencyKey:id}).success
       || input.receiptId !== undefined && !ROOM_HUMAN_RECEIPT.test(input.receiptId)) return { ok: false, code: "invalid" };

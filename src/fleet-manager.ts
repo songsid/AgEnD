@@ -2715,6 +2715,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           },
           attachAgentIntro: port => { this.hubAgentIntro=port; },
           attachAgentRooms: port => { this.hubAgentRooms = port; this.notifyHubRoomTools(); },
+          attachShareLapse: port => { this.hubShareLapse = port; this.needsYou?.poke(); },
           roomToolsChanged: () => this.notifyHubRoomTools(),
           roomConversationGeneration: agent => this.daemons.get(agent)?.roomConversationGeneration() ?? null,
           attachRoomInputs: handler => { this.hubRoomInput = handler; },
@@ -3230,6 +3231,27 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private hubDeliveryFailed: ((correlationId: string, agent: string) => void) | null = null;
   /** The connected member adapter; never an agent-selectable identity. */
   private hubAgentRooms: import("./hub/member/room-post.js").AgentRoomPort | null = null;
+  /** M-3543: which shared agents' Hub shares lapsed (backend/folder changed since they were shared; #3147). */
+  private hubShareLapse: { lapsed(agent: string): boolean; agents(): string[] } | null = null;
+  /** M-3543: when each lapse (agent + its incarnation) was first seen — the Needs-you item's "since". */
+  private hubShareLapseSeen = new Map<string, number>();
+  /** M-3543: the shared agents whose Hub share lapsed, for Needs you: one per agent and incarnation, until shared again. */
+  hubShareLapses(): import("./needs-you.js").HubShareLapseInput[] {
+    let agents: string[] = [];
+    try { agents = this.hubShareLapse?.agents() ?? []; } catch { agents = []; }
+    const incarnations = agents.length ? this.readHubIncarnations() : {};
+    const live = new Set<string>();
+    const out = agents.map(agent => {
+      const key = (Object.hasOwn(incarnations, agent) ? incarnations[agent]?.id : undefined) ?? "-", id = `${agent}\u0000${key}`;
+      live.add(id);
+      if (!this.hubShareLapseSeen.has(id)) this.hubShareLapseSeen.set(id, Date.now());
+      return { agent, key, since: this.hubShareLapseSeen.get(id)! };
+    });
+    for (const id of [...this.hubShareLapseSeen.keys()]) if (!live.has(id)) this.hubShareLapseSeen.delete(id);
+    return out;
+  }
+  /** M-3543: is this agent's Hub share lapsed now (shared, but its consent no longer matches it)? */
+  hubShareLapsed(agent: string): boolean { try { return this.hubShareLapse?.lapsed(agent) === true; } catch { return false; } }
   private hubAgentIntro: import("./hub/member/agent-intro.js").AgentIntroPort|null=null;
   hubSetIntro(caller: import("./hub/member/room-post.js").RoomCaller,text:string,operationId:string){return this.hubAgentIntro?.set(caller,text,operationId)??Promise.resolve({ok:false as const,code:"unavailable" as const});}
   hubRoomToolsAvailable(): boolean { return this.hubAgentRooms?.available() === true; }
@@ -19909,6 +19931,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       backendSignIns: () => this.needsYouBackendSignIns(),
       signInKeepAlive: () => this.keepAliveAttention(),
       hubExecution: () => this.hubExecutionAttention?.() ?? [],
+      hubShareLapses: () => this.hubShareLapses(),
       runtimeUpdates: () => remoteRuntimeEnabled() ? runtimeUpdateAttention(this.runtimeHub?.listMachines() ?? [], t, this.worlds.keys().next().value) : [],
       hubHolds: () => this.hubHolds.map(h => {
         // A provider hold carries a bounded setup reason; its guidance (S4b's copy) when present, else the code's text.
@@ -27966,9 +27989,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const saved = await switchClassicRoomBackend(this as unknown as import("./settings-api.js").SettingsApiContext,
         room, plan, from, stillCurrent);
       if (!saved.ok) return t("backend.failed", instanceName, plan.backend, saved.error);
-      return this.getInstanceStatus(instanceName) === "running"
+      return this.withHubShareLapse(instanceName, this.getInstanceStatus(instanceName) === "running"
         ? t("backend.switched", instanceName, plan.backend, shown.model, shown.effort)
-        : t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName));
+        : t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName)));
     }
     const { value, error } = await new Promise<{ value: unknown; error?: string }>(resolve => {
       applyInstanceConfigPatch(this, instanceName, { backend: plan.backend, model: plan.model, effort: plan.effort }, (value, error) => resolve({ value, error }));
@@ -27976,8 +27999,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (error) return t("backend.refused", instanceName, error);
     const result = (value ?? {}) as { restarted?: boolean; warning?: string };
     if (result.warning) return t("backend.restart_failed", instanceName, plan.backend, result.warning);
-    if (result.restarted) return t("backend.switched", instanceName, plan.backend, shown.model, shown.effort);
-    return t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName));
+    if (result.restarted) return this.withHubShareLapse(instanceName, t("backend.switched", instanceName, plan.backend, shown.model, shown.effort));
+    return this.withHubShareLapse(instanceName, t("backend.switched_not_running", instanceName, plan.backend, shown.model, shown.effort, this.getInstanceStatus(instanceName)));
+  }
+
+  /** M-3543: a switched agent that is shared on the Hub needs sharing again (#3147: consent never carries over) — say so. */
+  private withHubShareLapse(instanceName: string, text: string): string {
+    return this.hubShareLapsed(instanceName) ? `${text}\n${t("backend.hub_share_lapsed", instanceName)}` : text;
   }
 
   /** A step's buttons: index callbacks (a model id can be longer than Telegram's 64-byte callback data allows). */
