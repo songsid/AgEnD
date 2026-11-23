@@ -56,7 +56,10 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
   const [offered, setOffered] = useState(assistant === true), [addPeople, setAddPeople] = useState([]), [addAgents, setAddAgents] = useState([]), [peopleNote, setPeopleNote] = useState("");
   const live = useRef(true);
   useEffect(() => () => { live.current = false; }, []);
-  useEffect(() => { setName(room.name ?? ""); setAllMention(settings.allMention !== false); setHistory(settings.historyForNew === "all" ? "all" : "since-join"); }, [detail]);
+  // M-3533 R1 (design §2.1b): Room office, on or off — managers only (this dialog is theirs), when the Hub serves it.
+  const officeShown = typeof settings.office?.enabled === "boolean" && client.roomOfficeV1 === true;
+  const [office, setOffice] = useState(settings.office?.enabled === true);
+  useEffect(() => { setName(room.name ?? ""); setAllMention(settings.allMention !== false); setHistory(settings.historyForNew === "all" ? "all" : "since-join"); setOffice(settings.office?.enabled === true); }, [detail]);
   useEffect(()=>setAiApps(settings.aiApps!==false),[detail]);
   useEffect(() => {
     if (typeof assistant === "boolean") { setOffered(assistant); return; }
@@ -149,6 +152,10 @@ export function RoomSettings({ client = hubClient(), roomId, detail, onClose, on
       ${offered || hasAssistant ? html`<label class="check"><input id="hubRoomSettingsAssistant" class="s-ui-toggle" type="checkbox" role="switch" checked=${hasAssistant} disabled=${busy}
         onChange=${(e) => { const v = e.target.checked, id = members.find(m => m.kind === "assistant")?.id; void act(() => v ? client.addRoomMember(roomId, { kind: "assistant" }) : client.removeRoomMember(roomId, id)); }} /><span>${hs("assistantSwitch")}</span></label>` : null}
     </section>
+    ${officeShown ? html`<section class="form hub-room-office-settings"><h4>${hroom("officeSection")}</h4>
+      <label class="check"><input id="hubRoomOffice" class="s-ui-toggle" type="checkbox" role="switch" checked=${office} disabled=${busy}
+        onChange=${(e) => { const v = e.target.checked; setOffice(v); void act(() => client.updateRoom(roomId, { office: { enabled: v } }), () => setOffice(!v)); }} /><span>${hroom("officeSetting")}</span></label>
+    </section>` : null}
     <section class="form"><h4>${hroom("other")}</h4>
       <button type="button" class="btn btn-danger" disabled=${busy || room.archived === true} onClick=${() => { void archive(); }}>${hroom("archiveRoom")}</button>
     </section>

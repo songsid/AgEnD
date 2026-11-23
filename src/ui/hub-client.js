@@ -499,6 +499,10 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     reactRoomMessage(roomId, messageId, emoji, on) { return call("POST", `/hub/v1/rooms/${id(roomId)}/messages/${id(messageId)}/reactions`, { emoji: String(emoji), on: on === true }); },
     /** M-3340: my own pins in a group room (nobody else's) → { pins: [{ messageId, pinnedAt, message }] }, newest first. */
     roomPins(roomId) { return call("GET", `/hub/v1/rooms/${id(roomId)}/pins`); },
+    /** M-3533 R1: a Hub that serves rooms' offices (with the session's room-office-v1). */
+    roomOfficeV1: true,
+    /** M-3533 R1: a group room's office, as a share link's /state reads (409 office-off while a manager has it off). */
+    roomOfficeState(roomId) { return call("GET", `/hub/v1/rooms/${id(roomId)}/office/state`); },
     /** M-3340: pin (`on`) or unpin a group-room message for me only → { pins }. Past 50: the Hub refuses (pins-full). */
     pinRoomMessage(roomId, messageId, on) { return call(on ? "PUT" : "DELETE", `/hub/v1/rooms/${id(roomId)}/pins/${id(messageId)}`); },
     markRoomRead(roomId, upTo) { return call("POST", `/hub/v1/rooms/${id(roomId)}/read`, { upTo }); },

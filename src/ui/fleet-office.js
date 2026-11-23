@@ -837,6 +837,13 @@ export function OfficeKey({ pal }) {
  * `assetImage(url)` how (the share's, which waits out a 429, #2662; none: the loader's own);
  * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
  * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
+ * M-3533 R1, a Hub room's office (hub-room-office.js), on the Fleet dashboard's own origin too: `oneOffice` its one office
+ * (no office picker or carousel); `readOnly` no editing or sharing whatever the session; `stream` false: never this
+ * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
+ * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
+ * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `officesKey` read the offices
+ * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -845,12 +852,16 @@ function ensureDialogueStyle() {
   link.href = assetUrl("/assets/office-dialogue.css");
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, officesKey = undefined }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
   const phone = useOfficePhone(), compact = phone && typeof onMore === "function";
-  const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
+  const store = useMemo(() => createOfficeStore({ ...(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), ...(storage ? { storage } : {}) }), [lease, storage]);
+  const streamOn = () => (stream === false ? null : appStore.get().streamOn);
+  const stateOf = (node) => (words ? words(node).state : stateWords(node));
+  const nowOf = (node) => (words ? words(node).now : caption(officePose(node.state), node.state));
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
@@ -978,10 +989,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!lease) return undefined;
     const read = async () => { const at = ask(); const d = await store.offices(); if (lease.current()) adopt(d, at); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
     return () => { if (off) off(); };
-  }, [lease, store]);
+  }, [lease, store, officesKey]);
   // #2578: what agents do here by their own hand (office_set) — on opening, then as the stream brings it.
   // A read a newer one or the stream overtook is dropped (it is older: review — an opening read answered after the one
   // the stream's return began brought a cleared act back); read again when the stream comes back, and — with no live
@@ -1014,7 +1025,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     let heard = 0;                                                   // reads begun and events heard: the newest wins
     const read = async () => { const at = ++heard, d = await store.acts(); if (lease.current() && d && at === heard) setActs(d); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const polled = () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling";
     const offs = sub ? [lease.hold(sub("office_acts", (d) => { heard++; if (d && Array.isArray(d.acts)) setActs(actsOk(d.acts, d.now)); else void read(); })),
       lease.hold(sub("connection", (c) => { if (c === "live") void read(); }))] : [];
@@ -1036,7 +1047,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   useEffect(() => {
     if (!dialogueOn || talk !== undefined) return undefined;
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     if (!sub) return undefined;
     let skew = 0;
     const seen = new Set();
@@ -1088,7 +1099,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!lease) return undefined;
     const read = async () => { const d = await store.skins(); if (lease.current() && d) setPacks(d.packs); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const off = sub ? lease.hold(sub("office_skins", () => { void read(); })) : null;
     return () => { if (off) off(); };
   }, [lease, store]);
@@ -1097,7 +1108,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // session's here or over the public link (the host asks again too); never a guest's or a read-only one's.
   useEffect(() => {
     const body = globalThis.document?.body;
-    if (!body || body.dataset.tier === "guest") return undefined;
+    if (readOnly || !body || body.dataset.tier === "guest") return undefined;
     let live = true;
     const auth = globalThis.AgendAuth;
     if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true); setCanShare(v === true); } }, () => {});
@@ -2283,7 +2294,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
     onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
   const barItems = html`
-      <label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>
+      ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
         <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
           ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
@@ -2352,12 +2363,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}
       ${tipText && tip !== card ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
-        <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
+        <div>${words ? stateOf(tipDesk.node) : tipText.sub}</div>${nowOf(tipDesk.node) ? html`<div class="muted">${nowOf(tipDesk.node)}</div>` : null}
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
       </div>` : null}
       ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
-        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen,
-          state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
+        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null,
+          state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
@@ -2377,13 +2388,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
-        const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
+        const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
+        const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}.`} aria-haspopup="dialog"
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
-          : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${nt.full}</span>`}</li>`;
+          : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
       })}</ul>
       <div class="oc-zoom oo-zoom" role="group" aria-label=${t("orgc.view")}>
         <output ref=${pctRef} class="oo-zoom-pct"></output>
@@ -2413,7 +2425,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${snackDrag.kind === "feed" ? html`<span class="oo-snack-hint">${to("snackFeed", snackDrag.label)}</span>`
           : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
       </div>` : null}
-      ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
+      ${fs ? html`<div class="oo-fs-bar">${oneOffice ? null : officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
         <rect class="oo-mini-matte" x=${-L.width} y=${-L.height} width=${L.width * 3} height=${L.height * 3} fill=${matte} />
