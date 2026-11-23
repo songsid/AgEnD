@@ -1,0 +1,110 @@
+[
+  {
+    "view": "settings",
+    "case": "desk-light-en",
+    "overflow": false,
+    "value": 132,
+    "warning": "A file over 50 KB crowds the context of every session. Move details into skills or shorter notes.",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-claude",
+    "case": "desk-light-en",
+    "overflow": false,
+    "value": null,
+    "warning": "A file over 50 KB crowds the context of every session. Move details into skills or shorter notes.",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-codex",
+    "case": "desk-light-en",
+    "overflow": false,
+    "value": null,
+    "warning": "Codex reads only the first 32 KB of its project instructions; the rest is never seen. Shorten it, or move details into skills. ",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "settings",
+    "case": "desk-light-zh-TW",
+    "overflow": false,
+    "value": 42,
+    "warning": "超過 50 KB 的檔案會擠掉每次對話的上下文。把細節移到 skill 或更短的筆記。",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-claude",
+    "case": "desk-light-zh-TW",
+    "overflow": false,
+    "value": null,
+    "warning": "超過 50 KB 的檔案會擠掉每次對話的上下文。把細節移到 skill 或更短的筆記。",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-codex",
+    "case": "desk-light-zh-TW",
+    "overflow": false,
+    "value": null,
+    "warning": "Codex 只讀專案指示的前 32 KB，後面的內容它看不到。請縮短，或把細節移到 skill。",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "settings",
+    "case": "phone-dark-en",
+    "overflow": false,
+    "value": 132,
+    "warning": "A file over 50 KB crowds the context of every session. Move details into skills or shorter notes.",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-claude",
+    "case": "phone-dark-en",
+    "overflow": false,
+    "value": null,
+    "warning": "A file over 50 KB crowds the context of every session. Move details into skills or shorter notes.",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-codex",
+    "case": "phone-dark-en",
+    "overflow": false,
+    "value": null,
+    "warning": "Codex reads only the first 32 KB of its project instructions; the rest is never seen. Shorten it, or move details into skills. ",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "settings",
+    "case": "phone-dark-zh-TW",
+    "overflow": false,
+    "value": 42,
+    "warning": "超過 50 KB 的檔案會擠掉每次對話的上下文。把細節移到 skill 或更短的筆記。",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-claude",
+    "case": "phone-dark-zh-TW",
+    "overflow": false,
+    "value": null,
+    "warning": "超過 50 KB 的檔案會擠掉每次對話的上下文。把細節移到 skill 或更短的筆記。",
+    "over": 1,
+    "pageErrors": 0
+  },
+  {
+    "view": "details-codex",
+    "case": "phone-dark-zh-TW",
+    "overflow": false,
+    "value": null,
+    "warning": "Codex 只讀專案指示的前 32 KB，後面的內容它看不到。請縮短，或把細節移到 skill。",
+    "over": 1,
+    "pageErrors": 0
+  }
+]

@@ -309,6 +309,7 @@ import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
+import { INSTRUCTIONS_FILE } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
@@ -1773,7 +1774,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         &&(before.machine_id ? remoteRuntimeEnabled() : localWindowsCliEnabled());
       if(!current())throw Error("Native settings authority expired");
       runtime.previewUpdate(name,patch);
-      const cold=(["working_directory","model","systemPrompt","native_sandbox"] as const).some(key=>Object.hasOwn(patch,key)&&(patch[key]??"")!==(before[key]??""));
+      const cold=(["working_directory","model","systemPrompt","operations","native_sandbox"] as const).some(key=>Object.hasOwn(patch,key)&&(patch[key]??"")!==(before[key]??""));
       const running=this.daemons.get(name);
       if(cold){
         if(running&&!running.nativePaneHasExited()&&(!await running.nativePauseReady({current,accepts:()=>true,revalidate:async()=>current()})||!running.nativePauseStillReady()))throw Error("Wait for this Windows agent to be idle before changing its launch settings");
@@ -1841,7 +1842,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         const now = this.fleetConfig?.instances[name];
         if (this.shuttingDown || !isNativePaneInstance(now) || now?.native_agent_id !== config.native_agent_id
           || now?.machine_id !== config.machine_id || now?.working_directory !== config.working_directory || now?.backend !== config.backend
-          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.workflow !== config.workflow
+          || now?.model !== config.model || now?.native_sandbox !== config.native_sandbox || now?.systemPrompt !== config.systemPrompt || now?.operations !== config.operations || now?.workflow !== config.workflow
           || now?.general_topic !== config.general_topic || now?.native_general_binding !== config.native_general_binding
           || nativeCredentialProfile(now) !== nativeCredentialProfile(config))
           throw Error("Native pane configuration or lifetime changed");
@@ -1867,7 +1868,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           epoch: () => hub.paneTransportEpoch(machineId), version: provider => hub.machine(machineId)?.inventory?.clis.find(row => row.id === provider && row.runnable)?.version ?? null };
       },
       instructions: (name, config) => buildNativeFleetInstructions({ instanceName: name, workingDirectory: config.working_directory,
-        displayName: config.display_name, description: config.description, customPrompt: config.systemPrompt,
+        displayName: config.display_name, description: config.description, customPrompt: config.systemPrompt, operations: config.operations,
         workflow: config.workflow, taskBoard: !dashboardRefusalIn(this.fleetConfig, name, "task"),
         runtimeIdentity: { kind: "fleet-topic", backend: config.backend ?? "codex", model: config.model || "default" } }, config.general_topic === true),
       menu: name => TOOLS.filter(tool => allowed(name, tool.name)).map(tool => ({ ...tool })),
@@ -25222,19 +25223,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Topic icon + auto-archive ─────────────────────────────────────────────
 
-  private static INSTRUCTIONS_FILENAME: Record<string, string> = {
-    "claude-code": "CLAUDE.md",
-    "codex": "AGENTS.md",
-    "opencode": "AGENTS.md",
-    "kiro-cli": ".kiro/steering/project.md",
-    // Grok reads AGENTS.md project docs; agy reads .agents/AGENTS.md (board 0340ec89: not the lowercase name) — the
-    // same files their writeConfig() appends fleet instructions to.
-    "grok": "AGENTS.md",
-    // muse init scaffolds AGENTS.md and the binary reads it as project rules.
-    "muse": "AGENTS.md",
-    "antigravity": ".agents/AGENTS.md",
-    "mock": "CLAUDE.md",
-  };
+  /** Each CLI's project instructions file (one table, shared with the Details size card: instruction-file-sizes.ts). */
+  private static INSTRUCTIONS_FILENAME: Readonly<Record<string, string>> = Object.fromEntries(Object.entries(INSTRUCTIONS_FILE).map(([id, e]) => [id, e.file]));
 
   private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 

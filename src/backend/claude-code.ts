@@ -7,7 +7,7 @@ import { flagEffort } from "./launch-effort.js";
 import { classicGuardStatus, classicOwnerMcpServers, classicPlanDigest, stageClaudeClassicGuard, type ClassicGuardLaunch, type ClassicRestrictedPlan } from "../classic-cli-guard.js";
 import type { ContactGuardStatus } from "../contact-auth-types.js";
 import { basename, dirname, join, resolve } from "node:path";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, closeSync, constants as fsConstants, existsSync, fstatSync, lstatSync, openSync, readSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync, renameSync, rmdirSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createHash, randomUUID } from "node:crypto";
 import { credentialHomeSpec, credentialProfileHome, prepareCredentialProfileHome, resolveCredentialProfile } from "./credential-profile.js";
@@ -44,6 +44,23 @@ export function claudeProjectKey(cwd: string): string {
  * and for a directory outside any repository the directory itself. Read from the files git leaves (`.git` as a folder,
  * or a worktree's `.git` file → its `commondir`), never by running git: this runs at an instance's launch.
  */
+/**
+ * M-3522 review: git's small pointer files (`.git` as a file, a worktree's `commondir`) are read only when they are
+ * regular files of at most 4 KiB, opened non-blocking and checked on the open descriptor — a FIFO, a device or a huge
+ * file in their place is refused (as an unusual layout), never waited on. The Details page calls this on a request.
+ */
+const GIT_POINTER_MAX_BYTES = 4096;
+function readGitPointer(path: string): string {
+  const fd = openSync(path, fsConstants.O_RDONLY | (fsConstants.O_NONBLOCK ?? 0));
+  try {
+    const st = fstatSync(fd);
+    if (!st.isFile() || st.size > GIT_POINTER_MAX_BYTES) throw new Error("not a small regular file");
+    const buf = Buffer.alloc(st.size);
+    const n = readSync(fd, buf, 0, st.size, 0);
+    return buf.subarray(0, n).toString("utf-8");
+  } finally { closeSync(fd); }
+}
+
 export function claudeMemoryRoot(cwd: string): string {
   let dir = resolve(cwd);
   try { dir = realpathSync(dir); } catch { /* as given */ }
@@ -54,10 +71,10 @@ export function claudeMemoryRoot(cwd: string): string {
     if (st?.isDirectory()) return at;
     if (st?.isFile()) {
       try {
-        const gitdir = /^gitdir:\s*(.+)$/m.exec(readFileSync(dotGit, "utf-8"))?.[1]?.trim();
+        const gitdir = /^gitdir:\s*(.+)$/m.exec(readGitPointer(dotGit))?.[1]?.trim();
         if (gitdir) {
           const worktreeGitDir = resolve(at, gitdir);
-          const common = resolve(worktreeGitDir, readFileSync(join(worktreeGitDir, "commondir"), "utf-8").trim());
+          const common = resolve(worktreeGitDir, readGitPointer(join(worktreeGitDir, "commondir")).trim());
           if (basename(common) === ".git") return dirname(common);
         }
       } catch { /* a submodule or an unusual layout: this directory is its own root */ }

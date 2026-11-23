@@ -78,7 +78,7 @@ const INSTANCE_FIELDS = [
   "quota_notice", "display_name", "description", "backend", "model", "working_directory",
   "resume_interrupted_work", "auto_pause_after", "warm_cap", "topic_id", "channel_id", "general_topic",
   "tool_progress", "reply_completion_guard", "reply_triggers", "mcp_proxy_reply", "log_level",
-  "systemPrompt", "tags", "hang_detector", "agent_mode", "tool_set",
+  "systemPrompt", "operations", "tags", "hang_detector", "agent_mode", "tool_set",
   "lightweight", "model_failover", "effort", "pre_task_command",
   // #1005: the status reactions follow at once, but the instructions' avoid
   // list is built at spawn, so the honest cost is an agent restart.

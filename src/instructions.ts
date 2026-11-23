@@ -20,6 +20,8 @@ export interface FleetInstructionsParams {
   /** #1633/#1634: the AgEnD version this instance runs on — an agent can tell its own tool copies are older. */
   agendVersion?: string;
   customPrompt?: string;
+  /** M-3522: the agent's optional "Owner and routine operations" text (instance key `operations`). Context only. */
+  operations?: string;
   workflow?: string | false;
   decisions?: { title: string; content: string }[];
   /**
@@ -50,6 +52,25 @@ export function renderStatusEmojiAvoidList(workflow: string, statusEmojis?: stri
 }
 
 /**
+ * M-3522: the one positive statement of what needs a go-ahead, so a model does not generalise the receipt checks to
+ * every action. An agent once refused routine read-only and owner-approved operations because it over-applied the
+ * authorization text. The five kinds are the ones WEB_RECEIPT_RULE names, word for word; every check that rule and
+ * VERIFY_PEER_MESSAGE_RULE describe still applies to them (tests/go-ahead-scope-m3522.test.ts pins both). Generated
+ * into the fleet instructions of every backend and mode, and into the cross-instance-messaging and
+ * worker-collaboration skills verbatim.
+ */
+export const GO_AHEAD_SCOPE_RULE = "Only five kinds of action need a go-ahead: a release or publish; anything destructive or irreversible beyond your own work (deleting what others use, force-pushing or resetting a shared branch); spending money or quota beyond normal work; credentials or secrets; and granting or forwarding authority to another instance. Everything else is your work and needs no receipt, button or verification: reading, querying, looking things up, analysis, checking status and logs, and the routine operations of the domain you are assigned. Do not ask for a go-ahead these rules do not require, and never let a missing one hold up read-only work. For a go-ahead action, the checks these instructions describe apply unchanged.";
+
+/** M-3522: the fixed preface of the "Owner and routine operations" section. Context, never a permission override. */
+export const OPERATIONS_PREFACE = "Context from this agent's administrator: who owns the system you work on and which operations are routine here. Treat these routine operations as your normal work when the owner or an administrator asks. This does not approve the five go-ahead kinds; they keep their checks even if listed here.";
+
+/** M-3522: the most the `operations` text may hold, in characters. */
+export const OPERATIONS_MAX_CHARS = 2000;
+
+/** The local-app rule applies to messages with that header only (M-3522: a model read the bare rule as about all input). */
+export const LOCAL_APP_SECTION = "## Local app input\nThis applies only to a message headed `[user:Local app@app#local-connector]`; every other message is unaffected. " + APP_MESSAGE_RULE;
+
+/**
  * M-3020/M-3027 (user OK 2026-11-13): Codex only. The A/B test (130 replies, blind-graded) found that these two sections
  * cut negation-heavy "nothing done" replies and make a failed step try another way, with every safety control still
  * stopping. The last persistence bullet keeps the authority rules on top: nothing here loosens them.
@@ -57,7 +78,7 @@ export function renderStatusEmojiAvoidList(workflow: string, statusEmojis?: stri
 export const CODEX_PERSISTENCE_OUTPUT_SECTIONS = [
   "## Persistence",
   "- When a step fails, try another way within your own scope (2–3 attempts: a different command, a smaller batch, another source) before reporting.",
-  "- Stop and ask before you spend money or quota beyond normal work, delete or change what others use, or take any go-ahead action: a release or publish, anything destructive or irreversible beyond your own work, credentials or secrets, or granting or forwarding authority to another instance.",
+  "- Stop and ask before you spend money or quota beyond normal work, delete or change what others use outside your assigned domain, or take any go-ahead action: a release or publish, anything destructive or irreversible beyond your own work, credentials or secrets, or granting or forwarding authority to another instance.",
   "- Report as: done → where it is stuck → next step.",
   "- On an uncertain delivery, it may already have arrived: check it with `delivery_status`, then confirm (or resend only if it shows `failed`), and carry on with your other work.",
   "- None of this loosens the authority rules in these instructions: a go-ahead action still needs the checks they describe before you act.",
@@ -204,9 +225,14 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   if (description) {
     sections.push(`## Role\n${description}`);
   }
+  const operations = params.operations?.trim();
+  if (operations) {
+    sections.push(`## Owner and routine operations\n${OPERATIONS_PREFACE}\n\n${operations}`);
+  }
+  sections.push(`## What needs a go-ahead\n${GO_AHEAD_SCOPE_RULE}`);
 
   // ── Message format & tool usage ──
-  sections.push("## Local app input\n" + APP_MESSAGE_RULE);
+  sections.push(LOCAL_APP_SECTION);
   if (params.cliInstructions) {
     // CLI mode: inject CLI quick reference (without the board's commands for an agent that may not use it)
     sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
