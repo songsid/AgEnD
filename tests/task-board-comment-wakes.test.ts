@@ -406,6 +406,23 @@ describe("4. the loop guard", () => {
     expect(turns).toEqual([2, 2, 2, 2, 0]);        // two comments a turn, each told; the 5th turn is held, both of them
   });
 
+  it("notes to itself cannot push a stopped talk out of what is read: after many of them the next comment is still held (#4367 review)", () => {
+    const r = rig();
+    const c = card(r.board, LEAD, { assignee: "dev-a" });
+    r.take();
+    expect(pingPong(r, c, AGENT_COMMENT_CHAIN + 1).map((s) => s.woke.length)).toEqual([1, 1, 1, 1, 0]);
+    // More of the assignee's own notes than any fixed page of entries, all within the window, none by a person.
+    for (let i = 0; i < 150; i++) r.board.updateCard(DEV, c.code, { comment: `own note ${i}` });
+    expect(r.take()).toEqual([]);
+    const res = r.board.updateCard(LEAD, c.code, { comment: "@dev-a back to you" });
+    expect(r.take()).toEqual([]);
+    expect(noteKeys(res)).toEqual(["comment_chain"]);
+    // A person's word still lifts it.
+    r.board.updateCard(ANN, c.code, { comment: "carry on" });
+    r.take();
+    expect(r.board.updateCard(LEAD, c.code, { comment: "@dev-a go" }) && r.take().map((w) => w.to)).toEqual(["dev-a"]);
+  });
+
   it("a loop through the assignee counts too: plain comments to the assignee are turns, not only @mentions", () => {
     const r = rig();
     const c = card(r.board, LEAD, { assignee: "dev-a" });
@@ -464,6 +481,24 @@ describe("4. the loop guard", () => {
     expect(noteKeys(res)).toEqual(["mention_cap", "comment_wakes"]);
     r.board.updateCard(ANN, c.code, { comment: text });
     expect(r.take().map((w) => w.to)).toEqual(many);
+  });
+
+  it(`the card's assignee is one of the ${MAX_COMMENT_WAKES}: an agent's comment naming ${MAX_COMMENT_WAKES} others on a sixth instance's card wakes ${MAX_COMMENT_WAKES} in all (#4367 review)`, () => {
+    const many = Array.from({ length: 6 }, (_, i) => `inst-${i + 1}`);
+    const r = rig(undefined, [...INSTANCES, ...many]);
+    const c = card(r.board, ANN, { assignee: "inst-6" });
+    r.take();
+    const res = r.board.updateCard(LEAD, c.code, { comment: many.slice(0, MAX_COMMENT_WAKES).map((n) => `@${n}`).join(" ") });
+    const woke = r.take().map((w) => w.to);
+    expect(woke).toHaveLength(MAX_COMMENT_WAKES);
+    expect(woke.sort()).toEqual([...many.slice(0, MAX_COMMENT_WAKES - 1), "inst-6"].sort());
+    expect(noteKeys(res)).toEqual(["mention_cap", "comment_wakes"]);
+    // Naming the assignee too is one wake, not two: exactly the limit, nothing trimmed.
+    const d = card(r.board, ANN, { assignee: "inst-6" });
+    r.take();
+    const all = r.board.updateCard(LEAD, d.code, { comment: ["inst-6", ...many.slice(0, MAX_COMMENT_WAKES - 1)].map((n) => `@${n}`).join(" ") });
+    expect(r.take()).toHaveLength(MAX_COMMENT_WAKES);
+    expect(noteKeys(all)).toEqual(["comment_wakes"]);
   });
 });
 

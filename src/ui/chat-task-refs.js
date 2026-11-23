@@ -59,6 +59,18 @@ export const insertTaskRef = (text, at, caret, code) => insertAtTrigger(text, at
 export function createTaskRefIndex(fetchImpl) {
   const known = new Map();      // code → view | null
   const asked = new Set();      // codes asked and answered (or being asked)
+  // Each request is numbered as it starts, and each card number keeps the number of the request its view came from: an
+  // answer older than that view is dropped (refresh() can ask again while the first answer is still on its way, and the
+  // answers can arrive in either order).
+  const from = new Map();       // code → the request its view in `known` came from
+  let requests = 0;
+  const take = (code, view, seq) => {
+    if ((from.get(code) || 0) > seq) return false;
+    from.set(code, seq);
+    const changed = JSON.stringify(known.get(code) || null) !== JSON.stringify(view);
+    known.set(code, view);
+    return changed;
+  };
   const listeners = new Set();
   let inFlight = 0;
   let suggestSeq = 0;
@@ -71,16 +83,12 @@ export function createTaskRefIndex(fetchImpl) {
       const batch = codes.slice(i, i + MAX_CODES);
       for (const c of batch) asked.add(c);
       inFlight++;
+      const seq = ++requests;
       read(`/ui/tasks/refs?codes=${encodeURIComponent(batch.join(","))}`).then((body) => {
         if (!body || !Array.isArray(body.refs)) return;   // not answered: the numbers stay text (and are asked again after a change)
         let changed = false;
         const got = new Map(body.refs.filter((v) => v && typeof v.code === "string").map((v) => [v.code, v]));
-        for (const c of batch) {
-          const next = got.get(c) || null;
-          const before = known.get(c) || null;
-          if (JSON.stringify(before) !== JSON.stringify(next)) changed = true;
-          known.set(c, next);
-        }
+        for (const c of batch) if (take(c, got.get(c) || null, seq)) changed = true;
         if (changed) notify();
       }).finally(() => { inFlight--; });
     }
@@ -107,10 +115,11 @@ export function createTaskRefIndex(fetchImpl) {
     /** The cards to offer for what follows a `#` ("" → the latest changes). Resolves to [] when none, or when a newer call came first. */
     async suggest(query) {
       const mine = ++suggestSeq;
+      const seq = ++requests;
       const body = await read(`/ui/tasks/refs?limit=8&q=${encodeURIComponent(query)}`);
       if (mine !== suggestSeq || !body || !Array.isArray(body.refs)) return [];
-      // What the list shows is what the page now knows of those cards (a chip drawn later says the same).
-      for (const v of body.refs) if (v && typeof v.code === "string") known.set(v.code, v);
+      // What the list shows is what the page now knows of those cards (a chip drawn later says the same), unless a newer answer came first.
+      for (const v of body.refs) if (v && typeof v.code === "string") take(v.code, v, seq);
       return body.refs.filter((v) => v && typeof v.code === "string" && typeof v.title === "string");
     },
     subscribe(f) { listeners.add(f); return () => listeners.delete(f); },

@@ -252,6 +252,42 @@ describe("the page's index of cards", () => {
     expect(calls[0]).toBe(`/ui/tasks/refs?limit=8&q=${encodeURIComponent("a b/#")}`);
     expect(index.get("M-2")?.title).toBe("Title of M-2");        // what the list showed is what a chip says
   });
+  it("an older answer arriving after a newer one does not undo it: an updated card, and a card that is gone (#4367 review)", async () => {
+    const held: Array<(body: unknown) => void> = [];
+    const { index } = rig(() => new Promise((resolve) => held.push(resolve)) as never);
+    const seen = vi.fn();
+    index.subscribe(seen);
+    // Updated: the first answer (open) is held; the board changes and the refreshed answer (done) arrives first.
+    index.ensure([user("#M-3")]);
+    index.refresh();
+    await Promise.resolve(); await Promise.resolve();
+    expect(held).toHaveLength(2);
+    held[1]!({ refs: [viewOf("M-3", { status: "done", title: "Renamed" })] });
+    await settleAll(index);
+    held[0]!({ refs: [viewOf("M-3")] });
+    await settleAll(index);
+    expect([index.get("M-3")?.status, index.get("M-3")?.title]).toEqual(["done", "Renamed"]);
+    expect(seen).toHaveBeenCalledTimes(1);
+    // Gone: the refreshed answer says the card is no more; an older answer that still had it does not bring it back.
+    index.refresh();
+    index.refresh();
+    await Promise.resolve(); await Promise.resolve();
+    expect(held).toHaveLength(4);
+    held[3]!({ refs: [] });
+    await settleAll(index);
+    held[2]!({ refs: [viewOf("M-3", { status: "done", title: "Renamed" })] });
+    await settleAll(index);
+    expect(index.get("M-3")).toBeNull();
+    // A list of suggestions started before the refresh does not overwrite it either.
+    const late = index.suggest("");
+    index.refresh();
+    await Promise.resolve(); await Promise.resolve();
+    held[5]!({ refs: [viewOf("M-3", { status: "claimed" })] });
+    await settleAll(index);
+    held[4]!({ refs: [viewOf("M-3", { status: "open" })] });
+    await late;
+    expect(index.get("M-3")?.status).toBe("claimed");
+  });
   it("a list that cannot be read is no list", async () => {
     const { index } = rig(() => null);
     expect(await index.suggest("")).toEqual([]);

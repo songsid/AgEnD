@@ -505,7 +505,8 @@ comment; and agent-to-agent wakes are capped (below).
 
 **Loop guard.** Instances (and scripts, held to an instance's rules) can wake each other: `A: @B …` wakes B, whose reply
 `@A …` wakes A. So an *agent's* comment wakes someone only while `agentCommentRun(card) ≤ AGENT_COMMENT_CHAIN` (4 turns).
-The run is the agents' comments on the card within `AGENT_COMMENT_WINDOW_MS` (30 min), newest first, back to the last
+The run is the agents' comments on the card within `AGENT_COMMENT_WINDOW_MS` (30 min), newest first and every one of them
+(no fixed page: notes that wake nobody must not push the turns before them out of what is read), back to the last
 entry a person wrote (a comment, a send-back or a confirmation); of those, only the ones that woke someone count — the
 comment names an instance other than its writer, or the card's assignee *when it was written* was an instance other than
 its writer — so an agent's note to itself on its own card is skipped, and a change of writer starts the next turn: one
@@ -517,7 +518,19 @@ well as mentions: a loop can run through the assignee alone (`lead: ok` wakes de
 An agent's send-back or log neither counts nor breaks the chain. Past the limit the comment is kept and wakes nobody
 (`comment_chain` says so to its writer) until a person writes on the card or the older comments leave the window. It is
 computed from the card's own `task_entries` — no counter, no new column. An agent's comment also wakes at most
-`MAX_COMMENT_WAKES` (5) instances. A person's comment has neither limit.
+`MAX_COMMENT_WAKES` (5) instances in all, the card's assignee included when it hears it (so at most 4 mentions then).
+A person's comment has neither limit.
+
+**Contact rules.** A comment, an `@` mention and a follower's progress carry an agent's own words to another instance, so
+they meet the rule a peer message meets (M-3160 / M-3384; `ContactAuthService.needsApplication`): while the writer's
+conversation has an origin that needs a contact approval (unknown, mixed, or not an administrator's; a hub-restricted
+source), its words wake no other instance by the board. The board asks it per recipient as it writes
+(`setContactGate`; `contact_held` / `progress_contact_held` tell the writer, who is pointed to `send_to_instance`, where
+the application and any standing grant are), and the waker asks again as the notice goes out (a writer restricted
+during the gather: its words are left out, the board's own news on the card still goes). A wake names the writers whose
+words it carries (`principals`); the fleet stamps each one's origin as the write commits, and the recipient inherits it
+when the notice is admitted, as `admitDurableDelivery` does for a peer's message. A person's words are not held to it,
+and the board's own news (an assignment, a send-back, a question to its dispatcher) is unchanged.
 
 *Per card only.* The guard bounds the talk on one card; it is not a global or per-instance rate limit. Two agents
 that move from card to card, mentioning each other, get up to 4 turns on each, so the total is bounded by the number

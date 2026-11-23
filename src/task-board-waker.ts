@@ -14,11 +14,21 @@
  */
 import type { Wake, WakeReason } from "./scheduler/task-board.js";
 import { gapText, oneLine } from "./scheduler/task-board-text.js";
-import { confirmerOf, personConfirms, wrapUpGap, type Card } from "./scheduler/task-board.js";
+import { confirmerOf, personConfirms, WORD_REASONS, wrapUpGap, type Card } from "./scheduler/task-board.js";
 
 export interface TaskBoardWakerDeps {
-  /** Hand `message` to the instance for good (the fleet's durable delivery); false when it could not be taken. */
-  deliver(instance: string, message: string, key: string): boolean;
+  /**
+   * Hand `message` to the instance for good (the fleet's durable delivery); false when it could not be taken. `origins`:
+   * the writers whose own words the message carries (Wake.principals) with their contact origin as they wrote — the
+   * instance inherits each, as from a peer's message.
+   */
+  deliver(instance: string, message: string, key: string, origins: Record<string, unknown>): boolean;
+  /**
+   * The fleet's contact rules, asked again as the news goes out: whether `source`'s words may reach `instance` (a
+   * conversation's origin can be restricted during the gather). What it refuses is left out of the notice — every
+   * word reason of that card's wake — and the card keeps it. Absent: always.
+   */
+  mayReach?(source: string, instance: string): boolean;
   /** Whether the board may wake this name: a fleet instance (an assignee can be any name). */
   isInstance(name: string): boolean;
   /**
@@ -170,6 +180,17 @@ export function wakeMessage(wakes: Wake[], card: (uuid: string) => Card | undefi
   return `[Task board] ${items.length} things on your cards:\n${items.map((w) => `- ${line(w)}`).join("\n")}\nYour work: task mine`;
 }
 
+/**
+ * A merged wake's writers whose words it carries, each with the origin it wrote with (the first seen is kept: the words
+ * gathered are the earliest of that writer's in the batch, and an origin only grows).
+ */
+function mergePrincipals(had: Wake | undefined, w: Wake): Pick<Wake, "principals" | "origins"> {
+  const principals = [...new Set([...(had?.principals ?? []), ...(w.principals ?? [])])];
+  if (!principals.length) return {};
+  const origins = { ...(w.origins ?? {}), ...(had?.origins ?? {}) };
+  return { principals, ...(Object.keys(origins).length ? { origins } : {}) };
+}
+
 /** A merged wake's person flags: each reason takes the newer wake's word on who wrote it, else keeps the earlier. */
 function mergePerson(had: Wake, w: Wake): Partial<Record<WakeReason, true>> {
   const out: Partial<Record<WakeReason, true>> = { ...had.byPerson };
@@ -203,8 +224,8 @@ export class TaskBoardWaker {
       // A second comment on the card in the same window: the notice quotes the last and counts the ones before it.
       const earlier = (had?.earlier ?? 0) + (had && hasCommentNews(had) && hasCommentNews(w) ? 1 : 0);
       batch.wakes.set(w.uuid, had
-        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}) }
-        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}) });
+        ? { ...had, title: w.title, reasons: [...new Set([...had.reasons, ...w.reasons])], by: { ...had.by, ...w.by }, texts: { ...had.texts, ...w.texts }, ...(had.byPerson || w.byPerson ? { byPerson: mergePerson(had, w) } : {}), ...(w.news ?? had.news ? { news: w.news ?? had.news } : {}), ...(earlier ? { earlier } : {}), ...mergePrincipals(had, w) }
+        : { ...w, reasons: [...w.reasons], by: { ...w.by }, texts: { ...w.texts }, ...(w.byPerson ? { byPerson: { ...w.byPerson } } : {}), ...(w.news ? { news: { ...w.news } } : {}), ...mergePrincipals(undefined, w) });
     }
   }
 
@@ -235,18 +256,41 @@ export class TaskBoardWaker {
     this.gathering.clear();
   }
 
+  /**
+   * A wake as the fleet's contact rules let it reach `instance` now: when a writer whose words it carries may no longer
+   * reach it, the words are left out (every word reason: which words came from whom is not kept apart once gathered),
+   * and what the board says of its own (an assignment, a send-back…) still goes. null when nothing is left.
+   */
+  private contactHolds(instance: string, w: Wake): Wake | null {
+    const gate = this.deps.mayReach;
+    if (!gate || !w.principals?.length) return w;
+    const refused = w.principals.filter((p) => { try { return !gate(p, instance); } catch { return true; } });
+    if (!refused.length) return w;
+    this.deps.log("info", "Task board words not sent: their writer may not reach the instance without a contact approval", { instance, code: w.code, writers: refused });
+    const reasons = w.reasons.filter((r) => !WORD_REASONS.includes(r));
+    if (!reasons.length) return null;
+    const keep = <T>(o: Partial<Record<WakeReason, T>> | undefined) => Object.fromEntries(Object.entries(o ?? {}).filter(([r]) => reasons.includes(r as WakeReason))) as Partial<Record<WakeReason, T>>;
+    const out: Wake = { ...w, reasons, by: keep(w.by), texts: keep(w.texts) };
+    if (w.byPerson) out.byPerson = keep(w.byPerson);
+    delete out.principals; delete out.origins; delete out.news; delete out.earlier;
+    return out;
+  }
+
   private flush(instance: string): void {
     const batch = this.gathering.get(instance);
     this.gathering.delete(instance);
     if (!batch || this.stopped) return;
     if (this.deps.boardOff?.(instance)) { this.deps.log("info", "Task board news not sent: the instance has the task board switched off", { instance }); return; }
     // Only what still holds as it goes out: not finished meanwhile, still theirs, still waiting on them.
-    const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null);
+    const wakes = [...batch.wakes.values()].map((w) => this.deps.holds(w)).filter((w): w is Wake => w !== null)
+      .map((w) => this.contactHolds(instance, w)).filter((w): w is Wake => w !== null);
     if (!wakes.length) return;
+    const origins: Record<string, unknown> = {};
+    for (const w of wakes) for (const p of w.principals ?? []) if (!(p in origins)) origins[p] = w.origins?.[p] ?? null;
     const codes = wakes.map((w) => w.code);
     const key = `${KEY_PREFIX}${instance}:${(this.deps.now ?? Date.now)()}:${++this.seq}:cards=${wakes.map((w) => w.uuid).join(",")}`;
     let taken = false;
-    try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid), (w) => this.deps.buttonsHere?.(instance, w.uuid) === true), key); } catch (err) {
+    try { taken = this.deps.deliver(instance, wakeMessage(wakes, (uuid) => this.deps.card(uuid), (w) => this.deps.buttonsHere?.(instance, w.uuid) === true), key, origins); } catch (err) {
       this.deps.log("warn", "Task board wake failed", { instance, codes, err: (err as Error).message });
       return;
     }

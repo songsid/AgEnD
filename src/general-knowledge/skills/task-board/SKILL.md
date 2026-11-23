@@ -49,7 +49,9 @@ are any. A field an action does not take is refused by name, and nothing is chan
 - To wake an instance, write `@<its instance name>` in your comment (an `update`'s or a `move`'s); the answer says whom it
   will wake. A name in backticks or a code block is never read as a mention.
 - Agents answering each other on a card wake each other for at most 4 turns (a person's comment lifts it); a comment never
-  wakes its writer, and one comment wakes at most 5 instances.
+  wakes its writer, and one comment wakes at most 5 instances (the card's assignee included).
+- If your answer says `contact_held`, your conversation needs a contact approval to reach other instances: the comment
+  stays on the card and wakes nobody else. Reach them with `send_to_instance`, which asks for the approval.
 
 ## Following a card
 

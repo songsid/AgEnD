@@ -198,7 +198,7 @@ import { Scheduler } from "./scheduler/index.js";
 import { boardActivity, boardCardLimit, boardCommentWakesOn, boardLeader, boardProgressWakesOn, boardToolAction } from "./task-board-tool.js";
 import { TaskBoardWaker } from "./task-board-waker.js";
 import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
-import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
+import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor, type Wake } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -25056,8 +25056,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       enabled: () => boardProgressWakesOn(this.fleetConfig),
       leader: () => boardLeader(this.fleetConfig),
     });
+    // An agent's words reach another instance by the board (a comment, an @mention, a follower's progress) only as its
+    // contact rules allow, as a peer message does (M-3160 / M-3384): asked as it writes and again as the notice goes out.
+    db.board.setContactGate((source, target) => this.taskBoardMayReach(source, target));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
-      deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
+      deliver: (instance, message, key, origins) => this.admitTaskBoardNotice(instance, message, key, origins),
+      mayReach: (source, target) => this.taskBoardMayReach(source, target),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
       boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
       // #2801: a notice still waiting whose cards have all changed again is not delivered.
@@ -25085,19 +25089,51 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.changed(changed);
-      waker.note(wakes);
+      waker.note(this.withWriterOrigins(wakes));
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();
     });
   }
 
-  /** A task board notice, as AgEnD's own (not a person's words): through the delivery outbox, held until delivered. */
-  private admitTaskBoardNotice(instance: string, message: string, key: string): boolean {
+  /**
+   * A task board notice, as AgEnD's own: through the delivery outbox, held until delivered. `origins`: the writers whose
+   * own words it carries (a comment, a mention, a follower's progress) with their contact origin as they wrote; the
+   * instance inherits each, as admitDurableDelivery does for a peer's message, so the words do not shed the origin.
+   */
+  private admitTaskBoardNotice(instance: string, message: string, key: string, origins: Record<string, unknown> = {}): boolean {
     this.ensureDeliveryOutbox();
     const outbox = this.deliveryOutbox;
     if (!outbox) return false;
+    const inherited = Object.values(origins).filter((o): o is ContactOrigin => !!o && typeof o === "object" && Array.isArray((o as ContactOrigin).chain));
+    if (inherited.length) {
+      const store = this.contactService().host.store;
+      for (const origin of inherited) store.inheritOrigin(instance, { ...origin, chain: [...origin.chain, instance] });
+    }
     outbox.admitSystemNotice(instance, key, message, new Date());
     return true;
+  }
+
+  /**
+   * Whether `source`'s words may reach `target` by the task board without a contact approval: the rule a peer message
+   * meets before it is admitted (ContactAuthService.needsApplication; a hub-restricted source needs one too). A
+   * board notice is never an application, so what needs one is not sent and its writer is told to use send_to_instance.
+   * A standing grant is not read here: it is honoured there. Fails closed.
+   */
+  private taskBoardMayReach(source: string, _target: string): boolean {
+    try { return !this.contactService().needsApplication(source); } catch { return false; }
+  }
+
+  /** The board's wakes as the write commits, each writer whose words they carry stamped with its contact origin now. */
+  private withWriterOrigins(wakes: readonly Wake[]): Wake[] {
+    if (!wakes.some((w) => w.principals?.length)) return [...wakes];
+    let service: ContactAuthService;
+    try { service = this.contactService(); } catch { return [...wakes]; }
+    return wakes.map((w) => {
+      if (!w.principals?.length) return w;
+      const origins: Record<string, unknown> = {};
+      for (const p of w.principals) origins[p] = service.host.legacyClassic?.(p) ? null : service.origin(p) ?? null;
+      return { ...w, origins };
+    });
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {

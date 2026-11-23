@@ -337,7 +337,22 @@ export interface Wake {
   earlier?: number;
   /** What a "progress" reason says (the latest, when several came while it gathered). */
   news?: ProgressNews;
+  /**
+   * The writers (instances, scripts; never a person) whose own words this wake carries by the board's routes for words —
+   * a comment, an `@` mention, a follower's progress (WORD_REASONS). Each is held to the fleet's contact rules for the
+   * recipient (setContactGate) when it writes and again when the notice goes out, and the recipient inherits its origin.
+   */
+  principals?: string[];
+  /**
+   * Set by the fleet as the write commits, never the board: each principal's contact origin at that moment (opaque
+   * here), carried through the waker's gathering so the recipient inherits what the words came with, not what the
+   * writer has later.
+   */
+  origins?: Record<string, unknown>;
 }
+
+/** The reasons that carry a writer's own words to an instance by the board's routes, not by a handover of the card. */
+export const WORD_REASONS: readonly WakeReason[] = ["comment", "mention", "progress"];
 
 /** What one committed write changed, for live views: the card numbers touched (none for a project change). */
 export interface BoardChange {
@@ -678,6 +693,7 @@ export class TaskBoard {
   private boardOff: (name: string) => boolean = () => false;
   private routing: CommentRouting = { instances: () => [], enabled: () => true };
   private following: ProgressRouting = { enabled: () => true, leader: () => null };
+  private contactGate: (source: string, target: string) => boolean = () => true;
   private pending: Array<{ code: string; uuid: string; actor: Actor; type: CardEventType; data: Record<string, unknown>; audience?: CommentAudience }> = [];
   private projectsChanged = false;
   private notes: Note[] = [];
@@ -2166,6 +2182,22 @@ export class TaskBoard {
     this.following = routing;
   }
 
+  /**
+   * The fleet's contact rules for an agent's words reaching another instance by the board (a comment, an `@` mention,
+   * a follower's progress): false while `source` may not reach `target` without a contact approval (M-3160 / M-3384:
+   * an unknown or non-administrator origin, a restricted room). What it refuses wakes nobody and its writer is told to
+   * ask through send_to_instance, where the approval is. A person's words are not held to it. Read at every write.
+   */
+  setContactGate(gate: (source: string, target: string) => boolean): void {
+    this.contactGate = gate;
+  }
+
+  /** Whether `actor`'s words may reach `target` (a person's always may: the gate is for an agent's conversation). */
+  private mayReach(actor: Actor, target: string): boolean {
+    if (actor.kind === "person" || actor.kind === "system") return true;
+    try { return this.contactGate(actor.name, target); } catch { return false; }
+  }
+
   /** Refuses `name` as the new assignee of a card or task when it is an instance with the task board switched off. */
   private checkAssignable(name: string | null, current: string | null = null): void {
     if (name === null || name === current || !this.boardOff(name)) return;
@@ -2462,6 +2494,7 @@ export class TaskBoard {
       if (news) w.news = news;
       w.by[reason] = by.name;
       if (isPerson(by)) (w.byPerson ??= {})[reason] = true; else if (w.byPerson) delete w.byPerson[reason];
+      if (WORD_REASONS.includes(reason) && !isPerson(by) && by.kind !== "system" && !(w.principals ??= []).includes(by.name)) w.principals.push(by.name);
       out.set(key, w);
     };
     // The answer to a blocked question is the comment that came with it (#2801: a comment alone wakes nobody).
@@ -2536,6 +2569,7 @@ export class TaskBoard {
     if (!this.following.enabled()) return;
     const runs = new Map<string, number>();
     const stopped = new Set<string>();
+    const held: string[] = [];
     for (const e of events) {
       if (e.actor.kind === "system") continue;
       const found = this.progressOf(e.type, e.data as { from?: unknown; to?: unknown });
@@ -2557,8 +2591,13 @@ export class TaskBoard {
       const words = found.kind === "done" || found.kind === "review" ? card.result || (typeof d.reason === "string" ? d.reason : "")
         : found.kind === "blocked" ? card.blockedReason || (typeof d.reason === "string" ? d.reason : "")
         : found.kind === "sent_back" ? (typeof d.reason === "string" ? d.reason : "") : "";
-      for (const [name, as] of followers) add(card, name, "progress", e.actor, words || undefined, { ...found, as });
+      for (const [name, as] of followers) {
+        if (!this.mayReach(e.actor, name)) { if (!held.includes(name)) held.push(name); continue; }
+        add(card, name, "progress", e.actor, words || undefined, { ...found, as });
+      }
     }
+    if (held.length) this.say("progress_contact_held", [held.join(", ")], `${held.join(", ")} not told how the card changed: this conversation needs a contact approval to reach another instance `
+      + `(its origin is unknown or not an administrator's). The change is on the card; to tell them, use send_to_instance, which asks for the approval`);
   }
 
   /** A finished card readies the open cards that waited only for it (a sub task also waits for its main task's). */
@@ -2616,6 +2655,7 @@ export class TaskBoard {
     const keep = <T>(o: Partial<Record<WakeReason, T>>) => Object.fromEntries(Object.entries(o).filter(([r]) => reasons.includes(r as WakeReason))) as Partial<Record<WakeReason, T>>;
     const held: Wake = { ...wake, title: card.title, reasons, texts: keep(wake.texts), by: keep(wake.by) };
     if (!reasons.includes("progress")) delete held.news;
+    if (!reasons.some((r) => WORD_REASONS.includes(r))) { delete held.principals; delete held.origins; }
     return held;
   }
 
@@ -2800,7 +2840,17 @@ export class TaskBoard {
       this.say("mention_off", [n], `@${n} has the task board switched off, so it was not woken: it cannot read the card`);
     }
     mentions = mentions.filter((n) => !this.boardOff(n));
-    const asAssignee = !kept && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee) && !mentions.includes(card.assignee);
+    let asAssignee = !kept && card.assignee !== null && card.assignee !== author.name && names.includes(card.assignee) && !this.boardOff(card.assignee) && !mentions.includes(card.assignee);
+    // An agent's words reach another instance only as its contact rules allow (M-3160 / M-3384), per recipient.
+    // The assignee is asked whatever the board knows of it: settleWakes adds it to any comment that leaves it out.
+    const held = agent ? mentions.filter((n) => !this.mayReach(author, n)) : [];
+    const assigneeHeld = agent && !kept && card.assignee !== null && card.assignee !== author.name && !this.mayReach(author, card.assignee);
+    if (assigneeHeld) { if (!held.includes(card.assignee!)) held.push(card.assignee!); asAssignee = false; }
+    if (held.length) {
+      mentions = mentions.filter((n) => !held.includes(n));
+      this.say("contact_held", [held.join(", ")], `${held.join(", ")} not woken by this comment: this conversation needs a contact approval to reach another instance `
+        + `(its origin is unknown or not an administrator's). The comment is kept on the card; to reach them, use send_to_instance, which asks for the approval`);
+    }
     if (parsed.unknown.length) {
       this.say("mention_unknown", [parsed.unknown.map((w) => `@${w}`).join(", ")], `${parsed.unknown.map((w) => `@${w}`).join(", ")}: no such instance, nobody was woken for it`);
     }
@@ -2810,13 +2860,15 @@ export class TaskBoard {
         + `comments wake again once a person writes on it, or when these are ${AGENT_COMMENT_WINDOW_MS / 60_000} minutes old`);
       return none;
     }
-    if (agent && mentions.length > MAX_COMMENT_WAKES) {
-      this.say("mention_cap", [MAX_COMMENT_WAKES], `only the first ${MAX_COMMENT_WAKES} instances you mentioned were woken (the limit for an agent's comment)`);
-      mentions = mentions.slice(0, MAX_COMMENT_WAKES);
+    // The limit is for everyone the comment wakes: the card's assignee, when it hears it, takes one of the places.
+    const room = MAX_COMMENT_WAKES - (asAssignee ? 1 : 0);
+    if (agent && mentions.length > room) {
+      this.say("mention_cap", [room], `only the first ${room} instances you mentioned were woken (an agent's comment wakes at most ${MAX_COMMENT_WAKES}, the card's assignee included)`);
+      mentions = mentions.slice(0, room);
     }
     const heard = [...mentions.map((n) => `${n} (mentioned)`), ...(asAssignee ? [`${card.assignee} (assignee)`] : [])];
     if (heard.length) this.say("comment_wakes", [heard.join(", ")], `this comment is told to ${heard.join(", ")} as a [Task board] notice: no need to message them about it`);
-    return { mentions, assignee: !kept };
+    return { mentions, assignee: !kept && !assigneeHeld };
   }
 
   /**
@@ -2831,11 +2883,15 @@ export class TaskBoard {
    */
   private agentCommentRun(card: Card, names: readonly string[]): number {
     const since = new Date(this.now().getTime() - AGENT_COMMENT_WINDOW_MS).toISOString();
-    const rows = this.db.prepare("SELECT kind, author, author_kind, text, at FROM task_entries WHERE task_id = ? AND kind IN ('comment', 'reject', 'approve') AND at >= ? ORDER BY id DESC LIMIT 100")
-      .all(card.uuid, since) as Array<{ kind: EntryKind; author: string; author_kind: string; text: string; at: string }>;
     // Assignments since the window began, oldest first: the first one after a comment says who had the card before it.
     const handovers = (this.db.prepare("SELECT at, data FROM task_events WHERE task_id = ? AND type = 'assigned' AND at >= ? ORDER BY id").all(card.uuid, since) as Array<{ at: string; data: string }>)
       .map((e) => { try { return { at: e.at, from: (JSON.parse(e.data) as { from?: unknown }).from }; } catch { return { at: e.at, from: undefined }; } });
+    // Every entry of the window is read, newest first, until a person's: a fixed page could be filled by notes that wake
+    // nobody and leave the turns before them unread, so that the next comment reads as turn 1 (#4367 review). The window
+    // bounds it; a person's entry ends it early.
+    // (Read last: nothing else may run on the connection while it is read.)
+    const rows = this.db.prepare("SELECT kind, author, author_kind, text, at FROM task_entries WHERE task_id = ? AND kind IN ('comment', 'reject', 'approve') AND at >= ? ORDER BY id DESC")
+      .iterate(card.uuid, since) as IterableIterator<{ kind: EntryKind; author: string; author_kind: string; text: string; at: string }>;
     const assigneeAt = (at: string): string | null => {
       const next = handovers.find((h) => h.at > at);
       if (!next) return card.assignee;
