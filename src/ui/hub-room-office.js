@@ -23,6 +23,13 @@ const LABEL_MAX = 24;
  * "…" — a name that long cannot be read on the scene anyway; the member list still says it in full.
  */
 const NAME_MAX = 48, KEY_MAX = 64;
+/**
+ * A name the drawing reads as something else — "team:…" (a team, or NOBODY), an Object.prototype key ("__proto__",
+ * "constructor"…), a control character (LOBBY) — keyed with an invisible word joiner in front: the same to read, never
+ * the same key (#4355 review).
+ */
+const RESERVED = (name) => name.startsWith("team:") || Object.prototype.hasOwnProperty.call(Object.prototype, name) || /[\u0000-\u001f]/.test(name);
+const safeKey = (name) => (RESERVED(name) ? `\u2060${name}` : name);
 const clip = (text, n) => { const c = [...text]; return c.length > n ? `${c.slice(0, n - 1).join("")}…` : text; };
 const STORAGE_PREFIX = "agend_hub_room_office:";
 
@@ -35,7 +42,7 @@ export const loadDrawing = () => (drawing ??= Promise.all([import("./fleet-offic
 /** The state's agents as the app store's status frame (office-share-page.js appFromState): the drawing's input. */
 export function officeApp(d) {
   const instances = Array.isArray(d && d.instances) ? d.instances.filter((i) => i && typeof i.name === "string") : [];
-  const exec = {};
+  const exec = Object.create(null);
   for (const i of instances) exec[i.name] = i.execution_state ?? null;
   return { ready: true, instances, exec, awaiting: {}, needs: [], connection: "polling" };
 }
@@ -110,6 +117,7 @@ export function named(d, members = []) {
       if ([...label].length > LABEL_MAX) label = `${b}${open}${owner.split(/\s+/)[0]}${close}`;
       label = clip(label, KEY_MAX);
     }
+    label = safeKey(label);
     for (let n = 2, at = label; taken.has(label); n++) label = `${at} ${n}`;
     taken.add(label); rename.set(i.name, label);
     return { ...i, name: label, display_name: label, member: i.name };

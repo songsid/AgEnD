@@ -38,16 +38,19 @@ const STATE = (ids: string[]) => ({
 });
 
 /** The weekly room of the rooms fixture, its office on (or not), its state answered by `answer` (status, body). */
-async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; answer?: () => { status: number; body: unknown } } = {}) {
+async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; sameName?: boolean; answer?: () => { status: number; body: unknown } } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch, room = fx.rooms.find((r: any) => r.id === "room-weekly")! as any;
   if (opts.on !== false) room.settings.office = { enabled: true, style: "studio" };
-  const reads: string[] = [];
+  // Two agents of one name (of different owners), as the office's first two.
+  if (opts.sameName) { const two = room.members.filter((m: any) => m.kind === "agent").slice(0, 2); two[1].name = two[0].name; }
+  const reads: string[] = [], posts: any[] = [];
   const answer = opts.answer ?? (() => ({ status: 200, body: STATE(room.members.filter((m: any) => m.kind === "agent").slice(0, 2).map((m: any) => m.id)) }));
   g.fetch = async (url: string, init?: any) => {
     if (/\/hub\/v1\/rooms\/room-weekly\/office\/state$/.test(String(url))) {
       reads.push(String(url)); const a = answer();
       return { ok: a.status === 200, status: a.status, headers: { get: () => "application/json" }, json: async () => a.body, text: async () => JSON.stringify(a.body) };
     }
+    if (/\/hub\/v1\/rooms\/room-weekly\/messages$/.test(String(url)) && String(init?.method).toUpperCase() === "POST") posts.push(JSON.parse(String(init.body)));
     return fx.fetch(url, init);
   };
   g.EventSource = fx.EventSource;
@@ -57,7 +60,7 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; a
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
   await until(() => pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
-  return { pg, fx, room, reads, restore: () => { g.fetch = realFetch; } };
+  return { pg, fx, room, reads, posts, restore: () => { g.fetch = realFetch; } };
 }
 const q = (pg: AppPage, s: string) => pg.root.querySelector(s) as any;
 const openMenu = async (pg: AppPage) => { fire(q(pg, ".hub-room-menu button"), "click"); await settle(); return [...pg.root.querySelectorAll("[role=menuitem], [role=menuitemcheckbox]")] as any[]; };
@@ -252,6 +255,68 @@ describe("an office read that keeps failing", () => {
     expect([q(p, ".hub-room-office-stale").textContent, q(p, ".hub-room-office-stale").getAttribute("role"), reads - at >= 3, !!q(p, ".hub-room-office .oo")]).toEqual(["畫面可能不是最新，正在重新連線…", "status", true, true]);
     fail = false; await until(() => !q(p, ".hub-room-office-stale"));
     expect(q(p, ".hub-room-office-stale")).toBeNull();
+  });
+});
+
+describe("the card's @ it sends to the member picked (#4355 review)", () => {
+  const askFrom = async (pg: AppPage, pick: (label: string) => boolean) => {
+    fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo-desk"));
+    const desk = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].find((e: any) => pick(e.textContent)) as any;
+    fire(desk, "click"); await until(() => q(pg, ".oo-card-action"));
+    fire(q(pg, ".oo-card-action"), "click"); await until(() => q(pg, ".hub-dock textarea")?.value);
+    return q(pg, ".hub-dock textarea");
+  };
+  const send = async (pg: AppPage, posts: any[], box: any) => { const n = posts.length; fire(box, "keydown", { key: "Enter" }); await until(() => posts.length > n); return posts.at(-1); };
+  it("two agents of one name: only the one whose card it was", async () => {
+    const { pg, room, posts, restore } = await roomPage({ sameName: true });
+    try {
+      const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
+      // The office's state names both "Notes"; the first (a's figure) is labelled with its owner alone.
+      const box = await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
+      expect(box.value).toBe(`@${a.name} `);
+      const post = await send(pg, posts, box);
+      expect(post.mentions).toContain(a.id); expect(post.mentions).not.toContain(b.id);
+
+      // Typed by hand (no card), the name still means both, as before: only a picked mention is bound.
+      await settle(40);
+      const again = q(pg, ".hub-dock textarea"); again.value = `@${a.name} again`; again.selectionStart = again.value.length; fire(again, "input"); await settle(2);
+      const typed = await send(pg, posts, q(pg, ".hub-dock textarea"));
+      expect([typed.text, typed.mentions.includes(a.id), typed.mentions.includes(b.id)]).toEqual([`@${a.name} again`, true, true]);
+    } finally { restore(); }
+  });
+  it.each([["en", "@Room assistant"], ["zh-TW", "@房間助理"]])("the room assistant, by the box's own word for it (%s)", async (lang, word) => {
+    const { pg, posts, restore } = await roomPage({ lang });
+    try {
+      const box = await askFrom(pg, (l) => l === (lang === "en" ? "Room assistant" : "房間助理"));
+      expect(box.value).toBe(`${word} `);
+      expect((await send(pg, posts, box)).mentions).toContain("assistant");
+    } finally { restore(); }
+  });
+  it("a binding goes with its mention: edited away, it binds nothing", async () => {
+    const composer = await import("/ui/js/hub-room-composer.js");
+    const detail = { me: { id: "me" }, members: [{ kind: "agent", id: "e1", name: "Notes" }, { kind: "agent", id: "e2", name: "Notes" }, { kind: "agent", id: "e3", name: "Planner" }] };
+    const bound = [{ name: "Notes", id: "e2" }];
+    expect(composer.boundMentions("@Notes hi", detail, bound)).toEqual(["e2"]);
+    expect(composer.boundMentions("@Notes and @Planner", detail, bound).sort()).toEqual(["e2", "e3"]);
+    expect(composer.boundMentions("@Note hi", detail, bound)).toEqual([]);
+    expect(composer.boundMentions("@Planner", detail, bound)).toEqual(["e3"]);
+    expect(composer.boundMentions("@Notes", detail, []).sort()).toEqual(["e1", "e2"]);
+  });
+});
+
+describe("names the drawing reserves (#4355 review)", () => {
+  it("an agent called team:… or __proto__ is drawn, in its own state, under its own name", () => {
+    const st = { ...STATE(["a", "b"]), instances: [
+      { name: "a", display_name: "team:core", status: "running", execution_state: "working", presence: "working" },
+      { name: "b", display_name: "__proto__", status: "running", execution_state: "working", presence: "working" },
+      { name: "c", display_name: "constructor", status: "running", execution_state: "idle", presence: "idle" }] };
+    st.offices = { ...st.offices, offices: [{ ...st.offices.offices[0], members: ["a", "b", "c"] }] };
+    const d = office.named(st), app = office.officeApp(d);
+    const keys = d.instances.map((i: any) => i.name);
+    for (const k of keys) expect([k, k.startsWith("team:") || Object.prototype.hasOwnProperty.call(Object.prototype, k)]).toEqual([k, false]);
+    expect(keys.map((k: string) => k.replace(/\u2060/g, ""))).toEqual(["team:core", "__proto__", "constructor"]);
+    expect(keys.map((k: string) => app.exec[k])).toEqual(["working", "working", "idle"]);
+    expect(Object.getPrototypeOf(app.exec)).toBeNull();
   });
 });
 

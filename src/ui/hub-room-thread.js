@@ -437,10 +437,17 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const officeOn = group && client.roomOfficeV1 === true && detail?.settings?.office?.enabled === true;
   const inOffice = officeOn && view === "office";
   // M-3533 R1: the office card's "@ it" goes back to Chat with the mention in the box, once the box is there again.
-  const mentionNext = useRef(""), [officeMore, setOfficeMore] = useState(false);
+  const mentionNext = useRef(null), [officeMore, setOfficeMore] = useState(false);
+  // A member as the box mentions it: the room assistant by the composer's own word for it; an agent or a person by name,
+  // bound to that member (two agents of one name: this one).
+  const insertMention = (m) => {
+    if (!m) return;
+    if (m.kind === "assistant") insert.current?.(hroom("mentionAssistant"));
+    else insert.current?.(`@${m.name}`, m.kind === "agent" ? { name: String(m.name), id: m.id } : null);
+  };
   useEffect(() => {
     if (inOffice || !mentionNext.current) return undefined;
-    const text = mentionNext.current, h = setTimeout(() => { mentionNext.current = ""; insert.current?.(text); }, 0);
+    const m = mentionNext.current, h = setTimeout(() => { mentionNext.current = null; insertMention(m); }, 0);
     return () => clearTimeout(h);
   });
   // The page-level rooms notifier learns this person's id for this room from its detail (§12; member
@@ -586,7 +593,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // Who: this room's answers being worked on; the words: workingLine() (#3857), the one place that says it.
   const working = workingLine({ members: store.workers().map((w) => ({ ...w, presence: "working" })) });
   const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
-        onMention=${(m) => { setSheet(false); insert.current?.(`@${m.name}`); }}
+        onMention=${(m) => { setSheet(false); insertMention(m); }}
         onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined}>
@@ -612,7 +619,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
       ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []}
-        onMention=${(m) => { mentionNext.current = `@${m.name}`; onView("chat"); }} more=${narrow && officeMore} onMore=${narrow ? setOfficeMore : null} />` : null}
+        onMention=${(m) => { mentionNext.current = m; onView("chat"); }} more=${narrow && officeMore} onMore=${narrow ? setOfficeMore : null} />` : null}
       ${!inOffice && group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
