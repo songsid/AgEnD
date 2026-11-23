@@ -120,7 +120,7 @@ export function prepareSettingsEffect(method: string, path: string, body: unknow
     try{next=parseHostAlertSettings(body);previous=parseHostAlertSettings(context.hostAlertSettings());}catch{throw new SettingsConfirmationError(400,'invalid_alert_settings');}
     const fingerprint=settingsFingerprint([operation,previous,next]);if(settingsFingerprint(previous)===settingsFingerprint(next))return {diff:null};
     const diff=settingsChangeDiff({}, {}, {operation,force:true})!;
-    const summary=[`Host alerts: Needs you ${next.needsYou?'on':'off'}; General ${next.general?'on':'off'}`,...Object.entries(next.rules).map(([key,r])=>`${key}: ${r.kind}; warning ${r.warning}; urgent ${r.urgent}; clear ${r.clear}; holds ${r.warningMs}/${r.urgentMs}/${r.clearMs} ms; samples ${r.warningSamples}/${r.urgentSamples}`)];
+    const summary=[`Host alerts: Needs you ${next.needsYou?'on':'off'}; General ${next.general?'on':'off'}`,...Object.entries(next.rules).map(([key,r])=>`${key}: ${r.kind}; warning ${r.warning}; urgent ${r.urgent}; clear ${r.clear}; holds ${r.warningMs}/${r.urgentMs}/${r.clearMs} ms; samples ${r.warningSamples}/${r.urgentSamples}${r.kind==='memory'?`; critical only ${r.criticalOnly===true?'on':'off'}`:''}`)];
     return {diff:{...diff,fingerprint,summary,affectedConnections:[]}};
   }
   if (path === "/ui/host-install") {

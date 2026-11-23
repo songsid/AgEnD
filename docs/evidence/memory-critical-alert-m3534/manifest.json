@@ -1,0 +1,78 @@
+[
+  {
+    "path": "src/host-monitoring-alert-policy.ts",
+    "sha256": "ab114f33e51fba97771be777e2bc58364222097b8719cd5ea731d114dfba46fb"
+  },
+  {
+    "path": "src/host-monitoring-alerts.ts",
+    "sha256": "58a7e7833e0b579917ef0b03017d09a53bf216c1baebead45807ad0ce5c6e011"
+  },
+  {
+    "path": "src/settings-effect.ts",
+    "sha256": "274a72817938154876d868f2ee5050158f2de6db9bb60960dea1662476badb82"
+  },
+  {
+    "path": "src/ui/settings-host-alerts.js",
+    "sha256": "ced94819940ff7f68255418cfb23e32a40e5127c76552fa6eced8a7a3da4d7e1"
+  },
+  {
+    "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
+    "sha256": "d4eb99ccf484fbe52d2d73ef1619c2931fd6cbb7a9c7830f0f24e79d61ec6794"
+  },
+  {
+    "path": "tests/host-memory-critical-m3534.test.ts",
+    "sha256": "91f8f424e623a3cdcb3549d5589b96859c2b2d26d2f747e31a8720d4661b98a0"
+  },
+  {
+    "path": "tests/host-monitoring-alert-ui-m3454.test.ts",
+    "sha256": "1fb6af8c48ee94e965c3026561ba4f3f3d1771c48e77113a600976cc9cafb0b7"
+  },
+  {
+    "path": "scripts/manual/memory-critical-alert/capture.mts",
+    "sha256": "d5f604c142d531784eb068bd88ee4814c25dda1958ab38d9472ace2204cd81d8"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/checks.json",
+    "sha256": "e5b1dc45f68131f51fa20589d6f8e583f3e8c4c770c5ea524909f3c3d9432691"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/urgent-predicate.patch",
+    "sha256": "e4d7afeb00e2a2f98a641789b48e174233e55fd8c4c568f13e60e26b9e438d32"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/phone-dark-zh-TW.png",
+    "sha256": "b9b29ba6287fc294cf2def8c7952d451e9f6f88b0eef483a74ef5ef0644564c0"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/capture-checks.json",
+    "sha256": "84e898a167895023f703f1d91effe3ef3be97e875912735cdbd956ffc35443c0"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/phone-dark-en.png",
+    "sha256": "b58d7b4cfe5c5f8573d819ac8f8b6471f88c97d7e8adee498c8291f966b6e5aa"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/README.md",
+    "sha256": "52a5b78bb49ba2b1fc3975f5f7fe4ac0f9993e51f3379f701f844a74cbc8d271"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/warning-guard.patch",
+    "sha256": "a3f5387eb720ec2d0b5362cdbf1bce48fa69b6619e4a124066ff0d8dc41c5a89"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/retirement-disabled.patch",
+    "sha256": "585d7d933a28c683ab52a5d9ab00bb63c2daf4990b6b2f0bddb31b442289d49e"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/desk-light-en.png",
+    "sha256": "f7434bedfd4a19d0b2bfe6b0ec8b18ac71dbd814d3c8d6b138bfd6a601aba780"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/desk-light-zh-TW.png",
+    "sha256": "18154d1d228f29170d346e6876e0d403f492d7cb253f54eca2b41c1e14331ae4"
+  },
+  {
+    "path": "docs/evidence/memory-critical-alert-m3534/mutations.json",
+    "sha256": "a33a4e046c4bb7335f5120bfe40abd1414896c1b1abc17fe0240f97a2ca5608a"
+  }
+]

@@ -1,0 +1,11 @@
+--- a/src/host-monitoring-alert-policy.ts
++++ b/src/host-monitoring-alert-policy.ts
+@@ -74,7 +74,7 @@
+     this.lastSample=sample.sampledAt; this.lastMonotonic=sample.monotonicAt;
+     const at=sample.monotonicAt, value=sample.value, r=this.rule;
+     const warning = !(r.kind==='memory' && r.criticalOnly===true) && (r.direction === 'above' ? value >= r.warning : value < r.warning);
+-    const urgent = r.direction === 'above' ? value >= r.urgent : value < r.urgent;
++    const urgent = !(r.kind==='memory' && r.criticalOnly===true) && r.direction === 'above' ? value >= r.urgent : value < r.urgent;
+     const clear = r.kind === 'cpu' ? value < r.clear : r.direction === 'above' ? value <= r.clear : value >= r.clear;
+     this.warning=this.streak(this.warning,warning,at); this.urgent=this.streak(this.urgent,urgent,at); this.recovery=this.streak(this.recovery,clear,at);
+     const met=(s:Streak|null, ms:number, count:number)=>!!s && at-s.since>=ms && s.count>=count;

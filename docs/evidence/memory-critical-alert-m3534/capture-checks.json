@@ -1,0 +1,69 @@
+{
+  "scope": "Real Settings app and confirmed save/readback in scratch synthetic Fleet. Monitoring off; capability visibility exposed only. No real metric/incident/account/model/CLI claim.",
+  "views": [
+    {
+      "name": "desk-light-en",
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "savedCriticalOnly": true,
+      "reloadedChecked": true,
+      "sidecarMode": "0600",
+      "yamlUnchanged": true,
+      "labelWidth": 120.421875,
+      "labelHeight": 16,
+      "fieldsetLeft": 525,
+      "fieldsetRight": 1321,
+      "viewport": 1366,
+      "overflow": false
+    },
+    {
+      "name": "desk-light-zh-TW",
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "savedCriticalOnly": true,
+      "reloadedChecked": true,
+      "sidecarMode": "0600",
+      "yamlUnchanged": true,
+      "labelWidth": 91,
+      "labelHeight": 16,
+      "fieldsetLeft": 525,
+      "fieldsetRight": 1321,
+      "viewport": 1366,
+      "overflow": false
+    },
+    {
+      "name": "phone-dark-en",
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "savedCriticalOnly": true,
+      "reloadedChecked": true,
+      "sidecarMode": "0600",
+      "yamlUnchanged": true,
+      "labelWidth": 266,
+      "labelHeight": 44,
+      "fieldsetLeft": 33,
+      "fieldsetRight": 357,
+      "viewport": 390,
+      "overflow": false
+    },
+    {
+      "name": "phone-dark-zh-TW",
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "savedCriticalOnly": true,
+      "reloadedChecked": true,
+      "sidecarMode": "0600",
+      "yamlUnchanged": true,
+      "labelWidth": 266,
+      "labelHeight": 44,
+      "fieldsetLeft": 33,
+      "fieldsetRight": 357,
+      "viewport": 390,
+      "overflow": false
+    }
+  ]
+}
