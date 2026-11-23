@@ -196,9 +196,8 @@ offline to all room members.
 **Corrected 2026-11-23 (found by the builder).** An earlier version gave each owner a per-agent switch, "Show its
 look and whether it is working in room offices", naming the threat as members learning that an agent is busy
 outside the room. The member list already shows that, so the switch protected nothing. The office now shows
-exactly the member list's states and the two never disagree. What would remain is a look-only switch, and I
-cannot name what that protects; my recommendation is to drop it and send the look with every shared agent. That
-changes an approved item, so it is with the owner to decide (asked through the leader).
+exactly the member list's states and the two never disagree. **The owner decided on 2026-11-23 to drop the switch:**
+an agent's look always goes with its sharing into room offices. There is no per-agent setting for room offices.
 
 ### 2.3 How an agent's look travels
 
@@ -321,7 +320,7 @@ What is real and what is not:
   are the Fleet dashboard's real editor on a scratch fleet with made-up agents, not a Hub page: they show what
   would be reused, not the room's editor itself. "Studio (large)" does not exist yet and is not drawn.
 - The room has 12 people and 30 agents of 6 owners, all made up; 5 of the people have never signed in.
-- Not captured: the Room office setting, the per-agent switch, a closed office's page, an agent's card.
+- Not captured: a closed office's page, an agent's card. (The per-agent switch was dropped later.)
 
 ## Checked against the style guide
 
@@ -344,7 +343,7 @@ What is real and what is not:
 | R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, the member list's states plus "answering in this room" | M |
 | R1b | The style choice with seat counts, and the "Studio (large)" style | S–M |
 | R3 | "Arrange seats…": the Fleet's layout editor on a room's office, managers only, with the Hub's save check | M |
-| R2 | Look cards from the Fleet (colour, portrait, character pictures). Working and idle moved to R1 (they are the member list's states). The per-agent switch waits for the owner's decision | M |
+| R2 | Look cards from the Fleet (colour, portrait, character pictures). Working and idle moved to R1 (they are the member list's states). No per-agent switch (dropped by the owner) | M |
 | V1 | Visit a person's office: the owner's row and dialog, the Offices page, the live view in built-in styles, stop | L (split: Fleet side, Hub side, page) |
 | V2 | Custom skin packs in a visited office (pictures carried once, kept by the Hub) | M, after a builder confirms what the link can carry |
 | V3 | "Ask" on a card; "Visit {owner}'s office" from a room office | S |
