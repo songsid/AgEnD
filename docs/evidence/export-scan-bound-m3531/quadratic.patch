@@ -1,0 +1,11 @@
+--- a/src/agent-export.ts
++++ b/src/agent-export.ts
+@@ -83,7 +83,7 @@
+     // A very long line is read in overlapping pieces, so the patterns' cost stays small however long a line is.
+     for (let at = 0; at === 0 || at < line.length; at += 3000) {
+       const piece = line.slice(at, at + 4000);
+-      const hit = SECRET_PATTERNS.find(([, re]) => re.test(piece));
++      const hit = SECRET_PATTERNS.find(([, re]) => { for (let repeat = 0; repeat < line.length; repeat++) { if (re.test(piece)) return true; } return false; });
+       if (hit) { found.push({ field, line: i + 1, kind: hit[0] }); break; }
+     }
+   });
