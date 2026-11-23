@@ -7,6 +7,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import {
   CODEX_PERSISTENCE_OUTPUT_SECTIONS, GO_AHEAD_SCOPE_RULE, LOCAL_APP_SECTION, OPERATIONS_MAX_CHARS, OPERATIONS_PREFACE,
@@ -249,6 +250,38 @@ describe("Loaded every session: sizes, stat only", () => {
     writeFileSync(join(wrong, "MEMORY.md"), "w");
     expect(instructionFileSizes({ working_directory: nested }, "claude-code", { home }).files.find(f => f.kind === "memory")!.bytes).toBe(52224);
   });
+  it.skipIf(process.platform === "win32")("a FIFO, a non-regular or an oversized git pointer is refused, never waited on (bounded child)", () => {
+    // Each layout is a worktree whose pointer files are not small regular files. The read runs in a child process
+    // with a hard timeout: a blocking read would hang it (a synchronous hang cannot be interrupted in this worker).
+    const cases: Array<[string, (wt: string, gitdir: string) => void]> = [
+      ["commondir FIFO", (_wt, gitdir) => execFileSync("mkfifo", [join(gitdir, "commondir")])],
+      ["commondir directory", (_wt, gitdir) => mkdirSync(join(gitdir, "commondir"))],
+      ["commondir oversized", (_wt, gitdir) => writeFileSync(join(gitdir, "commondir"), "../..\n" + " ".repeat(8192))],
+    ];
+    for (const [name, make] of cases) {
+      const repo = dir(`bad-repo-${name.replace(/\W/g, "-")}`), wt = dir(`bad-wt-${name.replace(/\W/g, "-")}`), home = dir(`bad-home-${name.replace(/\W/g, "-")}`);
+      const gitdir = join(repo, ".git", "worktrees", "wt");
+      mkdirSync(gitdir, { recursive: true });
+      writeFileSync(join(wt, ".git"), `gitdir: ${gitdir}\n`);
+      make(wt, gitdir);
+      const code = `import { instructionFileSizes } from ${JSON.stringify(join(process.cwd(), "src/instruction-file-sizes.ts"))};
+        import { claudeMemoryRoot } from ${JSON.stringify(join(process.cwd(), "src/backend/claude-code.ts"))};
+        process.stdout.write(JSON.stringify({ root: claudeMemoryRoot(${JSON.stringify(wt)}), n: instructionFileSizes({ working_directory: ${JSON.stringify(wt)} }, "claude-code", { home: ${JSON.stringify(home)} }).files.length }));`;
+      const r = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", code], { cwd: process.cwd(), timeout: 20000, encoding: "utf8" });
+      expect(r.error, `${name}: ${String(r.error)}`).toBeUndefined();
+      expect(r.status, `${name}: ${r.stderr}`).toBe(0);
+      // Refused as an unusual layout: the worktree is its own root (the existing positives keep the repository root).
+      expect(JSON.parse(r.stdout).root, name).toBe(wt);
+    }
+    // An oversized `.git` pointer file is refused the same way.
+    const big = dir("bad-big-git");
+    writeFileSync(join(big, ".git"), "gitdir: /nowhere\n" + " ".repeat(8192));
+    const r = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e",
+      `import { claudeMemoryRoot } from ${JSON.stringify(join(process.cwd(), "src/backend/claude-code.ts"))}; process.stdout.write(claudeMemoryRoot(${JSON.stringify(big)}));`],
+      { cwd: process.cwd(), timeout: 20000, encoding: "utf8" });
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toBe(big);
+  }, 90000);
   it("text already inside AGENTS.md (the fleet instructions block) is shown but not counted twice; a separate file is counted", () => {
     const cwd = dir("embedded");
     writeFileSync(join(cwd, "AGENTS.md"), "a".repeat(100));

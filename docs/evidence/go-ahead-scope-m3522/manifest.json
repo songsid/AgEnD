@@ -1,0 +1,58 @@
+[
+  {
+    "path": "README.md",
+    "sha256": "8e2c0914547769773e8b961bd0efd3700a5634e0be00e224b7ed8c1c1f366bf5"
+  },
+  {
+    "path": "checks.json",
+    "sha256": "d063b65063067efe6c792bcbdbd648ab8fe39195ce9cceda64333c336261cf76"
+  },
+  {
+    "path": "details-claude-card-desk-light-en.png",
+    "sha256": "f29e5d79f5afd0383444ea99befc9d91939af7d6aefa674594258392be9119a8"
+  },
+  {
+    "path": "details-claude-card-desk-light-zh-TW.png",
+    "sha256": "e298f09c13427d3d1df0a2794dfb35fd34d4c65a8d159d625cf5d1ae42194fed"
+  },
+  {
+    "path": "details-claude-card-phone-dark-en.png",
+    "sha256": "7588f27aa51742fd9d01870c2875b7f764cefe526a7fa3439191ecd25078a584"
+  },
+  {
+    "path": "details-claude-card-phone-dark-zh-TW.png",
+    "sha256": "e512a62cd95651831305f1df0fb6057def40370a820f283ffada936c71c2817e"
+  },
+  {
+    "path": "details-codex-card-desk-light-en.png",
+    "sha256": "bf8b55230c8059e2f7d8bfd8b88a345bb7d4c14db3992de69d4a85dec17fff2d"
+  },
+  {
+    "path": "details-codex-card-desk-light-zh-TW.png",
+    "sha256": "75248f999752f5e54cf1eedd81bd61db6175cfab3999a6075e3d2608b3b079a4"
+  },
+  {
+    "path": "details-codex-card-phone-dark-en.png",
+    "sha256": "4585328ab6767e8fbf996a9ec1651faeacbf8eec9fbdb255ba3deabc055a7edf"
+  },
+  {
+    "path": "details-codex-card-phone-dark-zh-TW.png",
+    "sha256": "8eec4b923964ab1c07e506bbe80bd5c197dd938faffefb13850ed0d1dd3b4895"
+  },
+  {
+    "path": "settings-card-desk-light-en.png",
+    "sha256": "6a994133994e759afa35f566b85ecd8849a15ded229e7a5448fbfe5c281871e3"
+  },
+  {
+    "path": "settings-card-desk-light-zh-TW.png",
+    "sha256": "af1a52e9bd384d6883d658983ac5a49843c1dd0ecd6216fe2e4fec897c56db6f"
+  },
+  {
+    "path": "settings-card-phone-dark-en.png",
+    "sha256": "5c1e9b4ed87c5ffb301c96a2888ba48c62537c5983cee12b0f171290977e232c"
+  },
+  {
+    "path": "settings-card-phone-dark-zh-TW.png",
+    "sha256": "08ea237c067effdfb7b15cc2fa801d7cfd9a2fb8e9a738308db6bba68519201e"
+  }
+]
