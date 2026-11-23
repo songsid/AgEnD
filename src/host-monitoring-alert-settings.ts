@@ -1,3 +1,5 @@
+import {hostAlertDefaultRule,detectMonitoringPlatform} from './host-monitoring-defaults.js';
+import type {MonitoringPlatform} from './host-monitoring.js';
 /** Separate rollback-safe alert preferences. No file read occurs on import or snapshot reads. */
 import {openSync,closeSync,fstatSync,readSync,constants,mkdirSync} from 'node:fs';
 import {join} from 'node:path';
@@ -29,4 +31,7 @@ export function writeHostAlertSettings(dir:string,value:HostAlertSettings):void 
  const next=parseHostAlertSettings(value),previous=readHostAlertSettings(dir);mkdirSync(dir,{recursive:true,mode:0o700});
  atomicWriteFileSync(hostAlertSettingsPath(dir),JSON.stringify(next)+'\n',{mode:0o600});noteSettingsWrite(hostAlertSettingsPath(dir),previous,next);
 }
-export const hostAlertRuleFor=(settings:HostAlertSettings,key:string,kind:HostAlertRule['kind']):HostAlertRule=>({...HOST_ALERT_DEFAULTS[kind],...settings.rules[key]});
+/** A legacy explicit memory rule predates criticalOnly and keeps its former warning behavior. */
+export function hostAlertRuleFor(settings:HostAlertSettings,key:string,kind:HostAlertRule['kind'],platform:MonitoringPlatform=detectMonitoringPlatform()):HostAlertRule{
+ const saved=settings.rules[key];return{...hostAlertDefaultRule(kind,platform),...saved,...(kind==='memory'&&saved&&!Object.hasOwn(saved,'criticalOnly')?{criticalOnly:false}:{})};
+}

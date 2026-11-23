@@ -1,0 +1,73 @@
+{
+  "scope": "Actual pre-extraction module vs candidate, injected commands only; synthetic local paths/devices. No native OS execution.",
+  "base": "ffe38322808e28822079c02a3473cbf507ae3c62",
+  "cases": {
+    "darwin": {
+      "volumes": [
+        {
+          "shared": true,
+          "sharedGroup": "30f8ea68c1b1a741",
+          "id": "98bb9510032e017d",
+          "roles": [
+            "root",
+            "state"
+          ],
+          "totalBytes": 1024000,
+          "availableBytes": 614400,
+          "usedPercent": 40,
+          "sampledAt": 100000
+        }
+      ],
+      "backingDrive": "not-applicable"
+    },
+    "linux": {
+      "volumes": [
+        {
+          "id": "d24bf172c29e6cc8",
+          "roles": [
+            "root",
+            "state"
+          ],
+          "totalBytes": 1024000,
+          "availableBytes": 614400,
+          "usedPercent": 40,
+          "sampledAt": 100000,
+          "shared": true
+        }
+      ],
+      "backingDrive": "not-applicable"
+    },
+    "wsl": {
+      "volumes": [
+        {
+          "id": "d24bf172c29e6cc8",
+          "roles": [
+            "root",
+            "state"
+          ],
+          "totalBytes": 1024000,
+          "availableBytes": 614400,
+          "usedPercent": 40,
+          "sampledAt": 100000,
+          "shared": true
+        },
+        {
+          "id": "48f03bc9419d2b28",
+          "roles": [
+            "wsl-backing"
+          ],
+          "totalBytes": 1024000,
+          "availableBytes": 614400,
+          "usedPercent": 40,
+          "sampledAt": 100000,
+          "drive": "E"
+        }
+      ],
+      "backingDrive": "identified",
+      "availableDrives": [
+        "C",
+        "E"
+      ]
+    }
+  }
+}

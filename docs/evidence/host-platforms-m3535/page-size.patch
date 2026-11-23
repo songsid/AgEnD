@@ -1,0 +1,11 @@
+--- a/src/host-monitoring/darwin/interpretation.ts
++++ b/src/host-monitoring/darwin/interpretation.ts
+@@ -50,7 +50,7 @@
+ export function parseDarwinCompression(text:string,totalBytes:number):{darwinCompressedBytes:number|null;darwinStoredBytes:number|null}{
+  const unknown={darwinCompressedBytes:null,darwinStoredBytes:null};if(Buffer.byteLength(text)>MONITOR_OUTPUT_BYTES||!Number.isSafeInteger(totalBytes)||totalBytes<=0)return unknown;
+  const headers=[...text.matchAll(/^Mach Virtual Memory Statistics: \(page size of (\d+) bytes\)\s*$/gm)];if(headers.length!==1||[...text.matchAll(/^Mach Virtual Memory Statistics:/gm)].length!==1)return unknown;
+- const page=Number(headers[0][1]);if(!Number.isSafeInteger(page)||page<1024||page>1024*1024||Math.log2(page)%1!==0)return unknown;
++ const page=4096;if(!Number.isSafeInteger(page)||page<1024||page>1024*1024||Math.log2(page)%1!==0)return unknown;
+  const read=(name:string,maximum:number)=>{const rows=[...text.matchAll(new RegExp('^Pages '+name+':\\s+(\\d+)\\.\\s*$','gm'))];if(rows.length!==1||[...text.matchAll(new RegExp('^Pages '+name+':','gm'))].length!==1)return null;const bytes=Number(rows[0][1])*page;return Number.isSafeInteger(bytes)&&bytes>=0&&bytes<=maximum?bytes:null;};
+  return{darwinCompressedBytes:read('occupied by compressor',totalBytes),darwinStoredBytes:read('stored in compressor',Number.MAX_SAFE_INTEGER)};
+ }

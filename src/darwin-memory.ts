@@ -1,3 +1,4 @@
+import {parseDarwinCompression} from './host-monitoring/darwin/interpretation.js';
 import { execFile } from "./child-process.js";
 import { totalmem } from "node:os";
 import type { HostMemory } from "./host-memory.js";
@@ -149,7 +150,7 @@ export class DarwinMemoryProbe {
       if (completed) return;
       if (epoch !== this.epoch || this.now() >= deadlineAt) { cancel(); return; }
       const available = outputs[0] === null || outputs[0] === undefined ? null : parseDarwinAvailable(outputs[0], totalBytes);
-      finish({ ...(available === null ? unknown : { totalBytes, availableBytes: available, availableKind: "available" as const,
+      finish({ ...parseDarwinCompression(outputs[0] ?? "", totalBytes), ...(available === null ? unknown : { totalBytes, availableBytes: available, availableKind: "available" as const,
         ...parseDarwinSwap(outputs[1] ?? "") }), darwinPressureLevel: parseDarwinPressureLevel(outputs[2] ?? ""),
         darwinPressureRaw: outputs[2]?.slice(0, 1024) ?? null });
     });

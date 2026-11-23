@@ -1,0 +1,29 @@
+# M-3535: separate platform monitoring
+
+The original collector combined macOS, Linux and WSL meanings, and the common alert table made a new Mac memory rule warn at Elevated. The implementation gives each platform its own collector, interpretation and complete default table. Shared code owns bounded command transport and physical closure, not OS meanings. macOS uses the raw kernel alarm and reports compression and dynamically allocated swap separately. Linux/WSL retain the Linux policy, MemAvailable/PSI/swap fallback and the separate WSL backing drive. Memory history IDs remain unchanged.
+
+Only an absent memory rule adopts the platform default (Mac Critical-only, Linux/WSL Elevated warnings). Explicit true/false wins; an older saved memory rule without the member keeps false. Reads neither create nor rewrite preferences. The existing durable warning-retirement path also applies to the new Mac default. No new fleet.yaml or sidecar member is introduced.
+
+The approved [design](../../design/host-monitoring-platforms.md) describes the boundary. The stateful Linux admission sampler remains a compatibility source; each Linux/WSL monitoring interpreter excludes its synthetic recovery elevation. `src/memory-pressure.ts` is byte-unchanged. Darwin compression diagnostics reuse the existing bounded vm_stat response. Cadence, command environment/output/deadline budgets, physical-stop ownership, history/auth/confirmation and alert dwell/recovery are retained.
+
+## Evidence
+
+- **224 distinct tests / 18 files:** `focused-final.log` is 130/10; `module-admission-final.log` is 84/6, including the same 15 UI tests once; `i18n-skill-final.log` adds 25/3. Thus 130 + 84 − 15 + 25 = 224, with one overlapping file. The first command included an unmatched historical filename filter `memory-pressure.test.ts`; the actual `memory-pressure-1113.test.ts` and `linux-memory-pressure-1707.test.ts` are in the second run. No test is inferred from the unmatched filter.
+- Four isolated production mutations fail real assertions: use aggregate admission instead of the Mac alarm, overwrite legacy false, assume 4 KiB pages, or disable the Mac default. Patches, assertion logs and input hashes are retained. Exact sources were restored before final tests and accepted captures.
+- Production build, test types and final runtime assets exit 0. Notifications Settings UI gate: **14/14**, scoped CI matrix, disclosures/long values/phone tap targets, no allowance changes. The canonical gate uses its normal fixture state; the 12 feature captures separately assert platform card geometry and targets.
+- Frozen pre-extraction provider versus candidate: all three disk outputs **and command sequences match** under identical injected clocks/command replies/mount inventories. `disk-compat-runner.mts.txt`, the import-only adaptation patch and `compatibility-inputs.json` bind the original run. Reconstruct `platform-before.ts` with `git show ffe38322808e28822079c02a3473cbf507ae3c62:src/host-monitoring-platform.ts`, apply the import adaptation in `.artifacts/host-platform-split-m3535`, and place the runner there to reproduce. This is controlled execution, not native OS proof.
+- `readback.json`: all three platform defaults observed through the real Settings UI; opposite choice → actual session PUT 202 → confirmation applied → 0600 sidecar → GET → reloaded UI/effective rule agree. fleet.yaml is byte-unchanged. Scratch fixture, no live Fleet, collector, account or model.
+
+Memory fixtures reuse the existing sanitized Darwin vm_stat/swap/kernel readings and reported WSL2 Linux-kernel PSI recording. Linux uses that same kernel-format fixture; there is **no new native Mac or Ubuntu execution claim**. Counter combinations are controlled. CPU/storage in the capture rig are controlled DTOs; history is empty, not simulated measurements. No new long measurement is claimed or required for this unchanged-cadence refactor.
+
+## Captures and input binding
+
+The [gallery](gallery.md) contains **12 real-app viewport originals**, three platforms × desktop/phone × EN/zh. Each platform has desktop EN health, desktop zh Settings, phone EN Settings and phone zh health. Settings frames focus on the memory rule so the default is visible; health frames focus on the memory card. They are scrolled viewports, not full-page claims. All 12 were independently inspected; `image-review.json` binds those exact PNGs. `capture-checks.json` records geometry, actual delivered JS/CSS hashes, real schema platform/default and untouched saved rules; the alert sidecar remained absent throughout capture reads.
+
+Two rig corrections are disclosed: a capture process overlapping temporary mutations was stopped and rejected; then nested help-module imports failed the actual dashboard route, so the three UI help files were moved into its existing flat served-module directory. No image from either attempt is accepted. Initial element screenshots were also rejected because scroll-container clipping hid controls. Only the final viewport originals are published. No product CSS was changed for screenshots. All fixtures/listeners/browser contexts/scratch homes closed; no live process or account was used.
+
+## Risk and rollback
+
+The meaningful behavior change is the Mac kernel-pressure projection and the default for an absent Mac memory rule. Unknown kernel values remain Unknown. APFS identities/space, Linux/WSL thresholds and explicit user preferences stay covered by compatibility/precedence tests. Platform behavior is established with recorded/injected fixtures rather than new native runs. Reverting the product commit restores the previous projection/defaults without rewriting saved preferences; no migration or cleanup is required.
+
+USER LOOK HOLD remains until the user approves the gallery. Prism review, exact-head CI and coordinator merge/post-merge green are still required.

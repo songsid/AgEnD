@@ -1,0 +1,54 @@
+{
+  "scope": "All12 final viewport originals inspected individually by image-only subagent; no source/test/browser campaign. Earlier element screenshots rejected as clipped and not published.",
+  "result": "No blocking text-fit/layout/privacy finding; all6 Settings choices visible (Mac ON, Linux/WSL OFF), all6 memory meanings readable. Phone wrapping is narrow but legible.",
+  "images": [
+    {
+      "path": "darwin-health-desk-light-en.png",
+      "sha256": "368882929a637e0752b87fd889c9e933a1ae20e90a4fc0c224e4c15a26caafeb"
+    },
+    {
+      "path": "darwin-health-phone-dark-zh-TW.png",
+      "sha256": "0e3863804b9397f6848e1ff61c854d19b289fd7cc5f04c51057e733a1b9cc6d3"
+    },
+    {
+      "path": "darwin-settings-desk-dark-zh-TW.png",
+      "sha256": "809b91598bb1987662419f2e934735f4f39beac18ea329e5f3c61c4b6ae20865"
+    },
+    {
+      "path": "darwin-settings-phone-light-en.png",
+      "sha256": "57f52c43081bd0dfbcdd8ed1deba988bfc33b20fa461fbe469fb312144e47166"
+    },
+    {
+      "path": "linux-health-desk-light-en.png",
+      "sha256": "38dc6ee992cd65add9a80007659253ba9620b60499d030c1133fcadea7a4fcfb"
+    },
+    {
+      "path": "linux-health-phone-dark-zh-TW.png",
+      "sha256": "50b665f3f8f8dd81c2721e8e1b13a077ee0b7341940bb8a1c006e0d8a3e90a7e"
+    },
+    {
+      "path": "linux-settings-desk-dark-zh-TW.png",
+      "sha256": "04f30ecedd25867024c7d65d102e4522b1ec512b48deacc90d1e2eccffeda683"
+    },
+    {
+      "path": "linux-settings-phone-light-en.png",
+      "sha256": "ce298849ff62cd3db6192316d47437a0671af6e0bd978fb73a528db492707a55"
+    },
+    {
+      "path": "wsl-health-desk-light-en.png",
+      "sha256": "2ab90afa3cb53cec3b2f668fa81c6826be78ae8c42291c212285d242b7929b42"
+    },
+    {
+      "path": "wsl-health-phone-dark-zh-TW.png",
+      "sha256": "fd767c69b8d75c69c5aab328f1c76892c7d81a7b94258f364edf81af7619121c"
+    },
+    {
+      "path": "wsl-settings-desk-dark-zh-TW.png",
+      "sha256": "e2af62c64025f2001e8535e0228f7825b96a407a60454afdcb650a79f8fc0044"
+    },
+    {
+      "path": "wsl-settings-phone-light-en.png",
+      "sha256": "a7c925ccf7eaaefdf5ced75d53cd56e34dba79077a3ca977743977ffdb33d2b5"
+    }
+  ]
+}

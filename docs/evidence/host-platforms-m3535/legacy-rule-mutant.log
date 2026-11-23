@@ -1,0 +1,46 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-platform-split-m3535.test.ts (17 tests | 4 failed) 48ms
+     × darwin defaults and explicit/legacy saved memory rules use one precedence rule 9ms
+     × linux defaults and explicit/legacy saved memory rules use one precedence rule 2ms
+     × wsl defaults and explicit/legacy saved memory rules use one precedence rule 1ms
+     × a Mac default retires an old warning, while a legacy explicit Mac rule preserves it 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 4 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > darwin defaults and explicit/legacy saved memory rules use one precedence rule
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > linux defaults and explicit/legacy saved memory rules use one precedence rule
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > wsl defaults and explicit/legacy saved memory rules use one precedence rule
+AssertionError: expected true to be false // Object.is equality
+
+- Expected
++ Received
+
+- false
++ true
+
+ ❯ tests/host-platform-split-m3535.test.ts:38:186
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/4]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > a Mac default retires an old warning, while a legacy explicit Mac rule preserves it
+AssertionError: expected [] to have a length of 1 but got +0
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ tests/host-platform-split-m3535.test.ts:43:736
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/4]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  4 failed | 13 passed (17)
+   Start at  15:25:43
+   Duration  761ms (transform 382ms, setup 133ms, import 355ms, tests 48ms, environment 0ms)

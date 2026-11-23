@@ -1,0 +1,78 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-platform-split-m3535.test.ts (17 tests | 3 failed) 76ms
+     × Mac kernel 1 is normal even if admission has a different synthetic level 34ms
+     × Mac kernel 2 is elevated even if admission has a different synthetic level 4ms
+     × Mac kernel 4 is critical even if admission has a different synthetic level 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 1 is normal even if admission has a different synthetic level
+AssertionError: expected { kind: 'darwin', …(4) } to match object { kind: 'darwin', …(3) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "compressedBytes": 7701659648,
++   "compressedBytes": 1925414912,
+    "kernelPressure": 1,
+    "kind": "darwin",
+-   "storedBytes": 34532081664,
++   "storedBytes": 8633020416,
+  }
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:126
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 2 is elevated even if admission has a different synthetic level
+AssertionError: expected { kind: 'darwin', …(4) } to match object { kind: 'darwin', …(3) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "compressedBytes": 7701659648,
++   "compressedBytes": 1925414912,
+    "kernelPressure": 2,
+    "kind": "darwin",
+-   "storedBytes": 34532081664,
++   "storedBytes": 8633020416,
+  }
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:126
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 4 is critical even if admission has a different synthetic level
+AssertionError: expected { kind: 'darwin', …(4) } to match object { kind: 'darwin', …(3) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "compressedBytes": 7701659648,
++   "compressedBytes": 1925414912,
+    "kernelPressure": 4,
+    "kind": "darwin",
+-   "storedBytes": 34532081664,
++   "storedBytes": 8633020416,
+  }
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:126
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  3 failed | 14 passed (17)
+   Start at  15:25:45
+   Duration  2.04s (transform 1.23s, setup 677ms, import 872ms, tests 76ms, environment 0ms)
