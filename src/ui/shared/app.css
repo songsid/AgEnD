@@ -844,6 +844,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings #g-liveness input { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
+  /* The same for "When the task board wakes an agent" (its switches and the leader menu). */
+  .p-settings #g-wakes select { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
      top and the actions at the bottom, inside it. The app's own questions (ask()) stay bottom sheets. */
   .p-settings .dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }

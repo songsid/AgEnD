@@ -1088,8 +1088,25 @@ function livenessForm(d) {
 /** `defaults.task_board` as saved, with the liveness part from the form (the defaults merge replaces `task_board` whole). */
 function taskBoardDefaults(d, f) {
   const n = (v) => Number(v);
-  return { ...(d.task_board || {}), liveness: f ? { enabled: f.liveOn, quiet_minutes: n(f.liveQuiet), prompt_minutes: n(f.livePrompt), crash_grace_minutes: n(f.liveCrash) }
+  const tb = d.task_board || {}, saved = wakesForm(d), w = f || saved;
+  const out = { ...tb, liveness: f ? { enabled: f.liveOn, quiet_minutes: n(f.liveQuiet), prompt_minutes: n(f.livePrompt), crash_grace_minutes: n(f.liveCrash) }
     : { enabled: ((d.task_board && d.task_board.liveness) || {}).enabled !== false, ...Object.fromEntries(["quiet_minutes", "prompt_minutes", "crash_grace_minutes"].map((k) => [k, ((d.task_board && d.task_board.liveness) || {})[k] ?? LIVENESS_DEFAULTS[k]])) } };
+  // A wake switch the form leaves as saved stays as saved (absent stays absent: the file is not filled with defaults). One that was
+  // changed is written — off, or on where the file already had the key — and put back to its default on, the key goes.
+  for (const [key, field] of [["comment_wakes", "wakeComment"], ["progress_wakes", "wakeProgress"]]) {
+    if (w[field] === saved[field]) continue;
+    if (w[field] === false || hasOwn(tb, key)) out[key] = w[field]; else delete out[key];
+  }
+  if (w.wakeLeader !== saved.wakeLeader) { if (w.wakeLeader) out.leader = w.wakeLeader; else delete out.leader; }
+  return out;
+}
+/**
+ * The task board's wake switches (`defaults.task_board.comment_wakes`, `progress_wakes`, `leader`), as the form holds
+ * them. Nothing written is the default: comments and progress wake, and the board has no leader.
+ */
+function wakesForm(d) {
+  const tb = d.task_board || {};
+  return { wakeComment: tb.comment_wakes !== false, wakeProgress: tb.progress_wakes !== false, wakeLeader: typeof tb.leader === "string" ? tb.leader.trim() : "" };
 }
 const minutesInRange = (v) => { const n = Number(v); return String(v).trim() !== "" && Number.isFinite(n) && n >= 1 && n <= 1440 ? "" : "livenessRange"; };
 
@@ -1106,6 +1123,8 @@ function generalForm(d, c, fleet = {}, schema = {}) {
     hangOn: hang.enabled !== false, hang: String(hang.timeout_minutes ?? HANG_TIMEOUT_DEFAULT_MINUTES),
     // #3647: telling a card's dispatcher when its assignee stops.
     ...livenessForm(d),
+    // Which task board news wakes an agent.
+    ...wakesForm(d),
     // #2347 §10 review: unset startup concurrency is automatic (deriveSpawnConcurrency: 2–10 by free memory and cores),
     // not 10 — an empty field, and a save that leaves it unset (the defaults merge replaces `startup` whole).
     concurrency: startup.concurrency == null ? "" : String(startup.concurrency), stagger: String(startup.stagger_delay_ms ?? 500),
@@ -1223,6 +1242,8 @@ function General({ ctx, part = "all" }) {
     // #3647: each threshold nobody set is the built-in default.
     ...(() => { const lv = (d.task_board && d.task_board.liveness) || {};
       return { liveOn: !hasOwn(lv, "enabled"), liveQuiet: !hasOwn(lv, "quiet_minutes"), livePrompt: !hasOwn(lv, "prompt_minutes"), liveCrash: !hasOwn(lv, "crash_grace_minutes") }; })(),
+    // Each wake switch nobody set is the built-in default (on; no leader).
+    wakeComment: !hasOwn(d.task_board || {}, "comment_wakes"), wakeProgress: !hasOwn(d.task_board || {}, "progress_wakes"), wakeLeader: !hasOwn(d.task_board || {}, "leader"),
   };
   const fromDefaults = (k, value, target) => ({ text: valueText(value, k), builtin: !hasOwn(d, k), from: inAgentDefaults(target) });
   const L = (text, field, id) => html`<${Label} text=${text} schema=${schema} field=${field} htmlFor=${id} />`;
