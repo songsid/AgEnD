@@ -31,7 +31,8 @@ async function mount(mark = true, connected = true, policy = false, old = false,
 }
 it("a lapsed shared agent says Needs re-share and offers Share again: one share request for it, nothing else", async () => {
  const { p, calls } = await mount(true, true, false, false, true);
- expect(p.root.textContent).toContain("Needs re-share");
+ expect(p.root.querySelector(".hub-agent-lapsed-status")?.textContent).toBe("Needs re-share · nobody may ask yet (kept)");
+ expect(p.root.textContent).not.toContain("Shared · ");   // no "Shared" status above a lapse
  const again = p.root.querySelector('[data-share-again="notes"]') as any;
  expect(again).not.toBeNull(); expect(again.textContent).toBe("Share again");
  again.click(); await settle(20);

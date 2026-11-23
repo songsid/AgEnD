@@ -131,7 +131,9 @@ export function HubMyAgents({ client, scope, shared = [], policy = false, person
             <span class="hub-row-text">${row.current ? html`<a href=${`/ui/hub/exposures?agent=${encodeURIComponent(row.current.id)}`} aria-label=${ms("details", row.displayName)}><strong>${row.displayName}</strong></a>` : html`<strong>${row.displayName}</strong>`}
               ${row.kind === "classic-room" ? html`<small class="tag">${ms("classic")}</small>` : null}<small class="note">${reason && reason !== "offline" ? ms(reason) : row.general ? ms("general") : row.description}</small>
               ${row.current?.intro ? html`<small class="note">${row.current.intro}</small>` : null}
-              ${row.shared ? html`<small class="note">${ms(row.current.state !== "published" ? "paused" : "shared")} · ${summary(row.current)}</small>` : null}
+              ${row.shared ? (row.exposure?.lapsed === true && row.instance
+                ? html`<small class="note hub-agent-lapsed-status">${ms("needsReshare")} · ${summary(row.current)}${lang() === "zh-TW" ? "" : " "}${ms("kept")}</small>`
+                : html`<small class="note">${ms(row.current.state !== "published" ? "paused" : "shared")} · ${summary(row.current)}</small>`) : null}
               ${row.shared && row.exposure?.lapsed === true && row.instance ? html`<small class="note hub-agent-lapsed" role="status">${ms("lapsed")}</small>
                 <button type="button" class="btn btn-sm hub-agent-share-again" data-share-again=${row.instance} disabled=${busy || !!waiting.length} onClick=${() => shareAgain(row, fleet)}>${ms("shareAgain")}</button>` : null}
               ${status ? html`<small class=${status.state === "refused" ? "err" : "note"} role="status">${status.state === "uncertain" ? ms("uncertain") : status.state === "refused" ? status.code === "stale-list" ? ms("changed") : ms("refused", ms(({ "not-allowed": "denied", "switched-off": "off", "limit": "limit", "not-shareable": "unavailable" })[status.code] || "unavailable")) : ms(status.instance ? "sharing" : "stopping")}</small>` : null}</span>
