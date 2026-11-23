@@ -39,6 +39,13 @@ interface Delivery {
 interface Member { id: string; subject: string; joined_sequence: number; owner_at_join: string | null }
 const digest = (value: string) => createHash("sha256").update(value).digest("hex");
 const pending = (d: Delivery) => d.state === "queued" || d.state === "sent";
+/**
+ * A delivery's state as members see it (a message's progress, the room office's "answering"): one that finished without an
+ * answer is expired; a personal agent's queued one its job is working on is sent.
+ */
+const SEEN_PERSONAL = "CASE WHEN d.reason_code='finished-without-answer' AND d.state IN ('queued','sent') THEN 'expired' WHEN d.state='queued' AND j.state='working' THEN 'sent' ELSE d.state END";
+const FROM_PERSONAL = "hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id";
+const SEEN_FLEET = "CASE WHEN reason_code='finished-without-answer' AND state IN ('queued','sent') THEN 'expired' ELSE state END";
 export class HubRoomAgents {
   private links = new Map<string, HubLinkContext>();
   private states = new Map<string, { link: HubLinkContext; value: HubAgentState }>();
@@ -138,10 +145,17 @@ export class HubRoomAgents {
     });
     return {...body,ok,...(!ok ? {code:"stale" as const} : {})};
   }
+  /** M-3533 R1: the agents a question asked in `roomId` is with now (progress's "working"), for the room office's "answering". */
+  answering(db: DB, roomId: string): Set<string> {
+    const rows = (this.core.deps.personal
+      ? db.prepare(`SELECT DISTINCT d.exposure_id e FROM ${FROM_PERSONAL} WHERE d.room_id=? AND ${SEEN_PERSONAL}='sent'`).all(roomId)
+      : db.prepare(`SELECT DISTINCT exposure_id e FROM hub_room_deliveries WHERE room_id=? AND ${SEEN_FLEET}='sent'`).all(roomId)) as { e: string }[];
+    return new Set(rows.map(r => r.e));
+  }
   progress(db: DB, parentId: string): RoomMessage["ask"] {
     const rows = (this.core.deps.personal
-      ? db.prepare("SELECT CASE WHEN d.reason_code='finished-without-answer' AND d.state IN ('queued','sent') THEN 'expired' WHEN d.state='queued' AND j.state='working' THEN 'sent' ELSE d.state END state,COUNT(*) n FROM hub_room_deliveries d LEFT JOIN hub_personal_jobs j ON j.room_delivery_id=d.id WHERE d.parent_id=? GROUP BY 1").all(parentId)
-      : db.prepare("SELECT CASE WHEN reason_code='finished-without-answer' AND state IN ('queued','sent') THEN 'expired' ELSE state END state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY 1").all(parentId)) as { state: Delivery["state"]; n: number }[];
+      ? db.prepare(`SELECT ${SEEN_PERSONAL} state,COUNT(*) n FROM ${FROM_PERSONAL} WHERE d.parent_id=? GROUP BY 1`).all(parentId)
+      : db.prepare(`SELECT ${SEEN_FLEET} state,COUNT(*) AS n FROM hub_room_deliveries WHERE parent_id=? GROUP BY 1`).all(parentId)) as { state: Delivery["state"]; n: number }[];
     if (!rows.length) return undefined;
     const n = (state: Delivery["state"]) => rows.find(r => r.state === state)?.n ?? 0;
     const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");

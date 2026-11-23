@@ -1,6 +1,7 @@
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
+import { newRoomOffice, officeAgent, officeOn, roomOfficeView, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -34,7 +35,7 @@ import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-mod
 import {personalMentionRefusals,recordPersonalMentionRefusals} from "../personal/refusals.js";
 
 type DB = Database.Database;
-interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null }
+interface RoomRow { id: string; name: string; purpose:string; created_by: string; created_at: number; archived: number; all_mention: number; history_for_new: "since-join" | "all"; assistant_for: string | null; office_enabled: number | null; office_style: string }
 interface MemberRow { id: string; room_id: string; kind: "person" | "agent" | "assistant"; subject: string; role: "manager" | "member"; joined_sequence: number; read_sequence: number; owner_at_join: string | null }
 type PostRow = RoomPostRow;
 const label = plain(120).transform(s => s.trim()).refine(s => s.length > 0 && !/[\u0000-\u001f\u007f]/.test(s));
@@ -84,7 +85,8 @@ export function validRoomEmoji(s: unknown): s is string {
   if (!/\p{Extended_Pictographic}|\p{Regional_Indicator}/u.test(s)) return false;
   return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
 }
-const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional() });
+const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional(),
+  office: z.strictObject({ enabled: z.boolean() }).optional() });
 
 export class HubRoomRefusal extends Error {
   constructor(readonly status: number, readonly code: string, readonly details: Record<string, string | number> = {}) { super(`Room: ${code}`); }
@@ -106,7 +108,8 @@ export class HubGroupRooms {
   private readonly searches = new Map<string, number[]>();
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
-  constructor(private readonly core: HubCore) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
+  /** M-3533 R1: `office` true once the Hub offers the room office (room-office-v1); until then its field and route are refused. */
+  constructor(private readonly core: HubCore, private readonly office = false) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
     this.assistant = new HubRoomAssistant(core, event => this.emit(event), post => this.projection(post)); this.directory = new RoomDirectoryCandidates(core);
@@ -188,6 +191,10 @@ export class HubGroupRooms {
     if(row.author_kind==="system"&&row.author_id==="purpose-changed"){
       const event=this.core.atomic(db=>db.prepare("SELECT purpose FROM hub_room_purpose_events WHERE post_id=?").get(row.id)) as {purpose:string}|undefined;
       if(event)system={kind:"purpose-changed",name:row.author_name,purpose:event.purpose};
+    }
+    if (row.author_kind === "system" && row.author_id === "office-changed") {
+      const event = this.core.atomic(db => db.prepare("SELECT enabled FROM hub_room_office_events WHERE post_id=?").get(row.id)) as { enabled: number } | undefined;
+      if (event) system = { kind: "office-changed", name: row.author_name, enabled: event.enabled === 1 };
     }
     // Agent rows retain their owner-at-message in author_subject; a later exposure transfer must not relabel history.
     const agent = row.author_kind === "agent" ? this.core.atomic(db => { const e = readExposure(db, row.author_id);
@@ -435,6 +442,14 @@ export class HubGroupRooms {
     this.core.audit(tx,{requestId,actor:{kind:"person",person:personFromString(me)},action:"room.purpose-changed",result:"completed",roomId:id,messageId:post.id,contentRef:post.content_ref});
     return post;
   }
+  /** M-3533 R1: a manager turned the room office on or off — one line, as a purpose change has (§2.1). */
+  private recordOffice(db: DB, tx: HubTx, id: string, me: string, enabled: boolean, requestId: string): PostRow {
+    const name = this.name(db, me), text = `${name} turned the room office ${enabled ? "on" : "off"}.`;
+    const post = this.insert(db, tx, id, { kind: "system", id: "office-changed", subject: me, name }, text);
+    db.prepare("INSERT INTO hub_room_office_events VALUES(?,?)").run(post.id, Number(enabled));
+    this.core.audit(tx, { requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.office-changed", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
+    return post;
+  }
   private summary(db: DB, room: RoomRow, member: MemberRow) {
     const counts = db.prepare("SELECT kind,COUNT(*) AS n FROM hub_room_members WHERE room_id=? GROUP BY kind").all(room.id) as { kind: string; n: number }[];
     const floor = member.joined_sequence;
@@ -550,7 +565,7 @@ export class HubGroupRooms {
       if (JSON.stringify(expansion(db)) !== image) throw new HubProtocolError("conflict");
       if (!canCreateRoom(this.core, db, me)) throw new HubRoomRefusal(403, "denied");
       rememberRoomPeople(db, selectedPeople, this.core.now());
-      const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,purpose,created_by,created_at) VALUES(?,?,?,?,?)").run(id, body.name, body.purpose, me, this.core.now());
+      const id = randomUUID(); db.prepare("INSERT INTO hub_group_rooms(id,name,purpose,created_by,created_at,office_enabled) VALUES(?,?,?,?,?,?)").run(id, body.name, body.purpose, me, this.core.now(), newRoomOffice());
       for (const person of people) db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence) VALUES(?,?,'person',?,?,0)").run(randomUUID(), id, person, person === me ? "manager" : "member");
       this.insert(db, tx, id, { kind: "system", id: "room-created", subject: me, name: this.name(db, me) }, `${this.name(db, me)} created this room.`);
       for (const agent of body.agents) this.addAgentMember(db, tx, id, agent, me);
@@ -587,25 +602,30 @@ export class HubGroupRooms {
       return { room: { ...this.summary(db, room, own), ...(this.filesStore() ? { features: ["attachments-v1"] } : {}) }, me: { id: own.id, role: own.role }, members,
         settings: { allMention: room.all_mention === 1, historyForNew: room.history_for_new,
           ...(this.appPosts?{aiApps:(db.prepare("SELECT enabled FROM hub_mcp_room_policy WHERE room_id=?").get(id) as {enabled:number}|undefined)?.enabled!==0}:{}),
-          ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}) }, invited: [] };
+          ...(members.some(m => m.kind === "assistant") ? { assistant: true } : {}),
+          ...(this.office ? { office: { enabled: officeOn(room.office_enabled), style: room.office_style } } : {}) }, invited: [] };
     }, { assertCurrent: () => { this.fence(ctx).assertCurrent(); for (const proof of directProofs) proof.assertCurrent(); } });
   }
   async patch(ctx: HubRequestContext, id: string, input: unknown) {
     const body = validated(patchSchema, input), me = await this.who(ctx);
-    const purposePost=this.core.atomic((db, tx) => {
+    if (body.office && !this.office) throw new HubProtocolError("invalid");
+    const posts=this.core.atomic((db, tx) => {
       this.member(db, id, me, true); const row = this.room(db, id);
       if (row.assistant_for) throw new HubRoomRefusal(403, "denied");
       if (body.assistant === true) this.addAssistant(db, id);
       else if (body.assistant === false) db.prepare("DELETE FROM hub_room_members WHERE room_id=? AND kind='assistant'").run(id);
-      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=? WHERE id=?")
-        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), id);
-      const changed=body.purpose!==undefined&&body.purpose!==row.purpose?this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId):null;
+      const was = officeOn(row.office_enabled), office = body.office === undefined ? row.office_enabled : Number(body.office.enabled);
+      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=?,office_enabled=? WHERE id=?")
+        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), office, id);
+      const changed:PostRow[]=[];
+      if(body.purpose!==undefined&&body.purpose!==row.purpose)changed.push(this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId));
+      if(body.office&&body.office.enabled!==was)changed.push(this.recordOffice(db,tx,id,me,body.office.enabled,ctx.requestId));
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.updated", result: "completed", roomId: id });
       return changed;
     }, this.fence(ctx));
     if (body.archived || body.assistant === false) this.assistant.forget(id);
     this.agents.sweep(id);
-    if(purposePost)this.emit({type:"message.added",roomId:id,data:{roomId:id,message:this.projection(purposePost)},sequence:purposePost.sequence});
+    for(const post of posts)this.emit({type:"message.added",roomId:id,data:{roomId:id,message:this.projection(post)},sequence:post.sequence});
     this.emit({ type: "room.changed", roomId: id, data: { roomId: id } }); return this.detail(ctx, id);
   }
   async add(ctx: HubRequestContext, id: string, input: unknown) {
@@ -786,6 +806,28 @@ export class HubGroupRooms {
    * them now. A pin whose message they can no longer see (it is older than their joining, or its question is not theirs)
    * is left out. Nobody else's pins are ever read, and nobody else learns of these.
    */
+  /**
+   * M-3533 R1: the room's office for a member (office.ts roomOfficeView): its agents and assistant, each in the state the
+   * member list shows, "answering" while the Hub waits on its answer to a question asked here. 409 office-off when a
+   * manager turned it off; a 1:1 assistant chat has none.
+   */
+  async officeState(ctx: HubRequestContext, id: string) {
+    if (!this.office) throw new HubRoomRefusal(404, "not-found");
+    const me = await this.who(ctx); this.agents.sweep(id);
+    return this.core.atomic(db => {
+      this.member(db, id, me); const room = this.room(db, id);
+      if (room.assistant_for) throw new HubRoomRefusal(404, "not-found");
+      if (!officeOn(room.office_enabled)) throw new HubRoomRefusal(409, "office-off");
+      // What a message's progress says (agents.ts), so the two never disagree; a wait that ran out was settled by the sweep above.
+      const answering = this.agents.answering(db, id);
+      const agents = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind IN ('agent','assistant') ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
+        if (m.kind === "assistant") { const p = this.assistant.presence(id); return officeAgent("assistant", "Hub assistant", p, p === "working", true); }
+        const e = readExposure(db, m.subject), p = this.agents.presence(m.subject).presence as RoomPresence;
+        return officeAgent(m.subject, e?.display_name ?? m.subject, p, answering.has(m.subject));
+      });
+      return roomOfficeView({ name: room.name, style: room.office_style }, agents, this.core.now());
+    }, this.fence(ctx));
+  }
   async pins(ctx: HubRequestContext, id: string): Promise<{ pins: Array<{ messageId: string; pinnedAt: number; message: RoomMessage }> }> {
     const me = await this.who(ctx);
     return this.core.atomic(db => ({ pins: this.pinList(db, id, this.member(db, id, me), me) }), this.fence(ctx));
