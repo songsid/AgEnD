@@ -17,6 +17,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -228,7 +229,8 @@ describe("All offices on the page", () => {
     expect([sw().value, localStorage.getItem("agend_org_office")]).toEqual(["*all", "*all"]);
     expect(labels()).toEqual(["Front desk (1)", "Lab (1)", "Lobby (2)"]);
     expect(p.root.querySelector(".oo-canvas").getAttribute("aria-label")).toContain("All offices");
-    // The whole fleet's own pickers (style, team, people) are not there; the lobby toggle is.
+    // The whole fleet's own pickers (style, team, people) are not there; the lobby toggle is (in ⚙ Display options).
+    await openDisplay(p.root);
     expect([p.root.querySelectorAll(".oo-bar select").length, p.root.querySelector(".oo-people"), !!p.root.querySelector(".oo-lobby-tile input")]).toEqual([1, null, true]);
     await p.unmount(); await office();
     expect([sw().value, labels().length]).toEqual(["*all", 3]);
@@ -438,7 +440,7 @@ describe("All offices on the page", () => {
     expect(p.root.querySelectorAll(".oo-desk").map((d: any) => d.getAttribute("data-name"))).toEqual(["atlas", "quill", "sage", "loner"]);
     expect(p.root.querySelectorAll(".oo-mini-room")).toHaveLength(3);
     expect(p.root.querySelector(".oo-mini").hasAttribute("data-whole")).toBe(false);   // #2737: All offices keeps it, all in view
-    fire(p.root.querySelector(".oo-lobby-tile input"), "change"); await settle(4);
+    await openDisplay(p.root); fire(p.root.querySelector(".oo-lobby-tile input"), "change"); await settle(4);
     expect([labels(), localStorage.getItem("agend_org_office_lobby")]).toEqual([["Front desk (1)", "Lab (1)"], "0"]);
     expect(p.root.querySelectorAll(".oo-desk").map((d: any) => d.getAttribute("data-name"))).toEqual(["atlas", "quill"]);
     await p.unmount(); await office();
@@ -551,10 +553,10 @@ describe("All offices on the page", () => {
     await office();
     const vis = (id: string) => p.root.querySelector(`.oo-tile-label[data-office="${id}"]`).style.visibility;
     expect([vis("front"), vis("lab")]).toEqual(["visible", "hidden"]);
-    expect(p.root.querySelector(".oo-lobby-tile input").disabled).toBe(false);
+    await openDisplay(p.root); expect(p.root.querySelector(".oo-lobby-tile input").disabled).toBe(false);
     await p.unmount();
     offices = { rev: 3, offices: [...TWO, { id: "rest", name: "Rest", members: ["sage", "loner"] }] };
-    await office();
+    await office(); await openDisplay(p.root);
     const box = p.root.querySelector(".oo-lobby-tile input");
     expect([box.disabled, box.checked, p.root.querySelector(".oo-lobby-none")?.textContent, p.root.querySelector(".oo-lobby-tile").getAttribute("title")])
       .toEqual([true, false, "Everyone is in an office", "Everyone is in an office"]);

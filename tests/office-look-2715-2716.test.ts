@@ -14,6 +14,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 import { OfficeStore } from "../src/web-office-store.js";
@@ -146,6 +147,7 @@ describe("#2716 the dashboard's style picker", () => {
   const office = async () => {
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: `fleet:org|${Math.random()}|en` })); await settle(6);
     p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(8);
+    await openDisplay(p.root);                                              // M-3556: the style picker is in ⚙ Display options
   };
   const picker = () => p.root.querySelectorAll(".oo-bar select").find((s: any) => s.querySelectorAll("option").some((o: any) => o.value === "cozy"));
   const pick = async (v: string) => { const s = picker(); s.value = v; fire(s, "change"); await settle(6); };

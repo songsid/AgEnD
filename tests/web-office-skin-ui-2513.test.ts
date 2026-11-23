@@ -20,6 +20,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 
@@ -208,7 +209,7 @@ describe("the Office view with packs", () => {
   it("the style picker lists the host's packs; the whole fleet in a pack's style", async () => {
     withPack();
     await office();
-    const style = p.root.querySelectorAll(".oo-bar select")[1];
+    await openDisplay(p.root); const style = p.root.querySelector(".oo-style");
     expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Guild", "School", "Clinic"]);
     style.value = "clinic-sample"; fire(style, "change"); await settle(8);
     expect(localStorage.getItem("agend_org_office_skin")).toBe("clinic-sample");
@@ -298,7 +299,7 @@ describe("the Office view with packs", () => {
   it("Hide paused and stopped: off by default, kept per browser; the sleepers leave the office", async () => {
     await office();
     expect(desks()).toEqual(["atlas", "quill", "sage", "nova"]);
-    const box = p.root.querySelector(".oo-hide-asleep input");
+    await openDisplay(p.root); const box = p.root.querySelector(".oo-hide-asleep input");
     expect(box.checked).toBe(false);
     fire(box, "change"); await settle(4);
     expect(desks()).toEqual(["atlas", "quill"]);

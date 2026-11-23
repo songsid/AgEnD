@@ -20,6 +20,7 @@ import { existsSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 import { isServedAsset } from "../src/auth-api.js";
@@ -177,8 +178,8 @@ describe("loading the picture", () => {
 
 describe("the Style picker", () => {
   const mount = async () => { await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: `fleet:org|${Math.random()}|en` })); await settle(6); };
-  const office = async () => { await mount(); p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(4); };
-  const style = () => p.root.querySelectorAll(".oo-bar select")[1];
+  const office = async () => { await mount(); p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(4); await openDisplay(p.root); };
+  const style = () => p.root.querySelector(".oo-style");
   const proto = MiniElement.prototype as any;
   beforeEach(() => { proto.getContext = function () { return (this._ctx ??= fakeCtx()); }; });
   afterEach(() => { delete proto.getContext; });
@@ -321,14 +322,14 @@ describe("a pack kept as \"cozy\" before it was built in", () => {
     it("a browser that picked it keeps it; the Style picker offers it once; deleted, the built-in Cozy is offered again", async () => {
       localStorage.setItem("agend_org_office_skin", "cozy");
       packs = [{ ...KEPT, sha: "e".repeat(32) }];                                         // another sha: loaded afresh, not from the cache
-      await mount();
-      const style = () => p.root.querySelectorAll(".oo-bar select")[1];
+      await mount(); await openDisplay(p.root);
+      const style = () => p.root.querySelector(".oo-style");
       expect(style().value).toBe("cozy");
       expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["guild", "Guild"], ["school", "School"], ["cozy", "Our cozy"]]);
       expect(asked.some((u) => u.startsWith("/ui/office-skins/cozy?"))).toBe(true);
       expect(drawn()).not.toContain("Add your skin");
       packs = [];
-      await p.unmount(); await mount();
+      await p.unmount(); await mount(); await openDisplay(p.root);
       expect(options(style())).toEqual([["pixel", "Desks"], ["studio", "Studio"], ["cozy", "Cozy"], ["guild", "Guild"], ["school", "School"]]);
       expect(drawn()).toContain("Add your skin");
     });

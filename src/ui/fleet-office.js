@@ -92,6 +92,7 @@ import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, laye
 
 register("orgo", {
   en: {
+    display: "Display options",
     label: "Office: each team is a room and each instance a desk; General and the instances in no team are in the lobby. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen.",
     office: "Office", allOffice: "Whole fleet", show: "Show", allTeams: "All teams", lobby: "Lobby (General, no team)", lobbyRoom: "Lobby",
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
@@ -123,6 +124,7 @@ register("orgo", {
     snackArm: "{0}: drag onto someone to feed, or onto the floor to place; click to select",
   },
   "zh-TW": {
+    display: "顯示選項",
     label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
     office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
@@ -190,7 +192,6 @@ const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
 /** What a pose says in words (the tooltip, the desk list); `state`, when its words differ from its pose's. */
 export const caption = (pose, state) => to(CAPTION_OF_STATE[state] || CAPTION[pose] || "capIdle");
 
-register("orgo", { en: { display: "Display options" }, "zh-TW": { display: "顯示選項" } });   // M-3556 (merged into orgo)
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** The device's ratio (CSS px → device px), kept sane. */
 const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixelRatio) || 1));
@@ -2298,26 +2299,31 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     n: people.filter((d) => d.area === areaName(key)).length })).filter((z) => z.rect && z.n > 0) : [];
   const toZone = (z) => { const v = view0(); raw.current = ZONE_K; setView(centreOn({ ...v, k: ZONE_K }, size, z.rect.x + z.rect.w / 2, z.rect.y + z.rect.h / 2)); };
   const closeMore = () => onMore && onMore(false);
-  const [displayOpen, setDisplayOpen] = useState(false);                // M-3556: the desk's ⚙ Display options
-  // Non-modal, like Members (成員): the office stays in view, so a toggle shows at once; a click elsewhere or Esc closes it.
+  // M-3556: Display options (style, the toggles, the key) in a dropdown on a desk — non-modal, like Members: the office
+  // stays in view, so a tick shows at once; a click elsewhere or Esc closes it. The Fleet office opens it from ⚙ in its
+  // bar (open here); a Hub room's office (foldBar) from the gear in the zoom stack, open as its page says (`more`).
+  const roomGear = folded && !compact;
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const dispOpen = roomGear ? !!more : displayOpen;
+  const setDisp = (v) => (roomGear ? onMore(v) : setDisplayOpen(v));
   const displayRef = useRef(null);
   useEffect(() => {
-    if (!displayOpen) return undefined;
-    const away = (e) => { if (displayRef.current && !displayRef.current.contains(e.target)) setDisplayOpen(false); };
-    const esc = (e) => { if (e.key === "Escape") setDisplayOpen(false); };
+    if (!dispOpen) return undefined;
+    const away = (e) => { if (displayRef.current && !displayRef.current.contains(e.target)) setDisp(false); };
+    const esc = (e) => { if (e.key === "Escape") setDisp(false); };
     document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
-  }, [displayOpen]);
+  }, [dispOpen]);
   // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
   const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
     onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
-  // M-3556 (prototype): the bar in three groups — scope (which office, whom), the display options (style, toggles,
-  // legend: behind ⚙ on a desk, the same sheet a Hub room's gear opens) and the actions (edit, share).
+  // M-3556: the bar in three groups — scope (which office, whom: left of the desk's one row), the display options (behind
+  // ⚙) and the actions (right). A phone's ⋯ sheet lists all three in that order.
   const scopeItems = html`
       ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("show")}</span>
-        <select class="tb-select" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
+        <select class="tb-select oo-team" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
           ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
@@ -2336,7 +2342,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
 `;
   const optionItems = html`
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
-        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
+        <select class="tb-select oo-style" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
           ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
           ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
         </select></label>` : null}
@@ -2348,8 +2354,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
         disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
-      ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
-        onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
+      ${traffic ? html`<label class="check oo-key-tick" title=${to("keyTitle")}><input type="checkbox" checked=${keyOpen}
+        onChange=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }} /><span>${to("key")}</span></label>` : null}
       ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
 `;
   const actionItems = html`
@@ -2359,19 +2365,21 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
 `;
-  const barItems = html`${scopeItems}${compact ? html`<h3 class="oo-sheet-h">${to("display")}</h3>` : null}${optionItems}${actionItems}`;
+  // The sheet: a heading over the options when scope comes first, a rule before the actions (a Hub room has neither).
+  const hasScope = !oneOffice || auto, hasActions = (canEdit && storedRev !== null) || canLayout || canShare;
+  const barItems = html`${scopeItems}${hasScope ? html`<h3 class="oo-sheet-h">${to("display")}</h3>` : null}${optionItems}
+    ${hasActions ? html`<hr class="oo-sheet-rule" />` : null}${actionItems}`;
+  const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
+    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
     ${folded ? null : html`<div class="oo-bar oo-bar-row">
       <div class="oo-bar-scope">${scopeItems}</div>
       <div class="oo-bar-actions">${actionItems}
-        <div class="oo-display" ref=${displayRef}>
-          <button type="button" class=${`btn btn-sm oo-display-btn${displayOpen ? " on" : ""}`} aria-expanded=${displayOpen ? "true" : "false"}
-            onClick=${() => setDisplayOpen((v) => !v)}><${Icon} name="settings" size=${14} /><span>${to("display")}</span></button>
-          ${displayOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}
-        </div>
+        ${displayMenu(html`<button type="button" class=${`btn btn-sm oo-display-btn${dispOpen ? " on" : ""}`} aria-expanded=${dispOpen ? "true" : "false"}
+          onClick=${() => setDisp(!dispOpen)}><${Icon} name="settings" size=${14} /><span>${to("display")}</span></button>`)}
       </div>
     </div>`}
-    ${folded && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
+    ${compact && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
       ${compact ? html`<div class="oo-sheet-tiles">
         ${tile("fitwidth", to("fit"), () => { closeMore(); fit(); }, "oo-sheet-fit")}
         ${tile("fitwidth", to("fill"), toggleFill, "oo-sheet-fill", fitMode === "cover")}
@@ -2441,7 +2449,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <button type="button" class=${`icon-btn oo-fill${fitMode === "cover" ? " on" : ""}`} aria-pressed=${fitMode === "cover" ? "true" : "false"} aria-label=${to("fillTitle")}
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
-        ${folded && !compact ? html`<button type="button" class="icon-btn oo-options" aria-haspopup="dialog" aria-expanded=${more ? "true" : "false"} aria-label=${to("options")} title=${to("options")} onClick=${() => onMore(!more)}><${Icon} name="settings" size=${16} /></button>` : null}
+        ${roomGear ? displayMenu(html`<button type="button" class=${`icon-btn oo-options${dispOpen ? " on" : ""}`} aria-expanded=${dispOpen ? "true" : "false"} aria-label=${to("display")} title=${to("display")} onClick=${() => setDisp(!dispOpen)}><${Icon} name="settings" size=${16} /></button>`) : null}
       </div>
       ${showSnacks ? html`<div ref=${snackTrayRef} class="oo-snacks" role="toolbar" aria-label=${to("snacks")}>
         ${packSnacks.map((sn) => {

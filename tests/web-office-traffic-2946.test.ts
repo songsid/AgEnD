@@ -11,7 +11,9 @@
  * - Reduced motion: nothing flies (unchanged).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
 
 const INSTANCES = [
   { name: "atlas", display_name: "Atlas", status: "running", backend: "claude-code" },
@@ -206,12 +208,14 @@ describe("the key", () => {
   it("the Office's Key toggle opens the four shapes with their words, kept per browser; the org chart's line key is the canvas's", async () => {
     await office();
     expect(p.root.querySelector(".oc-key")).toBeNull();                         // the lines' key: not in the Office
-    const btn = () => p.root.querySelector(".oo-key-btn");
-    expect(btn()?.textContent).toBe("Key");
-    expect(btn()?.getAttribute("aria-expanded")).toBe("false");
+    // M-3556: a tick in ⚙ Display options.
+    await openDisplay(p.root);
+    const tick = () => p.root.querySelector(".oo-display-pop .oo-key-tick");
+    expect(tick()?.textContent.trim()).toBe("Key");
+    expect(tick().querySelector("input").checked).toBe(false);
     expect(p.root.querySelector(".oo-key")).toBeNull();
-    btn().click(); await settle(4);
-    expect(btn()?.getAttribute("aria-expanded")).toBe("true");
+    fire(tick().querySelector("input"), "change"); await settle(4);
+    expect(tick().querySelector("input").checked).toBe(true);
     const rows = p.root.querySelectorAll(".oo-key-row");
     expect(rows.map((r: any) => r.getAttribute("data-kind"))).toEqual(["task", "send", "report", "broadcast"]);
     expect(rows.map((r: any) => r.querySelector("span").textContent)).toEqual(["Folder: a task", "Envelope: a message", "Paper: a report", "Horn: a broadcast"]);
@@ -227,7 +231,7 @@ describe("the key", () => {
   it("no Key while the Office shows no traffic (Live off)", async () => {
     p.storage.set("agend_org_live", "0");
     await office();
-    expect(p.root.querySelector(".oo-key-btn")).toBeNull();
+    await openDisplay(p.root); expect(p.root.querySelector(".oo-key-tick")).toBeNull();
   });
   it("the words in zh-TW, every key in both languages; the rows are the scene's four kinds, in their theme tokens", () => {
     const keys = ["key", "keyTitle", "keyLabel", "keyTask", "keySend", "keyReport", "keyBroadcast"];

@@ -160,14 +160,19 @@ describe("the room page", () => {
       expect([docked(pg), !!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office")]).toEqual([true, false, false]);
     } finally { restore(); }
   });
-  it("desktop: no options row over the scene; the zoom stack's options button opens them (#4370)", async () => {
+  it("desktop: no options row over the scene; the zoom stack's gear opens Display options, the Fleet office's dropdown (#4370, M-3556)", async () => {
     const { pg, restore } = await roomPage();
     try {
       fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo"));
       expect([q(pg, ".hub-room-office .oo > .oo-bar"), !!q(pg, ".hub-room-office .oo-zoom .oo-options")]).toEqual([null, true]);
-      fire(q(pg, ".oo-zoom .oo-options"), "click"); await until(() => q(pg, ".oo-sheet .oo-hide-asleep"));
-      // The options and the key, not the zoom stack's own fit / fill / full screen again.
-      expect([!!q(pg, ".oo-sheet .oo-sheet-bar .oo-hide-asleep"), !!q(pg, ".oo-sheet .oo-key-btn"), q(pg, ".oo-sheet .oo-sheet-tiles")]).toEqual([true, true, null]);
+      fire(q(pg, ".oo-zoom .oo-options"), "click"); await until(() => q(pg, ".oo-display-pop .oo-hide-asleep"));
+      // The options and the key, in the dropdown beside the gear — no sheet, no office picker, actions or style.
+      expect([!!q(pg, ".oo-zoom .oo-display-pop .oo-hide-asleep"), !!q(pg, ".oo-display-pop .oo-key-tick"), q(pg, ".oo-sheet"), q(pg, ".oo-display-pop .oo-style"),
+        q(pg, ".oo-display-pop .oo-office"), q(pg, ".oo-edit"), q(pg, ".oo-share")]).toEqual([true, true, null, null, null, null, null]);
+      expect(q(pg, ".oo-zoom .oo-options").getAttribute("aria-expanded")).toBe("true");
+      // The room page keeps the state: Escape closes it.
+      fire(pg.document as any, "keydown", { key: "Escape" }); await until(() => !q(pg, ".oo-display-pop"));
+      expect(q(pg, ".oo-zoom .oo-options").getAttribute("aria-expanded")).toBe("false");
     } finally { restore(); }
   });
   it("a draft in the box is still there after a look at the office", async () => {

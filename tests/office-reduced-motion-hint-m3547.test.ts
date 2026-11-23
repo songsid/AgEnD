@@ -6,6 +6,7 @@
  * is said.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { MiniElement } from "./helpers/mini-dom.js";
 
@@ -60,6 +61,7 @@ describe("the hint on the page", () => {
   const office = async (lang = "en") => {
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: `fleet:org|${Math.random()}|${lang}` })); await settle(6);
     p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(6);
+    await openDisplay(p.root);                                              // M-3556: Drag and pat is in ⚙ Display options
   };
   const openCard = async (name = "atlas") => { p.root.querySelector(`.oo-desk[data-name="${name}"]`).click(); await settle(4); };
   const cardNote = () => p.root.querySelector(".oo-card .oo-card-play-off");

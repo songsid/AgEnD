@@ -2537,7 +2537,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; width: 100%; }
 .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-5); margin-right: var(--s-5); }   /* not the editors' dialogs: they centre themselves (#2585) */
 .oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
-/* M-3556 (prototype): one row on a desk — scope on the left, actions and ⚙ Display options on the right. */
+/* M-3556: one row on a desk — scope on the left; actions and ⚙ Display options (a dropdown, like Members) on the right.
+   A Hub room's office opens the same dropdown from the gear in its zoom stack (to the gear's left). */
 .oo-bar-row { flex-wrap: nowrap; justify-content: space-between; }
 .oo-bar-scope, .oo-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; }
 .oo-bar-actions { margin-inline-start: auto; justify-content: flex-end; }
@@ -2549,11 +2550,16 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-display-list { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--s-1); }
 .oo-display-list .oo-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .oo-display-list .check { min-height: 32px; }
-.oo-display-list > .btn { align-self: flex-start; }
+.oo-display-list :is(.check, .oo-pick) { font-size: var(--fs-sm); color: var(--text); }   /* one style for every option, as in the sheet */
+.oo-display-zoom { border-top: 1px solid var(--border); }
+.oo-display-zoom .oo-display-pop { top: 0; right: calc(100% + 6px); }
+.oo-zoom:has(.oo-display-pop) { overflow: visible; }
 /* In the dropdown the reduced-motion note goes on its own line under the label (the panel is narrow). */
 .oo-display-list .oo-play { flex-wrap: wrap; row-gap: 0; }
 .oo-display-list .oo-play .oo-play-still { flex-basis: 100%; padding-inline-start: calc(13px + var(--s-2)); }
 .oo-display-list .oo-play .oo-play-still::before { content: none; }
+.oo-sheet .oo-sheet-bar > .oo-pick + .oo-pick { margin-top: var(--s-2); }
+.oo-sheet .oo-sheet-bar > .oo-sheet-rule { min-height: 0; width: 100%; margin: var(--s-3) 0 var(--s-1); border: 0; border-top: 1px solid var(--border); }
 .oo-sheet .oo-sheet-bar > .oo-sheet-h { min-height: 0; margin: var(--s-3) 0 0; padding-top: var(--s-2); border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: var(--fw-semibold, 600); color: var(--text-2); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
@@ -2604,7 +2610,6 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-key-rows { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: 0; padding: 0; list-style: none; }
 .oo-key-row { display: inline-flex; align-items: center; gap: 6px; }
 .oo-key-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
-.oo-key-btn.on { border-color: var(--accent); }
 .oo-zoom { z-index: 6; }
 .oo-zoom .icon-btn { color: var(--text); }
 /* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */

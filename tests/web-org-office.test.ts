@@ -13,6 +13,7 @@
  * - On the page: an Office button beside Canvas and List (kept per device); desks open the chat; the filter is kept.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -617,7 +618,7 @@ describe("the Office view on the page", () => {
   });
   it("who is shown: a team, then pinned people — kept per browser; the Find box dims the rest", async () => {
     await office();
-    const [, , team] = p.root.querySelectorAll(".oo-bar select");
+    const team = p.root.querySelector(".oo-team");
     team.value = "t1"; fire(team, "change"); await settle(3);
     expect(desks()).toEqual(["nova", "tide"]);
     expect(JSON.parse(localStorage.getItem("agend_org_office_filter")!)).toEqual({ team: "Web", pinned: [] });
@@ -975,7 +976,7 @@ describe("the Office view on the page", () => {
     levels = { enabled: true, unit: 100_000, detail: false, levels: { quill: { level: 77 } } };   // #2661: its badge on the tag
     try {
       await office();
-      const style = p.root.querySelectorAll(".oo-bar select")[1];
+      await openDisplay(p.root); const style = p.root.querySelector(".oo-style");
       expect(style.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Desks", "Studio", "Cozy", "Guild", "School"]);
       style.value = "studio"; fire(style, "change"); await settle(4);
       expect(localStorage.getItem("agend_org_office_skin")).toBe("studio");
@@ -989,7 +990,7 @@ describe("the Office view on the page", () => {
       // #2540: the canvas fills the stage (960 px here); the 1280×720 scene is fitted in it.
       expect(p.root.querySelector(".oo-canvas").style.width).toBe("960px");
       await p.unmount(); await mount();
-      expect(p.root.querySelectorAll(".oo-bar select")[1].value).toBe("studio");
+      await openDisplay(p.root); expect(p.root.querySelector(".oo-style").value).toBe("studio");
       const quill = p.root.querySelectorAll(".oo-desk").find((b: any) => b.getAttribute("data-name") === "quill");
       quill.click(); await settle(2);
       expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");   // #2661: a click opens the card
