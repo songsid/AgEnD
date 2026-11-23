@@ -1,0 +1,80 @@
+{
+  "ci_failure": {
+    "run": 45140576387,
+    "attempt": 1,
+    "job": 137577494420,
+    "engine": "WebKit",
+    "failures": "blur-first close worstBand16px in en/light and zh-TW/dark; original12px limit unchanged"
+  },
+  "local_engine": "Chromium with existing simulated iOS keyboard harness, no native OS keyboard",
+  "baseline": {
+    "verdict": "FAIL",
+    "case": "phone-light-en",
+    "runs": [
+      {
+        "tag": "pan-first-blur-first",
+        "open": {
+          "frames": 39,
+          "worstHead": 0,
+          "scrolls": 1,
+          "under": 0
+        },
+        "close": {
+          "frames": 40,
+          "worstBand": 16
+        }
+      },
+      {
+        "tag": "view-first-view-first",
+        "open": {
+          "frames": 39,
+          "worstHead": 0,
+          "scrolls": 1,
+          "under": 0
+        },
+        "close": {
+          "frames": 42,
+          "worstBand": 0
+        }
+      }
+    ]
+  },
+  "fixed": {
+    "verdict": "PASS",
+    "case": "phone-light-en",
+    "runs": [
+      {
+        "tag": "pan-first-blur-first",
+        "open": {
+          "frames": 34,
+          "worstHead": 0,
+          "scrolls": 1,
+          "under": 0
+        },
+        "close": {
+          "frames": 38,
+          "worstBand": 0
+        }
+      },
+      {
+        "tag": "view-first-view-first",
+        "open": {
+          "frames": 39,
+          "worstHead": 0,
+          "scrolls": 1,
+          "under": 0
+        },
+        "close": {
+          "frames": 43,
+          "worstBand": 0
+        }
+      }
+    ]
+  },
+  "base_dev_head": "7341012d151b492cb3abbf8c80b0dd1068be2435",
+  "fixed_dev_patch": "one gutter bottom-margin declaration plus explanatory comment; no timing/harness change",
+  "main_css_sha256": "2a940f763a152e8986ddd1a22fd80a80459edfa7b251224c4fcefec1ed6c3d70",
+  "dev_css_sha256": "8f7b56203992afce9eb86547dddb533e9c5b7596e253e701bfb0dce3f06d6162",
+  "unit": "newbottomgutter1ASSERTIONRED\u2192main16/16PASS/testtypes0",
+  "limits": "worstBand records only threshold violations; zero does not claim zero raw gap. Diagnostic smoke frames private, no new user-look screenshot round."
+}

@@ -32,18 +32,18 @@ beforeAll(async () => {
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } calls.length = 0; });
 const PANELS = () => new Map<string, any>([["chat", { load: async () => chat.ChatPanel }],
   ...["view", "fleet", "settings", "needs", "details", "log"].map((k) => [k, { Component: () => h("div", { class: `stub-${k}` }, k) }] as [string, any])]);
-async function app(inst: Record<string, unknown> = {}, { narrow = true } = {}) {
-  const pg = page({ url: "http://127.0.0.1:19280/ui/chat/web-dev", storage: { agend_tour_done: "1" }, matchNarrow: narrow });
+async function app(inst: Record<string, unknown> = {}, { narrow = true, name = "web-dev" } = {}) {
+  const pg = page({ url: `http://127.0.0.1:19280/ui/chat/${name}`, storage: { agend_tour_done: "1" }, matchNarrow: narrow });
   mounted.push(pg);
   (globalThis as any).fetch = fakeFetch;
   const { startRouter } = await import("/assets/app-nav.js");
   const { applyStatus } = await import("/assets/app-store.js");
   const { Shell } = await import("/assets/app-shell.js");
   startRouter(pg.window);
-  applyStatus({ instances: [{ ...base, ...inst }] });
+  applyStatus({ instances: [{ ...base, name, ...inst }] });
   await pg.mount(h(Shell, { panels: PANELS(), onNewInstance() {} }));
   await settle(8);
-  return { pg, status: async (o: Record<string, unknown>) => { applyStatus({ instances: [{ ...base, ...inst, ...o }] }); await settle(5); } };
+  return { pg, status: async (o: Record<string, unknown>) => { applyStatus({ instances: [{ ...base, name, ...inst, ...o }] }); await settle(5); } };
 }
 const $ = (pg: AppPage, sel: string) => pg.root.querySelector(`.p-chat ${sel}`) as any;
 const type = async (pg: AppPage, text: string) => { const box = $(pg, "#msgIn"); box.value = text; fire(box, "input"); await settle(4); };
@@ -106,3 +106,20 @@ describe("M-3166: the meta line (phone)", () => {
     expect([$(pg, ".chat-meta"), !!$(pg, ".work-bar"), !!$(pg, ".composer-row")]).toEqual([null, true, true]);
   });
 });
+
+ it("M3540: phone meta/status background belongs to the strip while Stop keeps its action", async () => {
+  const { pg } = await app({ execution_state: "working" }, { name: "example-meta" });
+  const strip = $(pg, ".composer-hit"), meta = $(pg, ".chat-meta"), box = $(pg, "#msgIn");
+  expect(meta.closest(".composer-hit")).toBe(strip);
+  expect($(pg, ".thread").closest(".composer-hit")).toBeNull();
+  pg.root.focus();
+  const touch = fire(meta, "pointerdown", { button: 0, pointerType: "touch" });
+  expect(touch.defaultPrevented).toBe(false);
+  expect(box.ownerDocument.activeElement).toBe(pg.root);
+  fire(meta, "click", { button: 0 });
+  expect(box.ownerDocument.activeElement).toBe(box);
+  pg.root.focus();
+  fire($(pg, ".chat-meta-stop"), "click", { button: 0 }); await settle();
+  expect(calls.filter(c => c.path === "/ui/cancel/example-meta")).toHaveLength(1);
+  expect(box.ownerDocument.activeElement).toBe(pg.root);
+ });

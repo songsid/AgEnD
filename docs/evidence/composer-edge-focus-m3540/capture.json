@@ -1,0 +1,142 @@
+{
+  "source": "764f9435cdb533b1c53cf4f38f51aee6908e138e",
+  "cases": [
+    {
+      "device": "desk",
+      "probes": [
+        {
+          "point": "top",
+          "real": true,
+          "selection": "",
+          "targets": [
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            }
+          ],
+          "value": "Edge focus works"
+        },
+        {
+          "point": "left",
+          "real": true,
+          "selection": "",
+          "targets": [
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            }
+          ],
+          "value": "Edge focus works"
+        },
+        {
+          "point": "bottom",
+          "real": true,
+          "selection": "",
+          "targets": [
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            },
+            {
+              "tag": "DIV",
+              "cls": "composer",
+              "type": "mouse"
+            }
+          ],
+          "value": "Edge focus works"
+        }
+      ],
+      "selection": "Select",
+      "attach": "filechooser",
+      "csp": [],
+      "overflow": false,
+      "errors": [],
+      "sends": 0
+    },
+    {
+      "device": "phone",
+      "probes": [
+        {
+          "point": "top",
+          "real": true,
+          "selection": "",
+          "targets": [
+            {
+              "tag": "TEXTAREA",
+              "cls": "",
+              "type": "touch"
+            }
+          ],
+          "value": "Edge focus works"
+        },
+        {
+          "point": "bottom",
+          "real": true,
+          "selection": "",
+          "targets": [
+            {
+              "tag": "TEXTAREA",
+              "cls": "",
+              "type": "touch"
+            },
+            {
+              "tag": "TEXTAREA",
+              "cls": "",
+              "type": "touch"
+            }
+          ],
+          "value": "Edge focus works"
+        }
+      ],
+      "selection": "Select",
+      "attach": "filechooser",
+      "csp": [],
+      "overflow": false,
+      "errors": [],
+      "sends": 0
+    }
+  ]
+}
