@@ -1,3 +1,4 @@
+import { focusComposerStrip } from "/assets/composer-focus.js";
 import { previewReplyFile, replyPreviewLabel } from "./reply-file-preview.js";
 import { NativePaneRecovery } from "./native-pane-recovery.js";
 import { GeneralLocation } from "./general-location.js";
@@ -1004,6 +1005,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
+    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
       : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
@@ -1012,7 +1014,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
     <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     ${metaLine ? null : html`<div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
       class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
-  </div></div>`;
+  </div></div></div>`;
 }
 
 /** #2233: a backend's "not signed in" choice offers Sign in (the module behind the session gate, loaded when asked). */

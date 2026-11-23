@@ -10,6 +10,7 @@
 // ends one that never ended). It grows with the text up to 240px, through the CSSOM (#1300: never a style attribute).
 import { html, useLayoutEffect, useRef } from "./app-html.js";
 import { Icon } from "./ui-icons.js";
+import { focusComposerPadding } from "./composer-focus.js";
 
 /**
  * Grow the box with its text, up to 240px; empty, it is one line. M-3206 (the user, iPhone, beta.5: typing flickered):
@@ -58,7 +59,7 @@ export function ComposerInput({ inputRef, value, placeholder, onValue, onKeyDown
   // The composed text is the draft now (some engines send no input after it); a blur ends one that never ended.
   // Lower-case props below: an element has no oncomposition… property, so Preact would listen for "CompositionStart".
   const onCompositionEnd = (e) => { if (!composing.current) return; composing.current = false; onValue(e.target.value); };
-  return html`<div class="composer">
+  return html`<div class="composer" onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
       ${attach ? html`<button id=${ids.attachBtn || "attachBtn"} type="button" class="icon-btn" title=${attach.title} aria-label=${attach.title} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { attach.onFiles(e.target.files); e.target.value = ""; }} />` : null}
