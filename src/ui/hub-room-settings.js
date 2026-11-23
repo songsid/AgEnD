@@ -41,6 +41,14 @@ export function invitedLabel(row) {
 }
 
 /**
+ * The separator before a style's seats: " · ", but "· " after a full-width bracket or quote (「工作室（大）· 57」), whose
+ * glyph already carries its own side spacing, so every row's gap before the dot looks the same (the capture check).
+ */
+export function dotAfter(name) {
+  return /[）」』〕】]$/.test(name) ? "· " : " · ";
+}
+
+/**
  * The hint's last words on one line, so a wrap never leaves 「子。」 or "seat." alone: the last four characters (with the
  * full stop) of a Chinese sentence, the last two words of an English one. Short enough never to overflow a phone.
  */
@@ -59,7 +67,7 @@ function OfficeStyles({ styles, value, saved, busy, members, onPick, onSave }) {
   const larger = picked && styles.some((x) => x.seats.rest > picked.seats.rest);
   return html`<fieldset class="field hub-room-office-styles"><legend>${hroom("officeStyle")}</legend>
     ${styles.map((x) => html`<label class="check" key=${x.id}><input type="radio" name="hubRoomOfficeStyle" value=${x.id} checked=${value === x.id} disabled=${busy}
-      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)} · ${hroom("seatsN", x.seats.total)}</span></label>`)}
+      onChange=${() => onPick(x.id)} /><span>${styleName(x.id)}${dotAfter(styleName(x.id))}${hroom("seatsN", x.seats.total)}</span></label>`)}
     ${picked && larger && figures > picked.seats.rest ? html`<p class="note hub-room-office-fit">${keepTail(hroom(figures > agents ? "officeFitHintAssistant" : "officeFitHint", agents, styleName(picked.id), picked.seats.rest))}</p>` : null}
     <div class="field-row"><button type="button" class="btn hub-room-office-style-save" disabled=${busy || value === saved} onClick=${onSave}>${hroom("officeStyleSave")}</button></div>
   </fieldset>`;
