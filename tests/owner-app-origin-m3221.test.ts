@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatHumanInboundMessage } from "../src/human-delivery-receipts.js";
+import { APP_MESSAGE_RULE } from "../src/app-message-origin.js";
 import { buildFleetInstructions, buildMcpCoreInstructions } from "../src/instructions.js";
 import { turnExpectsPersonReply } from "../src/turn-reply-guard.js";
 import { channelStatus, Daemon } from "../src/daemon.js";
@@ -23,10 +24,15 @@ describe("local app origin is not signed-in web identity", () => {
     expect(channelStatus(meta)).toBeUndefined();
     expect(turnExpectsPersonReply({ ...meta, chat_id: "" })).toBe(true);
   });
+  // M-3528 (rec 14): the boundary is taught where it applies — on every local-app message (formatHumanInboundMessage,
+  // above) — and the MCP core keeps `@app: unverified`; the fleet prompt no longer repeats the paragraph.
   it.each([undefined, "CLI reference"])("teaches the app boundary for MCP and CLI agents", cliInstructions => {
     const params = { instanceName: "helper", workingDirectory: "/scratch", cliInstructions };
-    expect(buildFleetInstructions(params)).toContain("unverified local app");
-    expect(buildFleetInstructions(params)).toContain("role and tool permissions");
+    expect(buildFleetInstructions(params)).not.toContain(APP_MESSAGE_RULE);
+    const wire = formatHumanInboundMessage("Question", { source: "app", user: "Local app", user_id: "local-connector", message_id: "m" }, "mcp");
+    expect(wire).toContain(APP_MESSAGE_RULE);
+    expect(APP_MESSAGE_RULE).toContain("unverified local app");
+    expect(APP_MESSAGE_RULE).toContain("role and tool permissions");
     expect(buildMcpCoreInstructions(params)).toContain("@app");
     expect(Buffer.byteLength(buildMcpCoreInstructions(params))).toBeLessThan(2048);
   });

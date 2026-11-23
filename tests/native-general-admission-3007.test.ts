@@ -31,7 +31,9 @@ async function fixture(cli: "codex" | "claude-code" = "codex") {
 }
 it("the worker instruction path stays byte-identical, while native General gets the host role and coordinator boundary", () => {
   const params = { instanceName: "general", workingDirectory: "C:\\owned", workflow: false as const };
-  expect(buildNativeFleetInstructions(params, false)).toBe(buildFleetInstructions(params));
+  // M-3528 (#4347 review): a native worker is published no skills, so it is the fleet worker text built for an agent
+  // without them (the web-chat receipt checks stay in its prompt) — byte-identical to that.
+  expect(buildNativeFleetInstructions(params, false)).toBe(buildFleetInstructions({ ...params, receivesSkills: false }));
   // M-3529: the role reaches native General once, from its workspace pack (loadGeneralKnowledge), not also from here.
   const general = buildNativeFleetInstructions(params, true); expect(general).not.toContain(GENERAL_ROLE_INSTRUCTIONS);
   expect(loadGeneralKnowledge("codex").files["AGENTS.md"]).toContain(GENERAL_ROLE_INSTRUCTIONS);
