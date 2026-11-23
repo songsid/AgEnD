@@ -24,6 +24,7 @@ import { namesOf, namesStore } from "/assets/instance-nav.js";
 import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { toast } from "/assets/ui-toast.js";
+import { confirmDialog } from "/assets/ui-confirm.js";
 import { notifyStore, notifySupport, configDetail, reasonText, refreshNotify, setNotify } from "/assets/app-needs.js";
 import { openSignIn, signInOffered } from "./backend-signin.js";
 import { decideProposal, installProposals } from "./agent-proposals.js";
@@ -244,6 +245,10 @@ function NeedsItem({ item, nowMs, owner }) {
     // server's list drops the prompt (or the answer fails).
     if (claims.get().prompts[item.nonce]) return;
     setClaim("prompts", item.nonce, "busy");
+    const confirmation = item.actions?.find(a => a.id === action)?.confirmation;
+    if (confirmation && !await confirmDialog({ ...confirmation, danger: true })) {
+      setClaim("prompts", item.nonce, null); return;
+    }
     let r = null;
     try {
       const res = await fetch("/ui/prompt", { method: "POST", headers: { "Content-Type": "application/json" },

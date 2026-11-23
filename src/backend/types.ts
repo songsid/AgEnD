@@ -352,6 +352,8 @@ export interface RemoteCardOption {
   row?: number;
   /** A static report closes with q, never Enter. Only a code-owned reader sets this. */
   submitKey?: "q";
+  /** Code-owned human confirmation before a session-changing choice. */
+  confirmation?: { title: string; message: string; confirmLabel: string };
   /** Sub-options page only: whether its box is ticked. */
   checked?: boolean;
 }

@@ -4,7 +4,7 @@
  * 10 s tick; the live message lands in that world's General.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FleetManager } from "../src/fleet-manager.js";
@@ -231,4 +231,23 @@ it("collects a running General's stale-login hold and withdraws it after relaunc
   expect(fm.needsYouItems().filter((i: any) => i.reason === "stale_auth")).toMatchObject([{ instance: "gen", since: 1_000 }]);
   hold = null; fm.needsYou.recompute();
   expect(fm.needsYouItems().some((i: any) => i.reason === "stale_auth")).toBe(false);
+});
+
+it("M3519 a stopped Codex empty-option card remains in Needs you, with a waiting fallback after retirement", async () => {
+  const { codexPrecaution } = await import("../src/backend/codex-precaution.js");
+  const { fm } = fleet();
+  const presentation = { state: "awaiting_input", execution_state: "working", interaction_summary: "Safety review",
+    interaction: { phase: "waiting", kind: "safety_review", episode: 1, owner: { bootId: "demo", spawnGeneration: 1, launchAttempt: 1, launchFenceEpoch: 0 }, since: Date.now(), stale: false } };
+  vi.spyOn(fm, "instancePresentation").mockImplementation((name: unknown) => name === "alpha" ? presentation : {});
+  vi.spyOn(fm, "getInstanceInteraction").mockImplementation((name: unknown) => name === "alpha" ? presentation.interaction : null);
+  fm.startNeedsYou();
+  const card = codexPrecaution(readFileSync(new URL("./fixtures/codex-0169-precaution-stopped.pane.txt", import.meta.url), "utf8"))!.card;
+  await fm.postRemoteCard("alpha", { ...card, options: [] }); // beta.18's exact empty-card shape
+  fm.needsYou.recompute();
+  expect(fm.listWebPrompts()).toHaveLength(1);
+  expect(fm.needsYouItems()).toMatchObject([{ type: "prompt", instance: "alpha", actions: [] }]);
+  fm.retireRemoteCard("alpha", null, "expired"); fm.needsYou.recompute();
+  expect(fm.needsYouItems()).toMatchObject([{ type: "awaiting_input", instance: "alpha", reason: "dialog" }]);
+  await fm.postRemoteCard("alpha", card); fm.needsYou.recompute();
+  expect(fm.needsYouItems()).toMatchObject([{ type: "prompt", actions: [{ confirmation: { confirmLabel: "Start a new chat" } }] }]);
 });

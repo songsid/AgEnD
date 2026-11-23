@@ -25,7 +25,7 @@ Sources: [chat widget](https://github.com/openai/codex/blob/d32063f96c2dff1dc96a
 
 ## Controls and limits
 
-The chat exposes Review findings, enabled Acknowledge and continue, and Back only. The no-findings card directs the owner to View. The pager's Back sends q; confirmation actions use verified cursor movement and Enter. Disabled acknowledgement is omitted. No action is automatic. Header-token web scripts cannot claim these cards; an admin session with the existing origin/CSRF checks is required. Channel callbacks retain owning-adapter admin, place and single-consumption checks.
+At this original audit, the chat exposed Review findings, enabled Acknowledge and continue, and Back only. The no-findings card directed the owner to View. M-3519 adds human-confirmed New chat recovery; see [the follow-up evidence](../codex-stopped-web-m3519/README.md). View itself is read-only. The pager's Back sends q; confirmation actions use verified cursor movement and Enter. Disabled acknowledgement is omitted. No action is automatic. Header-token web scripts cannot claim these cards; an admin session with the existing origin/CSRF checks is required. Channel callbacks retain owning-adapter admin, place and single-consumption checks.
 
 Fail-first: all seven synthetic states failed the new hold/card assertions before implementation. Focused reversals in controls.json caught removal of registration, disabled-action filtering, the under-lock identity check and the human-session gate. Runtime tests use a real Daemon and FleetManager with forbidden host process/socket/lifecycle hooks; other card and web-route tests use inert panes and loopback HTTP only.
 

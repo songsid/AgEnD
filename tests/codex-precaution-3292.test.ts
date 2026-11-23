@@ -30,14 +30,15 @@ it.each(cases)("accepts ANSI %s with the same private identity", name => {
 it("offers only the owner-approved choices, retaining physical rows and no disabled acknowledgement", () => {
   const titles = (name: string) => codexPrecaution(fixture(name))!.card.options.map(o => o.title);
   expect(titles("root")).toEqual(["Review findings"]);
-  expect(titles("stopped")).toEqual([]);
+  expect(titles("stopped")).toEqual(["Start a new chat"]);
+  expect(codexPrecaution(fixture("stopped"))!.card.options[0]).toMatchObject({ row: 0, confirmation: { confirmLabel: "Start a new chat" } });
   expect(titles("confirm")).toEqual(["Acknowledge and continue", "Back"]);
   expect(titles("disabled")).toEqual(["Back"]);
   expect(titles("pager")).toEqual(["Back"]);
   expect(codexPrecaution(fixture("disabled"))!.card.options[0].row).toBe(1);
   for (const name of cases) {
     const prompt = remoteCardPrompt("demo-agent", codexPrecaution(fixture(name))!.card);
-    expect(JSON.stringify(prompt)).not.toMatch(/New chat|Resume another|Agent command center|synthetic demonstration|Synthetic findings/);
+    expect(JSON.stringify(prompt)).not.toMatch(/Resume another|Agent command center|synthetic demonstration|Synthetic findings/);
     expect(prompt.webInput).toBeNull();
   }
 });
@@ -116,4 +117,21 @@ it.each(["root", "stopped", "disabled"])("holds a narrow %s menu when long choic
     .replace("Resume another chat", "Resume another\n     chat")
     .replace("Acknowledge findings and continue", "Acknowledge findings\n       and continue");
   expect(codexPrecaution(pane)?.stage).toBe(name === "disabled" ? "confirmation" : name);
+});
+
+it("M3519 selects New chat on its physical row only after an explicit action, with fresh identity checks", async () => {
+  let pane = fixture("stopped").replace("› 1. New chat", "  1. New chat").replace("  3. Resume another chat", "› 3. Resume another chat");
+  let row = 2, clock = 0;
+  const keys: string[] = [];
+  const io: RemoteCardIo = { locked: async fn => fn(), read: async () => pane, now: () => clock,
+    sleep: async ms => { clock += ms; }, paste: async () => { throw new Error("no paste"); },
+    key: async key => { keys.push(key); if (key === "Up") {
+      const labels = ["New chat", "Agent command center", "Resume another chat"];
+      pane = pane.replace(`› ${row + 1}. ${labels[row]}`, `  ${row + 1}. ${labels[row]}`); row--;
+      pane = pane.replace(`  ${row + 1}. ${labels[row]}`, `› ${row + 1}. ${labels[row]}`);
+    } else if (key === "Enter") pane = "new empty composer"; else throw new Error("unexpected key"); return true; } };
+  const identity = codexPrecaution(pane)!.card.identity;
+  expect(keys).toEqual([]);
+  expect(await answerRemoteCard(io, p => codexPrecaution(p)?.card ?? null, identity, { kind: "option", n: 1 })).toEqual({ outcome: "answered" });
+  expect(keys).toEqual(["Up", "Up", "Enter"]);
 });

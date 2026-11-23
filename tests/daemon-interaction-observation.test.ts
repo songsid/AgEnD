@@ -436,7 +436,7 @@ describe("Codex precaution hold through the real daemon", () => {
     await expect(h.d.paneReadinessForDelivery("@sandbox")).resolves.toBe("dialog");
     h.d.startErrorMonitor(); await vi.advanceTimersByTimeAsync(10_000);
     expect(cards).toHaveLength(1);
-    expect(cards[0].card.question).toContain("paused this chat for a safety review");
+    expect(cards[0].card.question).toContain(name === "stopped" ? "cannot continue" : "paused this chat for a safety review");
     expect(JSON.stringify(cards)).not.toMatch(/Synthetic findings|synthetic demonstration|stale draft/);
     expect(assist).toEqual([]);
     expect(hooks.forbidden).not.toHaveBeenCalled();
