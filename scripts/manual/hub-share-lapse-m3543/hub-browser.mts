@@ -14,6 +14,7 @@ import { randomUUID } from "node:crypto";
 import { s3bRig } from "../../../tests/helpers/hub-s3b-rig.js";
 import { personKeyString } from "../../../src/hub/identity.js";
 import { createOwnedPki } from "../hub-connector-4c/rig.mjs";
+import { createHubRoomInvitations, HUB_ROOM_INVITATIONS_MIGRATION } from "../../../src/hub/invitations.js";
 
 if (process.platform !== "linux" || !process.env.CHROME?.startsWith("/home/") || process.env.CHROME.includes("/mnt/")) throw Error("Pin a Linux headless browser");
 if (!process.env.CJK_FONT) throw Error("Supply a Traditional Chinese font");
@@ -35,6 +36,8 @@ try {
   const origin = `https://127.0.0.1:${(server.address() as { port: number }).port}`;
   r = await s3bRig({ webOrigin: origin, realAudit: true, now: () => now });
   const owner = r.addPerson("example-owner", "Example owner"), reader = r.addPerson("example-reader", "Example colleague");
+  // The page also reads room invitations; mount the real service as the owner-request captures do (else a load banner).
+  HUB_ROOM_INVITATIONS_MIGRATION.up(r.db); r.httpDeps.roomInvitations = (core, host) => createHubRoomInvitations(core, host); await r.restartHttp();
   const fleetId = randomUUID();
   r.store.mutate({ requestId: randomUUID(), at: now, actor: { kind: "local-host" }, action: "fixture", result: "completed" }, state => {
     state.fleets.push({ id: fleetId, owner, generation: 1, credentialHash: "a".repeat(64), status: "active", label: "Work laptop" });
@@ -87,7 +90,8 @@ try {
         check(tag + ": grant carried to revision 2", carried.exposure_revision === 2);
         await page.reload(); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(800);
         // The page offers "who may ask it" right after a share; the people kept are the point here, so close it.
-        for (let i = 0; i < 3 && await page.locator('[role="dialog"]').count(); i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(300); }
+        for (let i = 0; i < 4 && await page.locator("dialog[open] .dlg-x").count(); i++) { await page.locator("dialog[open] .dlg-x").last().click(); await page.waitForTimeout(300); }
+        check(tag + ": no dialog over the page", await page.locator("dialog[open]").count() === 0);
         check(tag + ": still 1 person may ask", (await page.locator("[data-my-agents]").innerText()).includes("1 person may ask"));
         check(tag + ": no Share again after", await page.locator('[data-share-again="mira"]').count() === 0);
         await page.screenshot({ path: join(out, tag + "-shared-again.png") });

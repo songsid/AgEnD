@@ -11,7 +11,7 @@
 
 | Picture | What it shows |
 |---|---|
-| `before-*-lapsed.png` (dev, without the change) | Mira looks shared ("1 person may ask"). Nothing says the share stopped working. |
+| `before-*-lapsed.png` (dev, without the change) | Mira looks shared ("1 person may ask"). Nothing says the share stopped working: the desk picture is byte-identical to `after-desk-en-shared-again.png`, because the old page cannot tell a lapsed share from a working one. |
 | `after-*-lapsed.png` | "Needs re-share …" with **Share again** (zh-TW 需要重新分享… / 重新分享). |
 | `after-desk-en-shared-again.png` | After Share again, the Fleet republishes at revision 2. The note is gone and the colleague's grant was carried over: still "1 person may ask". |
 | `fleet-settings-*.png` | Fleet Settings → Hub: the lapsed row's note and **Share again**. |
