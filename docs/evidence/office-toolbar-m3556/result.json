@@ -1,0 +1,381 @@
+{
+ "cases": {
+  "desk-light-zh-TW": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 104,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 104,
+      "width": 439,
+      "height": 30
+     },
+     "btn": {
+      "x": 1254,
+      "y": 104,
+      "width": 92,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 1006,
+     "y": 140,
+     "width": 340,
+     "height": 228
+    }
+   },
+   "tick applies, still open": {
+    "pass": true,
+    "detail": {
+     "before": 0
+    }
+   },
+   "click elsewhere closes": true,
+   "Esc closes": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-en": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 146,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 146,
+      "width": 475,
+      "height": 30
+     },
+     "btn": {
+      "x": 1210,
+      "y": 146,
+      "width": 136,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 1006,
+     "y": 182,
+     "width": 340,
+     "height": 228
+    }
+   },
+   "tick applies, still open": {
+    "pass": true,
+    "detail": {
+     "before": 0
+    }
+   },
+   "click elsewhere closes": true,
+   "Esc closes": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-zh-TW-reduced": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 104,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 104,
+      "width": 439,
+      "height": 30
+     },
+     "btn": {
+      "x": 1254,
+      "y": 104,
+      "width": 92,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 1006,
+     "y": 140,
+     "width": 340,
+     "height": 244
+    }
+   },
+   "reduced: note under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 1019,
+      "y": 243,
+      "width": 302,
+      "height": 24
+     },
+     "lb": {
+      "x": 1047,
+      "y": 219,
+      "width": 65,
+      "height": 24
+     }
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-en-reduced": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 146,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 146,
+      "width": 475,
+      "height": 30
+     },
+     "btn": {
+      "x": 1210,
+      "y": 146,
+      "width": 136,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 1006,
+     "y": 182,
+     "width": 340,
+     "height": 244
+    }
+   },
+   "reduced: note under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 1019,
+      "y": 285,
+      "width": 302,
+      "height": 24
+     },
+     "lb": {
+      "x": 1047,
+      "y": 261,
+      "width": 82,
+      "height": 24
+     }
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-light-zh-TW": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": true
+}
