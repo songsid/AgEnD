@@ -199,6 +199,11 @@ export const isNight = (d = new Date()) => { const h = d.getHours(); return NIGH
  * one no seat of the office is on (taken or free), picked anew each time — then walk back. Pure: the page asks every TICK ms and walks the change.
  */
 export const WANDER = { PERIOD: 40000, AWAY: 8000, REACH: 220, TICK: 1000 };
+/** M-3539: two people stand on each other when their feet are closer than a figure is wide (48) and tall (66), less a little. */
+const STACK = { dx: 44, dy: 60 };
+const stacks = (a, b) => Math.abs(a.x - b.x) < STACK.dx && Math.abs(a.y - b.y) < STACK.dy;
+/** M-3539: the room a name tag takes under the feet (its top 3, its height 14, a margin). */
+const STROLL_TAG = 18;
 /** Whether `p` is inside `rect` (edges included). */
 const inRect = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 /** Whether the segment p–q passes through the inside of `rect` (its edges not counted: areas may share one). */
@@ -357,10 +362,19 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   // M-3286: `ownArea` (the office's "Idle people stay in their own area"): a stroll stays in the area the person (or
   // NPC: the area its spot is in; none: as before) is in, and nobody goes on a visit.
   const areaAt = (p) => Object.keys(graph.areas || {}).find((k) => graph.areas[k].rect && inRect(graph.areas[k].rect, p)) ?? null;
+  // M-3539: a stroll ends where its figure stands clear of everyone else's (a seat in use, a visitor's, another
+  // stroll's end) and its name tag stays inside the area it is in; else the person stays seated this turn. An aisle
+  // point is under a row's seats, so in a full room a stroll stood on the person seated there and its tag spilled
+  // past the area's edge.
+  const ends = [];
+  const clear = (name, p) => {
+    if (desks.some((d) => d.node.name !== name && stacks(d.seat, p)) || ends.some((q) => stacks(q, p)) || [...away.values()].some((q) => stacks(q, p))) return false;
+    return !Object.values(graph.areas || {}).some((a) => a.rect && inRect(a.rect, p) && p.y + STROLL_TAG > a.rect.y + a.rect.h);
+  };
   const stroll = (name, home, area = null) => {
     const p = wanderTarget(name, home, graph, t, seats, ownArea ? area ?? areaAt(home) : null), k = `${p.x},${p.y}`;
-    if (p === home || used.has(k)) return home;
-    used.add(k);
+    if (p === home || used.has(k) || !clear(name, p)) return home;
+    used.add(k); ends.push(p);
     return p;
   };
   const idle = (d) => wander && d.node.state === "idle" && !d.night;
