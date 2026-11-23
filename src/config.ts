@@ -248,6 +248,7 @@ export function loadFleetConfigSource(raw: string): FleetConfig {
     const model = overrides?.model?.trim() || (merged.runtime === "windows" ? undefined
       : scopedDefaultModel(merged.backend, fleetDefaults));
     if (model) merged.model = model;
+    else if (merged.runtime === "windows") merged.model = ""; // native CLI-default sentinel, never a host model
     else delete merged.model;
 
     if (!merged.working_directory && merged.runtime === "windows") throw new Error(`Windows instance ${name} requires its native working_directory`);

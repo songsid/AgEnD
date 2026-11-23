@@ -30,7 +30,7 @@ describe("model catalog source provenance",()=>{
     ["zh-TW","account-api","來源：已選帳號的模型清單。"],
     ["zh-TW","cli-cache","來源：本機 CLI 模型快取。"],
     ["zh-TW","official-catalog","來源：官方候選清單，實際可用性依帳戶與服務設定。"],
-    ["zh-TW",undefined,"來源：AgEnD 已快取的 CLI／帳號模型清單。"],
+    ["zh-TW",undefined,"來源：AgEnD 已取得的 CLI／帳號模型清單。"],
   ])("labels %s %s catalogs without changing the selected model",async(lang,source,expected)=>{
     setLang(lang,{store:false});answer={...answer,...(source?{source}:{})};const onChange=vi.fn();
     await p.mount(h(ModelSelect,{backend:"claude-code",runtime:source?"windows":"wsl",value:"saved-custom-model",onChange,inherit:"CLI default"}));await settle(8);

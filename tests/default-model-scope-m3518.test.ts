@@ -39,3 +39,14 @@ it("reports CLI default for nonmatching backends rather than reintroducing the f
   expect(fm.resolveInstanceModel("grok").source).not.toBe("fleet-default");
   expect(fm.resolveInstanceModel("grok").model).not.toBe("shared-model");
 });
+
+it("preserves the Windows CLI-default sentinel without inheriting the host model", () => {
+  const config = loadFleetConfigSource(JSON.stringify({ defaults: { backend: "claude-code", model: "host-model" }, instances: {
+    empty: { runtime: "windows", working_directory: "W:/Example", model: "" },
+    unset: { runtime: "windows", working_directory: "W:/Example" },
+    own: { runtime: "windows", working_directory: "W:/Example", model: "native-model" },
+  } }));
+  expect(config.instances.empty.model).toBe("");
+  expect(config.instances.unset.model).toBe("");
+  expect(config.instances.own.model).toBe("native-model");
+});
