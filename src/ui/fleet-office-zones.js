@@ -13,11 +13,11 @@ export function zoneOf(pack, state) {
 }
 /**
  * M-3539: the areas the idle never stroll or visit to — where a pack sends the people calling for you (needs, crashed,
- * stuck): someone standing there reads as "needs you". Never the area the idle live in.
+ * stuck; by zoneOf, its fallbacks included): someone standing there reads as "needs you". Never the area the idle live in.
  */
 export function callingAreas(pack) {
-  const z = pack.stateZones || {}, idle = zoneOf(pack, "idle");
-  return [...new Set(["needs", "crashed", "stuck"].map((st) => own(z, st)).filter((a) => a && a !== idle && own(pack.areas, a)))];
+  const idle = zoneOf(pack, "idle");                                 // as the layout sends them: own, else default, else the first area
+  return [...new Set(["needs", "crashed", "stuck"].map((st) => zoneOf(pack, st)).filter((a) => a && a !== idle && own(pack.areas, a)))];
 }
 
 /**

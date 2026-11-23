@@ -3,7 +3,7 @@
 These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real room office, headless Chromium, taken from two commits:
 
 - **before**: #4370's head `ce5f6556`;
-- **after**: this branch.
+- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. Later commits change no drawing.
 
 The room has 12 people and 30 agents of 6 owners, plus the room assistant, all with made-up names. Two agents are working, one is paused, and one owner's Fleet is offline, so its 5 agents are stopped and go to the nap corner. Each shot is taken 3 s after the office opens, with normal motion (idle agents stroll).
 
@@ -17,6 +17,9 @@ The room has 12 people and 30 agents of 6 owners, plus the room assistant, all w
 
 ## Measured
 
+These are observations from sampled frames, not proofs of a rule. The rules themselves (no two tags touching, nothing under what is kept clear, no idle stroll or visit ending in the area the calling go to, a new style stopping every walk) are proven by `tests/office-tag-placement-m3539.test.ts`, each with a mutation that fails it.
+
+
 A scratch probe (not part of this change) recorded every tag the scene drew, each area's name box, where everyone stood, and the zoom control's box. It took 8 frames 1.5 s apart, starting 3 s after the office opened, in 4 runs (desktop and phone; zh-TW and English) × 2 styles.
 
 | In any frame | before | after |
@@ -25,7 +28,7 @@ A scratch probe (not part of this change) recorded every tag the scene drew, eac
 | A tag on an area's name | 0 | 0 |
 | A tag under the zoom control (including zoomed in) | 0 | 0 (now kept clear by construction) |
 | Nap corner at 3 s: people sent there / drawn there | 6 / 0 (Studio), 6 / 4–5 (large): the stopped walked in from the old seats, through the help desk | 6 / 6 in every run |
-| An idle agent standing in the help desk (求救區), at rest between strolls | 2 (Reed, Quartz) | 0 |
+| An idle agent standing in the help desk (求救區), at rest between strolls, in the sampled frames | 2 (Reed, Quartz) | 0 |
 | Phone, English: zone chips | 402 px of chips in 340 px, cut with no cue | the same width, now fading at the right while there is more |
 
 What changed:

@@ -168,6 +168,18 @@ describe("M-3539 the idle never stroll or visit to the help desk", () => {
     expect(Z.callingAreas({ ...base, stateZones: { ...base.stateZones, needs: "lounge", crashed: "lounge", stuck: "lounge" } })).toEqual([]);
     expect(Z.callingAreas({ ...base, stateZones: { idle: "lounge", default: "lounge" } })).toEqual([]);
   });
+
+  it("the calling go where zoneOf sends them, fallbacks included (#4376 review): a default, else the first area", () => {
+    const base = K.SKINS.get("studio").pack;
+    const viaDefault = { ...base, stateZones: { idle: "lounge", default: "alert" } };
+    expect(Z.callingAreas(viaDefault)).toEqual(["alert"]);
+    const viaFirst = { ...base, stateZones: { idle: "lounge" } };
+    expect(Z.callingAreas(viaFirst)).toEqual([Object.keys(base.areas)[0]]);
+    // And the walk targets keep to it: no idle stroll ends in the default's help desk.
+    const L = Z.zonesLayout(viaDefault, nodes.map((n) => ({ ...n }))), desks = L.rooms.flatMap((r: any) => r.desks), alert = L.areas.alert.rect;
+    expect(L.idleAvoid).toEqual(["alert"]);
+    for (let i = 0; i < 400; i++) for (const [name, at] of Z.walkTargets(desks, L, i * 1700, true, [], false, null, false)) expect(inR(alert, at), name).toBe(false);
+  });
 });
 
 describe("M-3539 a new office or style places everyone at once (Prism #4376 P2)", () => {
