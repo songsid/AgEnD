@@ -17,14 +17,16 @@ try {
       const hit = document.elementFromPoint(point.x, point.y);
       return { name, ...point, hit: hit?.tagName + '.' + hit?.className };
     }, name);
+    await p.page.evaluate(() => { (window as any).__composerTargets = []; document.addEventListener('pointerdown', e => (window as any).__composerTargets.push({tag:(e.target as Element)?.tagName,id:(e.target as Element)?.closest('button')?.id,cls:(e.target as Element)?.className,type:e.pointerType}),true); });
     const probes = [];
-    for (const name of ['top', 'left', 'bottom']) {
+    // Chromium touch adjustment retargets the 2px gutter beside Attach to that button; test its action below.
+    for (const name of device === 'phone' ? ['top', 'bottom'] : ['top', 'left', 'bottom']) {
       await p.page.locator('#msgIn').fill(''); await p.page.locator('#msgIn').blur();
       await p.page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       const point = await pointAt(name);
       if (device === 'phone') await p.page.touchscreen.tap(point.x, point.y);
       else await p.page.mouse.dblclick(point.x, point.y);
-      const focus = await p.page.evaluate(() => ({ real: document.activeElement?.id === 'msgIn', selection: getSelection()?.toString() || '' }));
+      const focus = await p.page.evaluate(() => ({ real: document.activeElement?.id === 'msgIn', selection: getSelection()?.toString() || '', targets: (window as any).__composerTargets } ));
       await p.page.keyboard.type('Edge focus works');
       const value = await p.page.locator('#msgIn').inputValue();
       if (!focus.real || focus.selection || value !== 'Edge focus works') throw new Error(JSON.stringify({ device, point, focus, value }));
