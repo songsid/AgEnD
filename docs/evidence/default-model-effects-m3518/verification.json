@@ -1,5 +1,5 @@
 {
-  "mainSourceHead": "07c64fb6f0299803e90a8fa94ee303552ce569a9",
+  "mainSourceHead": "2851f0d410dd6b38767cfdb8330688f392639657",
   "mainSourceHashes": [
     {
       "path": "scripts/manual/smoke/smoke-default-model-effects-m3518.mts",
@@ -19,7 +19,7 @@
     },
     {
       "path": "src/fleet-manager.ts",
-      "sha256": "c8334c93a0fc86ce0e3e7668dcbfebb05e481e610f644f7000797b88da926843"
+      "sha256": "ed17b43264670944c5373160f1028ed43e25c4a44e050bae5e6695e677a5b351"
     },
     {
       "path": "src/general-knowledge/skills/model-discovery/SKILL.md",
@@ -27,7 +27,7 @@
     },
     {
       "path": "src/general-knowledge/skills/web-dashboard/SKILL.md",
-      "sha256": "c291670fd46ffce77ec2fc83aa052c8d3b021b9142f3c55d9b425fdcc597e988"
+      "sha256": "a86423e58349ce29b38790167e6f6ccad0f81aa0c8d9719cf661b4f2a42de58d"
     },
     {
       "path": "src/instance-lifecycle.ts",
@@ -39,23 +39,23 @@
     },
     {
       "path": "src/settings-api.ts",
-      "sha256": "e9417d9127c49f7a274e9bbc7df017da6549fd72bdac4752334924c75086433e"
+      "sha256": "270bb9a5975431432837b9016c8a784abeb429d3f0f093e9c46bb3276db31303"
     },
     {
       "path": "src/shared-default-adoption.ts",
-      "sha256": "e35ee08ead61b23fa924b18f4a40273b0e164829418e06f93cd01a549c138239"
+      "sha256": "e27d77c199f1a815cc9dd5fb9aa3ce0f1dc2b8910155a059c34bb0b9c3b85155"
     },
     {
       "path": "src/ui/panel-settings.js",
-      "sha256": "91b66febe47382cfa724172a1fd630182395690f8980c5f714f52d6f291e70bb"
+      "sha256": "129935d03a6144b0021ddfcab3fab4190f6ab35df8ae19cb998f871373036121"
     },
     {
       "path": "src/ui/settings-apply.js",
-      "sha256": "518859a4e957fff9167986ec011477169163e0030ea06ac0dfcbe2b3010ed4cd"
+      "sha256": "61a172c96dae232b3a3909a02ee60dc25a84d57ee4c40391c71519fb5b58f5fc"
     },
     {
       "path": "src/ui/settings-default-model-scope.js",
-      "sha256": "4cb312010732aa2e133c61b8c0ffd5d33921e1764f97a99087257edadbb5a836"
+      "sha256": "2a4e86eee48c5bb9454f3c87a7bc5c0625e853a974a9f27f7ee8477f0e026cd1"
     },
     {
       "path": "src/ui/settings-default-model-strings.js",
@@ -63,7 +63,7 @@
     },
     {
       "path": "src/ui/settings-dialogs.js",
-      "sha256": "79d9974a5b2b12d6fb99cf44a51d54f781a5377effea3ed6cb201f81e26d83c8"
+      "sha256": "6197737fc56b0cbda7c9c97e029586ddcabf21987b0596bdd6594e1fff3ddbf6"
     },
     {
       "path": "src/ui/settings-model.js",
@@ -83,7 +83,7 @@
     },
     {
       "path": "tests/default-model-apply-m3518.test.ts",
-      "sha256": "ecf73044c151774750ce8b9a4e3438014645bbf75065011af21cd4bb5b43ccdf"
+      "sha256": "66e8427ab4677d2d699da19aeb20370ad0d84e494da26590633b7a37d0c3a79c"
     },
     {
       "path": "tests/default-model-scope-m3518.test.ts",
@@ -91,15 +91,15 @@
     },
     {
       "path": "tests/settings-apply-job.test.ts",
-      "sha256": "695a9c18d0eafc9b5178e400e8b74c57f5b24db34a700ed7977eadfc43163425"
+      "sha256": "e7644b92fd353197223f3862f501dfc94a2c92209786428de4cc055015842b6e"
     },
     {
       "path": "tests/settings-default-model-ui-m3518.test.ts",
-      "sha256": "0f41ac8bc517efda5b678453e856d2ceb42241601a316d16b579eb0c86b16288"
+      "sha256": "aef01e4cd5bd1ea2ac6ebea40912e461e30651034adf9556945f68165f5f0ff1"
     },
     {
       "path": "tests/shared-default-adoption-m3518.test.ts",
-      "sha256": "dc892d92bdee6a3582f33149ddb569be175f2931cbc9702aade813fe0d74fa28"
+      "sha256": "8b97cdd95b370a976b51e8675b6029f576c5830e458797a17a6bb533262cd0b6"
     }
   ],
   "packets": {
@@ -418,6 +418,27 @@
       "namedConsent": "Exact display-name list is snapshotted before the dialog and enforced server-side; missing/new owners defer.",
       "testTypesErrorsEachBranch": 0,
       "ciTestTypingCorrection": "Actual setup job137463438710: TS2571 in mock payload field access; assert payload shape directly. Both test type-checks0 and focused10cases each PASS. Production/UI/captures unchanged."
+    },
+    "r2": {
+      "review": "6016185717",
+      "gapBaseAssertionRed": 1,
+      "mainFocusedCases": 67,
+      "mainLastMountedCases": 7,
+      "overlap": "last mounted run overlaps focused67; historical R1 counts carry only outside changed scope",
+      "devCoreCases": 62,
+      "devClassicLabelMountedCases": 1,
+      "mainFailedCiSuitesCases": 358,
+      "devFailedCiSelectedCases": 15,
+      "sourceAndTestTypesErrorsEachBranch": 0,
+      "failedCiJobsInspected": [
+        137464531675,
+        137464531688,
+        137464531718,
+        137464531752
+      ],
+      "receipt": "Single-use opaque snapshot issued synchronously with write;10minute expiry;256snapshots maximum; subsequent entry/owner replacement cannot inherit consent. Missing/unknown/stale receipts defer. Confirmed preview freezes backend/model pair and names.",
+      "renderedEvidence": "All32 PNG blobs unchanged; no repeated browser/native/provider campaign."
     }
-  }
+  },
+  "sourceHashScope": "mainSourceHashes bind current R2 code; packets retain the actual historical R1 capture-source heads. Shared-default rendered controls and all32PNG bytes unchanged through R2. Classic selector label has mounted source proof, not a new screenshot."
 }
