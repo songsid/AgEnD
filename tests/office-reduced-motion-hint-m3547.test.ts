@@ -86,7 +86,8 @@ describe("the hint on the page", () => {
     expect(barNote().textContent.trim()).toBe("開啟「減少動態效果」時關閉");
     await openCard();
     expect(cardNote().textContent.trim()).toBe("拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。");
-    expect(cardNote().querySelector(".oo-nowrap").textContent).toBe("「減少動態效果」");     // never broken inside the term
+    // Never broken inside the term, nor right before it (a line starting with 「): kept with the words before it.
+    expect(cardNote().querySelector(".oo-nowrap").textContent).toBe("開啟了「減少動態效果」。");
   });
 
   it("without reduced motion nothing changes: no note, Pat and Feed on the card", async () => {

@@ -395,8 +395,9 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
 
   // M-3547: play is off only because this device asks for reduced motion — said where Pat and Feed would be.
-  // A quoted setting name (「…」) is kept on one line: a break inside it reads as two words.
-  const offNote = playOff ? html`<p class="muted oo-card-play-off" role="note">${tc("playOff").split(/(「[^」]*」)/).map((s, i) => (i % 2 ? html`<span class="oo-nowrap">${s}</span>` : s))}</p>` : null;
+  // A quoted setting name (「…」) is kept on one line with the few words before it and its full stop: a break inside it
+  // reads as two words, and one right before it starts a line with 「.
+  const offNote = playOff ? html`<p class="muted oo-card-play-off" role="note">${tc("playOff").split(/([^\s、，：]{0,3}「[^」]*」[。，]?)/).map((s, i) => (i % 2 ? html`<span class="oo-nowrap">${s}</span>` : s))}</p>` : null;
 
   // Legacy default path (packs without `card`): preserve exact markup and classes.
   if (!spec) {

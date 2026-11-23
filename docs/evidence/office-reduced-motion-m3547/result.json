@@ -3,6 +3,14 @@
   "desk-light-en-reduced": {
    "mounted": true,
    "box off and locked": true,
+   "note says why": {
+    "pass": true,
+    "detail": "Off while reduced motion is on"
+   },
+   "label disabled-looking": {
+    "pass": true,
+    "detail": 0.45
+   },
    "note beside the box": {
     "pass": true,
     "detail": {
@@ -51,6 +59,14 @@
   "desk-dark-zh-TW-reduced": {
    "mounted": true,
    "box off and locked": true,
+   "note says why": {
+    "pass": true,
+    "detail": "開啟「減少動態效果」時關閉"
+   },
+   "label disabled-looking": {
+    "pass": true,
+    "detail": 0.45
+   },
    "note beside the box": {
     "pass": true,
     "detail": {
@@ -72,6 +88,10 @@
    "card: says why": {
     "pass": true,
     "detail": "拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。"
+   },
+   "card: quote kept whole": {
+    "pass": true,
+    "detail": 1
    },
    "card: note inside the card": {
     "pass": true,
@@ -99,6 +119,14 @@
   "phone-dark-zh-TW-reduced": {
    "mounted": true,
    "box off and locked": true,
+   "note says why": {
+    "pass": true,
+    "detail": "開啟「減少動態效果」時關閉"
+   },
+   "label disabled-looking": {
+    "pass": true,
+    "detail": 0.45
+   },
    "note beside the box": {
     "pass": true,
     "detail": {
@@ -120,6 +148,10 @@
    "card: says why": {
     "pass": true,
     "detail": "拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。"
+   },
+   "card: quote kept whole": {
+    "pass": true,
+    "detail": 1
    },
    "card: note inside the card": {
     "pass": true,
@@ -147,6 +179,14 @@
   "phone-light-en-reduced": {
    "mounted": true,
    "box off and locked": true,
+   "note says why": {
+    "pass": true,
+    "detail": "Off while reduced motion is on"
+   },
+   "label disabled-looking": {
+    "pass": true,
+    "detail": 0.45
+   },
    "note beside the box": {
     "pass": true,
     "detail": {

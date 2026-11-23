@@ -2572,7 +2572,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-play .oo-play-still { min-width: 0; }
 .oo-play .oo-play-still::before { content: "· "; }
 .oo-bar .oo-play:has(.oo-play-still) { margin-inline-end: var(--s-3); }
-.oo-play:has(input:disabled) > span:not(.oo-play-still) { color: var(--text-2); }
+.oo-play:has(input:disabled) > span:not(.oo-play-still) { opacity: 0.45; }   /* disabled, as .btn:disabled */
 .oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* #2554: clip, not a scroll container — nothing past the edge (a tile's label) can scroll the stage and its controls. */
 .oo-stage { overflow: clip; }

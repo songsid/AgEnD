@@ -4,8 +4,8 @@ These are captures of the real dashboard from this branch, taken headless with C
 
 **What changed.** With reduced motion on, drag, pat and feed have been off since M-3293, and the only sign was the greyed 「拖曳與摸頭」 box with a tooltip. The Office now says so without hovering. This is a hint only: nothing turns play on while reduced motion is on.
 
-- **The box:** a note right after its label, inside it: "· Off while reduced motion is on" / 「· 開啟「減少動態效果」時關閉」. It stays beside the box when the bar wraps, and a screen reader reads it with the box's name. The locked label is greyed. On a phone, this is in the ⋯ sheet.
-- **A person's card:** "Drag, pat and feed are off: this device asks for reduced motion." / 「拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。」. It's where Pat and Feed would be, above Find in office and Chat. The quoted setting name never breaks across lines.
+- **The box:** a note right after its label, inside it: "· Off while reduced motion is on" / 「· 開啟「減少動態效果」時關閉」. It stays beside the box when the bar wraps, and a screen reader reads it with the box's name. The locked label is dimmed like a disabled button (`opacity: 0.45`, as `.btn:disabled`). On a phone, this is in the ⋯ sheet.
+- **A person's card:** "Drag, pat and feed are off: this device asks for reduced motion." / 「拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。」. It's where Pat and Feed would be, above Find in office and Chat. The quoted setting name stays on one line with the words before it (開啟了「減少動態效果」。), so no line starts with 「.
 - **Nothing is said** when play is off for another reason: the viewer turned Drag and pat off themselves, a style without zones, All offices, the carousel, Edit layout, a share link, or a Hub room's office.
 - **Without reduced motion nothing changes:** no note, the box is on, and the card has Pat and Feed.
 
@@ -20,8 +20,8 @@ These are captures of the real dashboard from this branch, taken headless with C
 
 `scripts/manual/smoke/smoke-office-reduced-motion-m3547.mts` checks each case; its output is `result.json`:
 
-- the box is off and locked, and the note is on the box's own row;
-- the card's note says why, sits inside the card, and Pat and Feed are absent;
+- the box is off and locked, its label is dimmed (opacity 0.45), and the note is on the box's own row;
+- the card's note says why and sits inside the card, with Pat and Feed absent; in zh-TW the quoted name stays on one line with the words before it;
 - with ordinary motion there's no note, and Pat and Feed are present;
 - the page never scrolls sideways, and there are no page errors.
 

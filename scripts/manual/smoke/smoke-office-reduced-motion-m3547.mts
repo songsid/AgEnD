@@ -47,9 +47,11 @@ for (const c of CASES) {
     const box = page.locator(".oo-play input");
     if (c.rm) {
       ok(res, "box off and locked", !(await box.isChecked()) && (await box.isDisabled()));
-      ok(res, "note beside the box", (await text(page, ".oo-play-still")) === w.bar, await text(page, ".oo-play-still"));
+      ok(res, "note says why", (await text(page, ".oo-play-still")) === w.bar, await text(page, ".oo-play-still"));
       // Beside the box: inside its label, on the box's row (a wrapping bar must not carry it under other options).
       const nb = await page.locator(".oo-play .oo-play-still").boundingBox(), ib = await box.boundingBox();
+      const op = await page.locator(".oo-play > span:not(.oo-play-still)").evaluate((el: any) => Number(getComputedStyle(el).opacity));
+      ok(res, "label disabled-looking", op < 0.6, op);
       ok(res, "note beside the box", !!nb && !!ib && nb.width > 0 && nb.x > ib.x && nb.y < ib.y + ib.height && nb.y + nb.height > ib.y, { nb, ib });
     } else {
       ok(res, "box on", await box.isChecked());
@@ -64,6 +66,11 @@ for (const c of CASES) {
       ok(res, "card: no Pat/Feed", (await page.locator(".oo-card-pat, .oo-card-feed").count()) === 0);
       ok(res, "card: says why", (await text(page, ".oo-card .oo-card-play-off")) === w.card, await text(page, ".oo-card .oo-card-play-off"));
       const cb = await page.locator(".oo-card").boundingBox(), nb = await page.locator(".oo-card-play-off").boundingBox();
+      // zh-TW: the quoted setting name stays on one line with the words before it (no line starts with 「).
+      if (c.lang === "zh-TW") {
+        const lines = await page.locator(".oo-card-play-off .oo-nowrap").evaluate((el: any) => el.getClientRects().length);
+        ok(res, "card: quote kept whole", lines === 1, lines);
+      }
       ok(res, "card: note inside the card", !!cb && !!nb && nb.x >= cb.x - 1 && nb.x + nb.width <= cb.x + cb.width + 1 && nb.y + nb.height <= cb.y + cb.height + 1, { cb, nb });
     } else {
       ok(res, "card: Pat and Feed", (await page.locator(".oo-card-pat").count()) === 1 && (await page.locator(".oo-card-feed").count()) === 1);
