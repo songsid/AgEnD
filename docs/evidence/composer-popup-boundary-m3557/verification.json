@@ -1,0 +1,44 @@
+{
+  "implementationHead": "fe765cd842e74cc134c54636124e68d312219c41",
+  "base": "152c4f9c1182e464501840944f240d5ced65c09e",
+  "sourceHashes": {
+    "changes/3557-composer-popup-mouse.md": "200f4f45fed00ee698961efa4b6be8d036a90b7c646171cdfd153ae788fbeb7e",
+    "changes/3557-composer-popup-mouse.zh-TW.md": "7c30eabebe46e841c63adc3d89b353adbe20db37af1e0432610abda9f9a4443d",
+    "scripts/manual/smoke/smoke-composer-popup-m3557.mts": "8adf28b30a77f659f71584aafceb17a9b439993747fe24e4a98b989708598636",
+    "src/ui/panel-chat.js": "3ecebace9f7661af8ad3b30c540ee33d937ac9e252ca8f762cace28ab83738f5",
+    "src/ui/shared/composer-focus.js": "74fb04bab137645d1c7f5ea690b56a8027b0485c8e36110c6dc184747b994684",
+    "tests/web-composer-2478.test.ts": "5ef86037c21b8e345a1548c0f5404b1a1302b8ff33662aee6d6ef5dfeaa0897f"
+  },
+  "proofs": {
+    "baseBrowser": {
+      "sha256": "ca10c446c20215c73c1bf4c5e2743f8b334833b37e35de2b5b952b190ce3ca7f",
+      "result": "real mouse: pointerdown prevented, no mousedown, value slash unchanged"
+    },
+    "baseUnit": {
+      "sha256": "32b1223f2692c65dea745a0b74aaf3315f551c41a6184c82c397071094d0c8d7",
+      "result": "one assertion failure on prevented pointerdown"
+    },
+    "fixedUnit": {
+      "sha256": "95b01644827ebbf813d2180d5ea2ead3299544dd8fc54559b00bd76df0043f92",
+      "result": "17/17 PASS"
+    },
+    "fixedBrowser": {
+      "sha256": "168664a3ea8a739fcafae3237910ed6276422ccafde31af2e63e8b68c53570a9",
+      "result": "desktop mouse, phone mouse/touch, edge focus, generic popup PASS"
+    },
+    "testTypes": {
+      "sha256": "21cc27fd5be2f91b90d3116616c151064f39e7b20e61f2334241585a2197a1d1",
+      "result": "exit0"
+    },
+    "changelog": {
+      "sha256": "5c949bcef78ddc7278bd2cd69588fc2c0fb6c99f37a4c7688d908b98b40778a8",
+      "result": "207 fragments PASS"
+    }
+  },
+  "limits": [
+    "actual Chromium mouse down/up and emulated touch; no native OS or WebKit claim",
+    "main has slash palette; dev hash/mention variants require twin integration proof",
+    "no sends, provider calls or live panes",
+    "no CSS/layout change or new screenshot campaign"
+  ]
+}
