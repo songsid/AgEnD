@@ -48,7 +48,7 @@ it("restarts a running target only with explicit choice, while stopped targets r
   const job = await apply(fm, "shared-explicit-restart", "restart");
   expect(stop).toHaveBeenCalledExactlyOnceWith("one");
   expect(start).toHaveBeenCalledTimes(1);
-  expect(start.mock.calls[0][1].model).toBe("new");
+  expect(start.mock.calls[0][1]).toMatchObject({ model: "new" });
   expect(job.targets.find(r => r.target === "one")?.status).toBe("done");
   expect(job.targets.find(r => r.target === "stopped")?.status).toBe("next-start");
 });
