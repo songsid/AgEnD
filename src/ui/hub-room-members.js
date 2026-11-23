@@ -131,7 +131,8 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
         </div>` : null}
       </li>`;
   // M1: the compact list (§2.6) — the summary, the filter, who is online, the rest folded; the agents by owner, folded.
-  // A filter opens every group with a match and shows only the matches; the counts above stay the room's.
+  // A filter opens every group with a match and shows only the matches; the summary keeps the room's counts, and the two
+  // headings say how many match of how many (the leader, #4366: clear that the list is filtered).
   const compactList = () => {
     const locale = lang(), ordered = peopleOrder(people, meId, locale);
     const online = ordered.filter((m) => m.id === meId || m.presence === "online"), owners = byOwner(agents, locale);
@@ -141,11 +142,11 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     return html`<p class="note hub-members-sum">${hm("summary", people.length, online.length, agents.length, owners.length)}</p>
     <input class="hub-members-filter" type="search" value=${q} placeholder=${hm("filter")} aria-label=${hm("filterLabel")} onInput=${(e) => setQ(e.target.value)} />
     ${filtering && !on.length && !off.length && !groups.length ? html`<p class="note hub-members-none" role="status">${hm("noMatch")}</p>` : null}
-    <section class="hub-members-people"><h4>${heads.member}</h4>
+    <section class="hub-members-people"><h4>${filtering ? hm("membersMatch", on.length + off.length, people.length) : heads.member}</h4>
       ${on.length ? html`<ul>${on.map(person)}</ul>` : null}
       ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
     </section>
-    ${agents.length ? html`<section><h4>${heads.agent}</h4>
+    ${agents.length ? html`<section><h4>${filtering ? hm("agentsMatch", groups.reduce((n, g) => n + g.shown.length, 0), agents.length) : heads.agent}</h4>
       ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
     </section>` : null}`;
   };

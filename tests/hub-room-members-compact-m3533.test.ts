@@ -73,16 +73,21 @@ describe("the compact member list (M-3533 M1)", () => {
     await type(pg, "吳");
     expect(groups(pg).map((g) => [g[0], g[1]])).toEqual([["不在線上 · 1", true], ["吳小安 · 4", true]]);
     expect(q(pg, ".hub-members-sum").textContent).toBe("3 人，2 人在線上 · 12 個 Agent，3 位擁有者");
+    // While filtering the headings say how many match of how many; cleared, they are the room's again.
+    expect(all(pg, ".hub-room-members h4").map((x) => x.textContent).slice(0, 2)).toEqual(["成員 · 符合 1／3", "Agent · 符合 4／12"]);
     await type(pg, "nobody-here");
     expect([groups(pg), q(pg, ".hub-members-none")?.textContent]).toEqual([[], "沒有符合的成員。"]);
     await type(pg, "");
     expect(groups(pg).every((g) => g[1] === false)).toBe(true);
+    expect(all(pg, ".hub-room-members h4").map((x) => x.textContent).slice(0, 2)).toEqual(["成員 · 3（線上 2）", "Agent · 12（線上 7）"]);
   });
   it("en", async () => {
     const pg = await mount("en");
     expect(q(pg, ".hub-members-sum").textContent).toBe("3 people, 2 online · 12 agents of 3 owners");
     expect(q(pg, ".hub-members-filter").getAttribute("placeholder")).toBe("Filter: name or owner");
     expect(groups(pg)[0][0]).toBe("Not online · 1");
+    await type(pg, "report");
+    expect(all(pg, ".hub-room-members h4").map((x) => x.textContent).slice(0, 2)).toEqual(["Members · 0 of 3 match", "Agents · 1 of 12 match"]);
   });
   it("12 or fewer people and agents: today's list (no summary, no filter, no groups)", async () => {
     const pg = await mount("zh-TW", 9);   // 3 people + 9 agents
@@ -97,6 +102,8 @@ describe("the compact member list (M-3533 M1)", () => {
       expect([sel, /min-height:\s*var\(--tap\)/.test(rule || "")]).toEqual([sel, true]);
     }
     expect(css).toMatch(/--tap/);
+    // The placeholder in the dashboard's placeholder colour (≥ 4.5:1 in dark and light), never the browser's faint grey.
+    expect(css).toMatch(/\.hub-members-filter::placeholder\s*\{\s*color:\s*var\(--text-3\);\s*opacity:\s*1;/);
   });
   it("byOwner, peopleOrder and memberMatches (pure): my group first, owners by name, keyed by id; people me first, by name", () => {
     const a = (name: string, owner: string, id?: string, mine?: boolean) => ({ name, owner: { name: owner, ...(id ? { id } : {}), ...(mine ? { mine: true } : {}) } });

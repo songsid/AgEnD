@@ -8,10 +8,12 @@ register("hubRoomMembers", {
     noAgents: "No agents yet. A room manager can add or invite them in Room settings.",
     // M-3533 M1: the compact list of a large room.
     summary: "{0} people, {1} online · {2} agents of {3} owners", filter: "Filter: name or owner", filterLabel: "Filter members",
-    notOnline: "Not online · {0}", ownerGroup: "{0} · {1}", noOwner: "—", noMatch: "No members match." },
+    notOnline: "Not online · {0}", ownerGroup: "{0} · {1}", noOwner: "—", noMatch: "No members match.",
+    membersMatch: "Members · {0} of {1} match", agentsMatch: "Agents · {0} of {1} match" },
   "zh-TW": { askOwner: "請通知 {0}", fewer: "收合", ownerOf: "擁有者：{0}", removeFailed: "沒有移除，請再試一次。", agents: "Agent", ownerAgent: "{0}的 Agent", ownerAgentLatin: "{0} 的 Agent",
     noAgents: "還沒有 Agent。房間管理可以在房間設定加入或邀請。",
     summary: "{0} 人，{1} 人在線上 · {2} 個 Agent，{3} 位擁有者", filter: "篩選：名稱或擁有者", filterLabel: "篩選成員",
-    notOnline: "不在線上 · {0}", ownerGroup: "{0} · {1}", noOwner: "—", noMatch: "沒有符合的成員。" },
+    notOnline: "不在線上 · {0}", ownerGroup: "{0} · {1}", noOwner: "—", noMatch: "沒有符合的成員。",
+    membersMatch: "成員 · 符合 {0}／{1}", agentsMatch: "Agent · 符合 {0}／{1}" },
 });
 export const hm = (key, ...args) => t(`hubRoomMembers.${key}`, ...args);
