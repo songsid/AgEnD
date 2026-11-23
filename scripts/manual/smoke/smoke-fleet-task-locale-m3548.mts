@@ -17,7 +17,7 @@ try {
   for (const c of [{ device: 'desk', theme: 'dark', lang: 'zh-TW' }, { device: 'phone', theme: 'dark', lang: 'zh-TW' }, { device: 'desk', theme: 'light', lang: 'en' }] as const) {
     const p = await fx.page(c);
     await p.page.emulateMedia({ reducedMotion: 'reduce' });
-    const errors: string[] = []; p.page.on('pageerror', (e: Error) => errors.push(e.message));
+    const errors: string[] = []; p.page.on('pageerror', (e: Error) => { errors.push(e.message); console.error('pageerror', e.message); });
     await p.page.goto(fx.base + '/ui/fleet/tasks');
     const nav = p.page.locator('.p-fleet nav[data-trust="panel-navigation"]');
     const tasks = nav.locator('a[href="/ui/fleet"]'), teams = nav.locator('a[href="/ui/fleet/teams"]');
@@ -25,7 +25,9 @@ try {
     const labels = [await tasks.innerText(), await teams.innerText()];
     const expected = c.lang === 'zh-TW' ? ['任務', '團隊'] : ['Tasks', 'Teams'];
     if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error('Wrong nav labels: ' + JSON.stringify(labels));
-    await p.page.getByText('示範任務 Example task', { exact: true }).first().waitFor();
+    const board = await p.page.evaluate(async () => { const r = await fetch('/ui/tasks/board'); return { status: r.status, data: await r.json() }; });
+    console.log('board-read', JSON.stringify(board));
+    await p.page.getByText('示範任務 Example task', { exact: true }).first().waitFor({ timeout: 5000 });
     const key = `${c.device}-${c.theme}-${c.lang}`;
     await p.page.screenshot({ path: join(out, `${key}-nav.png`) });
     await p.page.goto(fx.base + '/ui/fleet/tasks?card=' + card.code);
