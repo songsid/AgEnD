@@ -83,7 +83,7 @@
     },
     {
       "path": "tests/default-model-apply-m3518.test.ts",
-      "sha256": "711a15b0f45ecdaf0abd9b4598a946227ccc3ef06569efdf18202e62388cabba"
+      "sha256": "ecf73044c151774750ce8b9a4e3438014645bbf75065011af21cd4bb5b43ccdf"
     },
     {
       "path": "tests/default-model-scope-m3518.test.ts",
@@ -415,7 +415,9 @@
       "correctedBaseAssertionFailures": 4,
       "finalTypesErrorsEachBranch": 0,
       "mainAffectedUiGateChecks": 14,
-      "namedConsent": "Exact display-name list is snapshotted before the dialog and enforced server-side; missing/new owners defer."
+      "namedConsent": "Exact display-name list is snapshotted before the dialog and enforced server-side; missing/new owners defer.",
+      "testTypesErrorsEachBranch": 0,
+      "ciTestTypingCorrection": "Actual setup job137463438710: TS2571 in mock payload field access; assert payload shape directly. Both test type-checks0 and focused10cases each PASS. Production/UI/captures unchanged."
     }
   }
 }
