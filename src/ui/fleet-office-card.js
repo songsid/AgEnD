@@ -76,7 +76,7 @@ export function cardModel({ node, lv, levels, share = false, state, now, where, 
   if (detail && e.firstSeen) rowItems.push({ key: "firstSeen", label: tc("firstSeen"), value: tc("day", dayOf(e.firstSeen)) });
   const rows = rowItems.map((r) => [r.label, r.value]);
   return {
-    name: names.primary, instance: node.name, state, title,
+    name: names.primary, instance: given ? "" : node.name, state, title,
     stateLine: title ? `${state} · ${title}` : state,
     badge: on && fx && fx.hideLevel ? { mark: true, tier: 0 } : e ? { text: badgeText(e.level), tier: tierOf(e.level) } : null,
     level: showLevel ? { line1: detail ? `${tc("level", e.level)} · ${tc("work", tokens(e.workTokens))}` : tc("level", e.level), estimated: detail && e.estimated,
@@ -401,7 +401,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           ${m.badge ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
           <strong class="oo-card-name">${m.name}</strong>
-          <div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>
+          ${m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${m.stateLine}</div>
         </div>
         <button type="button" class="icon-btn oo-card-close" aria-label=${tc("close")} title=${tc("close")} onClick=${onClose}>×</button>
@@ -444,7 +444,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           ${m.badge && !hide.has("badge") ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
           <strong class="oo-card-name">${m.name}</strong>
-          ${!hide.has("instance") ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
+          ${!hide.has("instance") && m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${stateLine}</div>
         </div>
         <button type="button" class="icon-btn oo-card-close" aria-label=${tc("close")} title=${tc("close")} onClick=${onClose}>×</button>

@@ -596,7 +596,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${officeOn && !narrow ? html`<nav class="inst-switch seg hub-room-tabs" aria-label=${hroom("roomViews", title)}>${["chat", "office"].map((v) => {
           const label = hroom(v === "chat" ? "tabChat" : "tabOffice"), on = (v === "office") === inOffice;
           return html`<a key=${v} class=${`seg-item${on ? " active" : ""}`} href=${officeHref(v)} aria-current=${on ? "page" : undefined} data-label=${label}
-            onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.button !== 0) return; e.preventDefault(); onView(v); }}>${label}</a>`; })}</nav>` : null}
+            onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return; e.preventDefault(); onView(v); }}>${label}</a>`; })}</nav>` : null}
         <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}

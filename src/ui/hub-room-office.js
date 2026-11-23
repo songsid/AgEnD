@@ -62,9 +62,10 @@ export function officeWords(node, members) {
   const i = node && node.i;
   if (!i) return { state: hroom("stOffline"), now: "" };
   const kind = i.assistant ? "assistant" : "agent", presence = i.presence || "offline";
-  const listed = (Array.isArray(members) ? members : []).find((m) => m && (kind === "assistant" ? m.kind === "assistant" : m.kind === "agent" && m.id === i.name));
+  const listed = (Array.isArray(members) ? members : []).find((m) => m && (kind === "assistant" ? m.kind === "assistant" : m.kind === "agent" && m.id === i.member));
   const v = presenceView(listed && listed.presence === presence ? listed : { kind, presence });
-  return { state: hroom(v.word), now: i.answering ? hroom("answeringHere") : "" };
+  // Answering here is the more specific 處理中: the member list's working word, and what it is doing now.
+  return { state: hroom(i.answering ? "stWorking" : v.word), now: i.answering ? hroom("answeringHere") : "" };
 }
 
 /** A card's rows: the agent's owner and introduction, from the room's members (the assistant: provided by the Hub). */
@@ -75,8 +76,24 @@ export function officeCardRows(members, id) {
   return [{ key: "owner", label: hroom("cardOwner"), value: String(m.owner?.name || "") }, { key: "intro", label: hroom("cardIntro"), value: String(m.intro || "") }];
 }
 
-/** The room assistant under the room's own word for it. */
-const named = (d) => ({ ...d, instances: (Array.isArray(d.instances) ? d.instances : []).map((i) => (i && i.assistant ? { ...i, display_name: hroom("roomAssistant") } : i)) });
+/**
+ * The drawing names people by their instance name (and shows it beside a display name, or first when the viewer prefers
+ * it): a room's agents are named by what members see — the room assistant by the room's word for it, two agents of one
+ * name told apart with (2) — and keep their member id as `member` (their card and words read it).
+ */
+export function named(d) {
+  const taken = new Set(), rename = new Map();
+  const instances = (Array.isArray(d && d.instances) ? d.instances : []).filter((i) => i && typeof i.name === "string").map((i) => {
+    const base = i.assistant ? hroom("roomAssistant") : String(i.display_name || "").trim() || "?";
+    let label = base;
+    for (let n = 2; taken.has(label); n++) label = `${base} (${n})`;
+    taken.add(label); rename.set(i.name, label);
+    return { ...i, name: label, display_name: label, member: i.name };
+  });
+  const offices = d && d.offices && Array.isArray(d.offices.offices)
+    ? { ...d.offices, offices: d.offices.offices.map((o) => ({ ...o, members: (Array.isArray(o.members) ? o.members : []).map((m) => rename.get(m) ?? m) })) } : d?.offices;
+  return { ...d, instances, offices };
+}
 
 export function RoomOffice({ client, roomId, members, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS }) {
   const [phase, setPhase] = useState("loading");      // loading | live | failed | off
@@ -118,6 +135,6 @@ export function RoomOffice({ client, roomId, members, timers = globalThis, pollM
   return html`<div class="hub-room-office" data-trust="panel-content">
     <${Office} view=${view} traffic=${[]} lease=${lease} opening="room" talk=${{ now: Date.now(), items: [] }}
       oneOffice=${true} readOnly=${true} stream=${false} storage=${storage} words=${(node) => officeWords(node, members)}
-      cardRows=${(name) => officeCardRows(members, name)} />
+      cardRows=${(name) => officeCardRows(members, d.instances.find((i) => i.name === name)?.member)} />
   </div>`;
 }
