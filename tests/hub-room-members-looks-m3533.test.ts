@@ -46,7 +46,7 @@ describe("the member list", () => {
     if (compact) for (const d of [...p.root.querySelectorAll("details")] as any[]) { d.setAttribute("open", ""); d.open = true; }
     await settle(5);
     const rows = [...p.root.querySelectorAll(".hub-member-agent .hub-member-open")] as any[];
-    const got = rows.map((b) => { const av = b.querySelector(".hub-agent-av"); return [b.querySelector(".hub-member-name").textContent.trim(), av.getAttribute("data-av"), (av.style?.cssText || av.getAttribute("style") || "").replace(/\s+/g, ""), b.querySelector("[data-room-source]")?.getAttribute("data-room-source") ?? null]; });
+    const got = rows.map((b) => { const av = b.querySelector(".hub-agent-av"); return [b.querySelector(".hub-member-name").textContent.trim(), av.getAttribute("data-av"), (av.style?.["--av"] ? `--av:${av.style["--av"]};--av-ink:${av.style["--av-ink"]}` : "") + (av.getAttribute("style") ?? ""), b.querySelector("[data-room-source]")?.getAttribute("data-room-source") ?? null]; });
     expect(got.sort((a, b) => a[0].localeCompare(b[0]))).toEqual([
       ["Notes", "🦊", "--av:#d97757;--av-ink:#111111", null],
       ["Old", "O", "", null],

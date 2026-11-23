@@ -93,8 +93,9 @@ export function agentAvatar(m) {
  */
 function AgentAvatar({ m }) {
   const a = agentAvatar(m);
-  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}${a.color ? "" : " neutral"}`} aria-hidden="true" data-av=${a.text}
-    style=${a.color ? `--av:${a.color};--av-ink:${a.ink}` : undefined}></span>`;
+  // The colour goes in through the CSSOM (no style attribute: the dashboard's CSP, web-csp-1300).
+  const paint = (el) => { if (!el?.style) return; if (a.color) { el.style.setProperty("--av", a.color); el.style.setProperty("--av-ink", a.ink); } else { el.style.removeProperty("--av"); el.style.removeProperty("--av-ink"); } };
+  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}${a.color ? "" : " neutral"}`} aria-hidden="true" data-av=${a.text} ref=${paint}></span>`;
 }
 
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
