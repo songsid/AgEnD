@@ -505,6 +505,199 @@ describe("4b. who handed a card out, from the dashboard", () => {
   });
 });
 
+describe("4f. a main task kept out of sight is not numbered by its sub tasks over the link", () => {
+  const fleetConfig = { defaults: {}, instances: { "dev-a": {}, ops: {}, spy: { cross_instance_visibility: "hidden" } } };
+  const seed = () => {
+    const db = scratchDb();
+    // The main task is held by a hidden instance; its sub task by a visible one. A second, visible main task has a sub task too.
+    const hidden = db.board.createCards(ANN, { cards: [{ title: "Hidden main", assignee: "spy" }] }).cards[0]!;
+    const sub = db.board.createCards(ANN, { cards: [{ parent: hidden.code, title: "Visible sub", assignee: "dev-a" }] }).cards[0]!;
+    const open = db.board.createCards(ANN, { cards: [{ title: "Open main", assignee: "dev-a" }] }).cards[0]!;
+    const openSub = db.board.createCards(ANN, { cards: [{ parent: open.code, title: "Open sub", assignee: "dev-a" }] }).cards[0]!;
+    return { db, hidden, sub, open, openSub };
+  };
+  const get = (db: SchedulerDb, path: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", path, undefined, { fleetConfig, ...opts });
+  const created = (body: any) => body.history.find((e: any) => e.type === "created");
+
+  it("over the link a sub task's `card.parentId` and its \"created\" event's `parent` read as none, and the main task's number is nowhere in the read; a visible main task is still named", async () => {
+    const { db, hidden, sub, open, openSub } = seed();
+    const link = (await get(db, `/ui/tasks/cards/${sub.code}`, { tier: "read" })).body;
+    expect(link.card.id).toBe(sub.code);
+    expect(link.card.parentId, "the card's own read").toBeNull();
+    expect(created(link).data.parent, "its created event").toBeNull();
+    expect(link.parent).toBeNull();
+    expect(JSON.stringify(link), "the hidden main task's number is not in the read at all").not.toContain(`"${hidden.code}"`);
+    // …nor in the board's, the work drawer's or the search's.
+    const board = (await get(db, "/ui/tasks/board", { tier: "read" })).body;
+    expect(board.cards.find((c: any) => c.id === sub.code).parentId).toBeNull();
+    expect(JSON.stringify(board)).not.toContain(`"${hidden.code}"`);
+    const work = (await get(db, "/ui/tasks/work", { tier: "read" })).body;
+    const mine = work.instances.flatMap((i: any) => [...i.doing, ...i.blocked, ...i.review, ...i.ready, ...i.waiting, ...i.mains]).filter((c: any) => c.id === sub.code);
+    expect(mine.length).toBeGreaterThan(0);
+    for (const c of mine) expect(c.parentId, "the work drawer").toBeNull();
+    const found = (await get(db, "/ui/tasks/search?q=Visible", { tier: "read" })).body;
+    expect(found.results.map((r: any) => r.card.id)).toEqual([sub.code]);
+    expect(found.results[0].card.parentId, "the search").toBeNull();
+    // A main task in plain sight is named, over the link and on the card.
+    const shown = (await get(db, `/ui/tasks/cards/${openSub.code}`, { tier: "read" })).body;
+    expect(shown.card.parentId).toBe(open.code);
+    expect(created(shown).data.parent).toBe(open.code);
+    expect(shown.parent?.id).toBe(open.code);
+    expect((await get(db, "/ui/tasks/board", { tier: "read" })).body.cards.find((c: any) => c.id === openSub.code).parentId).toBe(open.code);
+  });
+
+  it("the local page and an admin session over the link still see the main task's number", async () => {
+    const { db, hidden, sub } = seed();
+    for (const opts of [{ local: true }, {}] as const) {
+      const full = (await get(db, `/ui/tasks/cards/${sub.code}`, opts)).body;
+      expect(full.card.parentId, JSON.stringify(opts)).toBe(hidden.code);
+      expect(created(full).data.parent, JSON.stringify(opts)).toBe(hidden.code);
+      expect((await get(db, "/ui/tasks/board", opts)).body.cards.find((c: any) => c.id === sub.code).parentId, JSON.stringify(opts)).toBe(hidden.code);
+    }
+  });
+});
+
+describe("4g. no other card number of a card kept out of sight over the link — its \"updated\" events, dependencies and cascades", () => {
+  const fleetConfig = { defaults: {}, instances: { "dev-a": {}, ops: {}, spy: { cross_instance_visibility: "hidden" } } };
+  const seed = () => {
+    const db = scratchDb();
+    // `hidden` is held by a hidden instance, `plain` by a visible one; `work` (visible) depends on both, `only` (visible) on the hidden one alone.
+    const hidden = db.board.createCards(ANN, { cards: [{ title: "Hidden dependency", assignee: "spy" }] }).cards[0]!;
+    const plain = db.board.createCards(ANN, { cards: [{ title: "Plain dependency", assignee: "ops" }] }).cards[0]!;
+    const work = db.board.createCards(ANN, { cards: [{ title: "Visible work", assignee: "dev-a" }] }).cards[0]!;
+    const only = db.board.createCards(ANN, { cards: [{ title: "Hidden only", assignee: "dev-a" }] }).cards[0]!;
+    // work: [] → [hidden, plain] → [plain] → [plain, hidden], and a title change that carries a dependency change with it.
+    db.board.updateCard(ANN, work.code, { dependsOn: [hidden.code, plain.code] });
+    db.board.updateCard(ANN, work.code, { dependsOn: [plain.code] });
+    db.board.updateCard(ANN, work.code, { dependsOn: [plain.code, hidden.code], title: "Visible work (retitled)" });
+    // only: [] → [hidden] → []: a change that is only about the hidden card.
+    db.board.updateCard(ANN, only.code, { dependsOn: [hidden.code] });
+    db.board.updateCard(ANN, only.code, { dependsOn: [] });
+    // A sub task of a visible main task that depends on the hidden card too: its `unmetDeps` follow its main task's.
+    const main = db.board.createCards(ANN, { cards: [{ title: "Visible main", assignee: "dev-a", dependsOn: [hidden.code] }] }).cards[0]!;
+    const sub = db.board.createCards(ANN, { cards: [{ parent: main.code, title: "Visible sub", assignee: "dev-a" }] }).cards[0]!;
+    return { db, hidden, plain, work, only, main, sub };
+  };
+  const get = (db: SchedulerDb, path: string, opts: { tier?: "admin" | "read"; local?: boolean }) => viaLink(db, "GET", path, undefined, { fleetConfig, ...opts });
+  const updates = (body: any) => body.history.filter((e: any) => e.type === "updated");
+
+  it("over the link an \"updated\" event's `changes.dependsOn` does not number the hidden card — taken out of both lists; a change only about it is not shown; a visible card's number stays", async () => {
+    const { db, hidden, plain, work, only } = seed();
+    const link = (await get(db, `/ui/tasks/cards/${work.code}`, { tier: "read" })).body;
+    expect(link.card.id).toBe(work.code);
+    // [] → [hidden, plain] shows as [] → [plain]; [hidden, plain] → [plain] changed nothing the link sees (no event);
+    // [plain] → [plain, hidden] with the title shows the title alone, the dependency change dropped (nothing visible changed).
+    expect(updates(link).map((e: any) => e.data.changes)).toEqual([
+      { dependsOn: { from: [], to: [plain.code] } },
+      { title: { from: "Visible work", to: "Visible work (retitled)" } },
+    ]);
+    expect(JSON.stringify(link), "the hidden card's number is nowhere in the read").not.toContain(`"${hidden.code}"`);
+    // A card whose only dependency change was about the hidden card has no \"updated\" event to show at all.
+    const alone = (await get(db, `/ui/tasks/cards/${only.code}`, { tier: "read" })).body;
+    expect(updates(alone)).toEqual([]);
+    expect(JSON.stringify(alone)).not.toContain(`"${hidden.code}"`);
+  });
+
+  it("a card's `dependsOn` and `unmetDeps` read without the hidden card's number — on the card, its sub tasks, the board, the work drawer and the search; a visible dependency stays", async () => {
+    const { db, hidden, plain, work, only, main, sub } = seed();
+    const link = (await get(db, `/ui/tasks/cards/${work.code}`, { tier: "read" })).body;
+    expect([link.card.dependsOn, link.card.unmetDeps], "the card's own read").toEqual([[plain.code], [plain.code]]);
+    // …a main task's sub tasks are read with it, and carry their main task's unmet dependencies.
+    const mainLink = (await get(db, `/ui/tasks/cards/${main.code}`, { tier: "read" })).body;
+    expect([mainLink.card.dependsOn, mainLink.card.unmetDeps]).toEqual([[], []]);
+    expect(mainLink.children.map((c: any) => [c.id, c.dependsOn, c.unmetDeps])).toEqual([[sub.code, [], []]]);
+    expect(JSON.stringify(mainLink)).not.toContain(`"${hidden.code}"`);
+    const board = (await get(db, "/ui/tasks/board", { tier: "read" })).body;
+    const row = (code: string) => board.cards.find((c: any) => c.id === code);
+    expect([row(work.code).dependsOn, row(work.code).unmetDeps]).toEqual([[plain.code], [plain.code]]);
+    expect([row(only.code).dependsOn, row(only.code).unmetDeps]).toEqual([[], []]);
+    expect([row(sub.code).dependsOn, row(sub.code).unmetDeps]).toEqual([[], []]);
+    expect(JSON.stringify(board), "the board").not.toContain(`"${hidden.code}"`);
+    const workRead = (await get(db, "/ui/tasks/work", { tier: "read" })).body;
+    const mine = workRead.instances.flatMap((i: any) => [...i.doing, ...i.blocked, ...i.review, ...i.ready, ...i.waiting, ...i.mains]).filter((c: any) => c.id === work.code);
+    expect(mine.length).toBeGreaterThan(0);
+    for (const c of mine) expect([c.dependsOn, c.unmetDeps], "the work drawer").toEqual([[plain.code], [plain.code]]);
+    expect(JSON.stringify(workRead), "the work drawer").not.toContain(`"${hidden.code}"`);
+    const found = (await get(db, "/ui/tasks/search?q=Visible", { tier: "read" })).body;
+    expect(found.results.map((r: any) => r.card.id).sort()).toEqual([main.code, sub.code, work.code].sort());
+    expect(found.results.find((r: any) => r.card.id === work.code).card.dependsOn, "the search").toEqual([plain.code]);
+    expect(JSON.stringify(found), "the search").not.toContain(`"${hidden.code}"`);
+  });
+
+  it("over the link `hiddenUnmet` counts the unfinished dependencies left out (how many, never which) — on the card, its sub tasks, the board, the work drawer and the search; a finished hidden dependency is not counted", async () => {
+    const { db, hidden, plain, work, only, main, sub } = seed();
+    // `done` is a second hidden card that is finished: its number is left out of `dependsOn` too, and it holds nothing.
+    const done = db.board.createCards(ANN, { cards: [{ title: "Hidden and done", assignee: "spy", needsReview: false }] }).cards[0]!;
+    db.board.moveCard(ANN, done.code, "claimed");
+    db.board.moveCard(ANN, done.code, "done", { result: "finished" });
+    // `lone` waits for the hidden card alone; `follower` for the hidden one and the finished one.
+    const lone = db.board.createCards(ANN, { cards: [{ title: "Visible lone", assignee: "dev-a", dependsOn: [hidden.code] }] }).cards[0]!;
+    const follower = db.board.createCards(ANN, { cards: [{ title: "Visible follower", assignee: "dev-a", dependsOn: [hidden.code, done.code] }] }).cards[0]!;
+    const hiddenOf = (c: any) => c.hiddenUnmet;
+    const link = (await get(db, `/ui/tasks/cards/${work.code}`, { tier: "read" })).body;
+    expect([hiddenOf(link.card), link.card.unmetDeps]).toEqual([1, [plain.code]]);
+    const loneRead = (await get(db, `/ui/tasks/cards/${lone.code}`, { tier: "read" })).body.card;
+    expect([loneRead.dependsOn, loneRead.unmetDeps, hiddenOf(loneRead)], "only the hidden card is waited for: nothing numbered, one not said").toEqual([[], [], 1]);
+    const mainLink = (await get(db, `/ui/tasks/cards/${main.code}`, { tier: "read" })).body;
+    expect([hiddenOf(mainLink.card), mainLink.children.map(hiddenOf)], "a sub task waits for what its main task waits for").toEqual([1, [1]]);
+    const board = (await get(db, "/ui/tasks/board", { tier: "read" })).body;
+    const row = (code: string) => board.cards.find((c: any) => c.id === code);
+    expect([work, lone, sub, plain].map((c) => hiddenOf(row(c.code))), "the board").toEqual([1, 1, 1, 0]);
+    expect(hiddenOf(row(follower.code)), "a finished hidden dependency is not counted").toBe(1);
+    const workRead = (await get(db, "/ui/tasks/work", { tier: "read" })).body;
+    const mine = workRead.instances.flatMap((i: any) => [...i.doing, ...i.blocked, ...i.review, ...i.ready, ...i.waiting, ...i.mains]).filter((c: any) => c.id === work.code);
+    expect(mine.length).toBeGreaterThan(0);
+    for (const c of mine) expect(hiddenOf(c), "the work drawer").toBe(1);
+    const found = (await get(db, "/ui/tasks/search?q=Visible", { tier: "read" })).body;
+    expect(hiddenOf(found.results.find((r: any) => r.card.id === work.code).card), "the search").toBe(1);
+  });
+
+  it("the local page and an admin session over the link read no `hiddenUnmet`: they see the numbers themselves", async () => {
+    const { db, hidden, work, main } = seed();
+    for (const opts of [{ local: true }, {}] as const) {
+      const full = (await get(db, `/ui/tasks/cards/${main.code}`, opts)).body;
+      expect(full.card.unmetDeps, JSON.stringify(opts)).toEqual([hidden.code]);
+      expect("hiddenUnmet" in full.card, JSON.stringify(opts)).toBe(false);
+      const row = (await get(db, "/ui/tasks/board", opts)).body.cards.find((c: any) => c.id === work.code);
+      expect("hiddenUnmet" in row, JSON.stringify(opts)).toBe(false);
+    }
+  });
+
+  it("a sub task taken down with a main task kept out of sight (and brought back) does not carry that main task's number in its \"moved\" events; a visible main task's is kept", async () => {
+    const db = scratchDb();
+    const hiddenMain = db.board.createCards(ANN, { cards: [{ title: "Hidden main", assignee: "spy" }] }).cards[0]!;
+    const sub = db.board.createCards(ANN, { cards: [{ parent: hiddenMain.code, title: "Visible sub", assignee: "dev-a" }] }).cards[0]!;
+    const openMain = db.board.createCards(ANN, { cards: [{ title: "Open main", assignee: "dev-a" }] }).cards[0]!;
+    const openSub = db.board.createCards(ANN, { cards: [{ parent: openMain.code, title: "Open sub", assignee: "dev-a" }] }).cards[0]!;
+    for (const main of [hiddenMain, openMain]) {
+      db.board.moveCard(ANN, main.code, "cancelled", { reason: "no longer needed" });
+      db.board.moveCard(ANN, main.code, "open");
+    }
+    const moves = (body: any) => body.history.filter((e: any) => e.type === "moved").map((e: any) => e.data);
+    const link = (await get(db, `/ui/tasks/cards/${sub.code}`, { tier: "read" })).body;
+    expect(moves(link).map((d: any) => [d.from, d.to, d.auto])).toEqual([["open", "cancelled", true], ["cancelled", "open", true]]);
+    expect(moves(link).some((d: any) => "cascade" in d || "restored" in d), "no `cascade` / `restored` of the hidden main task").toBe(false);
+    expect(JSON.stringify(link)).not.toContain(`"${hiddenMain.code}"`);
+    const shown = (await get(db, `/ui/tasks/cards/${openSub.code}`, { tier: "read" })).body;
+    expect(moves(shown).map((d: any) => [d.cascade, d.restored])).toEqual([[openMain.code, undefined], [undefined, openMain.code]]);
+  });
+
+  it("the local page and an admin session over the link still see every number: the dependencies, the \"updated\" events and the cascades", async () => {
+    const { db, hidden, plain, work, only } = seed();
+    for (const opts of [{ local: true }, {}] as const) {
+      const full = (await get(db, `/ui/tasks/cards/${work.code}`, opts)).body;
+      expect(full.card.dependsOn, JSON.stringify(opts)).toEqual([plain.code, hidden.code]);
+      expect(full.card.unmetDeps, JSON.stringify(opts)).toEqual([plain.code, hidden.code]);
+      expect(updates(full).map((e: any) => e.data.changes.dependsOn), JSON.stringify(opts)).toEqual([
+        { from: [], to: [hidden.code, plain.code] }, { from: [hidden.code, plain.code], to: [plain.code] }, { from: [plain.code], to: [plain.code, hidden.code] },
+      ]);
+      expect(updates((await get(db, `/ui/tasks/cards/${only.code}`, opts)).body).map((e: any) => e.data.changes.dependsOn), JSON.stringify(opts))
+        .toEqual([{ from: [], to: [hidden.code] }, { from: [hidden.code], to: [] }]);
+      expect((await get(db, "/ui/tasks/board", opts)).body.cards.find((c: any) => c.id === work.code).dependsOn, JSON.stringify(opts)).toEqual([plain.code, hidden.code]);
+    }
+  });
+});
+
 describe("4e. #2756: whom a card waits for, through the routes (#2757 review: a dispatcher deleted, caches warm)", () => {
   it("lead's card in review is lead's to confirm — on the board, the card's own read and the work drawer; once lead is deleted, the person's on all three", async () => {
     const h = rig();
