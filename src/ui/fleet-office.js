@@ -201,8 +201,8 @@ const FIT_PAD = 60;
 const COMPACT_ROW = 12;
 /** M-3539: how far below its place a full name tag drops when another tag or an area's name is in the way (a tag's height + 2). */
 const TAG_ROW = 16;
-/** M-3539: the controls drawn over the scene that name tags keep clear of: the zoom stack, and the phone's zone chips where they float over it. */
-const KEEP_CLEAR = ".oo-zoom, .oo-stage > .oo-zone-pills";
+/** M-3539: the controls drawn over the scene that name tags keep clear of: the zoom stack, the minimap, and the phone's zone chips where they float over it. */
+const KEEP_CLEAR = ".oo-zoom, .oo-mini, .oo-stage > .oo-zone-pills";
 /** M-3539: those controls' boxes in the scene's logical units at the view `v` ({ k, x, y }: CSS px a unit, the origin), 4 CSS px round each. */
 export function keepClearOf(cv, v) {
   const root = cv && typeof cv.closest === "function" ? cv.closest(".oo") : null;

@@ -126,6 +126,12 @@ describe("M-3539 keepClearOf: the controls over the stage in scene units", () =>
     expect(rest).toEqual([]);
     expect(b).toEqual({ x: (900 - 100 - 4 - 20) / 0.5, y: (80 - 50 - 4 - 10) / 0.5, w: 48 / 0.5, h: 208 / 0.5 });
   });
+  it("asks for the zoom stack, the minimap (leader's capture check: it covered Cedar's tag at 150%) and the floating zone chips", () => {
+    let asked = "";
+    const root = { querySelectorAll: (sel: string) => { asked = sel; return []; } };
+    F.keepClearOf({ closest: () => root, getBoundingClientRect: () => ({ left: 0, top: 0, width: 10, height: 10, right: 10, bottom: 10 }) }, { k: 1, x: 0, y: 0 });
+    expect(asked.split(",").map((x) => x.trim())).toEqual([".oo-zoom", ".oo-mini", ".oo-stage > .oo-zone-pills"]);
+  });
   it("no canvas, no office round it, or no scale: nothing", () => {
     expect(F.keepClearOf(null, { k: 1, x: 0, y: 0 })).toEqual([]);
     expect(F.keepClearOf({ closest: () => null, getBoundingClientRect: () => ({}) }, { k: 1, x: 0, y: 0 })).toEqual([]);
