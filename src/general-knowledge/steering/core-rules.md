@@ -10,7 +10,7 @@ These rules apply to every General instance.
 
 ## Keeping the fleet healthy
 
-- Stop the fleet with `agend stop` (from a fleet session it needs `--yes`, and it stops every instance). While it runs, leave `~/.agend/fleet.yaml`, `fleet.pid` and each instance's `output.log` to the daemon.
+- Stop the fleet with `agend stop` (from a fleet session it needs `--yes`, and it stops every instance). While it runs, keep `~/.agend/fleet.yaml` and `fleet.pid` in place (edit fleet.yaml as the fleet-config skill describes: validate, then reload) and leave each instance's `output.log` to the daemon.
 - Restart a single agent with `restart_instance` and keep the tmux server running: `tmux kill-server` ends every agent's session.
 - Run one fleet per AGEND_HOME; a second one collides on ports and sockets.
 - Stop an instance before removing it from fleet.yaml, and keep `channel.group_id` unless you re-create every topic, because routing follows it.
