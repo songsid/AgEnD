@@ -25,6 +25,7 @@ A scratch probe (not part of this change) recorded every tag the scene drew, eac
 | A tag on an area's name | 0 | 0 |
 | A tag under the zoom control (including zoomed in) | 0 | 0 (now kept clear by construction) |
 | Nap corner at 3 s: people sent there / drawn there | 6 / 0 (Studio), 6 / 4–5 (large): the stopped walked in from the old seats, through the help desk | 6 / 6 in every run |
+| An idle agent standing in the help desk (求救區), at rest between strolls | 2 (Reed, Quartz) | 0 |
 | Phone, English: zone chips | 402 px of chips in 340 px, cut with no cue | the same width, now fading at the right while there is more |
 
 What changed:
@@ -34,9 +35,10 @@ What changed:
   - The hovered person's tag is always at their place.
   - People walking are tagged after everyone at their place, so a stroll no longer covers a seated person's name.
 - **An area's name a figure stands on** (休息區 under the crowd at the top of the Studio lounge) is written again over the people, on a plate of the page's surface.
-- **A new office or style places everyone at once.** Before, a room's office opened on the Studio's seats, then read its style, and everyone walked across. The asleep stood in the help desk for seconds, so 午睡角 6 had nobody drawn in it.
+- **The idle never stroll or visit to the help desk.** Someone standing there reads as "needs you". These are the areas a style sends the calling to; strolls and visits elsewhere are unchanged (#3685).
+- **A new office or style places everyone at once**, stopping any walk under way, even one going to the same seat. Before, a room's office opened on the Studio's seats, then read its style, and everyone walked across. The asleep stood in the help desk for seconds, so 午睡角 6 had nobody drawn in it.
 
 Not changed:
 
 - **Figures overlapping figures.** In the plain Studio a 30-agent room is over its lounge's capacity, so figures stand on the overflow grid close together, and a tag can sit over a neighbour's figure. Studio (large), from #4370, seats them all.
-- **Idle agents visiting other areas.** They still stroll and visit (#3685), so an idle agent may stand in the help desk for a while.
+- **Idle agents visiting other areas.** They still stroll and visit (#3685) everywhere but the help desk.
