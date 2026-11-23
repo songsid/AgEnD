@@ -4,6 +4,7 @@ import type { NativePaneConfig } from "./runtime-pane-config.js";
 import type { RuntimePaneLaunch } from "./runtime-pane-protocol.js";
 import { AUDITED_CLI_VERSIONS } from "./cli-audited.js";
 import { nativeUpdateGuard, nativeClaudeFilePolicyArgs } from "./windows-cli-providers.js";
+import { facingToolNames } from "./composite-tools.js";
 export type NativePaneCli = "codex" | "claude-code";
 /** Releases AgEnD has audited for this CLI: the same ledger as the Linux upstream watch (ffb8104e) — when a version is
  * marked audited there, it is added here, so the shipped app can say "verified" on any machine. Informational only
@@ -103,6 +104,6 @@ export function persistentNativeArguments(launch: RuntimePaneLaunch, config?: Na
     "-c", 'tui.status_line=["context-remaining"]', "--sandbox", launch.sandbox, "--ask-for-approval", "on-request", "-C", launch.cwd,
     ...model, ...(launch.sessionId ? ["resume", launch.sessionId] : [])];
   return [...model, ...nativeClaudeFilePolicyArgs(), ...(config?.instructionsFile ? ["--append-system-prompt-file", config.instructionsFile] : []),
-    ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", mcp.tools.map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", launch.sandbox === "workspace-write" ? "acceptEdits" : "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
+    ...(mcp ? ["--strict-mcp-config", "--mcp-config", mcp.configPath, "--allowedTools", facingToolNames(mcp.tools).map(tool => `mcp__${mcp.serverName}__${tool}`).join(",")] : []), "--permission-mode", launch.sandbox === "workspace-write" ? "acceptEdits" : "default", ...(launch.sandbox === "read-only" ? ["--tools", "Read,Glob,Grep"] : []),
     ...(launch.sessionId ? ["--resume", launch.sessionId] : config?.sessionId ? ["--session-id", config.sessionId] : [])];
 }

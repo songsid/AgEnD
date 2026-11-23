@@ -31,29 +31,29 @@ const ChannelAddressFields = {
 
 /** The reply tool's buttons and poll, shared with report_result to the Hub (one shape, one validation). */
 export const ReplyButtonsArg = z.array(z.object({
-    label: z.string().min(1).max(80).describe("What the button says: one line of plain text, at most 80 characters."),
-    value: z.string().max(200).optional().describe("What you receive when it is clicked, if not the label (at most 200 characters; never shown on the platform)."),
+    label: z.string().min(1).max(80).describe("One line of plain text"),
+    value: z.string().max(200).optional().describe("What you receive on a click, if not the label; never shown"),
   })).min(1).max(10).optional()
-    .describe("Up to 10 buttons under the text (needs text; not with stickers). The first click by someone who may talk to you there answers for everyone and comes back to you as a message: `[button] <label>` (and `(value: …)` when it differs). Unanswered buttons expire after 24 h. With `poll`, they are a poll's options instead.");
+    .describe("Up to 10 buttons under the text (needs text; not with stickers). The first click by someone who may talk to you answers for everyone and comes back as `[button] <label>` (with `(value: …)` when it differs); they expire after 24 h. With `poll`, they are its options.");
 export const ReplyPollArg = z.object({
-    seconds: z.number().int().min(10).max(86400).describe("When the poll closes: 10 s to 24 h after it is posted."),
-    multi: z.boolean().optional().describe("Each voter may pick several options (a click toggles one). Default: one."),
-    reveal: z.enum(["close", "live"]).optional().describe("\"close\" (default): while open only \"N answered\" and the time left show, the counts at close. \"live\": the counts show as votes come."),
-    show_voters: z.boolean().optional().describe("At close, also post who picked what in the chat. Default: counts only. You get the voters either way."),
+    seconds: z.number().int().min(10).max(86400).describe("Closes this many seconds after posting"),
+    multi: z.boolean().optional().describe("Voters may pick several options"),
+    reveal: z.enum(["close", "live"]).optional().describe("close (default): counts shown at close; live: as votes come"),
+    show_voters: z.boolean().optional().describe("At close, also post who picked what (you get the voters either way)"),
   }).optional()
-    .describe("Make the buttons (2–10) a timed poll: everyone who may talk to you there votes once, may change their vote, and is told their own choice privately. At the deadline you get one message from AgEnD in the poll's chat, `[poll results]`: each option's count and voters, each with an id and the ms from the poll opening (just before it is posted) to their last change; answer it in the chat. AgEnD only counts votes: post the right answer and any scores yourself. The reply's result has `poll_id`.");
+    .describe("Make the buttons (2–10) a timed poll; one vote each, changeable. At the deadline one `[poll results]` message comes to you in that chat: answer it there. The result has `poll_id`.");
 export const ReplyArgs = z.object({
   ...ChannelAddressFields,
   text: z.string().optional()
-    .describe("The message. Required unless you send stickers; with stickers it may be omitted."),
+    .describe("The message; may be omitted only with stickers"),
   reply_to: z.string().optional()
-    .describe("Message ID to thread under. Use message_id from the inbound block."),
-  previews: ReplyPreviewsSchema.optional().describe("After editing code, add Preview buttons in the web chat: [{path:'src/app.ts',line:1000,endLine:1002}]. Paths are relative to your own working folder; no .., absolute paths or symlinks. Up to 10. Code/text opens at the highlighted line; images, Markdown and PDF use their viewers. Admin sessions only; General and coordinator working folders are unavailable. Discord/Telegram show plain path:line. Files on a paired Windows computer are not supported yet."),
+    .describe("message_id from the inbound block to thread under"),
+  previews: ReplyPreviewsSchema.optional().describe("After editing code, up to 10 web Preview buttons: [{path:'src/app.ts',line:1000,endLine:1002}], relative to your working folder (no .., absolute paths or symlinks). Admin sessions only; not for General/coordinator folders or a paired Windows computer; Discord/Telegram show path:line."),
   files: z.array(z.string()).optional()
-    .describe("Absolute file paths to attach (at most 20). Files under the AgEnD state dir (~/.agend, incl. workspaces/) are refused — copy an artifact to /tmp first and attach that. For HTML the web chat should preview, attach a .html file (it previews at once up to 8 MB, after the person confirms up to 50 MB) rather than pasting the page into text: a long ```html block is split on Discord/Telegram; keep ```html blocks for short snippets. The preview has no network: inline libraries, unless the fleet allows CDN ones (web.preview_cdn: cdnjs /ajax/libs/, jsDelivr /npm/)."),
-  format: MessageFormat.optional().describe("Rendering mode. Default: 'text'."),
+    .describe("Absolute paths to attach (at most 20); files under ~/.agend are refused, so copy to /tmp first. For an HTML page, attach a .html file instead of a long ```html block (the web previews it; no network unless web.preview_cdn allows a CDN, so inline libraries)."),
+  format: MessageFormat.optional().describe("Default: text"),
   stickers: z.array(NonEmptyString).max(3).optional()
-    .describe("Up to 3 sticker ids from list_stickers, sent with the text (Discord: the same message; Telegram: after it). Stickers are never written in the text."),
+    .describe("Up to 3 sticker ids from list_stickers; never write them in the text"),
   buttons: ReplyButtonsArg,
   poll: ReplyPollArg,
 });
@@ -154,14 +154,14 @@ export const TaskBoardArgs = z.object({
     z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]),
     z.array(z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"])),
   ]).optional()
-    .describe("Filter by status (list) — a single status or an array of statuses. Omit for live-only (open/claimed/blocked/review)."),
+    .describe("list: a status or an array of them; omit for live-only (open/claimed/blocked/review)"),
   verbose: z.boolean().optional()
-    .describe("list: return full task records instead of compact rows (default false)"),
-  stale: z.boolean().optional().describe("list: only claimed cards whose assignee stopped (crashed, paused, stuck, waiting on a prompt, or quiet)"),
+    .describe("list: full task records instead of compact rows"),
+  stale: z.boolean().optional().describe("list: only claimed cards whose assignee stopped"),
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
-  project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id: a new main task's (create), a filter (list). update / move_project: a main task's project by its id, or null / \"none\" to take it out of its project (sub tasks follow)"),
+  project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id (create, list filter); by id for update/move_project, null or \"none\" takes a main task out"),
   name: z.string().optional().describe("A new project's name (create_project)"),
-  ids: z.array(z.string()).optional().describe("Main tasks to move to `project`, e.g. [\"M-3\", \"M-4\"] (move_project): each is moved or refused on its own"),
+  ids: z.array(z.string()).optional().describe("move_project: main tasks to move, e.g. [\"M-3\"]"),
   parent: z.string().optional().describe("Main task number like M-3: a new sub task's (create), its sub tasks (list)"),
   scope: z.string().optional().describe("Main task: in / out of scope (create/update)"),
   acceptance: z.array(z.string()).optional().describe("Checklist that defines done, one item each (create/update replaces it)"),
@@ -171,9 +171,9 @@ export const TaskBoardArgs = z.object({
   state: z.string().optional().describe("Overwritten each time: done / next / watch out, at most 5 lines (update)"),
   log: z.string().optional().describe("One progress line appended to the card's log (update)"),
   comment: z.string().optional().describe("A comment on the card (update/move)"),
-  needs_review: z.boolean().optional().describe("Stop at review when finished, for whoever confirms it: the person on a card they handed out, else its dispatcher (create/update)"),
+  needs_review: z.boolean().optional().describe("Stop at review when finished (create/update)"),
   size: z.enum(["S", "M", "L"]).optional().describe("S small, M one unit, L too big: split it (create/update)"),
-  dispatcher: z.string().nullable().optional().describe("Who handed the work out (an instance, e.g. your lead); a blocked card's question goes to them first. Default: the main task's, or you when you assign it to someone else (create/update)"),
+  dispatcher: z.string().nullable().optional().describe("The instance that handed the work out; a blocked card's question goes to them (create/update)"),
   to: z.enum(["open", "claimed", "review", "done", "blocked", "cancelled"]).optional().describe("New status (move)"),
   reason: z.string().optional().describe("move: why blocked (who must answer what), cancelled, or acceptance left unchecked"),
   version: z.number().int().optional().describe("The card version you read; a newer one refuses the write (update/move)"),
@@ -710,7 +710,7 @@ export const HubRoomPostArgs = z.strictObject({
 });
 
 export const ReportResultArgs = z.object({
-  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement. Default: compact acceptance and delivery IDs, with any warning."),
+  detail: z.boolean().optional().describe("Return the complete legacy acknowledgement"),
   target_instance: NonEmptyString.describe("Name of the instance to report to."),
   correlation_id: z.string().optional()
     .describe("The correlation_id shown in the request's inbound block."),
@@ -719,9 +719,9 @@ export const ReportResultArgs = z.object({
     .describe("Optional details: file paths, commit hashes, URLs, etc."),
   // Only for target_instance "agend-hub" (a Hub representative answer); any other target refuses them.
   files: z.array(NonEmptyString).min(1).max(10).optional()
-    .describe("Only when target_instance is \"agend-hub\": absolute paths of files to send back with the answer (at most 10; 20 MB each, 50 MB together; PNG, JPEG, GIF, WebP, PDF, txt, md, csv, json, docx, xlsx, pptx, html). Files under the AgEnD state dir are refused except your inbox/."),
-  buttons: ReplyButtonsArg.describe("Only when target_instance is \"agend-hub\": buttons under the answer, as for reply."),
-  poll: ReplyPollArg.describe("Only when target_instance is \"agend-hub\": make the buttons a poll, as for reply."),
+    .describe("agend-hub only: absolute paths to send with the answer (at most 10; 20 MB each, 50 MB in all; images, PDF, text, Office, html); state-dir files refused except your inbox/"),
+  buttons: ReplyButtonsArg.describe("agend-hub only: buttons, as for reply"),
+  poll: ReplyPollArg.describe("agend-hub only: a poll, as for reply"),
 });
 
 // Read-only lookup of a previously accepted durable operation. Exactly one

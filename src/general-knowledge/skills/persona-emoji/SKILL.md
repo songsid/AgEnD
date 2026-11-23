@@ -14,6 +14,9 @@ persona emoji replaces your `delivered` stamp with one of your own, the way
 
 ## Tools
 
+These are actions of one tool, **`emoji_sticker`**: call it with the action and its fields in `args`, for example
+`emoji_sticker({ action: "set_persona_emoji", args: { emoji: "🦊" } })`.
+
 - `list_emojis` — your current stamps (`statuses`, with `source`: instance =
   yours, platform = the connection's, builtin = AgEnD's; `kind`: `reaction`,
   or `text_prefix` for `progress_prefix`), a `platform_note` saying what your

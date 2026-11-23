@@ -41,7 +41,7 @@ describe("#2670: nullable fields keep the zod 4.3 anyOf shape", () => {
 
   it("task.dispatcher and set_web_settings' nullable fields list as anyOf with the description outside", () => {
     expect(tool("task").properties.dispatcher).toEqual({
-      description: expect.stringContaining("Who handed the work out"),
+      description: expect.stringContaining("handed the work out"),
       anyOf: [{ type: "string" }, { type: "null" }],
     });
     const branches = tool("set_web_settings").properties.change.oneOf as Array<{ properties: Record<string, any> }>;

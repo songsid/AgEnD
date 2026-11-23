@@ -21,6 +21,7 @@ export const GENERAL_SKILL_NAMES = [
   "multi-channel",
   "scheduling",
   "session-management",
+  "task-board",
   "tui-effort",
   "web-appearance",
   "web-dashboard"
