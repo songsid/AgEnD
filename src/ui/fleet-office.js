@@ -190,6 +190,7 @@ const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
 /** What a pose says in words (the tooltip, the desk list); `state`, when its words differ from its pose's. */
 export const caption = (pose, state) => to(CAPTION_OF_STATE[state] || CAPTION[pose] || "capIdle");
 
+register("orgo", { en: { display: "Display options" }, "zh-TW": { display: "顯示選項" } });   // M-3556 (merged into orgo)
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** The device's ratio (CSS px → device px), kept sane. */
 const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixelRatio) || 1));
@@ -2297,30 +2298,29 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     n: people.filter((d) => d.area === areaName(key)).length })).filter((z) => z.rect && z.n > 0) : [];
   const toZone = (z) => { const v = view0(); raw.current = ZONE_K; setView(centreOn({ ...v, k: ZONE_K }, size, z.rect.x + z.rect.w / 2, z.rect.y + z.rect.h / 2)); };
   const closeMore = () => onMore && onMore(false);
+  const [displayOpen, setDisplayOpen] = useState(false);                // M-3556: the desk's ⚙ Display options
+  // Non-modal, like Members (成員): the office stays in view, so a toggle shows at once; a click elsewhere or Esc closes it.
+  const displayRef = useRef(null);
+  useEffect(() => {
+    if (!displayOpen) return undefined;
+    const away = (e) => { if (displayRef.current && !displayRef.current.contains(e.target)) setDisplayOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setDisplayOpen(false); };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [displayOpen]);
   // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
   const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
     onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
-  const barItems = html`
+  // M-3556 (prototype): the bar in three groups — scope (which office, whom), the display options (style, toggles,
+  // legend: behind ⚙ on a desk, the same sheet a Hub room's gear opens) and the actions (edit, share).
+  const scopeItems = html`
       ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
-      ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
-        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
-          ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
-          ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
-        </select></label>` : null}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("show")}</span>
         <select class="tb-select" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
           ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
-      <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
-      ${zones && !overview && !shared ? html`<label class="check oo-play" title=${still ? to("playStill") : null}><input type="checkbox" checked=${playOn && !still} disabled=${still}
-        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playStill")}</span>` : null}</label>` : null}
-      ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
-      <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
-      ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
-        disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
-        ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
       ${carouselPick ? html`<div class="oo-carousel">
         <${CarouselOffices} stored=${stored} carIds=${carIds} open=${carMenu} onOpen=${setCarMenu} onToggle=${toggleCarId}
           onAll=${() => setCarIds(stored.map((o) => o.id))} onNone=${() => setCarIds([])} />
@@ -2332,17 +2332,45 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       </div>` : null}
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
-      ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
+      ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
+`;
+  const optionItems = html`
+      ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
+        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
+          ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
+          ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
+        </select></label>` : null}
+      <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
+      ${zones && !overview && !shared ? html`<label class="check oo-play" title=${still ? to("playStill") : null}><input type="checkbox" checked=${playOn && !still} disabled=${still}
+        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playStill")}</span>` : null}</label>` : null}
+      ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
+      <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
+      ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
+        disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
+        ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
       ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
         onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
-      ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
+      ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
+`;
+  const actionItems = html`
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview && !carouselPick) setEditing(true); }} disabled=${!!layout || overview || carouselPick}
         title=${overview || carouselPick ? to(carouselPick ? "carouselNoEdit" : "overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
-        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}`;
+        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
+`;
+  const barItems = html`${scopeItems}${compact ? html`<h3 class="oo-sheet-h">${to("display")}</h3>` : null}${optionItems}${actionItems}`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
-    ${folded ? null : html`<div class="oo-bar">${barItems}</div>`}
+    ${folded ? null : html`<div class="oo-bar oo-bar-row">
+      <div class="oo-bar-scope">${scopeItems}</div>
+      <div class="oo-bar-actions">${actionItems}
+        <div class="oo-display" ref=${displayRef}>
+          <button type="button" class=${`btn btn-sm oo-display-btn${displayOpen ? " on" : ""}`} aria-expanded=${displayOpen ? "true" : "false"}
+            onClick=${() => setDisplayOpen((v) => !v)}><${Icon} name="settings" size=${14} /><span>${to("display")}</span></button>
+          ${displayOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}
+        </div>
+      </div>
+    </div>`}
     ${folded && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
       ${compact ? html`<div class="oo-sheet-tiles">
         ${tile("fitwidth", to("fit"), () => { closeMore(); fit(); }, "oo-sheet-fit")}
