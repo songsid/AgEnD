@@ -58,7 +58,7 @@ import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../mem
 import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
-import { HubRoomPostAdapter, verifyRoomPostJournal } from "../member/room-post.js";
+import { HubRoomPostAdapter, isShareLapsed, verifyRoomPostJournal } from "../member/room-post.js";
 import { HubProtocolError } from "../validation.js";
 
 /** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
@@ -589,9 +589,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           const local = exposures.list().find(row => row.agent === agent)?.committed;
           if (!local || local.exposure.state !== "published") return false;
           const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as {agent:string;token:string}|undefined;
-          if (!consent || consent.agent !== agent) return false;
-          const token = options.representative.agentToken(agent);
-          return token !== null && token !== consent.token;
+          return isShareLapsed(agent, local, consent, options.representative.agentToken(agent));
         } catch { return false; }
       };
       const lapsedAgents = (): string[] => exposures.list().flatMap(row => shareLapsed(row.agent) ? [row.agent] : []);
@@ -752,6 +750,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agents: options.agents,
         afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); void intro.defaults(); return result; },
         refused: () => sender.isRefused(),
+        lapsed: agent => shareLapsed(agent),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });

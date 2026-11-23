@@ -17,6 +17,14 @@ export interface RoomIdentity { exposureId: string; revision: number; consentId:
 export interface ShareLapsed { ok: false; code: "share_needs_reshare"; message: string }
 export const SHARE_LAPSED_MESSAGE = "Your Hub share lapsed when your backend or working folder changed. Ask the person to share you again on the Hub (My shared agents → Share again).";
 export const shareLapsed = (): ShareLapsed => ({ ok: false, code: "share_needs_reshare", message: SHARE_LAPSED_MESSAGE });
+/**
+ * M-3543: lapsed = a published share whose consent names this agent, while the agent's current token (non-null) is another.
+ * No share, a withdrawn one, a consent of another agent or no token at all is not "lapsed" (those stay what they were).
+ */
+export function isShareLapsed(agent: string, committed: { consentId: string; exposure: { state: string } } | null | undefined,
+  consent: { agent: string; token: string } | null | undefined, token: string | null): boolean {
+  return !!committed && committed.exposure.state === "published" && !!consent && consent.agent === agent && token !== null && token !== consent.token;
+}
 export type RoomListResult = HubRoomListResult | { ok:false; code:"unavailable"|"stale" } | ShareLapsed;
 export type RoomPostResult = HubRoomPostResult | { ok:false; code:"uncertain" }
   | { ok:false; code:"denied"; reason:string } | ShareLapsed;

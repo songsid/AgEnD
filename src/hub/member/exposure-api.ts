@@ -67,6 +67,8 @@ export function createHubMemberExposureApi(deps: {
   readinessCandidate?(candidate: HubLocalExposure): HubExecutionReadiness;
   /** M-3007: the Hub refused the last snapshot by policy — a published row is not shared there ("hub_refused"). */
   refused?(): boolean;
+  /** M-3543: is this agent's published share lapsed (its backend/folder changed since it was shared)? */
+  lapsed?(agent: string): boolean;
 }): HubMemberExposureApi {
   const agentOf = (name: string) => deps.agents().find((a) => a.name === name) ?? null;
   /** Publish readiness (asked again inside the atomic publish): the exact descriptor of a still-configured agent. */
@@ -78,7 +80,9 @@ export function createHubMemberExposureApi(deps: {
   const viewOf = (a: HubMemberAgent): HubExposureView => {
     const row = deps.store.list().find((r) => r.agent === a.name), c = row?.committed ?? null, e = c?.exposure ?? null;
     const legacy = !!c && !!e && e.state !== "withdrawn" && !isAgentDescriptor(c);
-    const reason = legacy ? "republish_required" : !deps.readinessCandidate ? "delivery_unavailable"
+    // M-3543: shared, but its backend/folder changed since (#3147: the consent does not carry over) — Share again republishes.
+    const lapsed = !legacy && !!e && e.state === "published" && (() => { try { return deps.lapsed?.(a.name) === true; } catch { return false; } })();
+    const reason = legacy ? "republish_required" : lapsed ? "share_lapsed" : !deps.readinessCandidate ? "delivery_unavailable"
       : e?.state === "published" && deps.refused?.() ? "hub_refused" : null;
     return { agent: a.name, display: a.display, ...(a.kind?{kind:a.kind}:{}), exposureId: e?.id ?? null, revision: e?.revision ?? 0, state: e?.state ?? "withdrawn",
       contactLimit: c?.contactLimit !== false, contactLimitNotice: deps.store.contactLimitNotice?.() ?? false,
