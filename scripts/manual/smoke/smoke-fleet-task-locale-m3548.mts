@@ -26,8 +26,8 @@ try {
     const expected = c.lang === 'zh-TW' ? ['任務', '團隊'] : ['Tasks', 'Teams'];
     if (JSON.stringify(labels) !== JSON.stringify(expected)) throw new Error('Wrong nav labels: ' + JSON.stringify(labels));
     const board = await p.page.evaluate(async () => { const r = await fetch('/ui/tasks/board'); return { status: r.status, data: await r.json() }; });
-    console.log('board-read', JSON.stringify(board));
-    await p.page.getByText('示範任務 Example task', { exact: true }).first().waitFor({ timeout: 5000 });
+    if (board.status !== 200 || !board.data.cards?.some((item: any) => item.title === '示範任務 Example task')) throw new Error('Scratch task missing from actual board read');
+    await p.page.locator('.tb').waitFor();
     const key = `${c.device}-${c.theme}-${c.lang}`;
     await p.page.screenshot({ path: join(out, `${key}-nav.png`) });
     await p.page.goto(fx.base + '/ui/fleet/tasks?card=' + card.code);
