@@ -31,11 +31,11 @@ describe("the version of an installed CLI against the audited release", () => {
     expect(hostRow(view, "grok")).toMatchObject({ version: "1.0.99", cliUpdate: { state: "newer", audited: "1.0.92", installed: "1.0.99", button: false } });
   });
   it("a CLI that updates itself with no exception shows the versions and who updates it, and no button even when behind", () => {
-    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.24-R9131.1", button: false, via: "self", latest: false } });
+    expect(hostRow(view, "muse")).toMatchObject({ version: "1.4.12-R6909.1", cliUpdate: { state: "behind", installed: "1.4.12-R6909.1", audited: "1.4.25-R9361.1", button: false, via: "self", latest: false } });
   });
   it("AGEND-153: Antigravity is the named exception — the button is there behind, at and above the audited release, and the reading says it goes to the latest (not audited)", () => {
-    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.14", button: true, via: "dashboard", latest: true } });
-    for (const [printed, state] of [["1.5.14", "current"], ["1.5.15", "newer"]] as const) {
+    expect(hostRow(view, "antigravity")).toMatchObject({ cliUpdate: { state: "behind", installed: "1.3.5", audited: "1.5.15", button: true, via: "dashboard", latest: true } });
+    for (const [printed, state] of [["1.5.15", "current"], ["1.5.16", "newer"]] as const) {
       expect(hostRow(buildAccountsView(input({ antigravity: printed })), "antigravity")).toMatchObject({ cliUpdate: { state, button: true, latest: true } });
     }
     expect(hostRow(buildAccountsView(input({ antigravity: "no idea" })), "antigravity")?.cliUpdate).toMatchObject({ state: "unknown", button: false, latest: true });
