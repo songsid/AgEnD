@@ -1,0 +1,64 @@
+{
+  "actualMainMerge": "3cb9ee7efe417e668a7b827297688dc4f2ea69e3",
+  "mainMergedAt": "2026-11-23T11:56:15Z",
+  "mainApprovedHead": "78c81baaded0cce6569c5932317a04e4bb174c98",
+  "mainApprovedPathsEqual": 12,
+  "freshDevParent": "7bef9b3530c09d9beef3cdffb42a57f8b8917bcb",
+  "byteIdenticalMainPaths": [
+    "changes/3538-outbox-crash-fixture.md",
+    "changes/3538-outbox-crash-fixture.zh-TW.md",
+    "docs/evidence/outbox-prebegin-m3538/README.md",
+    "docs/evidence/outbox-prebegin-m3538/contention-summary.json",
+    "docs/evidence/outbox-prebegin-m3538/import-fault-summary.json",
+    "docs/evidence/outbox-prebegin-m3538/verification.json",
+    "scripts/manual/test-outbox-contention-m3538.py",
+    "scripts/manual/test-outbox-contention-m3538_test.py",
+    "scripts/manual/vitest.outbox-import-fault-m3538.ts",
+    "src/delivery-outbox.test.ts"
+  ],
+  "adaptedPartitionPaths": [
+    "tests/support/durable-ci-suites.ts",
+    "tests/durable-ci-partition-m3496.test.ts"
+  ],
+  "currentDevSources": [
+    {
+      "path": "src/delivery-outbox.test.ts",
+      "sha256": "019a757098635bf04e867ab11bf2116450a57eb44155042da85a5b469d220b5a",
+      "gitBlob": "b7d97338f2b6986fae3b0585ede7e8ffea9653ab"
+    },
+    {
+      "path": "tests/support/durable-ci-suites.ts",
+      "sha256": "2072eec2ede951ecc01598df67782c03b2776ae662ca5c8da285e111a728deeb",
+      "gitBlob": "1a5847252d927276e38064636d4214e5fed88f68"
+    },
+    {
+      "path": "tests/durable-ci-partition-m3496.test.ts",
+      "sha256": "c0f7a805582b6bee6ea11ac4b990fb6fc5545579c37bdb211aefd4a276f8cf98",
+      "gitBlob": "d88bd4e1deb9d43991457d506b02e13a3a470ce5"
+    },
+    {
+      "path": "scripts/manual/test-outbox-contention-m3538.py",
+      "sha256": "a6f1e33c21b87887c88755a15fbab53aa47cf3a3ace58acae835ee26e8ac823a",
+      "gitBlob": "436c2136a036bf88c881ec66680ccef59cdbd86b"
+    },
+    {
+      "path": "scripts/manual/test-outbox-contention-m3538_test.py",
+      "sha256": "c499ddfac4652525eb5dd8a7f4d3772d54fea9a4ecb8b3371fceddcbb234bfee",
+      "gitBlob": "443f0cc0d3d73a3c908ae758365c4f6afb41c65f"
+    },
+    {
+      "path": "scripts/manual/vitest.outbox-import-fault-m3538.ts",
+      "sha256": "3d8341f917bfd7773e61a3a9275ac640d1581fc86da25101d66995d8d2b95864",
+      "gitBlob": "bcc31e734bf7c61891468f3d77e981d70f7fae55"
+    }
+  ],
+  "freshDevProof": {
+    "distinctPassed": 13,
+    "skippedNonTargets": 15,
+    "extraPwshRunPassed": 9,
+    "extraPwshOverlap": 9,
+    "testTypesExit": 0,
+    "changelogFragments": 758
+  },
+  "historicalMainProof": "Original verification/30 contention records/fault results are byte-identical main author evidence; no dev CPU or fault campaign repeat."
+}
