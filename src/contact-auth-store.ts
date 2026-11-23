@@ -309,19 +309,31 @@ export class ContactAuthStore {
       if (decision.decision === "decline") ticket.state = "declined";
       else {
         if (!authority.current(request)) throw Error("stale-generation");
-        ticket.deliveryId = authority.admit(request, ticket.id);
-        ticket.state = "approved";
         // An administrator approval (including a standing grant) endorses this delivery.
         // Keep its original origin on the ticket/source; do not merge it into the receiving agent.
         if (decision.grant) {
-          if (request.origin.kind !== "human" || request.origin.people.length !== 1) throw Error("invalid-grant-origin");
+          const choice = decision.grant;
+          if (!["human", "mixed"].includes(request.origin.kind) || !request.origin.people.length || request.origin.people.length > 16
+            || (!choice.personKeys && (request.origin.kind !== "human" || request.origin.people.length !== 1))) throw Error("invalid-grant-origin");
+          const keys = choice.personKeys ?? [contactPersonKey(request.origin.people[0]!)];
+          if (!keys.length || keys.length > 16 || new Set(keys).size !== keys.length
+            || keys.some(key => !request.origin.people.some(person => contactPersonKey(person) === key))) throw Error("invalid-grant-origin");
+          if (!Number.isFinite(Date.parse(choice.expiresAt)) || Date.parse(choice.expiresAt) <= this.now()
+            || (choice.remainingUses !== null && (!Number.isInteger(choice.remainingUses) || choice.remainingUses < 1 || choice.remainingUses > 10_000))) throw Error("invalid-grant");
           const previous = this.policy(request.target, request.targetGeneration);
-          const grant: ContactGrant = { id: randomUUID(), person: request.origin.people[0]!, source: request.source,
+          if (previous.grants.length + keys.length > 100) throw Error("invalid-grant");
+          const grants: ContactGrant[] = keys.map(key => ({ id: randomUUID(),
+            person: request.origin.people.find(person => contactPersonKey(person) === key)!, source: request.source,
             target: request.target, sourceGeneration: request.sourceGeneration, targetGeneration: request.targetGeneration,
-            verbs: [request.verb], ...decision.grant, createdAt: ticket.decidedAt, createdBy: actor };
-          this.writePolicy(request.target, { revision: previous.revision, grants: [...previous.grants, grant] }, actor,
+            verbs: [request.verb], expiresAt: choice.expiresAt, remainingUses: choice.remainingUses,
+            createdAt: ticket.decidedAt!, createdBy: actor }));
+          const saved = this.writePolicy(request.target, { revision: previous.revision, grants: [...previous.grants, ...grants] }, actor,
             name => name === request.target ? request.targetGeneration : name === request.source ? request.sourceGeneration : "unavailable");
+          // writePolicy assigns fresh ids to appended rows; reference the persisted images.
+          ticket.grantIds = saved.grants.slice(previous.grants.length).map(grant => grant.id);
         }
+        ticket.deliveryId = authority.admit(request, ticket.id);
+        ticket.state = "approved";
       }
       this.write(ticket);
       this.history(ticket.target, actor, automatic ? "grant-use" : decision.decision === "decline" ? "decline" : "approve", automatic ? "Standing contact grant used" : decision.decision, ticket.id);

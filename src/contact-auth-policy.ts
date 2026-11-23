@@ -7,7 +7,8 @@ export const ContactPersonSchema = z.strictObject({ platform: z.enum(["discord",
 const future = z.iso.datetime();
 const uses = z.number().int().min(1).max(10_000).nullable();
 export const ContactDecisionSchema = z.strictObject({ revision: z.number().int().positive(),
-  decision: z.enum(["approve-once", "decline"]), grant: z.strictObject({ expiresAt: future, remainingUses: uses }).optional() })
+  decision: z.enum(["approve-once", "decline"]), grant: z.strictObject({ expiresAt: future, remainingUses: uses,
+    personKeys: z.array(z.string().min(1).max(512)).min(1).max(16).optional() }).optional() })
   .refine(value => !value.grant || value.decision === "approve-once");
 export const ContactOriginClearSchema = z.strictObject({ revision: z.number().int().nonnegative(),
   originRevision: z.number().int().nonnegative(), generation: text });
