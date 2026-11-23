@@ -190,10 +190,15 @@ Exactly the agents that are members of the room, plus the room assistant. An age
 appears or disappears at once. People are not drawn in the first build.
 
 No new consent is needed for an agent to appear: its owner already agreed to put it in this room, and members
-already see its name, owner and introduction. Two things are new, so each owner gets one switch per agent, on
-the agent's page: **"Show its look and whether it is working in room offices"**, on by default. Off: the agent
-sits in the room office as its initial, with no state. The threat named: "working" tells room members the agent
-is busy with something outside this room.
+already see its name, owner and introduction. Its working state is not new either: today's member list already shows every agent as working, idle, paused or
+offline to all room members.
+
+**Corrected 2026-11-23 (found by the builder).** An earlier version gave each owner a per-agent switch, "Show its
+look and whether it is working in room offices", naming the threat as members learning that an agent is busy
+outside the room. The member list already shows that, so the switch protected nothing. The office now shows
+exactly the member list's states and the two never disagree. What would remain is a look-only switch, and I
+cannot name what that protects; my recommendation is to drop it and send the look with every shared agent. That
+changes an approved item, so it is with the owner to decide (asked through the leader).
 
 ### 2.3 How an agent's look travels
 
@@ -215,9 +220,8 @@ So Atlas looks the same in its owner's office, in every room office, and in the 
 | Shown | Where it comes from |
 |---|---|
 | Answering in this room | The Hub knows: it sent the question |
-| Working (elsewhere) | The Fleet's existing presence report, one word, no detail |
-| Idle | The same |
-| Away (asleep) | The Fleet is offline, or sharing is paused |
+| Working, idle, paused | The same presence the room's member list shows today, in the same words |
+| Away (asleep) | Offline in the member list |
 
 "Answering in this room" is the useful one and needs nothing new from the Fleet.
 
@@ -278,7 +282,7 @@ office to you. Sharing an office puts no agent in any room, and joining a room o
   is today's question to an agent the person may already ask.
 - **Roles:** sharing an office uses the permission for sharing agents; visiting needs none. No new role.
 - **Every gate names a threat:** opt-in (work patterns are the owner's to show), the audience list (the same),
-  no words (messages are private), the per-agent switch in rooms (activity outside the room). Left out because
+  no words (messages are private). Left out because
   they name none: expiry, a visitor cap, an approval step, a visit log.
 
 ## Prototype captures
@@ -337,10 +341,10 @@ What is real and what is not:
 | Slice | What | Size |
 |---|---|---|
 | M1 | The compact member list for large rooms (summary, filter, one-line rows, folded groups) | S–M, independent |
-| R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, "answering in this room" | M |
+| R1 | Room office: the setting, the built-in scene, the room's agents as avatar or initial, the member list's states plus "answering in this room" | M |
 | R1b | The style choice with seat counts, and the "Studio (large)" style | S–M |
 | R3 | "Arrange seats…": the Fleet's layout editor on a room's office, managers only, with the Hub's save check | M |
-| R2 | Look cards from the Fleet (colour, portrait, character pictures), the per-agent switch, working and idle | M |
+| R2 | Look cards from the Fleet (colour, portrait, character pictures). Working and idle moved to R1 (they are the member list's states). The per-agent switch waits for the owner's decision | M |
 | V1 | Visit a person's office: the owner's row and dialog, the Offices page, the live view in built-in styles, stop | L (split: Fleet side, Hub side, page) |
 | V2 | Custom skin packs in a visited office (pictures carried once, kept by the Hub) | M, after a builder confirms what the link can carry |
 | V3 | "Ask" on a card; "Visit {owner}'s office" from a room office | S |
