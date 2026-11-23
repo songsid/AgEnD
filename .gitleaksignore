@@ -169,3 +169,6 @@ c8404fcdbe4b8c542705f4653324d66568aaed72:docs/evidence/reply-file-previews-m3283
 # PR #4111: historical SHA-256 of the sanitized public notice-test log, independently recomputed.
 # File manifests now also use separate path/sha256 rows. Exact historical fingerprint only.
 9c9125e8fe0d7057d7e126908246376a40751c0d:docs/evidence/hub-classic-share-m3285/hashes.json:generic-api-key:19
+
+# M3540 historical main evidence checksum for src/auth-api.ts, not a credential.
+70dfc5043ecddf6ce55d754e77e62a345028f2da:docs/evidence/composer-edge-focus-m3540/verification.json:generic-api-key:7

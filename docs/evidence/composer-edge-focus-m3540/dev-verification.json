@@ -1,0 +1,39 @@
+{
+  "base": "a1a059f819e47f73a07aae48a198e2eb0b203bf8",
+  "actual_main_merge": "398660ab7ad1e9263be308fb36188ae18d4450b4",
+  "main_approved_head": "50a3be5a1432a4df75a04f0716eab7ea976442aa",
+  "shared_helper_equal": true,
+  "gutter_rules_equal": true,
+  "dev_fullwidth_query_preserved": true,
+  "source_sha256": [
+    {
+      "path": "src/ui/shared/composer-focus.js",
+      "sha256": "e099fabbcc4ca951be9abff0282ebd8eb905aeac1aa0f1766c1d6252df50a1a0"
+    },
+    {
+      "path": "src/ui/shared/chat-composer.js",
+      "sha256": "3cf29852fabfefe185efa50cf2b0efac531a7d6a7344e1d23176377f9a1a6d4d"
+    },
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "4f07e26eb5c6c7feb6bed4dcd9396f804ece921e8e698916a2d423e6d97b38be"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "394bd7e5eadf40977a1f62a37c5ee0d5b733a3d4d66b4455e6d13cbe67906d96"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "8d070ad7ec0c356b4c5b4106188f8cbf77db6715fe725f3822d910b1dfe05371"
+    },
+    {
+      "path": "tests/web-composer-2478.test.ts",
+      "sha256": "2b894a0c79f2f307ab5f965d4a7c996aacf4122a9484d774206568249730985e"
+    },
+    {
+      "path": "tests/phone-meta-line-m3166.test.ts",
+      "sha256": "2e3d4052e8906e5d4d30132f2b4fc4aa433efa2d9c5b4ff81bcf540411c8994f"
+    }
+  ],
+  "proof": "34 initial composer/auth +1 new shared isolation +7 final phone =42 distinct; no overlapping reruns added. types0. Historical main images only; user waived new captures."
+}
