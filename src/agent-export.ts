@@ -10,6 +10,7 @@
  */
 import { parseDocument, stringify } from "yaml";
 import { systemPromptParts } from "./prompt-file-ref.js";
+import { OPERATIONS_MAX_CHARS } from "./instructions.js";
 import type { InstanceConfig } from "./types.js";
 
 export const AGENT_EXPORT_VERSION = 1;
@@ -29,7 +30,8 @@ const ROLE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:/@+[\]-]*$/;
 
 /** What an export can carry, as the checkboxes of the export dialog. */
-export const EXPORT_GROUPS = ["identity", "systemPrompt", "runtime", "behavior"] as const;
+/** M-3522: `operations` names people and systems, so the dialog leaves it unticked; a person opts in to carry it. */
+export const EXPORT_GROUPS = ["identity", "systemPrompt", "operations", "runtime", "behavior"] as const;
 export type ExportGroup = (typeof EXPORT_GROUPS)[number];
 
 const TOOL_SETS = ["worker", "coordinator", "standard", "minimal", "full"];
@@ -132,6 +134,10 @@ export function buildAgentExport(role: string, inst: Partial<InstanceConfig>, in
     else if (s && s.length > AGENT_INSTRUCTIONS_MAX_CHARS) omitted.push({ field: "systemPrompt", reason: "tooLong" });
     else if (s) { agent.systemPrompt = s.replace(/\s+$/, ""); findings.push(...scanForSecrets("systemPrompt", s)); }
   }
+  if (want.has("operations")) {
+    const o = text(inst.operations);
+    if (o && o.length <= OPERATIONS_MAX_CHARS) { agent.operations = o.replace(/\s+$/, ""); findings.push(...scanForSecrets("operations", o)); }
+  }
   if (want.has("runtime")) {
     if (text(inst.backend)) agent.backend = inst.backend;
     if (text(inst.model)) agent.model = inst.model;
@@ -161,7 +167,7 @@ export function buildAgentExport(role: string, inst: Partial<InstanceConfig>, in
 
 /** What a file fills into the form: only the values that passed every check, under the form's own names. */
 export interface FillValues {
-  description?: string; tags?: string[]; systemPrompt?: string;
+  description?: string; tags?: string[]; systemPrompt?: string; operations?: string;
   model?: string; model_failover?: string; tool_set?: string; lightweight?: boolean;
   hang_detector?: number; tool_progress?: string; reply_completion_guard?: boolean; log_level?: string; auto_pause_after?: number;
   agent_mode?: string; cross_instance_visibility?: string; board_cards_at_once?: number; resume_interrupted_work?: boolean;
@@ -221,6 +227,12 @@ export function parseAgentExport(input: unknown): ParseResult {
           // A `file:` part would make the daemon read a path on the computer that loads this file: never filled from a file.
           else if (systemPromptParts(s).some((part) => part.startsWith("file:"))) skip(path, "fileRef");
           else if (s.trim()) fill.systemPrompt = s;
+          break;
+        }
+        case "operations": {
+          const s = str(v, OPERATIONS_MAX_CHARS);
+          if (s === null) skip(path, typeof v === "string" ? "tooLong" : "badValue");
+          else if (s.trim()) fill.operations = s;
           break;
         }
         case "backend": skip(path, "runtimeSwitch"); break;

@@ -1,4 +1,5 @@
 /** Windows execution adapter for the ordinary Fleet instance registry and delivery facade. */
+import { OPERATIONS_MAX_CHARS } from "./instructions.js";
 import { addsSecondGeneral } from "./web-only-fleet.js";
 import { formatHumanInboundMessage } from "./human-delivery-receipts.js";
 import { randomUUID } from "node:crypto";
@@ -47,7 +48,7 @@ export interface NativeRuntimeDeliveryOptions {
   /** A durable outbox fences its attempt immediately before the native task is claimed. */
   beforeStart?: () => void;
 }
-export type NativeRuntimePatch = Pick<InstanceConfig,"display_name"|"description"|"systemPrompt"|"model"|"working_directory"|"native_sandbox"|"tags">;
+export type NativeRuntimePatch = Pick<InstanceConfig,"display_name"|"description"|"systemPrompt"|"operations"|"model"|"working_directory"|"native_sandbox"|"tags">;
 export type NativeExecutionResult = WindowsCliTask & {reportedCorrelationIds?: readonly string[]};
 
 export class FleetWindowsRuntime {
@@ -183,7 +184,9 @@ export class FleetWindowsRuntime {
     return {name,runtime:"windows",agent};
   }
   previewUpdate(name: string, patch: Partial<NativeRuntimePatch>): WindowsAgent {
-    if(!patch||typeof patch!=="object"||Array.isArray(patch)||Object.keys(patch).some(key=>!["display_name","description","systemPrompt","model","working_directory","native_sandbox","tags"].includes(key)))throw Error("Unknown Windows instance setting");
+    if(!patch||typeof patch!=="object"||Array.isArray(patch)||Object.keys(patch).some(key=>!["display_name","description","systemPrompt","operations","model","working_directory","native_sandbox","tags"].includes(key)))throw Error("Unknown Windows instance setting");
+    // M-3522: context text only, stored as it is (the instructions carry it); its shape is still checked here.
+    if(Object.hasOwn(patch,"operations")&&patch.operations!==undefined&&(typeof patch.operations!=="string"||patch.operations.length>OPERATIONS_MAX_CHARS))throw Error("Invalid Windows instance operations text");
     if(Object.hasOwn(patch,"tags")&&(!Array.isArray(patch.tags)||patch.tags.length>32||patch.tags.some(tag=>typeof tag!=="string"||!tag||tag.length>64)))throw Error("Invalid Windows instance tags");
     this.enabled();const before=this.config(name);if(!before||!this.has(name))throw Error("Windows instance not found");
     return previewWindowsProfile({...before,...patch},this.store);

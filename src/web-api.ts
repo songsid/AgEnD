@@ -1,4 +1,5 @@
 import { historyQuery } from './host-monitoring-history-policy.js';
+import { instructionFileSizes } from "./instruction-file-sizes.js";
 import { handleClaudeCredentials, type ClaudeCredentialApi } from "./web-claude-credentials.js";
 import { pipeline } from "node:stream/promises";
 import { handleContactAuthorizationApi, type ContactApiHost } from "./contact-auth-api.js";
@@ -3892,6 +3893,8 @@ export function handleWebRequest(
       effort_source,
       statusline,
       recent_activity: instanceActivity.slice(0, 20),
+      // M-3522: the files the agent's CLI loads every session and their sizes (stat only), for the Details card.
+      ...(room ? {} : { instruction_files: instructionFileSizes(config, backend) }),
     });
     return true;
   }

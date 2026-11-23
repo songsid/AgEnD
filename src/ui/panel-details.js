@@ -144,6 +144,20 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
   const src = (s) => (s === "instance" ? ` ${t("chat.configured")}` : s === "fleet-default" ? ` ${t("chat.fleetDefault")}` : "");
   const bar = (pct, level) => html`<span class="progress-bar"><span class=${`progress-fill${level ? ` ${level}` : ""}`} data-pct=${Math.max(0, Math.min(Number(pct) || 0, 100))}></span></span>`;
   const row = (k, v) => html`<div class="kv"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  // M-3522: what the agent's CLI loads every session, with a warning per file over its limit (50 KB, or Codex's cut-off).
+  const kb = (n) => `${(n / 1024).toLocaleString(undefined, { maximumFractionDigits: 1 })} KB`;
+  const loaded = (f) => {
+    if (!f || !Array.isArray(f.files) || !f.files.length) return null;
+    const over = f.files.filter((x) => x.bytes > x.limit);
+    return html`<section class="card d-loaded" data-instruction-files>
+      <h3>${pt("loadedTitle")}</h3>
+      ${f.files.map((x) => row(x.kind === "inline" ? html`${x.label}` : html`<span class="mono">${x.label}</span>`,
+        html`<span class=${x.bytes > x.limit ? "warn" : ""} data-over=${x.bytes > x.limit ? "1" : undefined}>${kb(x.bytes)}</span>`))}
+      ${row(pt("loadedTotal"), kb(f.total))}
+      ${over.length ? html`<p class="note warn" role="status" data-instruction-warning>${over.some((x) => x.truncates) ? pt("loadedTruncates", kb(over.find((x) => x.truncates).limit)) : ""}${pt("loadedWarn", kb(f.warnBytes))}</p>`
+        : html`<p class="note">${pt("loadedNote")}</p>`}
+    </section>`;
+  };
   let content;
   if (failed) content = html`<${ErrorState} message=${t("chat.loadFailed")} onRetry=${load} />`;
   else if (!d) content = html`<${Skeleton} lines=${6} />`;
@@ -176,6 +190,7 @@ function DetailsView({ name, inst, navKey, exec, awaiting }) {
         ${row(t("chat.dContext"), html`<span class="pct">${ctx != null ? `${Math.round(ctx)}%` : "--"}</span>${ctx != null ? bar(ctx, ctx > 80 ? "warn" : "") : null}`)}
         ${row(t("chat.dRate5"), html`<span class="pct">${Math.round(rl5)}%</span>${bar(rl5, rl5 > 90 ? "error" : rl5 > 70 ? "warn" : "")}`)}
         ${row(t("chat.dRate7"), html`<span class="pct">${Math.round(rl7)}%</span>${bar(rl7, rl7 > 90 ? "error" : rl7 > 70 ? "warn" : "")}`)}</section>
+      ${loaded(d.instruction_files)}
       <${InstanceBoardWork} name=${name} onOpen=${(id) => navigate(`/ui/fleet?card=${encodeURIComponent(id)}`)} />
       <section class="card"><h3>${t("chat.dActivity")}</h3>${d.recent_activity?.length ? d.recent_activity.map((a, i) => html`<div key=${i} class="activity">
         <span class="mono muted">${a.timestamp ? new Date(`${a.timestamp.replace(" ", "T")}Z`).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span>

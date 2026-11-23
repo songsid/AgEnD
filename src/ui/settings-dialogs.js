@@ -439,6 +439,8 @@ export function AgentFields({ m, cat, onDelete, idPrefix = "" }) {
     ${windows ? null : html`<${Card} title=${pt("cardInstructions")} span=${true}>
       <div class="field">${L(pt("lbl_instructions"), "instance.systemPrompt", "ag-sys", pt("tip_instructions"))}<${InstructionsField} id=${fieldId("ag-sys")} value=${f.systemPrompt} saved=${inst.systemPrompt || ""} onChange=${set("systemPrompt")} />
         <p class="note">${pt("note_instructions")}</p></div>
+      <div class="field">${L(pt("lbl_operations"), "instance.operations", "ag-ops", pt("tip_operations"))}<textarea id=${fieldId("ag-ops")} rows="4" maxLength=${2000} placeholder=${pt("ph_operations")} value=${f.operations} onInput=${(e) => set("operations")(e.target.value)} />
+        <p class="note">${pt("note_operations")}</p></div>
       <${AgentTemplateTools} idPrefix=${idPrefix} name=${name} m=${m} /></${Card}>`}</div>`;
   if (cat === "runtime") return html`<div class="ap-grid">
     <${Card} title=${pt("cardRuntime")}>
