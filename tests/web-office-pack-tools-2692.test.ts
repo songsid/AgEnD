@@ -115,8 +115,8 @@ describe("the `office_packs` feature: off unless set true", () => {
   });
 
   it("unset, null or false is off — out of the menu and refused, naming office_pack_access; its own switch, else the default's", () => {
-    expect(dashboardFeaturesOff({ office: true })).toEqual(["office_packs"]);
-    expect(dashboardFeaturesOff({ office: true, office_packs: true })).toEqual([]);
+    expect(dashboardFeaturesOff({ appearance: true, office: true })).toEqual(["office_packs"]);
+    expect(dashboardFeaturesOff({ appearance: true, office: true, office_packs: true })).toEqual([]);
     const worker = TOOLS.filter(x => TOOL_PROFILES.worker.includes(x.name));
     expect(withoutFeatures(worker, dashboardFeaturesOff({ office: true })).map(x => x.name)).not.toContain("office_pack_upload");
     expect(withoutFeatures(worker, dashboardFeaturesOff({ office_packs: true })).map(x => x.name)).toEqual(expect.arrayContaining(["office_pack_upload", "office_pack_list"]));

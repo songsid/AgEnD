@@ -4,6 +4,28 @@ description: How you look on the AgEnD web dashboard — check it, change your o
 roles: [general, worker, classic]
 ---
 
+## Calling these tools
+
+Your look tools are one tool, **`web_appearance`**, and it is there only when a person switched your look on (Settings →
+Agents → your look, `dashboard.appearance: true`); without it, tell the person you need it. Call it with an `action` and
+that action's fields in `args`, for example `web_appearance({ action: "set_theme", args: { set: { accent: "#7c3aed" } } })`.
+The names this skill uses are those actions:
+
+| Named here | `action` |
+|---|---|
+| `get_web_appearance` | `get` |
+| `get_web_theme` | `get_theme` |
+| `preview_web_appearance` | `preview` |
+| `set_web_theme` | `set_theme` |
+| `set_web_theme_asset` | `set_theme_asset` |
+| `reset_web_theme` | `reset_theme` |
+| `set_web_widget` | `set_widget` |
+| `remove_web_widget` | `remove_widget` |
+| `set_web_ambient` | `set_ambient` |
+| `clear_web_ambient` | `clear_ambient` |
+
+`set_persona_emoji` is an action of `emoji_sticker` (see the `persona-emoji` skill).
+
 ## What it is
 
 People see you on the web dashboard: in the sidebar, at the top of your chat, on your Details page and in View. You
@@ -85,8 +107,9 @@ of this skill).
   Don't rely on your theme to say something important.
 - The fleet can turn agent changes off entirely (`web.themes.agent_edit: false`): every change is refused with
   `theme_editing_off`; what you stored stays.
-- A person can switch these tools off for you (`dashboard.appearance: false`; the person's web settings tools with
-  `dashboard.web_settings: false`): a call is refused saying so. Do not retry; tell them if you need it.
+- Your look is off until a person switches it on (`dashboard.appearance: true`), and they can switch it off again; the
+  person's web settings tools go off with `dashboard.web_settings: false`. A refused call says so. Do not retry; tell them
+  if you need it.
 
 ## Change your theme
 

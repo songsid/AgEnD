@@ -68,7 +68,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["hub_people_search", schemas.HubPeopleSearchArgs,
     "Search people by name through the invoking agent owner's existing Hub person picker. Bounded and rate-limited; names and sign-in names only, no broader directory fields."],
   ["reply", schemas.ReplyArgs,
-    "Reply on the channel. Routing is handled automatically — do not pass chat_id or thread_id. Add `buttons` to offer choices people can click. After editing code, add `previews: [{path: \"src/app.ts\", line: 1000, endLine: 1002}]` to offer a web Preview button. Paths are relative to your working folder; no parent paths or symlinks. Only a web administrator may read them; General and coordinator working folders are unavailable. Channel copies show plain path:line. Paired Windows file previews are unavailable."],
+    "Reply on the channel; routing is automatic (never pass chat_id or thread_id). Optional: buttons or a poll, stickers, files, code previews."],
   ["react", schemas.ReactArgs,
     "Add an emoji reaction to a message — a Discord/Telegram message or a web chat message (its message_id starts with web-). A reaction is a complete answer to a message that only acknowledges or thanks (\"OK\", \"thanks\", \"收到\"), on every platform including the web chat; a task that needs a conclusion still needs reply. On the web chat use one emoji from the reaction set (e.g. 👍 👌 ❤ 🙏 🎉 🔥 💯) and never AgEnD's delivery marks; another emoji is refused with an error naming allowed ones."],
   ["edit_message", schemas.EditMessageArgs,
@@ -86,8 +86,11 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["delete_schedule", schemas.DeleteScheduleArgs,
     "Delete a schedule by ID."],
   ["task", schemas.TaskBoardArgs,
-    "Manage fleet task board. Actions: create (new task), list (paged compact rows by default, follow next_cursor with the same filters; detail:true for legacy full records; pass filter_status to include done/cancelled, verbose=true for full records; only legacy detail/verbose lists cap an unfiltered result at100; filters lift that cap), get (compact title/status/version by default; detail:true for goal/checklist/comments before work), claim (assign to self), done (mark complete, works from open or claimed — a card that waits for confirmation goes to review instead: the person confirms the cards they handed out, the dispatcher an agent's card, finishing it from review with done), update (change status/priority/assignee). Ids accept an 8-hex prefix or a card number (M-3). Write actions return {id, status, updated_at} (an update also the saved value of each field it named) and the board's notes (a reason it was sent back, a comment you had not seen) when there are any. A field an action does not take is refused by name, and nothing is changed. "
-    + "Board cards — main tasks M-n (an outcome; the person confirms the ones they handed out) and their sub tasks S-n (your steps): mine (your work, including what was sent back and why: start here after a reset), get (detail:true for the full card as text, with its comments), projects (each with its id), create_project (name, description; changing or archiving a project is a person's), move (to a status; blocked/cancelled need a reason, finishing needs a result), create with project or parent, update with board fields (state, log, comment, check…) or project (a main task's project id, or null to take it out; you may move a main task you can edit; sub tasks follow), move_project (ids + project: several main tasks, each moved or refused on its own). Answers are text. Open a main task for multi-step work you are asked for; split a big one into sub tasks (create with parent, depends_on for order). Keep state current (done / next / watch out). One card in progress at a time: finish it or block it (with the question) before the next; with many, follow mine's order. Finish: a sub task → done, a main task → review (one nobody else confirms — your own — goes straight to done); sent back → read why (get), fix, resubmit. Opening a card for someone else makes you its dispatcher (or name one: dispatcher); a blocked card you handed out comes to you: ask the person, then move it back to claimed with the decision as the comment. A [Task board] notice is news on your cards: act on them with this tool."],
+    "Fleet task board. Board cards: main tasks M-n (an outcome) and their sub tasks S-n (your steps); ids take an 8-hex prefix or a card number. "
+    + "Start with mine after a reset; get with detail:true before you work; keep state current (done / next / watch out); one card in progress at a time. "
+    + "Finish a sub task with done; a main task goes to review unless nobody else confirms it; move to blocked/cancelled needs a reason. "
+    + "list/get are compact (detail:true for full records; follow next_cursor with the same filters). A field an action does not take is refused, nothing changed. "
+    + "A [Task board] notice is news on your cards. The task-board skill has every action and rule."],
   ["post_decision", schemas.PostDecisionArgs,
     "Record a decision. scope='team' is visible to every member of a team, wherever they work — use it for your team's workflow rules, review policies and conventions; it is the default when you are in a team (pass team to choose when you are in several). scope='project' is visible only to instances in this exact working directory (the default when you are in no team). scope='fleet' is visible to EVERY instance on the fleet — only for rules every team follows; on a fleet with several teams, ask whether the other teams need it before posting it there."],
   ["close_poll", schemas.ClosePollArgs,
@@ -255,3 +258,86 @@ export const TOOLS: ToolDef[] = DEFS.map(([name, schema, description]) => ({
  * a control, so it stopped being defined next to the schemas and moved next to
  * the thing that enforces it.
  */
+
+/**
+ * M-2133 / M-3526 (inventory rec 1): tools listed as ONE entry with an `action`. Each action is an existing tool, which
+ * keeps its own handler, schema, permission and dashboard checks: a call is expanded to it before any of those run, so
+ * an action accepts and refuses exactly what its tool does. The member names stay callable (sessions resumed with the
+ * old schemas) but are no longer listed wherever a composite is.
+ */
+export interface CompositeTool { name: string; description: string; actions: Readonly<Record<string, string>> }
+export const COMPOSITE_TOOLS: readonly CompositeTool[] = [
+  {
+    name: "web_appearance",
+    description: "Your own look on the AgEnD web dashboard: read it, change your theme, identity card, widgets or ambient effect, or preview it. "
+      + "Pass `action` and that action's fields in `args`; the web-appearance skill lists each action's args.",
+    actions: {
+      get: "get_web_appearance", get_theme: "get_web_theme", preview: "preview_web_appearance",
+      set_theme: "set_web_theme", set_theme_asset: "set_web_theme_asset", reset_theme: "reset_web_theme",
+      set_widget: "set_web_widget", remove_widget: "remove_web_widget",
+      set_ambient: "set_web_ambient", clear_ambient: "clear_web_ambient",
+    },
+  },
+  {
+    name: "emoji_sticker",
+    description: "Emojis and stickers. Pass `action` and its fields in `args`: "
+      + "list_emojis {name?, limit?, primary_only?, refresh?, with_image_urls?}: your status stamps, the standard emojis your platform accepts and (Discord) server emojis; "
+      + "preview_emojis {emojis: up to 8 <:name:id>}: local image paths to Read; "
+      + "set_persona_emoji {emoji, status?}: your status stamp (status default delivered; also received, queued, processing, failed, progress_prefix, photo, attachment; \"\" removes it); "
+      + "list_stickers {set?, name?, limit?, refresh?}: stickers you can send with reply({stickers: [id]}); "
+      + "preview_stickers {stickers: up to 8 ids}: local image paths to Read. The persona-emoji skill has the details.",
+    actions: {
+      list_emojis: "list_emojis", preview_emojis: "preview_emojis", set_persona_emoji: "set_persona_emoji",
+      list_stickers: "list_stickers", preview_stickers: "preview_stickers",
+    },
+  },
+];
+const COMPOSITE_BY_NAME: ReadonlyMap<string, CompositeTool> = new Map(COMPOSITE_TOOLS.map(c => [c.name, c]));
+const COMPOSITE_OF_MEMBER: ReadonlyMap<string, CompositeTool> = new Map(
+  COMPOSITE_TOOLS.flatMap(c => Object.values(c.actions).map(member => [member, c] as const)));
+
+/** A menu with each composite's listed members folded into it (at the first member's place); its actions are those members only. */
+export function withComposites<T extends { name: string }>(tools: readonly T[]): Array<T | ToolDef> {
+  const present = new Set(tools.map(t => t.name));
+  const out: Array<T | ToolDef> = [];
+  const placed = new Set<string>();
+  for (const tool of tools) {
+    const composite = COMPOSITE_OF_MEMBER.get(tool.name);
+    if (!composite) { out.push(tool); continue; }
+    if (placed.has(composite.name)) continue;
+    placed.add(composite.name);
+    const actions = Object.entries(composite.actions).filter(([, member]) => present.has(member)).map(([action]) => action);
+    out.push({
+      name: composite.name,
+      description: composite.description,
+      inputSchema: {
+        type: "object",
+        properties: {
+          action: { type: "string", enum: actions },
+          args: { type: "object", description: "The action's fields" },
+        },
+        required: ["action"],
+        additionalProperties: false,
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * The tool a call names: a composite call becomes its action's tool and args; anything else is unchanged. An unknown
+ * action, or args that are not an object, is an error — the caller answers it as an invalid call.
+ */
+export function expandCompositeCall(name: string, args: unknown): { name: string; args: Record<string, unknown> } | { error: string } {
+  const composite = COMPOSITE_BY_NAME.get(name);
+  const plain = (args && typeof args === "object" && !Array.isArray(args) ? args : {}) as Record<string, unknown>;
+  if (!composite) return { name, args: plain };
+  const extra = Object.keys(plain).filter(k => k !== "action" && k !== "args");
+  const action = plain.action, inner = plain.args ?? {};
+  if (typeof action !== "string" || !Object.hasOwn(composite.actions, action)) {
+    return { error: `${name}: action must be one of ${Object.keys(composite.actions).join(", ")}` };
+  }
+  if (extra.length) return { error: `${name}: put ${extra.join(", ")} inside args` };
+  if (!inner || typeof inner !== "object" || Array.isArray(inner)) return { error: `${name}: args must be an object` };
+  return { name: composite.actions[action], args: inner as Record<string, unknown> };
+}

@@ -592,9 +592,9 @@ describe("what is written", () => {
   it("the dashboard permissions go whole; the two kept beside it only when they are edited, under their own keys", async () => {
     await open();
     const boxes = $("#g-dash").querySelectorAll("input[type=checkbox]");
-    await check(boxes[0], false);
+    await check(boxes[0], true);   // M-2133: appearance starts off (off unless ticked)
     await save();
-    expect(written()).toEqual([{ dashboard: { appearance: false, task_board: true, web_settings: true } }]);   // office_access / office_pack_access: only when edited
+    expect(written()).toEqual([{ dashboard: { appearance: true, task_board: true, web_settings: true } }]);   // office_access / office_pack_access: only when edited
   });
 
   it("project folders go through POST /ui/config", async () => {

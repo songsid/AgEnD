@@ -21,7 +21,7 @@ import { agendVersion } from "../agent-whats-new.js";
 import { CLASSIC_RESTRICTED_TOOLS } from "../contact-auth-types.js";
 import { writeFileSync, readFileSync, unlinkSync } from "node:fs";
 import { IpcClient } from "./ipc-bridge.js";
-import { TOOLS } from "./mcp-tools.js";
+import { TOOLS, withComposites, expandCompositeCall } from "./mcp-tools.js";
 import { CANVAS_WORKER_EXPERIMENTAL_MESSAGE, isCanvasWorkerTool } from "../web-experimental.js";
 import { readDashboardOff, watchDashboardOff } from "../dashboard-live.js";
 import { encodeOperationError, encodeOperationSuccess } from "./mcp-operation-response.js";
@@ -315,13 +315,17 @@ const spawnDashboardOff = featuresOffFromEnv(process.env.AGEND_DASHBOARD_OFF);
 const menuInstance = process.env.AGEND_INSTANCE_NAME ?? "";
 const dashboardOffNow = () => (menuInstance ? readDashboardOff(featureDataDir, menuInstance, spawnDashboardOff) : spawnDashboardOff);
 // The connector catalog is static within its configured permission ceiling. Dependency availability is checked at call time.
-const currentTools = () => withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow());
+const currentTools = () => withComposites(withoutFeatures(TOOLS.filter(t => allowedTools.has(t.name)), dashboardOffNow()));
 
 mcp.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: currentTools() }));
 
 // --- Tool call handler ---
 
 mcp.setRequestHandler(CallToolRequestSchema, async (req) => {
+  // M-2133: a composite (web_appearance, emoji_sticker) is its action's tool from here on — every check below sees that tool.
+  const expanded = expandCompositeCall(req.params.name, req.params.arguments);
+  if ("error" in expanded) return { content: [{ type: "text", text: expanded.error }], isError: true };
+  if (expanded.name !== req.params.name) req.params = { ...req.params, name: expanded.name, arguments: expanded.args };
   if (classicAllowedTools && !allowedTools.has(req.params.name)) return {
     content: [{ type: "text", text: "Restricted room: this tool is not allowed." }], isError: true,
   };

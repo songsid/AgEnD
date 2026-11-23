@@ -4,7 +4,7 @@ import { lstatSync, readFileSync } from "node:fs";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { runtimeJobDigest } from "./runtime-client-store.js";
 import { validatePaneMcpBody, validatePaneMcpOwner, samePaneMcpOwner, type PaneMcpBody, type PaneMcpOwner } from "./runtime-pane-mcp-protocol.js";
-import { OUTBOUND_TOOL_SCHEMAS } from "./channel/mcp-tools.js";
+import { OUTBOUND_TOOL_SCHEMAS, withComposites, expandCompositeCall } from "./channel/mcp-tools.js";
 import { redactDiagnostics } from "./diagnostic-redaction.js";
 interface ToolMenu { name: string; [key: string]: unknown }
 interface Call { digest: string; operationId: string; responseId: string; state: "prepared" | "done" | "written" }
@@ -70,7 +70,7 @@ export class PaneMcpAuthorityLease {
       const epoch = this.authority.transportEpoch?.(); if (!epoch) throw Error("Pane helper transport identity is unavailable");
       this.presence = { at: performance.now(), epoch }; return { result: { ok: true } };
     }
-    if (body.method === "tools/list") return { result: { tools: this.authority.menu().filter(tool => this.toolCeiling.has(tool.name)) } };
+    if (body.method === "tools/list") return { result: { tools: withComposites(this.authority.menu().filter(tool => this.toolCeiling.has(tool.name))) } };
     const key = this.key(body), previous = this.ledger.calls[key];
     if (body.method === "response-written") {
       if (!previous || previous.state === "prepared" || previous.responseId !== body.responseId) throw Error("Pane tool response receipt differs");
@@ -82,7 +82,10 @@ export class PaneMcpAuthorityLease {
       this.results.delete(key);
       return { result: { ok: true } };
     }
-    const { name: tool, arguments: args } = body.params;
+    // M-2133: a composite (web_appearance, emoji_sticker) is its action's tool for every check below.
+    const expanded = expandCompositeCall(body.params.name, body.params.arguments);
+    if ("error" in expanded) return { result: errorResult(expanded.error) };
+    const { name: tool, args } = expanded;
     if (!this.allowed(tool, args)) throw Error("Pane tool access was revoked");
     const parsed = OUTBOUND_TOOL_SCHEMAS.get(tool)?.safeParse(args);
     if (!parsed?.success) return { result: errorResult("Invalid tool arguments") };
