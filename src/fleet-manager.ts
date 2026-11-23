@@ -30,6 +30,7 @@ import { settingsSummary, translatedSummary, type SettingsSummaryPresentation } 
 import { readInstalledBuild } from "./build-provenance.js";
 import { buildNativeFleetInstructions } from "./instructions.js";
 import { GENERAL_ROLE_INSTRUCTIONS } from "./general-role.js";
+import { placeGeneralRole } from "./general-role-block.js";
 import { NativePaneRecoveryError } from "./native-pane-recovery.js";
 import { nativePaneToolAvailable, nativePaneToolRefusal } from "./native-pane-tools.js";
 import { windowsAgentsFor } from "./windows-agents.js";
@@ -25243,9 +25244,18 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (backend === "antigravity" && danglingSymlink(filePath)) {
       // #1914 review: a person's dangling symlink there is kept and not followed (nothing created where it points).
       this.logger.warn({ filePath }, "General's agy instructions file is a dangling symlink; left as it is, not written");
-    } else if (!existsSync(filePath)) {
-      writeFileSync(filePath, FleetManager.GENERAL_INSTRUCTIONS, "utf-8");
-      this.logger.info({ filePath }, "Created general instance instructions file");
+    } else {
+      // M-3529: the role text is a managed block, replaced on every sync like the core rules, so existing Generals get
+      // wording updates; AgEnD's earlier unmarked copy is adopted, and a person's own coordinator text is kept.
+      let existing: string | null = null, readable = true;
+      try { existing = existsSync(filePath) ? readFileSync(filePath, "utf-8") : null; } catch { readable = false; }
+      if (!readable) this.logger.warn({ filePath }, "General's instructions file could not be read; its role text was left as it is");
+      else {
+        const { text, placement } = placeGeneralRole(existing, FleetManager.GENERAL_INSTRUCTIONS);
+        if (text !== existing) writeFileSync(filePath, text, "utf-8");
+        if (placement === "customized") this.logger.warn({ filePath }, "General's instructions file has its own coordinator text, so AgEnD's role block was not added; remove that text to receive role updates");
+        else if (placement !== "unchanged") this.logger.info({ filePath, placement }, "General's role text synced");
+      }
     }
     // Sync bundled knowledge files to general's steering and skills directories.
     this.syncGeneralKnowledge(workDir, backend);

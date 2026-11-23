@@ -10,7 +10,7 @@ import { describe, expect, it } from "vitest";
 const RULES = readFileSync(join(__dirname, "..", "src", "general-knowledge", "steering", "core-rules.md"), "utf8");
 
 describe("core-rules: confirming a held Settings change (D1)", () => {
-  const line = RULES.split("\n").find(l => l.includes("get around a Settings confirmation")) ?? "";
+  const line = RULES.split("\n").find(l => l.includes("waits for a fleet admin's confirmation")) ?? "";
   it("names General and the dashboard's confirmation card", () => {
     expect(line).toMatch(/General/);
     expect(line).toMatch(/confirmation card/);
