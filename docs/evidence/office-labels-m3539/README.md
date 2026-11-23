@@ -3,7 +3,7 @@
 These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real room office, headless Chromium, taken from two commits:
 
 - **before**: #4370's head `ce5f6556`;
-- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. Later commits change no drawing.
+- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. Later commits change nothing in these scenes. `bc82159b` only matters for a style whose calling states fall back to a default or first area, and the Studio styles name theirs.
 
 The room has 12 people and 30 agents of 6 owners, plus the room assistant, all with made-up names. Two agents are working, one is paused, and one owner's Fleet is offline, so its 5 agents are stopped and go to the nap corner. Each shot is taken 3 s after the office opens, with normal motion (idle agents stroll).
 
