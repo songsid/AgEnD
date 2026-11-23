@@ -5,3 +5,6 @@ e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fi
 e5969319cb425d8f5ef6c430a467425cdd24dac0:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19
 d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M1-parent-sidechain.log:generic-api-key:18
 d51e4bc0c6a46cd5fedb9baccd50f1b047bad4d2:docs/screenshots/subagent-row/review-fixes/M2-assistant-call.log:generic-api-key:19
+
+# M3540 historical evidence checksum for src/auth-api.ts, verified SHA-256 (not a credential).
+70dfc5043ecddf6ce55d754e77e62a345028f2da:docs/evidence/composer-edge-focus-m3540/verification.json:generic-api-key:7

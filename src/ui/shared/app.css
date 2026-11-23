@@ -956,6 +956,9 @@ img.amb-p { object-fit: contain; }
 }
 .dock { flex-shrink: 0; padding: 0 max(var(--s-5), env(safe-area-inset-right)) max(var(--s-3), env(safe-area-inset-bottom)) max(var(--s-5), env(safe-area-inset-left)); }
 .dock-col { max-width: var(--col); margin: 0 auto; display: flex; flex-direction: column; gap: var(--s-2); }
+/* M3540: reserve an 8px gutter in normal flow; never overlay the thread or neighboring controls. */
+.composer-hit { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-2); margin-inline: calc(-1 * var(--s-2)); user-select: none; -webkit-user-select: none; }
+.composer-hit .cmd-card, .composer-hit .pending-files, .composer-hit .reply-bar { user-select: text; -webkit-user-select: text; }
 .prompts { display: flex; flex-direction: column; gap: var(--s-2); }
 .prompt { padding: var(--s-3) var(--s-4); border-radius: var(--r-md); font-size: var(--fs-sm); background: var(--warn-bg); border: 1px solid var(--warn-line); }
 .prompt.done { background: transparent; border-style: dashed; color: var(--text-2); }
@@ -980,16 +983,16 @@ img.amb-p { object-fit: contain; }
 .failed-send .txt { flex: 1; min-width: 120px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 4.5em; overflow: hidden; }
 .composer-box { background: var(--surface); border-radius: var(--r-xl); box-shadow: var(--shadow-1); }
 .composer-box:focus-within { box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-1); }
-.composer { display: flex; align-items: flex-end; gap: var(--s-1); padding: var(--s-2); }
+.composer { display: flex; align-items: flex-end; gap: var(--s-1); padding: var(--s-2); user-select: none; -webkit-user-select: none; }
 .composer textarea {
-  flex: 1; min-width: 0; background: transparent; color: var(--text); border: 0; padding: 7px var(--s-1); outline: none;
+  flex: 1; min-width: 0; background: transparent; color: var(--text); border: 0; padding: 7px var(--s-1); outline: none; user-select: text; -webkit-user-select: text;
   font-size: var(--fs-md); line-height: var(--lh-md); resize: none; min-height: 24px; max-height: 240px; overflow-y: auto;
 }
 .composer textarea::placeholder { color: var(--text-3); }
 /* #2478: the placeholder, drawn over the empty box at its text's place: one line ending in "…" (a textarea's own is
    clipped, never ellipsized). The same size and line as the box's text; it never takes a tap. */
 .composer-field { position: relative; flex: 1; min-width: 0; display: flex; }
-.composer-ph { position: absolute; left: var(--s-1); right: var(--s-1); top: 7px; pointer-events: none; color: var(--text-3);
+.composer-ph { position: absolute; left: var(--s-1); right: var(--s-1); top: 7px; pointer-events: none; user-select: none; -webkit-user-select: none; color: var(--text-3);
   font-size: var(--fs-md); line-height: var(--lh-md); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .composer-field textarea:not(:placeholder-shown) + .composer-ph { display: none; }   /* text in the box, composing text too */
 .btn-send { width: 36px; padding: 0; }

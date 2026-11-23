@@ -41,14 +41,118 @@ describe("#2478: the chat composer (the real page modules)", () => {
     stream.on("status", app.applyStatus);
     panel.boot({ stream, boot: null, deps: { fetch, toast() {}, setTimeout: () => 0 } });
     stream.emit("status", { uptime: 1, instances: [inst("fleet-lead", o.over)] });
-    await p.mount(harness.h("main", { id: "main" }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "fleet-lead" }, navKey: "chat|w" })));
+    await p.mount(harness.h("main", { id: "main", tabIndex: -1 }, harness.h(panel.ChatPanel, { route: { panel: "chat", instance: "fleet-lead" }, navKey: "chat|w" })));
     await settle();
     const box = () => p.root.querySelector("#msgIn");
     const type = async (text: string) => { box().value = text; fire(box(), "input"); await settle(); };
     const key = async (k: string, init: Record<string, unknown> = {}) => { const e = fire(box(), "keydown", { key: k, ...init }); await settle(); return e; };
     const sends = () => calls.filter((c) => c.path === "/ui/send");
-    return { p, box, type, key, sends };
+    return { p, box, type, key, sends, requests: () => calls };
   }
+
+  it("M3540: edge/padding focuses the real textarea and accepts typing", async () => {
+    const c = await chatPage();
+    const row = c.p.root.querySelector(".composer")!;
+    const field = c.p.root.querySelector(".composer-field")!;
+    c.p.root.focus();
+    const down = fire(row, "pointerdown", { button: 0, pointerType: "mouse", isPrimary: true });
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+    expect(down.defaultPrevented).toBe(true);
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toMatch(/\.composer \{[^}]*user-select: none/);
+    expect(css).toMatch(/\.composer textarea \{[^}]*user-select: text/);
+    expect(css).toMatch(/\.composer-ph \{[^}]*user-select: none/);
+    await c.type("Edge draft");
+    expect(c.box().value).toBe("Edge draft");
+    c.p.root.focus(); fire(field, "click", { button: 0 });
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+  });
+
+  it("M3540: textarea selection, right-click and controls keep native behavior", async () => {
+    const c = await chatPage();
+    c.p.root.focus();
+    const row = c.p.root.querySelector(".composer")!;
+    const right = fire(row, "pointerdown", { button: 2 });
+    expect(right.defaultPrevented).toBe(false);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+    const own = fire(c.box(), "pointerdown", { button: 0 });
+    expect(own.defaultPrevented).toBe(false);
+    const attach = c.p.root.querySelector("#attachBtn")!;
+    const action = fire(attach, "pointerdown", { button: 0 });
+    expect(action.defaultPrevented).toBe(false);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+  });
+
+  it("M3540: the reserved outer gutter focuses without taking a touch scroll", async () => {
+    const c = await chatPage(); const gutter = c.p.root.querySelector(".composer-hit");
+    expect(gutter, "reserved outer hit area").toBeTruthy();
+    c.p.root.focus();
+    const touch = fire(gutter, "pointerdown", { button: 0, pointerType: "touch", isPrimary: true });
+    expect(touch.defaultPrevented).toBe(false);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+    const tap = fire(gutter, "click", { button: 0 });
+    expect(tap.defaultPrevented).toBe(true);
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+    c.p.root.focus();
+    const down = fire(gutter, "pointerdown", { button: 0, pointerType: "mouse", isPrimary: true });
+    expect(down.defaultPrevented).toBe(true);
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toMatch(/\.composer-hit \{[^}]*padding: var\(--s-2\)/);
+    expect(css).toMatch(/\.composer-hit \{[^}]*user-select: none/);
+  });
+
+  it("M3540: nearby Attach and message-list links retain their own actions", async () => {
+    const c = await chatPage(); c.p.root.focus();
+    let picked = 0, linked = 0;
+    c.p.root.querySelector('input[type="file"]').addEventListener("click", () => picked++);
+    const attach = c.p.root.querySelector("#attachBtn");
+    const press = fire(attach, "pointerdown", { button: 0, pointerType: "mouse" });
+    fire(attach, "click", { button: 0 });
+    expect(press.defaultPrevented).toBe(false); expect(picked).toBe(1);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+    const link = c.box().ownerDocument.createElement("a"); link.href = "#nearby";
+    link.addEventListener("click", () => linked++); c.p.root.querySelector(".thread").appendChild(link);
+    const nearby = fire(link, "click", { button: 0 });
+    expect(nearby.defaultPrevented).toBe(false); expect(linked).toBe(1);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+  });
+
+  it("M3540: strip covers the working line and status row, shown or idle, but not messages", async () => {
+    for (const state of ["idle", "working"]) {
+      const c = await chatPage({ over: { state } });
+      const strip = c.p.root.querySelector(".composer-hit")!;
+      const bar = strip.querySelector(".work-bar");
+      expect(bar.classList.contains("idle")).toBe(state === "idle");
+      expect(c.p.root.querySelector(".thread").closest(".composer-hit")).toBeNull();
+      c.p.root.focus();
+      fire(state === "working" ? bar.querySelector(".lbl") : strip, "pointerdown", { button: 0, pointerType: "mouse" });
+      expect(c.box().ownerDocument.activeElement).toBe(c.box());
+      c.p.root.focus(); fire(strip.querySelector(".composer-row .hint"), "click", { button: 0 });
+      expect(c.box().ownerDocument.activeElement).toBe(c.box());
+      if (state === "working") {
+        c.p.root.focus();
+        const stop = strip.querySelector("#stopBtn");
+        const down = fire(stop, "pointerdown", { button: 0, pointerType: "mouse" });
+        fire(stop, "click", { button: 0 }); await settle();
+        expect(down.defaultPrevented).toBe(false);
+        expect(c.requests().filter(r => r.path === "/ui/cancel/fleet-lead")).toHaveLength(1);
+        expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+      }
+    }
+  });
+
+  it("M3540: CSS gutter rules are top-level and preserve the full-width selector/media scope", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toContain('@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }');
+    const structure = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "''");
+    for (const selector of [".composer-hit {", ".composer-hit .cmd-card,"]) {
+      const at = structure.indexOf(selector); expect(at).toBeGreaterThan(-1);
+      const before = structure.slice(0, at);
+      expect((before.match(/\{/g)?.length || 0) - (before.match(/\}/g)?.length || 0), selector).toBe(0);
+    }
+    expect(css).toMatch(/^\.dock-col \{ max-width: var\(--col\);/m);
+  });
 
   const ph = (c: { p: AppPage }) => c.p.root.querySelector(".composer-field .composer-ph") as any;
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {

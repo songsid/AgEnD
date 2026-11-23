@@ -1,0 +1,41 @@
+{
+  "source": "764f9435cdb533b1c53cf4f38f51aee6908e138e",
+  "source_sha256": [
+    {
+      "path": "src/ui/panel-chat.js",
+      "sha256": "c66bd26f503f2e200689aac69dce003e3f17d7fce6513415920aaf43afc6546e"
+    },
+    {
+      "path": "src/ui/shared/app.css",
+      "sha256": "d2b06e87b28e1ea6406ce601b9c1e757559fb1327be8f56e6b7b987afb0c7cd0"
+    },
+    {
+      "path": "src/ui/shared/composer-focus.js",
+      "sha256": "b704a07f0d667409db69a38b121f0220126e49d36ffce09d85188567d7024f6c"
+    },
+    {
+      "path": "src/auth-api.ts",
+      "sha256": "ea76a7dbc7a3edc5ca78c70fddda6c44bf1bae8230a1cdf6aad98930c39afde3"
+    },
+    {
+      "path": "tests/web-composer-2478.test.ts",
+      "sha256": "0c48df755281b7c0adc7be6a1d450de3c00f7f408a912bfe289cdb271aa91495"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-composer-focus-m3540.mts",
+      "sha256": "1909482557224ecd0af65c1b591bf9ddde7777ba3322e8bdc5a9abc4d19ce8c9"
+    }
+  ],
+  "png_sha256": {
+    "phone-dark-zh-TW-typed.png": "cef098f682ac3ee8236f8181451f2b26e3942568c757018526f2f58d5ded0baf",
+    "phone-dark-zh-TW-empty.png": "1d9916097bc32e8e87cd564c7870e9d94e1828c889112b4c589ff96119b2c2f8",
+    "desk-dark-zh-TW-empty.png": "373b0856aebf38a98f3083784c93f36284beb6dcde3b73f50ae8514a506261a7",
+    "desk-dark-zh-TW-typed.png": "ff22a570b50306f529c439b0748cfba332ae057dc74a51e28ecebae7144f4939"
+  },
+  "tests": {
+    "base": "1 new assertion failed; 10 other cases passed",
+    "fixed": "312/312 across web-composer-2478, web-chat-1307, web-csp-1268",
+    "test_type_errors": 0
+  },
+  "capture": "real app scratch web server; no sends/providers/agents started"
+}
