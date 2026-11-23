@@ -6,6 +6,7 @@ import { hi } from "./hub-agent-intro.js";
 // The dots use the Fleet sidebar's colours (.dot ok / busy / warn / off), so a state reads the same in both.
 // The shell owns the room's detail (and reads it again on member.changed); this panel applies presence.changed in place.
 import { html, useEffect, useState } from "/assets/app-html.js";
+import { lang } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
@@ -26,11 +27,25 @@ export const COMPACT_OVER = 12;
 /** M1: a member matches the filter by its name or (an agent) its owner's, ignoring case. */
 export const memberMatches = (m, q) => { const s = String(q || "").trim().toLocaleLowerCase(); return !s || `${m.name || ""} ${m.owner?.name || ""}`.toLocaleLowerCase().includes(s); };
 
-/** M1: the agents by owner, in the list's own order (each owner where their first agent is). */
-export function byOwner(agents) {
-  const groups = [];
-  for (const m of agents) { const k = String(m.owner?.name || ""); let g = groups.find((x) => x.owner === k); if (!g) groups.push(g = { owner: k, agents: [] }); g.agents.push(m); }
-  return groups;
+/**
+ * M1: the agents by owner — keyed by the owner's id (two owners of one name are two groups), named by their name; my own
+ * group first, then the owners by name in the viewer's language (a group does not move as its agents start and stop).
+ * Within a group, the list's own order (presence).
+ */
+export function byOwner(agents, locale = undefined) {
+  const groups = new Map();
+  for (const m of agents) {
+    const key = String(m.owner?.id || `name:${m.owner?.name || ""}`);
+    if (!groups.has(key)) groups.set(key, { key, owner: String(m.owner?.name || ""), mine: m.owner?.mine === true, agents: [] });
+    groups.get(key).agents.push(m);
+  }
+  return [...groups.values()].sort((a, b) => (Number(b.mine) - Number(a.mine)) || a.owner.localeCompare(b.owner, locale) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/** M1: people in a stable order — me first, then by name in the viewer's language, the member id breaking a tie. */
+export function peopleOrder(people, meId, locale = undefined) {
+  return [...people].sort((a, b) => (Number(b.id === meId) - Number(a.id === meId)) || String(a.name || "").localeCompare(String(b.name || ""), locale)
+    || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
 }
 
 /**
@@ -118,8 +133,9 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M1: the compact list (§2.6) — the summary, the filter, who is online, the rest folded; the agents by owner, folded.
   // A filter opens every group with a match and shows only the matches; the counts above stay the room's.
   const compactList = () => {
-    const online = people.filter((m) => m.id === meId || m.presence === "online"), owners = byOwner(agents);
-    const on = online.filter((m) => memberMatches(m, q)), off = people.filter((m) => !online.includes(m) && memberMatches(m, q));
+    const locale = lang(), ordered = peopleOrder(people, meId, locale);
+    const online = ordered.filter((m) => m.id === meId || m.presence === "online"), owners = byOwner(agents, locale);
+    const on = online.filter((m) => memberMatches(m, q)), off = ordered.filter((m) => !online.includes(m) && memberMatches(m, q));
     const groups = owners.map((g) => ({ ...g, shown: g.agents.filter((m) => memberMatches(m, q)) })).filter((g) => g.shown.length);
     const filtering = !!q.trim();
     return html`<p class="note hub-members-sum">${hm("summary", people.length, online.length, agents.length, owners.length)}</p>
@@ -130,7 +146,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
       ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
     </section>
     ${agents.length ? html`<section><h4>${heads.agent}</h4>
-      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.owner} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
+      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
     </section>` : null}`;
   };
   return html`<aside class=${`hub-room-members${compact ? " compact" : ""}`}>

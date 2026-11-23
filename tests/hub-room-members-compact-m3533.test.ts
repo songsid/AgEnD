@@ -4,6 +4,8 @@
  * its card), the people not online folded, the agents grouped by owner (folded). A smaller room keeps today's list.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { fire } from "./helpers/mini-dom.js";
 import { createHubRoomsFixture, FIXTURE_ME } from "./support/hub-rooms-fixture.js";
@@ -66,7 +68,8 @@ describe("the compact member list (M-3533 M1)", () => {
     expect(groups(pg)).toEqual([["林小華 · 4", true, ["project-helper", "design-review", "test-runner", "old-helper"]]]);
     expect(all(pg, ".hub-members-people > ul > .hub-member")).toEqual([]);
     await type(pg, "REPORT");
-    expect(groups(pg)).toEqual([["吳小安 · 4", true, ["report-bot"]]]);
+    // While a filter is on, a group's number is the rows under it (as 「不在線上」's); the summary and headings keep the room's.
+    expect(groups(pg)).toEqual([["吳小安 · 1", true, ["report-bot"]]]);
     await type(pg, "吳");
     expect(groups(pg).map((g) => [g[0], g[1]])).toEqual([["不在線上 · 1", true], ["吳小安 · 4", true]]);
     expect(q(pg, ".hub-members-sum").textContent).toBe("3 人，2 人在線上 · 12 個 Agent，3 位擁有者");
@@ -86,9 +89,23 @@ describe("the compact member list (M-3533 M1)", () => {
     expect([q(pg, ".hub-room-members").classList.contains("compact"), !!q(pg, ".hub-members-filter"), all(pg, ".hub-member-group").length, all(pg, ".hub-member-agent .hub-member-owner").length > 0])
       .toEqual([false, false, 0, true]);
   });
-  it("byOwner and memberMatches (pure)", () => {
-    const a = (name: string, owner: string) => ({ name, owner: { name: owner } });
-    expect(panel.byOwner([a("x", "B"), a("y", "A"), a("z", "B")]).map((g: any) => [g.owner, g.agents.map((m: any) => m.name)])).toEqual([["B", ["x", "z"]], ["A", ["y"]]]);
+  it("on a touch screen the filter, the folds and an agent's row are a fingertip (--tap) high", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/hub-rooms-u2.css"), "utf8");
+    const coarse = [...css.matchAll(/@media \(pointer: coarse\) \{([^@]*?)\}\s*\}/g)].map((m) => m[1]).join("\n");
+    for (const sel of [".hub-room-members .hub-members-filter", ".hub-member-group > summary", ".hub-room-members.compact .hub-member-open"]) {
+      const rule = coarse.split("}").find((r) => r.includes(sel));
+      expect([sel, /min-height:\s*var\(--tap\)/.test(rule || "")]).toEqual([sel, true]);
+    }
+    expect(css).toMatch(/--tap/);
+  });
+  it("byOwner, peopleOrder and memberMatches (pure): my group first, owners by name, keyed by id; people me first, by name", () => {
+    const a = (name: string, owner: string, id?: string, mine?: boolean) => ({ name, owner: { name: owner, ...(id ? { id } : {}), ...(mine ? { mine: true } : {}) } });
+    expect(panel.byOwner([a("x", "B"), a("y", "A"), a("z", "B")]).map((g: any) => [g.owner, g.agents.map((m: any) => m.name)])).toEqual([["A", ["y"]], ["B", ["x", "z"]]]);
+    // Two owners of one name are two groups; mine leads whatever its name.
+    const g = panel.byOwner([a("x", "Alex", "corp/1"), a("y", "Alex", "corp/2"), a("z", "Zed", "corp/me", true)]);
+    expect(g.map((x: any) => [x.owner, x.key, x.agents.map((m: any) => m.name)])).toEqual([["Zed", "corp/me", ["z"]], ["Alex", "corp/1", ["x"]], ["Alex", "corp/2", ["y"]]]);
+    const p = (id: string, name: string) => ({ id, name });
+    expect(panel.peopleOrder([p("3", "Casey"), p("1", "Alex"), p("me", "Zed"), p("0", "Alex")], "me", "en").map((x: any) => x.id)).toEqual(["me", "0", "1", "3"]);
     expect([panel.memberMatches(a("Notes", "Alex Sample"), "alex"), panel.memberMatches(a("Notes", "Alex"), "NOT"), panel.memberMatches(a("Notes", "Alex"), "zzz"), panel.memberMatches(a("Notes", ""), "  ")]).toEqual([true, true, false, true]);
   });
 });

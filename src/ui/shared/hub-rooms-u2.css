@@ -113,4 +113,6 @@
 .hub-room-members.compact .hub-member:not(.hub-member-agent), .hub-room-members.compact .hub-member-open { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .hub-room-members.compact .hub-member-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hub-room-members.compact .hub-member-state { flex: none; flex-wrap: nowrap; }
-@media (pointer: coarse) { .hub-member-group > summary { min-height: var(--tap); } .hub-room-members.compact .hub-member { min-height: 36px; } }
+/* On a touch screen every interactive row is a fingertip high: the filter, a fold, an agent's row (a person's row is not
+   pressed, and a desk stays dense). */
+@media (pointer: coarse) { .hub-room-members .hub-members-filter, .hub-member-group > summary, .hub-room-members.compact .hub-member-open { min-height: var(--tap); } }
