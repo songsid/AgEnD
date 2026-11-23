@@ -187,6 +187,6 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
       cardRows=${(name) => officeCardRows(members, shown.instances.find((i) => i.name === name)?.member)}
       cardName=${(name) => shown.instances.find((i) => i.name === name)?.plain || ""}
       cardAction=${onMention ? (name) => { const m = memberOf(name); return m ? { label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) } : null; } : null}
-      more=${more} onMore=${onMore} officesKey=${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""} />
+      more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
 }

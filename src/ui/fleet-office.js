@@ -1222,8 +1222,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const nodes = all.filter(keep);
     if (zones) {
       const skKey = shared ? "" : officeKey;
-      if (seatKeyRef.current !== skKey) {
-        seatKeyRef.current = skKey;
+      // M-3533 (#4370): the seats given restart when the office or its style changes — on a shared page too (a room's
+      // office, a share link), whose per-device seat choices are not kept (skKey ""), so a style with more seats is not
+      // drawn with the old one's overflow spots.
+      if (seatKeyRef.current !== officeKey) {
+        seatKeyRef.current = officeKey;
         seatsRef.current = new Map();
         seatPrefsRef.current = skKey ? store.seats(skKey) : {};
       }
@@ -2394,7 +2397,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} data-slot=${Number.isInteger(d.box?.slot) ? d.box.slot : undefined} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
       })}</ul>

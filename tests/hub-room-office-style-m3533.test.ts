@@ -35,6 +35,26 @@ describe("Studio (large)", () => {
     const ids = new Set(skin.STUDIO_LARGE_PACK.waypoints.map((w: any) => w.id));
     for (const [x, y] of skin.STUDIO_LARGE_PACK.edges) expect(ids.has(x) && ids.has(y)).toBe(true);
   });
+  it("a room office whose style grows to the large one seats everyone: no overflow spot from the Studio kept (#4370)", async () => {
+    const office = await import("/ui/js/hub-room-office.js" as string);
+    const p = page();
+    try {
+      i18n.setLang("en", { store: false });
+      let skinId = "studio";
+      const ids = Array.from({ length: 28 }, (_, i) => `e${i}`);
+      const state = () => ({ ok: true, instances: ids.map((id, i) => ({ name: id, display_name: `Agent ${i}`, status: "running", execution_state: "idle", presence: "idle" })),
+        org: { general: [], teams: [], instances: {} }, needs: [], traffic: { now: new Date().toISOString(), items: [], delegations: [] }, text: false, office: "room",
+        offices: { rev: 0, readable: true, offices: [{ id: "room", name: "Weekly", skin: skinId, members: ids }] } });
+      await p.mount(h(office.RoomOffice, { client: { roomOfficeState: async () => state() }, roomId: "room", members: [], pollMs: 15 }));
+      const slots = () => [...p.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => Number(e.getAttribute("data-slot")));
+      const until = async (fn: () => unknown, n = 300) => { for (let i = 0; i < n && !fn(); i++) await settle(5); };
+      await until(() => slots().length === 28 && slots().some((n) => n < 0));
+      expect(slots().filter((n) => n < 0).length).toBe(14);                    // the Studio: 14 seats to rest in, 14 standing
+      skinId = "studio-large";
+      await until(() => slots().length === 28 && slots().every((n) => n >= 0));
+      expect([slots().every((n) => n >= 0), new Set(slots()).size]).toEqual([true, 28]);
+    } finally { await p.unmount(); p.restore(); }
+  });
   it("is drawable everywhere but offered only to rooms; an unknown style falls back instead of failing", () => {
     expect(skin.SKINS.get("studio-large")?.id).toBe("studio-large");
     expect(skin.BUILT_IN_SKINS).not.toContain("studio-large");
