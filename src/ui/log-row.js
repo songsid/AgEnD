@@ -30,7 +30,7 @@ register("log", {
     showOutput: "顯示輸出", hideOutput: "隱藏輸出", args: "參數", output: "輸出", noOutput: "沒有輸出。",
     showAll: "顯示全部", showLess: "收合", cut: "… 還有 {0} 個字元沒有顯示。", tooLarge: "輸出共 {0}，只顯示開頭。",
     times: "×{0}", newer: "{0} 則新的",
-    cat_read: "讀取", cat_edit: "編輯", cat_search: "搜尋", cat_run: "執行", cat_web: "網頁", cat_mcp: "MCP", cat_agent: "子 agent",
+    cat_read: "讀取", cat_edit: "編輯", cat_search: "搜尋", cat_run: "執行", cat_web: "網頁", cat_mcp: "MCP", cat_agent: "子 Agent",
     cat_plan: "計畫", cat_message: "訊息", cat_other: "工具", plan_items: "{0} 項",
     said: "說了", thinking: "思考", thinkingMore: "顯示完整思考", thinkingLess: "收合",
     expand: "顯示細節", collapse: "隱藏細節", command: "指令", removed: "移除", added: "新增",
