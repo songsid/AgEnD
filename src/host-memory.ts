@@ -31,6 +31,9 @@ export interface HostMemory {
   darwinPressureLevel?: 1 | 2 | 4 | null;
   /** Bounded diagnostic output; null when unavailable or not requested. */
   darwinPressureRaw?: string | null;
+  /** Optional vm_stat diagnostic counters, not pressure inputs. */
+  darwinCompressedBytes?: number | null;
+  darwinStoredBytes?: number | null;
   /** Linux pressure sampling only; null means PSI cannot be used. */
   linuxPsi?: LinuxMemoryPsi | null;
 }

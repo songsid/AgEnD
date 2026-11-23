@@ -2,7 +2,9 @@
 
 An agent in the fleet has three places to keep what it knows. They differ in
 who shares them, when they reach the agent, and how much context they cost.
-The guidance agents themselves receive is in
+The guidance agents themselves receive is the **Memory** section of every Fleet
+agent's instructions ([`src/memory-guidance.ts`](../../src/memory-guidance.ts),
+General included), plus General's own part on fleet decisions and skills in
 [`src/general-knowledge/steering/core-rules.md`](../../src/general-knowledge/steering/core-rules.md)
 ("Memory & Knowledge Management").
 
@@ -46,9 +48,10 @@ The guidance agents themselves receive is in
   cost, and outdated cautions left in it make an agent over-cautious.
 - Updated after a multi-step task that taught something reusable and before
   a compaction; routine work needs no update.
-- When it does not exist, the agent asks the user once, with reply buttons,
-  after the first such task. A decline is recorded as `soul.declined` in the
-  workspace root (also in `.gitignore`), and the agent does not ask again.
+- When it does not exist, the agent asks the user once, after the first such
+  task, with buttons where its reply tool offers them. A decline is recorded
+  as `soul.declined` in the workspace root (also in `.gitignore`), and the
+  agent does not ask again.
 
 ## Skills
 

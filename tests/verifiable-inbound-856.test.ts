@@ -172,7 +172,7 @@ describe("the fleet rule travels with the tool (#856)", () => {
   const SKILL = readFileSync(fileURLToPath(new URL("../src/general-knowledge/skills/cross-instance-messaging/SKILL.md", import.meta.url)), "utf8");
 
   it("is in the fleet instructions every instance receives", () => {
-    expect(buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w" })).toContain(`7. ${VERIFY_PEER_MESSAGE_RULE}`);
+    expect(buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w" })).toContain(`5. ${VERIFY_PEER_MESSAGE_RULE}`);   // M-3528: Collaboration rule 5 (rules said once)
     // CLI-mode agents reach delivery_status over HTTP and get the rule too.
     expect(buildFleetInstructions({ instanceName: "worker", workingDirectory: "/w", cliInstructions: "## CLI" })).toContain(VERIFY_PEER_MESSAGE_RULE);
     for (const phrase of ["merge", "reset", "force-push", "delivery_status", "message_id", "Delivery not found", "do not act",

@@ -1,0 +1,2 @@
+Command: ionice -c 3 nice -n 15 node_modules/.bin/tsc --noEmit -p tsconfig.test.json
+Exit: 0

@@ -80,7 +80,9 @@ describe("buildFleetInstructions", () => {
     const core = buildMcpCoreInstructions(params);
 
     expect(full).toContain("`send_to_instance` or `report_result`, NOT the `reply` tool");
-    expect(full).toContain("Reply via send_to_instance or report_result, NOT reply");
+    // M-3528 (rec 4): said once, on the Message Format line (Collaboration rule 2 repeated it).
+    expect(full).toContain("`reply required →` in the header means a reply is owed: report_result with that id");
+    expect(full).not.toContain("Reply via send_to_instance or report_result, NOT reply");
     expect(core).toContain("Never `reply`");
     expect(full).not.toContain("bound ClassicBot channel");
     expect(core).not.toContain("bound ClassicBot channel");
@@ -218,7 +220,9 @@ describe("buildFleetInstructions", () => {
       decisions: [{ title: "Use ESM", content: "All modules should use ESM imports." }],
     });
     expect(result).toContain("## Active Decisions");
-    expect(result).toContain("**Use ESM**");
+    // M-3528 (rec 3): titles only; the content is read on demand.
+    expect(result).toContain("- Use ESM");
+    expect(result).not.toContain("All modules should use ESM imports");
   });
 
   it("caps decisions at 15 with overflow note", () => {
@@ -229,9 +233,11 @@ describe("buildFleetInstructions", () => {
     const result = buildFleetInstructions({ ...base, decisions });
     expect(result).toContain("5 more");
     expect(result).toContain("list_decisions");
-    const overflow = result.split("\n").find(line => line.includes("5 more"));
-    expect(overflow).toContain("next_cursor");
-    expect(overflow).toContain("detail:true");
+    // M-3528: how to read and page them is said once, under the heading.
+    const header = result.split("## Active Decisions\n")[1]!.split("\n")[0]!;
+    expect(header).toContain("next_cursor");
+    expect(header).toContain("list_decisions { id, detail: true }");
+    expect(result.split("\n").filter(l => /^- Decision \d+$/.test(l))).toHaveLength(15);
   });
 
   it("omits decisions section when empty", () => {

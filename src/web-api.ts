@@ -4018,13 +4018,56 @@ export function handleWebRequest(
     const scope = { leaveOutAuthors: gateway ? Object.keys(ctx.fleetConfig?.instances ?? {}).filter(hiddenName) : [] };
     const hiddenRef = (ref: string | null) => { const c = ref ? board.findCard(ref) : undefined; return !!c && hidden(c); };
     const mentionsHidden = (v: unknown): boolean => (typeof v === "string" ? hiddenName(v) : !!v && typeof v === "object" && Object.values(v).some(mentionsHidden));
+    // A main task kept out of sight is not numbered by its sub tasks either — a card's `parentId`, and the `parent`
+    // of its "created" event, read as none over the link (the card number alone says a main task is there).
+    // Nor is a card kept out of sight numbered anywhere else a card number is read: a card's `dependsOn` and
+    // `unmetDeps` (a number kept out of the list), the `dependsOn` of an "updated" event's `changes` (kept out of both its
+    // lists; a change that is then the same on both sides is not shown, nor an event with no change left), and the
+    // `cascade` / `restored` of a sub task's "moved" event (the main task it was taken down with). Each number is looked up
+    // once per request, whatever the number of cards that name it.
+    const hiddenCodes = new Map<string, boolean>();
+    const hiddenCode = (code: string): boolean => { let h = hiddenCodes.get(code); if (h === undefined) { h = hiddenRef(code); hiddenCodes.set(code, h); } return h; };
+    // …`hiddenUnmet` (over the link only) says how many of the unfinished dependencies were left out, so a card that waits for
+    // a card kept out of sight still reads as waiting (a clock, not "ready"): how many, never which.
+    const unnumbered = <T extends { parentId: string | null; dependsOn: string[]; unmetDeps: string[] }>(v: T): T & { hiddenUnmet?: number } => {
+      if (!gateway) return v;
+      const parentId = v.parentId && hiddenCode(v.parentId) ? null : v.parentId;
+      const dependsOn = v.dependsOn.filter((c) => !hiddenCode(c));
+      const unmetDeps = v.unmetDeps.filter((c) => !hiddenCode(c));
+      return { ...v, parentId, dependsOn, unmetDeps, hiddenUnmet: v.unmetDeps.length - unmetDeps.length };
+    };
+    const numbered = (v: unknown): unknown => (Array.isArray(v) ? v.filter((c) => typeof c !== "string" || !hiddenCode(c)) : v);
+    /** An event as the link may read it; null when nothing of it is left to show. */
+    const unnumberedEvent = <E extends { type: string; data: Record<string, unknown> }>(e: E): E | null => {
+      const data = e.data;
+      if (!data || typeof data !== "object") return e;
+      if (e.type === "created") return typeof data.parent === "string" && hiddenCode(data.parent) ? { ...e, data: { ...data, parent: null } } : e;
+      if (e.type === "moved") {
+        const gone = (["cascade", "restored"] as const).filter((k) => typeof data[k] === "string" && hiddenCode(data[k] as string));
+        if (!gone.length) return e;
+        const rest = { ...data };
+        for (const k of gone) delete rest[k];
+        return { ...e, data: rest };
+      }
+      if (e.type === "updated" && data.changes && typeof data.changes === "object") {
+        const { dependsOn, ...others } = data.changes as Record<string, unknown>;
+        const dep = dependsOn && typeof dependsOn === "object" ? dependsOn as { from?: unknown; to?: unknown } : null;
+        if (!dep) return e;
+        const from = numbered(dep.from), to = numbered(dep.to);
+        if (JSON.stringify(from) === JSON.stringify(dep.from) && JSON.stringify(to) === JSON.stringify(dep.to)) return e;
+        const changes = JSON.stringify(from) === JSON.stringify(to) ? others : { ...others, dependsOn: { ...dep, from, to } };
+        return Object.keys(changes).length ? { ...e, data: { ...data, changes } } : null;
+      }
+      return e;
+    };
     const shown = (d: ReturnType<typeof board.detail>): typeof d => !gateway ? d : {
       ...d,
+      card: unnumbered(d.card),
       parent: d.card.parentId && hiddenRef(d.card.parentId) ? null : d.parent,
-      children: d.children.filter((c) => !hidden(c)),
+      children: d.children.filter((c) => !hidden(c)).map(unnumbered),
       comments: d.comments.filter((e) => !hiddenName(e.author)),
       logs: d.logs.filter((e) => !hiddenName(e.author)),
-      history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)),
+      history: d.history.filter((e) => !hiddenName(e.actor) && !mentionsHidden(e.data)).flatMap((e) => unnumberedEvent(e) ?? []),
     };
     const card = /^\/ui\/tasks\/cards\/([^/]+)(?:\/(move|reorder))?$/.exec(path);
     const project = /^\/ui\/tasks\/projects\/(\d+)$/.exec(path);
@@ -4051,7 +4094,7 @@ export function handleWebRequest(
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
@@ -4072,7 +4115,7 @@ export function handleWebRequest(
         const works = names.map((name) => ({ name, w: byName.get(name)! }));
         const all = new Map<string, Parameters<typeof board.views>[0][number]>();
         for (const { w } of works) for (const c of [...w.doing, ...w.blocked, ...w.review, ...w.ready, ...w.waiting.map((x) => x.card), ...w.mains.map((x) => x.card)]) if (!hidden(c)) all.set(c.uuid, c);
-        const viewOf = new Map(board.views([...all.values()], scope, ctx.dispatcherGone).map((v) => [v.uuid, v]));
+        const viewOf = new Map(board.views([...all.values()], scope, ctx.dispatcherGone).map((v) => [v.uuid, unnumbered(v)]));
         const drawn = (cards: Array<{ uuid: string }>) => cards.flatMap((c) => (viewOf.has(c.uuid) ? [viewOf.get(c.uuid)!] : []));
         const codes = (cards: Array<{ card: { uuid: string; code: string } }>) => cards.filter((x) => all.has(x.card.uuid)).map((x) => x.card.code);
         const body = JSON.stringify({ instances: works.map(({ name, w }) => ({
@@ -4088,7 +4131,7 @@ export function handleWebRequest(
       if (method === "GET" && path === "/ui/tasks/search") {
         const names = new Map(board.listProjects(true).map((p) => [p.id, p.name]));
         const hits = board.search(url.searchParams.get("q") ?? "", Number(url.searchParams.get("limit")) || 20, scope).filter((h) => !hidden(h.card));
-        const views = board.views(hits.map((h) => h.card), scope, ctx.dispatcherGone);
+        const views = board.views(hits.map((h) => h.card), scope, ctx.dispatcherGone).map(unnumbered);
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,

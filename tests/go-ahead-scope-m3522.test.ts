@@ -10,8 +10,8 @@ import { tmpdir } from "node:os";
 import { execFileSync, spawnSync } from "node:child_process";
 import { join } from "node:path";
 import {
-  CODEX_PERSISTENCE_OUTPUT_SECTIONS, GO_AHEAD_SCOPE_RULE, LOCAL_APP_SECTION, OPERATIONS_MAX_CHARS, OPERATIONS_PREFACE,
-  VERIFY_PEER_MESSAGE_RULE, WEB_RECEIPT_RULE, buildFleetInstructions, buildNativeFleetInstructions, type FleetInstructionsParams,
+  CODEX_PERSISTENCE_OUTPUT_SECTIONS, GO_AHEAD_SCOPE_RULE, OPERATIONS_MAX_CHARS, OPERATIONS_PREFACE,
+  VERIFY_PEER_MESSAGE_RULE, WEB_CHAT_LINE, WEB_RECEIPT_RULE, buildFleetInstructions, buildMcpCoreInstructions, buildNativeFleetInstructions, type FleetInstructionsParams,
 } from "../src/instructions.js";
 import { APP_MESSAGE_RULE } from "../src/app-message-origin.js";
 import { formatHumanInboundMessage } from "../src/human-delivery-receipts.js";
@@ -93,7 +93,10 @@ describe("what needs a go-ahead: one positive rule", () => {
   it.each(BACKENDS)("is in every mode of a %s agent exactly once, before the messaging rules", (backend) => {
     for (const text of modes(backend)) {
       expect(count(text, `## What needs a go-ahead\n${GO_AHEAD_SCOPE_RULE}`)).toBe(1);
-      expect(text.indexOf("## What needs a go-ahead")).toBeLessThan(text.indexOf("## Local app input"));
+      // Before the messaging rules: the MCP Message Format, or the CLI reference.
+      const messaging = Math.max(text.indexOf("## Message Format"), text.indexOf("# AgEnD Agent CLI Reference"));
+      expect(messaging).toBeGreaterThan(-1);
+      expect(text.indexOf("## What needs a go-ahead")).toBeLessThan(messaging);
     }
   });
   it("is in every recorded combination of the instructions matrix", () => {
@@ -108,12 +111,16 @@ describe("what needs a go-ahead: one positive rule", () => {
 });
 
 describe("no go-ahead check weakens", () => {
-  it("every web-chat receipt sentence survives verbatim, in the rule and wherever it is generated", () => {
+  it("every web-chat receipt sentence survives verbatim in the rule and both skills; every prompt points there", () => {
+    // M-3528 (rec 5): the checks moved out of the per-session prompt into the skills, word for word.
     for (const s of WEB_SENTENCES) {
       expect(WEB_RECEIPT_RULE, s).toContain(s);
-      expect(buildFleetInstructions(base("claude-code")), s).toContain(s);
-      expect(CLI_FILE, s).toContain(s);
       for (const skill of Object.values(SKILLS)) expect(skill, s).toContain(s);
+    }
+    // A native worker (modes()[2]) is published no skills, so it keeps the rule itself (M-3528, #4347 review).
+    for (const backend of BACKENDS) modes(backend).forEach((text, i) => expect(count(text, i === 2 ? WEB_RECEIPT_RULE : WEB_CHAT_LINE), `${backend} #${i}`).toBe(1));
+    for (const kind of ["a Discord or Telegram receipt, or a `@web:v` one", "`authority.kind: web-verified`", "before you act", "a guest (`@web:g`, let in only to chat)", "are not a go-ahead"]) {
+      expect(WEB_CHAT_LINE, kind).toContain(kind);
     }
   });
   it("every peer-verification sentence (receipts, forwards, @web:v) survives verbatim in both modes", () => {
@@ -122,9 +129,9 @@ describe("no go-ahead check weakens", () => {
       for (const text of modes("codex")) expect(text, s).toContain(s);
     }
   });
-  it("the local-app rule survives verbatim, in the instructions and on each local-app message", () => {
+  it("the local-app rule survives verbatim on each local-app message (M-3528 rec 14: no longer repeated in the prompt)", () => {
     for (const s of APP_SENTENCES) expect(APP_MESSAGE_RULE, s).toContain(s);
-    for (const backend of BACKENDS) for (const text of modes(backend)) expect(text).toContain(APP_MESSAGE_RULE);
+    for (const backend of BACKENDS) for (const text of modes(backend)) expect(text).not.toContain(APP_MESSAGE_RULE);
     const wire = formatHumanInboundMessage("Question", { source: "app", user: "Local app", user_id: "local-connector", message_id: "m", chat_id: "c" }, "mcp");
     expect(wire).toContain(`[App origin: ${APP_MESSAGE_RULE}]`);
   });
@@ -137,10 +144,11 @@ describe("no go-ahead check weakens", () => {
   });
 });
 
-describe("the local-app rule names its header", () => {
-  it("opens with the header it applies to, so other messages are not read as local-app input", () => {
-    expect(LOCAL_APP_SECTION.startsWith("## Local app input\nThis applies only to a message headed `[user:Local app@app#local-connector]`; every other message is unaffected. ")).toBe(true);
-    for (const backend of BACKENDS) for (const text of modes(backend)) expect(count(text, LOCAL_APP_SECTION)).toBe(1);
+describe("the local-app rule is where it applies", () => {
+  it("each local-app message names its header and carries the rule; the MCP core still says @app is unverified", () => {
+    const wire = formatHumanInboundMessage("Question", { source: "app", user: "Local app", user_id: "local-connector", message_id: "m", chat_id: "c" }, "mcp");
+    expect(wire.startsWith("[user:Local app@app#local-connector]\n[App origin: " + APP_MESSAGE_RULE + "]")).toBe(true);
+    expect(buildMcpCoreInstructions(base("codex"))).toContain("`@app`: unverified.");
   });
 });
 

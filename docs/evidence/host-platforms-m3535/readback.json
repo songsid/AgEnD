@@ -1,0 +1,41 @@
+{
+  "scope": "Isolated actual Settings UI/session/gate/sidecar/API. Platform/cache overridden; no collector, live Fleet/CLI/account/model.",
+  "results": [
+    {
+      "platform": "darwin",
+      "defaultCriticalOnly": true,
+      "savedCriticalOnly": false,
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "sidecarMode": "0600",
+      "sidecarMatchesGet": true,
+      "yamlUnchanged": true,
+      "reloadedUiMatches": true
+    },
+    {
+      "platform": "linux",
+      "defaultCriticalOnly": false,
+      "savedCriticalOnly": true,
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "sidecarMode": "0600",
+      "sidecarMatchesGet": true,
+      "yamlUnchanged": true,
+      "reloadedUiMatches": true
+    },
+    {
+      "platform": "wsl",
+      "defaultCriticalOnly": false,
+      "savedCriticalOnly": true,
+      "put": 202,
+      "confirmation": "applied",
+      "get": 200,
+      "sidecarMode": "0600",
+      "sidecarMatchesGet": true,
+      "yamlUnchanged": true,
+      "reloadedUiMatches": true
+    }
+  ]
+}

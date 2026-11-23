@@ -10,7 +10,7 @@ const COPY = {
     target: "Send to", general: "General", error: "Check percentages and periods. Changes cannot be saved yet.",
     old: "This server does not support quota notice settings. Update AgEnD to edit them.",
     sources: "Only fresh account usage with a known reset is used. Unsupported or stale readings do not send reminders. Enabled agents contribute a union of rules; disabling one does not silence others.",
-    effective: "In effect", defaults: "Built-in: on · 10% remaining · weekly · General", saved: "Quota notices" },
+    effective: "In effect", separator: ": ", periodLabels: {}, defaults: "Built-in: on · 10% remaining · weekly · General", saved: "Quota notices" },
   "zh-TW": { title: "通知", heading: "用量提醒", hint: "同一帳號共用一份提醒，由啟用提醒的 Agent 合併規則。額度耗盡、暫停與自動繼續的狀態訊息一律保留。",
     classic: "ClassicBot", periodExample: "weekly", scope: "設定對象", fleet: "全隊預設", backend: "後端", agent: "Agent", enabled: "提醒", inherit: "繼承", on: "開啟", off: "關閉",
     thresholds: "剩餘百分比", thresholdHint: "以逗號分隔，1–99，最多 8 個。空白表示繼承；none 表示不提醒。",
@@ -18,7 +18,7 @@ const COPY = {
     target: "傳送至", general: "General", error: "請檢查百分比與週期，目前無法儲存。",
     old: "此伺服器尚未支援用量提醒設定，請更新 AgEnD 後再編輯。",
     sources: "只採用有重設時間的最新帳號用量。不支援或過期的資料不會產生提醒。各 Agent 的規則取聯集；關閉其中一個不會關掉其他 Agent 的提醒。",
-    effective: "目前生效", defaults: "內建預設：開啟 · 剩餘 10% · 每週 · General", saved: "用量提醒" },
+    effective: "目前生效", separator: "：", periodLabels: { session: "工作階段", hourly: "每小時", daily: "每日", weekly: "每週", monthly: "每月" }, defaults: "內建預設：開啟 · 剩餘 10% · 每週 · General", saved: "用量提醒" },
 };
 export const quotaNoticeText = () => COPY[lang()] || COPY.en;
 const BACKENDS = ["claude-code", "codex", "kiro-cli", "grok", "antigravity", "muse"];
@@ -84,7 +84,7 @@ export function QuotaNoticeSettings({ ctx }) {
   // grid), not a bare heading over full-width fields.
   return html`<section class="card s-group" id="quota-notices"><div><h3>${text.heading}</h3><p class="note">${text.hint}</p><p class="note">${text.defaults}</p></div>
     ${!supported ? html`<p role="status">${text.old}</p>` : null}
-    ${!invalid ? html`<p class="note" data-quota-effective>${text.effective}: ${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.join(", ") || "—"}</p>` : null}
+    ${!invalid ? html`<p class="note" data-quota-effective>${text.effective}${text.separator}${effective.enabled ? text.on : text.off} · ${effective.thresholds.map(v => `${v}%`).join(", ") || "—"} · ${effective.periods.map(period => text.periodLabels[period] || period).join(", ") || "—"}</p>` : null}
     <fieldset disabled=${!supported} class="s-quota-fields grid2">
       <div class="field"><label for="qn-target">${text.target}</label><select id="qn-target" value=${form.target} onChange=${e => setFields(f => ({ ...f, target: e.target.value }))}>
         <option value="general">${text.general}</option>${Object.entries(instances).filter(([n]) => n !== "general").map(([n, c]) => html`<option value=${n}>${c.display_name || n}</option>`)}

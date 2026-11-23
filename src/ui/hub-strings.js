@@ -147,7 +147,7 @@ register("hub", {
     hold_rejected: "Hub 無法繼續使用這個 Fleet 儲存的連接。Hub 可能已還原至較舊的狀態，或不再接受這個 Fleet；請重新連接。",
     hold_refused: "Hub 拒絕了這次連接。", hold_revoked: "Hub 已撤銷這個 Fleet 的連接。", hold_other: "連接已暫停。",
     contactLimit: "回答 Hub 的提問時，這個 Agent 不能聯絡其他 Agent",
-    contactLimitHint: "Hub 上的人可以問這個 Agent，但不能透過它找到你的其他 Agent。回答獲接受或經過 30 分鐘後解除。",
+    contactLimitHint: "Hub 上的人可以向這個 Agent 提問，但不能透過它找到你的其他 Agent。回答獲接受或經過 30 分鐘後解除。",
     contactLimitNotice: "現有分享已開啟聯絡限制。若要讓 Agent 在回答 Hub 提問時互相協助，請到「設定 → Hub → 分享的 Agent」取消勾選「回答 Hub 的提問時，這個 Agent 不能聯絡其他 Agent」。",
     contactNoticeDone: "知道了",
     sharedTitle: "分享的 Agent",

@@ -1,71 +1,99 @@
-// One card of the task board (Fleet › Tasks), in the app's dialog: every field editable in place, the checklist, the
-// moves the person makes (confirm, send back, answer, move, cancel, reopen), its sub tasks, and its comments, progress
-// log and history. Edits carry the version they started from, so saving over an agent's newer write is caught (409):
-// the dialog then shows the newer card with the draft still open, and saving again overwrites on purpose.
-import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
+// One card of the task board (Fleet › Tasks) as a page of its own: the main column holds what
+// the card says (title, goal, scope, definition of done, context — a field nobody filled in is folded into a small "+ Add"
+// button, not an empty block), what its agent wrote and does (state, result and the activity, one block: a single line while
+// there is nothing to show), the sub tasks (a bordered list with its progress and a line to add one) and the card's activity —
+// comments, progress log and history as one timeline, the comment box last. The side column holds the properties in three
+// groups, each a chip that opens a menu (the choice saves at once). On a phone it is one column: title, spec, agent line,
+// sub tasks, properties, activity. The card has an address of its own (`?card=M-3`, see fleet-tasks.js), so Back returns to
+// the board or the list it was opened from.
+// Edits carry the version they started from, so saving over an agent's newer write is caught (409): the page then shows
+// the newer card with the draft still open, and saving again overwrites on purpose (fleet-task-edit.js).
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
-import { Dialog } from "/assets/ui-dialog.js";
+import { Empty, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
+import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AssigneeOption, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, errorText, followsSubs, moveCard, notesForPeople, relTime, wrapUpText } from "./fleet-task-common.js";
-import { StepButtons } from "./fleet-task-menu.js";
+import { ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, errorText, followsSubs, hiddenWaits, moveCard, notesForPeople, relTime, scrollBox, wrapUpText, COLUMNS } from "./fleet-task-common.js";
+import { StepButtons, movesFor } from "./fleet-task-menu.js";
+import { Checklist, EditableText, InlineTitle, PropChip, QuickAdd } from "./fleet-task-edit.js";
+import { Composer, Timeline } from "./fleet-task-activity.js";
+import { AgentRun } from "./fleet-task-run.js";
 
 register("taskcard", {
   en: {
     loading: "Loading…", missing: "There is no card {0}", version: "v{0}", copyLink: "Copy this card's link", linkCopied: "Link copied",
     conflict: "{0} changed while you were editing. The newer card is shown and your edit is still open — save again to overwrite it.",
-    moveTo: "Move to…", moveLabel: "Change the status", followsSubs: "It has sub tasks: its status follows them",
-    reopen: "Reopen", cancelCard: "Cancel this card", confirmMain: "Confirm the main task",
-    assignee: "Assignee", nobody: "Unassigned", unassign: "(unassign)", other: "Other…", otherTitle: "Assign to another instance", otherLabel: "The instance's name",
-    change: "Change…", project: "Project", priority: "Priority", size: "Size", review: "Your confirmation", reviewBox: "Stop at review for my confirmation",
+    followsSubs: "It has sub tasks: its status follows them",
+    reopen: "Reopen", cancelCard: "Cancel this card", confirmMain: "Confirm the main task", moreActions: "More actions",
+    assignee: "Assignee", nobody: "Unassigned", unassign: "Unassigned", other: "Other…", otherTitle: "Assign to another instance", otherLabel: "The instance's name",
+    status: "Status", project: "Project", priority: "Priority", size: "Size", review: "Needs my confirmation", reviewBox: "Stop at review for my confirmation", reviewShort: "Stops at review",
     reviewOn: "Stops at review for your confirmation", reviewOff: "Finishes without your confirmation",
     parent: "Main task", deps: "Waits for", none: "None", edit: "Edit", depsTitle: "What {0} waits for", depsLabel: "Card numbers to finish first, separated by commas or spaces (empty: nothing)",
     depWaiting: "Not done yet", depDone: "Done", opened: "Opened by {0} {1} · changed {2}",
     blockedReason: "Blocked on", goal: "Goal", goalHint: "Why, and what done looks like", scope: "Scope", scopeHint: "In: … / Out: …",
     definition: "Definition of done", acceptance: "Acceptance", context: "Context", contextHint: "Paths, related cards, decisions already made",
     state: "State", stateHint: "Done / next / watch out (the assignee keeps it current)", result: "Result", resultHint: "Which files changed and how it was checked",
-    empty: "(empty — click to edit)", clickToEdit: "Click to edit", ctrlEnter: "Ctrl+Enter saves", save: "Save", cancel: "Cancel",
-    checklistEmpty: "(none yet — click to add)", editList: "Edit the list", onePerLine: "One per line; an item whose text changes is unchecked again", items: "{0}/{1} items",
-    subs: "Sub tasks ({0})", quickAdd: "New sub task: type a title and press Enter (small work needs no split)",
-    tabComments: "Comments {0}", tabLog: "Progress log {0}", tabHistory: "History", noComments: "No comments yet", noLog: "No progress log yet",
-    rejectTag: "Sent back", approveTag: "Confirmed", commentTo: "Comment to {0} (Ctrl+Enter sends)", commentHint: "Comment (Ctrl+Enter sends)", send: "Send",
+    empty: "(empty — click to edit)", clickToEdit: "Click to edit", editHint: "Click away or Ctrl+Enter saves · Esc drops the change",
+    saving: "Saving…", notSaved: "Not saved — click away or press Ctrl+Enter to try again",
+    conflictInline: "This changed meanwhile. Overwrite it with your text?", overwrite: "Overwrite", discard: "Discard my change",
+    checklistEmpty: "(none yet — click to add)", editList: "Edit the list", onePerLine: "One per line; an item whose text changes is unchecked again · click away or Ctrl+Enter saves", items: "{0}/{1} items",
+    subs: "Sub tasks", quickAdd: "New sub task: type a title and press Enter (small work needs no split)",
+    activity: "Activity", activityShow: "Show", "show.all": "All", "show.comments": "Comments", "show.log": "Progress", "show.history": "History",
+    noActivity: "Nothing yet — a comment, a progress note or a change shows here", nothingHere: "Nothing of this kind yet",
+    rejectTag: "Sent back", approveTag: "Confirmed", commentHint: "Comment (Ctrl+Enter sends)", send: "Send",
+    rowMoved: "changed status from {0} to {1}", rowAssigned: "changed assignee from {0} to {1}", activities: "{0} activities", activity1: "1 activity",
+    logTip: "A one-line work note an agent or member wrote down — not a comment",
     evCreated: "opened it", evMoved: "{0} → {1}", evAuto: " (automatic)", evAssigned: "assignee {0} → {1}", evUpdated: "changed {0}", evCommented: "commented", evLogged: "log: {0}",
     fTitle: "title", fGoal: "goal", fScope: "scope", fContext: "context", fState: "state", fResult: "result", fBlockedReason: "blocked reason", fSize: "size",
     fPriority: "priority", fNeedsReview: "needs review", fDependsOn: "dependencies", fAcceptance: "acceptance", fProjectId: "project",
-    position: "Position", moveUp: "Move up", moveDown: "Move down",
+    position: "Position", moveUp: "Move up", moveDown: "Move down", properties: "Properties", crumbs: "Where this card is", backBoard: "Back to the board", backList: "Back to the list",
     dispatcher: "Dispatched by", dispatcherHint: "A blocked card's question goes to them first", dispatcherMe: "Me", dispatcherNone: "Nobody",
-    dispatcherPerson: "{0} (a person)", now: "Now", nowNone: "No sub task in progress", fDispatcher: "dispatcher",
+    dispatcherPerson: "{0} (a person)", fDispatcher: "dispatcher",
+    today: "Today", yesterday: "Yesterday", repeated: "The same, {0} times in a row",
+    groupCore: "Core", groupTeam: "Project and people", groupFlow: "Flow",
+    addGoal: "Add goal", addScope: "Add scope", addDefinition: "Add definition of done", addAcceptance: "Add acceptance", addContext: "Add context", addState: "Add state", addResult: "Add result",
+    subsDone: "{0} of {1} sub tasks done",
   },
   "zh-TW": {
     loading: "載入中…", missing: "找不到 {0}", version: "v{0}", copyLink: "複製這張卡的連結", linkCopied: "已複製連結",
     conflict: "{0} 在你編輯時被改過了。已載入最新內容，你的修改還在，再存一次就會覆蓋。",
-    moveTo: "移到…", moveLabel: "改狀態", followsSubs: "有子任務，狀態會跟著子任務自動變化",
-    reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務",
-    assignee: "負責人", nobody: "沒人負責", unassign: "（不指派）", other: "其他…", otherTitle: "指派給其他 Agent", otherLabel: "Agent 名稱",
-    change: "改…", project: "專案", priority: "優先度", size: "大小", review: "你確認", reviewBox: "做完要停在待確認，等我確認",
+    followsSubs: "有子任務，狀態會跟著子任務自動變化",
+    reopen: "重新打開", cancelCard: "取消這張卡", confirmMain: "確認主任務", moreActions: "更多動作",
+    assignee: "負責人", nobody: "沒人負責", unassign: "沒人負責", other: "其他…", otherTitle: "指派給其他 Agent", otherLabel: "Agent 名稱",
+    status: "狀態", project: "專案", priority: "優先度", size: "大小", review: "待我確認", reviewBox: "做完要停在待確認，等我確認", reviewShort: "完成前停在待確認",
     reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
-    parent: "主任務", deps: "相依", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",
+    parent: "主任務", deps: "相依卡片", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",
     depWaiting: "還沒完成", depDone: "已完成", opened: "{0} 開的・{1}・最後更新 {2}",
     blockedReason: "卡住原因", goal: "目標", goalHint: "為什麼做、做完是什麼樣子", scope: "範圍", scopeHint: "做：…／不做：…",
     definition: "完成定義", acceptance: "驗收條件", context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定",
     state: "目前狀態", stateHint: "已完成／下一步／注意（負責人會隨時覆寫）", result: "產出", resultHint: "改了哪些檔案、怎麼驗證",
-    empty: "（未填，點一下編輯）", clickToEdit: "點一下編輯", ctrlEnter: "Ctrl+Enter 儲存", save: "儲存", cancel: "取消",
-    checklistEmpty: "（還沒有，點一下新增）", editList: "編輯清單", onePerLine: "一行一項；改了文字的項目會變回沒勾", items: "{0}/{1} 項",
-    subs: "子任務（{0}）", quickAdd: "新增子任務：輸入標題後按 Enter（小事可以不拆）",
-    tabComments: "留言 {0}", tabLog: "進度紀錄 {0}", tabHistory: "變更歷史", noComments: "還沒有留言", noLog: "還沒有進度紀錄",
-    rejectTag: "退回", approveTag: "確認", commentTo: "留言給 {0}（Ctrl+Enter 送出）", commentHint: "留言（Ctrl+Enter 送出）", send: "送出",
+    empty: "（未填，點一下編輯）", clickToEdit: "點一下編輯", editHint: "點別處或按 Ctrl+Enter 儲存・Esc 放棄修改",
+    saving: "儲存中…", notSaved: "還沒存到 — 點別處或按 Ctrl+Enter 再試一次",
+    conflictInline: "這裡剛被別人改過。要用你的文字覆蓋嗎？", overwrite: "覆蓋", discard: "放棄我的修改",
+    checklistEmpty: "（還沒有，點一下新增）", editList: "編輯清單", onePerLine: "一行一項；改了文字的項目會變回沒勾・點別處或按 Ctrl+Enter 儲存", items: "{0}/{1} 項",
+    subs: "子任務", quickAdd: "新增子任務：輸入標題後按 Enter（小事可以不拆）",
+    activity: "動態", activityShow: "顯示", "show.all": "全部", "show.comments": "留言", "show.log": "進度", "show.history": "歷史",
+    noActivity: "還沒有動態 — 留言、進度紀錄與變更都會出現在這裡", nothingHere: "這類還沒有內容",
+    rejectTag: "退回", approveTag: "確認", commentHint: "留言（Ctrl+Enter 送出）", send: "送出",
+    rowMoved: "把狀態從 {0} 改成 {1}", rowAssigned: "把負責人從 {0} 改成 {1}", activities: "{0} 項動態", activity1: "1 項動態",
+    logTip: "agent 或成員記下的一行工作紀錄，不是留言",
     evCreated: "開卡", evMoved: "{0}→{1}", evAuto: "（自動）", evAssigned: "負責人 {0}→{1}", evUpdated: "修改{0}", evCommented: "留言", evLogged: "紀錄：{0}",
     fTitle: "標題", fGoal: "目標", fScope: "範圍", fContext: "背景", fState: "目前狀態", fResult: "產出", fBlockedReason: "卡住原因", fSize: "大小",
     fPriority: "優先度", fNeedsReview: "需要確認", fDependsOn: "相依", fAcceptance: "驗收條件", fProjectId: "專案",
-    position: "位置", moveUp: "往上移", moveDown: "往下移",
+    position: "位置", moveUp: "往上移", moveDown: "往下移", properties: "屬性", crumbs: "這張卡的位置", backBoard: "回到看板", backList: "回到清單",
     dispatcher: "派工", dispatcherHint: "卡住要決定的事會先通知派工者", dispatcherMe: "我", dispatcherNone: "（沒有）",
-    dispatcherPerson: "{0}（人）", now: "目前", nowNone: "沒有正在進行的子任務", fDispatcher: "派工者",
+    dispatcherPerson: "{0}（人）", fDispatcher: "派工者",
+    today: "今天", yesterday: "昨天", repeated: "連續 {0} 次相同",
+    groupCore: "核心狀態", groupTeam: "專案與協作", groupFlow: "流程控制",
+    addGoal: "新增目標", addScope: "新增範圍", addDefinition: "完成定義", addAcceptance: "驗收條件", addContext: "補充背景", addState: "目前狀態", addResult: "產出",
+    subsDone: "{0}／{1} 個子任務已完成",
   },
 });
 
-const MOVES = ["open", "claimed", "blocked", "review", "done"];
 const LIMIT = { title: 100, goal: 300, scope: 600, context: 1000, state: 500, result: 1000, blockedReason: 400, acceptanceItems: 10 };
+const PRIORITY_CHOICES = ["urgent", "high", "normal", "low"];
 
 /** One history line, without who and when. */
 export function describeEvent(ev) {
@@ -80,25 +108,88 @@ export function describeEvent(ev) {
     default: return ev.type;
   }
 }
+/**
+ * A history line as the activity stream's thin row says it, without who and when: a sentence the name leads —
+ * "dev-a changed status from To do to In progress" — for a move and a change of assignee; every other line as `describeEvent`.
+ */
+export function describeRow(ev) {
+  const d = ev.data || {};
+  if (ev.type === "moved") return `${t("taskcard.rowMoved", t(`tasks.${d.from}`), t(`tasks.${d.to}`))}${d.auto ? t("taskcard.evAuto") : ""}${d.reason ? `: ${d.reason}` : ""}`;
+  if (ev.type === "assigned") return t("taskcard.rowAssigned", d.from || "—", d.to || "—");
+  return describeEvent(ev);
+}
 const fieldName = (k) => { const key = `taskcard.f${k[0].toUpperCase()}${k.slice(1)}`; const s = t(key); return s === key ? k : s; };
 
+// ── What each chip offers (pure: tests import these) ────────
+
 /**
- * `writable`: false over the public link (the card is shown, nothing on it changes). `place`: up and down in its column,
- * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where
- * this one is among them (null: nowhere to step).
+ * The statuses a card's chip lists: every column, the card's own ticked; those a person may not move it to by hand (a
+ * main task that follows its sub tasks) are listed too, disabled and saying why — `act(to)` runs a choice.
  */
-export function CardDialog({ id, tick, projects, boardOff = [], writable = true, place = null, steps = null, onClose, onOpen, reloadBoard }) {
+export function statusItems(card, act) {
+  if (card.status === "cancelled") return [];
+  const allowed = movesFor(card);
+  return COLUMNS.map((to) => ({
+    key: to, label: t(`tasks.${to}`), checked: to === card.status, disabled: to !== card.status && !allowed.includes(to),
+    title: to !== card.status && !allowed.includes(to) ? t("tasks.derivedMove") : undefined, onSelect: () => act(to),
+  }));
+}
+
+/** Who a card can go to: nobody, each instance (one with the board off is listed, disabled), and Other… for any name. */
+export function assigneeItems(card, names, boardOff, act) {
+  const all = [...new Set([...names, card.assignee].filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return [
+    { key: "none", label: t("taskcard.unassign"), checked: !card.assignee, onSelect: () => act(null) },
+    ...all.map((n) => {
+      const off = boardOff.includes(n) && n !== card.assignee;
+      return { key: `n:${n}`, label: off ? t("tasks.boardOff", n) : n, checked: card.assignee === n, disabled: off, title: off ? t("tasks.boardOffHint") : undefined, onSelect: () => act(n) };
+    }),
+    { key: "other", label: t("taskcard.other"), onSelect: () => act("\u0000other") },
+  ];
+}
+
+/** Who dispatched a card: a person (the one at the page), nobody, or an instance. */
+export function dispatcherItems(card, names, act) {
+  const d = card.dispatcher;
+  const isMe = !!d && d.kind === "person", isNone = !d;
+  return [
+    { key: "me", label: t("taskcard.dispatcherMe"), checked: isMe, onSelect: () => act("\u0000me") },
+    { key: "none", label: t("taskcard.dispatcherNone"), checked: isNone, onSelect: () => act("\u0000none") },
+    ...names.map((n) => ({ key: `n:${n}`, label: n, checked: !!d && d.kind === "instance" && d.name === n, onSelect: () => act(n) })),
+  ];
+}
+
+/** The value the page sends for a dispatcher choice. */
+export const dispatcherValue = (v) => (v === "\u0000none" ? null : v === "\u0000me" ? { kind: "person" } : { kind: "instance", name: v });
+
+const radioItems = (list, current, label, act) => list.map((v) => ({ key: String(v), label: label(v), checked: current === v, onSelect: () => act(v) }));
+
+// ── The page ──────────────────────────────────────────────
+
+/**
+ * `writable`: false over a read-only link (the card is shown, nothing on it changes). `place`: up and down in its column,
+ * for touch and keyboard (null when it cannot move). `steps`: the previous and next card the page showed, and where this
+ * one is among them (null: nowhere to step). `where`: the project's name for the breadcrumb (null: none). `back`: what
+ * Back says. `onBack` returns to the board or list. `doing`: how many cards each instance has in progress (fleet-task-run.js).
+ */
+export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing = new Map(), writable = true, place = null, steps = null, where = null, back, onBack, onOpen, onStep, reloadBoard }) {
   const { instances } = useStore(appStore);
   const [detail, setDetail] = useState(null);
   const [missing, setMissing] = useState(false);
-  const [tab, setTab] = useState("comments");
   const seq = useRef(0);
+  const cardRef = useRef(null);       // the card as last read: a chip's save sends its version, whatever was drawn since
+  const chain = useRef(Promise.resolve());   // saves go one after another, each on the version the one before left
+  // The empty fields a person opened with their "+ Add" button, for this card (another card starts with none).
+  const [opened, setOpened] = useState({ id, keys: [] });
+  const openKeys = opened.id === id ? opened.keys : [];
+  const openField = (key) => setOpened((o) => ({ id, keys: [...(o.id === id ? o.keys : []).filter((k) => k !== key), key] }));
+  const closeField = (key) => setOpened((o) => (o.id === id && o.keys.includes(key) ? { id, keys: o.keys.filter((k) => k !== key) } : o));
 
   async function load() {
     const mine = ++seq.current;
     try {
       const d = await boardApi.card(id);
-      if (mine === seq.current) { setDetail(d); setMissing(false); }
+      if (mine === seq.current) { cardRef.current = d.card; setDetail(d); setMissing(false); }
     } catch (err) {
       if (mine !== seq.current) return;
       if (err.status === 404 || err.status === 400) setMissing(true);
@@ -106,23 +197,52 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
     }
   }
   useEffect(() => { void load(); }, [id, tick]);
+  // The page takes the keyboard's place from the tile or row that opened it (once per card: later reads leave the focus be).
+  const head = useRef(null);
+  const focused = useRef(null);
+  useEffect(() => {
+    if (!detail || focused.current === id) return;
+    focused.current = id;
+    try { head.current?.focus({ preventScroll: true }); } catch { /* no focus API */ }
+  }, [detail, id]);
+  // A card's page starts at its top (the panel it sits in keeps its scroll from the board or the card before).
+  const root = useRef(null);
+  useEffect(() => { const box = scrollBox(root.current); if (box) box.scrollTop = 0; }, [id]);
 
-  /** A write and what follows: its notes, the card and the board read again. Resolves "ok", "conflict" or "error". */
-  async function run(fn) {
+  // Esc goes back to the board — unless a box, a menu or a dialog has it.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const el = e.target;
+      if (el && typeof el.closest === "function" && (el.closest("dialog, [role=menu], [role=listbox]") || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName || "") || el.isContentEditable)) return;
+      onBack();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onBack]);
+
+  /**
+   * A write and what follows: its notes, the card and the board read again. Resolves "ok", "conflict" or "error" — or, with
+   * `detail`, `{ outcome, version }`, where `version` is the one the write's own answer gave the card (an edit kept open after
+   * its save is pinned to it).
+   */
+  async function run(fn, detail = false) {
+    const done = (outcome, version) => (detail ? { outcome, version } : outcome);
     try {
       const r = await fn();
+      const written = r && r.card && typeof r.card.version === "number" ? r.card.version : undefined;
       for (const n of notesForPeople(r && r.notes)) toast(n);
       await load();
       reloadBoard();
-      return "ok";
+      return done("ok", written);
     } catch (err) {
       const conflict = err.status === 409;
       toast(conflict ? t("taskcard.conflict", id) : errorText(err), false);
       if (conflict) await load();
-      return conflict ? "conflict" : "error";
+      return done(conflict ? "conflict" : "error");
     }
   }
-  /** A move from this dialog: one at a time (claimed before the first await), then the card and the board read again. */
+  /** A move from this page: one at a time (claimed before the first await), then the card and the board read again. */
   const moving = useRef(false);
   const [busy, setBusy] = useState(false);
   async function moved(start) {
@@ -133,19 +253,30 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
     finally { moving.current = false; setBusy(false); }
   }
 
-  // Previous / Next: the page's cards (fleet-task-menu.js), in the header from the first frame (no jump once it loads).
-  const tools = steps ? html`<${StepButtons} steps=${steps} onOpen=${onOpen} />` : null;
+  // Previous / Next: the page's cards (fleet-task-menu.js), from the first frame (no jump once the card loads).
+  const tools = steps ? html`<${StepButtons} steps=${steps} onOpen=${onStep || onOpen} />` : null;
+  const bar = (card) => html`<div class="tp-bar">
+    <button type="button" class="btn btn-ghost btn-sm tp-back" onClick=${onBack}><${Icon} name="back" size=${16} />${back}</button>
+    <nav class="tp-crumbs" aria-label=${t("taskcard.crumbs")}>${where ? html`<span class="tp-crumb">${where}</span>` : null}
+      ${card && card.parent ? html`<button type="button" class="tb-link tp-crumb" onClick=${() => onOpen(card.parent.id)}><span class="tb-code">${card.parent.id}</span> ${card.parent.title}</button>` : null}
+      <span class="tp-crumb tb-code">${id}</span></nav>
+    <span class="tp-tools">${tools}${card ? card.actions : null}</span>
+  </div>`;
   if (missing || !detail) {
-    return html`<${Dialog} title=${id} onClose=${onClose} wide drawer tools=${tools}><p class="muted">${missing ? t("taskcard.missing", id) : t("taskcard.loading")}</p></${Dialog}>`;
+    return html`<div class="tp" ref=${root}>${bar(null)}${missing ? html`<${Empty} icon="tasks" title=${t("taskcard.missing", id)} />` : html`<${Skeleton} lines=${6} />`}</div>`;
   }
 
   const { card, parent, children } = detail;
   const isMain = card.kind === "main";
   const derived = followsSubs(card);
   const finished = card.status === "done" || card.status === "cancelled";
-  /** `version` guards against overwriting a newer card; null skips it (text typed after a conflict was shown). */
-  const save = (patch, version = card.version) => run(() => boardApi.update(card.id, version === null ? patch : { ...patch, version }));
-  const names = [...new Set([...instances.map((i) => i.name), card.assignee].filter(Boolean))].sort();
+  /** `version` guards against overwriting a newer card; null skips it (text sent over a conflict on purpose). */
+  const save = (patch, version) => {
+    const job = chain.current.then(() => run(() => boardApi.update(card.id, version === null ? patch : { ...patch, version: version === undefined ? (cardRef.current || card).version : version }), true));
+    chain.current = job.catch(() => {});
+    return job;
+  };
+  const names = [...new Set([...instances.map((i) => i.name), card.assignee].filter(Boolean))].sort((a, b) => a.localeCompare(b));
 
   async function chooseAssignee(value) {
     if (value === "\u0000other") {
@@ -153,10 +284,7 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
       if (name) await save({ assignee: name }, null);
       return;
     }
-    await save({ assignee: value === "\u0000none" ? null : value });
-  }
-  async function chooseDispatcher(value) {
-    await save({ dispatcher: value === "\u0000none" ? null : value === "\u0000me" ? { kind: "person" } : { kind: "instance", name: value } });
+    await save({ assignee: value });
   }
   async function editDeps() {
     const text = await askText({ title: t("taskcard.depsTitle", card.id), label: t("taskcard.depsLabel"), initial: card.dependsOn.join(", ") });
@@ -169,272 +297,125 @@ export function CardDialog({ id, tick, projects, boardOff = [], writable = true,
       void navigator.clipboard?.writeText(u.toString()).then(() => toast(t("taskcard.linkCopied")));
     } catch { /* no clipboard */ }
   }
+  const projectName = (pid) => (pid === null ? t("tasks.noProject") : (projects.find((p) => p.id === pid) || {}).name || "—");
+  const can = writable;
+  const row = (label, body, cls = "") => html`<div class=${`tp-row${cls ? ` ${cls}` : ""}`}><dt>${label}</dt><dd>${body}</dd></div>`;
+  const group = (key, title, rows) => html`<div class="tp-group" role="group" aria-labelledby=${`tpg-${key}`}><h4 class="tp-group-title" id=${`tpg-${key}`}>${title}</h4><dl class="tp-props">${rows}</dl></div>`;
 
-  return html`<${Dialog} title=${`${card.id} · ${t(`tasks.${card.kind}`)}`} onClose=${onClose} wide drawer label=${`${card.id} ${card.title}`} tools=${tools}>
-    <div class="tc">
-      <div class="tc-head">
-        ${writable ? html`<${InlineTitle} value=${card.title} version=${card.version} onSave=${(title, base) => save({ title }, base)} />` : html`<h3 class="tc-title">${card.title}</h3>`}
-        <span class="muted tc-ver">${t("taskcard.version", card.version)}</span>
-        <button type="button" class="icon-btn" title=${t("taskcard.copyLink")} aria-label=${t("taskcard.copyLink")} onClick=${copyLink}><${Icon} name="copy" size=${16} /></button>
-      </div>
+  // The header toolbar: Previous / Next (above), the link, Mark blocked (by hand: a main task that follows its sub tasks only) and ⋯.
+  const copyBtn = html`<button type="button" class="icon-btn" title=${t("taskcard.copyLink")} aria-label=${t("taskcard.copyLink")} onClick=${copyLink}><${Icon} name="copy" size=${16} /></button>`;
+  const blockBtn = can && derived && !finished && card.status !== "blocked"
+    ? html`<button type="button" class="btn btn-sm tp-block-btn" disabled=${busy} onClick=${() => moved(() => moveCard(card, "blocked"))}>${t("tasks.block")}</button>` : null;
+  const more = can && !finished ? html`<${Menu} cls="tp-more" label=${t("taskcard.moreActions")} items=${[
+    { key: "cancel", label: t("taskcard.cancelCard"), icon: "trash", danger: true, onSelect: () => void moved(() => moveCard(card, "cancelled")) },
+  ]} />` : null;
 
-      <div class="tc-actions">
-        <${StatusPill} status=${card.status} card=${card} />
-        ${writable ? html`
-        ${card.status === "review" ? html`
-          <button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "done"))}><${Icon} name="check" size=${14} />${isMain ? t("taskcard.confirmMain") : t("tasks.confirm")}</button>
-          <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "claimed"))}>${t("tasks.sendBack")}</button>
-          ${wrapUpText(card) ? html`<span class="tc-hint wrapup">${t("tasks.wrapLine", wrapUpText(card))}</span>` : null}` : null}
-        ${card.status === "blocked" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => answerBlocked(card))}>${t("tasks.answer")}</button>` : null}
-        ${!derived && !finished ? html`<select class="tb-select" value="" aria-label=${t("taskcard.moveLabel")} onChange=${(e) => { const to = e.target.value; e.target.value = ""; if (to) void moved(() => moveCard(card, to)); }} disabled=${busy}>
-          <option value="">${t("taskcard.moveTo")}</option>
-          ${MOVES.filter((s) => s !== card.status).map((s) => html`<option key=${s} value=${s}>${t(`tasks.${s}`)}</option>`)}</select>` : null}
-        ${derived && !finished && card.status !== "blocked" ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "blocked"))}>${t("tasks.block")}</button>` : null}
-        ${derived && !finished ? html`<span class="muted tc-hint">${t("taskcard.followsSubs")}</span>` : null}
-        <span class="tb-grow"></span>
-        ${finished
-          ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, card.status === "done" ? "claimed" : "open"))}><${Icon} name="restart" size=${14} />${t("taskcard.reopen")}</button>`
-          : html`<button type="button" class="btn btn-ghost btn-sm danger" disabled=${busy} onClick=${() => moved(() => moveCard(card, "cancelled"))}>${t("taskcard.cancelCard")}</button>`}` : null}
-      </div>
+  // The text fields of the spec (goal, scope, definition of done, context) and of the agent's block (state, result): one
+  // that holds text is a field; an empty one is a "+ Add" button (a writer's way in) until it is opened, and folds back into
+  // its button when it is closed still empty. Over a read-only link an empty one is simply not there.
+  const textField = (key, field, title, hint, add, limit) => ({ key, title, add, has: !!card[field],
+    body: (open) => html`<${EditableText} readOnly=${!can} value=${card[field]} limit=${limit} version=${card.version} placeholder=${hint} open=${open} onClose=${() => closeField(key)}
+      onSave=${(v, base) => save({ [field]: v }, base)} />` });
+  const parts = (defs) => {
+    const shown = [], adders = [];
+    for (const d of defs) {
+      const isOpen = openKeys.includes(d.key);
+      if (d.has || isOpen) shown.push(html`<${Field} key=${d.key} title=${d.title}>${d.body(isOpen)}</${Field}>`);
+      else if (can) adders.push(html`<button key=${d.key} type="button" class="tp-add" data-add=${d.key} onClick=${() => openField(d.key)}><${Icon} name="plus" size=${14} />${t(d.add)}</button>`);
+    }
+    return { shown, adders };
+  };
+  const spec = parts([
+    textField("goal", "goal", t("taskcard.goal"), t("taskcard.goalHint"), "taskcard.addGoal", LIMIT.goal),
+    isMain ? textField("scope", "scope", t("taskcard.scope"), t("taskcard.scopeHint"), "taskcard.addScope", LIMIT.scope) : null,
+    { key: "definition", title: isMain ? t("taskcard.definition") : t("taskcard.acceptance"), add: isMain ? "taskcard.addDefinition" : "taskcard.addAcceptance", has: card.acceptance.length > 0,
+      body: (open) => html`<${Checklist} card=${card} readOnly=${!can} limit=${LIMIT.acceptanceItems} open=${open} onClose=${() => closeField("definition")}
+        onToggle=${(n, done) => save(done ? { check: [n] } : { uncheck: [n] })} onReplace=${(items, base) => save({ acceptance: items }, base)} />` },
+    textField("context", "context", t("taskcard.context"), t("taskcard.contextHint"), "taskcard.addContext", LIMIT.context),
+  ].filter(Boolean));
+  const handoff = parts([
+    textField("state", "state", t("taskcard.state"), t("taskcard.stateHint"), "taskcard.addState", LIMIT.state),
+    textField("result", "result", t("taskcard.result"), t("taskcard.resultHint"), "taskcard.addResult", LIMIT.result),
+  ]);
 
-      <dl class="tc-meta">
-        <dt>${t("taskcard.assignee")}</dt>
-        <dd><${Who} name=${card.assignee} empty=${t("taskcard.nobody")} />
-          ${writable ? html`<select class="tb-select" value="\u0000pick" aria-label=${t("taskcard.assignee")} onChange=${(e) => { const v = e.target.value; e.target.value = "\u0000pick"; void chooseAssignee(v); }}>
-            <option value="\u0000pick" disabled hidden>${t("taskcard.change")}</option>
-            ${card.assignee ? html`<option value="\u0000none">${t("taskcard.unassign")}</option>` : null}
-            ${names.filter((n) => n !== card.assignee).map((n) => html`<${AssigneeOption} key=${n} name=${n} boardOff=${boardOff} />`)}
-            <option value="\u0000other">${t("taskcard.other")}</option>
-          </select>` : null}</dd>
-        ${isMain && children.length ? html`<dt>${t("taskcard.now")}</dt><dd>${(() => {
-          const now = currentWork(card, children);
-          if (!now) return html`<span class="muted">${card.status === "review" ? t("tasks.review") : t("taskcard.nowNone")}</span>`;
-          return now.cards.map((c) => html`<button key=${c.id} type="button" class="tc-now" onClick=${() => onOpen(c.id)} title=${c.title}>
-            <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span>
-            <${Who} name=${c.assignee} empty=${t("tasks.nobody")} /></button>`);
-        })()}</dd>` : null}
-        <dt>${t("taskcard.dispatcher")}</dt>
-        <dd><span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone")
-            : card.dispatcher.kind === "person" ? t("taskcard.dispatcherPerson", card.dispatcher.name) : card.dispatcher.name}</span>
-          ${writable ? html`<select class="tb-select" value="\u0000pick" aria-label=${t("taskcard.dispatcher")} title=${t("taskcard.dispatcherHint")} onChange=${(e) => { const v = e.target.value; e.target.value = "\u0000pick"; void chooseDispatcher(v); }}>
-            <option value="\u0000pick" disabled hidden>${t("taskcard.change")}</option>
-            <option value="\u0000me">${t("taskcard.dispatcherMe")}</option>
-            ${card.dispatcher ? html`<option value="\u0000none">${t("taskcard.dispatcherNone")}</option>` : null}
-            ${names.filter((n) => !(card.dispatcher && card.dispatcher.kind === "instance" && card.dispatcher.name === n)).map((n) => html`<option key=${n} value=${n}>${n}</option>`)}
-          </select>` : null}</dd>
-        ${isMain ? html`<dt>${t("taskcard.project")}</dt>
-          <dd>${writable ? html`<select class="tb-select" value=${card.projectId === null ? "" : String(card.projectId)} aria-label=${t("taskcard.project")}
-            onChange=${(e) => void save({ projectId: e.target.value === "" ? null : Number(e.target.value) })}>
-            <option value="">${t("tasks.noProject")}</option>
-            ${projects.filter((p) => !p.archived || p.id === card.projectId).map((p) => html`<option key=${p.id} value=${String(p.id)}>${p.name}</option>`)}
-          </select>` : html`<span class="tc-value">${card.projectId === null ? t("tasks.noProject") : (projects.find((p) => p.id === card.projectId) || {}).name || "—"}</span>`}</dd>` : null}
-        <dt>${t("taskcard.priority")}</dt>
-        <dd>${writable ? html`<select class="tb-select" value=${card.priority} aria-label=${t("taskcard.priority")} onChange=${(e) => void save({ priority: e.target.value })}>
-          ${["urgent", "high", "normal", "low"].map((p) => html`<option key=${p} value=${p}>${t(`tasks.${p}`)}</option>`)}</select>`
-          : html`<span class="tc-value">${t(`tasks.${card.priority}`)}</span>`}</dd>
-        <dt>${t("taskcard.size")}</dt>
-        <dd>${writable ? html`<select class="tb-select" value=${card.size || ""} aria-label=${t("taskcard.size")} onChange=${(e) => void save({ size: e.target.value || null })}>
-          <option value="">${t("tasks.sizeNone")}</option>${["S", "M", "L"].map((s) => html`<option key=${s} value=${s}>${t(`tasks.size${s}`)}</option>`)}</select>`
-          : html`<span class="tc-value">${card.size ? t(`tasks.size${card.size}`) : t("tasks.sizeNone")}</span>`}</dd>
-        <dt>${t("taskcard.review")}</dt>
-        <dd>${writable ? html`<label class="tb-check"><input type="checkbox" checked=${card.needsReview} onChange=${(e) => void save({ needsReview: e.target.checked })} />${t("taskcard.reviewBox")}</label>`
-          // #2299: read-only (the public link): the values as text, not controls that look usable and are not.
-          : html`<span class="tc-value">${t(card.needsReview ? "taskcard.reviewOn" : "taskcard.reviewOff")}</span>`}</dd>
-        ${parent ? html`<dt>${t("taskcard.parent")}</dt><dd><button type="button" class="tb-link" onClick=${() => onOpen(parent.id)}><span class="tb-code">${parent.id}</span> ${parent.title}</button></dd>` : null}
-        <dt>${t("taskcard.deps")}</dt>
-        <dd>${card.dependsOn.length ? card.dependsOn.map((d) => html`<button key=${d} type="button" class=${`tc-dep${card.unmetDeps.includes(d) ? " waiting" : ""}`}
-            title=${card.unmetDeps.includes(d) ? t("taskcard.depWaiting") : t("taskcard.depDone")} onClick=${() => onOpen(d)}>${d}</button>`) : html`<span class="muted">${t("taskcard.none")}</span>`}
-          ${writable ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${editDeps}>${t("taskcard.edit")}</button>` : null}</dd>
-        ${place && (place.up || place.down) ? html`<dt>${t("taskcard.position")}</dt>
-          <dd><button type="button" class="btn btn-ghost btn-sm" disabled=${!place.up} aria-label=${t("taskcard.moveUp")} title=${t("taskcard.moveUp")} onClick=${place.up}><${Icon} name="up" size=${16} /></button>
-            <button type="button" class="btn btn-ghost btn-sm" disabled=${!place.down} aria-label=${t("taskcard.moveDown")} title=${t("taskcard.moveDown")} onClick=${place.down}><${Icon} name="down" size=${16} /></button></dd>` : null}
-        <dt></dt>
-        <dd class="muted">${t("taskcard.opened", card.createdBy, relTime(card.createdAt), relTime(card.updatedAt))}</dd>
-      </dl>
-
-      ${card.status === "blocked" ? html`<${Field} title=${t("taskcard.blockedReason")} tone="blocked">
-        <${EditableText} readOnly=${!writable} value=${card.blockedReason} limit=${LIMIT.blockedReason} version=${card.version} onSave=${(v, base) => save({ blockedReason: v }, base)} /></${Field}>` : null}
-      <${Field} title=${t("taskcard.goal")}><${EditableText} readOnly=${!writable} value=${card.goal} limit=${LIMIT.goal} version=${card.version} placeholder=${t("taskcard.goalHint")} onSave=${(v, base) => save({ goal: v }, base)} /></${Field}>
-      ${isMain ? html`<${Field} title=${t("taskcard.scope")}><${EditableText} readOnly=${!writable} value=${card.scope} limit=${LIMIT.scope} version=${card.version} placeholder=${t("taskcard.scopeHint")} onSave=${(v, base) => save({ scope: v }, base)} /></${Field}>` : null}
-      <${Field} title=${isMain ? t("taskcard.definition") : t("taskcard.acceptance")}>
-        <${Checklist} card=${card} readOnly=${!writable} onToggle=${(n, done) => save(done ? { check: [n] } : { uncheck: [n] })} onReplace=${(items, base) => save({ acceptance: items }, base)} /></${Field}>
-      <${Field} title=${t("taskcard.context")}><${EditableText} readOnly=${!writable} value=${card.context} limit=${LIMIT.context} version=${card.version} placeholder=${t("taskcard.contextHint")} onSave=${(v, base) => save({ context: v }, base)} /></${Field}>
-      <${Field} title=${t("taskcard.state")}><${EditableText} readOnly=${!writable} value=${card.state} limit=${LIMIT.state} version=${card.version} placeholder=${t("taskcard.stateHint")} onSave=${(v, base) => save({ state: v }, base)} /></${Field}>
-      <${Field} title=${t("taskcard.result")}><${EditableText} readOnly=${!writable} value=${card.result} limit=${LIMIT.result} version=${card.version} placeholder=${t("taskcard.resultHint")} onSave=${(v, base) => save({ result: v }, base)} /></${Field}>
-
-      ${isMain ? html`<${Field} title=${t("taskcard.subs", children.length)}>
-        ${children.length ? html`<ul class="tc-children">${children.map((c) => html`<li key=${c.id}><button type="button" onClick=${() => onOpen(c.id)}>
-          <${StatusPill} status=${c.status} card=${c} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
-        ${finished || !writable ? null : html`<${QuickAdd} placeholder=${t("taskcard.quickAdd")} onAdd=${(title) => run(() => boardApi.create({ parent: card.id, title }))} />`}
-      </${Field}>` : null}
-
-      <div class="seg tc-tabs" role="tablist">
-        ${[["comments", t("taskcard.tabComments", detail.comments.length)], ["log", t("taskcard.tabLog", detail.logs.length)], ["history", t("taskcard.tabHistory")]].map(([k, label]) =>
-          html`<button key=${k} type="button" role="tab" aria-selected=${tab === k ? "true" : "false"} class=${`seg-item${tab === k ? " active" : ""}`} onClick=${() => setTab(k)}>${label}</button>`)}
-      </div>
-      ${tab === "comments" ? html`<${Comments} entries=${detail.comments} card=${card} writable=${writable} onSend=${(text) => run(() => boardApi.update(card.id, { comment: text }))} />` : null}
-      ${tab === "log" ? html`<ul class="tc-feed">${detail.logs.length ? detail.logs.map((e) => html`<li key=${e.id}><span class="muted">${relTime(e.at)}</span> <b>${e.author}</b> ${e.text}</li>`)
-        : html`<li class="muted">${t("taskcard.noLog")}</li>`}</ul>` : null}
-      ${tab === "history" ? html`<ul class="tc-feed">${[...detail.history].reverse().map((ev) => html`<li key=${ev.id}><span class="muted">${relTime(ev.at)}</span> <b>${ev.actor}</b> ${describeEvent(ev)}</li>`)}</ul>` : null}
+  // The sub tasks: a bordered list — done / total and the bar on top, the sub tasks, a line to add one at the end.
+  const prog = card.progress && card.progress.total ? card.progress : null;
+  const subs = isMain ? html`<section class="tp-subs" aria-label=${t("taskcard.subs")}>
+    <h3>${t("taskcard.subs")}</h3>
+    <div class="tc-field-body">
+      ${prog ? html`<div class="tp-subs-head"><span class="tp-subs-count" title=${t("taskcard.subsDone", prog.done, prog.total)}>${prog.done} / ${prog.total}</span><${ProgressBar} progress=${prog} wide /></div>` : null}
+      ${children.length ? html`<ul class="tc-children">${children.map((c) => html`<li key=${c.id}><button type="button" onClick=${() => onOpen(c.id)}>
+        <${StatusPill} status=${c.status} card=${c} /><span class="tb-code">${c.id}</span><span class="tc-child-title">${c.title}</span><span class="tb-who">${c.assignee || ""}</span></button></li>`)}</ul>` : null}
+      ${finished || !can ? null : html`<${QuickAdd} placeholder=${t("taskcard.quickAdd")} limit=${LIMIT.title} onAdd=${(title) => run(() => boardApi.create({ parent: card.id, title }))} />`}
     </div>
-  </${Dialog}>`;
+  </section>` : null;
+
+  return html`<div class="tp" ref=${root} data-card=${card.id}>
+    ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
+    <div class="tp-grid">
+      <div class="tp-head">
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />
+          ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
+        <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
+          ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}
+        </div>
+        ${can ? html`<div class="tc-actions">
+          ${card.status === "review" ? html`
+            <button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "done"))}><${Icon} name="check" size=${14} />${isMain ? t("taskcard.confirmMain") : t("tasks.confirm")}</button>
+            <button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, "claimed"))}>${t("tasks.sendBack")}</button>
+            ${wrapUpText(card) ? html`<span class="tc-hint wrapup">${t("tasks.wrapLine", wrapUpText(card))}</span>` : null}` : null}
+          ${card.status === "blocked" ? html`<button type="button" class="btn btn-primary btn-sm" disabled=${busy} onClick=${() => moved(() => answerBlocked(card))}>${t("tasks.answer")}</button>` : null}
+          ${finished ? html`<button type="button" class="btn btn-sm" disabled=${busy} onClick=${() => moved(() => moveCard(card, card.status === "done" ? "claimed" : "open"))}><${Icon} name="restart" size=${14} />${t("taskcard.reopen")}</button>` : null}
+        </div>` : null}
+      </div>
+
+      <div class="tp-body">
+        ${card.status === "blocked" ? html`<${Field} title=${t("taskcard.blockedReason")} tone="blocked">
+          <${EditableText} readOnly=${!can} value=${card.blockedReason} limit=${LIMIT.blockedReason} version=${card.version} onSave=${(v, base) => save({ blockedReason: v }, base)} /></${Field}>` : null}
+        ${spec.shown.length ? html`<div class="tp-spec">${spec.shown}</div>` : null}
+        ${spec.adders.length ? html`<div class="tp-adders">${spec.adders}</div>` : null}
+        <${AgentRun} card=${card} detail=${detail} doing=${doing} derived=${derived} shown=${handoff.shown} adders=${handoff.adders} />
+        ${subs}
+      </div>
+
+      <aside class="card tp-side" aria-label=${t("taskcard.properties")}>
+        ${group("core", t("taskcard.groupCore"), html`
+          ${row(t("taskcard.status"), html`<${PropChip} label=${t("taskcard.status")} items=${can ? statusItems(card, (to) => moved(() => moveCard(card, to))) : null} value=${html`<${StatusPill} status=${card.status} card=${card} />`} />`)}
+          ${row(t("taskcard.assignee"), html`<${PropChip} label=${t("taskcard.assignee")} items=${can && !finished ? assigneeItems(card, names, boardOff, chooseAssignee) : null} value=${html`<${Who} name=${card.assignee} empty=${t("taskcard.nobody")} />`} />`)}
+          ${row(t("taskcard.priority"), html`<${PropChip} label=${t("taskcard.priority")} value=${html`<span class=${`tp-prio p-${card.priority}`}>${t(`tasks.${card.priority}`)}</span>`}
+            items=${can ? radioItems(PRIORITY_CHOICES, card.priority, (p) => t(`tasks.${p}`), (p) => save({ priority: p })) : null} />`)}
+          ${row(t("taskcard.size"), html`<${PropChip} label=${t("taskcard.size")} value=${card.size ? t(`tasks.size${card.size}`) : t("tasks.sizeNone")}
+            items=${can ? [{ key: "none", label: t("tasks.sizeNone"), checked: !card.size, onSelect: () => save({ size: null }) }, ...radioItems(["S", "M", "L"], card.size, (s) => t(`tasks.size${s}`), (s) => save({ size: s }))] : null} />`)}`)}
+        ${group("team", t("taskcard.groupTeam"), html`
+          ${isMain ? row(t("taskcard.project"), html`<${PropChip} label=${t("taskcard.project")} value=${projectName(card.projectId)}
+            items=${can ? [{ key: "none", label: t("tasks.noProject"), checked: card.projectId === null, onSelect: () => save({ projectId: null }) },
+              ...projects.filter((p) => !p.archived || p.id === card.projectId).map((p) => ({ key: String(p.id), label: p.name, checked: card.projectId === p.id, onSelect: () => save({ projectId: p.id }) }))] : null} />`) : null}
+          ${parent ? row(t("taskcard.parent"), html`<button type="button" class="tb-link" onClick=${() => onOpen(parent.id)}><span class="tb-code">${parent.id}</span> ${parent.title}</button>`) : null}
+          ${row(t("taskcard.dispatcher"), html`<${PropChip} label=${t("taskcard.dispatcher")} items=${can ? dispatcherItems(card, names, (v) => save({ dispatcher: dispatcherValue(v) })) : null}
+            value=${html`<span class="tb-who" title=${t("taskcard.dispatcherHint")}>${!card.dispatcher ? t("taskcard.dispatcherNone") : card.dispatcher.kind === "person" ? t("taskcard.dispatcherPerson", card.dispatcher.name) : card.dispatcher.name}</span>`} />`)}`)}
+        ${group("flow", t("taskcard.groupFlow"), html`
+          ${row(t("taskcard.review"), can ? html`<label class="tp-switch"><input type="checkbox" role="switch" class="s-ui-toggle" aria-label=${t("taskcard.reviewBox")} checked=${card.needsReview} onChange=${(e) => void save({ needsReview: e.target.checked })} /><span class="tc-hint muted">${t("taskcard.reviewShort")}</span></label>`
+            // #2299: read-only: the values as text, not controls that look usable and are not.
+            : html`<span class="tc-value">${t(card.needsReview ? "taskcard.reviewOn" : "taskcard.reviewOff")}</span>`, can ? "" : "tp-block")}
+          ${row(t("taskcard.deps"), html`${card.dependsOn.length ? card.dependsOn.map((d) => html`<button key=${d} type="button" class=${`tc-dep${card.unmetDeps.includes(d) ? " waiting" : ""}`}
+              title=${card.unmetDeps.includes(d) ? t("taskcard.depWaiting") : t("taskcard.depDone")} onClick=${() => onOpen(d)}>${d}</button>`) : hiddenWaits(card) ? null : html`<span class="muted">${t("taskcard.none")}</span>`}
+            ${hiddenWaits(card) ? html`<span class="muted" title=${t("taskcard.depWaiting")}>${hiddenWaits(card)}</span>` : null}
+            ${can ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${editDeps}>${t("taskcard.edit")}</button>` : null}`)}
+          ${place && (place.up || place.down) ? row(t("taskcard.position"), html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!place.up} aria-label=${t("taskcard.moveUp")} title=${t("taskcard.moveUp")} onClick=${place.up}><${Icon} name="up" size=${16} /></button>
+            <button type="button" class="btn btn-ghost btn-sm" disabled=${!place.down} aria-label=${t("taskcard.moveDown")} title=${t("taskcard.moveDown")} onClick=${place.down}><${Icon} name="down" size=${16} /></button>`) : null}`)}
+        <p class="muted tp-opened">${t("taskcard.opened", card.createdBy, relTime(card.createdAt), relTime(card.updatedAt))} · ${t("taskcard.version", card.version)}</p>
+      </aside>
+
+      <div class="tp-activity">
+        <${Timeline} detail=${detail} describe=${describeRow} cards=${cards} lead=${((projects || []).find((x) => x.id === card.projectId) || {}).leadInstance || null} />
+        ${can ? html`<${Composer} placeholder=${t("taskcard.commentHint")}
+          onSend=${(text) => run(() => boardApi.update(card.id, { comment: text }))} />` : null}
+      </div>
+    </div>
+  </div>`;
 }
 
+/** A labelled row of the page's grid: the label in the first column, whatever it holds (a text, a list, an editor) in the second. */
 function Field({ title, tone, children }) {
-  return html`<section class=${`tc-field${tone ? ` tone-${tone}` : ""}`}><h3>${title}</h3>${children}</section>`;
-}
-
-/**
- * Which version an edit started from: a save sends it, so an agent's newer write is caught (409). After a conflict
- * the next save of the same draft overwrites on purpose (null: no check).
- */
-function useEditBase(version) {
-  const [base, setBase] = useState(version);
-  return {
-    start: () => setBase(version),
-    current: () => (base === undefined ? version : base),
-    afterSave: (outcome) => { if (outcome === "conflict") setBase(null); },
-  };
-}
-
-/** Focus moves into an edit box as it opens (before the next key: Esc must reach the box, not the dialog). */
-function useAutoFocus(open) {
-  const ref = useRef(null);
-  useLayoutEffect(() => { if (open && ref.current) ref.current.focus(); }, [open]);
-  return ref;
-}
-
-/** Esc leaves the edit, not the dialog. */
-function escapeEdit(e, cancel) {
-  if (e.key !== "Escape") return false;
-  e.preventDefault();
-  e.stopPropagation();
-  cancel();
-  return true;
-}
-
-function InlineTitle({ value, version, onSave }) {
-  const [draft, setDraft] = useState(null);
-  const base = useEditBase(version);
-  const ref = useAutoFocus(draft !== null);
-  if (draft === null) {
-    return html`<button type="button" class="tc-title" title=${t("taskcard.clickToEdit")} onClick=${() => { setDraft(value); base.start(); }}>${value}</button>`;
-  }
-  const commit = async () => {
-    const v = draft.trim();
-    if (!v || v === value) { setDraft(null); return; }
-    const outcome = await onSave(v, base.current());
-    base.afterSave(outcome);
-    if (outcome === "ok") setDraft(null);
-  };
-  return html`<input class="tc-title-input" value=${draft} maxlength=${LIMIT.title} ref=${ref}
-    onInput=${(e) => setDraft(e.target.value)} onBlur=${() => void commit()}
-    onKeyDown=${(e) => { if (escapeEdit(e, () => setDraft(null))) return; if (e.key === "Enter") { e.preventDefault(); void commit(); } }} />`;
-}
-
-function EditableText({ value, limit, placeholder, version, readOnly = false, onSave }) {
-  const [draft, setDraft] = useState(null);
-  const [saving, setSaving] = useState(false);
-  const base = useEditBase(version);
-  const ref = useAutoFocus(draft !== null);
-  if (readOnly) return html`<p class=${`tc-text${value ? "" : " empty"}`}>${value || "—"}</p>`;
-  if (draft === null) {
-    return html`<button type="button" class=${`tc-text${value ? "" : " empty"}`} title=${t("taskcard.clickToEdit")} onClick=${() => { setDraft(value); base.start(); }}>${value || placeholder || t("taskcard.empty")}</button>`;
-  }
-  const length = [...draft].length;
-  const submit = async () => {
-    if (saving) return;
-    setSaving(true);
-    const outcome = await onSave(draft.trim(), base.current());
-    setSaving(false);
-    base.afterSave(outcome);
-    if (outcome === "ok") setDraft(null);
-  };
-  return html`<div class="tc-edit">
-    <textarea rows=${Math.min(10, Math.max(3, draft.split("\n").length + 1))} value=${draft} ref=${ref}
-      onInput=${(e) => setDraft(e.target.value)}
-      onKeyDown=${(e) => { if (escapeEdit(e, () => setDraft(null))) return; if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); } }}></textarea>
-    <div class="tc-edit-bar">
-      <span class=${`tc-counter${length > limit ? " over" : ""}`}>${length}/${limit}</span>
-      <span class="muted">${t("taskcard.ctrlEnter")}</span>
-      <span class="tb-grow"></span>
-      <button type="button" class="btn btn-sm" onClick=${() => setDraft(null)}>${t("taskcard.cancel")}</button>
-      <button type="button" class="btn btn-primary btn-sm" disabled=${saving || length > limit} onClick=${submit}>${t("taskcard.save")}</button>
-    </div></div>`;
-}
-
-function Checklist({ card, readOnly = false, onToggle, onReplace }) {
-  const [draft, setDraft] = useState(null);
-  // One tick at a time: each sends the version it saw, so a second tick before the first is saved would be refused.
-  // The tick being saved shows as asked meanwhile (the box does not flick back until the card is read again).
-  const [ticking, setTicking] = useState(null);
-  const tick = async (n, done) => { setTicking({ n, done }); try { await onToggle(n, done); } finally { setTicking(null); } };
-  const base = useEditBase(card.version);
-  const ref = useAutoFocus(draft !== null);
-  const start = (text) => { setDraft(text); base.start(); };
-  if (draft !== null) {
-    const items = draft.split("\n").map((l) => l.trim()).filter(Boolean);
-    const save = async () => {
-      const outcome = await onReplace(items, base.current());
-      base.afterSave(outcome);
-      if (outcome === "ok") setDraft(null);
-    };
-    return html`<div class="tc-edit">
-      <textarea rows=${Math.max(3, items.length + 1)} value=${draft} ref=${ref}
-        onInput=${(e) => setDraft(e.target.value)}
-        onKeyDown=${(e) => { if (escapeEdit(e, () => setDraft(null))) return; if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void save(); } }}></textarea>
-      <div class="tc-edit-bar">
-        <span class=${`tc-counter${items.length > LIMIT.acceptanceItems ? " over" : ""}`}>${t("taskcard.items", items.length, LIMIT.acceptanceItems)}</span>
-        <span class="muted">${t("taskcard.onePerLine")}</span>
-        <span class="tb-grow"></span>
-        <button type="button" class="btn btn-sm" onClick=${() => setDraft(null)}>${t("taskcard.cancel")}</button>
-        <button type="button" class="btn btn-primary btn-sm" disabled=${items.length > LIMIT.acceptanceItems} onClick=${save}>${t("taskcard.save")}</button>
-      </div></div>`;
-  }
-  if (!card.acceptance.length) return readOnly ? html`<p class="tc-text empty">—</p>` : html`<button type="button" class="tc-text empty" onClick=${() => start("")}>${t("taskcard.checklistEmpty")}</button>`;
-  return html`<ul class="tc-checklist">${card.acceptance.map((a, i) => html`<li key=${`${i}-${a.text}`}><label class="tb-check">
-      <input type="checkbox" checked=${ticking && ticking.n === i + 1 ? ticking.done : a.done} disabled=${readOnly || !!ticking} onChange=${() => void tick(i + 1, !a.done)} /><span class=${a.done ? "done" : ""}>${a.text}</span></label></li>`)}</ul>
-    ${readOnly ? null : html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => start(card.acceptance.map((a) => a.text).join("\n"))}>${t("taskcard.editList")}</button>`}`;
-}
-
-function QuickAdd({ placeholder, onAdd }) {
-  const [title, setTitle] = useState("");
-  const busy = useRef(false);
-  return html`<input class="tc-quick-add" value=${title} placeholder=${placeholder} aria-label=${placeholder} maxlength=${LIMIT.title}
-    onInput=${(e) => setTitle(e.target.value)}
-    onKeyDown=${async (e) => {
-      if (e.key !== "Enter" || !title.trim() || busy.current) return;
-      e.preventDefault();
-      busy.current = true;
-      if ((await onAdd(title.trim())) === "ok") setTitle("");
-      busy.current = false;
-    }} />`;
-}
-
-function Comments({ entries, card, writable = true, onSend }) {
-  const [text, setText] = useState("");
-  const [sending, setSending] = useState(false);
-  const busy = useRef(false);
-  const send = async () => {
-    if (!text.trim() || busy.current) return;
-    busy.current = true;
-    setSending(true);
-    if ((await onSend(text.trim())) === "ok") setText("");
-    setSending(false);
-    busy.current = false;
-  };
-  return html`<div class="tc-comments">
-    ${entries.length ? null : html`<p class="muted">${t("taskcard.noComments")}</p>`}
-    ${entries.map((e) => html`<div key=${e.id} class=${`tc-comment${e.authorKind === "person" ? " person" : ""}`}>
-      <div class="tc-comment-head"><b>${e.author}</b>
-        ${e.kind === "reject" ? html`<span class="tb-tag st-blocked">${t("taskcard.rejectTag")}</span>` : null}
-        ${e.kind === "approve" ? html`<span class="tb-tag st-done">${t("taskcard.approveTag")}</span>` : null}
-        <span class="muted">${relTime(e.at)}</span></div>
-      <div class="tc-comment-body">${e.text}</div></div>`)}
-    ${writable ? html`<div class="tc-composer">
-      <textarea rows="2" value=${text} placeholder=${card.assignee ? t("taskcard.commentTo", card.assignee) : t("taskcard.commentHint")} aria-label=${t("taskcard.commentHint")}
-        onInput=${(e) => setText(e.target.value)}
-        onKeyDown=${(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); e.currentTarget.blur(); return; } if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void send(); } }}></textarea>
-      <button type="button" class="btn btn-primary btn-sm" disabled=${sending || !text.trim()} onClick=${send}>${t("taskcard.send")}</button>
-    </div>` : null}</div>`;
+  return html`<section class=${`tc-field${tone ? ` tone-${tone}` : ""}`}><h3>${title}</h3><div class="tc-field-body">${children}</div></section>`;
 }

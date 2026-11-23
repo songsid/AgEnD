@@ -1,4 +1,4 @@
-import {HOST_ALERT_DEFAULTS} from './host-monitoring-alert-policy.js';
+import {hostAlertDefaults,detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import {parseHostAlertSettings} from './host-monitoring-alert-settings.js';
 import { HOST_MONITORING_PAGE_AVAILABLE, monitoringConfig, parseMonitoringSettings } from "./host-monitoring-config.js";
 import { hubPageSharingSettings, parseHubPageSharing } from "./hub-page-sharing-settings.js";
@@ -186,6 +186,7 @@ export interface SettingsApiContext extends AppShellContext {
   getRawFleetConfig(): RawFleetConfig;
   saveFleetConfig(explicitPatches?: RawConfigPatch[]): void;
   hostMonitoringAvailable?(): boolean;
+  hostMonitoringPlatform?():import('./host-monitoring.js').MonitoringPlatform;
   hostAlertSettings?():import('./host-monitoring-alert-settings.js').HostAlertSettings;
   saveHostAlertSettings?(input:unknown):import('./host-monitoring-alert-settings.js').HostAlertSettings;
   hostMonitoringSettings?(): import('./host-monitoring-config.js').HostMonitoringConfig;
@@ -736,12 +737,13 @@ export function handleSettingsRequest(
   // The page used to carry its own copy of the hot set plus one hand-written
   // badge per field, which could disagree with what the fleet actually does.
   if (method === "GET" && path === "/api/settings/schema") {
+    const monitorPlatform=ctx.hostMonitoringPlatform?.()??detectMonitoringPlatform();
     json(res, 200, {
       ...buildSettingsImpactSchema(),
       host_monitoring: ctx.hostMonitoringAvailable?.() === true,
       host_monitoring_page: HOST_MONITORING_PAGE_AVAILABLE,
       host_monitoring_agents: true,
-      ...(ctx.hostAlertSettings?{host_alert_defaults:HOST_ALERT_DEFAULTS}:{}),
+      ...(ctx.hostAlertSettings?{host_alert_defaults:hostAlertDefaults(monitorPlatform),host_monitoring_platform:monitorPlatform}:{}),
       reply_triggers_default: DEFAULT_REPLY_TRIGGERS,
       // Non-null means a restart cannot clear the fleet row, so the page shows
       // the mismatch instead of offering a button that can never succeed.

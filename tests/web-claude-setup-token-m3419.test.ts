@@ -48,3 +48,14 @@ it.each([["first","second"],[undefined,"default"]])("reused profile %s → %s re
  expect(requests.filter(r=>r.body?.operation==="input").map(r=>r.body.id)).toEqual([newId]);
  expect(requests.filter(r=>r.body?.operation==="cancel").map(r=>r.body.id)).toEqual([oldId]);
 });
+
+it.each(["en", "zh-TW"])("%s unsupported step ends the waiting state with a concrete paste fallback", async language => {
+ i18n.setLang(language, { store: false }); const busy: boolean[] = [], saved: any[] = [];
+ answer = () => ({ started: "a".repeat(32), login: { id: "a".repeat(32), revision: 2, phase: "failed", reason: "unsupported_prompt", mine: true } });
+ await p.mount(h(ui.ClaudeTokenFetch, { read: { ok: true, local: true, credential: { revision: 0 } }, onBusy: (v: boolean) => busy.push(v), onSaved: (v: any) => saved.push(v) }));
+ fire(button(language === "en" ? "Get a token for me" : "幫我取得 Token"), "click"); await settle(8);
+ expect(p.root.querySelector('[role="alert"]').textContent).toContain(language === "en" ? "Run claude setup-token on your own computer" : "請在自己的電腦執行 claude setup-token");
+ expect(p.root.textContent).not.toContain(language === "en" ? "Waiting for Claude’s sign-in page" : "正在等候 Claude 登入頁面");
+ expect(button(language === "en" ? "Get a token for me" : "幫我取得 Token").disabled).toBe(false);
+ expect(busy.at(-1)).toBe(false); expect(saved).toEqual([]);
+});

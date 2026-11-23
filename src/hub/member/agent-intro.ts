@@ -1,14 +1,14 @@
 import {randomUUID} from "node:crypto";
 import {defaultAgentIntro,HUB_AGENT_INTRO_CAPABILITY,agentIntroResultSchema,type HubAgentIntro,type HubAgentIntroResult} from "../agent-intro-model.js";
 import type {HubMemberLink} from "../client.js";
-import type {RoomCaller} from "./room-post.js";
-export interface AgentIntroPort {set(caller:RoomCaller,text:string,operationId:string):Promise<HubAgentIntroResult>}
+import {shareLapsed,type RoomCaller,type ShareLapsed} from "./room-post.js";
+export interface AgentIntroPort {set(caller:RoomCaller,text:string,operationId:string):Promise<HubAgentIntroResult|ShareLapsed>}
 export interface IntroExposure {agent:string;id:string;revision:number;description:string}
 export class HubMemberAgentIntro implements AgentIntroPort {
  private link:HubMemberLink|null=null;
  private attempted=new Set<string>();
  private flushing:Promise<void>|null=null;
- constructor(private options:{current():boolean;exposures():IntroExposure[]}){}
+ constructor(private options:{current():boolean;exposures():IntroExposure[];lapsed?(agent:string):boolean}){}
  connected(link:HubMemberLink|null){this.link=link;this.attempted.clear();if(link)void this.defaults();}
  private current(link:HubMemberLink,local:IntroExposure,caller?:RoomCaller){return this.options.current()&&this.link===link&&link.current()&&(!caller||caller.current())&&this.options.exposures().some(e=>e.id===local.id&&e.revision===local.revision&&e.agent===local.agent);}
  private async send(link:HubMemberLink,local:IntroExposure,text:string,source:"agent"|"default",operationId:string,caller?:RoomCaller):Promise<HubAgentIntroResult>{
@@ -20,8 +20,10 @@ export class HubMemberAgentIntro implements AgentIntroPort {
    return result.type==="agent.intro-result"?agentIntroResultSchema.parse(result.payload):{ok:false,code:"uncertain"};
   }catch{return {ok:false,code:"uncertain"};}
  }
- async set(caller:RoomCaller,text:string,operationId:string):Promise<HubAgentIntroResult>{
+ async set(caller:RoomCaller,text:string,operationId:string):Promise<HubAgentIntroResult|ShareLapsed>{
   const local=this.options.exposures().find(e=>e.agent===caller.agent),link=this.link;
+  // M-3543: shared, but the share lapsed when the agent's backend or folder changed.
+  try{if(!local&&this.options.lapsed?.(caller.agent)===true)return shareLapsed();}catch{/* not lapsed */}
   if(!link)return {ok:false,code:"unavailable"};
   if(!link.features.has(HUB_AGENT_INTRO_CAPABILITY))return {ok:false,code:"unsupported"};
   if(!local||!caller.current())return {ok:false,code:"denied"};

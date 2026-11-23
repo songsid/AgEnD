@@ -58,7 +58,7 @@ import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../mem
 import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
-import { HubRoomPostAdapter, verifyRoomPostJournal } from "../member/room-post.js";
+import { HubRoomPostAdapter, isShareLapsed, verifyRoomPostJournal } from "../member/room-post.js";
 import { HubProtocolError } from "../validation.js";
 
 /** The legacy location remains assigned to its first proven binding; later pairings get separate complete sets. */
@@ -111,6 +111,8 @@ export interface HubMemberFactoryOptions {
   representative: HubRepresentativeHost;
   attachAgentIntro?(port: import("../member/agent-intro.js").AgentIntroPort|null):void;
   attachAgentRooms?(port: import("../member/room-post.js").AgentRoomPort | null): void;
+  /** M-3543: which shared agents' shares lapsed (their backend/folder changed since they were shared). */
+  attachShareLapse?(port: { lapsed(agent: string): boolean; agents(): string[] } | null): void;
   roomToolsChanged?(): void;
   roomConversationGeneration?(agent: string): string | null;
   attachRoomOwed?(port:{replyWarning(agent:string):string|undefined;turnEnded(agent:string,generation:string,turn:string):Promise<void>}|null):void;
@@ -580,7 +582,18 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           return { agent: local.agent, consentId: local.consentId, revision: local.exposure.revision, token: consent.token, contactLimit: local.contactLimit !== false };
         },
         deliver: input => options.representative.deliver(input), ...(memberFiles ? { files: memberFiles } : {}) });
-      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,
+      // M-3543: a published share whose consent no longer matches its agent — the agent's backend or folder changed since
+      // it was shared (#3147: consent never carries over). Only this case: no share, no link or no token is not "lapsed".
+      const shareLapsed = (agent: string): boolean => {
+        try {
+          const local = exposures.list().find(row => row.agent === agent)?.committed;
+          if (!local || local.exposure.state !== "published") return false;
+          const consent = db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(local.consentId) as {agent:string;token:string}|undefined;
+          return isShareLapsed(agent, local, consent, options.representative.agentToken(agent));
+        } catch { return false; }
+      };
+      const lapsedAgents = (): string[] => exposures.list().flatMap(row => shareLapsed(row.agent) ? [row.agent] : []);
+      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,lapsed:shareLapsed,
         receipt: options.roomReceipt,feedback:receiveFeedback,
         notify: options.roomNotify,
         held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
@@ -728,7 +741,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           }
           if ("ack" in out && l.current()) await l.send({ v: 1, type: "relocate.ack", requestId, linkEpoch: l.linkEpoch, payload: out.ack });
         } });
-      const intro = new HubMemberAgentIntro({current:roomCurrent,exposures:()=>exposures.list().flatMap(row=>{const e=row.committed?.exposure;const agent=(options.catalogAgents?.()??[]).find(a=>a.instance===row.agent);const consent=row.committed&&db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(row.committed.consentId) as {agent:string;token:string}|undefined;return e&&e.state==="published"&&agent&&consent?.agent===row.agent&&options.representative.agentToken(row.agent)===consent.token?[{agent:row.agent,id:e.id,revision:e.revision,description:agent.description}]:[];})});
+      const intro = new HubMemberAgentIntro({current:roomCurrent,lapsed:shareLapsed,exposures:()=>exposures.list().flatMap(row=>{const e=row.committed?.exposure;const agent=(options.catalogAgents?.()??[]).find(a=>a.instance===row.agent);const consent=row.committed&&db.prepare("SELECT agent,token FROM hub_representative_consents WHERE consent_id=?").get(row.committed.consentId) as {agent:string;token:string}|undefined;return e&&e.state==="published"&&agent&&consent?.agent===row.agent&&options.representative.agentToken(row.agent)===consent.token?[{agent:row.agent,id:e.id,revision:e.revision,description:agent.description}]:[];})});
       options.attachAgentIntro?.(intro);
       teardown.add("agent introductions",()=>{intro.close();options.attachAgentIntro?.(null);});
       const api = exposureMods.api.createHubMemberExposureApi({
@@ -737,6 +750,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agents: options.agents,
         afterCommit: async () => { const result = await sender.afterCommit(); void refreshRooms().catch(() => {}); void intro.defaults(); return result; },
         refused: () => sender.isRefused(),
+        lapsed: agent => shareLapsed(agent),
         // S5's readiness: the agent's lifecycle token, recorded against the consent inside S3c's atomic publish.
         readinessCandidate: (candidate) => service.readinessCandidate(candidate),
       });
@@ -749,7 +763,9 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agentToken: options.representative.agentToken, current: sharingLive, now });
       const sharing = options.catalogAgents && options.sharingNotice && options.attachSharing ? new HubMemberSharing({
         journal: sharingJournal, store: exposures, api, current: sharingLive, now, enabled: () => catalogEnabled,
-        agents: catalogAgents, catalog: () => memberAgentCatalog(catalogEnabled, catalogEnabled ? catalogAgents() : [], true),
+        agents: catalogAgents, catalog: (): ReturnType<typeof memberAgentCatalog> => memberAgentCatalog(catalogEnabled, catalogEnabled ? catalogAgents() : [], true,
+          catalog?.lapseActive() ? agent => shareLapsed(agent) : undefined),
+        lapsed: agent => shareLapsed(agent),
         notice: record => options.sharingNotice!(sharingNotice(record, hubName())),
         snapshot: () => sender.afterCommit(),
       }) : null;
@@ -769,7 +785,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       } : null;
       teardown.add("Hub sharing requests", () => { sharingLink?.close(); options.attachSharing?.(null); });
 
-      const catalog = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing,
+      const catalog: HubMemberAgentCatalog | null = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing, lapsed: agent => shareLapsed(agent),
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
       client = new HubMemberClient({
@@ -894,6 +910,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.attachExposures(api);
           options.attachSharing?.(sharingController);
           options.attachAgentRooms?.(posts);
+          options.attachShareLapse?.({ lapsed: shareLapsed, agents: lapsedAgents });
           options.representative.attachReports(input => room.report(input) ?? service.report(input), (cid, agent) => {
             if(cid.startsWith("hub-room-post-answer-"))posts.deliveryFailed(cid.slice("hub-room-post-answer-".length),agent);
             if(cid.startsWith("hub-room-mention-feedback-"))feedback.deliveryFailed(cid.slice("hub-room-mention-feedback-".length),agent);
@@ -912,6 +929,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.attachSharing?.(null);
             intro.connected(null);
             options.attachAgentRooms?.(null);
+            options.attachShareLapse?.(null);
             options.attachAttention(null);
           });
           options.attachUpdates?.(updates);
@@ -937,6 +955,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           options.attachSharing?.(null);
           intro.connected(null);
           options.attachAgentRooms?.(null);
+          options.attachShareLapse?.(null);
           // Mount drains failed startup too. Keep its actionable rejection until a different pairing takes over.
           if (!terminalHold) reportLink("offline");
         },

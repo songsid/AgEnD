@@ -1,0 +1,58 @@
+{
+  "scope": "All13 current R1-final viewport originals inspected individually by image-only subagent; no tests/browser/native campaign.",
+  "result": "No visible overflow/readability/privacy/broken-word issue. Units joined, Chinese labels plain, \u6b77\u53f2/\u53d6\u6a23 intact; desktopAPFS shared capacity visible, WSLstorageE suffix visible; Mac switchON/LinuxWSLOFF. Unrendered fallback and exact punctuation are source/test scope, not pixel proof.",
+  "images": [
+    {
+      "path": "darwin-health-desk-light-en.png",
+      "sha256": "0046135818e78a254779c8d6c62b28a539b5276090e2815ed4a5e45900833a03"
+    },
+    {
+      "path": "darwin-health-phone-dark-zh-TW.png",
+      "sha256": "1fe900cdd6a38768bebebe9c27566f768ea89fa19833f1949eb667c504c61ed4"
+    },
+    {
+      "path": "darwin-settings-desk-dark-zh-TW.png",
+      "sha256": "254a7cd0675ed832f7f5ad37afe71ea93d652fc64b3768184864b7122b708e91"
+    },
+    {
+      "path": "darwin-settings-phone-light-en.png",
+      "sha256": "62a44272143e2ec54a050ab583214ed5967cf0620d87efd4a4432e84c33d5a19"
+    },
+    {
+      "path": "linux-health-desk-light-en.png",
+      "sha256": "9bc622f08a414e147470951a9f5c37dfcf3e5514f7d77cdf2a0afe3aef99cfe6"
+    },
+    {
+      "path": "linux-health-phone-dark-zh-TW.png",
+      "sha256": "8ac665b68adbc68011828cbdd31752dca484dcf0a5a84aa9233d3910c1d6c101"
+    },
+    {
+      "path": "linux-settings-desk-dark-zh-TW.png",
+      "sha256": "6207e38988459fe058dc60c302a9c2066aa1ecd25ea91c29fa74797990e7f31c"
+    },
+    {
+      "path": "linux-settings-phone-light-en.png",
+      "sha256": "97a560d402bab8a34c00f7cabc915dd6dc08caee8be1da8cc651f8ede28de042"
+    },
+    {
+      "path": "wsl-health-desk-light-en.png",
+      "sha256": "1295a0327c8bb4c606ef0f9f2348c7b2646661cc8f28d655b5f033300f64362f"
+    },
+    {
+      "path": "wsl-health-phone-dark-zh-TW.png",
+      "sha256": "8ba6f65b16deb2555a4a87144d337cf539e7739d195e614407417ff436b2b694"
+    },
+    {
+      "path": "wsl-settings-desk-dark-zh-TW.png",
+      "sha256": "b59a815a9c2b4edc8c61e1ca8755438d289eb954fdd9767c9180349807757935"
+    },
+    {
+      "path": "wsl-settings-phone-light-en.png",
+      "sha256": "b2b783be56f32dacdd04c9c32ac16a81664ff8559724d8e22379c7eafbbc923c"
+    },
+    {
+      "path": "wsl-storage-phone-dark-zh-TW.png",
+      "sha256": "e30269017d272a3dde2fe4dc491570fec4d0a54dbcf61ae15b742b886976cee0"
+    }
+  ]
+}

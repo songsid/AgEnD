@@ -1,3 +1,4 @@
+import { focusComposerStrip } from "/assets/composer-focus.js";
 import { previewReplyFile, replyPreviewLabel } from "./reply-file-preview.js";
 import { NativePaneRecovery } from "./native-pane-recovery.js";
 import { GeneralLocation } from "./general-location.js";
@@ -240,7 +241,7 @@ export function linkWorkBarCss(doc = typeof document !== "undefined" ? document 
 }
 linkWorkBarCss();
 
-import { activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
+import { activityDrawCtx, activityInfo, activityInfoStore, activityOffered, activityPrefs, composeActivity, mountActivity, observeActivity, setActivityOn, setActivityThinking } from "./chat-activity.js";
 /** The composer's textarea (#2342: text put back into it is a step Ctrl+Z goes back from). */
 const composers = new Map(); // agent → current mounted refs, never a retained thread's stale closure
 const composerField = (name) => composers.get(name)?.input.current || null;
@@ -364,10 +365,7 @@ const agentBusy = (name) => R().isBusy(store.state.exec[name]);
 const agentSince = (name) => { const t = store.state.workingSince[name]; return t == null ? null : Date.now() - (performance.now() - t); };
 const rowsOf = (name) => (activityShown() ? composeActivity(name, store.threadRows(name), Date.now(), { busy: agentBusy(name), since: agentSince(name) }) : store.threadRows(name));
 /** What a chat's activity blocks need to draw: its paths to shorten, and whether thinking is shown. */
-const activityCtx = (name) => () => {
-  const info = activityInfo(name);
-  return { paths: info ? { cwd: info.cwd, home: info.home } : null, thinking: activityPrefs.get().thinking && !!info && info.thinking === true };
-};
+const activityCtx = (name) => () => activityDrawCtx(name);
 
 // ── Announcements: one polite, visually hidden line for the coarse events only (a reply arrived, the agent started,
 // finished, or waits on you). Messages themselves are not read out as they arrive; the list is a log to browse.
@@ -1007,6 +1005,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
+    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
       : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
@@ -1015,7 +1014,7 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
     <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
     ${metaLine ? null : html`<div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
       class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
-  </div></div>`;
+  </div></div></div>`;
 }
 
 /** #2233: a backend's "not signed in" choice offers Sign in (the module behind the session gate, loaded when asked). */

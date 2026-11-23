@@ -1,0 +1,15 @@
+# User-requested strip expansion
+
+The user asked that the background from the working/processing line through the verification row focus the actual textarea, including about 8px outside the pill. The user explicitly chose direct merge after this correction, with no further screenshot round. The original four PNGs and their source bindings remain historical, pre-expansion evidence; none was silently rebound or recaptured.
+
+The dock now owns one bounded `.composer-hit` strip containing the existing working line, composer and verification row. Normal-flow 8px padding reserves a gutter; negative inline margins preserve the pill's width. No absolute hit overlay or document-level pointer handler reaches into the thread or neighboring controls. A hidden working line leaves the strip around the composer/status region. The message list, prompts and subagent row remain outside it.
+
+Primary mouse presses focus immediately and prevent document selection. Touch/pen pointer-down is not prevented; only a completed click focuses, so a pan keeps scrolling. Actual controls, links, focusable descendants and foreground command/file/reply surfaces retain their own actions and selection. The shell's focusable main ancestor lies outside the strip and is not mistaken for a child control.
+
+The added outer-gutter regression fails one assertion on the previous head (12 other cases pass). The final composer and authorization-row suites pass 32/32. Tests cover working-line shown/hidden, work-label and status-row focus, touch default preservation, Stop's real cancel request, Attach's file-input click and a nearby message-list link's action; the original textarea/IME/keyboard controls also remain. Test typecheck: zero errors. The earlier 312-test result remains historical proof for the first pass; these counts overlap and are not added.
+
+No new browser or screenshot campaign was run for this requested expansion. Static PNGs do not establish its geometry or interaction; current proof is the normal-flow CSS and mounted component regressions. Current source hashes are recorded separately in `strip-verification.json`. Main first; actual main merge precedes dev twin. Coordinator alone gates after exact-head review/current CI and Leader release.
+
+## CSS placement correction
+
+Review caught that the first insertion matched `.dock-col` inside the existing min-900 full-width selector instead of the standalone dock rule. Declaration-only checks missed the surrounding scope. The original full-width thread/dock selector/media rule is now restored exactly, and both gutter rules sit independently at stylesheet brace-depth zero beside the dock rules. A new test pins the original media/selector text, top-level gutter context and normal dock width cap. It fails one assertion on a9ace1a2, then the composer suite passes 15/15; lightningcss parses the corrected stylesheet. Earlier 32-case author results remain historical/overlapping. No helper/interaction/PNG/browser campaign changed or repeated for this correction.

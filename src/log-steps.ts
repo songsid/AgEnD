@@ -56,6 +56,11 @@ export interface LogStep {
   anchor?: StepAnchor;
   modelSwitch?: ModelSwitch;
   servedModel?: string;
+  /**
+   * M-3541: a subagent the call started in the background (Claude Code's `async_launched` result). The call itself is
+   * done; the subagent's own running/done is the chat's Subagents row, so the page says "started in the background".
+   */
+  background?: true;
 }
 
 /**
@@ -481,9 +486,11 @@ export class ClaudeStepParser extends StepParser {
         return out;
       }
       const out: LogStep[] = [];
+      const launched = (e.toolUseResult as Record<string, unknown> | undefined)?.status === "async_launched"
+        && (e.toolUseResult as Record<string, unknown>).isAsync === true;
       for (const b of Array.isArray(content) ? content : []) {
         const blk = b as Record<string, unknown>;
-        if (blk.type === "tool_result" && typeof blk.tool_use_id === "string") out.push(this.result(blk.tool_use_id, resultText(blk.content), blk.is_error === true, ts));
+        if (blk.type === "tool_result" && typeof blk.tool_use_id === "string") out.push(this.result(blk.tool_use_id, resultText(blk.content), blk.is_error === true, ts, undefined, launched));
         else if (blk.type === "text" && typeof blk.text === "string" && blk.text.trim()) {
           const anchor = promptAnchor(blk.text);
           const s = this.add({ kind: "user", ts, ...(anchor ? { anchor } : {}) }); bodyOf(s, blk.text, TEXT_MAX); out.push(s);
@@ -511,9 +518,10 @@ export class ClaudeStepParser extends StepParser {
     return out;
   }
 
-  private result(id: string, text: string, isError: boolean, ts: number, bytes?: number): LogStep {
+  private result(id: string, text: string, isError: boolean, ts: number, bytes?: number, launched = false): LogStep {
     const s = this.close(id) ?? this.add({ id, kind: "tool", ts, tool: "", cat: "other", status: "done" });
     s.status = isError ? "failed" : "done";
+    if (launched && !isError && s.cat === "agent") s.background = true;
     const t0 = this.started.get(id); this.started.delete(id);
     if (t0 && ts >= t0) s.durationMs = ts - t0;
     if (bytes !== undefined) { s.bodyBytes = bytes; }
