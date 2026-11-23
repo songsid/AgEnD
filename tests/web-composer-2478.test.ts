@@ -50,6 +50,28 @@ describe("#2478: the chat composer (the real page modules)", () => {
     return { p, box, type, key, sends, requests: () => calls };
   }
 
+  it("M3557: slash options and arbitrary popup descendants never lose their mouse phase to the strip", async () => {
+    const c = await chatPage(); await c.type("/");
+    const row = c.p.root.querySelector('#cmdPalette [role="option"]')!;
+    expect(row).toBeTruthy();
+    const press = fire(row.querySelector("span") || row, "pointerdown", { button: 0, pointerType: "mouse" });
+    expect(press.defaultPrevented).toBe(false);
+    fire(row, "mousedown", { button: 0 }); await settle();
+    expect(c.box().value.trim()).toBe("/" + row.id.slice(4));
+    const strip = c.p.root.querySelector(".composer-hit")!;
+    for (const role of ["listbox", "menu", "dialog", "tooltip", ""]) {
+      const popup = c.box().ownerDocument.createElement("div");
+      if (role) popup.setAttribute("role", role);
+      const text = c.box().ownerDocument.createElement("span"); text.textContent = "Example popup"; popup.appendChild(text); strip.appendChild(popup);
+      let selected = false; popup.addEventListener("mousedown", () => selected = true);
+      const down = fire(text, "pointerdown", { button: 0, pointerType: "mouse" });
+      expect(down.defaultPrevented, role || "unclassified popup").toBe(false);
+      fire(text, "mousedown", { button: 0 }); expect(selected).toBe(true);
+      expect(fire(text, "click", { button: 0 }).defaultPrevented).toBe(false);
+      popup.remove();
+    }
+  });
+
   it("M3540: edge/padding focuses the real textarea and accepts typing", async () => {
     const c = await chatPage();
     const row = c.p.root.querySelector(".composer")!;

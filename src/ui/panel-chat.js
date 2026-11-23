@@ -609,14 +609,14 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel }) {
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
+    <div class="composer-hit" data-composer-focus onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     <${WorkBar} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
     <${Composer} name=${name} inst=${inst} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
-    <div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t(touchScreen() ? "chat.composerHintTouch" : "chat.composerHint")}</span></div>
+    <div class="composer-row" data-composer-focus>${guestPage() ? html`<span class="guest-note" data-composer-focus title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
+      class="hint" data-composer-focus title=${t(guestPage() ? "chat.guestMore" : "chat.composerMore")}>${t(touchScreen() ? "chat.composerHintTouch" : "chat.composerHint")}</span></div>
   </div></div></div>`;
 }
 
@@ -738,14 +738,14 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel }) {
     const h = lease.interval(() => tick(n => n + 1), 1000);      // ticks only while it shows, cleared with the lease
     return () => lease.clear(h);
   }, [kind, lease]);
-  if (!kind) return html`<div class="work-bar idle" aria-hidden="true"></div>`;
+  if (!kind) return html`<div class="work-bar idle" data-composer-focus aria-hidden="true"></div>`;
   // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
   const since = s.workingSince[name];
-  return html`<div class=${`work-bar ${kind}`}><span class="pulse" aria-hidden="true"></span><span class="lbl">${label}</span>
-    ${kind === "awaiting" ? html`<span class="note" title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
-      : html`<span class="elapsed" title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}
+  return html`<div class=${`work-bar ${kind}`} data-composer-focus><span class="pulse" data-composer-focus aria-hidden="true"></span><span class="lbl" data-composer-focus>${label}</span>
+    ${kind === "awaiting" ? html`<span class="note" data-composer-focus title=${t("chat.approxNote")}>${awaiting || t("chat.approxNote")}</span>`
+      : html`<span class="elapsed" data-composer-focus title=${t("chat.elapsedTitle")} aria-hidden="true">${since == null ? "" : R().formatElapsed(performance.now() - since)}</span>`}
     ${/* Stop sits with what it stops (card "composer width": in the composer it took the box's width away). */ ""}
     ${busy ? html`<button id="stopBtn" type="button" class="btn btn-sm btn-stop" title=${t("chat.stopReplyTitle")} aria-label=${t("chat.stopReply")}
       disabled=${!!s.cancelling[name]} onClick=${() => store.cancelReply(name)}><${Icon} name="stop" size=${14} /><span class="stop-label">${t("chat.stopReply")}</span></button>` : null}</div>`;
@@ -842,7 +842,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
     if (R().isLongPaste(text) && store.attachPastedText(name, text)) e.preventDefault();
   };
   const optId = (c) => `cmd-${c.name}`;
-  return html`<div class="composer-box">
+  return html`<div class="composer-box" data-composer-focus>
     ${!guestPage() ? html`<div class="model-entry-row" role="group" aria-label=${mw("model")}>
       <button type="button" class="btn btn-sm" onClick=${() => store.runCommand(name, "backend", "", { alive: () => lease.current() })}>${backendLabel(inst?.backend)} ▾</button>
       <button type="button" class="btn btn-sm" onClick=${() => store.runCommand(name, "model", "", { alive: () => lease.current() })}>${modelLabel(inst?.model || modelText(inst || {}))} ▾</button></div>` : null}
@@ -858,7 +858,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
       <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
     </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
-    <div class="composer" onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
+    <div class="composer" data-composer-focus onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
@@ -866,11 +866,11 @@ function Composer({ name, inst, label = name, lease, busy }) {
           never ellipsized, and a long name wrapped it to two lines. The box keeps the words as its accessible name. Its own
           placeholder is one space: :placeholder-shown hides the drawn one (app.css) the moment the box holds text, an
           IME's composing text included, with no change to the page. */ ""}
-      <span class="composer-field"><textarea id="msgIn" ref=${input} rows="1" value=${boxValue} aria-label=${t("chat.composerPlaceholder", label)}
+      <span class="composer-field" data-composer-focus><textarea id="msgIn" ref=${input} rows="1" value=${boxValue} aria-label=${t("chat.composerPlaceholder", label)}
         enterkeyhint=${touchScreen() ? "enter" : undefined} autocomplete="off" aria-controls=${palette ? "cmdPalette" : undefined} aria-expanded=${palette ? "true" : "false"}
         aria-activedescendant=${pick ? optId(pick) : undefined} onInput=${onInput} onKeyDown=${onKeyDown} onPaste=${onPaste}
         oncompositionstart=${onCompositionStart} oncompositionend=${onCompositionEnd} onBlur=${onCompositionEnd}
-        placeholder=" "></textarea><span class="composer-ph" aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
+        placeholder=" "></textarea><span class="composer-ph" data-composer-focus aria-hidden="true">${t("chat.composerPlaceholder", label)}</span></span>
       ${/* Card "composer width": Stop lives in the working bar above (WorkBar), and Send is always here (disabled while
           there is nothing to send) — so nothing in this row comes or goes when the agent starts or stops working, and the
           box keeps one width: a draft never re-wraps under the person's fingers. */ ""}
