@@ -59,7 +59,7 @@ try {
     assert.match(await modelField.innerText(), /3/);
     await p.page.locator("#g-model").scrollIntoViewIfNeeded();
     await p.page.screenshot({ path: join(out, `${name}-matching-backend.png`) });
-    await p.page.locator("#g-default-adoption").scrollIntoViewIfNeeded();
+    await p.page.locator(".s-default-adoption").evaluate((el: HTMLElement) => el.scrollIntoView({ block: "center" }));
     await p.page.screenshot({ path: join(out, `${name}-next-restart-choice.png`) });
     const size = await p.page.locator("#g-default-adoption").boundingBox();
     assert.ok(size && size.width > 44 && (c.device !== "phone" || size.height >= 44), JSON.stringify({ name, size }));

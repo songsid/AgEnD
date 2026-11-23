@@ -605,8 +605,8 @@ progress, reply guard, **Native replies trigger ClassicBot** (`reply_triggers`, 
 A shared **model** belongs only to the backend selected beside it. Its inheritance count includes agents on that backend,
 not the whole fleet; agents with their own model keep it. ClassicBot follows room → matching ClassicBot defaults → matching
 Fleet defaults → CLI default. Changing the shared backend clears its old model selection so it cannot carry another CLI's id.
-Before saving a shared backend/model edit, **When to use the new backend or model** offers **On each agent’s next restart**
-(the safe default, no process restart now) or **Restart affected running agents now** (confirmed before any writes).
+Before saving a shared backend/model edit, **When to use the new backend or model** offers **Next restart · no restart now**
+(the safe default, no process restart now) or **Restart running agents now** (confirmed before any writes).
 Stopped and paused agents stay stopped. **Saved · applies on next restart** is a pending adoption, not a successful model switch.
 Later unrelated Settings applies/reloads do not restart an agent just for that deferred default; other cold settings keep their
 normal rules, and an agent's explicit restart adopts the saved defaults. This shared-settings path does not send a CLI `/model`

@@ -43,6 +43,7 @@ it.each(["en", "zh-TW"])("scopes the count and exposes a safe timing choice befo
   expect($("#g-default-adoption").closest(".field").textContent).toContain("Alpha");
   expect($("#g-default-adoption").closest(".field").textContent).not.toContain("Beta");
   expect(sent).toEqual([]);
+  expect($(".s-pending .note").textContent).not.toContain(lang === "en" ? "Restart this Agent" : "重新啟動此 Agent");
 });
 it("cancels restart before any write, then carries next-start through Apply and renders its outcome", async () => {
   await open("en"); await choose("g-model", "haiku"); await choose("g-default-adoption", "restart");
@@ -54,4 +55,5 @@ it("cancels restart before any write, then carries next-start through Apply and 
   await choose("g-default-adoption", "next-start"); $(".s-pending .btn-primary").click(); await settle(14);
   expect(sent.find(s => s.path === "/api/settings/apply").body.shared_defaults).toBe("next-start");
   expect($(".s-step.next-start").textContent).toContain("Saved · applies on next restart");
+  expect($(".s-op").textContent).not.toContain("Restart this Agent");
 });

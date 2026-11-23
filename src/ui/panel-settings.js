@@ -1105,7 +1105,7 @@ function General({ ctx, part = "all" }) {
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
       sharedDefaults: dKeys.some(k => k === "backend" || k === "model") ? (f.defaultAdoption || "next-start") : undefined,
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
-      ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn("defaultIdentityChoiceHint")] } : {}),
+      ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn(f.defaultAdoption === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext")] } : {}),
       request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
@@ -1533,14 +1533,18 @@ function Developer({ ctx }) {
  */
 function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
-  const kinds = [...new Set(changes.filter((c) => !c.invalid).map((c) => c.impact))];
+  const costs = [];
+  for (const c of changes) {
+    if (c.invalid) continue;
+    for (const line of Array.isArray(c.notes) && c.notes.length ? c.notes : [impactText(c.impact)]) if (!costs.includes(line)) costs.push(line);
+  }
   const invalid = changes.filter((c) => c.invalid).length;
   // #2382 review: a field to fix in another section is named, and the message goes there (its field focused).
   const elsewhere = changes.find((c) => c.invalid && c.section && c.section !== section);
   const count = changes.reduce((n, c) => n + (Number.isInteger(c.count) && c.count > 0 ? c.count : 1), 0);
   return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", count)}</strong>
-    <span class="note">${kinds.map(impactText).join(" · ")}</span>
+    <span class="note">${costs.join(" · ")}</span>
     <span class="s-pending-actions">
       ${!invalid ? null : elsewhere ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(elsewhere.section, elsewhere.target)}>${tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`))}</button>`
         : html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>`}
@@ -1591,7 +1595,7 @@ function OperationCard({ op, schema }) {
     ${op.steps.length ? html`<ul class="s-op-steps">${op.steps.map((s, i) => html`<li key=${i} class=${`s-step ${s.status}`}>
       <span class="s-step-icon" aria-hidden="true">${icon(s.status) ? html`<${Icon} name=${icon(s.status)} size=${14} />` : "·"}</span>
       <span class="grow">${s.label}</span>
-      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || impactText(s.impact)}</span></li>`)}</ul>` : null}
+      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || (s.sharedDefaults ? tn(s.sharedDefaults === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext") : impactText(s.impact))}</span></li>`)}</ul>` : null}
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
       <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>
