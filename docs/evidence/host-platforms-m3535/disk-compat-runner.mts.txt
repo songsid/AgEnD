@@ -1,0 +1,10 @@
+import assert from 'node:assert/strict';import {writeFileSync,mkdirSync} from 'node:fs';
+import {NativeHostMonitoring as Before} from './legacy-platform.mts';import {NativeHostMonitoring as After} from '../../src/host-monitoring-platform.js';
+const df='Filesystem 1024-blocks Used Available Capacity Mounted on\n/dev/example 1000 400 600 40% /\n';
+const mounts='1 0 8:1 / / rw - ext4 /dev/root rw\n2 1 0:3 / /windows/c rw - 9p C:\\ rw\n3 1 0:4 / /windows/e rw - 9p E:\\ rw\n';
+const mac='/dev/disk1s1 on / (apfs, local, read-only)\n/dev/disk1s2 on /synthetic (apfs, local)\n';
+const cases:any={};
+for(const platform of ['darwin','linux','wsl']as const){const results:any[]=[];for(const C of [Before,After]){const calls:any[]=[];const p=new C({platform,statePath:'/synthetic/state',memory:()=>({level:'unknown',memory:null,sampledAt:null,recovering:false,samples:0,trend:null}),readMounts:async()=>mounts,now:()=>100000,monotonic:()=>0,run:(file,args,env,cwd)=>{calls.push([file,args,env,cwd]);return{result:Promise.resolve(file==='/sbin/mount'?mac:file.endsWith('diskutil')?'<key>APFSContainerReference</key><string>disk9</string>':file.endsWith('.exe')?'E\n':df),stopped:Promise.resolve(),kill(){}};}});try{const f=p.disks();results.push({reading:await f.result,calls});await f.stopped;}finally{await p.stop();}}
+ assert.deepEqual(results[1],results[0]);cases[platform]=results[0].reading;
+}
+mkdirSync('tests/fixtures/host-platforms-m3535',{recursive:true});writeFileSync('tests/fixtures/host-platforms-m3535/disk-legacy-recording.json',JSON.stringify({scope:'Actual pre-extraction module vs candidate, injected commands only; synthetic local paths/devices. No native OS execution.',base:'ffe38322808e28822079c02a3473cbf507ae3c62',cases},null,2)+'\n');console.log('3 platform disk outputs and exact command sequences match frozen pre-extraction source');

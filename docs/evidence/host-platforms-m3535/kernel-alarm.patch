@@ -1,0 +1,9 @@
+--- a/src/host-monitoring/darwin/interpretation.ts
++++ b/src/host-monitoring/darwin/interpretation.ts
+@@ -43,5 +43,5 @@
+ export function interpretMemory(snapshot:MemoryPressureSnapshot):Reading<MemoryReading>{
+  const m=snapshot.memory;if(!m||!Number.isSafeInteger(m.totalBytes)||m.totalBytes<=0)return{value:null,reason:'memory_unavailable'};
+- const pressure=m.darwinPressureLevel===1?'normal':m.darwinPressureLevel===2?'elevated':m.darwinPressureLevel===4?'critical':'unknown';
++ const pressure=snapshot.level;
+  return{value:{totalBytes:m.totalBytes,availableBytes:m.availableBytes,availableKind:'reclaimable-estimate',pressure,swapTotalBytes:m.swapTotalBytes,swapFreeBytes:m.swapFreeBytes,details:{kind:'darwin',kernelPressure:m.darwinPressureLevel??null,compressedBytes:m.darwinCompressedBytes??null,storedBytes:m.darwinStoredBytes??null,swapUsedBytes:m.swapTotalBytes!==null&&m.swapFreeBytes!==null?Math.max(0,m.swapTotalBytes-m.swapFreeBytes):null}},...(snapshot.sampledAt!==null?{sampledAt:snapshot.sampledAt}:{})};
+ }

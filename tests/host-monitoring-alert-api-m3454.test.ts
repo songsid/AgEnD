@@ -21,6 +21,14 @@ function fixture(tier:'admin'|'read'|'token'='admin'){
 }
 async function tick(){for(let n=0;n<40;n++)await Promise.resolve();}
 describe('host alerts administrator boundary',()=>{
+ it.each(['darwin','linux','wsl']as const)('projects %s defaults through the real schema without saving or changing legacy rules',platform=>{
+  const f=fixture(),saved={...defaultHostAlertSettings(),rules:{memory:{enabled:true,warning:1,urgent:2,recover:0,dwellMs:60000,recoveryMs:60000}}};
+  f.ctx.hostMonitoringPlatform=()=>platform;f.ctx.hostAlertSettings=()=>saved;
+  const schema=f.request('/api/settings/schema');schema.run();expect(schema.status()).toBe(200);
+  expect(schema.body().host_monitoring_platform).toBe(platform);expect(schema.body().host_alert_defaults.memory.criticalOnly).toBe(platform==='darwin');
+  const current=f.request('/api/settings/fleet/host-alerts');current.run();expect(current.status()).toBe(200);expect(current.body()).toEqual(saved);
+  expect(saved.rules.memory).not.toHaveProperty('criticalOnly');expect(f.ctx.saveHostAlertSettings).not.toHaveBeenCalled();
+ });
  it.each(['admin','read','token']as const)('filters passive initial/live/poll host items for %s',tier=>{
   const f=fixture(tier),poll=f.request('/ui/poll?after=');poll.run();expect(poll.body().needs.map((i:any)=>i.id)).toEqual(tier==='admin'?['ordinary','private']:['ordinary']);
   const events=f.request('/ui/events');events.run();const initial=events.writes.find(x=>x.startsWith('event: needs\n'))!;expect(initial.includes('private')).toBe(tier==='admin');

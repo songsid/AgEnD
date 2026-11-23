@@ -1,3 +1,4 @@
+import {monitoringHelp} from './host-monitoring-help.js';
 import {HostAlertSettings} from './settings-host-alerts.js';
 import { html, useEffect, useRef, useState } from '/assets/app-html.js';
 import { register, t } from '/assets/app-i18n.js';
@@ -58,7 +59,7 @@ function AvailableHostMonitoringSettings({ ctx }) {
   };
   const row = (id,key,hint,disabled,change) => html`<div class="s-setting-row"><div class="s-setting-copy"><label for=${id}>${copy(key)}</label><p class="note" id=${`${id}-hint`}>${copy(hint)}</p></div>
     <input class="s-ui-toggle" type="checkbox" role="switch" id=${id} checked=${form[key === 'agents' ? 'agent_footprint':'enabled']} disabled=${disabled} aria-describedby=${`${id}-hint`} onChange=${e=>change(e.target.checked, e.target)} /></div>`;
-  return html`<section class="card s-group" id="host-monitoring"><div class="s-group-head"><h3>${copy('title')}</h3><a class="btn btn-sm" href=${fleetPath('host-health')}>${copy('open')}</a></div>
+  return html`<section class="card s-group" id="host-monitoring"><div class="s-group-head"><h3>${copy('title')}</h3><a class="btn btn-sm" href=${fleetPath('host-health')}>${copy('open')}</a></div><p class="note" data-monitoring-platform-help>${monitoringHelp(ctx.schema?.host_monitoring_platform??health?.platform,'settings')}</p>
     ${row('hostMonitoringEnabled','enabled','hint',false,setEnabled)}
     ${row('hostMonitoringAgents','agents','agentHint',!agentsAvailable || !form.enabled,checked=>setForm(f=>({...f,agent_footprint:checked})))}
     ${health?.platform === 'wsl' || base.wsl_drive ? html`<div class="field"><label for="hostMonitoringDrive">${copy('drive')}</label>

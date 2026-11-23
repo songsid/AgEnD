@@ -1,0 +1,9 @@
+--- a/src/host-monitoring-alert-settings.ts
++++ b/src/host-monitoring-alert-settings.ts
+@@ -33,5 +33,5 @@
+ }
+ /** A legacy explicit memory rule predates criticalOnly and keeps its former warning behavior. */
+ export function hostAlertRuleFor(settings:HostAlertSettings,key:string,kind:HostAlertRule['kind'],platform:MonitoringPlatform=detectMonitoringPlatform()):HostAlertRule{
+- const saved=settings.rules[key];return{...hostAlertDefaultRule(kind,platform),...saved,...(kind==='memory'&&saved&&!Object.hasOwn(saved,'criticalOnly')?{criticalOnly:false}:{})};
++ const saved=settings.rules[key];return{...hostAlertDefaultRule(kind,platform),...saved,...(kind==='memory'&&saved&&!Object.hasOwn(saved,'criticalOnly')?{criticalOnly:true}:{})};
+ }

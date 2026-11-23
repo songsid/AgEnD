@@ -1,0 +1,82 @@
+
+ RUN  v4.1.12 <checkout>
+
+ ❯ tests/host-platform-split-m3535.test.ts (17 tests | 5 failed) 45ms
+     × Mac kernel 1 is normal even if admission has a different synthetic level 11ms
+     × Mac kernel 2 is elevated even if admission has a different synthetic level 2ms
+     × Mac kernel 4 is critical even if admission has a different synthetic level 1ms
+     × unknown Mac alarms remain unknown despite critical admission or low free/swap diagnostics 2ms
+     × dynamic Mac swap may be unallocated without implying pressure 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 5 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 1 is normal even if admission has a different synthetic level
+AssertionError: expected 'critical' to be 'normal' // Object.is equality
+
+Expected: "normal"
+Received: "critical"
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:28
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/5]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 2 is elevated even if admission has a different synthetic level
+AssertionError: expected 'critical' to be 'elevated' // Object.is equality
+
+Expected: "elevated"
+Received: "critical"
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:28
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/5]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > Mac kernel 4 is critical even if admission has a different synthetic level
+AssertionError: expected 'normal' to be 'critical' // Object.is equality
+
+Expected: "critical"
+Received: "normal"
+
+ ❯ tests/host-platform-split-m3535.test.ts:20:28
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/5]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > unknown Mac alarms remain unknown despite critical admission or low free/swap diagnostics
+AssertionError: expected 'critical' to be 'unknown' // Object.is equality
+
+Expected: "unknown"
+Received: "critical"
+
+ ❯ tests/host-platform-split-m3535.test.ts:22:233
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/5]⎯
+
+ FAIL  tests/host-platform-split-m3535.test.ts > separate platform memory interpretation > dynamic Mac swap may be unallocated without implying pressure
+AssertionError: expected { totalBytes: 34359738368, …(6) } to match object { pressure: 'normal', …(2) }
+(4 matching properties omitted from actual)
+
+- Expected
++ Received
+
+  {
+    "details": {
+      "swapUsedBytes": 0,
+    },
+-   "pressure": "normal",
++   "pressure": "critical",
+    "swapTotalBytes": 0,
+  }
+
+ ❯ tests/host-platform-split-m3535.test.ts:28:267
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/5]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  5 failed | 12 passed (17)
+   Start at  15:25:42
+   Duration  1.21s (transform 644ms, setup 358ms, import 444ms, tests 45ms, environment 0ms)
