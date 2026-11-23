@@ -13,7 +13,7 @@
  *   fleet sees — check, upload, replace, delete and restore them, and point a stored office at one (web-office-pack-tools.ts).
  *
  * Unset is allowed: a fleet that switches nothing off works as before, and the profile still decides what an agent
- * has — except for a feature in OFF_UNLESS_ON (`office`, `office_packs`), which is off until a person sets it true. `false` takes the feature's tools away whatever the profile carries: refused at the fleet's checks
+ * has — except for a feature in OFF_UNLESS_ON (`appearance`, `office`, `office_packs`), which is off until a person sets it true. `false` takes the feature's tools away whatever the profile carries: refused at the fleet's checks
  * (tool-permissions.ts's sinks, read at each call — no restart) and left out of the agent's tool menu from its next
  * start (AGEND_DASHBOARD_OFF, read by mcp-server). Like a profile, policy protection for the resolved identity, not
  * isolation between same-uid agents with a shell.
@@ -21,7 +21,9 @@
 export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office", "office_packs"] as const;
 export type DashboardFeature = typeof DASHBOARD_FEATURES[number];
 /** The features a person switches on (#2578): absent (or null) is off for these, never allowed. */
-export const OFF_UNLESS_ON: ReadonlySet<DashboardFeature> = new Set<DashboardFeature>(["office", "office_packs"]);
+// M-2133 (the user's go-ahead of 2026-11-23, inventory rec 1): `appearance` too — almost no agent uses its tools, and
+// they were the largest share of every agent's tool list. A person switches it on per agent (dashboard.appearance: true).
+export const OFF_UNLESS_ON: ReadonlySet<DashboardFeature> = new Set<DashboardFeature>(["appearance", "office", "office_packs"]);
 /** What a feature is when nothing (not the instance, not the defaults) says: allowed, or off for OFF_UNLESS_ON. */
 export const dashboardFeatureDefault = (feature: string): boolean => !OFF_UNLESS_ON.has(feature as DashboardFeature);
 /** As written in fleet.yaml: each feature true (allowed), false (switched off) or absent (allowed; off for OFF_UNLESS_ON). */

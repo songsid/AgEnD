@@ -41,12 +41,12 @@ export function changedFields(next, baseline) {
 
 /**
  * The dashboard features an agent may use (dashboard-permissions.ts): each "inherit" (the fleet default: `defaults.dashboard`,
- * else allowed — off for OFF_UNLESS_ON, `office` and `office_packs`), "on" or "off". The patch names only the features that changed: null
+ * else allowed — off for OFF_UNLESS_ON, `appearance`, `office` and `office_packs`), "on" or "off". The patch names only the features that changed: null
  * follows the default again.
  */
 export const DASHBOARD_FEATURES = ["appearance", "task_board", "web_settings", "office", "office_packs"];
-/** #2578, #2692: the features a person switches on — unset is off (dashboard-permissions.ts OFF_UNLESS_ON). */
-export const OFF_UNLESS_ON = ["office", "office_packs"];
+/** #2578, #2692, M-2133: the features a person switches on — unset is off (dashboard-permissions.ts OFF_UNLESS_ON). */
+export const OFF_UNLESS_ON = ["appearance", "office", "office_packs"];
 /** #2601, #2692: the features kept beside `dashboard` under their own key (dashboard-permissions.ts SEPARATE_FEATURE_KEYS). */
 export const SEPARATE_FEATURE_KEYS = { office: "office_access", office_packs: "office_pack_access" };
 export const DASHBOARD_CHOICES = ["inherit", "on", "off"];

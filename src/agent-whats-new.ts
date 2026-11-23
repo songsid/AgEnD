@@ -120,6 +120,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-3522: the go-ahead scope is stated positively; `since` is this line's next beta (2.4.0-beta.18 shipped without it).
   { id: "2.4-go-ahead-scope", since: "2.4.0-beta.19",
     text: "What needs a go-ahead is now stated once: only a release or publish, anything destructive or irreversible beyond your own work, spending money or quota beyond normal work, credentials or secrets, and granting or forwarding authority. Reading, querying, analysis, status and logs, and the routine operations of your assigned domain need no receipt, button or verification. The checks for those five are unchanged. An agent may also have an \"Owner and routine operations\" section right after its Role: context about who owns the system and which operations are routine there." },
+  // M-2133 / M-3526 (inventory recs 1 and 2): fewer, shorter tool schemas.
+  { id: "2.4-tool-diet", since: "2.4.0-beta.19",
+    text: "Tool changes: the emoji and sticker tools are one `emoji_sticker` tool (action list_emojis, preview_emojis, set_persona_emoji, list_stickers or preview_stickers, with that action's fields in `args`). Your look tools are one `web_appearance` tool, listed only when a person switches your look on (Settings → Agents); the web-appearance skill lists its actions. The task tool's full rules are in the `task-board` skill." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

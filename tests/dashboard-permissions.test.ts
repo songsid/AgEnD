@@ -48,11 +48,11 @@ describe("the features and their tools", () => {
     expect(DASHBOARD_FEATURE_TOOLS.appearance.every((t) => worker.has(t)) && worker.has("task")).toBe(true);
   });
 
-  it("only false switches a feature off (office: anything but true, #2578); the refusal names it and says not to retry", () => {
-    expect(dashboardFeaturesOff(undefined)).toEqual(["office", "office_packs"]);
+  it("only false switches a feature off (appearance, office: anything but true, M-2133, #2578); the refusal names it and says not to retry", () => {
+    expect(dashboardFeaturesOff(undefined)).toEqual(["appearance", "office", "office_packs"]);
     expect(dashboardFeaturesOff({ appearance: true, task_board: false, web_settings: null, office: true, office_packs: true })).toEqual(["task_board"]);
     expect(dashboardRefusal({ task_board: false }, "task")).toMatch(/task is not available.*"task_board".*dashboard\.task_board: false.*Do not retry/);
-    expect(dashboardRefusal({ task_board: false }, "set_web_theme")).toBeNull();
+    expect(dashboardRefusal({ task_board: false }, "set_web_theme")).toMatch(/"appearance" is off until the person switches it on \(dashboard\.appearance: true\)/);   // M-2133
     expect(dashboardRefusal({ appearance: true }, "set_web_theme")).toBeNull();
     expect(dashboardRefusal(undefined, "set_web_settings")).toBeNull();
   });
@@ -95,6 +95,8 @@ describe("enforced at the fleet's sinks, as configured now", () => {
     const check = (FleetManager.prototype as any).checkToolPermission.bind(fm);
     expect(check("ipc-outbound", "dev", "task")).toEqual({ allowed: false, message: dashboardRefusal({ task_board: false }, "task") });
     expect(warn).toHaveBeenCalledWith(expect.objectContaining({ sink: "ipc-outbound", tool: "task", dashboard: true }), expect.stringContaining("refused"));
+    expect(check("ipc-outbound", "dev", "set_web_theme").allowed).toBe(false);                               // M-2133: off unless set
+    fm.fleetConfig.instances.dev.dashboard = { task_board: false, appearance: true } as typeof fm.fleetConfig.instances.dev.dashboard;
     expect(check("ipc-outbound", "dev", "set_web_theme").allowed).toBe(true);
     expect(check("ipc-outbound", "dev", "create_instance").message).toMatch(/create_instance is not available/);   // the profile's
     fm.fleetConfig.instances.dev.dashboard = { task_board: true };                                              // read at each call
@@ -179,7 +181,8 @@ describe("Settings: one feature at a time; switching off applies directly, switc
   it("the page: the agent dialog's three choices and the defaults' ticks", () => {
     expect(dashboardForm({ dashboard: { appearance: false, task_board: true } })).toEqual({ appearance: "off", task_board: "on", web_settings: "inherit", office: "inherit", office_packs: "inherit" });
     expect(dashboardDefault({ dashboard: { web_settings: false } }, "web_settings")).toBe(false);
-    expect(dashboardDefault({}, "appearance")).toBe(true);
+    expect(dashboardDefault({}, "appearance")).toBe(false);                                        // M-2133: off unless set
+    expect(dashboardDefault({}, "task_board")).toBe(true);
     const inst = { working_directory: "/w", dashboard: { appearance: false } };
     const form = agentForm(inst, {});
     expect(agentPatch(form, inst, {}, null, null)).toEqual({});                                   // nothing touched, nothing sent

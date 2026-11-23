@@ -1,0 +1,758 @@
+{
+ "_note": "M-3526 / M-2133: the schemas of the tools whose descriptions were shortened or folded into a composite, descriptions stripped, as at dev 63a41c9c. No field, enum or bound may change with a description edit.",
+ "task": {
+  "type": "object",
+  "properties": {
+   "detail": {
+    "type": "boolean"
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 100
+   },
+   "cursor": {
+    "type": "string",
+    "minLength": 1,
+    "maxLength": 128
+   },
+   "action": {
+    "type": "string",
+    "enum": [
+     "create",
+     "list",
+     "claim",
+     "done",
+     "update",
+     "get",
+     "mine",
+     "move",
+     "projects",
+     "create_project",
+     "move_project"
+    ]
+   },
+   "title": {
+    "type": "string"
+   },
+   "priority": {
+    "type": "string",
+    "enum": [
+     "low",
+     "normal",
+     "high",
+     "urgent"
+    ]
+   },
+   "assignee": {
+    "type": "string"
+   },
+   "depends_on": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "id": {
+    "type": "string"
+   },
+   "result": {
+    "type": "string"
+   },
+   "status": {
+    "type": "string",
+    "enum": [
+     "open",
+     "claimed",
+     "review",
+     "done",
+     "blocked",
+     "cancelled"
+    ]
+   },
+   "filter_assignee": {
+    "type": "string"
+   },
+   "filter_status": {
+    "anyOf": [
+     {
+      "type": "string",
+      "enum": [
+       "open",
+       "claimed",
+       "review",
+       "done",
+       "blocked",
+       "cancelled"
+      ]
+     },
+     {
+      "type": "array",
+      "items": {
+       "type": "string",
+       "enum": [
+        "open",
+        "claimed",
+        "review",
+        "done",
+        "blocked",
+        "cancelled"
+       ]
+      }
+     }
+    ]
+   },
+   "verbose": {
+    "type": "boolean"
+   },
+   "stale": {
+    "type": "boolean"
+   },
+   "project": {
+    "anyOf": [
+     {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "integer",
+        "minimum": -9007199254740991,
+        "maximum": 9007199254740991
+       }
+      ]
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "name": {
+    "type": "string"
+   },
+   "ids": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "parent": {
+    "type": "string"
+   },
+   "scope": {
+    "type": "string"
+   },
+   "acceptance": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "check": {
+    "type": "array",
+    "items": {
+     "type": "integer",
+     "minimum": -9007199254740991,
+     "maximum": 9007199254740991
+    }
+   },
+   "uncheck": {
+    "type": "array",
+    "items": {
+     "type": "integer",
+     "minimum": -9007199254740991,
+     "maximum": 9007199254740991
+    }
+   },
+   "context": {
+    "type": "string"
+   },
+   "state": {
+    "type": "string"
+   },
+   "log": {
+    "type": "string"
+   },
+   "comment": {
+    "type": "string"
+   },
+   "needs_review": {
+    "type": "boolean"
+   },
+   "size": {
+    "type": "string",
+    "enum": [
+     "S",
+     "M",
+     "L"
+    ]
+   },
+   "dispatcher": {
+    "anyOf": [
+     {
+      "type": "string"
+     },
+     {
+      "type": "null"
+     }
+    ]
+   },
+   "to": {
+    "type": "string",
+    "enum": [
+     "open",
+     "claimed",
+     "review",
+     "done",
+     "blocked",
+     "cancelled"
+    ]
+   },
+   "reason": {
+    "type": "string"
+   },
+   "version": {
+    "type": "integer",
+    "minimum": -9007199254740991,
+    "maximum": 9007199254740991
+   }
+  },
+  "required": [
+   "action"
+  ],
+  "additionalProperties": false
+ },
+ "reply": {
+  "type": "object",
+  "properties": {
+   "text": {
+    "type": "string"
+   },
+   "reply_to": {
+    "type": "string"
+   },
+   "previews": {
+    "maxItems": 10,
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "path": {
+       "type": "string"
+      },
+      "line": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 10000000
+      },
+      "endLine": {
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 10000000
+      }
+     },
+     "required": [
+      "path"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "files": {
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "format": {
+    "type": "string",
+    "enum": [
+     "text",
+     "markdown"
+    ]
+   },
+   "stickers": {
+    "maxItems": 3,
+    "type": "array",
+    "items": {
+     "type": "string",
+     "minLength": 1
+    }
+   },
+   "buttons": {
+    "minItems": 1,
+    "maxItems": 10,
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "label": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 80
+      },
+      "value": {
+       "type": "string",
+       "maxLength": 200
+      }
+     },
+     "required": [
+      "label"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "poll": {
+    "type": "object",
+    "properties": {
+     "seconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 86400
+     },
+     "multi": {
+      "type": "boolean"
+     },
+     "reveal": {
+      "type": "string",
+      "enum": [
+       "close",
+       "live"
+      ]
+     },
+     "show_voters": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "seconds"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "additionalProperties": false
+ },
+ "report_result": {
+  "type": "object",
+  "properties": {
+   "detail": {
+    "type": "boolean"
+   },
+   "target_instance": {
+    "type": "string",
+    "minLength": 1
+   },
+   "correlation_id": {
+    "type": "string"
+   },
+   "summary": {
+    "type": "string",
+    "minLength": 1
+   },
+   "artifacts": {
+    "type": "string"
+   },
+   "files": {
+    "minItems": 1,
+    "maxItems": 10,
+    "type": "array",
+    "items": {
+     "type": "string",
+     "minLength": 1
+    }
+   },
+   "buttons": {
+    "minItems": 1,
+    "maxItems": 10,
+    "type": "array",
+    "items": {
+     "type": "object",
+     "properties": {
+      "label": {
+       "type": "string",
+       "minLength": 1,
+       "maxLength": 80
+      },
+      "value": {
+       "type": "string",
+       "maxLength": 200
+      }
+     },
+     "required": [
+      "label"
+     ],
+     "additionalProperties": false
+    }
+   },
+   "poll": {
+    "type": "object",
+    "properties": {
+     "seconds": {
+      "type": "integer",
+      "minimum": 10,
+      "maximum": 86400
+     },
+     "multi": {
+      "type": "boolean"
+     },
+     "reveal": {
+      "type": "string",
+      "enum": [
+       "close",
+       "live"
+      ]
+     },
+     "show_voters": {
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "seconds"
+    ],
+    "additionalProperties": false
+   }
+  },
+  "required": [
+   "target_instance",
+   "summary"
+  ],
+  "additionalProperties": false
+ },
+ "get_web_theme": {
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+ },
+ "set_web_theme": {
+  "type": "object",
+  "properties": {
+   "set": {
+    "type": "object",
+    "propertyNames": {
+     "type": "string"
+    },
+    "additionalProperties": {}
+   },
+   "clear": {
+    "maxItems": 32,
+    "type": "array",
+    "items": {
+     "type": "string",
+     "maxLength": 64
+    }
+   }
+  },
+  "additionalProperties": false
+ },
+ "set_web_theme_asset": {
+  "type": "object",
+  "properties": {
+   "slot": {
+    "type": "string",
+    "enum": [
+     "background",
+     "avatar",
+     "portrait",
+     "banner",
+     "glyph"
+    ]
+   },
+   "file": {
+    "type": "string",
+    "minLength": 1
+   }
+  },
+  "required": [
+   "slot",
+   "file"
+  ],
+  "additionalProperties": false
+ },
+ "reset_web_theme": {
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+ },
+ "get_web_appearance": {
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false
+ },
+ "preview_web_appearance": {
+  "type": "object",
+  "properties": {
+   "modes": {
+    "minItems": 1,
+    "maxItems": 2,
+    "type": "array",
+    "items": {
+     "type": "string",
+     "enum": [
+      "light",
+      "dark"
+     ]
+    }
+   }
+  },
+  "additionalProperties": false
+ },
+ "set_web_widget": {
+  "type": "object",
+  "properties": {
+   "slot": {
+    "type": "string",
+    "enum": [
+     "chat_header",
+     "details"
+    ]
+   },
+   "spec": {
+    "type": "object",
+    "propertyNames": {
+     "type": "string"
+    },
+    "additionalProperties": {}
+   },
+   "data": {
+    "type": "object",
+    "propertyNames": {
+     "type": "string"
+    },
+    "additionalProperties": {}
+   }
+  },
+  "required": [
+   "slot"
+  ],
+  "additionalProperties": false
+ },
+ "remove_web_widget": {
+  "type": "object",
+  "properties": {
+   "slot": {
+    "type": "string",
+    "enum": [
+     "chat_header",
+     "details"
+    ]
+   }
+  },
+  "additionalProperties": false
+ },
+ "set_web_ambient": {
+  "type": "object",
+  "properties": {
+   "preset": {
+    "type": "string",
+    "enum": [
+     "fall",
+     "rise",
+     "twinkle",
+     "burst-on-click"
+    ]
+   },
+   "glyphs": {
+    "minItems": 1,
+    "maxItems": 4,
+    "type": "array",
+    "items": {
+     "anyOf": [
+      {
+       "type": "string",
+       "maxLength": 32
+      },
+      {
+       "type": "object",
+       "properties": {
+        "asset": {
+         "type": "string"
+        }
+       },
+       "required": [
+        "asset"
+       ],
+       "additionalProperties": false
+      }
+     ]
+    }
+   },
+   "colors": {
+    "maxItems": 5,
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   },
+   "count": {
+    "type": "integer",
+    "minimum": -9007199254740991,
+    "maximum": 9007199254740991
+   },
+   "duration": {
+    "minItems": 2,
+    "maxItems": 2,
+    "type": "array",
+    "items": {
+     "type": "number"
+    }
+   },
+   "size": {
+    "minItems": 2,
+    "maxItems": 2,
+    "type": "array",
+    "items": {
+     "type": "number"
+    }
+   },
+   "sway": {
+    "type": "number"
+   },
+   "spread": {
+    "minItems": 2,
+    "maxItems": 2,
+    "type": "array",
+    "items": {
+     "type": "number"
+    }
+   },
+   "rotate": {
+    "type": "number"
+   },
+   "opacity": {
+    "minItems": 3,
+    "maxItems": 3,
+    "type": "array",
+    "items": {
+     "type": "number"
+    }
+   },
+   "layer": {
+    "type": "string",
+    "const": "behind"
+   }
+  },
+  "required": [
+   "preset",
+   "glyphs"
+  ],
+  "additionalProperties": false
+ },
+ "clear_web_ambient": {
+  "type": "object",
+  "properties": {
+   "which": {
+    "type": "string",
+    "enum": [
+     "loop",
+     "click"
+    ]
+   }
+  },
+  "additionalProperties": false
+ },
+ "list_emojis": {
+  "type": "object",
+  "properties": {
+   "refresh": {
+    "type": "boolean"
+   },
+   "name": {
+    "type": "string",
+    "maxLength": 64
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 500
+   },
+   "primary_only": {
+    "type": "boolean"
+   },
+   "with_image_urls": {
+    "type": "boolean"
+   }
+  },
+  "additionalProperties": false
+ },
+ "preview_emojis": {
+  "type": "object",
+  "properties": {
+   "emojis": {
+    "minItems": 1,
+    "maxItems": 8,
+    "type": "array",
+    "items": {
+     "type": "string"
+    }
+   }
+  },
+  "required": [
+   "emojis"
+  ],
+  "additionalProperties": false
+ },
+ "list_stickers": {
+  "type": "object",
+  "properties": {
+   "set": {
+    "type": "string",
+    "maxLength": 64
+   },
+   "name": {
+    "type": "string",
+    "maxLength": 64
+   },
+   "limit": {
+    "type": "integer",
+    "minimum": 1,
+    "maximum": 200
+   },
+   "refresh": {
+    "type": "boolean"
+   }
+  },
+  "additionalProperties": false
+ },
+ "preview_stickers": {
+  "type": "object",
+  "properties": {
+   "stickers": {
+    "minItems": 1,
+    "maxItems": 8,
+    "type": "array",
+    "items": {
+     "type": "string",
+     "minLength": 1
+    }
+   }
+  },
+  "required": [
+   "stickers"
+  ],
+  "additionalProperties": false
+ },
+ "set_persona_emoji": {
+  "type": "object",
+  "properties": {
+   "emoji": {
+    "type": "string"
+   },
+   "status": {
+    "type": "string",
+    "enum": [
+     "received",
+     "queued",
+     "processing",
+     "delivered",
+     "failed",
+     "progress_prefix",
+     "photo",
+     "attachment"
+    ]
+   }
+  },
+  "required": [
+   "emoji"
+  ],
+  "additionalProperties": false
+ }
+}

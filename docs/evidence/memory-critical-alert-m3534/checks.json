@@ -1,0 +1,30 @@
+{
+  "base": "d8c329f25fe233083233497428fda4cf70640a9d",
+  "beforeNewSuite": {
+    "passed": 1,
+    "failed": 7,
+    "cases": 8
+  },
+  "initialPolicySuites": {
+    "passed": 44,
+    "files": 4
+  },
+  "uiApiConfirmationSuites": {
+    "passed": 24,
+    "files": 3
+  },
+  "finalNewSuiteAfterRetentionCase": {
+    "passed": 9,
+    "files": 1
+  },
+  "distinctFinalCases": 69,
+  "distinctFiles": 7,
+  "testTypesExit": 0,
+  "buildExit": 0,
+  "notificationsUiGate": {
+    "passed": 14,
+    "failed": 0,
+    "scope": "SECTIONS=notifications GATE=ci; shared default-off capability, no provider/timer started"
+  },
+  "mutations": "Three assertion-red source mutations, restored to exact recorded hashes. The urgent-predicate mutant changes ternary precedence; it is not claimed to isolate only one urgent path."
+}

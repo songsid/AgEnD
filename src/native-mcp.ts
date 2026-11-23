@@ -5,7 +5,7 @@ import { windowsCliEnabled } from "./windows-cli.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { dispatchAgentOperation, type AgentEndpointContext } from "./agent-endpoint.js";
-import { TOOLS, OUTBOUND_TOOL_SCHEMAS } from "./channel/mcp-tools.js";
+import { TOOLS, OUTBOUND_TOOL_SCHEMAS, withComposites, expandCompositeCall } from "./channel/mcp-tools.js";
 import { dashboardRefusalIn } from "./dashboard-permissions.js";
 import { gatewayRequestContext } from "./web-request-context.js";
 import { readBoundedWebBody } from "./web-body.js";
@@ -98,7 +98,7 @@ export class NativeMcpSessions {
       expires:Date.now()+TTL_MS,stillCurrent:input.stillCurrent,closed:false,calls:new Map(),reported:new Map(),
       timer:setTimeout(()=>this.closeToken(token),TTL_MS)};
     session.timer.unref?.();this.sessions.set(token,session);
-    return {connection:{endpoint:address,token,tools:this.menu(session).map(tool=>tool.name)},close:()=>this.closeToken(token),
+    return {connection:{endpoint:address,token,tools:this.memberNames(session)},close:()=>this.closeToken(token),
       reportedCorrelations:target=>target===undefined ? [...new Set([...session.reported.values()].flatMap(ids=>[...ids]))] : [...(session.reported.get(target) ?? [])]};
   }
   hasActive(instance:string):boolean {
@@ -149,14 +149,17 @@ export class NativeMcpSessions {
     });
   }
 
-  private menu(session:Session):typeof TOOLS {
-    return TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>{
+  /** M-2133: the connection's ceiling is member names (the helper adds the composites that fold them). */
+  private memberNames(session:Session):string[] { return TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>tool.name); }
+
+  private menu(session:Session):Array<{name:string}> {
+    return withComposites(TOOLS.filter(tool=>this.allowed(session,tool.name)).map(tool=>{
       const readTask=tool.name==="task" && this.readOnly(session);
       const scoped=readTask
         ? {...tool,description:`Read-only task lookup. Allowed actions: ${READ_TASK_ACTIONS.join(", ")}.`,inputSchema:{...tool.inputSchema,properties:{...tool.inputSchema.properties,action:{type:"string",enum:READ_TASK_ACTIONS}}}}
         : tool;
       return {...scoped,annotations:{readOnlyHint:tool.name==="list_instances" || tool.name==="describe_instance" || tool.name==="delivery_status" || ["hub_room_list","hub_room_members","hub_people_search"].includes(tool.name) || readTask}};
-    });
+    }));
   }
 
   /** Consumes native-token requests even when invalid; they must never fall through to legacy credentials. */
@@ -184,11 +187,15 @@ export class NativeMcpSessions {
         if(Object.keys(body.params).length || body.callId!==undefined){json(res,400,{error:"Invalid native MCP tool listing"});return;}
         json(res,200,{tools:this.menu(session)});return;
       }
-      const params=body.params,name=params.name;
+      const params=body.params;
       if(typeof body.callId!=="string" || !/^[A-Za-z0-9._:-]{1,128}$/.test(body.callId)
-        || Object.keys(params).some(key=>!["name","arguments"].includes(key)) || typeof name!=="string" || !object(params.arguments)) {
+        || Object.keys(params).some(key=>!["name","arguments"].includes(key)) || typeof params.name!=="string" || !object(params.arguments)) {
         json(res,400,{error:"Invalid native MCP tool call"});return;
       }
+      // M-2133: a composite is its action's tool for every check below.
+      const expanded=expandCompositeCall(params.name,params.arguments);
+      if("error" in expanded){json(res,200,toolError(expanded.error));return;}
+      const name=expanded.name;params.arguments=expanded.args;
       if(!this.allowed(session,name)){json(res,403,{error:"This native MCP tool is not available to this instance or access mode"});return;}
       const parsed=OUTBOUND_TOOL_SCHEMAS.get(name)?.safeParse(params.arguments);
       if(!parsed?.success){json(res,200,toolError("Invalid tool arguments"));return;}

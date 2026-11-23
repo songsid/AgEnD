@@ -5,6 +5,7 @@ import { request } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateNativeMcpConnection, type NativeMcpConnection } from "./windows-cli-providers.js";
+import { facingToolNames } from "./composite-tools.js";
 
 type ObjectValue = Record<string,unknown>;
 const object = (v:unknown): v is ObjectValue => !!v && typeof v === "object" && !Array.isArray(v);
@@ -60,9 +61,11 @@ export async function nativeMcpRpc(raw:unknown,connection:NativeMcpConnection,tr
     else if(raw.method==="tools/list"){
       const listed=await transport({op:"native-mcp",method:"tools/list",params:{}});
       if(!object(listed)||!Array.isArray(listed.tools))throw new Error("Invalid AgEnD tool list");
-      result={tools:listed.tools.filter(tool=>object(tool)&&typeof tool.name==="string"&&connection.tools.includes(tool.name))};
+      // M-2133: the ceiling is member names; a composite whose member is in it is listed and callable too (expanded server-side).
+      const facing=facingToolNames(connection.tools);
+      result={tools:listed.tools.filter(tool=>object(tool)&&typeof tool.name==="string"&&facing.includes(tool.name))};
     }else if(raw.method==="tools/call"){
-      if(!object(raw.params)||typeof raw.params.name!=="string"||!connection.tools.includes(raw.params.name)||raw.params.arguments!==undefined&&!object(raw.params.arguments))return error(-32602,"Tool is unavailable for this execution");
+      if(!object(raw.params)||typeof raw.params.name!=="string"||!facingToolNames(connection.tools).includes(raw.params.name)||raw.params.arguments!==undefined&&!object(raw.params.arguments))return error(-32602,"Tool is unavailable for this execution");
       const callId=nativeMcpCallId(connection.token,id,context?.clientSessionId);
       result=await transport({op:"native-mcp",method:"tools/call",callId,params:{name:raw.params.name,arguments:raw.params.arguments ?? {}}});
       if(!object(result)||!Array.isArray(result.content))throw new Error("Invalid AgEnD tool result");
