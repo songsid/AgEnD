@@ -53,7 +53,7 @@ it("offered: on for new and existing rooms from one default, with no line for st
   expect((await r!.call(w.a, "GET", "/hub/v1/session")).json.features).toContain("room-office-v1");
   expect(ROOM_OFFICE_DEFAULT).toEqual({ existingRooms: true, newRooms: true });
   expect(r!.db.prepare("SELECT office_enabled FROM hub_group_rooms WHERE id=?").get(w.id)).toEqual({ office_enabled: newRoomOffice() });
-  expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}`)).json.settings.office).toEqual({ enabled: true, style: "cozy" });
+  expect((await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}`)).json.settings.office).toEqual({ enabled: true, style: "studio" });
   // A room made before this shipped has no stored value: the default for existing rooms reads it.
   r!.db.prepare("UPDATE hub_group_rooms SET office_enabled=NULL WHERE id=?").run(w.id);
   expect(officeOn(null)).toBe(ROOM_OFFICE_DEFAULT.existingRooms);
@@ -67,7 +67,7 @@ it("only managers turn it on or off; each change is one line, a no-change none; 
   expect((await r!.call(w.a, "PATCH", `/hub/v1/rooms/${w.id}`, { office: { enabled: false } })).status).toBe(403);
   expect((await r!.call(w.admin, "PATCH", `/hub/v1/rooms/${w.id}`, { office: { enabled: false, style: "pixel" } })).status).toBe(400);
   const off = await r!.call(w.admin, "PATCH", `/hub/v1/rooms/${w.id}`, { office: { enabled: false } });
-  expect(off.status).toBe(200); expect(off.json.settings.office).toEqual({ enabled: false, style: "cozy" });
+  expect(off.status).toBe(200); expect(off.json.settings.office).toEqual({ enabled: false, style: "studio" });
   await r!.restartHttp();
   expect((await officeLines(w)).map(m => [m.system, m.text])).toEqual([[{ kind: "office-changed", name: "Hub Admin", enabled: false }, "Hub Admin turned the room office off."]]);
   expect(await state(w)).toMatchObject({ status: 409, json: { code: "office-off" } });
@@ -98,10 +98,10 @@ it("draws exactly the room's agents and assistant, share-shaped, with no words, 
   const view = (await state(w)).json;
   expect(view).toMatchObject({ org: { general: [], teams: [], instances: {} }, needs: [], text: false, office: "room",
     traffic: { items: [], delegations: [] } });
-  expect(view.offices).toEqual({ rev: 0, readable: true, offices: [{ id: "room", name: "Weekly", skin: "cozy", members: view.instances.map((i: any) => i.name) }] });
+  expect(view.offices).toEqual({ rev: 0, readable: true, offices: [{ id: "room", name: "Weekly", skin: "studio", members: view.instances.map((i: any) => i.name) }] });
   expect(view.instances.map((i: any) => i.name).sort()).toEqual(["assistant", w.e.id, w.f.id].sort());
-  expect(view.instances.find((i: any) => i.name === w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle" });
-  expect(view.instances.find((i: any) => i.name === "assistant")).toEqual({ name: "assistant", display_name: "Hub assistant", status: "running", execution_state: "idle", assistant: true });
+  expect(view.instances.find((i: any) => i.name === w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle", presence: "idle" });
+  expect(view.instances.find((i: any) => i.name === "assistant")).toEqual({ name: "assistant", display_name: "Hub assistant", status: "running", execution_state: "idle", presence: "idle", assistant: true });
   // An agent that leaves the room leaves its office at once.
   const member = (await r!.call(w.admin, "GET", `/hub/v1/rooms/${w.id}`)).json.members.find((m: any) => m.id === w.f.id);
   expect((await r!.call(w.admin, "DELETE", `/hub/v1/rooms/${w.id}/members/${member.id}`)).status).toBe(200);
@@ -114,13 +114,13 @@ it("shows each agent in the member list's own state, never a different one", asy
   const frame = (s: Record<string, unknown>) => r!.http.receive(r!.frame("agent.state", { exposureId: w.e.id, ...s }, w.link) as never, w.link);
   await frame({ state: "working" });
   expect(await listed(w.e.id)).toBe("working");
-  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "working" });
+  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "working", presence: "working" });
   await frame({ state: "paused", reason: "auth" });
   expect(await listed(w.e.id)).toBe("paused");
-  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "paused" });
+  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "paused", presence: "paused" });
   w.link.alive = false;
   expect(await listed(w.e.id)).toBe("offline");
-  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "stopped" });
+  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "stopped", presence: "offline" });
 });
 
 it("marks an agent answering in this room while the Hub waits on its answer, and clears it on the answer", async () => {
@@ -128,11 +128,11 @@ it("marks an agent answering in this room while the Hub waits on its answer, and
   const post = await r!.call(w.a, "POST", `/hub/v1/rooms/${w.id}/messages`, { text: "Status?", mentions: [w.e.id], idempotencyKey: randomUUID() });
   expect(post.status).toBe(200);
   await vi.waitFor(() => expect(asks()).toHaveLength(1));
-  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "working", answering: true });
-  expect(await agent(w, w.f.id)).toEqual({ name: w.f.id, display_name: "Planner", status: "running", execution_state: "idle" });
+  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "working", presence: "idle", answering: true });
+  expect(await agent(w, w.f.id)).toEqual({ name: w.f.id, display_name: "Planner", status: "running", execution_state: "idle", presence: "idle" });
   const input = asks()[0]!.frame.payload as HubRoomAsk;
   await r!.http.receive(r!.frame("room.answer", { messageId: input.messageId, roomId: w.id, exposureId: w.e.id, answerId: randomUUID(), text: "Ready" }, w.link) as never, w.link);
-  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle" });
+  expect(await agent(w, w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle", presence: "idle" });
 });
 
 it("clears answering when the wait ends without an answer", async () => {
@@ -142,5 +142,44 @@ it("clears answering when the wait ends without an answer", async () => {
   expect((await agent(w, w.e.id)).answering).toBe(true);
   w.advance(24 * 60 * 60_000);
   const fresh = await r!.signIn("alex");
-  expect((await state(w, fresh)).json.instances.find((i: any) => i.name === w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle" });
+  expect((await state(w, fresh)).json.instances.find((i: any) => i.name === w.e.id)).toEqual({ name: w.e.id, display_name: "Notes", status: "running", execution_state: "idle", presence: "idle" });
+});
+
+it("a personal agent: its computer offline (later) is away, never at work; its working job on a question here is answering", async () => {
+  let personal: "idle" | "working" | "paused" | "offline" | "later" = "later";
+  const w = await world();
+  r!.httpDeps.personal = { assertSource() {}, enqueue() {}, presence: () => personal, wake() {} };
+  await r!.restartHttp();
+  const owner = personKeyString(r!.admin), agentId = randomUUID(), exposureId = randomUUID(), now = Date.now();
+  r!.db.prepare("INSERT INTO hub_personal_agents(id,owner,machine_id,cli,created_at,updated_at) VALUES(?,?,?,'codex',0,0)").run(agentId, owner, randomUUID());
+  r!.db.prepare("INSERT INTO hub_exposures(id,owner,display_name,revision,state,updated_at,source_kind,personal_agent_id) VALUES(?,?,'Laptop helper',1,'published',0,'personal',?)").run(exposureId, owner, agentId);
+  const agentMember = randomUUID();
+  r!.db.prepare("INSERT INTO hub_room_members(id,room_id,kind,subject,role,joined_sequence,owner_at_join) VALUES(?,?,'agent',?,'member',0,?)").run(agentMember, w.id, exposureId, owner);
+  const listed = async () => (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.id}`)).json.members.find((m: any) => m.id === exposureId).presence;
+  expect(await listed()).toBe("later");
+  expect(await agent(w, exposureId)).toEqual({ name: exposureId, display_name: "Laptop helper", status: "stopped", presence: "later" });
+  personal = "idle";
+  expect(await agent(w, exposureId)).toEqual({ name: exposureId, display_name: "Laptop helper", status: "running", execution_state: "idle", presence: "idle" });
+  // A question asked here, queued for it, that its job is working on: answering (a message's progress counts it as sent).
+  const post = (r!.db.prepare("SELECT id FROM hub_room_posts WHERE room_id=? ORDER BY sequence LIMIT 1").get(w.id) as { id: string }).id, delivery = randomUUID(), job = randomUUID();
+  const asker = r!.db.prepare("SELECT id,subject FROM hub_room_members WHERE room_id=? AND kind='person' AND role='member'").get(w.id) as { id: string; subject: string };
+  r!.db.prepare(`INSERT INTO hub_room_deliveries(id,room_id,parent_id,reply_id,exposure_id,exposure_revision,fleet_id,owner,asker,asker_member,agent_member,payload_ref,payload_digest,state,created_at,expires_at)
+    VALUES(?,?,?,?,?,1,NULL,?,?,?,?,'ref',?,'queued',?,?)`).run(delivery, w.id, post, post, exposureId, owner, asker.subject, asker.id, agentMember, "d".repeat(64), now, now + 3_600_000);
+  r!.db.prepare("INSERT INTO hub_personal_jobs(id,personal_agent_id,room_delivery_id,machine_id,owner,exposure_revision,state,created_at) VALUES(?,?,?,?,?,1,'queued',?)").run(job, agentId, delivery, randomUUID(), owner, now);
+  expect((await agent(w, exposureId)).answering).toBeUndefined();
+  expect(r!.db.prepare("SELECT state FROM hub_room_deliveries WHERE id=?").get(delivery)).toEqual({ state: "queued" });
+  r!.db.prepare("UPDATE hub_personal_jobs SET state='working' WHERE id=?").run(job);
+  expect(await agent(w, exposureId)).toEqual({ name: exposureId, display_name: "Laptop helper", status: "running", execution_state: "working", presence: "idle", answering: true });
+  r!.db.prepare("UPDATE hub_personal_jobs SET state='answered' WHERE id=?").run(job);
+  r!.db.prepare("UPDATE hub_room_deliveries SET state='answered' WHERE id=?").run(delivery);
+  expect((await agent(w, exposureId)).answering).toBeUndefined();
+});
+
+it("words every presence the member list has; an unknown one is away", async () => {
+  const { officeAgent } = await import("../src/hub/rooms/office.js");
+  expect(officeAgent("x", "X", "later", true)).toEqual({ name: "x", display_name: "X", status: "stopped", presence: "later" });
+  expect(officeAgent("x", "X", "offline", true)).toEqual({ name: "x", display_name: "X", status: "stopped", presence: "offline" });
+  expect(officeAgent("x", "X", "paused", true)).toEqual({ name: "x", display_name: "X", status: "paused", presence: "paused" });
+  expect(officeAgent("x", "X", "something-new" as never, false)).toEqual({ name: "x", display_name: "X", status: "stopped", presence: "offline" });
+  expect(officeAgent("x", "X", "working", false)).toEqual({ name: "x", display_name: "X", status: "running", execution_state: "working", presence: "working" });
 });
