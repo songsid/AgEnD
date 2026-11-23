@@ -52,6 +52,7 @@ import { HubPolicyService } from "../policy.js";
 import { HubRoomsService } from "../rooms.js";
 import { HubRoomAdmin } from "../rooms/admin.js";
 import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
+import { HUB_ROOM_OFFICE_FEATURE } from "../rooms/office.js";
 import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
@@ -198,7 +199,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   };
 
   const rooms = new HubRoomsService(core, policy);
-  const groupRooms = new HubGroupRooms(core);
+  const groupRooms = new HubGroupRooms(core, deps.roomOffice === true);
   const mcp = new HubMcpDoor(core,sessions,{groups:groupRooms,direct:rooms,catalog});
   const invitations = deps.roomInvitations?.(core, groupRooms.invitationHost());
   const roomAgentRequests = deps.roomAgentRequests?.(core, groupRooms.invitationHost());
@@ -309,6 +310,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       ...(deps.companyJoin ? ["company-join-v1", "enrolment-code-v1"] : []), ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []),
       ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])];
     offered.push("mcp-apps-v1");
+    if (deps.roomOffice) offered.push(HUB_ROOM_OFFICE_FEATURE);
     const features = offered.length ? { features: offered } : {};
     let r: RegExpExecArray | null;
 
@@ -838,6 +840,14 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (groupRooms.has(roomId)) return send(res, 200, await guard(() => groupRooms.markRead(ctx, roomId, b.upTo)));
       const room = await guard(() => rooms.view(ctx, roomId)); markDirectRead(core, roomId, str(b.upTo));
       groupRooms.publish({ type: "unread.changed", roomId, data: { roomId }, audiencePerson: personKeyString(room.asker) }); return send(res, 200, { ok: true });
+    }
+    // M-3533 R1: a group room's office, for its members (room-office-v1; 404 while the Hub does not offer it).
+    if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/office\/state$/))) {
+      if (method !== "GET") throw new HttpError(405, "method");
+      if ([...query.keys()].length) throw new HubProtocolError("invalid");
+      signedIn(); const roomId = uuid(r[1]);
+      if (!groupRooms.has(roomId)) throw new HttpError(404, "not-found");
+      return send(res, 200, await guard(() => groupRooms.officeState(ctx, roomId)));
     }
     // M-3340: personal pins in a group room — the signed-in person's own (GET), pin (PUT) or unpin (DELETE) one message.
     if ((r = m(/^\/hub\/v1\/rooms\/([^/]+)\/pins$/))) {
