@@ -1,3 +1,4 @@
+import { MEMORY_SECTION } from "./memory-guidance.js";
 import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -319,6 +320,9 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
       }
     }
   }
+
+  // ── Memory (soul.md) — every Fleet agent, General included ──
+  sections.push(MEMORY_SECTION);
 
   // ── Active decisions ──
   const decisions = params.decisions;
