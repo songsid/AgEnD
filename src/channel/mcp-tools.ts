@@ -284,7 +284,7 @@ export const COMPOSITE_TOOLS: readonly CompositeTool[] = [
       + "list_emojis {name?, limit?, primary_only?, refresh?, with_image_urls?}: your status stamps, the standard emojis your platform accepts and (Discord) server emojis; "
       + "preview_emojis {emojis: up to 8 <:name:id>}: local image paths to Read; "
       + "set_persona_emoji {emoji, status?}: your status stamp (status default delivered; also received, queued, processing, failed, progress_prefix, photo, attachment; \"\" removes it); "
-      + "list_stickers {set?, name?, limit?, refresh?}: stickers you can send with reply({stickers: [id]}); "
+      + "list_stickers {set?, name?, limit?, refresh?}: stickers you can send; pick an id from that list and send it with reply({stickers: [id]}) in the same turn; "
       + "preview_stickers {stickers: up to 8 ids}: local image paths to Read. The persona-emoji skill has the details.",
     actions: {
       list_emojis: "list_emojis", preview_emojis: "preview_emojis", set_persona_emoji: "set_persona_emoji",
