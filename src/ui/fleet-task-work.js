@@ -8,7 +8,7 @@ import { Dialog } from "/assets/ui-dialog.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Skeleton } from "/assets/ui-states.js";
 import { GroupMark, InstanceAvatar, dotLabel, dotState, groupKind, groupLabel, groupOf, namesOf, namesStore } from "/assets/instance-nav.js";
-import { Who, boardApi, errorText, reviewLabel } from "./fleet-task-common.js";
+import { Who, boardApi, errorText, reviewLabel, waitsList, waitsOn } from "./fleet-task-common.js";
 
 const LABEL = { back: "tasks.workSentBack", doing: "tasks.workDoing", blocked: "tasks.workBlocked", review: "tasks.workReview", main: "tasks.workMain", ready: "tasks.workReady", waiting: "tasks.workWaiting" };
 
@@ -25,7 +25,7 @@ export function workLines(w) {
     ...(w.review || []).map((c) => line("review", c)),
     ...(w.mains || []).map((c) => line("main", c, c.progress && c.progress.total ? t("tasks.workSubs", c.progress.done, c.progress.total) : "")),
     ...(w.ready || []).map((c) => line("ready", c, c.assignee ? "" : t("tasks.workClaimable"))),
-    ...(w.waiting || []).map((c) => line("waiting", c, t("tasks.workWaitsFor", (c.unmetDeps || []).join(t("tasks.workJoin"))))),
+    ...(w.waiting || []).map((c) => line("waiting", c, waitsOn(c) ? t("tasks.workWaitsFor", waitsList(c, t("tasks.workJoin"))) : "")),
   ];
 }
 

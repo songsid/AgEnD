@@ -1,29 +1,39 @@
 // The task board (Fleet › Tasks): projects → main tasks (M-) → sub tasks (S-), ported from taskhall (任務會所).
 // Home lists the projects and what waits for the person; a project is a board of its main tasks by status, each able to
-// open up its sub tasks; a card opens in a dialog (fleet-task-card.js). Every write goes through /ui/tasks/* as the
+// open up its sub tasks; a card opens as a page of its own (fleet-task-card.js). Every write goes through /ui/tasks/* as the
 // signed-in person, under the same rules an instance's task tool meets (scheduler/task-board.ts). A change from anywhere
 // (an agent's tool, another tab) arrives as a "tasks" stream event with the board's revision; the board reads again
 // when its revision moved. Over the temporary public link the board is read-only (the server refuses its writes there).
-// A card moves by drag, by Alt+arrow keys on its title, or by its dialog ("Move to…", up and down) — touch and keyboard
-// need no drag. A project shows as the board or as a list, and filters stack (fleet-task-view.js). A right click on a
-// card (or the menu key) opens its menu; its dialog steps to the previous / next card (fleet-task-menu.js).
+// A card moves by drag, by Alt+arrow keys on its title, by its ⋯ menu or its page's Status chip, up and down — touch and
+// keyboard need no drag. A project shows as the board or as a list (a switch in the toolbar, with search and filters in
+// the same row, fleet-task-view.js); on a phone the board shows one status at a time. A card's ⋯ (or a right click, or the
+// menu key) opens its menu; its page steps to the previous / next card (fleet-task-menu.js). The open card is in the
+// address (`?card=`): opening one adds a history entry, so Back returns to the board or the list.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t } from "/assets/app-i18n.js";
 import { recordEdit } from "/assets/text-undo.js";
-import { appStore, useStore } from "/assets/app-store.js";
+import { appStore } from "/assets/app-store.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, AssigneeOption, COLUMNS, NO_PROJECT, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, reviewLabel, waitsForYou, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
-import { CardDialog } from "./fleet-task-card.js";
+import { AskHost, COLUMNS, NO_PROJECT, boardReadOnly, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, scrollBox, tileStatus, waitsForYou, waitsList, waitsOn, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { CardPage, assigneeItems } from "./fleet-task-card.js";
 import { CardMenu, cardAt, cardMenuItems, pageOrder, stepsOf } from "./fleet-task-menu.js";
-import { DisplayMenu, FilterBar, FilterMenu, ListView, SubList, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, startFilters, writeDisplay } from "./fleet-task-view.js";
+import { ListView, NO_REACH, SubList, TaskToolbar, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, scrollReach, startFilters, writeDisplay } from "./fleet-task-view.js";
+import { CreateMainDialog } from "./fleet-task-create.js";
 import { InstancesDrawer } from "./fleet-task-work.js";
+import { RunMark, inProgressBy, runOf, useRunContext } from "./fleet-task-run.js";
+import { OwnerChip, otherWorkers, quietInfo } from "./fleet-task-owner.js";
 import { InsightsDialog } from "./fleet-task-stats.js";
 
 const PROJECT_KEY = "agend_tasks_project";
+const QUERY_KEY = "agend_tasks_query";
+
+/** The card the address names (`?card=`), or null. */
+const cardInAddress = () => { try { return new URLSearchParams(globalThis.location?.search || "").get("card") || null; } catch { return null; } };
+
 
 // ── The tab ───────────────────────────────────────────────
 
@@ -36,7 +46,9 @@ export function TaskBoardTab({ lease }) {
   const [state, setState] = useState(null);
   // `ifMoved`: a refresh that only wants the board if its revision moved (a stream event, a reconnect).
   const [version, setVersion] = useState({ n: 0, ifMoved: false });
-  const writable = true;   // M-3278: the public link's admin too (the host refuses a read-only session)
+  // Whether this page changes the board. A guest and a read-only session over the public link only read — nothing that edits, creates or moves is
+  // drawn for them (the host refuses their writes too); an admin session over the link writes as itself (M-3278), as the dashboard does.
+  const writable = !boardReadOnly();
   const [at, setAtRaw] = useState(() => {
     let v = readStored(PROJECT_KEY, "");
     try { v = new URLSearchParams(globalThis.location?.search || "").get("tp") ?? v; } catch { /* no address bar */ }
@@ -50,16 +62,21 @@ export function TaskBoardTab({ lease }) {
   const [dialog, setDialog] = useState(null);
   // A card's menu ({ card, x, y, el }), and the cards the page showed when a card's dialog opened (its Previous / Next).
   const [menu, setMenu] = useState(null);
-  const [trail, setTrail] = useState([]);
+  // The assignee picker a tile's or a row's avatar opens ({ id, x, y, el, names }), the card page's list of choices.
+  const [ownerMenu, setOwnerMenu] = useState(null);
+  const [trail, setTrail] = useState(() => []);
   // How a project shows (board or list, …) and its filters: remembered on this device, the filters also in the address.
   const [display, setDisplayRaw] = useState(readDisplay);
   const [filters, setFiltersRaw] = useState(() => startFilters(globalThis.location?.search));
+  // The project's search words, kept on this device with the filters and the view (and cleared on the way to another project).
+  const [query, setQueryRaw] = useState(() => readStored(QUERY_KEY, ""));
+  const setQuery = (q) => { setQueryRaw(q); writeStored(QUERY_KEY, q === "" ? null : q); };
   const setDisplay = (d) => { setDisplayRaw(d); writeDisplay(d); };
   const setFilters = (f) => { setFiltersRaw(f); keepFilters(f); };
   // Finished cards "All": every done main task is read only when asked for (the server keeps recent ones otherwise).
   const allDone = display.done === "all";
   const seq = useRef(0);
-  const setAt = (v) => { setAtRaw(v); writeStored(PROJECT_KEY, v === null ? null : String(v)); };
+  const setAt = (v) => { setAtRaw(v); setQuery(""); writeStored(PROJECT_KEY, v === null ? null : String(v)); };
   const reload = (ifMoved = false) => setVersion((v) => ({ n: v.n + 1, ifMoved }));
   const shown = useRef({ rev: null, allDone: false });
 
@@ -114,18 +131,58 @@ export function TaskBoardTab({ lease }) {
     } catch { /* no address bar */ }
   }, [at, filters]);
 
-  const openCard = (id) => {
+  // The open card is in the address. Opening one from the board adds a history entry (Back returns to the board or the
+  // list), and so does opening another from the card (a sub task, a dependency); stepping to the previous / next card
+  // replaces it. The entry says how many cards deep it is, so "Back" on the page can go all the way to the board.
+  const depthNow = () => { try { const d = globalThis.history.state && globalThis.history.state.tbCard; return Number.isInteger(d) ? d : 0; } catch { return 0; } };
+  const putCard = (id, replace) => {
+    try {
+      const u = new URL(globalThis.location.href);
+      if (id === null) u.searchParams.delete("card"); else u.searchParams.set("card", id);
+      const depth = id === null ? 0 : replace ? Math.max(1, depthNow()) : depthNow() + 1;
+      const state = id === null ? null : { ...(globalThis.history.state || {}), tbCard: depth };
+      if (replace || id === null) globalThis.history.replaceState(state, "", u); else globalThis.history.pushState(state, "", u);
+    } catch { /* no address bar */ }
+  };
+  const openCard = (id, replace = false) => {
+    if (!openId) { setTrail(pageOrder()); rememberScroll(); }   // the cards the page shows now are the walk (Previous / Next)
     setOpenId(id);
-    try { const u = new URL(globalThis.location.href); u.searchParams.set("card", id); globalThis.history.replaceState(globalThis.history.state, "", u); } catch { /* no address bar */ }
+    putCard(id, replace && !!openId);
   };
+  const stepToCard = (id) => openCard(id, true);
+  const lastOpen = useRef(null);      // the card whose page was just left: its tile or row takes the focus back
+  const openRef = useRef(openId);
+  openRef.current = openId;
   const closeCard = () => {
-    setOpenId(null);
+    const depth = depthNow();
+    lastOpen.current = openId;
     setTrail([]);
-    try { const u = new URL(globalThis.location.href); u.searchParams.delete("card"); globalThis.history.replaceState(globalThis.history.state, "", u); } catch { /* no address bar */ }
+    if (depth > 0) { try { globalThis.history.go(-depth); return; } catch { /* fall through: just drop the address */ } }
+    setOpenId(null);
+    putCard(null, true);
   };
-
-  // A card's dialog walks the page's cards in the order shown when it opened (read once the page is drawn).
-  useEffect(() => { if (openId && !trail.length) setTrail(pageOrder()); }, [openId, state]);
+  // Back and Forward bring the card the address names (or the board).
+  useEffect(() => {
+    const onPop = () => { const id = cardInAddress(); if (!id && openRef.current) lastOpen.current = openRef.current; setOpenId(id); if (!id) setTrail([]); };
+    if (typeof window === "undefined") return undefined;
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+  // The board is where it was left when Back brings it again.
+  const scrolled = useRef(null);
+  const rememberScroll = () => { try { scrolled.current = scrollBox()?.scrollTop ?? null; } catch { scrolled.current = null; } };
+  useEffect(() => {
+    if (openId) return;
+    if (scrolled.current !== null) {
+      const box = scrollBox(), top = scrolled.current;
+      scrolled.current = null;
+      if (box) box.scrollTop = top;
+    }
+    const id = lastOpen.current;
+    if (!id) return;
+    const at = document.querySelector(`[data-tile="${id}"] .tb-tile-title, [data-row="${id}"] .tb-row-title`);
+    if (at) { lastOpen.current = null; at.focus({ preventScroll: true }); }
+  }, [openId, state]);
 
   // #2246 step 3: who works on what — the drawer gives way to a card opened from it (one drawer at a time).
   const showInstances = () => setDialog({ kind: "instances" });
@@ -143,8 +200,8 @@ export function TaskBoardTab({ lease }) {
   const project = at === null ? null : at === NO_PROJECT ? NO_PROJECT : projects.find((p) => p.id === at) || null;
   const body = project === null
     ? html`<${Home} cards=${cards} projects=${projects} stats=${stats} writable=${writable} onOpenProject=${setAt} onOpen=${openCard} onDialog=${setDialog} onInstances=${showInstances} reload=${reload} />`
-    : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} display=${display} filters=${filters} writable=${writable}
-        onDisplay=${setDisplay} onFilters=${setFilters} onBack=${() => setAt(null)}
+    : html`<${ProjectBoard} project=${project} cards=${cards} stats=${stats} flashed=${flashed} display=${display} filters=${filters} query=${query} writable=${writable}
+        onDisplay=${setDisplay} onFilters=${setFilters} onQuery=${setQuery} onBack=${() => setAt(null)} onMore=${openMenuFor} onOwner=${openOwnerMenu}
         onOpen=${openCard} onCreate=${() => setDialog({ kind: "main", project: project === NO_PROJECT ? null : project.id })} onInstances=${showInstances} reload=${reload} />`;
 
   /** A right click on a card, or the keyboard's menu key on it (no pointer: the menu goes under the card). */
@@ -157,10 +214,42 @@ export function TaskBoardTab({ lease }) {
     if (!x && !y && typeof hit.el.getBoundingClientRect === "function") { const r = hit.el.getBoundingClientRect(); x = r.left + 8; y = r.bottom; }
     setMenu({ id: card.id, x, y, el: hit.el });
   }
+  /** A card's ⋯ button (board tile, list row): the same menu as a right click, under the button — for touch, which has no right click. */
+  function openMenuFor(card, el) {
+    const r = el && typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : { left: 0, bottom: 0 };
+    setMenu({ id: card.id, x: r.left, y: r.bottom, el });
+  }
+  /** The avatar of a tile or a row: the card page's assignee picker, under the button (the instances as the page knows them now). */
+  function openOwnerMenu(card, el) {
+    const r = el && typeof el.getBoundingClientRect === "function" ? el.getBoundingClientRect() : { left: 0, bottom: 0 };
+    const names = (appStore.get().instances || []).map((i) => i.name);
+    setMenu(null);
+    setOwnerMenu({ id: card.id, x: r.left, y: r.bottom, el, names });
+  }
+  function closeOwnerMenu(refocus) {
+    const el = ownerMenu && ownerMenu.el;
+    setOwnerMenu(null);
+    if (refocus && el && document.contains?.(el)) { quietInfo(); el.focus?.(); }
+  }
+  /**
+   * A new assignee for a card (a name, null for nobody, or "\u0000other" to ask for any name) — the menu's and the avatar's, one
+   * write with the version the board showed: a card changed since (409) says so as the card page does, and the board reads again.
+   */
+  async function assignTo(card, value) {
+    try {
+      const name = value === "\u0000other" ? await askText({ title: t("taskcard.otherTitle"), label: t("taskcard.otherLabel"), required: true }) : value;
+      if (value === "\u0000other" && !name) return;
+      const r = await boardApi.update(card.id, { assignee: name, version: card.version });
+      for (const n of notesForPeople(r.notes)) toast(n);
+      reload();
+    } catch (err) {
+      if (err.status === 409) { toast(t("taskowner.conflict", card.id), false); reload(); } else toast(errorText(err), false);
+    }
+  }
   function closeMenu(refocus) {
     const el = menu && menu.el;
     setMenu(null);
-    if (refocus && el && document.contains?.(el)) (el.querySelector("button") || el).focus?.();
+    if (refocus && el && document.contains?.(el)) (el.querySelector(".tb-tile-title, .tb-row-title, .tb-wait-title") || el.querySelector("button") || el).focus?.();
   }
   /** A menu choice, through the calls and questions the card's dialog uses. */
   async function menuAct(card, a) {
@@ -172,10 +261,10 @@ export function TaskBoardTab({ lease }) {
       else if (a.kind === "answer") after(await answerBlocked(card), "tasks.answered");
       else if (a.kind === "move") after(await moveCard(card, a.to));
       else if (a.kind === "cancel") after(await moveCard(card, "cancelled"));
-      else if (a.kind === "assign" || a.kind === "assignOther" || a.kind === "priority") {
-        const value = a.kind === "assignOther" ? await askText({ title: t("taskcard.otherTitle"), label: t("taskcard.otherLabel"), required: true }) : a.value;
-        if (a.kind === "assignOther" && !value) return;
-        const r = await boardApi.update(card.id, { [a.kind === "priority" ? "priority" : "assignee"]: value, version: card.version });
+      else if (a.kind === "assign") await assignTo(card, a.value);
+      else if (a.kind === "assignOther") await assignTo(card, "\u0000other");
+      else if (a.kind === "priority") {
+        const r = await boardApi.update(card.id, { priority: a.value, version: card.version });
         for (const n of notesForPeople(r.notes)) toast(n);
         reload();
       } else if (a.kind === "copyLink" || a.kind === "copyId") {
@@ -188,16 +277,24 @@ export function TaskBoardTab({ lease }) {
     } catch (err) { toast(errorText(err), false); }
   }
   const menuCard = menu ? cards.find((c) => c.id === menu.id) : null;
+  const ownerCard = ownerMenu ? cards.find((c) => c.id === ownerMenu.id) : null;
   // The assignees a card's menu offers: who has cards in its project (Other… names anyone else).
   const names = menuCard ? cards.filter((c) => projectKey(c) === projectKey(menuCard) && c.assignee).map((c) => c.assignee) : [];
 
+  // The card's breadcrumb: its project (a sub task's is its main task's).
+  const openCardRow = openId ? cards.find((c) => c.id === openId) : null;
+  const rootRow = openCardRow && openCardRow.kind === "sub" ? cards.find((c) => c.id === openCardRow.parentId) : openCardRow;
+  const where = rootRow ? (rootRow.projectId === null || rootRow.projectId === undefined ? t("tasks.noProject") : (projects.find((p) => p.id === rootRow.projectId) || {}).name || null) : null;
+
   return html`<div class="tb" onContextMenu=${onMenu}>
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
-    ${body}
+    ${openId ? html`<${CardPage} key=${openId} id=${openId} tick=${tick} projects=${projects} cards=${cards} boardOff=${boardOff} doing=${inProgressBy(cards)} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
+      steps=${stepsOf(trail, openId, cards)} where=${where} back=${t(display.view === "list" ? "taskcard.backList" : "taskcard.backBoard")}
+      onBack=${closeCard} onOpen=${openCard} onStep=${stepToCard} reloadBoard=${reload} />` : body}
     ${menuCard ? html`<${CardMenu} at=${{ x: menu.x, y: menu.y }} label=${t("taskmenu.label", menuCard.id)} onClose=${closeMenu}
       items=${cardMenuItems(menuCard, { writable, names, act: (a) => menuAct(menuCard, a) })} />` : null}
-    ${openId ? html`<${CardDialog} key=${openId} id=${openId} tick=${tick} projects=${projects} boardOff=${boardOff} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
-      steps=${stepsOf(trail, openId, cards)} onClose=${closeCard} onOpen=${openCard} reloadBoard=${reload} />` : null}
+    ${ownerCard ? html`<${CardMenu} at=${{ x: ownerMenu.x, y: ownerMenu.y }} label=${t("taskowner.changeOf", ownerCard.assignee || t("tasks.nobody"))} onClose=${closeOwnerMenu}
+      items=${assigneeItems(ownerCard, ownerMenu.names, boardOff, (v) => void assignTo(ownerCard, v))} />` : null}
     ${dialog && dialog.kind === "main" ? html`<${CreateMainDialog} projects=${projects} project=${dialog.project} boardOff=${boardOff} onClose=${() => setDialog(null)}
       onCreated=${(id) => { if (!lease.current()) return; setDialog(null); reload(); openCard(id); }} />` : null}
     ${dialog && dialog.kind === "instances" ? html`<${InstancesDrawer} tick=${tick} onClose=${() => setDialog(null)} onOpen=${(id) => { setDialog(null); openCard(id); }} />` : null}
@@ -220,11 +317,12 @@ function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialo
   const archived = projects.filter((p) => p.archived);
   const loose = stats(NO_PROJECT).mains > 0;
   return html`<div class="tb-home">
-    <div class="list-head tb-head"><span>${t("tasks.projects")}</span>
-      <span class="tb-grow"></span>
-      <${SearchBox} onOpen=${onOpen} />
-      <${InstancesButton} onClick=${onInstances} />
-      ${writable ? html`<button type="button" class="btn btn-primary" onClick=${() => onDialog({ kind: "project", project: null })}><${Icon} name="plus" size=${16} />${t("tasks.newProject")}</button>` : null}</div>
+    <div class="list-head tb-head s-page-head"><div class="s-page-title"><h2>${t("tasks.projects")}</h2></div>
+      <div class="tb-head-actions">
+        <${SearchBox} onOpen=${onOpen} />
+        <${InstancesButton} onClick=${onInstances} />
+        ${writable ? html`<button type="button" class="btn btn-primary" onClick=${() => onDialog({ kind: "project", project: null })}><${Icon} name="plus" size=${16} />${t("tasks.newProject")}</button>` : null}</div>
+    </div>
     <${Waiting} cards=${cards} writable=${writable} onOpen=${onOpen} reload=${reload} />
     ${active.length || loose ? html`<div class="tb-projects">
       ${active.map((p) => html`<${ProjectTile} key=${p.id} project=${p} stats=${stats(p.id)} onOpen=${() => onOpenProject(p.id)} onDialog=${writable ? onDialog : null} reload=${reload} />`)}
@@ -343,11 +441,15 @@ function SearchBox({ onOpen }) {
 
 // ── A project's board ─────────────────────────────────────
 
-function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filters, writable, onDisplay, onFilters, onBack, onOpen, onCreate, onInstances, reload }) {
+function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filters, query, writable, onDisplay, onFilters, onQuery, onBack, onOpen, onMore, onOwner, onCreate, onInstances, reload }) {
   const [expanded, setExpanded] = useState({});
+  // A phone shows one status at a time: the one picked here, else the first that has cards (the person's own first).
+  const [phoneStatus, setPhoneStatus] = useState(null);
   const [drag, setDrag] = useState(null);
   const [spot, setSpot] = useState(null);
   const key = project === NO_PROJECT ? NO_PROJECT : project.id;
+  // The project's lead instance (the owner info card says so of the instance that is it).
+  const lead = project === NO_PROJECT ? null : project.leadInstance || null;
   const archived = project !== NO_PROJECT && project.archived;
   const [insights, setInsights] = useState(false);
   const stats = statsOf(key);
@@ -359,23 +461,30 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
     return m;
   }, [cards]);
   const byId = useMemo(() => new Map(cards.map((c) => [c.id, c])), [cards]);
+  // What each instance with a card in progress is doing, and how many cards it has — one read of the store for
+  // the whole board; a tile or row says "running" only when it is the instance's one.
+  const runs = useRunContext(cards);
   const live = cards.filter((c) => c.kind === "main" && projectKey(c) === key && c.status !== "cancelled");
   // What the filters offer: this project's main tasks and their sub tasks.
   const own = live.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]);
-  const mains = live.filter((c) => doneShown(c, display.done, now) && mainMatches(c, subsOf.get(c.id), filters));
+  const mains = live.filter((c) => doneShown(c, display.done, now) && mainMatches(c, subsOf.get(c.id), filters, query));
+  const searching = filters.length > 0 || query.trim() !== "";
   // Finished cards hidden: no Done column (a card is still confirmed or finished from its dialog).
   const columns = display.done === "hide" ? COLUMNS.filter((s) => s !== "done") : COLUMNS;
+  const current = columns.includes(phoneStatus) ? phoneStatus : ["review", "claimed", "blocked", "open", "done"].find((s) => columns.includes(s) && mains.some((c) => c.status === s)) || columns[0];
   const toggleSubs = (id) => setExpanded({ ...expanded, [id]: !expanded[id] });
-  const empty = () => html`<${Empty} icon="tasks" title=${filters.length ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${filters.length || archived ? undefined : t("tasks.emptyBoardHint")} />`;
+  // Nothing left by a search says so, with the way out (the search is kept on the device, so a reload would show it again).
+  const empty = () => html`<${Empty} icon="tasks" title=${searching ? t("tasks.emptyFiltered") : t("tasks.emptyBoard")} hint=${searching || archived ? undefined : t("tasks.emptyBoardHint")}
+    action=${query.trim() !== "" ? html`<button type="button" class="btn" onClick=${() => onQuery("")}>${t("taskview.clearSearch")}</button>` : null} />`;
   // Insights counts what the page shows. A list with sub-task rows shows exactly its rows (each matched by the filter, a
   // finished one as Done shows it); the board, or a list without them, shows a main task with all its sub tasks.
   const insightCards = () => (display.view === "list" && display.subs
-    ? listRows(mains, subsOf, display, filters, now)
+    ? listRows(mains, subsOf, display, filters, now, query)
     : mains.flatMap((c) => [c, ...(subsOf.get(c.id) || [])]));
   const listBody = () => {
-    const rows = listRows(mains, subsOf, display, filters, now);
-    return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now}
-      expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} />`;
+    const rows = listRows(mains, subsOf, display, filters, now, query);
+    return rows.length === 0 ? empty() : html`<${ListView} rows=${rows} display=${display} subsOf=${subsOf} byId=${byId} flashed=${flashed} now=${now} runs=${runs}
+      expanded=${expanded} onToggleSubs=${toggleSubs} onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} onDisplay=${onDisplay} scope=${String(key)} />`;
   };
 
   const dropping = useRef(false);
@@ -390,6 +499,32 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
     const lost = !document.activeElement || document.activeElement === document.body;
     if (el && lost) el.focus();
   });
+  // The columns scroll sideways when they do not fit (at 1366 px the fourth is cut and the fifth is out of sight). A platform may hide its
+  // scrollbar until it is used, so while some columns are out of sight the toolbar has buttons that scroll them.
+  const scrollEl = useRef(null);
+  const [reach, setReach] = useState(NO_REACH);
+  const showsColumns = display.view !== "list" && mains.length > 0;
+  useEffect(() => {
+    const el = scrollEl.current;
+    if (!showsColumns || !el) { setReach(NO_REACH); return undefined; }
+    const measure = () => {
+      const next = scrollReach(el);
+      setReach((r) => (r.over === next.over && r.left === next.left && r.right === next.right ? r : next));
+    };
+    measure();
+    el.addEventListener("scroll", measure, { passive: true });
+    const watch = typeof ResizeObserver === "function" ? new ResizeObserver(measure) : null;
+    if (watch) { watch.observe(el); if (el.firstElementChild) watch.observe(el.firstElementChild); }
+    return () => { el.removeEventListener("scroll", measure); if (watch) watch.disconnect(); };
+  }, [showsColumns, columns.length]);
+  const scrollColumns = (direction) => {
+    const el = scrollEl.current;
+    if (!el) return;
+    const step = Math.max(272, Math.round(el.clientWidth * 0.8));
+    const calm = !!(globalThis.matchMedia && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    if (typeof el.scrollBy === "function") el.scrollBy({ left: direction * step, behavior: calm ? "auto" : "smooth" });
+    else el.scrollLeft += direction * step;
+  };
   async function drop(card, to, after, before) {
     if (dropping.current) return;
     dropping.current = true;
@@ -441,44 +576,47 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   }
 
   return html`<div class="tb-board-page">
-    <div class="tb-bar-head">
-      <button type="button" class="btn btn-ghost btn-sm" onClick=${onBack}><${Icon} name="back" size=${16} />${t("tasks.back")}</button>
-      <div class="tb-title">
-        <h2>${project === NO_PROJECT ? t("tasks.noProject") : project.name}</h2>
-        ${archived ? html`<span class="tb-flag">${t("tasks.archived")}</span>` : null}
-        ${project !== NO_PROJECT && project.description ? html`<span class="tb-project-desc">${project.description}</span>` : null}
+    <div class="tb-bar-head s-page-head">
+      <div class="tb-head-main">
+        <div class="tb-title s-page-title">
+          <button type="button" class="btn btn-ghost btn-sm tb-head-back" onClick=${onBack}><${Icon} name="back" size=${16} />${t("tasks.back")}</button>
+          <h2>${project === NO_PROJECT ? t("tasks.noProject") : project.name}</h2>
+          ${archived ? html`<span class="s-scope">${t("tasks.archived")}</span>` : null}
+        </div>
+        ${project !== NO_PROJECT && project.description ? html`<p class="s-page-lead tb-head-lead">${project.description}</p>` : null}
+        <div class="tb-stats" title=${t("tasks.percentTitle")}>
+          <span class="tb-pct">${stats.percent}%</span><${ProgressBar} progress=${stats.units} />
+          <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
+          ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
+          ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
+          <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
+        </div>
       </div>
-      <div class="tb-stats" title=${t("tasks.percentTitle")}>
-        <span class="tb-pct">${stats.percent}%</span><${ProgressBar} progress=${stats.units} />
-        <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
-        ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
-        ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
-        <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
+      <div class="tb-head-actions">
+        <${InstancesButton} onClick=${onInstances} />
+        ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
       </div>
-      <span class="tb-grow"></span>
-      <${InstancesButton} onClick=${onInstances} />
-      ${archived || !writable ? null : html`<button type="button" class="btn btn-primary" onClick=${onCreate}><${Icon} name="plus" size=${16} />${t("tasks.newMain")}</button>`}
     </div>
-    <div class="tb-view-bar">
-      <${FilterMenu} cards=${own} filters=${filters} onChange=${onFilters} />
-      <${DisplayMenu} display=${display} onChange=${onDisplay} />
-      <${FilterBar} cards=${own} filters=${filters} onChange=${onFilters} />
-    </div>
+    <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery}
+      scroller=${display.view === "list" ? null : { reach, by: scrollColumns }} />
     ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
-    : html`<div class="tb-scroll"><div class=${`tb-columns${columns.length < COLUMNS.length ? " no-done" : ""}`}>
+    : html`${html`<div class="tb-seg tb-status-seg" role="group" aria-label=${t("taskview.statusTabs")}>${columns.map((status) =>
+        html`<button key=${status} type="button" aria-pressed=${current === status ? "true" : "false"} class=${`tb-seg-btn${current === status ? " active" : ""}`}
+          onClick=${() => setPhoneStatus(status)}><span class=${`tb-dot st-${status}`} aria-hidden="true"></span>${t(`tasks.${status}`)} <span class="tb-count">${mains.filter((c) => c.status === status).length}</span></button>`)}</div>`}
+      <div class="tb-scroll" ref=${scrollEl}><div class="tb-columns">
       ${columns.map((status) => {
         const list = mains.filter((c) => c.status === status);
         const line = spot && spot.status === status ? spot.index : -1;
-        return html`<section key=${status} class=${`tb-col st-${status}${drag ? " can-drop" : ""}${line >= 0 ? " over" : ""}`} aria-label=${t(`tasks.${status}`)}
+        return html`<section key=${status} class=${`tb-col st-${status}${status === current ? " is-current" : ""}${drag ? " can-drop" : ""}${line >= 0 ? " over" : ""}`} aria-label=${t(`tasks.${status}`)}
           onDragOver=${(e) => over(e, status)} onDrop=${(e) => dropOn(e, status, list)}>
           <h3 class="tb-col-head"><span class="tb-dot"></span>${t(`tasks.${status}`)}
             ${status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
             <span class="tb-count">${list.length}</span></h3>
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
-            return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} writable=${writable}
+            return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} writable=${writable} cards=${cards} lead=${lead}
               expanded=${!!expanded[card.id]} onToggleSubs=${() => toggleSubs(card.id)}
-              onOpen=${onOpen} onKeyMove=${(e) => keyMove(card, e)}
+              onOpen=${onOpen} onMore=${onMore} onOwner=${onOwner} onKeyMove=${(e) => keyMove(card, e)}
               onDragStart=${(e) => { e.dataTransfer.setData("text/plain", card.id); e.dataTransfer.effectAllowed = "move"; setDrag(card); }} onDragEnd=${end} />`;
           })}
         </section>`;
@@ -505,8 +643,21 @@ function cellItems(list, draggingId, lineAt, render) {
   return items;
 }
 
-/** A card on the board: a main task shows its sub-task progress, and can open up the list. */
-function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSubs, onOpen, onKeyMove, onDragStart, onDragEnd }) {
+/** A main task's sub task at work, blocked or next, in one line: its label, number and title (+ how many more). */
+function NowLine({ now, label = true }) {
+  return html`<div class="tb-tile-now" title=${now.cards.map((c) => `${c.id} ${c.title}`).join("\n")}>
+    ${label ? html`<span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span>` : null}<span class="tb-code">${now.cards[0].id}</span>
+    <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>`;
+}
+
+/**
+ * A card on the board: rows from the top — the number, the priority and the size (and ⋯); the title (two lines at
+ * most, its whole text the tooltip); ONE line of status (`tileStatus`: why it is stuck, whom it waits for, what runs, what is
+ * next, the sub tasks' progress); the foot with the assignee (a button: the card page's picker, and an info card on hover) and
+ * the counts. The tile is as tall as its content; a main task can open up its sub tasks. No coloured bar at its left edge.
+ * A card whose agent is running says so with the "Running" mark in its status line (and keeps its accent edge and tint).
+ */
+function Tile({ card, dragging, flash, subs = [], runs, expanded, writable, cards, lead, onToggleSubs, onOpen, onMore, onOwner, onKeyMove, onDragStart, onDragEnd }) {
   const accepted = card.acceptance.filter((a) => a.done).length;
   const progress = card.progress;
   const hasSubs = !!progress && progress.total > 0;
@@ -516,87 +667,63 @@ function Tile({ card, dragging, flash, subs = [], expanded, writable, onToggleSu
   const gap = card.status === "review" ? wrapUpText(card) : "";
   // Who works on a main task now (a step may be its reviewer's), rather than who owns it.
   const now = hasSubs ? currentWork(card, subs) : null;
-  const workers = now ? workersOf(now.cards) : [];
+  const workers = now ? otherWorkers(workersOf(now.cards), card.assignee || "") : [];
+  // Its assignee (or, for a main task, a sub task's) is working on it now.
+  const run = runOf(card, runs, subs);
+  const running = !!run && run.state === "working" && !run.shared;
+  const status = tileStatus(card, { now, run, hasSubs });
+  const toggle = (e) => { e.stopPropagation(); onToggleSubs(); };
+  const toggleTitle = expanded ? t("tasks.hideSubs") : t("tasks.showSubs");
   // The tile is a group, not a button: its title is the control (keyboard, screen readers); a click anywhere opens it.
-  return html`<div class=${`tb-tile st-${card.status}${dragging ? " dragging" : ""}${flash ? " flash" : ""}`} data-tile=${card.id}
+  return html`<div class=${`tb-tile st-${card.status}${dragging ? " dragging" : ""}${flash ? " flash" : ""}${running ? " running" : ""}`} data-tile=${card.id}
     draggable=${writable} onDragStart=${writable ? onDragStart : undefined} onDragEnd=${writable ? onDragEnd : undefined}
-    onClick=${() => onOpen(card.id)}>
+    onClick=${(e) => { if (e.target && e.target.closest && e.target.closest(".tb-owner-pop")) return; onOpen(card.id); }}>
     <div class="tb-tile-top">
       <span class="tb-code">${card.id}</span>
       ${card.priority === "urgent" || card.priority === "high" ? html`<span class=${`tb-tag p-${card.priority}`}>${t(card.priority === "urgent" ? "tasks.urgentTag" : "tasks.highTag")}</span>` : null}
-      ${card.kind === "sub" && card.needsReview && card.status !== "done" ? html`<span class="tb-tag st-review" title=${t("tasks.needsReviewTitle")}>${t("tasks.needsReview")}</span>` : null}
-      ${gap ? html`<span class="tb-tag wrapup" title=${t("tasks.wrapLine", gap)}>${t("tasks.wrapTag")}</span>` : null}
+      <span class="tb-tile-tags">
+        ${card.kind === "sub" && card.needsReview && card.status !== "done" ? html`<span class="tb-tag st-review" title=${t("tasks.needsReviewTitle")}>${t("tasks.needsReview")}</span>` : null}
+        ${gap ? html`<span class="tb-tag wrapup" title=${t("tasks.wrapLine", gap)}>${t("tasks.wrapTag")}</span>` : null}
+      </span>
       <span class="tb-grow"></span>
       ${card.size ? html`<span class="tb-size" title=${t("tasks.size")}>${t(`tasks.size${card.size}`)}</span>` : null}
+      ${onMore ? html`<button type="button" class="icon-btn tb-more tb-tile-more" aria-label=${t("taskview.more")} title=${t("taskview.more")}
+        onClick=${(e) => { e.stopPropagation(); onMore(card, e.currentTarget); }}><${Icon} name="more" size=${16} /></button>` : null}
     </div>
-    <button type="button" class="tb-tile-title" title=${writable ? t("tasks.tileHint") : undefined}
-      onClick=${(e) => { e.stopPropagation(); onOpen(card.id); }} onKeyDown=${onKeyMove}>${card.title}</button>
-    ${card.status === "blocked" && card.blockedReason ? html`<div class="tb-tile-note st-blocked"><${Icon} name="alert" size=${13} /><span>${card.blockedReason}</span></div>` : null}
-    ${hasSubs ? html`<button type="button" class="tb-tile-progress" aria-expanded=${expanded ? "true" : "false"} title=${expanded ? t("tasks.hideSubs") : t("tasks.showSubs")}
-        onClick=${(e) => { e.stopPropagation(); onToggleSubs(); }}>
-      <${ProgressBar} progress=${progress} wide />
-      <span>${t("tasks.subProgress", progress.done, progress.total)}</span>
-      ${progress.blocked ? html`<span class="tb-flag st-blocked"><${Icon} name="alert" size=${12} />${progress.blocked}</span>` : null}
-      <${Icon} name="chevron" size=${14} cls=${expanded ? "tb-chev open" : "tb-chev"} />
-    </button>` : null}
+    <button type="button" class="tb-tile-title" title=${writable ? `${card.title}\n${t("tasks.tileHint")}` : card.title}
+      onClick=${(e) => { e.stopPropagation(); onOpen(card.id); }} onKeyDown=${onKeyMove}><span>${card.title}</span></button>
+    ${status ? html`<div class=${`tb-tile-status k-${status.kind}`}>
+      ${status.kind === "blocked" ? (status.reason
+          ? html`<div class="tb-tile-note st-blocked" title=${status.reason}><${Icon} name="alert" size=${13} /><span>${status.reason}</span></div>`
+          : html`<${NowLine} now=${status.now} />`)
+        : status.kind === "review" ? html`<div class=${`tb-tile-waits${status.you ? " you" : ""}`} title=${status.label}>${status.label}</div>`
+        : status.kind === "running" ? (status.run
+          ? html`<div class="tb-tile-run"><${RunMark} run=${status.run} />${status.now ? html`<${NowLine} now=${status.now} label=${false} />` : null}</div>`
+          : html`<${NowLine} now=${status.now} />`)
+        : status.kind === "next" ? html`<${NowLine} now=${status.now} />`
+        : html`<button type="button" class="tb-tile-progress" aria-expanded=${expanded ? "true" : "false"} title=${toggleTitle} onClick=${toggle}>
+            <${ProgressBar} progress=${progress} wide />
+            <span>${t("tasks.subProgress", progress.done, progress.total)}</span>
+            ${progress.blocked ? html`<span class="tb-flag st-blocked"><${Icon} name="alert" size=${12} />${progress.blocked}</span>` : null}
+            <${Icon} name="chevron" size=${14} cls=${expanded ? "tb-chev open" : "tb-chev"} />
+          </button>`}
+    </div>` : null}
     ${hasSubs && expanded ? html`<${SubList} subs=${subs} older=${older} onOpen=${onOpen} />` : null}
-    ${now ? html`<div class="tb-tile-now" title=${now.cards.map((c) => `${c.id} ${c.title}`).join("\n")}>
-      <span class=${`tb-now-label st-${now.tone}`}>${t(now.label)}</span><span class="tb-code">${now.cards[0].id}</span>
-      <span class="tb-now-title">${now.cards[0].title}</span>${now.cards.length > 1 ? html`<span class="muted">${t("tasks.moreCards", now.cards.length - 1)}</span>` : null}</div>` : null}
-    ${card.status === "review" && !hasSubs ? html`<div class=${`tb-tile-waits${waitsForYou(card) ? " you" : ""}`}>${reviewLabel(card)}</div>` : null}
     <div class="tb-tile-foot">
-      ${now ? html`<span class="tb-people">${workers.map((w) => html`<${Who} key=${w} name=${w} empty=${t("tasks.nobody")} title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))} />`)}</span>`
-        : hasSubs && card.status === "review" ? html`<span class="tb-who tb-now-label st-review" title=${t("tasks.ownerTip", card.assignee || t("tasks.nobody"))}>${reviewLabel(card)}</span>`
-        : html`<${Who} name=${card.assignee} empty=${t("tasks.nobody")} />`}
+      <${OwnerChip} card=${card} cards=${cards} lead=${lead} canAssign=${writable && card.status !== "done" && card.status !== "cancelled"} onPick=${onOwner} />
+      ${workers.length ? html`<span class="tb-people" title=${t("tasks.subWorkers")}><span class="tb-people-sep" aria-hidden="true">›</span>${workers.map((w) => html`<${Who} key=${w} name=${w} empty=${t("tasks.nobody")} />`)}</span>` : null}
       <span class="tb-tile-stats">
+        ${hasSubs && status && status.kind !== "progress" ? html`<button type="button" class=${`tb-tile-subs${progress.blocked ? " has-blocked" : ""}`} aria-expanded=${expanded ? "true" : "false"} title=${toggleTitle} onClick=${toggle}>
+          <${Icon} name="chevron" size=${13} cls=${expanded ? "tb-chev open" : "tb-chev"} />${progress.done}/${progress.total}${progress.blocked ? html`<${Icon} name="alert" size=${12} />` : null}</button>` : null}
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
-        ${card.unmetDeps.length ? html`<span title=${t("tasks.waitsFor", card.unmetDeps.join(", "))}><${Icon} name="clock" size=${13} /></span>` : null}
+        ${waitsOn(card) ? html`<span title=${t("tasks.waitsFor", waitsList(card, ", "))}><${Icon} name="clock" size=${13} /></span>` : null}
         ${card.commentCount ? html`<span class=${replied ? "reply" : ""} title=${replied ? t("tasks.agentReplied") : t("tasks.comments")}><${Icon} name="chat" size=${13} />${card.commentCount}</span>` : null}
       </span>
     </div>
   </div>`;
 }
 
-// ── Dialogs: a new main task, a project ───────────────────
-
-function CreateMainDialog({ projects, project, boardOff = [], onClose, onCreated }) {
-  const { instances } = useStore(appStore);
-  const active = projects.filter((p) => !p.archived);
-  const [f, setF] = useState({ project: project === null || project === undefined ? "" : String(project), title: "", goal: "", scope: "", acceptance: "", context: "", size: "", priority: "normal", assignee: "", needsReview: true });
-  const [busy, setBusy] = useState(false);
-  const set = (k) => (e) => { const v = e.target.type === "checkbox" ? e.target.checked : e.target.value; setF((cur) => ({ ...cur, [k]: v })); };
-  async function submit() {
-    if (!f.title.trim()) { toast(t("tasks.titleRequired"), false); return; }
-    setBusy(true);
-    try {
-      const { card } = await boardApi.create({
-        kind: "main", project: f.project === "" ? null : Number(f.project), title: f.title, goal: f.goal, scope: f.scope,
-        acceptance: f.acceptance.split("\n").map((l) => l.trim()).filter(Boolean), context: f.context,
-        size: f.size || null, priority: f.priority, assignee: f.assignee.trim() || null, needsReview: f.needsReview,
-      });
-      toast(t("tasks.created", card.id));
-      onCreated(card.id);
-    } catch (err) { toast(errorText(err), false); setBusy(false); }
-  }
-  const field = (label, input) => html`<label class="field"><span>${label}</span>${input}</label>`;
-  return html`<${Dialog} title=${t("tasks.createMain")} onClose=${onClose} busy=${busy} wide
-    actions=${html`<button type="button" class="btn" onClick=${onClose} disabled=${busy}>${t("tasks.cancel")}</button>
-      <button type="button" class="btn btn-primary" onClick=${submit} disabled=${busy || !f.title.trim()}>${t("tasks.create")}</button>`}>
-    <form class="form" onSubmit=${(e) => { e.preventDefault(); submit(); }}><fieldset class="form" disabled=${busy}>
-      ${field(`${t("tasks.title")} *`, html`<input value=${f.title} maxlength="100" placeholder=${t("tasks.titleHint")} onInput=${set("title")} required />`)}
-      ${field(t("tasks.project"), html`<select value=${f.project} onChange=${set("project")}><option value="">${t("tasks.noProject")}</option>${active.map((p) => html`<option key=${p.id} value=${String(p.id)}>${p.name}</option>`)}</select>`)}
-      ${field(t("tasks.goal"), html`<textarea rows="2" maxlength="300" placeholder=${t("tasks.goalHint")} value=${f.goal} onInput=${set("goal")}></textarea>`)}
-      ${field(t("tasks.scope"), html`<textarea rows="2" maxlength="600" placeholder=${t("tasks.scopeHint")} value=${f.scope} onInput=${set("scope")}></textarea>`)}
-      ${field(t("tasks.definition"), html`<textarea rows="3" placeholder=${t("tasks.definitionHint")} value=${f.acceptance} onInput=${set("acceptance")}></textarea>`)}
-      ${field(t("tasks.context"), html`<textarea rows="2" maxlength="1000" placeholder=${t("tasks.contextHint")} value=${f.context} onInput=${set("context")}></textarea>`)}
-      <div class="tb-form-row">
-        ${field(t("tasks.assignee"), html`<select value=${f.assignee} onChange=${set("assignee")}><option value="">${t("tasks.nobody")}</option>${instances.map((i) => html`<${AssigneeOption} key=${i.name} name=${i.name} boardOff=${boardOff} />`)}</select>`)}
-        ${field(t("tasks.size"), html`<select value=${f.size} onChange=${set("size")}><option value="">${t("tasks.sizeNone")}</option><option value="S">${t("tasks.sizeS")}</option><option value="M">${t("tasks.sizeM")}</option><option value="L">${t("tasks.sizeL")}</option></select>`)}
-        ${field(t("tasks.priority"), html`<select value=${f.priority} onChange=${set("priority")}>${["urgent", "high", "normal", "low"].map((p) => html`<option key=${p} value=${p}>${t(`tasks.${p}`)}</option>`)}</select>`)}
-      </div>
-      <label class="tb-check"><input type="checkbox" checked=${f.needsReview} onChange=${set("needsReview")} />${t("tasks.reviewBox")}</label>
-    </fieldset></form></${Dialog}>`;
-}
+// ── Dialogs: a project (a new main task: fleet-task-create.js) ──
 
 /**
  * #2355 review: what an edit of a project sends — its fields, and its lead only when it changed (an unchanged retired
@@ -645,7 +772,7 @@ function placeOf(cards, id, reload) {
   const card = cards.find((c) => c.id === id);
   if (!card || card.status === "cancelled") return null;
   const column = cards.filter((c) => c.status !== "cancelled" && (card.kind === "sub"
-    ? c.kind === "sub" && c.parentId === card.parentId
+    ? c.kind === "sub" && !!card.parentId && c.parentId === card.parentId
     : c.kind === "main" && projectKey(c) === projectKey(card) && c.status === card.status)).sort((a, b) => a.sort - b.sort);
   const i = column.findIndex((c) => c.id === id);
   const go = (after, before) => async () => { try { await boardApi.reorder(id, after, before); reload(); } catch (err) { toast(errorText(err), false); } };

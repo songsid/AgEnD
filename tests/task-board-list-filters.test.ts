@@ -156,7 +156,7 @@ describe("the list: rows, order and groups", () => {
     expect(ids(view.listRows([M1, M2], subsOf, view.DEFAULT_DISPLAY, []))).toEqual(["M-1", "M-2"]);
   });
   it("display choices from anything: each one known, else its default", () => {
-    expect(view.cleanDisplay({ view: "list", group: "colour", order: "title", done: "hide", subs: "yes" })).toEqual({ view: "list", group: "status", order: "title", done: "hide", subs: false });
+    expect(view.cleanDisplay({ view: "list", group: "colour", order: "title", done: "hide", subs: "yes" })).toEqual({ view: "list", group: "status", order: "title", dir: "asc", done: "hide", subs: false });
     expect(view.cleanDisplay(null)).toEqual(view.DEFAULT_DISPLAY);
   });
   it("the filters to start with: the address's, else the device's, else the old assignee filter's (nobody too)", () => {
@@ -229,7 +229,7 @@ describe("on the board", () => {
     await board();
     await pick(".tb-view-menu", "Hidden");
     expect(tiles().map(([s]) => s)).toEqual(["To do", "In progress", "Blocked", "To confirm"]);
-    expect(q(".tb-columns").className).toContain("no-done");
+    expect(qa(".tb-col").length, "four columns: no Done").toBe(4);
     expect(q(".tb-view-menu > button").className).toContain("active");
     await pick(".tb-view-menu", "All");
     expect(calls.some((c) => c === "/ui/tasks/board?done=all")).toBe(true);
@@ -243,11 +243,13 @@ describe("on the board", () => {
 describe("the list", () => {
   it("a row per main task, grouped by status; a row opens its card; sub tasks open up under their main task", async () => {
     await board();
-    await pick(".tb-view-menu", "List");
+    fire(qa(".tb-view-toggle button").find((b) => text(b) === "List"), "click"); await settle(6);   // the toolbar's switch, not a menu
     expect(q(".tb-columns")).toBeNull();
     expect(groups()).toEqual([["To do 1", ["M-2"]], ["In progress 1", ["M-1"]], ["To confirm 1", ["M-3"]], ["Done 1", ["M-4"]]]);
     const m3 = q('[data-row="M-3"]');
-    expect(text(m3.querySelector(".tb-row-tags"))).toBe("Urgent Waiting for you To fill in");   // in review without a result
+    expect(text(m3.querySelector(".tb-row-tags"))).toBe("Waiting for you To fill in");   // in review without a result
+    expect(text(m3.querySelector(".tb-row-prio")), "every row says its priority, not only the urgent and high ones").toBe("Urgent");
+    expect(text(q('[data-row="M-2"] .tb-row-prio'))).toBe("Low");
     expect(text(m3.querySelector(".tb-row-who"))).toBe("Unassigned");
     fire(q('[data-row="M-2"] .tb-row-progress'), "click"); await settle(6);
     expect(qa('[data-row="M-2"] .tb-subs li').map((li) => text(li.querySelector(".tb-code")))).toEqual(["S-1"]);
@@ -268,7 +270,7 @@ describe("the list", () => {
     await pick(".tb-view-menu", "Title");
     expect(q(".tb-group-head")).toBeNull();
     expect(rows()).toEqual(["M-2", "M-4", "M-3", "S-1", "M-1"]);
-    expect(JSON.parse((globalThis as any).localStorage.getItem("agend_tasks_display"))).toEqual({ view: "list", group: "none", order: "title", done: "recent", subs: true });
+    expect(JSON.parse((globalThis as any).localStorage.getItem("agend_tasks_display"))).toEqual({ view: "list", group: "none", order: "title", dir: "asc", done: "recent", subs: true });
   });
 
   it("filters apply to the list, and nothing left says so", async () => {

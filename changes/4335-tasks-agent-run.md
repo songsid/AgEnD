@@ -1,0 +1,4 @@
+---
+section: Added
+---
+- **A task card shows what its agent is doing, and the way to its conversation.** A card in progress whose assignee is working says **Running** on the board and in the list (a main task for a sub task of its own; **Needs you** and **Looks stuck** have their own words). A card's page has an **Agent activity** block under the title: who has it, their state, and **Open conversation**, which goes to that instance's chat; for an admin, with that agent's tool progress on, it also shows what the agent is doing now, live, since the card was put in progress. The match is an inference, exact while the assignee has one card in progress (the default); with several, each card says **Busy · N cards** and none says Running. The timeline tags what an agent did — claimed, moved, logged, commented — **Agent**. Nothing is stored and nothing in the database or the API changed; older boards, an instance you cannot see, and a steps feed that is off show as before.

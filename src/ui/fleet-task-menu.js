@@ -107,7 +107,7 @@ export function stepsOf(trail, id, cards) {
   let ids = trail;
   if (!ids.includes(id)) {
     const card = cards.find((c) => c.id === id);
-    if (!card || card.kind !== "sub") return null;
+    if (!card || card.kind !== "sub" || !card.parentId) return null;   // no main task in view (kept out of sight over the link): no sibling to step to
     ids = cards.filter((c) => c.kind === "sub" && c.parentId === card.parentId && c.status !== "cancelled").sort((a, b) => a.sort - b.sort).map((c) => c.id);
   }
   const i = ids.indexOf(id);
