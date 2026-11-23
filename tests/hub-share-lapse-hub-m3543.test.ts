@@ -10,7 +10,7 @@ import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { agentCatalogSchema, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY, type HubAgentCatalog } from "../src/hub/agent-catalog-model.js";
 import { hubLinkCapabilities } from "../src/hub/compose/server.js";
 import { hubWelcomeCapabilities } from "../src/hub/server.js";
-import { carryLapsePermissions, HUB_LAPSE_CARRY } from "../src/hub/lapse-carry.js";
+import { carryLapsePermissions, consumeLapse, hasLapse, HUB_LAPSE_CARRY, rememberLapse } from "../src/hub/lapse-carry.js";
 import { memberAgentCatalog } from "../src/hub/member/agent-catalog.js";
 import type { HubFleetExposure, HubMemberFrame } from "../src/hub/types.js";
 import { personKeyString } from "../src/hub/identity.js";
@@ -200,5 +200,44 @@ describe("#4361 review (P1): a Fleet's catalog never moves another Fleet's grant
     await r.http.receive(r.frame("exposure.snapshot", { revision: 2, exposures: [{ id: victim, owner: ownerB, fleetId: fleetB, displayName: "Victim agent", revision: 2,
       state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) }] }, linkB) as never, linkB);
     expect(read()).toEqual(unchanged);
+  });
+});
+
+describe("#4361 review: the catalog-first evidence is durable, per Fleet, and used only by a carry", () => {
+  it("a snapshot that leaves the exposure at R keeps the evidence; the later R+1 snapshot carries", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000);
+    await w.catalog(true); await w.catalog(false, 2);                       // the catalog shows the republish first
+    expect(hasLapse(w.r.db, w.exposureId, w.fleetId, 1)).toBe(true);
+    expect(w.read(live).exposure_revision).toBe(1);                         // a catalog writes no permission
+    await w.snapshot(1);                                                    // a newer snapshot, the exposure still at 1
+    expect(hasLapse(w.r.db, w.exposureId, w.fleetId, 1)).toBe(true);
+    await w.snapshot(2);
+    expect(w.read(live)).toMatchObject({ exposure_revision: 2, state: "active" });
+    expect(hasLapse(w.r.db, w.exposureId, w.fleetId, 1)).toBe(false);      // consumed by the carry
+  });
+  it("another Fleet's record for the same exposure neither replaces nor is used for the owner's", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000), foreign = randomUUID();
+    rememberLapse(w.r.db, w.exposureId, foreign, 1, w.now());
+    await w.catalog(true); await w.catalog(false, 2);
+    expect([hasLapse(w.r.db, w.exposureId, foreign, 1), hasLapse(w.r.db, w.exposureId, w.fleetId, 1)]).toEqual([true, true]);
+    await w.snapshot(2);
+    expect(w.read(live).exposure_revision).toBe(2);
+    expect([hasLapse(w.r.db, w.exposureId, foreign, 1), hasLapse(w.r.db, w.exposureId, w.fleetId, 1)]).toEqual([true, false]);
+  });
+  it("a rolled-back carry keeps the record; the record survives a Hub restart and still carries", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000);
+    await w.catalog(true); await w.catalog(false, 2);
+    expect(() => w.r.db.transaction(() => {
+      carryLapsePermissions(w.r.db, w.exposureId, 1, 2, w.now()); consumeLapse(w.r.db, w.exposureId, w.fleetId, 1); throw Error("failed write");
+    })()).toThrow("failed write");
+    expect(hasLapse(w.r.db, w.exposureId, w.fleetId, 1)).toBe(true);
+    expect(w.read(live).exposure_revision).toBe(1);
+    await w.r.restartHttp(); w.r.http.memberConnected!(w.link);
+    expect(hasLapse(w.r.db, w.exposureId, w.fleetId, 1)).toBe(true);
+    await w.snapshot(2);
+    expect(w.read(live).exposure_revision).toBe(2);
   });
 });

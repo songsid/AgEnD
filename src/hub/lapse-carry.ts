@@ -46,22 +46,26 @@ export function catalogLapse(db: Database.Database, fleetId: string, exposureId:
 }
 
 /**
- * #4361 review (P1): a catalog is a Fleet's claim, never authority over an exposure. When a catalog shows the republish
- * before its snapshot (previous catalog: lapsed at R; this one: published at R+1), only this pending evidence is kept —
- * in memory, per database, keyed by exposure AND the reporting Fleet — and no permission is written. The snapshot, whose
- * exposure binding (Fleet, owner) the Hub checks, consumes it. Lost on a restart: then nothing carries (owner grants again).
+ * #4361 review: a catalog is a Fleet's claim, never authority over an exposure. When this Fleet's catalog shows the
+ * republish before its snapshot (previous catalog: lapsed at R; this one: published at R+1), the Hub only RECORDS that,
+ * durably and per (exposure, reporting Fleet, R) — no permission is written. The snapshot, whose exposure binding (Fleet,
+ * owner) the Hub checks, consumes the matching record in the same transaction, and only when it carries; anything else
+ * (another Fleet's record, a snapshot still at R, a failed transaction) leaves it. Records older than 7 days are dropped.
  */
-const pending = new WeakMap<Database.Database, Map<string, { fleetId: string; from: number }>>();
-export function rememberLapse(db: Database.Database, exposureId: string, fleetId: string, from: number): void {
-  let m = pending.get(db); if (!m) { m = new Map(); pending.set(db, m); }
-  m.set(exposureId, { fleetId, from });
-  while (m.size > 256) m.delete(m.keys().next().value!);
+export const HUB_LAPSE_EVIDENCE_MIGRATION = Object.freeze({ component: "s3-lapse-evidence", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_lapse_evidence(exposure_id TEXT NOT NULL, fleet_id TEXT NOT NULL, from_revision INTEGER NOT NULL CHECK(from_revision>0),
+    at INTEGER NOT NULL, PRIMARY KEY(exposure_id, fleet_id, from_revision))`);
+} });
+const EVIDENCE_MS = 7 * 24 * 60 * 60_000;
+export function rememberLapse(db: Database.Database, exposureId: string, fleetId: string, from: number, now: number): void {
+  db.prepare("DELETE FROM hub_lapse_evidence WHERE at<?").run(now - EVIDENCE_MS);
+  db.prepare("INSERT OR IGNORE INTO hub_lapse_evidence VALUES(?,?,?,?)").run(exposureId, fleetId, from, now);
 }
-export function takeLapse(db: Database.Database, exposureId: string, fleetId: string): number | null {
-  const m = pending.get(db), v = m?.get(exposureId);
-  if (!v) return null;
-  m!.delete(exposureId);
-  return v.fleetId === fleetId ? v.from : null;
+export function hasLapse(db: Database.Database, exposureId: string, fleetId: string, from: number): boolean {
+  return !!db.prepare("SELECT 1 FROM hub_lapse_evidence WHERE exposure_id=? AND fleet_id=? AND from_revision=?").get(exposureId, fleetId, from);
+}
+export function consumeLapse(db: Database.Database, exposureId: string, fleetId: string, from: number): void {
+  db.prepare("DELETE FROM hub_lapse_evidence WHERE exposure_id=? AND fleet_id=? AND from_revision=?").run(exposureId, fleetId, from);
 }
 /** The exposure as the Hub holds it belongs to this Fleet and owner (never a catalog's word for it). */
 export function ownedBy(db: Database.Database, exposureId: string, fleetId: string, owner: string): { revision: number; state: string } | null {

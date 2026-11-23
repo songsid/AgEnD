@@ -1,5 +1,5 @@
 import { roomDiscoverySupported, roomDiscoverySnapshot, roomFindable } from "./room-agent-discovery-model.js";
-import { carryLapsePermissions, catalogLapse, HUB_LAPSE_CARRY, takeLapse } from "./lapse-carry.js";
+import { carryLapsePermissions, catalogLapse, consumeLapse, hasLapse, HUB_LAPSE_CARRY } from "./lapse-carry.js";
 import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
 import { keepStoppedList } from "./sharing-retention.js";
 /**
@@ -253,9 +253,12 @@ export class HubCatalogService {
           // the old revision, its grants follow — the same switchable carry as a Hub-page Share again; never otherwise.
           // The exposure row is bound to this link's Fleet and owner (validateBindings refused anything else above).
           const before = readExposure(db, e.id);
-          const reported = before ? (catalogLapse(db, link.fleetId, e.id) === before.revision || takeLapse(db, e.id, link.fleetId) === before.revision) : false;
-          if (HUB_LAPSE_CARRY && before && before.fleet_id === link.fleetId && before.owner === owner && before.state === "published"
-            && e.state === "published" && e.revision === before.revision + 1 && reported) carryLapsePermissions(db, e.id, before.revision, e.revision, now);
+          const eligible = HUB_LAPSE_CARRY && !!before && before.fleet_id === link.fleetId && before.owner === owner && before.state === "published"
+            && e.state === "published" && e.revision === before.revision + 1;
+          if (eligible && (catalogLapse(db, link.fleetId, e.id) === before!.revision || hasLapse(db, e.id, link.fleetId, before!.revision))) {
+            carryLapsePermissions(db, e.id, before!.revision, e.revision, now);
+            consumeLapse(db, e.id, link.fleetId, before!.revision);   // same transaction: a rollback keeps the record
+          }
           db.prepare(`INSERT INTO hub_exposures(id, fleet_id, owner, display_name, revision, state, data_view_id, allowed_tools, policy_digest, updated_at)
             VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, revision=excluded.revision, state=excluded.state,
             data_view_id=excluded.data_view_id, allowed_tools=excluded.allowed_tools, policy_digest=excluded.policy_digest, updated_at=excluded.updated_at`)

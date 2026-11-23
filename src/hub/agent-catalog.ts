@@ -47,7 +47,7 @@ export class HubAgentCatalogs {
       // whose binding the Hub checks, decides.
       if(HUB_LAPSE_CARRY&&previous?.owner===personKeyString(fleet.owner)&&previous.generation===fleet.generation)for(const row of body.agents){
         const e=row.exposure,from=e?lapsedRevision(previous.body,e.id):null;
-        if(e&&from!==null&&e.state==="published"&&!e.lapsed&&e.revision===from+1)rememberLapse(db,e.id,fleet.id,from);
+        if(e&&from!==null&&e.state==="published"&&!e.lapsed&&e.revision===from+1)rememberLapse(db,e.id,fleet.id,from,this.core.now());
       }
       db.prepare(`INSERT INTO hub_agent_catalogs VALUES(?,?,?,?,?,?) ON CONFLICT(fleet_id) DO UPDATE SET owner=excluded.owner,generation=excluded.generation,revision=excluded.revision,body=excluded.body,received_at=excluded.received_at`)
         .run(fleet.id,personKeyString(fleet.owner),fleet.generation,body.revision,bytes,this.core.now());
