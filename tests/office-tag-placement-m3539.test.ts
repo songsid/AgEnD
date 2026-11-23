@@ -76,6 +76,20 @@ describe("M-3539 name tags in a crowded Studio", () => {
     }
   });
 
+  it("a slide past a control never takes a tag outside its area's sides (#4376 review): it is left to hover instead", () => {
+    const s = scene("studio-large"), lounge = s.L.areas.lounge.rect, seat = new Map([...s.L.seats]);
+    const first = Math.min(...s.part.desks.filter((d: any) => d.area === "lounge").map((d: any) => d.seat.x));
+    const who = s.part.desks.filter((d: any) => d.area === "lounge" && d.seat.x === first).sort((a: any, b: any) => a.node.name.length - b.node.name.length)[0].node.name;
+    const t0 = s.draw().find((t) => t.label === who), b = s.box(t0);
+    // A control from just inside the tag to well past it on the right, tall enough for its row-lower and compact tries:
+    // the only slide within reach is to the left, past the lounge's edge.
+    const keep = { x: b.x + 2, y: b.y - 6, w: 2 * b.w + 10, h: b.h + 34 };
+    expect(b.x - b.w - 2 < lounge.x, "the left slide would leave the lounge: what the test is about").toBe(true);
+    const t1 = s.draw({ keepClear: [keep] }).find((t) => t.label === who);
+    if (t1) { const b1 = s.box(t1); expect([b1.x >= lounge.x, b1.x + b1.w <= lounge.x + lounge.w, touch(b1, keep)], who).toEqual([true, true, false]); }
+    expect((seat.get(who) as any).x).toBe(first);
+  });
+
   it("a tag that would touch one already drawn goes a row lower (16), else compact — never on top of it", () => {
     const s = scene("studio"), tags = s.draw(), seat = new Map([...s.L.seats]);
     const drops = new Set(tags.filter((t) => !t.compact).map((t) => t.y - (seat.get(t.label) as any).y));

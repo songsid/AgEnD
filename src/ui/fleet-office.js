@@ -667,6 +667,8 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const at = (dx, dy, compact) => {
         const box = tagBox(ctx, x + dx, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
         if (!force && touches(foot)) return null;
+        // Every place tried keeps within the area's sides, a slide's too (#4376 review): none there, hover or focus.
+        if (!force && ar && (box.x < ar.rect.x || box.x + box.w > ar.rect.x + ar.rect.w)) return null;
         sk.drawTag(ctx, x + dx, y + dy, look, env, compact);
         tags.push(box); taken.push(foot);
         return box;
