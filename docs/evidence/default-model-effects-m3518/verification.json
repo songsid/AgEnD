@@ -15,7 +15,7 @@
   "branchSpecificComponents": [
     "src/ui/settings-apply.js"
   ],
-  "sourceHead": "9551973bdb11f7530aab9aec22938634b23db72e",
+  "sourceHead": "4f56749fe009fd4c10b2bdb3981320a277eb3caa",
   "sourceHashes": [
     {
       "path": "scripts/manual/smoke/smoke-default-model-effects-m3518.mts",
@@ -31,7 +31,7 @@
     },
     {
       "path": "src/config.ts",
-      "sha256": "675ea38140f14a1088a0dfed12565204608acf5209d4989dfc99e6362311aeb9"
+      "sha256": "fc82dad7a4485d913fd170d4d18d5d11b71bc4cc5db81e1d37fca67bc3388473"
     },
     {
       "path": "src/fleet-manager.ts",
@@ -119,7 +119,11 @@
     },
     {
       "path": "tests/default-model-scope-m3518.test.ts",
-      "sha256": "abfec7dcd5617c015e7d0cdd52a1aac40e82751bdb80dc44556a373efc0b26e6"
+      "sha256": "9a909d517a9bd42945b1f16f35b6cf1ec624f763438562621fed16a7bd8d6014"
+    },
+    {
+      "path": "tests/model-source-ui.test.ts",
+      "sha256": "8432b3cd6840f0604f5582ccc05241842f14dc7a70bf9f6d706b9cf8c7562d8b"
     },
     {
       "path": "tests/settings-apply-job.test.ts",
@@ -438,6 +442,16 @@
     }
   },
   "applicationProofPhase": "The 32 non-FleetManager equality checks include the prepared README and were taken immediately after applying the patch, before this evidence refresh.",
-  "currentPreparedNonFmSourceTestHarnessChangelogEqual": 31,
-  "evidenceRefresh": "Prepared README replaced by current integration packet; historical32PNGblobs retained. No production or test changes after sourceHead."
+  "currentPreparedNonFmSourceTestHarnessChangelogEqual": 29,
+  "evidenceRefresh": "Prepared README replaced by current integration packet; historical32PNGblobs retained. No production or test changes after sourceHead.",
+  "ciCorrection": {
+    "failedJobInspected": 137477049873,
+    "actualRun": 45108892147,
+    "scopedFiles": 3,
+    "casesPassed": 25,
+    "sourceTestTypesErrors": 0,
+    "production": "One line retains Windows CLI-default empty-model sentinel; no host model inheritance.",
+    "testDelta": "Existing native-registry assertion retained; new bounded loader test; catalog wording expectation aligned to approved copy.",
+    "renderedUiAndAll32PngBlobsUnchanged": true
+  }
 }
