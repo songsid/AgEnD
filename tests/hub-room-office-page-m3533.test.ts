@@ -320,6 +320,39 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       expect([post.mentions.includes(kept.id), post.mentions.includes(gone.id)]).toEqual([true, false]);
     } finally { restore(); }
   });
+  it.each([["beforeinput"], ["keydown only"], ["an IME"], ["a click, no key"]])("A then B, the caret moved before the edit (%s): only B's mention is touched, the untouched A is sent", async (how) => {
+    const { pg, room, posts, restore } = await roomPage({ sameName: true });
+    try {
+      const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
+      const labels = () => [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.textContent).filter((l: string) => /^Notes/.test(l));
+      await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => labels().length === 2);
+      let box = await askFrom(pg, (l) => l === labels().find((x) => x !== `Notes (${a.owner.name})`));
+      const second = a.name.length + 2;
+      // A click at 0, then arrows to B's @: navigation keys are not the edit.
+      box.selectionStart = box.selectionEnd = 0; fire(box, "keydown", { key: "ArrowRight" });
+      box.selectionStart = box.selectionEnd = second; fire(box, "keydown", { key: "ArrowRight" });
+      if (how === "an IME") {
+        // Composing over B's whole mention: the start is where the composition began, whatever the box says on the way.
+        box.selectionStart = second; box.selectionEnd = box.value.length - 1; fire(box, "compositionstart");
+        box.selectionStart = box.selectionEnd = second + 1; fire(box, "beforeinput");
+        box.value = `@${a.name} 你好 `; box.selectionStart = box.selectionEnd = second + 2; fire(box, "compositionend"); fire(box, "input");
+      } else if (how === "a click, no key") {
+        // Arrows left the caret at 0; a click puts it at B's @ (no key) and a context-menu cut deletes that @: the edit's
+        // own beforeinput is where it began, not the last key's.
+        box.selectionStart = box.selectionEnd = 0; fire(box, "keydown", { key: "ArrowLeft" });
+        box.selectionStart = second; box.selectionEnd = second + 1; fire(box, "beforeinput");
+        box.value = `@${a.name} ${b.name} `; box.selectionStart = box.selectionEnd = second; fire(box, "input");
+      } else {
+        fire(box, "keydown", { key: "Delete" });
+        if (how === "beforeinput") fire(box, "beforeinput");
+        box.value = `@${a.name} ${b.name} `; box.selectionStart = box.selectionEnd = second; fire(box, "input");
+      }
+      await settle(3);
+      const post = await send(pg, posts, q(pg, ".hub-dock textarea"));
+      expect([post.mentions.includes(a.id), post.mentions.includes(b.id)]).toEqual([true, false]);
+    } finally { restore(); }
+  });
   it("a mention deleted or edited takes its binding with it: A, deleted, then B sends B only; A, deleted, retyped by hand is unbound", async () => {
     const { pg, room, posts, restore } = await roomPage({ sameName: true });
     try {
