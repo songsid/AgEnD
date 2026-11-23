@@ -63,15 +63,22 @@ const q = (pg: AppPage, s: string) => pg.root.querySelector(s) as any;
 const openMenu = async (pg: AppPage) => { fire(q(pg, ".hub-room-menu button"), "click"); await settle(); return [...pg.root.querySelectorAll("[role=menuitem], [role=menuitemcheckbox]")] as any[]; };
 
 describe("the drawing's input (pure)", () => {
-  it("names each agent as members see it, two of one name apart, and keeps its member id", () => {
+  it("names each agent as members see it, agents of one name by their owner, and keeps its member id", () => {
+    const members = [{ kind: "agent", id: "e1", owner: { name: "Alex Sample" } }, { kind: "agent", id: "e2", owner: { name: "Casey Sample" } }];
     i18n.setLang("zh-TW", { store: false });
-    const d = office.named(STATE(["e1", "e2"]));
-    expect(d.instances.map((i: any) => [i.name, i.display_name, i.member])).toEqual([["Notes", "Notes", "e1"], ["Notes (2)", "Notes (2)", "e2"], ["房間助理", "房間助理", "assistant"]]);
-    expect(d.offices.offices[0].members).toEqual(["Notes", "Notes (2)", "房間助理"]);
+    const d = office.named(STATE(["e1", "e2"]), members);
+    expect(d.instances.map((i: any) => [i.name, i.display_name, i.member])).toEqual([["Notes（Alex Sample）", "Notes（Alex Sample）", "e1"], ["Notes（Casey Sample）", "Notes（Casey Sample）", "e2"], ["房間助理", "房間助理", "assistant"]]);
+    expect(d.offices.offices[0].members).toEqual(["Notes（Alex Sample）", "Notes（Casey Sample）", "房間助理"]);
     expect(JSON.stringify(d.instances.map((i: any) => [i.name, i.display_name]))).not.toMatch(/e1|e2/);
-    // A real agent already called "Notes (2)" is not merged with the second Notes.
-    const odd = office.named({ ...STATE(["e1", "e2"]), instances: [{ name: "a", display_name: "Notes (2)" }, { name: "b", display_name: "Notes" }, { name: "c", display_name: "Notes" }] });
-    expect(odd.instances.map((i: any) => i.name)).toEqual(["Notes (2)", "Notes", "Notes (3)"]);
+    i18n.setLang("en", { store: false });
+    expect(office.named(STATE(["e1", "e2"]), members).instances.map((i: any) => i.name)).toEqual(["Notes (Alex Sample)", "Notes (Casey Sample)", "Room assistant"]);
+    // A unique name stays bare; too long with the owner: the owner's first word.
+    const long = [{ kind: "agent", id: "e1", owner: { name: "Alexandra Samplesworth" } }, { kind: "agent", id: "e2", owner: { name: "Casey Sample" } }];
+    expect(office.named(STATE(["e1", "e2"]), long).instances.map((i: any) => i.name).slice(0, 2)).toEqual(["Notes (Alexandra)", "Notes (Casey Sample)"]);
+    // One owner's two agents of one name (or no owner known) are still never merged into one figure.
+    const same = office.named(STATE(["e1", "e2"]), [{ kind: "agent", id: "e1", owner: { name: "Alex" } }, { kind: "agent", id: "e2", owner: { name: "Alex" } }]);
+    expect(new Set(same.instances.map((i: any) => i.name)).size).toBe(3);
+    expect(new Set(office.named(STATE(["e1", "e2"])).instances.map((i: any) => i.name)).size).toBe(3);
   });
   it("words every state as the member list does; answering here is 處理中 doing what it does now", () => {
     i18n.setLang("zh-TW", { store: false });
@@ -81,7 +88,7 @@ describe("the drawing's input (pure)", () => {
     expect(w({ presence: "paused" })).toEqual({ state: "暫停", now: "" });
     expect(w({ presence: "offline" })).toEqual({ state: "離線", now: "" });
     expect(w({ presence: "later" })).toEqual({ state: "上線時回答", now: "" });
-    expect(w({ presence: "idle", answering: true })).toEqual({ state: "處理中", now: "正在回答這個房間" });
+    expect(w({ presence: "idle", answering: true })).toEqual({ state: "處理中", now: "正在回答這個房間的問題" });
     // The list's own reason while it says the same presence (a paused agent out of quota), not a stale one.
     const list = [{ kind: "agent", id: "e1", presence: "offline", presenceReason: "update" }];
     expect(w({ presence: "offline" }, list)).toEqual({ state: "需要更新 AgEnD", now: "" });
@@ -112,8 +119,9 @@ describe("the drawing's input (pure)", () => {
 
 describe("the room page", () => {
   it("desktop: Chat | Office before the header's tools; the office has no purpose card and no message box; Chat returns", async () => {
-    const { pg, reads, restore } = await roomPage();
+    const { pg, reads, room, restore } = await roomPage();
     try {
+      const agentNames = room.members.filter((m: any) => m.kind === "agent").slice(0, 2).map((m: any) => `@${m.name} `);
       const tabs = q(pg, ".hub-chat-head .hub-room-tabs");
       expect([...tabs.querySelectorAll(".seg-item")].map((a: any) => [a.textContent, a.classList.contains("active")])).toEqual([["Chat", true], ["Office", false]]);
       const head = [...q(pg, ".hub-chat-head").children].map((e: any) => e.className); expect(head.indexOf("hub-head-tools") - head.findIndex((c: string) => c.includes("hub-room-tabs"))).toBe(1);
@@ -133,7 +141,16 @@ describe("the room page", () => {
       expect(reads.length).toBeGreaterThan(0);
       const desks = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.getAttribute("aria-label"));
       expect(desks.join(" ")).not.toMatch(/[0-9a-f]{8}-[0-9a-f]{4}-/);
-      expect(desks.some((l: string) => l.startsWith("Notes — Working") && l.includes("Answering in this room"))).toBe(true);
+      expect(desks.some((l: string) => /^Notes \(.+\) — Working/.test(l) && l.includes("Answering a question in this room"))).toBe(true);
+      // The card's "@ it": back to Chat with the mention in the box.
+      const desk = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].find((e: any) => /^Notes/.test(e.textContent)) as any;
+      fire(desk, "click"); await until(() => q(pg, ".oo-card-action"));
+      expect([q(pg, ".oo-card-action").textContent, q(pg, ".oo-card-action").getAttribute("aria-label")]).toEqual(["@ it", `Ask ${desk.textContent} in the chat`]);
+      fire(q(pg, ".oo-card-action"), "click"); await until(() => q(pg, ".hub-dock textarea")?.value);
+      expect([!!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office"), q(pg, ".hub-dock textarea").value]).toEqual([false, false, expect.any(String)]);
+      // The member list's own name for it (what the composer resolves), not the office's label.
+      expect(agentNames).toContain(q(pg, ".hub-dock textarea").value);
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo"));
       fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => q(pg, ".hub-dock"));
       expect([!!q(pg, ".hub-dock"), !!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office")]).toEqual([true, false, false]);
     } finally { restore(); }
@@ -167,10 +184,32 @@ describe("the room page", () => {
       expect(items[0].textContent.trim()).toBe("辦公室");
       fire(items[0], "click"); await until(() => q(pg, ".hub-room-office .oo"));
       expect(q(pg, ".hub-chat-title .s").textContent).toBe("辦公室");
-      expect((await openMenu(pg)).map((b) => b.textContent.trim())).not.toContain("辦公室");
+      // The office's options are one sheet, not rows over the scene: none until 辦公室選項 in ⋯ opens it.
+      expect([!!q(pg, ".hub-room-office .oo.phone"), !!q(pg, ".hub-room-office .oo-bar"), !!q(pg, ".oo-sheet")]).toEqual([true, false, false]);
+      const inOffice = await openMenu(pg);
+      expect(inOffice.map((b) => b.textContent.trim())).not.toContain("辦公室");
+      fire(inOffice.find((b) => b.textContent.trim() === "辦公室選項"), "click"); await until(() => q(pg, ".oo-sheet .oo-hide-asleep"));
+      expect(!!q(pg, ".oo-sheet .oo-sheet-bar .oo-hide-asleep")).toBe(true);
+      fire(q(pg, ".oo-sheet .oo-sheet-fit"), "click"); await until(() => !q(pg, ".oo-sheet"));
       fire(q(pg, ".hub-back"), "click"); await until(() => q(pg, ".hub-dock"));
       expect([!!q(pg, ".hub-room-office"), q(pg, ".hub-chat-title .s").textContent.includes("辦公室")]).toEqual([false, false]);
     } finally { restore(); }
+  });
+});
+
+describe("an office read that keeps failing", () => {
+  it("one or two misses keep the picture silently; the third says it may be old; the next good read clears it", async () => {
+    const p = page(); mounted.push(p); i18n.setLang("zh-TW", { store: false });
+    let fail = false, reads = 0;
+    const roomOfficeState = async () => { reads++; return fail ? { ok: false, status: 503, code: "unavailable" } : { ok: true, ...STATE(["e1", "e2"]) }; };
+    await p.mount(h(office.RoomOffice, { client: { roomOfficeState }, roomId: "room", members: [], pollMs: 15 }));
+    await until(() => q(p, ".hub-room-office .oo"));
+    fail = true; const at = reads; await until(() => reads >= at + 2); await settle(2);
+    expect([!!q(p, ".hub-room-office .oo"), q(p, ".hub-room-office-stale")]).toEqual([true, null]);
+    await until(() => q(p, ".hub-room-office-stale"));
+    expect([q(p, ".hub-room-office-stale").textContent, q(p, ".hub-room-office-stale").getAttribute("role"), reads - at >= 3, !!q(p, ".hub-room-office .oo")]).toEqual(["畫面可能不是最新，正在重新連線…", "status", true, true]);
+    fail = false; await until(() => !q(p, ".hub-room-office-stale"));
+    expect(q(p, ".hub-room-office-stale")).toBeNull();
   });
 });
 

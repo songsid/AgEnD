@@ -841,7 +841,8 @@ export function OfficeKey({ pal }) {
  * (no office picker or carousel); `readOnly` no editing or sharing whatever the session; `stream` false: never this
  * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
  * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
- * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's.
+ * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null.
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -851,7 +852,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -2386,7 +2387,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;

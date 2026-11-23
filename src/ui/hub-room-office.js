@@ -4,7 +4,8 @@
 // no stream of this page's own (on the Fleet dashboard that is the fleet's), no editing, no sharing, no levels, no
 // skin packs, no words. Each agent says what the room's member list says (hub-room-presence.js), "answering in this
 // room" the more specific form of 處理中; its card the agent's owner and introduction from the room's members.
-import { html, useEffect, useMemo, useState } from "/assets/app-html.js";
+import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
+import { lang } from "/assets/app-i18n.js";
 import { createLease } from "/assets/app-ctx.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hroom } from "./hub-room-strings.js";
@@ -12,6 +13,10 @@ import { presenceView } from "./hub-room-presence.js";
 
 /** How often a shown office is read again (the share page's POLL_MS). */
 export const ROOM_OFFICE_POLL_MS = 5000;
+/** Reads in a row that fail while the office is shown before it says the picture may be old (one or two misses: silent). */
+export const ROOM_OFFICE_STALE_AFTER = 3;
+/** A label longer than this (an agent's name with its owner's) takes the owner's first word instead. */
+const LABEL_MAX = 24;
 const STORAGE_PREFIX = "agend_hub_room_office:";
 
 /** The Office drawing, loaded once on first use (the Hub serves it; a fleet page has it already). */
@@ -78,15 +83,26 @@ export function officeCardRows(members, id) {
 
 /**
  * The drawing names people by their instance name (and shows it beside a display name, or first when the viewer prefers
- * it): a room's agents are named by what members see — the room assistant by the room's word for it, two agents of one
- * name told apart with (2) — and keep their member id as `member` (their card and words read it).
+ * it): a room's agents are named by what members see — the room assistant by the room's word for it; agents sharing a
+ * name told apart by their owner, as the member list's second line does (「Atlas（Alex Sample）」, the owner's first word
+ * when that is too long) — and keep their member id as `member` (their card and words read it).
  */
-export function named(d) {
+export function named(d, members = []) {
+  const list = (Array.isArray(d && d.instances) ? d.instances : []).filter((i) => i && typeof i.name === "string");
+  const base = (i) => (i.assistant ? hroom("roomAssistant") : String(i.display_name || "").trim() || "?");
+  const count = new Map();
+  for (const i of list) count.set(base(i), (count.get(base(i)) || 0) + 1);
+  const owners = new Map((Array.isArray(members) ? members : []).filter((m) => m && m.kind === "agent").map((m) => [m.id, String(m.owner?.name || "").trim()]));
+  const [open, close] = lang() === "zh-TW" ? ["（", "）"] : [" (", ")"];
   const taken = new Set(), rename = new Map();
-  const instances = (Array.isArray(d && d.instances) ? d.instances : []).filter((i) => i && typeof i.name === "string").map((i) => {
-    const base = i.assistant ? hroom("roomAssistant") : String(i.display_name || "").trim() || "?";
-    let label = base;
-    for (let n = 2; taken.has(label); n++) label = `${base} (${n})`;
+  const instances = list.map((i) => {
+    const b = base(i), owner = owners.get(i.name) || "";
+    let label = b;
+    if (count.get(b) > 1 && owner) {
+      label = `${b}${open}${owner}${close}`;
+      if ([...label].length > LABEL_MAX) label = `${b}${open}${owner.split(/\s+/)[0]}${close}`;
+    }
+    for (let n = 2, at = label; taken.has(label); n++) label = `${at} ${n}`;
     taken.add(label); rename.set(i.name, label);
     return { ...i, name: label, display_name: label, member: i.name };
   });
@@ -95,11 +111,17 @@ export function named(d) {
   return { ...d, instances, offices };
 }
 
-export function RoomOffice({ client, roomId, members, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS }) {
+/**
+ * `members` the room's (its detail's: owner, introduction, the list's states); `onMention(member)` the card's "@ it" (the
+ * page switches to Chat with the mention in the box); `more` / `onMore` a phone's options sheet, opened from the room's ⋯.
+ */
+export function RoomOffice({ client, roomId, members, onMention = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS }) {
   const [phase, setPhase] = useState("loading");      // loading | live | failed | off
   const [d, setD] = useState(null);
   const [kit, setKit] = useState(null);
   const [attempt, setAttempt] = useState(0);
+  const [stale, setStale] = useState(false);
+  const misses = useRef(0);
   const holder = useMemo(() => ({ d: null }), [roomId]);
   const lease = useMemo(() => {
     const reads = officeReads(() => holder.d);
@@ -117,24 +139,35 @@ export function RoomOffice({ client, roomId, members, timers = globalThis, pollM
     const read = async () => {
       const r = await client.roomOfficeState(roomId);
       if (stopped || !lease.current()) return;
-      if (r && r.ok) { const next = named(r); holder.d = next; setD(next); setPhase("live"); return; }
+      if (r && r.ok) { misses.current = 0; setStale(false); setD(r); setPhase("live"); return; }
       if (r && r.status === 409 && r.code === "office-off") { setPhase("off"); return; }
-      // A read that fails while the office is shown keeps the last picture; only a first read that fails says so.
+      // A read that fails while the office is shown keeps the last picture; ROOM_OFFICE_STALE_AFTER in a row say it may
+      // be old (people shown 處理中 minutes ago). A first read that fails says so at once.
+      if (++misses.current >= ROOM_OFFICE_STALE_AFTER) setStale(true);
       setPhase((p) => (p === "live" ? p : "failed"));
     };
     void read();
     const h = lease.interval(() => { if (!stopped && !globalThis.document?.hidden) void read(); }, pollMs);
     return () => { stopped = true; lease.clear(h); };
   }, [lease, attempt]);
-  const view = useMemo(() => (kit && d ? kit.buildOrgView(d.org, officeApp(d)) : null), [kit, d]);
+  const shown = useMemo(() => (d ? named(d, members) : null), [d, members]);
+  holder.d = shown;
+  const view = useMemo(() => (kit && shown ? kit.buildOrgView(shown.org, officeApp(shown)) : null), [kit, shown]);
+  const memberOf = (name) => {
+    const id = shown?.instances.find((i) => i.name === name)?.member;
+    return (Array.isArray(members) ? members : []).find((m) => m && (id === "assistant" ? m.kind === "assistant" : m.kind === "agent" && m.id === id)) || null;
+  };
   if (phase === "off") return html`<div class="hub-room-office hub-room-office-note"><p class="note" role="status">${hroom("officeOff")}</p></div>`;
   if (phase === "failed" && !view) return html`<div class="hub-room-office hub-room-office-note">
     <${ErrorState} message=${hroom("officeFailed")} onRetry=${() => { setPhase("loading"); setAttempt((n) => n + 1); }} /></div>`;
   if (!view) return html`<div class="hub-room-office hub-room-office-loading"><${Skeleton} variant="cards" lines=${3} label=${hroom("officeLoading")} /></div>`;
   const { Office } = kit;
   return html`<div class="hub-room-office" data-trust="panel-content">
+    ${stale ? html`<p class="note hub-room-office-stale" role="status">${hroom("officeStale")}</p>` : null}
     <${Office} view=${view} traffic=${[]} lease=${lease} opening="room" talk=${{ now: Date.now(), items: [] }}
       oneOffice=${true} readOnly=${true} stream=${false} storage=${storage} words=${(node) => officeWords(node, members)}
-      cardRows=${(name) => officeCardRows(members, d.instances.find((i) => i.name === name)?.member)} />
+      cardRows=${(name) => officeCardRows(members, shown.instances.find((i) => i.name === name)?.member)}
+      cardAction=${onMention ? (name) => { const m = memberOf(name); return m ? { label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) } : null; } : null}
+      more=${more} onMore=${onMore} />
   </div>`;
 }

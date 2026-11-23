@@ -326,9 +326,10 @@ function drawPortraitAvatar(cv, im, W) {
  * The card. `model`: cardModel's; `avatar(canvas, sizePx)`: draws the person's idle frame on it; `sheet`: a bottom
  * sheet (a phone); `place(el)`: the page positions the popover (beside the person, following them); `onChat` (none on
  * a share link), `onFind`, `onClose`; M-3293: `onReact(kind)` — Pat and Feed (only where play is on; none on a share
- * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`.
+ * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`; M-3533: `action`
+ * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat).
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2 }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null }) {
   const box = useRef(null), canvas = useRef(null), bgCanvas = useRef(null), swipe = useRef(null);
   const [picRev, setPicRev] = useState(0);
   const spec = useMemo(() => resolveCardSpec(packCard), [packCard]);
@@ -420,6 +421,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
+        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
       </div>
     </div>`;
   }
@@ -477,6 +479,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
+        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
       </div>`;
     }
     return null;

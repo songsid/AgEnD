@@ -436,6 +436,13 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // M-3533 R1 (design §2.1): the room's office, a tab beside Chat while a manager has it on (and this Hub serves it).
   const officeOn = group && client.roomOfficeV1 === true && detail?.settings?.office?.enabled === true;
   const inOffice = officeOn && view === "office";
+  // M-3533 R1: the office card's "@ it" goes back to Chat with the mention in the box, once the box is there again.
+  const mentionNext = useRef(""), [officeMore, setOfficeMore] = useState(false);
+  useEffect(() => {
+    if (inOffice || !mentionNext.current) return undefined;
+    const text = mentionNext.current, h = setTimeout(() => { mentionNext.current = ""; insert.current?.(text); }, 0);
+    return () => clearTimeout(h);
+  });
   // The page-level rooms notifier learns this person's id for this room from its detail (§12; member
   // ids are per room, so the id is kept under this room's id).
   useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(roomId, id); }, [detail && detail.me && detail.me.id]);
@@ -559,6 +566,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const menuItems = [
     // M-3533 R1: a phone has no tab row — Office is the first item of ⋯ (in the office, its back returns to the chat).
     narrow && officeOn && !inOffice ? { key: "office", label: hroom("tabOffice"), icon: "org", onSelect: () => onView("office") } : null,
+    // In the office a phone's options (hide paused, bedtime, dialogue, key, fit, fill) are one sheet, not rows over the scene.
+    narrow && inOffice ? { key: "officeMore", label: hroom("officeOptions"), icon: "settings", onSelect: () => setOfficeMore(true) } : null,
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
     pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: () => setPinsOpen(true) } : null,
@@ -602,7 +611,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
-      ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []} />` : null}
+      ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []}
+        onMention=${(m) => { mentionNext.current = `@${m.name}`; onView("chat"); }} more=${narrow && officeMore} onMore=${narrow ? setOfficeMore : null} />` : null}
       ${!inOffice && group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
