@@ -45,7 +45,7 @@ register("taskcard", {
     change: "改…", project: "專案", priority: "優先度", size: "大小", review: "你確認", reviewBox: "做完要停在待確認，等我確認",
     reviewOn: "做完會停在待確認，等你確認", reviewOff: "做完直接完成，不等你確認",
     parent: "主任務", deps: "相依", none: "沒有", edit: "編輯", depsTitle: "{0} 的相依", depsLabel: "要先完成的卡號，用逗號或空白分開（留空＝沒有相依）",
-    depWaiting: "還沒完成", depDone: "已完成", opened: "{0} 開的・{1}・最後更新 {2}",
+    depWaiting: "還沒完成", depDone: "已完成", opened: "{0} 開的 · {1} · 最後更新 {2}",
     blockedReason: "卡住原因", goal: "目標", goalHint: "為什麼做、做完是什麼樣子", scope: "範圍", scopeHint: "做：…／不做：…",
     definition: "完成定義", acceptance: "驗收條件", context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定",
     state: "目前狀態", stateHint: "已完成／下一步／注意（負責人會隨時覆寫）", result: "產出", resultHint: "改了哪些檔案、怎麼驗證",
