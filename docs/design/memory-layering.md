@@ -36,9 +36,19 @@ The guidance agents themselves receive is in
 - A per-instance runtime file in the workspace (for example
   `~/.agend/workspaces/<name>/soul.md`), never in this repository; `soul.md` is
   in `.gitignore`.
-- Holds the long-form memory: architecture, decisions taken, history. The
-  core rules tell agents not to create it unless the user asks, and to
-  suggest updating it after multi-step work that produced new knowledge.
+- Optional: AgEnD never creates or loads it. An agent reads it when it picks
+  up work the file covers, and after a restart or a compaction.
+- Three parts: **Current state** (work in progress, open to-dos, decisions in
+  force, rewritten in place rather than appended to), **Rules** (each written
+  as the action to take, with its reason) and a **History index** (one line
+  per finished piece of work and where to look).
+- Kept around 30 KB. It is read in full each time, so its size is context
+  cost, and outdated cautions left in it make an agent over-cautious.
+- Updated after a multi-step task that taught something reusable and before
+  a compaction; routine work needs no update.
+- When it does not exist, the agent asks the user once, with reply buttons,
+  after the first such task. A decline is recorded as `soul.declined` in the
+  workspace root (also in `.gitignore`), and the agent does not ask again.
 
 ## Skills
 

@@ -72,17 +72,21 @@ Always use a dedicated subdirectory like `/home/user/projects/my-project` or let
 
 ## Memory & Knowledge Management
 
-Use layered memory to minimize context usage:
+Keep what you know in three layers:
 
-1. **Fleet Decision** — short, shared rules only (role, workflow rules, TODOs). Keep concise (~20 lines guideline). If it exceeds this, consider whether the details belong in soul.md instead.
-2. **soul.md** (workspace root) — full memory: architecture, decisions, history. AgEnD does not load it for you: read it when you need it.
-   - If soul.md doesn't exist, do NOT create one unprompted. Only create when the user explicitly asks.
-3. **Skills** — reusable workflows, loaded on demand, in your backend's skills directory: `.kiro/skills/` (kiro), `.claude/skills/` (claude-code), `.agents/skills/` (codex, opencode, muse, antigravity), `.grok/skills/` (grok).
+1. **Fleet decisions** — short shared rules (roles, workflow rules, shared to-dos). They are resent with every request, so keep each to a few lines and link to the details.
+2. **soul.md** (workspace root, optional) — your own long-form memory, one per instance. AgEnD does not load it: read it when you pick up work it covers and after a restart or compaction.
+3. **Skills** — reusable workflows, loaded on demand from your backend's skills directory: `.kiro/skills/` (kiro), `.claude/skills/` (claude-code), `.agents/skills/` (codex, opencode, muse, antigravity), `.grok/skills/` (grok).
 
-Rules:
-- Keep Fleet Decisions minimal. Move details to soul.md.
-- Each instance maintains its own soul.md (not shared).
-- Good workflows → **propose** converting to a skill. Create `<skills directory>/<name>/SKILL.md` (see Skills above) only after user approval.
-- Global skills (`src/general-knowledge/skills/`) only for knowledge ALL instances need.
-- Never put architecture details or bug history in Fleet Decisions.
-- After completing a **multi-step task that introduced new architectural knowledge or a reusable process**, suggest updating soul.md. Do NOT ask after routine tasks (reviews, single-file fixes, Q&A).
+**soul.md has three parts:**
+- **Current state** — work in progress, open to-dos, and the decisions in force, each with its reason. Rewrite this part so it always describes now; move each finished item to the history index.
+- **Rules** — each written as the action to take, with its reason ("Run the tests before pushing: CI is slow").
+- **History index** — one line per finished piece of work and where to look (PR, commit, file or card).
+
+Keep it around 30 KB: it is read in full each time, so every line costs context, and outdated cautions make an agent hesitate over things that no longer apply. Past that, shorten history lines, drop rules that no longer apply, and move procedures into skills.
+
+**Update soul.md** after a multi-step task that taught you something reusable (an architecture fact, a procedure, a decision and its reason) and before a compaction. Routine work (a review, a one-file fix, an answered question) needs no update.
+
+**No soul.md yet?** After the first such task, ask the user once with `reply` and two buttons ("Create soul.md" / "No thanks"). On yes, create it with the three parts. On no, write `soul.declined` (date and answer) in the workspace root and carry on without it; that file means the question is answered for good. Create soul.md whenever the user asks for it.
+
+**Skills and decisions:** propose a skill when a workflow proves reusable, and create `<skills directory>/<name>/SKILL.md` once the user agrees. Bundled skills (`src/general-knowledge/skills/`) hold only what every instance of a role needs. Architecture details and bug history go in soul.md or a skill; a Fleet decision holds just the rule.

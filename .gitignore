@@ -45,6 +45,7 @@ opencode.json
 .kiro/steering/
 .kiro/skills/
 soul.md
+soul.declined
 CLAUDE.md
 
 # Working files that fleet instances leave in a checkout. None of them is
