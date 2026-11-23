@@ -50,6 +50,39 @@ describe("#2478: the chat composer (the real page modules)", () => {
     return { p, box, type, key, sends };
   }
 
+  it("M3540: edge/padding focuses the real textarea and accepts typing", async () => {
+    const c = await chatPage();
+    const row = c.p.root.querySelector(".composer")!;
+    const field = c.p.root.querySelector(".composer-field")!;
+    c.p.root.focus();
+    const down = fire(row, "pointerdown", { button: 0, pointerType: "mouse", isPrimary: true });
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+    expect(down.defaultPrevented).toBe(true);
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toMatch(/\.composer \{[^}]*user-select: none/);
+    expect(css).toMatch(/\.composer textarea \{[^}]*user-select: text/);
+    expect(css).toMatch(/\.composer-ph \{[^}]*user-select: none/);
+    await c.type("Edge draft");
+    expect(c.box().value).toBe("Edge draft");
+    c.p.root.focus(); fire(field, "click", { button: 0 });
+    expect(c.box().ownerDocument.activeElement).toBe(c.box());
+  });
+
+  it("M3540: textarea selection, right-click and controls keep native behavior", async () => {
+    const c = await chatPage();
+    c.p.root.focus();
+    const row = c.p.root.querySelector(".composer")!;
+    const right = fire(row, "pointerdown", { button: 2 });
+    expect(right.defaultPrevented).toBe(false);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+    const own = fire(c.box(), "pointerdown", { button: 0 });
+    expect(own.defaultPrevented).toBe(false);
+    const attach = c.p.root.querySelector("#attachBtn")!;
+    const action = fire(attach, "pointerdown", { button: 0 });
+    expect(action.defaultPrevented).toBe(false);
+    expect(c.box().ownerDocument.activeElement).toBe(c.p.root);
+  });
+
   const ph = (c: { p: AppPage }) => c.p.root.querySelector(".composer-field .composer-ph") as any;
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {
     const named = await chatPage({ over: { display_name: "Release captain" } });

@@ -1,3 +1,4 @@
+import { focusComposerPadding } from "/assets/composer-focus.js";
 // #1408 step 1: the chat panel. Behind the session gate (/ui/js/), loaded by the app with a dynamic import in "full"
 // mode only. boot() runs once per page (the chat store must hear the stream from the first frame); <ChatPanel> mounts
 // for /ui and /ui/chat/<name>.
@@ -856,7 +857,7 @@ function Composer({ name, inst, label = name, lease, busy }) {
       <button type="button" class="icon-btn reply-cancel" title=${t("chat.replyCancel")} aria-label=${t("chat.replyCancel")} onClick=${() => { store.clearReply(name); input.current?.focus(); }}><${Icon} name="close" size=${14} /></button>
     </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
-    <div class="composer">
+    <div class="composer" onPointerDown=${(e) => focusComposerPadding(e, input.current)} onClick=${(e) => focusComposerPadding(e, input.current)}>
       <button id="attachBtn" type="button" class="icon-btn" title=${t("chat.attachTitle")} aria-label=${t("chat.attachTitle")} onClick=${() => fileIn.current && fileIn.current.click()}><${Icon} name="attach" /></button>
       <input ref=${fileIn} type="file" multiple hidden
         onChange=${(e) => { store.addFiles(name, e.target.files); e.target.value = ""; }} />
