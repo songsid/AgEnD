@@ -9,6 +9,7 @@ The room has 12 people and 30 agents of 6 owners, plus the room assistant, all w
 
 | What | Captures |
 |---|---|
+| **The final scene:** Studio (large) in normal motion, taken with #4370's own capture script at `b0b881a4`, the same view as #4370's `desk-zh-TW-light-r1b-5-office-large.png` (its before). Every name is separate, nobody stands on anybody, nothing is under the zoom control | `desk-zh-TW-light-after-r1b-5-office-large.png` |
 | **The same moment on both commits:** the first frame of the office, the page clock paused and stepped alike. In before, everyone walks in from the old style's seats and tags pile up: Yarrow/Zephyr and Birch/Pebble in Studio, 13 pairs in Studio (large). In after, everyone is in place, with no tag on another | `desk-zh-TW-light-{before,after}-studio-walkin.png`, `desk-zh-TW-light-{before,after}-studio-large-walkin.png` |
 | Studio, desktop | `desk-zh-TW-light-{before,after}-studio.png`, `desk-en-dark-{before,after}-studio.png` |
 | Studio (large), desktop | `desk-en-dark-{before,after}-studio-large.png` |
@@ -28,6 +29,7 @@ A scratch probe (not part of this change) recorded every tag the scene drew, eac
 | Name tags overlapping another tag (worst frame per run) | 1–3 pairs in every run (e.g. Yarrow/Pebble, Dune/Cedar, Willow/Flint) | 0 in every frame |
 | A tag on an area's name | 0 | 0 |
 | A tag under the zoom control (including zoomed in) | 0 | 0 (now kept clear by construction) |
+| Two figures standing on each other, at rest (normal motion; 8 frames, desktop and phone) | 1–5 per frame | 0 in every frame |
 | A tag under the minimap at 150% | Cedar (reads 「Ceda」) | none: Cedar's tag beside it |
 | The office's first frame, the clock paused (walk-in pair) | 2 pairs (Studio), 13 (large); 0 of 6 in the nap corner | 0 and 0; 6 of 6 |
 | Nap corner at 3 s: people sent there / drawn there | 6 / 0 (Studio), 6 / 4–5 (large): the stopped walked in from the old seats, through the help desk | 6 / 6 in every run |
@@ -42,9 +44,11 @@ What changed:
   - People walking are tagged after everyone at their place, so a stroll no longer covers a seated person's name.
 - **An area's name a figure stands on** (休息區 under the crowd at the top of the Studio lounge) is written again over the people, on a plate of the page's surface.
 - **The idle never stroll or visit to the help desk.** Someone standing there reads as "needs you". These are the areas a style sends the calling to; strolls and visits elsewhere are unchanged (#3685).
+- **A stroll never ends on someone else.** It ends only where the figure stands clear of everyone (a seat in use, a visitor, another stroll), and its tag stays inside its area. Before, a row's aisle points sat just under its seats, so in a full room strollers stood on the seated, and the bottom row's tags spilled past the area's edge.
 - **A new office or style places everyone at once**, stopping any walk under way, even one going to the same seat. Before, a room's office opened on the Studio's seats, then read its style, and everyone walked across. The asleep stood in the help desk for seconds, so 午睡角 6 had nobody drawn in it.
 
 Not changed:
 
-- **Figures overlapping figures.** In the plain Studio a 30-agent room is over its lounge's capacity, so figures stand on the overflow grid close together, and a tag can sit over a neighbour's figure. Studio (large), from #4370, seats them all.
+- **Figures overlapping figures in an over-capacity area.** In the plain Studio a 30-agent room is over its lounge's capacity, so its overflow grid is close together, and a tag can sit over a neighbour's figure. Studio (large), from #4370, seats them all.
+- **Long names.** They are cut at the tag's width with 「…」, for example 「Atlas（Example …」.
 - **Idle agents visiting other areas.** They still stroll and visit (#3685) everywhere but the help desk.
