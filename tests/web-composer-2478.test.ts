@@ -142,6 +142,18 @@ describe("#2478: the chat composer (the real page modules)", () => {
     }
   });
 
+  it("M3540: CSS gutter rules are top-level and preserve the full-width selector/media scope", () => {
+    const css = readFileSync(join(process.cwd(), "src/ui/shared/app.css"), "utf8");
+    expect(css).toContain('@media (min-width: 900px) { .p-chat[data-width="full"] .thread, .p-chat[data-width="full"] .dock-col { max-width: none; } }');
+    const structure = css.replace(/\/\*[\s\S]*?\*\//g, "").replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "''");
+    for (const selector of [".composer-hit {", ".composer-hit .cmd-card,"]) {
+      const at = structure.indexOf(selector); expect(at).toBeGreaterThan(-1);
+      const before = structure.slice(0, at);
+      expect((before.match(/\{/g)?.length || 0) - (before.match(/\}/g)?.length || 0), selector).toBe(0);
+    }
+    expect(css).toMatch(/^\.dock-col \{ max-width: var\(--col\);/m);
+  });
+
   const ph = (c: { p: AppPage }) => c.p.root.querySelector(".composer-field .composer-ph") as any;
   it("1: the placeholder names the display name — its id when there is none (or only spaces)", async () => {
     const named = await chatPage({ over: { display_name: "Release captain" } });

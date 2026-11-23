@@ -7,7 +7,7 @@
     },
     {
       "path": "src/ui/shared/app.css",
-      "sha256": "6c3f9fc201ac6aec5fada0b24ac007a2c870871d6836638cd4717634436caf95"
+      "sha256": "1b5241759c709a1bdffa43c3bd8e766d9350bfd7d66023557d4e2fb0da2b09c6"
     },
     {
       "path": "src/ui/shared/composer-focus.js",
@@ -15,7 +15,7 @@
     },
     {
       "path": "tests/web-composer-2478.test.ts",
-      "sha256": "a10dc8fe9e194e6efe4e0ac2ec60a5bee1eafe3cf79ab171c61b1f3697c8b8cb"
+      "sha256": "5f9eedf2348b2198f2587a16ccdcf1663a9d897a38675b69d481d044a8061d95"
     }
   ],
   "tests": {
@@ -23,5 +23,11 @@
     "current": "composer+authorization32/32PASS; test typecheck0"
   },
   "scope": "working line through verification row, normal flow8px gutter, controls/message list/scroll preserved",
-  "images": "all4 originals unchanged; historical pre-expansion source; user requested no new screenshot round"
+  "images": "all4 originals unchanged; historical pre-expansion source; user requested no new screenshot round",
+  "css_scope_correction": {
+    "base": "a9ace1a2 scoped regression1ASSERTIONRED",
+    "fixed": "composer15/15PASS; CSS parsed by lockfile lightningcss",
+    "scope": "original min900 full-width thread/dock-col rule restored exactly; both gutter rules at brace-depth0; dock column cap unchanged",
+    "earlier32": "historical prior strip run; overlapping, not summed"
+  }
 }
