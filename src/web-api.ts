@@ -525,6 +525,12 @@ export interface WebApiContext extends ClaudeCredentialApi {
   loginTokenPasted?(): Promise<string | null>;
   deliverToInstance(instanceName: string, payload: Record<string, unknown>, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
   deliverHumanToInstance?(instanceName: string, payload: Record<string, unknown>, origin: HumanOrigin, originalBody: string, options?: { stillCurrent?: () => boolean; authorityCurrent?: () => boolean }): Promise<boolean | void>;
+  /**
+   * #4336 (M-3516): the reactions waiting for the agent (an Office pat or feed with Tell on, a platform reaction) as the
+   * `pending_reactions` meta a person's message carries — "[Recent reactions: …]" — and `consume`, called only once the
+   * message was accepted (a failed delivery keeps them for the next one). As a platform message's (fleet-manager).
+   */
+  pendingReactionsMeta?(instanceName: string): { meta: Record<string, string>; consume: () => void };
   getUiStatus(): unknown;
   /** Current owned pane reader shared with status; absent means context is unavailable. */
   getPaneContextSource?(name: string): PaneContextSource | null;
@@ -4615,11 +4621,12 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
   update();
   const delivery = attachmentDelivery(row.text, files);
   const adapter = ctx.getAdapterForInstance ? ctx.getAdapterForInstance(instance) : ctx.adapter;
+  const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };   // #4336
   const payload = { type: "fleet_inbound", content: delivery.text, ...(nativeRequestId ? { requestId: nativeRequestId } : {}), targetSession: instance, meta: {
     chat_id: ctx.getGroupIdForInstance?.(instance) ?? String(ctx.fleetConfig?.channel?.group_id ?? ""),
     thread_id: String(ctx.fleetConfig?.instances[instance]?.topic_id ?? ""), message_id: messageId,
     user: person.name, user_id: person.userId, source: "web", ts: new Date().toISOString(), adapter_id: adapter?.id,
-    ...(guest ? { web_guest: "1" } : {}), ...delivery.meta, ...(quoted ? { reply_to_text: webChatReplyText(quoted) } : {}),
+    ...(guest ? { web_guest: "1" } : {}), ...reactions.meta, ...delivery.meta, ...(quoted ? { reply_to_text: webChatReplyText(quoted) } : {}),
   } };
   let handedOff = false;
   try {
@@ -4627,6 +4634,7 @@ async function handleResendMessage(req: IncomingMessage, res: ServerResponse, ct
       : await ctx.deliverToInstance(instance, payload, { stillCurrent, ...(native ? { authorityCurrent } : {}) });
     if (delivered === false) throw new Error("delivery changed");
     handedOff = true;
+    reactions.consume();                                  // #4336: they rode this message; only now, once accepted
     if (!res.destroyed) json(res, 200, { sent: true, message: row });
   } catch (error) {
     if (handedOff) return; // a lost HTTP answer does not make the accepted pane handoff fail
@@ -4810,6 +4818,10 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
         return sent;
       }) : undefined;
       let delivered: boolean | void;
+      // #4336 (M-3516): the reactions waiting for the agent ride this message, as a platform message's do (one line,
+      // "[Recent reactions: …]"); they are consumed below only once it was accepted. The room's or topic's echo of it is
+      // a bot copy the agent is never handed, so they are delivered exactly once.
+      const reactions = ctx.pendingReactionsMeta?.(instance) ?? { meta: {}, consume: () => {} };
       try {
         const deliver = (name: string, payload: Record<string, unknown>) => ctx.deliverHumanToInstance
           ? ctx.deliverHumanToInstance(name, payload, webHumanOrigin(false, authority), typed, { stillCurrent, ...(native ? { authorityCurrent } : {}) })
@@ -4828,6 +4840,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
             source: "web",
             ...(guest ? { web_guest: "1" } : {}),          // #1920: "[user:…@web:g#…]" (authority none)
             adapter_id: syncAdapter?.id,
+            ...reactions.meta,
             ...delivery.meta,
             // #2272: `(reply_to: "…")`, as a Discord or Telegram reply gives the agent.
             ...(quoted ? { reply_to_text: webChatReplyText(quoted) } : {}),
@@ -4855,6 +4868,7 @@ function handleSendMessage(req: IncomingMessage, res: ServerResponse, ctx: WebAp
       // The agent has it: from here on a repeat of this clientId is this send, whatever fails after (the echo, the
       // stream's copy) — a Retry then gets this messageId, never a second delivery.
       acceptedId = messageId;
+      reactions.consume();
       settleEcho?.(true);
       settleClassicEcho?.(true);
       // #1666: the same cancel/progress bubble a platform inbound starts, in the topic the echo went to — a second turn
