@@ -1,0 +1,26 @@
+{
+  "results": [
+    {
+      "name": "warning-guard",
+      "exitCode": 1,
+      "failure": "assertion",
+      "inputSha256": "3928c448a0e0c139925027af11194cc89a7b118e89102299067738d44d73f590"
+    },
+    {
+      "name": "urgent-predicate",
+      "exitCode": 1,
+      "failure": "assertion",
+      "inputSha256": "82b87d9990742ae1b5d5047ebe70d6d7df07b7d3455d4d1b069f283ad183fd67"
+    },
+    {
+      "name": "retirement-disabled",
+      "exitCode": 1,
+      "failure": "assertion",
+      "inputSha256": "7933806b2fceb69f4835ce979f3f62aca0f7783fa095e103b27ae652b1300856"
+    }
+  ],
+  "restored": {
+    "src/host-monitoring-alert-policy.ts": "ab114f33e51fba97771be777e2bc58364222097b8719cd5ea731d114dfba46fb",
+    "src/host-monitoring-alerts.ts": "58a7e7833e0b579917ef0b03017d09a53bf216c1baebead45807ad0ce5c6e011"
+  }
+}

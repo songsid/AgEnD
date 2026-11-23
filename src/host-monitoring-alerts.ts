@@ -33,10 +33,20 @@ export class HostMonitoringAlerts {
  ready():void {
   this.workerReady=true;if(!this.enabled||this.loaded||this.busy||this.failure)return;
   const epoch=this.epoch;this.busy=true;
-  void this.options.persistence.incidentRead().then(answer=>{
+  void this.options.persistence.incidentRead().then(async answer=>{
    if(!this.current(epoch))return;
    if(!answer.ok||!answer.value)throw Error('incident_load_failed');validateHostAlertDocument(answer.value.document);
    this.sequence=answer.value.sequence;this.document=answer.value.document;
+   // Reconcile saved warnings before publishing Ready or dispatching their outbox.
+   // Retire by policy change, without sending a false pressure-recovery message.
+   const retired=this.document.active.filter(record=>record.kind==='memory'&&record.level==='warning'&&hostAlertRuleFor(this.settings,record.key,record.kind).criticalOnly===true);
+   if(retired.length){
+    const document=structuredClone(this.document),keys=new Set(retired.map(record=>record.key)),now=this.now();
+    document.active=document.active.filter(record=>!keys.has(record.key));
+    document.resolved=[...document.resolved,...retired.map(record=>({...record,revision:record.revision+1,updatedAt:now,resolvedAt:now}))].slice(-500);
+    document.pending=document.pending.filter(p=>!keys.has(p.key)&&(p.transition!=='resolved'||document.resolved.some(r=>r.key===p.key&&r.revision===p.revision)));
+    await this.save(document,epoch);if(!this.current(epoch))return;
+   }
    for(const record of this.document.active)this.windows.set(record.key,new HostAlertWindow(record.key,hostAlertRuleFor(this.settings,record.key,record.kind),record));
    this.loaded=true;this.publish();
   }).catch(()=>{if(this.current(epoch))this.fail('incident_load_failed');}).finally(()=>{this.busy=false;this.drain();});

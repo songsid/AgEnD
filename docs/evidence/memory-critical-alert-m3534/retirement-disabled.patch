@@ -1,0 +1,11 @@
+--- a/src/host-monitoring-alerts.ts
++++ b/src/host-monitoring-alerts.ts
+@@ -40,7 +40,7 @@
+    // Reconcile saved warnings before publishing Ready or dispatching their outbox.
+    // Retire by policy change, without sending a false pressure-recovery message.
+    const retired=this.document.active.filter(record=>record.kind==='memory'&&record.level==='warning'&&hostAlertRuleFor(this.settings,record.key,record.kind).criticalOnly===true);
+-   if(retired.length){
++   if(false){
+     const document=structuredClone(this.document),keys=new Set(retired.map(record=>record.key)),now=this.now();
+     document.active=document.active.filter(record=>!keys.has(record.key));
+     document.resolved=[...document.resolved,...retired.map(record=>({...record,revision:record.revision+1,updatedAt:now,resolvedAt:now}))].slice(-500);

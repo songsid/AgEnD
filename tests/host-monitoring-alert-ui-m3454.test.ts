@@ -42,4 +42,13 @@ describe('shared alert views and staged settings',()=>{
   await p.mount(h(HostAlertSettings,{ctx,health:{}}));await settle(6);expect(staged.size).toBe(0);const toggle=p.root.querySelector('#hostAlert-general');expect(toggle.checked).toBe(false);toggle.checked=true;fire(toggle,'change');await settle(12);expect(staged.get('host-alerts').request).toMatchObject({method:'PUT',url:'/api/settings/fleet/host-alerts',body:{general:true,needsYou:true,rules:{}}});expect(staged.has('host-monitoring')).toBe(false);
   const warning=p.root.querySelector('input[id="alert-cpu-warning"]');warning.value='92';fire(warning,'input');await settle(12);expect(staged.get('host-alerts').request.body.rules.cpu.warning).toBe(92);
  });
+ it.each(['en','zh-TW'])('stages the memory-only critical option on and off, with the saved checked state (%s)',async language=>{
+  const p=page();pages.push(p);setLang(language);const staged=new Map(),ctx:any={fleet:{},hostAlerts:defaultHostAlertSettings(),schema:{host_alert_defaults:HOST_ALERT_DEFAULTS},drafts:new Map(),stage:(k:string,v:any)=>staged.set(k,v),unstage:(k:string)=>staged.delete(k)};
+  await p.mount(h(HostAlertSettings,{ctx,health:{}}));await settle(6);const toggle=p.root.querySelector('#alert-memory-criticalOnly');expect(toggle.checked).toBe(false);
+  expect(p.root.textContent).toContain(language==='en'?'Alert only at critical':'只在嚴重時警示');expect(p.root.querySelector('#alert-memory-critical-hint').textContent).toContain(language==='en'?'critical alerts and recovery are unchanged':'嚴重警示與恢復條件不變');
+  toggle.checked=true;fire(toggle,'change');await settle(12);const request=staged.get('host-alerts').request;expect(request).toMatchObject({method:'PUT',url:'/api/settings/fleet/host-alerts',body:{rules:{memory:{...HOST_ALERT_DEFAULTS.memory,criticalOnly:true}}}});expect(request.body.rules.cpu).toBeUndefined();expect(staged.has('host-monitoring')).toBe(false);
+  toggle.checked=false;fire(toggle,'change');await settle(12);expect(staged.get('host-alerts').request.body.rules.memory.criticalOnly).toBe(false);
+  await p.unmount();ctx.drafts=new Map();ctx.hostAlerts=request.body;await p.mount(h(HostAlertSettings,{ctx,health:{}}));await settle(6);expect(p.root.querySelector('#alert-memory-criticalOnly').checked).toBe(true);
+ });
+
 });
