@@ -27,3 +27,20 @@ export function carryLapsePermissions(db: Database.Database, exposureId: string,
   } catch { /* a Hub without room discovery: nothing to carry */ }
   return { grants, discovery };
 }
+
+/**
+ * #4361 review: the lapse as the member reported it — the revision at which this fleet's stored catalog says the exposure
+ * lapsed (agent-catalog-lapse-v1 only; a member reports `lapsed` only on a link that negotiated it), or null.
+ */
+export function lapsedRevision(body: string | undefined | null, exposureId: string): number | null {
+  if (!body) return null;
+  try {
+    const row = (JSON.parse(body) as { agents?: Array<{ exposure?: { id?: string; revision?: number; state?: string; lapsed?: boolean } | null }> }).agents
+      ?.find(a => a.exposure?.id === exposureId)?.exposure;
+    return row && row.state === "published" && row.lapsed === true && Number.isSafeInteger(row.revision) ? row.revision! : null;
+  } catch { return null; }
+}
+export function catalogLapse(db: Database.Database, fleetId: string, exposureId: string): number | null {
+  const row = db.prepare("SELECT body FROM hub_agent_catalogs WHERE fleet_id=?").get(fleetId) as { body: string } | undefined;
+  return lapsedRevision(row?.body, exposureId);
+}

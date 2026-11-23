@@ -1,4 +1,5 @@
 import { roomDiscoverySupported, roomDiscoverySnapshot, roomFindable } from "./room-agent-discovery-model.js";
+import { carryLapsePermissions, catalogLapse, HUB_LAPSE_CARRY } from "./lapse-carry.js";
 import { settleSharingWithdrawal, type SharingSettlement } from "./sharing-withdrawal.js";
 import { keepStoppedList } from "./sharing-retention.js";
 /**
@@ -247,6 +248,12 @@ export class HubCatalogService {
           db.prepare("UPDATE hub_rooms SET state='closed' WHERE exposure_id=? AND state<>'closed'").run(id);
         }
         for (const e of snapshot.exposures) {
+          // #4361 review (M-3543): a lapsed agent shared again from the Fleet's own Settings arrives as this republish (same id,
+          // next revision, still published) with no Hub sharing request. When the Fleet's catalog said that exposure lapsed at
+          // the old revision, its grants follow — the same switchable carry as a Hub-page Share again; never otherwise.
+          const before = readExposure(db, e.id);
+          if (HUB_LAPSE_CARRY && before && before.state === "published" && e.state === "published" && e.revision === before.revision + 1
+            && catalogLapse(db, link.fleetId, e.id) === before.revision) carryLapsePermissions(db, e.id, before.revision, e.revision, now);
           db.prepare(`INSERT INTO hub_exposures(id, fleet_id, owner, display_name, revision, state, data_view_id, allowed_tools, policy_digest, updated_at)
             VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET display_name=excluded.display_name, revision=excluded.revision, state=excluded.state,
             data_view_id=excluded.data_view_id, allowed_tools=excluded.allowed_tools, policy_digest=excluded.policy_digest, updated_at=excluded.updated_at`)

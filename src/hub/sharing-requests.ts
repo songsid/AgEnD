@@ -101,7 +101,8 @@ export class HubSharingRequests {
         const stopped = stoppedImage(db, target);
         if (!agent?.exposure || agent.exposure.state === "withdrawn" || !stopped || stopped.exposure.owner !== owner
           || stopped.exposure.fleet_id !== input.fleetId || stopped.exposure.revision !== agent.exposure.revision) throw new HubProtocolError("conflict");
-        return { target, pointer: agent.exposure, stopped };
+        // M-3543: the stored pointer is the exact one the member echoes (no catalog-only `lapsed` flag).
+        return { target, pointer: { id: agent.exposure.id, revision: agent.exposure.revision, state: agent.exposure.state }, stopped };
       })];
       const name = (db.prepare("SELECT display_name FROM hub_people WHERE person=?").get(owner) as { display_name: string } | undefined)?.display_name ?? "Hub owner";
       const request = validated(exposureRequestSchema, { by: browser.person, byName: name, catalogRevision: input.catalogRevision,

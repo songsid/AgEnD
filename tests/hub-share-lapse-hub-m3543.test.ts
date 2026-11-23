@@ -16,7 +16,8 @@ import type { HubFleetExposure, HubMemberFrame } from "../src/hub/types.js";
 import { personKeyString } from "../src/hub/identity.js";
 
 let rig: Awaited<ReturnType<typeof s3bRig>> | undefined;
-afterEach(async () => { await rig?.close(); rig = undefined; });
+const reset = async () => { await rig?.close(); rig = undefined; };
+afterEach(reset);
 
 async function world() {
   let now = 1_800_000_000_000;
@@ -32,10 +33,10 @@ async function world() {
     state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) });
   await r.http.receive(r.frame("exposure.snapshot", { revision: 1, exposures: [exposure(1)] }, link), link);
   let n = 0;
-  const catalog = async (lapsed: boolean) => {
+  const catalog = async (lapsed: boolean, revision = 1, state: "published" | "withdrawn" = "published") => {
     const body: HubAgentCatalog = { enabled: true, requests: true, revision: String(++n).padStart(64, "0"), agents: [{ instance: "Docs", displayName: "Document helper",
       description: "A helper", avatar: null, kind: "agent", general: false, shareable: true,
-      exposure: { id: exposureId, revision: 1, state: "published", ...(lapsed ? { lapsed: true as const } : {}) } }] };
+      exposure: { id: exposureId, revision, state, ...(lapsed ? { lapsed: true as const } : {}) } }] };
     await r.http.receive(r.frame("agent.catalog", body, link), link); return body;
   };
   const browser = await r.signIn("owner");
@@ -48,7 +49,11 @@ async function world() {
     return id;
   };
   const read = (id: string) => r.db.prepare("SELECT exposure_revision, expires_at, state FROM hub_grants WHERE id=?").get(id) as { exposure_revision: number; expires_at: number; state: string };
-  return { r, now: () => now, owner, reader, fleetId, link, exposureId, catalog, shareAgain, result, grant, read };
+  let snap = 1;
+  const snapshot = async (revision: number, state: "published" | "withdrawn" = "published") =>
+    r.http.receive(r.frame("exposure.snapshot", { revision: ++snap, exposures: [{ ...exposure(revision), state }] }, link), link);
+  const stop = async (revision: string) => r.call(browser, "POST", "/hub/v1/me/agent-sharing", { idempotencyKey: randomUUID(), fleetId, catalogRevision: revision, share: [], stop: [exposureId] });
+  return { r, now: () => now, owner, reader, fleetId, link, exposureId, catalog, shareAgain, result, grant, read, snapshot, stop };
 }
 
 describe("negotiation: only with exposure requests, and only to a member that can read a 32-name welcome", () => {
@@ -102,5 +107,47 @@ describe("carryLapsePermissions: one switchable step", () => {
       { id: "c", exposure_revision: 4, expires_at: 2000 }, { id: "d", exposure_revision: 3, expires_at: 2000 }]);
     expect(HUB_LAPSE_CARRY).toBe(true);
     db.close();
+  });
+});
+
+describe("#4361 review: Share again from the Fleet's Settings, and a stop of a lapsed agent", () => {
+  it("a stop requested while the catalog says lapsed settles and revokes as before (the stored pointer has no catalog-only flag)", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000);
+    const report = await w.catalog(true);
+    const accepted = await w.stop(report.revision);
+    expect(accepted.status).toBe(200);
+    await w.result(accepted.json.id, [{ exposureId: w.exposureId, ok: true, before: { id: w.exposureId, revision: 1, state: "published" }, after: { id: w.exposureId, revision: 2, state: "withdrawn" } }]);
+    expect(w.r.db.prepare("SELECT state, result FROM hub_sharing_requests WHERE id=?").get(accepted.json.id)).toMatchObject({ state: "complete" });
+    expect(w.read(live).state).toBe("revoked");
+  });
+  it("the Fleet's republish of a lapsed agent (snapshot only, no Hub request) keeps its active grants with their expiry", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000), expired = w.grant("active", w.now() - 1);
+    await w.catalog(true);
+    await w.snapshot(2);
+    expect(w.read(live)).toEqual({ exposure_revision: 2, expires_at: w.now() + 86_400_000, state: "active" });
+    expect(w.read(expired).exposure_revision).toBe(1);
+  });
+  it("the other order: the Fleet's catalog shows the republish first, then its snapshot", async () => {
+    const w = await world();
+    const live = w.grant("active", w.now() + 86_400_000);
+    await w.catalog(true);
+    await w.catalog(false, 2);
+    await w.snapshot(2);
+    expect(w.read(live)).toMatchObject({ exposure_revision: 2, state: "active" });
+  });
+  it("never otherwise: an ordinary republish of a working share, a stop-then-share, or a jump of more than one revision", async () => {
+    const ordinary = await world(), g1 = ordinary.grant("active", ordinary.now() + 86_400_000);
+    await ordinary.catalog(false); await ordinary.snapshot(2);
+    expect(ordinary.read(g1).exposure_revision).toBe(1);
+    await reset();
+    const stopped = await world(), g2 = stopped.grant("active", stopped.now() + 86_400_000);
+    await stopped.catalog(true); await stopped.snapshot(2, "withdrawn"); await stopped.snapshot(3);
+    expect(stopped.read(g2)).toMatchObject({ exposure_revision: 1, state: "revoked" });
+    await reset();
+    const jump = await world(), g3 = jump.grant("active", jump.now() + 86_400_000);
+    await jump.catalog(true); await jump.snapshot(3);
+    expect(jump.read(g3).exposure_revision).toBe(1);
   });
 });
