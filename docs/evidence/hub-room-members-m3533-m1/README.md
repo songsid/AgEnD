@@ -14,4 +14,6 @@ The compact list is used only when a room has more than 12 people and agents tog
 
 The design captures are on the design branch (`docs/evidence/hub-office-visit-m3460/`).
 
-People keep today's order: me first, then the online ones, in the order the Hub lists them. The design does not set an order within the online people.
+Order (after the design review): people are listed me first, then by name in the viewer's language, and the same inside 「不在線上」. Owner groups are listed my own first, then by owner name, keyed by the owner's id, so two owners of one name are two groups. While a filter is on, a group's number is the rows under it.
+
+Measured in Chromium on the phone captures (a touch screen): the filter, the fold rows and an agent's row are 44 px high (`--tap`). On a desktop they stay dense (36 and 32 px).
