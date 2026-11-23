@@ -3,7 +3,7 @@
 These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real room office, headless Chromium, taken from two commits:
 
 - **before**: #4370's head `ce5f6556`;
-- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. The walk-in pair and the zoomed pair are from `20545610`, which adds the minimap to what tags keep clear of; their before is the same `ce5f6556`. Later commits change nothing in these scenes. `bc82159b` only matters for a style whose calling states fall back to a default or first area, and the Studio styles name theirs.
+- **after**: this branch at `a3fc48de`, which already has the help-desk rule (`e2458506`) and the fresh-placement fix. The walk-in pair and the zoomed pair are from `5530e2e5`, which adds the minimap to what tags keep clear of, slides a tag sideways past such a control instead of dropping it, and keeps bubbles off the area names. Their before is the same `ce5f6556`. Later commits change nothing in these scenes. `bc82159b` only matters for a style whose calling states fall back to a default or first area, and the Studio styles name theirs.
 
 The room has 12 people and 30 agents of 6 owners, plus the room assistant, all with made-up names. Two agents are working, one is paused, and one owner's Fleet is offline, so its 5 agents are stopped and go to the nap corner. Each shot is taken 3 s after the office opens, with normal motion (idle agents stroll).
 
@@ -28,7 +28,7 @@ A scratch probe (not part of this change) recorded every tag the scene drew, eac
 | Name tags overlapping another tag (worst frame per run) | 1–3 pairs in every run (e.g. Yarrow/Pebble, Dune/Cedar, Willow/Flint) | 0 in every frame |
 | A tag on an area's name | 0 | 0 |
 | A tag under the zoom control (including zoomed in) | 0 | 0 (now kept clear by construction) |
-| A tag under the minimap at 150% | Cedar | none |
+| A tag under the minimap at 150% | Cedar (reads 「Ceda」) | none: Cedar's tag beside it |
 | The office's first frame, the clock paused (walk-in pair) | 2 pairs (Studio), 13 (large); 0 of 6 in the nap corner | 0 and 0; 6 of 6 |
 | Nap corner at 3 s: people sent there / drawn there | 6 / 0 (Studio), 6 / 4–5 (large): the stopped walked in from the old seats, through the help desk | 6 / 6 in every run |
 | An idle agent standing in the help desk (求救區), at rest between strolls, in the sampled frames | 2 (Reed, Quartz) | 0 |
