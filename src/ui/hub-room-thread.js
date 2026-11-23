@@ -621,7 +621,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
       ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []}
-        onMention=${(m) => { mentionNext.current = m; onView("chat"); }} more=${narrow && officeMore} onMore=${narrow ? setOfficeMore : null} />` : null}
+        onMention=${(m) => { mentionNext.current = m; onView("chat"); }} more=${officeMore} onMore=${setOfficeMore} />` : null}
       ${!inOffice && group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}

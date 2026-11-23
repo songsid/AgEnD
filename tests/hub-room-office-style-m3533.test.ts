@@ -82,7 +82,7 @@ describe("Room settings → Room office → Style (§2.1b)", () => {
       expect(rows).toEqual(skin.ROOM_STYLES.map((id: string) => { const n = i18n.t(`hubRoom.style_${id}`); return `${n}${n.endsWith("）") ? "· " : " · "}${skin.styleSeats(id).total} 個座位`; }));
       // Lumen's form: no space after a full-width bracket.
       expect(rows.slice(0, 2)).toEqual(["工作室（大）· 57 個座位", "工作室 · 41 個座位"]);
-      expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent。工作室 的休息區有 14 個座位，換成較大的風格就能讓每個 Agent 都有位子。");
+      expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent。「工作室」的休息區有 14 個座位，換成較大的風格就能讓每個 Agent 都有位子。");
       const save = p.root.querySelector(".hub-room-office-style-save") as any;
       expect(save.disabled).toBe(true);
       // Clicking through the list saves nothing; Save style saves the last pick, once.
@@ -97,7 +97,7 @@ describe("Room settings → Room office → Style (§2.1b)", () => {
       expect([skin.styleSeats("cozy"), skin.STUDIO_PACK && Object.values(skin.SKINS.get("cozy").pack.areas).map((a: any) => a.seats.length)]).toEqual([{ total: 14, rest: 3 }, [6, 3, 2, 3]]);
       await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: detail(30, "cozy"), assistant: false }));
       await until(() => p.root.querySelector(".hub-room-office-fit"));
-      expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent。溫馨 的休息區有 3 個座位，換成較大的風格就能讓每個 Agent 都有位子。");
+      expect(p.root.querySelector(".hub-room-office-fit")?.textContent).toBe("這個房間有 30 個 Agent。「溫馨」的休息區有 3 個座位，換成較大的風格就能讓每個 Agent 都有位子。");
       // A room that fits its style: no hint.
       await p.mount(h(settings.RoomSettings, { client: { roomOfficeV1: true, updateRoom: update }, roomId: "room", detail: detail(10), assistant: false }));
       await until(() => p.root.querySelectorAll(".hub-room-office-styles input[type=radio]").length); expect(p.root.querySelector(".hub-room-office-fit")).toBeNull();

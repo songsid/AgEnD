@@ -230,7 +230,7 @@ register("hubRoom", {
     officeSection: "房間辦公室", officeSetting: "顯示房間辦公室",
     officeStyle: "風格", officeStyleSave: "儲存風格", seatsN: "{0} 個座位",
     "style_studio-large": "工作室（大）", style_studio: "工作室", style_cozy: "溫馨", style_guild: "冒險者公會", style_school: "學校",
-    officeFitHint: "這個房間有 {0} 個 Agent。{1} 的休息區有 {2} 個座位，換成較大的風格就能讓每個 Agent 都有位子。",
+    officeFitHint: "這個房間有 {0} 個 Agent。「{1}」的休息區有 {2} 個座位，換成較大的風格就能讓每個 Agent 都有位子。",
     officeStyleSys: "{0} 把房間辦公室的風格換成「{1}」",
     sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     invitedSys: "已邀請 {0} 個 Agent，擁有者同意後會加入。",
