@@ -26,7 +26,7 @@ export const newRoomOffice = (): number => Number(ROOM_OFFICE_DEFAULT.newRooms);
 
 export const HUB_ROOM_OFFICE_MIGRATION = Object.freeze({ component: "s3-room-office", version: 1, up(db: Database.Database) {
   db.exec("ALTER TABLE hub_group_rooms ADD COLUMN office_enabled INTEGER CHECK(office_enabled IN (0,1))");
-  db.exec("ALTER TABLE hub_group_rooms ADD COLUMN office_style TEXT NOT NULL DEFAULT 'cozy'");
+  db.exec("ALTER TABLE hub_group_rooms ADD COLUMN office_style TEXT NOT NULL DEFAULT 'studio'");
   db.exec("CREATE TABLE hub_room_office_events(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id) ON DELETE CASCADE,enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))");
 } });
 
@@ -39,17 +39,22 @@ export const ROOM_OFFICE_ID = "room";
 /** An agent's place in the room's office: the share page's status-frame fields, and the Hub's own "answering here". */
 export interface RoomOfficeAgent {
   name: string; display_name: string; status: "running" | "paused" | "stopped"; execution_state?: "idle" | "working";
-  answering?: true; assistant?: true;
+  /** The member list's own word for it, so the page says the same (hub-room-presence.js). */
+  presence: RoomPresence; answering?: true; assistant?: true;
 }
 
-export type RoomPresence = "idle" | "working" | "paused" | "offline";
+/** The member list's presences: a personal agent whose computer is offline answers "later", when it is back. */
+export type RoomPresence = "idle" | "working" | "paused" | "offline" | "later";
 
-/** A member list presence (and whether the Hub is waiting on its answer in this room) as the Office draws it (fleet-org.js orgState). */
+/**
+ * A member list presence (and whether the Hub is waiting on its answer in this room) as the Office draws it (fleet-org.js
+ * orgState): only idle and working are at work; paused is paused; offline, later or anything unknown is away.
+ */
 export function officeAgent(id: string, name: string, presence: RoomPresence, answering: boolean, assistant = false): RoomOfficeAgent {
-  const out: RoomOfficeAgent = presence === "offline" ? { name: id, display_name: name, status: "stopped" }
-    : presence === "paused" ? { name: id, display_name: name, status: "paused" }
-    : { name: id, display_name: name, status: "running", execution_state: answering || presence === "working" ? "working" : "idle" };
-  if (answering && out.status === "running") out.answering = true;
+  const at = presence === "idle" || presence === "working";
+  const out: RoomOfficeAgent = at ? { name: id, display_name: name, status: "running", execution_state: answering || presence === "working" ? "working" : "idle", presence }
+    : { name: id, display_name: name, status: presence === "paused" ? "paused" : "stopped", presence: presence === "paused" || presence === "later" ? presence : "offline" };
+  if (answering && at) out.answering = true;
   if (assistant) out.assistant = true;
   return out;
 }
