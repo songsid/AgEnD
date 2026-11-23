@@ -17,7 +17,8 @@ import { startOperation } from "./settings-apply.js";
 import { goToTarget } from "./settings-registry.js";
 import { sectionPath } from "/assets/app-route.js";
 import { backendLabel } from "/assets/instance-nav.js";
-import "./settings-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
+import "./settings-strings.js";
+import "./settings-default-model-strings.js";   // its words, wherever a picker of this file is used (#2072: Fleet's create dialog too)
 import { backendChoices, modelChoices, OTHER_MODEL, useBackendRows } from "./settings-catalog.js";
 import {
   ACCESS_MODES, AGENT_MODES, CH_TYPES, DASHBOARD_CHOICES, DASHBOARD_FEATURES, HANG_TIMEOUT_DEFAULT_MINUTES, LOG_LEVELS, TOOL_PROGRESS, TOOL_SETS,
@@ -58,7 +59,7 @@ export const choiceOptions = (field, values) => values.map((v) => ({ value: v, l
 export function Select({ value, options, onChange, disabled, id, label }) {
   const opts = options.map((o) => (typeof o === "string" ? { value: o, label: o } : o));
   return html`<select id=${id} value=${value} disabled=${disabled} aria-label=${label} onChange=${(e) => onChange(e.target.value)}>
-    ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}</select>`;
+    ${opts.map((o) => html`<option key=${o.value} value=${o.value} disabled=${o.disabled}>${o.label}</option>`)}</select>`;
 }
 /**
  * #2072: a backend field shows every backend with what this host says about it — one it cannot run is disabled with
@@ -320,7 +321,7 @@ export function AgentDialog({ name, inst, ctx, onClose }) {
       <div class="field">${L(tn("backend"), "instance.backend", "ag-be")}<${BackendSelect} id="ag-be" value=${f.backend} onChange=${set("backend")} />
         ${inheritedBackend ? html`<${Inherited} ...${inh("backend", f.backend, "#g-be", "backend")} />` : null}</div>
       <div class="field">${L(tn("model"), "instance.model", "ag-model")}<${ModelSelect} id="ag-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", defaults.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend || defaults.backend || "claude-code"} instance=${name} inherit=${tn("inheritValue", ((f.backend || defaults.backend || "claude-code") === (defaults.backend || "claude-code") && defaults.model) || tn("modelCliDefault"))} /></div>
       ${(f.backend || defaults.backend || "claude-code") === "codex" ? html`<div class="field codex-speed">${L(tn("codexSpeed"), "instance.backend_options", "ag-speed")}
         <${Select} id="ag-speed" value=${f.codex_speed} onChange=${set("codex_speed")}
           options=${CODEX_SPEED_CHOICES.map((v) => ({ value: v, label: tn(v === "fast" ? "codexSpeedFast" : v === "standard" ? "codexSpeedStandard" : "codexSpeedDefault") }))} />
@@ -667,7 +668,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
   const { fleet, classic, schema } = ctx;
   const cd = (classic && classic.defaults) || {}, fd = fleet.defaults || {};
   const inherited = {
-    backend: cd.backend || fd.backend || "claude-code", model: cd.model || fd.model || "",
+    backend: cd.backend || fd.backend || "claude-code",
     auto_pause_after: cd.auto_pause_after ?? fd.auto_pause_after ?? 0, tool_progress: cd.tool_progress ?? fd.tool_progress ?? "off",
     reply_triggers: Boolean(cd.reply_triggers ?? fd.reply_triggers ?? schema.reply_triggers_default),
     reply_completion_guard: cd.reply_completion_guard ?? fd.reply_completion_guard ?? true,
@@ -724,7 +725,7 @@ export function ClassicDialog({ room, ctx, onClose }) {
       <div class="field">${L(tn("backend"), "classic.backend", "cl-be")}<${BackendSelect} id="cl-be" value=${f.backend} onChange=${set("backend")} />
         ${!c.backend && f.backend === inherited.backend ? html`<${Inherited} ...${roomInh("backend", "backend", "#g-cbe", "#g-be")} />` : null}</div>
       <div class="field">${L(tn("model"), "classic.model", "cl-model")}<${ModelSelect} id="cl-model" value=${f.model} onChange=${set("model")}
-        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", inherited.model || tn("modelCliDefault"))} /></div>
+        backend=${f.backend} instance=${c.instanceName} inherit=${tn("inheritValue", ((f.backend === (cd.backend || fd.backend || "claude-code") && cd.model?.trim()) || (f.backend === (fd.backend || "claude-code") && fd.model?.trim())) || tn("modelCliDefault"))} /></div>
       <div class="field">${L(`${tn("autoPause")} (${tn("minutes")})`, "classic.auto_pause_after", "cl-auto")}
         <${Override} inherit=${f.inherit.auto_pause_after} onInherit=${setInherit("auto_pause_after")} inherited=${roomInh("auto_pause_after", "minutes", "#classicbot", "#g-auto")}>
           <input id="cl-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} disabled=${f.inherit.auto_pause_after}

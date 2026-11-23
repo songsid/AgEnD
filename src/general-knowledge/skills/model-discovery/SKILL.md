@@ -6,11 +6,12 @@ roles: [general, worker]
 
 ## Omit the model unless you have a reason
 
-Precedence: **explicit arg > `fleet.defaults.model` > CLI/account default**
+Precedence: **explicit arg > `fleet.defaults.model` for the same effective backend as `fleet.defaults.backend` (Claude Code when unset) > CLI/account default**
 
 Omitting is the default answer. It inherits the fleet default, or the CLI's own —
 which is the account's current best model and stays right as the vendor ships new
-ones. A model you pin today is a model someone has to un-pin later.
+ones. A Claude default never supplies a model to a Codex, Grok or Muse agent.
+ClassicBot model defaults likewise belong to their declaring backend. A model you pin today is a model someone has to un-pin later.
 
 Pass a model only when: the user named one, the instance needs a *specific*
 capability (cheap/fast vs deep reasoning), or the backend needs one to behave

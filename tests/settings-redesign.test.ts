@@ -147,13 +147,13 @@ describe("Settings P0 redesign shell", () => {
   it("provides the global pending-change apply bar and human impact labels", async () => {
     await mountSettings("general");
     expect(pending()).toBeNull();
-    // An instance-level default (model): the bar names the costliest kind staged.
+    // Shared model defaults wait by default; unrelated cold changes keep their own cost.
     await typeModel("#g-model", "claude-opus-4-8");
     await settle(4);
     const bar = pending()!;
     expect(bar).not.toBeNull();
     expect(bar.textContent).toContain("1 unsaved change(s)");      // #2347: the section's Save
-    expect(bar.textContent).toContain("Restart this Agent");
+    expect(bar.textContent).toContain("Next restart · no restart now");
     expect(bar.textContent).not.toContain("Restart AgEnD");
     expect(button("Save", bar)).toBeTruthy();
     expect(button("Discard", bar)).toBeTruthy();

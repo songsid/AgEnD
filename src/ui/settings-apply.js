@@ -11,6 +11,7 @@ import { appStore } from "/assets/app-store.js";
 import { t } from "/assets/app-i18n.js";
 import { toast } from "/assets/ui-toast.js";
 import "./settings-strings.js";
+import "./settings-default-model-strings.js";
 import { api, confirmedWrite, newKey, selfConfirmed } from "./settings-confirm.js";
 
 /**
@@ -33,7 +34,7 @@ function view() {
   return {
     id: op.id, phase: op.phase, error: op.error, job: op.job, lostJob: op.lostJob, restart: op.restart,
     // stageKey: which staged change a step is (#2367 review: the panel tells that change's section how it went).
-    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(stageKey ? { stageKey } : {}) })),
+    steps: op.steps.map(({ label, impact, status, error, pendingId, note, stageKey, sharedDefaults, notes }) => ({ label, impact, status, error: error || null, pendingId: pendingId || null, ...(note ? { note } : {}), ...(sharedDefaults ? { sharedDefaults } : {}), ...(notes?.length ? { notes } : {}), ...(stageKey ? { stageKey } : {}) })),
     leftover: op.leftover,
   };
 }
@@ -105,6 +106,7 @@ async function run(o) {
       stop(o, step);
       return;
     }
+    if (step.sharedDefaults === "restart") step.sharedDefaultsConsent = res.body?.shared_defaults_consent;
     step.status = "done"; publish();
   }
   if (!mine(o)) return;
@@ -162,7 +164,7 @@ function stop(o, failed) {
   // What did not land can be staged again, except a secret, which has to be entered again. A write whose outcome is
   // unknown goes back with its key; one the server refused, or that never ran, gets a new key when it is applied.
   o.leftover = o.steps.filter((s) => (s.status === "failed" || s.status === "skipped") && s.request && !s.request.sensitive)
-    .map(({ label, impact, request, stageKey, key, ambiguous }) => ({ label, impact, request, stageKey, ...(ambiguous ? { key } : {}) }));
+    .map(({ label, impact, request, stageKey, key, ambiguous, sharedDefaults }) => ({ label, impact, request, stageKey, sharedDefaults, ...(ambiguous ? { key } : {}) }));
   publish();
 }
 
@@ -171,7 +173,10 @@ async function postApply(o) {
     let res;
     try {
       res = await api("/api/settings/apply", { method: "POST", headers: { "Idempotency-Key": o.applyKey },
-        body: JSON.stringify({ idempotency_key: o.applyKey }) });
+        body: JSON.stringify({ idempotency_key: o.applyKey,
+          ...(o.steps.some(s => s.sharedDefaults) ? { shared_defaults: o.steps.some(s => s.sharedDefaults === "restart") ? "restart" : "next-start",
+            shared_defaults_consent: o.steps.find(s => s.sharedDefaults === "restart")?.sharedDefaultsConsent,
+            shared_defaults_targets: [...new Set(o.steps.filter(s => s.sharedDefaults === "restart").flatMap(s => s.sharedDefaultsTargets || []).map(t => t.name))] } : {}) }) });
     } catch {
       // The answer was lost (a phone between networks): the same key rejoins the same job, never a second one.
       if (!mine(o)) return null;

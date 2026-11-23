@@ -23,8 +23,10 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { GroupMark, groupLabel, groupOf as navGroupOf, modelText } from "/assets/instance-nav.js";
+import { GroupMark, groupLabel, groupOf as navGroupOf, modelText, labelOf } from "/assets/instance-nav.js";
 import "./settings-strings.js";
+import "./settings-default-model-strings.js";
+import { defaultIdentityTargets, defaultClassicTargets, defaultIdentityRecord, runningDefaultIdentityTargets } from "./settings-default-model-scope.js";
 import { UpdatePillMark, UpdateSection } from "./settings-update.js";
 import { api, attach, confirmedWrite, newKey } from "./settings-confirm.js";
 import { dismissOperation, operationActive, restartFleet, startOperation, takeLeftover } from "./settings-apply.js";
@@ -114,7 +116,7 @@ async function loadLive(lease) {
   if (!lease.current()) return null;
   const live = {}, classicLive = {};
   if (f.ok && f.body && Array.isArray(f.body.instances)) for (const i of f.body.instances) {
-    live[i.name] = { status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported };
+    live[i.name] = { display_name: i.display_name || i.classicName, status: i.status, state: i.state, backend: i.backend, model: i.model, model_display: modelText(i, i.model_display), effort: i.effort, effort_supported: i.effort_supported };
     if (i.classic) classicLive[i.name] = { status: i.status, state: i.state };
   }
   // /api/fleet carries live state for ClassicBot rooms; the profiles are the fallback for one not listed there yet.
@@ -323,7 +325,19 @@ export function SettingsPanel({ route, navKey }) {
     // Every confirmation before the first write: a cancelled one must not leave earlier changes applied and later
     // ones pending (a surprising partial apply).
     applying.current = true;
+    let confirmedRestartTargets = [];
+    const confirmedDefaultRequests = new Map();
     try {
+      if ([...stagedRef.current.values()].some(c => c.sharedDefaults === "restart")) {
+        const shown = new Map([...stagedRef.current.values()].filter(c => c.sharedDefaults === "restart")
+          .flatMap(c => c.sharedDefaultsTargets || []).map(target => [target.name, target]));
+        confirmedRestartTargets = [...shown.values()];
+        for (const c of stagedRef.current.values()) if (c.sharedDefaults === "restart") confirmedDefaultRequests.set(c.stageKey, structuredClone(c.request));
+        const names = confirmedRestartTargets.map(({ name, label }) => name === label ? label : tn("defaultIdentityNamedTarget", label, name)).join("\n");
+        if (!(await ask(tn(confirmedRestartTargets.length === 1 ? "defaultIdentityRestartConfirmOne" : "defaultIdentityRestartConfirm", confirmedRestartTargets.length, names),
+          { title: tn("defaultIdentityWhen"), confirmLabel: tn("defaultIdentityRestartButton"), danger: true }))) return;
+        if (!mount.current()) return;
+      }
       // A panel that went while a question was open asks nothing more, and says nothing.
       for (const c of [...stagedRef.current.values()]) {
         for (const k of c.confirms || []) {
@@ -346,7 +360,9 @@ export function SettingsPanel({ route, navKey }) {
       if (failed) toast(tn("youSaveFailed"), false);
       if (!stagedRef.current.size) { if (!failed) toast(tn("youSaved")); setDraftEpoch((n) => n + 1); return; }
     }
-    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key }) => ({ label, impact, request, connectionSecret, stageKey, key }));
+    const list = [...stagedRef.current.values()].map(({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes }) => ({ label, impact, request, connectionSecret, stageKey, key, sharedDefaults, notes,
+      sharedDefaultsTargets: sharedDefaults === "restart" ? confirmedRestartTargets : [],
+      ...(sharedDefaults === "restart" && confirmedDefaultRequests.has(stageKey) ? { request: confirmedDefaultRequests.get(stageKey) } : {}) }));
     const handlers = new Map([...stagedRef.current.values()].filter((c) => typeof c.onResult === "function").map((c) => [c.stageKey, c.onResult]));
     if (startOperation(list)) {
       results.current = handlers; submitted.current = new Map(drafts.current); submittedStaged.current = new Map(stagedRef.current);
@@ -483,7 +499,7 @@ export function SettingsPanel({ route, navKey }) {
       <a class="s-back" href=${settingsPath()}><${Icon} name="back" size=${16} /><span>${tn("title")}</span><span class="s-back-here">${tn(`sec_${section}`)}</span></a>
       ${searchable ? html`<div class="s-toolbar"><label class="s-search"><${Icon} name="search" size=${14} /><span class="sr-only">${tn("searchAll")}</span>
         <input type="search" value=${search} placeholder=${tn("searchAll")} onInput=${(e) => setSearch(e.target.value)} /></label></div>` : null}
-      ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} />` : null}
+      ${op ? html`<${OperationCard} op=${op} schema=${data && data.schema} fleet=${data && data.fleet} classic=${data && data.classic} live=${data && data.live} />` : null}
       <${PendingChanges} inline=${true} />
       ${ctx && (section === "agents" || section === "chat") ? html`<${FirstRunCard} onConnect=${openWizard} />` : null}
       ${sectionBody}
@@ -1033,6 +1049,9 @@ function General({ ctx, part = "all" }) {
   const original = useMemo(() => ({ c: structuredClone(c) }), []);
   const base = useMemo(() => generalForm(d, c, ctx.fleet, schema), []);
   const [f, setF] = useDraft(ctx, "general", () => base);
+  const restartTargets = runningDefaultIdentityTargets(ctx.fleet, ctx.classic, ctx.live, { ...d, backend: f.backend, model: f.model });
+  const restartTargetSignature = JSON.stringify(restartTargets);
+  const sharedDefaultMode = f.defaultAdoption === "restart" && restartTargets.length ? "restart" : "next-start";
   const set = (k) => (v) => setF((x) => ({ ...x, [k]: v }));
   /** The class of a field's row: `field`, and `s-dirty` while one of its keys differs from what is saved. */
   const fc = (cls, ...keys) => `${cls}${keys.some((k) => !sameValue(f[k], base[k])) ? " s-dirty" : ""}`;
@@ -1056,7 +1075,7 @@ function General({ ctx, part = "all" }) {
     }
     ctx.unstage("defaults:invalid");
     const defaultsPatch = changedFields({
-      backend: f.backend, model: f.model || undefined, locale: f.locale || null, auto_pause_after: num(f.auto),
+      backend: f.backend, model: f.model || null, locale: f.locale || null, auto_pause_after: num(f.auto),
       agent_mode: f.agent_mode, tool_set: f.tool_set || null, tool_progress: f.tool_progress, cross_instance_visibility: f.visibility,
       tips: noticeMode(f.tips), reply_triggers: f.replyTriggers, reply_completion_guard: f.reply, log_level: f.log_level,
       // The dashboard features every agent may use unless its own setting says otherwise. All of them go, because the write
@@ -1067,7 +1086,7 @@ function General({ ctx, part = "all" }) {
       task_board: taskBoardDefaults(d, f),
       startup: { ...(f.concurrency.trim() === "" ? {} : { concurrency: num(f.concurrency) }), stagger_delay_ms: num(f.stagger) },
     }, {
-      backend: d.backend || "claude-code", model: d.model || undefined, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
+      backend: d.backend || "claude-code", model: d.model || null, locale: d.locale || null, auto_pause_after: d.auto_pause_after ?? 0,
       agent_mode: d.agent_mode || "mcp", tool_set: TOOL_SETS.includes(d.tool_set) ? d.tool_set : null, tool_progress: d.tool_progress ?? "off",
       tips: d.tips ?? true, cross_instance_visibility: visibilityDefault(d), reply_triggers: Boolean(d.reply_triggers ?? schema.reply_triggers_default), reply_completion_guard: d.reply_completion_guard ?? true, log_level: d.log_level || "info",
       dashboard: Object.fromEntries(DASHBOARD_FEATURES.filter((k) => !Object.hasOwn(SEPARATE_FEATURE_KEYS, k)).map((k) => [k, dashboardDefault(d, k)])),
@@ -1097,12 +1116,17 @@ function General({ ctx, part = "all" }) {
       impact: impactOf(schema, "fleet.project_roots"), request: { method: "POST", url: "/ui/config", body: { project_roots: roots } } });
     const dKeys = Object.keys(defaultsPatch), cKeys = Object.keys(classicPatch);
     syncStage(ctx, "defaults:fleet", dKeys.length ? { label: tn("updateDefaults"), count: dKeys.length,
+      sharedDefaults: dKeys.some(k => k === "backend" || k === "model") ? sharedDefaultMode : undefined,
+      sharedDefaultsTargets: restartTargets,
       impact: batchImpact(schema, dKeys, (k) => defaultsImpact(schema, k)),
-      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: defaultsPatch } } : null);
+      ...(dKeys.some(k => k === "backend" || k === "model") ? { notes: [tn(sharedDefaultMode === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext"),
+        ...(dKeys.some(k => k !== "backend" && k !== "model") ? [tn("defaultIdentityOtherEdits", impactText(batchImpact(schema, dKeys.filter(k => k !== "backend" && k !== "model"), k => defaultsImpact(schema, k))))] : [])] } : {}),
+      request: { method: "PUT", url: "/api/settings/fleet/defaults", body: sharedDefaultMode === "restart" && dKeys.some(k => k === "backend" || k === "model")
+        ? { ...defaultsPatch, backend: f.backend, model: f.model || null } : defaultsPatch } } : null);
     syncStage(ctx, "defaults:classic", cKeys.length ? { label: tn("updateClassicDefaults"), count: cKeys.length,
       impact: cKeys.every((k) => impactOf(schema, `classic_defaults.${k}`) === "now") ? "now" : "fleet",
       request: { method: "PUT", url: "/api/settings/classic/defaults", body: classicPatch } } : null);
-  }, [f, ready]);
+  }, [f, ready, restartTargetSignature]);
   // #2347 §10: a default nobody set in fleet.yaml shows the built-in value it holds, marked "default" until it is edited;
   // ClassicBot's inherited ones say what they inherit from Agent defaults.
   const unset = {
@@ -1118,15 +1142,31 @@ function General({ ctx, part = "all" }) {
   const classicReply = replyGuardSupported(f.classicBackend, f.agent_mode, d.kiro_ui) ? tn("replyGuardSupported") : tn("replyGuardUnsupported", f.classicBackend, f.agent_mode);
   // #2347: Agent defaults show the fleet's part; Chat & connections ClassicBot's. One form, one draft either way.
   const fleetPart = part !== "classic", classicPart = part !== "fleet";
+  const identityEdited = !sameValue(f.backend, base.backend) || !sameValue(f.model, base.model);
+  const nextDefaults = { ...d, backend: f.backend, model: f.model };
+  const identityTargets = defaultIdentityTargets(ctx.fleet, nextDefaults);
+  const identityRooms = defaultClassicTargets(ctx.classic, d, nextDefaults);
+  const matching = Object.values(ctx.fleet.instances || {}).filter(inst => (inst.backend || f.backend || "claude-code") === (f.backend || "claude-code"));
+  const following = matching.filter(inst => !inst.model?.trim()).length;
   return html`<div class=${`form s-general s-part-${part}`}>
     ${fleetPart ? html`<section class="card"><h3>${tn("defaultsTitle")}</h3>
       <div class="grid2">
         <div class=${fc("field", "locale")}>${L(tn("language"), "defaults.locale", "g-locale", "locale")}<${Select} id="g-locale" value=${f.locale} onChange=${set("locale")}
           options=${localeOptions(f.locale).map((o) => (o.auto ? { value: "", label: tn("localeAuto") } : o))} /></div>
-        <div class=${fc("field", "backend")}>${L(tn("defaultBackend"), "defaults.backend", "g-be", "backend")}<${BackendSelect} id="g-be" value=${f.backend} onChange=${set("backend")} /></div>
-        <div class=${fc("field", "model")}>${L(tn("defaultModel"), "defaults.model", "g-model", "model")}<${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
-          backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} /></div>
-        <div class=${fc("field", "auto")}>${L(`${tn("autoPause")} (${tn("minutes")})`, "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
+        <div class=${fc("field", "backend")}><label for="g-be">${tn("defaultBackend")} ${dm("backend")}</label><${BackendSelect} id="g-be" value=${f.backend} onChange=${backend => { set("backend")(backend); set("model")(""); }} /></div>
+        <div class=${fc("field", "model")}><label for="g-model">${tn("defaultModel")} ${dm("model")}</label><${ModelSelect} id="g-model" value=${f.model} onChange=${set("model")}
+          backend=${f.backend || "claude-code"} inherit=${tn("modelCliDefault")} />
+          <p class="note">${tn("defaultModelCount", following, matching.length)}</p></div>
+        ${identityEdited ? html`<div class="field s-default-adoption">
+          <label for="g-default-adoption">${tn("defaultIdentityWhen")}</label>
+          <${Select} id="g-default-adoption" value=${sharedDefaultMode} onChange=${set("defaultAdoption")}
+            options=${[{ value: "next-start", label: tn("defaultIdentityNext") }, { value: "restart", label: tn("defaultIdentityRestart"), disabled: !restartTargets.length }]} />
+          <p class="note">${tn("defaultIdentityAffected", identityTargets.length)}</p>
+          ${identityTargets.length ? html`<p class="note">${tn("defaultIdentityNames", identityTargets.map(n => labelOf(defaultIdentityRecord(n, ctx.fleet, ctx.classic, ctx.live))).join(", "))}</p>` : null}
+          ${identityRooms.length ? html`<p class="note">${tn("defaultIdentityRooms", identityRooms.length)}</p>` : null}
+          <p class="note">${tn("defaultIdentityChoiceHint")}</p>
+        </div>` : null}
+        <div class=${fc("field", "auto")}>${L(tn("defaultLabelWithUnit", tn("autoPause"), tn("minutes")), "defaults.auto_pause_after", "g-auto", "auto")}<input id="g-auto" type="number" min="0" step="1" class=${errors.auto ? "invalid" : ""} value=${f.auto} onInput=${(e) => set("auto")(e.target.value)} /><${Feedback} error=${errors.auto} /></div>
         <div class=${fc("field", "tool_progress")}>${L(tn("toolProgress"), "defaults.tool_progress", "g-tp", "tool_progress")}<${Select} id="g-tp" value=${f.tool_progress} onChange=${set("tool_progress")} options=${choiceOptions("tool_progress", TOOL_PROGRESS)} /></div>
         <div class=${fc("field", "visibility")}>${L(tn("crossInstanceVisibility"), "defaults.cross_instance_visibility", "g-vis", "visibility")}<${Select} id="g-vis" value=${f.visibility} onChange=${set("visibility")} options=${choiceOptions("cross_instance_visibility", VISIBILITY_MODES)} />
           <p class="note">${tn("crossInstanceVisibilityHint")}</p></div>
@@ -1176,20 +1216,20 @@ function General({ ctx, part = "all" }) {
       </div></section>
       <section class="card"><h3>${tn("detection")}</h3><div class="grid2">
         <label class=${fc("check", "hangOn")}><input id="g-hang-on" type="checkbox" checked=${f.hangOn} onChange=${(e) => set("hangOn")(e.target.checked)} /><span>${tn("hangEnabled")}</span>${dm("hangOn")}<${Impact} schema=${schema} field="defaults.hang_detector" /></label>
-        <div class=${fc("field", "hang")}>${L(`${tn("hangTimeout")} (${tn("minutes")})`, "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
+        <div class=${fc("field", "hang")}>${L(tn("defaultLabelWithUnit", tn("hangTimeout"), tn("minutes")), "defaults.hang_detector", "g-hang", "hang")}<input id="g-hang" type="number" min="0.1" step="0.5" class=${errors.hang ? "invalid" : ""} value=${f.hang} onInput=${(e) => set("hang")(e.target.value)} /><${Feedback} error=${errors.hang} /></div>
       </div></section>
       <section class="card" id="g-liveness"><h3>${tn("livenessTitle")}</h3>
         <p class="note">${tn("livenessHint")}</p>
         <div class="grid2">
           <label class=${fc("check", "liveOn")}><input id="g-live-on" type="checkbox" checked=${f.liveOn} onChange=${(e) => set("liveOn")(e.target.checked)} /><span>${tn("livenessEnabled")}</span>${dm("liveOn")}<${Impact} schema=${schema} field="defaults.task_board" /></label>
-          <div class=${fc("field", "liveQuiet")}>${L(`${tn("livenessQuiet")} (${tn("minutes")})`, "defaults.task_board", "g-live-quiet", "liveQuiet")}<input id="g-live-quiet" type="number" min="1" max="1440" step="1" class=${errors.liveQuiet ? "invalid" : ""} value=${f.liveQuiet} onInput=${(e) => set("liveQuiet")(e.target.value)} /><${Feedback} error=${errors.liveQuiet} /></div>
-          <div class=${fc("field", "livePrompt")}>${L(`${tn("livenessPrompt")} (${tn("minutes")})`, "defaults.task_board", "g-live-prompt", "livePrompt")}<input id="g-live-prompt" type="number" min="1" max="1440" step="1" class=${errors.livePrompt ? "invalid" : ""} value=${f.livePrompt} onInput=${(e) => set("livePrompt")(e.target.value)} /><${Feedback} error=${errors.livePrompt} /></div>
-          <div class=${fc("field", "liveCrash")}>${L(`${tn("livenessCrash")} (${tn("minutes")})`, "defaults.task_board", "g-live-crash", "liveCrash")}<input id="g-live-crash" type="number" min="1" max="1440" step="1" class=${errors.liveCrash ? "invalid" : ""} value=${f.liveCrash} onInput=${(e) => set("liveCrash")(e.target.value)} /><${Feedback} error=${errors.liveCrash} /></div>
+          <div class=${fc("field", "liveQuiet")}>${L(tn("defaultLabelWithUnit", tn("livenessQuiet"), tn("minutes")), "defaults.task_board", "g-live-quiet", "liveQuiet")}<input id="g-live-quiet" type="number" min="1" max="1440" step="1" class=${errors.liveQuiet ? "invalid" : ""} value=${f.liveQuiet} onInput=${(e) => set("liveQuiet")(e.target.value)} /><${Feedback} error=${errors.liveQuiet} /></div>
+          <div class=${fc("field", "livePrompt")}>${L(tn("defaultLabelWithUnit", tn("livenessPrompt"), tn("minutes")), "defaults.task_board", "g-live-prompt", "livePrompt")}<input id="g-live-prompt" type="number" min="1" max="1440" step="1" class=${errors.livePrompt ? "invalid" : ""} value=${f.livePrompt} onInput=${(e) => set("livePrompt")(e.target.value)} /><${Feedback} error=${errors.livePrompt} /></div>
+          <div class=${fc("field", "liveCrash")}>${L(tn("defaultLabelWithUnit", tn("livenessCrash"), tn("minutes")), "defaults.task_board", "g-live-crash", "liveCrash")}<input id="g-live-crash" type="number" min="1" max="1440" step="1" class=${errors.liveCrash ? "invalid" : ""} value=${f.liveCrash} onInput=${(e) => set("liveCrash")(e.target.value)} /><${Feedback} error=${errors.liveCrash} /></div>
         </div></section>
       <section class="card"><h3>${tn("startup")}</h3><div class="grid2">
         <div class=${fc("field", "concurrency")}>${L(tn("concurrency"), "fleet.spawn_concurrency", "g-conc")}<input id="g-conc" type="number" min="1" max="20" step="1" class=${errors.concurrency ? "invalid" : ""} value=${f.concurrency} onInput=${(e) => set("concurrency")(e.target.value)} /><${Feedback} error=${errors.concurrency} warning=${warnings.concurrency} />
           ${f.concurrency.trim() === "" ? html`<${InEffect} text=${tn("concurrencyAuto")} />` : null}</div>
-        <div class=${fc("field", "stagger")}>${L(`${tn("staggerDelay")} (ms)`, "fleet.spawn_stagger_ms", "g-stag", "stagger")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
+        <div class=${fc("field", "stagger")}>${L(tn("defaultLabelWithUnit", tn("staggerDelay"), "ms"), "fleet.spawn_stagger_ms", "g-stag", "stagger")}<input id="g-stag" type="number" min="0" max="30000" step="100" class=${errors.stagger ? "invalid" : ""} value=${f.stagger} onInput=${(e) => set("stagger")(e.target.value)} /><${Feedback} error=${errors.stagger} warning=${warnings.stagger} /></div>
       </div></section>
       <section class="card"><h3>${tn("accessTitle")}</h3>
         <p class="note">${primary ? tn("accessMovedHint", primary.id || chLabel(0)) : tn("noBots")}</p></section>
@@ -1509,14 +1549,18 @@ function Developer({ ctx }) {
  */
 function PendingBar({ staged, busy, onApply, onDiscard, section }) {
   const changes = [...staged.values()];
-  const kinds = [...new Set(changes.filter((c) => !c.invalid).map((c) => c.impact))];
+  const costs = [];
+  for (const c of changes) {
+    if (c.invalid) continue;
+    for (const line of Array.isArray(c.notes) && c.notes.length ? c.notes : [impactText(c.impact)]) if (!costs.includes(line)) costs.push(line);
+  }
   const invalid = changes.filter((c) => c.invalid).length;
   // #2382 review: a field to fix in another section is named, and the message goes there (its field focused).
   const elsewhere = changes.find((c) => c.invalid && c.section && c.section !== section);
   const count = changes.reduce((n, c) => n + (Number.isInteger(c.count) && c.count > 0 ? c.count : 1), 0);
   return html`<div data-trust="panel-controls" class="s-pending" role="region" aria-label=${tn("pendingRegion")}>
     <strong>${tn("changesPending", count)}</strong>
-    <span class="note">${kinds.map(impactText).join(" · ")}</span>
+    <span class="note">${costs.join(" · ")}</span>
     <span class="s-pending-actions">
       ${!invalid ? null : elsewhere ? html`<button type="button" class="link-btn feedback error s-fix" role="status" onClick=${() => goToTarget(elsewhere.section, elsewhere.target)}>${tn("fixToSaveIn", invalid, tn(`sec_${elsewhere.section}`))}</button>`
         : html`<span class="feedback error s-fix" role="status">${tn("fixToSave", invalid)}</span>`}
@@ -1527,7 +1571,7 @@ function PendingBar({ staged, busy, onApply, onDiscard, section }) {
 }
 
 /** The Apply in hand (the app's, settings-apply.js): its writes, its job, and a restart when one is needed. */
-function OperationCard({ op, schema }) {
+function OperationCard({ op, schema, fleet, classic, live }) {
   const [restarting, setRestarting] = useState(false);
   const busy = opBusy(op);                                 // nothing to dismiss while it, or its restart, runs
   const phaseBusy = ["writing", "posting", "watching"].includes(op.phase);
@@ -1567,11 +1611,12 @@ function OperationCard({ op, schema }) {
     ${op.steps.length ? html`<ul class="s-op-steps">${op.steps.map((s, i) => html`<li key=${i} class=${`s-step ${s.status}`}>
       <span class="s-step-icon" aria-hidden="true">${icon(s.status) ? html`<${Icon} name=${icon(s.status)} size=${14} />` : "·"}</span>
       <span class="grow">${s.label}</span>
-      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || impactText(s.impact)}</span></li>`)}</ul>` : null}
+      <span class="note">${s.status === "waiting" ? tn("stepWaiting") : s.status === "skipped" ? tn("stepSkipped") : s.status === "failed" ? (s.error ? applyErrorText(s.error) : tn("applyFailed")) : s.note || (s.notes?.length ? s.notes.join(" · ") : s.sharedDefaults ? tn(s.sharedDefaults === "restart" ? "defaultIdentityRestart" : "defaultIdentityNext") : impactText(s.impact))}</span></li>`)}</ul>` : null}
     ${rows.length ? html`<ul class="s-op-steps">${rows.map((r) => html`<li key=${r.target} class=${`s-step ${r.status}`}>
       <span class="s-step-icon" aria-hidden="true">${r.status === "done" ? html`<${Icon} name="check" size=${14} />` : r.status === "failed" ? html`<${Icon} name="alert" size=${14} />` : r.status === "restart-required" ? html`<${Icon} name="restart" size=${14} />` : "·"}</span>
-      <span class="grow">${r.target === "fleet" ? "AgEnD" : shortName(r.target, {})}</span>
-      <span class="note">${r.target === "fleet" && r.status === "running" ? tn(r.kind === "hot" ? "connStartingNow" : "restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded")
+      <span class="grow"><span class="s-op-name">${r.target === "fleet" ? "AgEnD" : labelOf(defaultIdentityRecord(r.target, fleet, classic, live))}</span>
+        ${r.target !== "fleet" && labelOf(defaultIdentityRecord(r.target, fleet, classic, live)) !== r.target ? html`<small class="note s-op-slug">${r.target}</small>` : null}</span>
+      <span class="note">${r.target === "fleet" && r.status === "running" ? tn(r.kind === "hot" ? "connStartingNow" : "restartFleetTitle") : r.status === "restart-required" ? tn("applyRestartNeeded") : r.status === "next-start" || r.kind === "next-start" ? tn("defaultIdentityPending")
         : r.settled_by === "no-change" ? tn("applyNoChange") : r.settled_by === "fleet-restart" ? tn("viaRestart") : r.kind === "hot" ? tn("impactNow") : tn("impactAgent")}</span>
       ${r.error ? html`<span class="feedback error">${r.error}</span>` : null}</li>`)}</ul>` : null}
     ${job && job.error ? html`<p class="feedback error">${job.error}</p>` : null}

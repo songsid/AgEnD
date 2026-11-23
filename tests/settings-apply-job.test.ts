@@ -257,6 +257,36 @@ function apiContext(dir: string) {
 }
 
 describe("POST /api/settings/apply", () => {
+  it("validates and carries the explicit shared-default choice, defaulting to no restart", async () => {
+    const { ctx } = apiContext(tempDir());
+    const start = vi.spyOn(ctx, "startSettingsApply");
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-default-key" },
+    })).status).toBe(202);
+    expect(start).toHaveBeenLastCalledWith("choice-default-key", "next-start", [], undefined);
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-restart-key", shared_defaults: "restart", shared_defaults_targets: ["one"], shared_defaults_consent: "00000000-0000-4000-8000-000000000001" },
+    })).status).toBe(202);
+    expect(start).toHaveBeenLastCalledWith("choice-restart-key", "restart", ["one"], "00000000-0000-4000-8000-000000000001");
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-invalid-key", shared_defaults: "anything" },
+    })).status).toBe(400);
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-missing-targets", shared_defaults: "restart" },
+    })).status).toBe(400);
+    expect((await request("/api/settings/apply", ctx, "POST", {
+      body: { idempotency_key: "choice-no-write-receipt", shared_defaults: "restart", shared_defaults_targets: ["one"] },
+    })).status).toBe(400);
+    expect(start).toHaveBeenCalledTimes(2);
+  });
+  it("clears a previous backend's model on a backend-only default edit", async () => {
+    const { ctx } = apiContext(tempDir());
+    ctx.fleetConfig!.defaults = { backend: "claude-code", model: "haiku" };
+    const res = await request("/api/settings/fleet/defaults", ctx, "PUT", { body: { backend: "codex" } });
+    expect(res.status).toBe(200);
+    expect(ctx.fleetConfig!.defaults).toEqual({ backend: "codex" });
+  });
+
   it("answers with a job", async () => {
     const { ctx } = apiContext(tempDir());
 
@@ -417,6 +447,14 @@ describe("the settings page tells the truth about a restart it cannot perform", 
     await new Promise(r => setTimeout(r, 50));
     expect(store.appStore.get().settingsOp).not.toBeNull();
     expect(p.root.querySelector(".s-op")).not.toBeNull();
+  });
+
+  it("renders pending shared adoption without offering an AgEnD restart", async () => {
+    const card = await applyAndMount({ status: 202,
+      body: job([{ target: "one", kind: "restart", status: "next-start" }]),
+    });
+    expect(card.querySelector(".s-step.next-start .note").textContent).toBe(tn("defaultIdentityPending"));
+    expect(card.querySelector(".save-row button")).toBeNull();
   });
 
   it("names the rows the reconcile found nothing to do", async () => {
@@ -862,5 +900,29 @@ describe("a Settings apply drives the real reconcile", () => {
       jobs: Array<{ id: string; status: string }>;
     };
     expect(onDisk.jobs.find(item => item.id === job.id)!.status).toBe("done");
+  });
+});
+
+describe("R2 shared-default write receipt", () => {
+  it.each([false, true])("HTTP write-to-Apply gap: later save=%s", async laterSave => {
+    const dir = tempDir(), path = join(dir, "fleet.yaml");
+    writeFileSync(path, "defaults: {backend: claude-code, model: old}\ninstances:\n  one: {working_directory: /tmp/one}\n");
+    const fm = new FleetManager(dir); fm.loadConfig(path);
+    const runtime = structuredClone(fm.fleetConfig!.instances.one);
+    fm.lifecycle.daemons.set("one", { getConfigSnapshot: () => runtime } as never);
+    const stop = vi.spyOn(fm, "stopInstance").mockResolvedValue({ backgroundWorkEnded: false });
+    const start = vi.spyOn(fm as any, "startInstanceUnattended").mockResolvedValue(undefined);
+    const ctx = fm as unknown as SettingsApiContext;
+    const write = await request("/api/settings/fleet/defaults", ctx, "PUT", { body: { model: "new" } });
+    expect(write.status).toBe(200);
+    expect(write.body.shared_defaults_consent).toMatch(/^[0-9a-f-]{36}$/);
+    if (laterSave) expect((await request("/api/settings/fleet/defaults", ctx, "PUT", { body: { backend: "codex", model: "later" } })).status).toBe(200);
+    const applied = await request("/api/settings/apply", ctx, "POST", { body: {
+      idempotency_key: `receipt-gap-${laterSave}`, shared_defaults: "restart", shared_defaults_targets: ["one"], shared_defaults_consent: write.body.shared_defaults_consent,
+    } });
+    expect(applied.status).toBe(202);
+    await vi.waitFor(() => expect(fm.applyJobs.get(applied.body.id as string)?.status).toBe("done"));
+    if (laterSave) { expect(stop).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled(); }
+    else { expect(stop).toHaveBeenCalledExactlyOnceWith("one"); expect(start).toHaveBeenCalledTimes(1); }
   });
 });

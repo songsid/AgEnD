@@ -46,13 +46,13 @@ export type SelfRestartResult =
 /** The row for the fleet process itself, as opposed to one of its agents. */
 export const APPLY_FLEET_TARGET = "fleet";
 
-export type ApplyTargetKind = "hot" | "restart";
+export type ApplyTargetKind = "hot" | "restart" | "next-start";
 /**
  * `restart-required` is a terminal state, not a stalled one: the change is saved
  * and valid, and a running fleet process cannot adopt it. Reporting it as done
  * would tell the user AgEnD is on the new configuration when it is not.
  */
-export type ApplyTargetStatus = "pending" | "running" | "done" | "failed" | "restart-required";
+export type ApplyTargetStatus = "pending" | "running" | "done" | "failed" | "restart-required" | "next-start";
 export type ApplyJobStatus = "running" | "done" | "failed";
 
 export interface ApplyTarget {
