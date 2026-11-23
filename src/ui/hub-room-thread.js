@@ -37,6 +37,7 @@ import { countsLine } from "./hub-room-list.js";
 import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
 import { ROOM_PINS_MAX, RoomPinsButton, RoomPinsDialog } from "./hub-room-pins.js";
+import { RoomOffice } from "./hub-room-office.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
@@ -401,7 +402,8 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {}, pinsOn = false }) {
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {}, pinsOn = false,
+  view = "chat", onView = () => {}, officeHref = (v) => v }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId, pinsOn }), [roomId]);
   const [pinsOpen, setPinsOpen] = useState(false);
   useEffect(() => () => store.stop(), [store]);
@@ -431,6 +433,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     if (r.ok) onLeft(); else setLeaveError(r.text);
   };
   const detail = store.detail(), room = detail?.room || listed || {}, group = room.kind === "group";
+  // M-3533 R1 (design §2.1): the room's office, a tab beside Chat while a manager has it on (and this Hub serves it).
+  const officeOn = group && client.roomOfficeV1 === true && detail?.settings?.office?.enabled === true;
+  const inOffice = officeOn && view === "office";
   // The page-level rooms notifier learns this person's id for this room from its detail (§12; member
   // ids are per room, so the id is kept under this room's id).
   useEffect(() => { const id = detail && detail.me && detail.me.id; if (id) onMe(roomId, id); }, [detail && detail.me && detail.me.id]);
@@ -446,7 +451,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     } } : null;
   // M-3311 (1): a file dragged onto the conversation is attached, as in the Fleet chat.
   const mainRef = useRef(null);
-  useFileDrop(mainRef, attach);
+  useFileDrop(mainRef, inOffice ? null : attach);
   // M-3311 (3): a long paste's chip — 「改為文字」 puts its text back into the box (the Fleet chat's), and the chip goes.
   const asText = (key) => { const f = filesRef.current.find((x) => x.key === key); if (!f) return; setFiles(filesRef.current.filter((x) => x.key !== key)); putBackText(input.current, f.text); input.current?.focus(); };
   const pending = files.length || fileMsg ? html`<${PendingFiles} files=${files} onAsText=${asText} onRemove=${(key) => setFiles(filesRef.current.filter((f) => f.key !== key))}
@@ -552,6 +557,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const [fullWidth, setFullWidth] = useState(hubChatWide);
   const textSize = useStore(textSizeStore), notify = useStore(notifyStore), narrow = useNarrowScreen();
   const menuItems = [
+    // M-3533 R1: a phone has no tab row — Office is the first item of ⋯ (in the office, its back returns to the chat).
+    narrow && officeOn && !inOffice ? { key: "office", label: hroom("tabOffice"), icon: "org", onSelect: () => onView("office") } : null,
     group && detail?.me?.role === "manager" ? { key: "settings", label: hroom("roomSettings"), icon: "settings", onSelect: openSettings } : null,
     group && detail?.me ? { key: "leave", label: hroom("leaveRoom"), icon: "close", onSelect: () => { void leave(); } } : null,
     pinCount ? { key: "pins", label: `${t("chat.pinsTitle")} · ${pinCount}`, icon: "pin", onSelect: () => setPinsOpen(true) } : null,
@@ -563,7 +570,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       ...(notifySupport() === "ok" ? [{ key: "notify", checkbox: true, checked: notify.state === "on", disabled: notify.asking, label: hroom("notifyTitle"), onSelect: () => { void setNotify(notify.state !== "on"); } }] : []),
     ] : []),
   ].filter(Boolean);
-  const line2 = group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
+  const line2 = narrow && inOffice ? hroom("tabOffice") : group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");
   const showRail = wide && rail && Panel && group && detail;
   // The Fleet chat's working bar (Lumen): 「Notes 正在處理」, or 「2 個 Agent 正在處理」 — the answer row only when it arrives.
@@ -577,33 +584,39 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     <${LightboxHost} />
     ${pinsOpen ? html`<${RoomPinsDialog} pins=${store.pins()} onClose=${() => setPinsOpen(false)} onJump=${(p) => void showPin(p)} onUnpin=${(p) => void togglePin(p.messageId)} />` : null}
     <section class="hub-chat-main" ref=${mainRef}>
-      ${attach ? html`<${DropOverlay} />` : null}
+      ${attach && !inOffice ? html`<${DropOverlay} />` : null}
       <header class=${`hub-chat-head${room.agent?.answerOnly?" hub-answer-only-head":""}`} data-trust="panel-content">
         ${/* Lumen (spec §2): on a phone the header starts with the Fleet chat's back to the list. */ ""}
-        <a class="icon-btn hub-back only-narrow" href="/ui/hub" aria-label=${t("hub.back")} title=${t("hub.back")}
-          onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); goList(); }}><${Icon} name="back" /></a>
+        <a class="icon-btn hub-back only-narrow" href=${inOffice ? officeHref("chat") : "/ui/hub"} aria-label=${t("hub.back")} title=${t("hub.back")}
+          onClick=${(e) => { if (e.metaKey || e.ctrlKey) return; e.preventDefault(); if (inOffice) onView("chat"); else goList(); }}><${Icon} name="back" /></a>
         ${/* M-3533 H1 (r3): a room's header is one line — its name, its counts beside it — and its picture is in the purpose card
            under the header. A one-to-one chat keeps its picture here. */ ""}
         ${group ? null : html`<span class="av" aria-hidden="true"><span class="av-text">${firstCharacter(title || "?") || "?"}</span></span>`}
         <span class=${`hub-chat-title${group ? " one-line" : ""}`}><strong>${title}</strong><span class=${`s${room.agent?.answerOnly?" hub-answer-only-note":""}`}>${line2}</span>${room.assistant||room.agent?.intro?html`<span class="s hub-agent-intro-line">${room.assistant?hi("assistant"):room.agent.intro}</span>`:null}</span>
+        ${officeOn && !narrow ? html`<nav class="inst-switch seg hub-room-tabs" aria-label=${hroom("roomViews", title)}>${["chat", "office"].map((v) => {
+          const label = hroom(v === "chat" ? "tabChat" : "tabOffice"), on = (v === "office") === inOffice;
+          return html`<a key=${v} class=${`seg-item${on ? " active" : ""}`} href=${officeHref(v)} aria-current=${on ? "page" : undefined} data-label=${label}
+            onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.button !== 0) return; e.preventDefault(); onView(v); }}>${label}</a>`; })}</nav>` : null}
         <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
         ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
           onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
-      ${group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
+      ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []} />` : null}
+      ${!inOffice && group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       ${room.closureReason === "owner-stopped-sharing" ? html`<p class="note" role="status">${hroom("noAnswerStopped", room.ownerName || room.agent?.owner?.name || "")}</p>` : null}
-      <${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
+      ${inOffice ? null : html`<${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
-          : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />
-      ${/* M-3117: under the thread, the Fleet chat's dock — its column, its padding, the working line and the box in it. */ ""}
-      <div class="dock hub-dock" data-trust="composer"><div class="dock-col">
+          : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />`}
+      ${/* M-3117: under the thread, the Fleet chat's dock — its column, its padding, the working line and the box in it.
+         M-3533 R1: the office has none (design §2.1: no message box under it; to ask, back to Chat). */ ""}
+      ${inOffice ? null : html`<div class="dock hub-dock" data-trust="composer"><div class="dock-col">
         ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
         <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
-      </div></div>
+      </div></div>`}
     </section>
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
     ${!wide && sheet && panel && group ? html`<${Dialog} title=${hroom("members")} label=${hroom("members")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${panel}</div></${Dialog}>` : null}

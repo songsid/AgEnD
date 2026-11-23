@@ -106,6 +106,8 @@ export interface HubHttpDeps {
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAgentRequests?: import("../http/deps.js").HubHttpDeps["roomAgentRequests"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  /** M-3533 R1: offer rooms' offices (room-office-v1). */
+  roomOffice?: boolean;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
@@ -541,6 +543,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        // M-3533 R1: rooms' offices (the room page draws them; room-office-v1).
+        roomOffice: true,
         ...(personalHost?{personalAgents:(core:import("../http/core.js").HubCore)=>{
           const owner=new HubPersonalOwnerHost(core,personalHost.runtime);personalOwner=owner;
           return {owner,turns:new HubPersonalTurns(core,personalHost.runtime,owner)};

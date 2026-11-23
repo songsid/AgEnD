@@ -382,6 +382,8 @@ function useRooms() {
 // and encoded into each call, never trusted as anything else.
 const roomParam = () => { try { const v = new URLSearchParams(location.search).get("room"); return v && /^[A-Za-z0-9-]{1,64}$/.test(v) ? v : null; } catch { return null; } };
 const roomPath = (id) => `/ui/hub?room=${encodeURIComponent(id)}`;
+/** M-3533 R1: a group room's Chat or Office tab (design §2.1). */
+const roomViewPath = (id, view) => (view === "office" ? `${roomPath(id)}&view=office` : roomPath(id));
 /** cid-hub-shell-parity: the Notices page is /ui/hub?view=notices (the path every Hub listener and router already serves). */
 const viewParam = () => { try { return new URLSearchParams(location.search).get("view"); } catch { return null; } };
 export const NOTICES_PATH = "/ui/hub?view=notices";
@@ -591,7 +593,8 @@ function HubChats() {
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
     rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
-    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} pinsOn=${roomPinsLive()} />`;
+    onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} pinsOn=${roomPinsLive()}
+    view=${viewParam() === "office" ? "office" : "chat"} officeHref=${(v) => roomViewPath(id, v)} onView=${(v) => navigate(roomViewPath(id, v))} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
   if (id) return html`<${HubRoomLoading} error=${rs.error} />`;
   if (opening && (!rs.loaded || recentRoom(rs.rooms))) return html`<${PanelHeader} title=${hc("chats")} /><div class="hub-home"><div class="hub-home-pick center"><${Skeleton} variant="rows" lines=${4} /></div></div>`;

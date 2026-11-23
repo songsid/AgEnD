@@ -837,7 +837,7 @@ export function OfficeKey({ pal }) {
  * `assetImage(url)` how (the share's, which waits out a 429, #2662; none: the loader's own);
  * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
  * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
- * M-3533 R1, a Hub room's office (hub-room-office.js), on the Fleet dashboard's own origin too: `single` its one office
+ * M-3533 R1, a Hub room's office (hub-room-office.js), on the Fleet dashboard's own origin too: `oneOffice` its one office
  * (no office picker or carousel); `readOnly` no editing or sharing whatever the session; `stream` false: never this
  * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
  * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
@@ -851,7 +851,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  single = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -2292,7 +2292,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
     onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
   const barItems = html`
-      ${single ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
+      ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
         <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
           ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
@@ -2423,7 +2423,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${snackDrag.kind === "feed" ? html`<span class="oo-snack-hint">${to("snackFeed", snackDrag.label)}</span>`
           : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
       </div>` : null}
-      ${fs ? html`<div class="oo-fs-bar">${single ? null : officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
+      ${fs ? html`<div class="oo-fs-bar">${oneOffice ? null : officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
         <rect class="oo-mini-matte" x=${-L.width} y=${-L.height} width=${L.width * 3} height=${L.height * 3} fill=${matte} />

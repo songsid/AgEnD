@@ -101,6 +101,8 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent
   "hub-room-favorites.js",
   // M-3340: personal pins in a room (its list and 📌; the store keeps them in hub-room-thread.js).
   "hub-room-pins.js",
+  // M-3533 R1: a room's office tab (the Office drawing itself is HUB_OFFICE_MODULES, loaded by its import()).
+  "hub-room-office.js",
   // S-148: the working bar's words (#3857), shared by the room thread.
   "hub-room-working.js", "hub-teams.js", "hub-teams-strings.js", "hub-roles.js", "hub-roles-strings.js", "hub-role-view.js", "hub-role-forms.js", "hub-role-audit.js", "hub-role-notices.js", "hub-room-search.js",
   // M-3137: Fleet versions (Connected fleets' columns and summary, the older-Fleet banner) with its own words.
