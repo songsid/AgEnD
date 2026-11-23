@@ -554,7 +554,7 @@ export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawB
 // ── M-3533 R1b: the studio for a large Hub room — the same canvas, desks and spacing; a big room runs out of seats to
 // rest in, not desks (most agents are idle most of the time), so its lounge is as large as the work area beside it, a
 // 6×5 grid a full name tag apart (TAG_TEXT_W + its padding: 94), and help and nap a strip below both. Drawn
-// procedurally like the studio. ──
+// procedurally like the studio; the lounge keeps no furniture of its own, so nothing sits against its seats. ──
 const STUDIO_LARGE_AREAS = {
   desks: { name: "desks", rect: { x: 24, y: 64, w: 632, h: 448 }, seats: grid([104, 248, 392, 536], [190, 320, 450]) },
   lounge: { name: "lounge", rect: { x: 696, y: 64, w: 560, h: 448 }, seats: grid([739, 833, 927, 1021, 1115, 1209], [146, 232, 318, 404, 490]) },
@@ -565,7 +565,6 @@ const STUDIO_LARGE_FURNITURE = [
   { id: "board", shape: "board", x: 340, y: 100, depth: 5 },
   { id: "rack-work", shape: "rack", tone: "ok", x: 610, y: 160, depth: 6, activeWhen: ["working"] },
   ...STUDIO_LARGE_AREAS.desks.seats.map((s, i) => ({ id: `desk-${i}`, shape: "desk", x: s.x, y: s.y, depth: 1100 })),
-  { id: "coffee", shape: "coffee", x: 1232, y: 100, depth: 20, activeWhen: ["idle"] },
   { id: "rack-alert", shape: "rack", tone: "danger", x: 630, y: 620, depth: 900, activeWhen: ["needs", "stuck", "crashed"] },
   ...STUDIO_LARGE_AREAS.nap.seats.map((s, i) => ({ id: `bag-${i}`, shape: "beanbag", x: s.x, y: s.y + 4, depth: 990 })),
 ].sort((a, b) => a.depth - b.depth);

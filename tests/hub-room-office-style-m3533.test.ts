@@ -31,6 +31,9 @@ describe("Studio (large)", () => {
       expect([area.name, s.x >= r.x && s.x <= r.x + r.w && s.y >= r.y && s.y <= r.y + r.h]).toEqual([area.name, true]);
       expect(s.x <= pack.LOGICAL.w && s.y <= pack.LOGICAL.h).toBe(true);
     }
+    // Nothing stands in the lounge for a seated agent to touch (the design check, #4370: a prop against the first seat).
+    const lr = skin.STUDIO_LARGE_PACK.areas.lounge.rect;
+    expect(skin.STUDIO_LARGE_PACK.furniture.filter((f: any) => f.x >= lr.x && f.x <= lr.x + lr.w && f.y >= lr.y && f.y <= lr.y + lr.h)).toEqual([]);
     // Every seat is reachable: the walk graph has an aisle waypoint under each row joined to the hall.
     const ids = new Set(skin.STUDIO_LARGE_PACK.waypoints.map((w: any) => w.id));
     for (const [x, y] of skin.STUDIO_LARGE_PACK.edges) expect(ids.has(x) && ids.has(y)).toBe(true);
