@@ -34,10 +34,11 @@ afterEach(() => {
 
 const CLASSIC = ["hub", "persona-emoji", "web-appearance", "web-dashboard"];
 
-async function startClassic(workDir: string, backend = "codex") {
+async function startClassic(workDir: string, backend = "codex", restricted = false) {
   const fm = new FleetManager(scratch("agend-2163-data-")) as any;
   const config: InstanceConfig = { ...DEFAULT_INSTANCE_CONFIG, working_directory: workDir, backend, lightweight: true };
   fm.fleetConfig = { defaults: {}, instances: {} };
+  vi.spyOn(fm, "classicContactRestricted").mockReturnValue(restricted);
   vi.spyOn(fm.lifecycle, "start").mockResolvedValue(undefined);
   vi.spyOn(fm, "connectIpcToInstance").mockResolvedValue(undefined);
   await fm.startInstance("room-bot", config, false, "classic");
@@ -59,6 +60,27 @@ describe("#2163: skills for a ClassicBot room's agent", () => {
     const work = join(home, "workspaces", "room-bot");
     await startClassic(work, "claude-code");
     expect(published(join(work, ".claude", "skills"))).toEqual(CLASSIC);
+  });
+  it.each([["codex", ".agents"], ["claude-code", ".claude"]])("restricted %s rooms omit appearance skills from managed publication", async (backend, folder) => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "example-room");
+    await startClassic(work, backend, true);
+    expect(published(join(work, folder, "skills"))).toEqual(["hub", "web-dashboard"]);
+  });
+  it("removes only previously managed appearance skills when a room becomes restricted", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "example-room");
+    await startClassic(work);
+    await startClassic(work, "codex", true);
+    expect(published(join(work, ".agents", "skills"))).toEqual(["hub", "web-dashboard"]);
+  });
+  it("does not delete a user-owned appearance skill while restricting managed skills", async () => {
+    const home = scratch(); process.env.AGEND_HOME = home;
+    const work = join(home, "workspaces", "example-room"), own = join(work, ".agents/skills/web-appearance");
+    mkdirSync(own, { recursive: true }); writeFileSync(join(own, "SKILL.md"), "User-owned notes\n");
+    await startClassic(work, "codex", true);
+    expect(readFileSync(join(own, "SKILL.md"), "utf8")).toBe("User-owned notes\n");
+    expect(existsSync(join(work, ".agents/skills/persona-emoji"))).toBe(false);
   });
   it("a user's own skill of the same name in a managed workspace is never touched; their other files neither", async () => {
     const home = scratch(); process.env.AGEND_HOME = home;
@@ -236,6 +258,13 @@ describe("#2163: what's-new by role", () => {
       context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 }, log_level: "silent", ...config } as never,
     dir, true, undefined, undefined, pino({ level: "silent" }) as never, { kind, backend: "codex", model: "default" } as never) as any;
   }
+  it.each(["mcp", "cli"])("restricted Classic %s launch forwards prompt capability filtering", mode => {
+    const d = daemonWith({ backend: "codex", workflow: false, agent_mode: mode }, "classic");
+    d.setClassicRestriction({ mode: "restricted", roomTools: { publicRead: true, allowedMcpTools: [] } });
+    expect(d.buildBackendConfig(false).instructions).not.toContain("Use set_display_name");
+    const legacy = daemonWith({ backend: "codex", workflow: false, agent_mode: mode }, "classic");
+    expect(legacy.buildBackendConfig(false).instructions).toContain("Use set_display_name");
+  });
   it("each instance knows its roles: Classic, General, a worker, a coordinator or full worker", () => {
     expect(daemonWith({}, "classic").whatsNewRoles()).toEqual(["classic"]);
     expect(daemonWith({ general_topic: true }, "fleet-topic").whatsNewRoles()).toEqual(["general"]);

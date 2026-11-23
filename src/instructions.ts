@@ -13,6 +13,8 @@ export interface FleetInstructionsParams {
     backend: string;
     model: string;
   };
+  /** Restricted Classic rooms cannot use appearance/identity mutation tools. */
+  restrictedClassic?: boolean;
   displayName?: string;
   description?: string;
   /** #1633/#1634: the AgEnD version this instance runs on — an agent can tell its own tool copies are older. */
@@ -196,7 +198,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   }
   if (displayName) {
     sections.push(`Your display name is "${displayName}". Use this when introducing yourself.`);
-  } else {
+  } else if (!(classic && params.restrictedClassic)) {
     sections.push("You don't have a display name yet. Use set_display_name to choose one that reflects your personality.");
   }
   if (description) {

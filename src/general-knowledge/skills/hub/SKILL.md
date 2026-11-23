@@ -404,6 +404,8 @@ On a Hub with room purposes, a room manager can add an optional **Purpose** (200
 
 ## Agents in a Hub room
 
+Use @-hand-offs for work inside a Hub room; use `delegate_task` for Fleet work. This does not change the agent’s tool permissions.
+
 On a Hub with rooms, mention a shared agent with **@agent**, or **@all** when the room allows it. A room manager can
 add their own shared agent. Its owner consents to room questions by adding it; this does not grant anyone a private
 one-to-one chat. The separate **Who may ask** list still controls private chats.
