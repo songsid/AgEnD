@@ -2568,6 +2568,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-people-list { list-style: none; margin: 0; padding: 0; }
 .oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
 .oo-note { font-size: var(--fs-xs); }
+/* M-3547: why "Drag and pat" is locked, inside its label (kept beside the box when the bar wraps; read with its name). */
+.oo-play .oo-play-still { min-width: 0; }
+.oo-play .oo-play-still::before { content: "· "; }
+.oo-bar .oo-play:has(.oo-play-still) { margin-inline-end: var(--s-3); }
+.oo-play:has(input:disabled) > span:not(.oo-play-still) { color: var(--text-2); }
 .oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* #2554: clip, not a scroll container — nothing past the edge (a tile's label) can scroll the stage and its controls. */
 .oo-stage { overflow: clip; }
@@ -2647,6 +2652,8 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-rows dd { margin: 0; overflow-wrap: anywhere; }
 .oo-card-now { margin-top: var(--s-3); overflow-wrap: anywhere; }
 .oo-card-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-3); }
+.oo-card-play-off { flex-basis: 100%; margin: 0; font-size: var(--fs-xs); text-align: start; }
+.oo-card-play-off .oo-nowrap { white-space: nowrap; }
 /* M-3433 (#4256): skin-pack custom agent card — CSS custom properties set via CSSOM only (no inline styles, no CSS url()). */
 .oo-card-custom { width: var(--oo-card-w, 320px); max-width: calc(100% - 2 * var(--s-3)); padding: 0; overflow: hidden;
   color: var(--oo-card-text, var(--text)); background: var(--oo-card-bg, var(--surface));

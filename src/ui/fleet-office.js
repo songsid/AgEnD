@@ -76,7 +76,7 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -1284,6 +1284,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // offices, the carousel or Edit layout. `hold`: the person picked up (carried where the pointer is, walked back from
   // where they are dropped, or seated on another seat in their area: M-3445 #4266/#4267); `reacts`: pats and feeds showing.
   const play = playAllowed({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
+  // M-3547: off only for reduced motion — the card and the tick box say so (a hint; no override).
+  const playStillOff = playOffForMotion({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
   const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
   // M-3432 (#4255): custom snacks from the active skin pack (client-local, only when play is enabled).
   const snacks = useMemo(() => createSnacks(), []);
@@ -2307,7 +2309,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
       <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
       ${zones && !overview && !shared ? html`<label class="check oo-play" title=${still ? to("playStill") : null}><input type="checkbox" checked=${playOn && !still} disabled=${still}
-        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span></label>` : null}
+        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playStill")}</span>` : null}</label>` : null}
       ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
       <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
@@ -2388,7 +2390,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} playOff=${playStillOff} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
