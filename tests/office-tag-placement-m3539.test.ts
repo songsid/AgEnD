@@ -64,6 +64,18 @@ describe("M-3539 name tags in a crowded Studio", () => {
     });
   }
 
+  it("a tag stays within the sides of the area its person is in (「Atlas（Example …」 at the large lounge's first column)", () => {
+    for (const style of ["studio", "studio-large"]) {
+      const s = scene(style), seat = new Map([...s.L.seats]);
+      for (const t of s.draw()) {
+        const at: any = seat.get(t.label), ar: any = Object.values(s.L.areas).find((a: any) => at.x >= a.rect.x && at.x <= a.rect.x + a.rect.w && at.y >= a.rect.y && at.y <= a.rect.y + a.rect.h);
+        if (!ar) continue;
+        const b = K.tagBox(s.ctx, t.x, t.y, t.label, t.compact);
+        expect([b.x >= ar.rect.x, b.x + b.w <= ar.rect.x + ar.rect.w], `${style}: ${t.label} in ${ar.name}`).toEqual([true, true]);
+      }
+    }
+  });
+
   it("a tag that would touch one already drawn goes a row lower (16), else compact — never on top of it", () => {
     const s = scene("studio"), tags = s.draw(), seat = new Map([...s.L.seats]);
     const drops = new Set(tags.filter((t) => !t.compact).map((t) => t.y - (seat.get(t.label) as any).y));

@@ -659,7 +659,11 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
      * None clear: slid sideways just past what it would touch of `keep` (an area's name, the minimap: never another
      * tag), at most its own width, at its place — so a name beside the minimap reads instead of going (leader's check).
      */
-    const place = (x, y, look, tries, force = false) => {
+    const place = (x0, y, look, tries, force = false) => {
+      // M-3539: a tag stays within the sides of the area its person stands in (a wide name at a lounge's first column
+      // poked past its edge): moved in by what it would stick out.
+      const ar = Object.values(p.L.areas || {}).find((a) => a.rect && x0 >= a.rect.x && x0 <= a.rect.x + a.rect.w && y >= a.rect.y && y <= a.rect.y + a.rect.h);
+      const w0 = tagBox(ctx, x0, y, look.label, false).w, x = !ar ? x0 : Math.min(Math.max(x0, ar.rect.x + 2 + w0 / 2), ar.rect.x + ar.rect.w - 2 - w0 / 2);
       const at = (dx, dy, compact) => {
         const box = tagBox(ctx, x + dx, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
         if (!force && touches(foot)) return null;
