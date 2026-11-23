@@ -1,0 +1,78 @@
+{
+  "sourceHead": "0a39fde91ddb0937972d2c9d1d86c30aff7f4dbb",
+  "base": "63a41c9cb1a502affcacae21acb62e39c11d39cf",
+  "sourceHashes": [
+    {
+      "path": "changes/3527-restricted-room-instructions.md",
+      "sha256": "a542e96cde7f9b9d2f513b178506384214f12e5860decfe7f557ec752c7af171"
+    },
+    {
+      "path": "changes/3527-restricted-room-instructions.zh-TW.md",
+      "sha256": "8e592c8e4324317ffc502c5722a95600c57c1ac16ef7ec7089050bf3bc1fed14"
+    },
+    {
+      "path": "scripts/manual/measure-instruction-diet-m3527.mts",
+      "sha256": "7bf875049f5e1a63dc9b932d54009fb0c8e1bcb6a031fa3d42586e29738504bb"
+    },
+    {
+      "path": "src/daemon.ts",
+      "sha256": "c718e692cd79285889e2a50ebfe12b3d4b2be3b81ed989f2adbf457127fa4c59"
+    },
+    {
+      "path": "src/fleet-manager.ts",
+      "sha256": "9b0316a75c87f3f349fcb072729298d54fcbfc614e16e182e27e36491393f679"
+    },
+    {
+      "path": "src/general-knowledge/skills/hub/SKILL.md",
+      "sha256": "0901839cb2c5da94370ecf386656de0eb81a8716ed6213071bea69a786152150"
+    },
+    {
+      "path": "src/hub/room-brief-model.ts",
+      "sha256": "a16b7dc0e679fdbfdb2f37d921d0004a09212c91dd6f41d16920080dead63114"
+    },
+    {
+      "path": "src/instructions.ts",
+      "sha256": "4183588ce663fe75c9167e37c99f189e5436b1f5b964e2c28adc94ff0b179d22"
+    },
+    {
+      "path": "tests/classic-skills-2163.test.ts",
+      "sha256": "eb64c0920ec5cf6dab207fca24f0d877cca5c0a7a5f161a0d50a31a9795de984"
+    },
+    {
+      "path": "tests/fixtures/hub-room-brief-budget/first-en.txt",
+      "sha256": "7257d77f6a409e7b849ed120754d266c97e6b1552661ba59d8114e156d14a45d"
+    },
+    {
+      "path": "tests/fixtures/hub-room-brief-budget/first-zh-TW.txt",
+      "sha256": "b4cf0db7d71d6c6d7b4ad31ec719387057e2e25a65388b89012991c7edaf2166"
+    },
+    {
+      "path": "tests/hub-room-brief-budget-m3300.test.ts",
+      "sha256": "6cfe9b838056f09f5fbc778062b2ea2ea8572ce8bed8050f9ae0884eee3a704a"
+    },
+    {
+      "path": "tests/hub-room-brief-h4.test.ts",
+      "sha256": "e546fe2620f7d07e4a841cb45cd5dbc30a1b2c94c599132c156bc59144902378"
+    },
+    {
+      "path": "tests/instructions.test.ts",
+      "sha256": "98bf8123e85d007a16f64de5de62f1d8dcf425ea4fd8f19cc677d403e078c1a2"
+    }
+  ],
+  "verification": {
+    "baseAssertionFailures": 9,
+    "basePassed": 50,
+    "setupFailureExcluded": "An initial worktree-local cache directory hid the shared tsx loader; corrected before the valid baseline.",
+    "focusedFiles": 4,
+    "focusedCasesPassed": 67,
+    "adjacentFiles": 2,
+    "adjacentCasesPassed": 39,
+    "sourceAndTestTypesErrors": 0,
+    "noLiveFleetOrProviderCalls": true
+  },
+  "limits": [
+    "Only managed bundled skills are filtered or retired; user-owned files remain.",
+    "Existing conversation history is not rewritten; publication/prompt behavior applies at normal startup.",
+    "Fixed synthetic text counts, not account/model billing or a whole launch-context total."
+  ]
+}
