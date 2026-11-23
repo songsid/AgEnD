@@ -117,7 +117,8 @@ describe("no go-ahead check weakens", () => {
       expect(WEB_RECEIPT_RULE, s).toContain(s);
       for (const skill of Object.values(SKILLS)) expect(skill, s).toContain(s);
     }
-    for (const backend of BACKENDS) for (const text of modes(backend)) expect(count(text, WEB_CHAT_LINE), backend).toBe(1);
+    // A native worker (modes()[2]) is published no skills, so it keeps the rule itself (M-3528, #4347 review).
+    for (const backend of BACKENDS) modes(backend).forEach((text, i) => expect(count(text, i === 2 ? WEB_RECEIPT_RULE : WEB_CHAT_LINE), `${backend} #${i}`).toBe(1));
     for (const kind of ["a Discord or Telegram receipt, or a `@web:v` one", "`authority.kind: web-verified`", "before you act", "a guest (`@web:g`, let in only to chat)", "are not a go-ahead"]) {
       expect(WEB_CHAT_LINE, kind).toContain(kind);
     }

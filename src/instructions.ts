@@ -32,6 +32,11 @@ export interface FleetInstructionsParams {
   cliInstructions?: string;
   /** False: the person switched this agent's task board off (`dashboard.task_board`): it is not told to use it. */
   taskBoard?: boolean;
+  /**
+   * M-3528 (#4347 review): false when this agent is not published AgEnD's bundled skills — a native (Windows) worker —
+   * so its prompt keeps the full web-chat receipt checks, as a ClassicBot room's does. Default: published.
+   */
+  receivesSkills?: boolean;
 }
 
 /** The built-in status set as default.md spells it. */
@@ -208,6 +213,9 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   const { instanceName, workingDirectory, runtimeIdentity, displayName, description, customPrompt } = params;
   const sections: string[] = [];
   const classic = isClassicInstance(params);
+  // M-3528: WEB_RECEIPT_RULE lives in the cross-instance-messaging and worker-collaboration skills. A ClassicBot room
+  // (its role receives neither) and an agent published no skills at all keep the rule itself in the prompt.
+  const fullReceiptRule = classic || params.receivesSkills === false;
 
   // ── Identity ──
   sections.push(`# AgEnD Fleet Context\nYou are **${instanceName}**, an instance in an AgEnD fleet.\nYour working directory is \`${workingDirectory}\`.`);
@@ -235,8 +243,8 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
     // CLI mode: inject CLI quick reference (without the board's commands for an agent that may not use it)
     sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
     sections.push(cliCrossInstanceRule(classic));
-    // A ClassicBot room has neither skill that holds the web-chat receipt checks: its prompt keeps them in full (M-3528).
-    if (classic) sections.push(`## Web-chat receipts\n${WEB_RECEIPT_RULE}`);
+    // An agent without the skills that hold the web-chat receipt checks keeps them in full in its prompt (M-3528).
+    if (fullReceiptRule) sections.push(`## Web-chat receipts\n${WEB_RECEIPT_RULE}`);
     sections.push(`## Before acting on a peer's message\n${VERIFY_PEER_MESSAGE_RULE}`);
     if (isCodexInstance(params)) sections.push(CODEX_PERSISTENCE_OUTPUT_SECTIONS);
   } else {
@@ -244,7 +252,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
     sections.push([
       "## Message Format",
       INBOUND_HEADER_RULE,
-      "- `[user:name@dc|tg|web#USER_ID]` — from a Telegram, Discord or web-chat user (`@web`) → reply with the `reply` tool. A web-chat reply shows in the web chat, and is copied to your topic unless `web.echo_to_channel: false`. " + (classic ? WEB_RECEIPT_RULE : WEB_CHAT_LINE),
+      "- `[user:name@dc|tg|web#USER_ID]` — from a Telegram, Discord or web-chat user (`@web`) → reply with the `reply` tool. A web-chat reply shows in the web chat, and is copied to your topic unless `web.echo_to_channel: false`. " + (fullReceiptRule ? WEB_RECEIPT_RULE : WEB_CHAT_LINE),
       fullCrossInstanceMessageRule(classic),
       "- A sender with a display name shows as `[from:Display Name (instance-name)]`; address it by its instance name.",
       "",
@@ -332,9 +340,11 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
 
 /**
  * Native General adds an explicit coordinator/Windows filesystem boundary. Its role text reaches it once, through the
- * dedicated workspace's CLAUDE.md / AGENTS.md (loadGeneralKnowledge), not again here (M-3529).
+ * dedicated workspace's CLAUDE.md / AGENTS.md (loadGeneralKnowledge), not again here (M-3529). A native General gets
+ * the General skill pack there too; a native worker is published no skills, so it keeps the web-chat receipt checks in
+ * its prompt (M-3528, #4347 review).
  */
 export function buildNativeFleetInstructions(params: FleetInstructionsParams, general: boolean): string {
   return (general
-    ? "## Windows execution boundary\nAgEnD and its chat, settings, receipts and configuration run on the coordinator host. Use your authenticated AgEnD tools for anything there; a local Windows command or file edit acts only on this computer. Your role and General skills are in this dedicated workspace. Keep login credentials where they are and reach the host only through those tools. Human confirmation stays with the person, never this model.\n\n" : "") + buildFleetInstructions(params);
+    ? "## Windows execution boundary\nAgEnD and its chat, settings, receipts and configuration run on the coordinator host. Use your authenticated AgEnD tools for anything there; a local Windows command or file edit acts only on this computer. Your role and General skills are in this dedicated workspace. Keep login credentials where they are and reach the host only through those tools. Human confirmation stays with the person, never this model.\n\n" : "") + buildFleetInstructions({ ...params, receivesSkills: params.receivesSkills ?? general });
 }
