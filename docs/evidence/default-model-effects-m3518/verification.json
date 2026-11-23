@@ -436,5 +436,8 @@
         }
       ]
     }
-  }
+  },
+  "applicationProofPhase": "The 32 non-FleetManager equality checks include the prepared README and were taken immediately after applying the patch, before this evidence refresh.",
+  "currentPreparedNonFmSourceTestHarnessChangelogEqual": 31,
+  "evidenceRefresh": "Prepared README replaced by current integration packet; historical32PNGblobs retained. No production or test changes after sourceHead."
 }
