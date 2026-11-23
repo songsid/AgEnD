@@ -53,6 +53,19 @@ export interface RoomOfficeAgent {
   name: string; display_name: string; status: "running" | "paused" | "stopped"; execution_state?: "idle" | "working";
   /** The member list's own word for it, so the page says the same (hub-room-presence.js). */
   presence: RoomPresence; answering?: true; assistant?: true;
+  /** M-3533 R2a: its look as its owner's Fleet shows it (the identity colour and persona emoji its catalog sends). */
+  color?: { person: string }; avatar?: { kind: "emoji"; text: string };
+}
+
+/** M-3533 R2a: an agent's look from its owner's agent catalog (agent-catalog-model.ts row `avatar`): colour, emoji. */
+export interface RoomOfficeLook { color: string | null; emoji: string | null }
+
+/** The look onto the drawing's own fields (identity-color.js resolveColor: a chosen colour; instance-nav.js avatarOf). */
+export function withLook(agent: RoomOfficeAgent, look: RoomOfficeLook | null | undefined): RoomOfficeAgent {
+  if (!look) return agent;
+  const color = typeof look.color === "string" && /^#[0-9a-f]{6}$/i.test(look.color) ? look.color.toLowerCase() : null;
+  const emoji = typeof look.emoji === "string" && look.emoji.trim() ? look.emoji.trim() : null;
+  return { ...agent, ...(color ? { color: { person: color } } : {}), ...(emoji ? { avatar: { kind: "emoji" as const, text: emoji } } : {}) };
 }
 
 /** The member list's presences: a personal agent whose computer is offline answers "later", when it is back. */
