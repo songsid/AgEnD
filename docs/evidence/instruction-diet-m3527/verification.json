@@ -1,14 +1,14 @@
 {
-  "sourceHead": "0a39fde91ddb0937972d2c9d1d86c30aff7f4dbb",
+  "sourceHead": "6cae51109bca7b37c5a54db4f09384fa4902cf85",
   "base": "63a41c9cb1a502affcacae21acb62e39c11d39cf",
   "sourceHashes": [
     {
       "path": "changes/3527-restricted-room-instructions.md",
-      "sha256": "a542e96cde7f9b9d2f513b178506384214f12e5860decfe7f557ec752c7af171"
+      "sha256": "dee16312598567e1587d610adf5235469acaebee0cae5a51c831840f5f5958c8"
     },
     {
       "path": "changes/3527-restricted-room-instructions.zh-TW.md",
-      "sha256": "8e592c8e4324317ffc502c5722a95600c57c1ac16ef7ec7089050bf3bc1fed14"
+      "sha256": "346339cfefe56210cd6f0991c8be28d431595062cd9e827063def0382e13c038"
     },
     {
       "path": "scripts/manual/measure-instruction-diet-m3527.mts",
@@ -74,5 +74,11 @@
     "Only managed bundled skills are filtered or retired; user-owned files remain.",
     "Existing conversation history is not rewritten; publication/prompt behavior applies at normal startup.",
     "Fixed synthetic text counts, not account/model billing or a whole launch-context total."
-  ]
+  ],
+  "metadataCorrection": {
+    "failedJobInspected": 137498861646,
+    "run": 45115994542,
+    "change": "Two changelog entry list markers only; production/tests/token snapshots unchanged.",
+    "assembler": "changelog-assemble: 736 fragment(s) OK"
+  }
 }
