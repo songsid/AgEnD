@@ -221,6 +221,23 @@ export const activityInfoStore = createStore({ v: 0 });
 /** What the last answer for `name` said (level, cwd, home, whether thinking is sent, backend), or null: none read yet. */
 export const activityInfo = (name) => memory.get(name)?.info ?? null;
 /**
+ * What a block of `name` needs to draw: its paths to shorten, and whether thinking is shown (the reader asked for it AND
+ * the server sends it). The chat's blocks and a task card's draw with the same.
+ */
+export const activityDrawCtx = (name) => {
+  const info = activityInfo(name);
+  return { paths: info ? { cwd: info.cwd, home: info.home } : null, thinking: activityPrefs.get().thinking && !!info && info.thinking === true };
+};
+/**
+ * What `name`'s feed holds now, read-only — for a task card's page, which draws a group of these steps beside
+ * the card: { steps (in file order), info (the last answer's level, backend…), dead (the server offers nothing for good),
+ * phase (grok's), complete (the steps reach back to the transcript's start) }, or null when nothing was read yet.
+ */
+export function activitySnapshot(name) {
+  const s = memory.get(name);
+  return s ? { steps: s.steps, info: s.info, dead: s.dead, phase: s.phase || null, complete: s.complete } : null;
+}
+/**
  * The thread's rows with each turn's group put in, from what this page already knows of `name` — also for a chat shown
  * again from memory, before its feed reads anything. No steps (or a server that does not offer them): the rows as they are.
  */

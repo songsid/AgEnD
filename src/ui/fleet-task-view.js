@@ -5,11 +5,13 @@
 // Filters stack (each "is" or "is not" some values; a main task stays when it or one of its sub tasks matches them all)
 // and ride in the address with the project (`?tp=`, `?tf=`), so a filtered board can be sent as a link; the last ones
 // and the display choices are remembered on this device. No style attribute anywhere (the CSP).
-import { html } from "/assets/app-html.js";
+import { html, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
-import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { RunMark, runOf } from "./fleet-task-run.js";
+import { OwnerChip } from "./fleet-task-owner.js";
+import { COLUMNS, ProgressBar, UNASSIGNED, Who, readStored, recentlyDone, relTime, reviewLabel, waitsForYou, waitsList, waitsOn, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { assetUrl } from "/assets/asset-url.js";
 
 /** The task board's stylesheet, linked once (a tab opened before an upgrade has an app.css without these rules). */
@@ -43,6 +45,10 @@ register("taskview", {
     fieldstatus: "Status", fieldassignee: "Assignee", fieldpriority: "Priority", fieldsize: "Size",
     filters: "Filters", is: "is", isNot: "is not", opTip: "Switch between is and is not", values: "{0}: choose values",
     nValues: "{0} values", remove: "Remove this filter", clear: "Clear filters", changed: "Changed {0}", inMain: "Sub task of {0} {1}",
+    fieldwaits: "Needs you", waitsYou: "Waiting for me", viewLabel: "Board or list", search: "Search", searchLabel: "Search this project's cards (numbers, titles, fields, checklists)",
+    "order.assignee": "Assignee", "order.code": "Number", sortBy: "Sort by {0}", sortedBy: "{0}, sorted {1}", asc: "ascending", desc: "descending",
+    colId: "ID", colTitle: "Title", colPriority: "Priority", colAssignee: "Assignee", colUpdated: "Updated",
+    collapse: "Collapse {0}", expand: "Expand {0}", more: "Card actions", statusTabs: "Show one status", noMatch: "No cards match “{0}”", clearSearch: "Clear search",
   },
   "zh-TW": {
     display: "顯示", displayTip: "看板或清單、分組、排序、已完成的卡", filter: "篩選", filterTip: "只看部分卡片",
@@ -53,6 +59,10 @@ register("taskview", {
     fieldstatus: "狀態", fieldassignee: "負責人", fieldpriority: "優先度", fieldsize: "大小",
     filters: "篩選條件", is: "是", isNot: "不是", opTip: "切換「是」與「不是」", values: "{0}：選擇項目",
     nValues: "{0} 項", remove: "移除這個條件", clear: "清除篩選", changed: "{0}變動", inMain: "{0} {1} 的子任務",
+    fieldwaits: "等我處理", waitsYou: "等我確認", viewLabel: "看板或清單", search: "搜尋", searchLabel: "搜尋這個專案的卡片（卡號、標題、欄位、完成定義）",
+    "order.assignee": "負責人", "order.code": "卡號", sortBy: "依{0}排序", sortedBy: "{0}，{1}排序", asc: "由小到大", desc: "由大到小",
+    colId: "卡號", colTitle: "標題", colPriority: "優先度", colAssignee: "負責人", colUpdated: "更新",
+    collapse: "收合 {0}", expand: "展開 {0}", more: "卡片動作", statusTabs: "一次看一個狀態", noMatch: "沒有符合「{0}」的卡片", clearSearch: "清除搜尋",
   },
 });
 
@@ -60,16 +70,17 @@ register("taskview", {
 
 export const VIEWS = ["board", "list"];
 export const GROUPS = ["status", "assignee", "priority", "none"];
-export const ORDERS = ["manual", "priority", "updated", "created", "title"];
+export const ORDERS = ["manual", "priority", "updated", "created", "title", "assignee", "code"];
+export const DIRS = ["asc", "desc"];
 export const DONE_SHOWN = ["recent", "all", "hide"];
-export const DEFAULT_DISPLAY = Object.freeze({ view: "board", group: "status", order: "manual", done: "recent", subs: false });
+export const DEFAULT_DISPLAY = Object.freeze({ view: "board", group: "status", order: "manual", dir: "asc", done: "recent", subs: false });
 const DISPLAY_KEY = "agend_tasks_display";
 
 /** Display choices from anything (a stored value, an older page's): each one known, else its default. */
 export function cleanDisplay(raw) {
   const d = raw && typeof raw === "object" ? raw : {};
   const pick = (k, list) => (list.includes(d[k]) ? d[k] : DEFAULT_DISPLAY[k]);
-  return { view: pick("view", VIEWS), group: pick("group", GROUPS), order: pick("order", ORDERS), done: pick("done", DONE_SHOWN), subs: d.subs === true };
+  return { view: pick("view", VIEWS), group: pick("group", GROUPS), order: pick("order", ORDERS), dir: pick("dir", DIRS), done: pick("done", DONE_SHOWN), subs: d.subs === true };
 }
 export function readDisplay() {
   try { return cleanDisplay(JSON.parse(readStored(DISPLAY_KEY, "{}"))); } catch { return { ...DEFAULT_DISPLAY }; }
@@ -82,11 +93,12 @@ export function doneShown(card, done, now = Date.now()) {
   return done === "all" || (done === "recent" && recentlyDone(card, now));
 }
 
-export const FILTER_FIELDS = ["status", "assignee", "priority", "size"];
+export const FILTER_FIELDS = ["status", "assignee", "priority", "size", "waits"];
 /** A filter's value for "nobody" (assignee) and "not sized" (size). */
 export const NONE = "~";
 const PRIORITIES = ["urgent", "high", "normal", "low"];
-const KNOWN = { status: COLUMNS, priority: PRIORITIES, size: ["S", "M", "L", NONE] };
+/** "waits": whether the card waits for the person (Needs you's rule) — one value, "you". */
+const KNOWN = { status: COLUMNS, priority: PRIORITIES, size: ["S", "M", "L", NONE], waits: ["you"] };
 const FILTERS_KEY = "agend_tasks_filters";
 const LEGACY_ASSIGNEE = "agend_tasks_assignee";   // the board's one assignee filter before these
 
@@ -94,14 +106,28 @@ const LEGACY_ASSIGNEE = "agend_tasks_assignee";   // the board's one assignee fi
 export function valueOf(card, field) {
   if (field === "assignee") return card.assignee || NONE;
   if (field === "size") return card.size || NONE;
+  if (field === "waits") return waitsForYou(card) ? "you" : "other";
   return card[field];
 }
 
 /** Whether a card matches every filter. */
 export const cardMatches = (card, filters) => filters.every((f) => f.values.includes(valueOf(card, f.field)) !== f.not);
 
-/** A main task stays when it, or one of its sub tasks, matches every filter. */
-export const mainMatches = (main, subs, filters) => cardMatches(main, filters) || (subs || []).some((s) => cardMatches(s, filters));
+/**
+ * Whether a card has every word of a search (case does not matter): its number, title, goal, scope, context, state,
+ * result, blocked reason, assignee and checklist. No words: every card.
+ */
+export function searchMatches(card, query) {
+  const words = String(query || "").toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  if (!words.length) return true;
+  const text = [card.id, card.title, card.goal, card.scope, card.context, card.state, card.result, card.blockedReason, card.assignee, ...(card.acceptance || []).map((a) => a.text)]
+    .filter(Boolean).join("\n").toLocaleLowerCase();
+  return words.every((w) => text.includes(w));
+}
+const passes = (card, filters, query) => cardMatches(card, filters) && searchMatches(card, query);
+
+/** A main task stays when it, or one of its sub tasks, matches every filter (and the search, when there is one). */
+export const mainMatches = (main, subs, filters, query = "") => passes(main, filters, query) || (subs || []).some((s) => passes(s, filters, query));
 
 // In the address: `field:a,b;field!:c` — "!" is "is not"; a value's own , ; : ! % ~ are %-escaped, so a bare ~ is NONE.
 const esc = (v) => (v === NONE ? NONE : v.replace(/[%,;:!~]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`));
@@ -163,19 +189,25 @@ export function fieldValues(field, cards, filter = null) {
  * The list's rows: the main tasks shown — or, with sub tasks as rows, each main task that matches the filters itself
  * and its sub tasks that do (and are shown for their finish), each sub task right after its main task.
  */
-export function listRows(mains, subsOf, display, filters, now = Date.now()) {
+export function listRows(mains, subsOf, display, filters, now = Date.now(), query = "") {
   if (!display.subs) return mains;
   const out = [];
   for (const m of mains) {
-    if (cardMatches(m, filters)) out.push(m);
-    for (const s of subsOf.get(m.id) || []) if (doneShown(s, display.done, now) && cardMatches(s, filters)) out.push(s);
+    if (passes(m, filters, query)) out.push(m);
+    for (const s of subsOf.get(m.id) || []) if (doneShown(s, display.done, now) && passes(s, filters, query)) out.push(s);
   }
   return out;
 }
 
 const PRIORITY_RANK = { urgent: 0, high: 1, normal: 2, low: 3 };
-/** Rows in an order: the board's (a sub task right after its main task), by priority, last change, newest, or title. */
-export function orderRows(rows, order, byId = new Map()) {
+/** A card's number as a sortable pair: main tasks before sub tasks, then by the number itself. */
+const codeKey = (c) => [c.kind === "sub" ? 1 : 0, Number(/\d+/.exec(c.id)?.[0] ?? 0)];
+/**
+ * Rows in an order: the board's (a sub task right after its main task), by priority (urgent first), last change and
+ * newest (newest first), title, assignee or number. `dir` "desc" turns the order round — except that a card nobody has
+ * is last by assignee either way (it is not "the biggest name").
+ */
+export function orderRows(rows, order, byId = new Map(), dir = "asc") {
   const place = (c) => {
     const main = c.kind === "sub" ? byId.get(c.parentId) : null;
     return main ? [main.sort, 1, c.sort] : [c.sort, 0, 0];
@@ -187,8 +219,12 @@ export function orderRows(rows, order, byId = new Map()) {
     updated: (a, b) => String(b.updatedAt).localeCompare(String(a.updatedAt)) || manual(a, b),
     created: (a, b) => String(b.createdAt).localeCompare(String(a.createdAt)) || manual(a, b),
     title: (a, b) => a.title.localeCompare(b.title, lang()) || manual(a, b),
+    assignee: (a, b) => (a.assignee ? 0 : 1) - (b.assignee ? 0 : 1) || String(a.assignee || "").localeCompare(String(b.assignee || ""), lang()) || manual(a, b),
+    code: (a, b) => { const x = codeKey(a), y = codeKey(b); return x[0] - y[0] || x[1] - y[1]; },
   }[order] || manual;
-  return [...rows].sort(by);
+  if (dir !== "desc") return [...rows].sort(by);
+  // Turned round; for assignee the nobody-last rule stays outside the turning.
+  return [...rows].sort(order === "assignee" ? (a, b) => (a.assignee ? 0 : 1) - (b.assignee ? 0 : 1) || by(b, a) : (a, b) => by(b, a));
 }
 
 /** Rows in groups, in a fixed order: statuses as the board's columns, priorities from urgent, assignees by name (nobody last). */
@@ -201,6 +237,7 @@ export function groupRows(rows, group) {
 
 /** A filter value in words: a status, a priority, a size, an assignee (nobody: "Unassigned"; not sized: "Not sized"). */
 export function valueWord(field, v) {
+  if (field === "waits") return t("taskview.waitsYou");
   if (v === NONE) return field === "size" ? t("tasks.sizeNone") : t("tasks.nobody");
   if (field === "status" || field === "priority") return t(`tasks.${v}`);
   if (field === "size") return t(`tasks.size${v}`);
@@ -223,25 +260,53 @@ export function FilterMenu({ cards, filters, onChange }) {
   return html`<${TextMenu} cls="tb-filter-menu" icon="filter" text=${t("taskview.filter")} tip=${t("taskview.filterTip")} active=${filters.length > 0} items=${items} />`;
 }
 
-/** Display: board or list; the list's grouping, order and sub-task rows; which finished cards show. */
+/** Display: the list's grouping, order and sub-task rows; which finished cards show (the board / list switch is the toolbar's). */
 export function DisplayMenu({ display, onChange }) {
   const d = display;
   const list = d.view === "list";
   const radio = (k, v, label) => ({ key: `${k}-${v}`, label, checked: d[k] === v, onSelect: () => onChange({ ...d, [k]: v }) });
   const items = [
-    { key: "h-view", heading: true, label: t("taskview.view") },
-    radio("view", "board", t("taskview.board")), radio("view", "list", t("taskview.list")),
     list && { key: "h-group", heading: true, label: t("taskview.groupBy") },
     ...(list ? GROUPS.map((g) => radio("group", g, t(`taskview.group.${g}`))) : []),
     list && { key: "h-order", heading: true, label: t("taskview.orderBy") },
-    ...(list ? ORDERS.map((o) => radio("order", o, t(`taskview.order.${o}`))) : []),
+    ...(list ? ORDERS.map((o) => ({ key: `order-${o}`, label: t(`taskview.order.${o}`), checked: d.order === o, onSelect: () => onChange({ ...d, order: o, dir: "asc" }) })) : []),
     list && { key: "subs", checkbox: true, checked: d.subs, label: t("taskview.subsRows"), onSelect: () => onChange({ ...d, subs: !d.subs }) },
     { key: "h-done", heading: true, label: t("taskview.finished") },
     radio("done", "recent", t("tasks.recent")), radio("done", "all", t("tasks.all")), radio("done", "hide", t("taskview.doneHide")),
   ];
   // Pressed while it shows something other than the defaults (beyond board or list, which is plain to see).
-  const changed = ["group", "order", "done", "subs"].some((k) => d[k] !== DEFAULT_DISPLAY[k]);
+  const changed = ["group", "order", "dir", "done", "subs"].some((k) => d[k] !== DEFAULT_DISPLAY[k]);
   return html`<${TextMenu} cls="tb-view-menu" icon="sliders" text=${t("taskview.display")} tip=${t("taskview.displayTip")} active=${changed} items=${items} />`;
+}
+
+/** Board | List, one click: the choice is remembered on this device (the display's `view`). */
+export function ViewToggle({ display, onChange }) {
+  return html`<div class="tb-seg tb-view-toggle" role="group" aria-label=${t("taskview.viewLabel")}>${VIEWS.map((v) =>
+    html`<button key=${v} type="button" aria-pressed=${display.view === v ? "true" : "false"} class=${`tb-seg-btn${display.view === v ? " active" : ""}`}
+      onClick=${() => display.view !== v && onChange({ ...display, view: v })}>${t(`taskview.${v}`)}</button>`)}</div>`;
+}
+
+/** The project's search: filters what the board and the list show as you type; Esc clears it. */
+export function SearchField({ value, onChange }) {
+  return html`<div class="tb-search tb-find">
+    <${Icon} name="search" size=${16} cls="tb-search-icon" />
+    <input type="search" value=${value} placeholder=${t("taskview.search")} aria-label=${t("taskview.searchLabel")} title=${t("taskview.searchLabel")}
+      onInput=${(e) => onChange(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape" && value) { e.preventDefault(); e.stopPropagation(); onChange(""); } }} />
+  </div>`;
+}
+
+/**
+ * One row of controls under a project's header: the board / list switch, the search, Filter and Display,
+ * then the filters in force as chips. The filters, the view and the display are kept on this device.
+ */
+export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery }) {
+  return html`<div class="tb-view-bar">
+    <${ViewToggle} display=${display} onChange=${onDisplay} />
+    <${SearchField} value=${query} onChange=${onQuery} />
+    <${FilterMenu} cards=${cards} filters=${filters} onChange=${onFilters} />
+    <${DisplayMenu} display=${display} onChange=${onDisplay} />
+    <${FilterBar} cards=${cards} filters=${filters} onChange=${onFilters} />
+  </div>`;
 }
 
 /** The filters in force, a chip each: its field, is / is not (a click switches), its values (a menu), and remove. */
@@ -285,42 +350,90 @@ function groupHead(group, key) {
 const groupWord = (group, key) => (group === "assignee" ? (key === NONE ? t("tasks.nobody") : key) : t(`tasks.${key}`));
 const longTime = (iso) => { const d = new Date(iso); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en") : ""; };
 
+// The groups a person folded away, remembered on this device, per project (by what heads them: "1/status:done",
+// "none/assignee:alpha" — the project's id, or "none" for No project).
+const COLLAPSED_KEY = "agend_tasks_collapsed";
+export const groupId = (group, key, scope = "") => (scope === "" ? `${group}:${key}` : `${scope}/${group}:${key}`);
+export function readCollapsed() {
+  try { const a = JSON.parse(readStored(COLLAPSED_KEY, "[]")); return new Set(Array.isArray(a) ? a.filter((x) => typeof x === "string") : []); } catch { return new Set(); }
+}
+export const writeCollapsed = (set) => writeStored(COLLAPSED_KEY, JSON.stringify([...set]));
+
+/** The columns the list's header sorts by, each the order it picks. */
+export const SORT_COLUMNS = [["code", "colId", "tb-lh-code"], ["title", "colTitle", "tb-lh-title"], ["priority", "colPriority", "tb-lh-prio"], ["assignee", "colAssignee", "tb-lh-who"], ["updated", "colUpdated", "tb-lh-time"]];
+
+/** A column's order after a click on its header: the same column again turns it round, another starts from its own end. */
+export function sortedBy(display, order) {
+  return display.order === order ? { ...display, dir: display.dir === "asc" ? "desc" : "asc" } : { ...display, order, dir: "asc" };
+}
+
+/** The list's header: its sortable columns (ID, Title, Priority, Assignee, Updated), the current one marked with its direction. */
+function ListHead({ display, onDisplay, who }) {
+  return html`<div class="tb-list-head" role="group" aria-label=${t("taskview.orderBy")}>
+    <span class="tb-lh-dot" aria-hidden="true"></span>
+    ${SORT_COLUMNS.filter(([order]) => who || order !== "assignee").map(([order, word, cls]) => {
+      const on = display.order === order;
+      const label = t(`taskview.${word}`);
+      const dirWord = t(`taskview.${display.dir}`);
+      return html`<button key=${order} type="button" class=${`tb-lh ${cls}${on ? " active" : ""}`} aria-pressed=${on ? "true" : "false"}
+        title=${t("taskview.sortBy", label)} aria-label=${on ? t("taskview.sortedBy", label, dirWord) : t("taskview.sortBy", label)}
+        onClick=${() => onDisplay(sortedBy(display, order))}>${label}${on ? html`<${Icon} name=${display.dir === "asc" ? "up" : "down"} size=${12} />` : null}</button>`;
+    })}
+    <span class="tb-lh-more" aria-hidden="true"></span>
+  </div>`;
+}
+
 /**
- * The list: a row per card in groups, each headed by its status, assignee or priority with its count. A row opens its
- * card; a main task's sub-task progress opens up its sub tasks under it (unless they are rows already).
+ * The list: a header to sort by, then a row per card in groups, each headed by its status, assignee or priority with its
+ * count (a click folds it away). A row shows its number, title, priority, assignee and last change; it opens its card; a
+ * main task's sub-task progress opens up its sub tasks under it (unless they are rows already); its ⋯ opens the card's menu.
  */
-export function ListView({ rows, display, subsOf, byId, flashed, now, expanded, onToggleSubs, onOpen }) {
-  const groups = groupRows(orderRows(rows, display.order, byId), display.group);
-  return html`<div class="tb-list">${groups.map((g) => html`<section key=${g.key} class="tb-group" aria-label=${display.group === "none" ? null : groupWord(display.group, g.key)}>
-    ${display.group === "none" ? null : html`<h3 class=${`tb-group-head g-${display.group}`}>${groupHead(display.group, g.key)}<span class="tb-count">${g.rows.length}</span></h3>`}
-    <ul class="tb-rows">${g.rows.map((c) => {
-      const subs = subsOf.get(c.id) || [];
-      const lit = Math.max(flashed.get(c.id) || 0, ...(display.subs ? [] : subs.map((s) => flashed.get(s.id) || 0)));
-      return html`<${Row} key=${c.id} card=${c} subs=${subs} main=${c.kind === "sub" ? byId.get(c.parentId) : null} flash=${now - lit < 4000} now=${now}
-        subsAsRows=${display.subs} who=${display.group !== "assignee"} expanded=${!!expanded[c.id]} onToggleSubs=${() => onToggleSubs(c.id)} onOpen=${onOpen} />`;
-    })}</ul>
-  </section>`)}</div>`;
+export function ListView({ rows, display, subsOf, byId, flashed, now, runs, expanded, onToggleSubs, onOpen, onMore, onOwner, cards = [], lead = null, writable = false, onDisplay, scope = "" }) {
+  const [folded, setFolded] = useState(readCollapsed);
+  const toggle = (id) => setFolded((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); writeCollapsed(next); return next; });
+  const groups = groupRows(orderRows(rows, display.order, byId, display.dir), display.group);
+  const who = display.group !== "assignee";
+  return html`<div class="tb-list">
+    <${ListHead} display=${display} onDisplay=${onDisplay} who=${who} />
+    ${groups.map((g) => {
+      const id = groupId(display.group, g.key, scope);
+      const shut = display.group !== "none" && folded.has(id);
+      return html`<section key=${g.key} class=${`tb-group${shut ? " shut" : ""}`} aria-label=${display.group === "none" ? null : groupWord(display.group, g.key)}>
+        ${display.group === "none" ? null : html`<h3 class=${`tb-group-head g-${display.group}`}>
+          <button type="button" class="tb-group-toggle" aria-expanded=${shut ? "false" : "true"} title=${t(shut ? "taskview.expand" : "taskview.collapse", groupWord(display.group, g.key))}
+            onClick=${() => toggle(id)}><${Icon} name="chevron" size=${14} cls=${shut ? "tb-chev" : "tb-chev open"} />${groupHead(display.group, g.key)}<span class="tb-count">${g.rows.length}</span></button></h3>`}
+        ${shut ? null : html`<ul class="tb-rows">${g.rows.map((c) => {
+          const subs = subsOf.get(c.id) || [];
+          const lit = Math.max(flashed.get(c.id) || 0, ...(display.subs ? [] : subs.map((s) => flashed.get(s.id) || 0)));
+          return html`<${Row} key=${c.id} card=${c} subs=${subs} main=${c.kind === "sub" ? byId.get(c.parentId) : null} flash=${now - lit < 4000} now=${now} runs=${runs}
+            subsAsRows=${display.subs} who=${who} expanded=${!!expanded[c.id]} onToggleSubs=${() => onToggleSubs(c.id)} onOpen=${onOpen} onMore=${onMore}
+            onOwner=${onOwner} cards=${cards} lead=${lead} writable=${writable} />`;
+        })}</ul>`}
+      </section>`;
+    })}</div>`;
 }
 
 /** One card's row; its assignee is left out under an assignee's own heading. */
-function Row({ card, subs, main, flash, now, subsAsRows, who, expanded, onToggleSubs, onOpen }) {
+function Row({ card, subs, main, flash, now, runs, subsAsRows, who, expanded, onToggleSubs, onOpen, onMore, onOwner, cards, lead, writable }) {
   const progress = card.progress;
   const hasSubs = card.kind === "main" && !!progress && progress.total > 0;
   const accepted = card.acceptance.filter((a) => a.done).length;
   const gap = card.status === "review" ? wrapUpText(card) : "";
   const replied = card.lastComment && card.lastComment.authorKind !== "person";
+  // Its assignee (or, for a main task, a sub task's) is working on it now.
+  const run = runOf(card, runs, subs);
   const bar = hasSubs ? html`<${ProgressBar} progress=${progress} /><span>${t("tasks.subProgress", progress.done, progress.total)}</span>` : null;
-  return html`<li class=${`tb-row st-${card.status}${card.kind === "sub" ? " is-sub" : ""}${flash ? " flash" : ""}`} data-row=${card.id} onClick=${() => onOpen(card.id)}>
+  return html`<li class=${`tb-row st-${card.status}${card.kind === "sub" ? " is-sub" : ""}${flash ? " flash" : ""}${run && run.state === "working" && !run.shared ? " running" : ""}`} data-row=${card.id} onClick=${(e) => { if (e.target && e.target.closest && e.target.closest(".tb-owner-pop")) return; onOpen(card.id); }}>
     <div class="tb-row-line">
       <span class=${`tb-dot st-${card.status}`} role="img" aria-label=${t(`tasks.${card.status}`)} title=${t(`tasks.${card.status}`)}></span>
-      <span class="tb-code">${card.id}</span>
+      <span class="tb-code tb-row-code">${card.id}</span>
       ${main ? html`<span class="tb-row-main" title=${t("taskview.inMain", main.id, main.title)}>${main.id} ›</span>` : null}
       <span class="tb-row-text">
+        <${RunMark} run=${run} />
         <button type="button" class="tb-row-title" onClick=${(e) => { e.stopPropagation(); onOpen(card.id); }}>${card.title}</button>
         ${card.status === "blocked" && card.blockedReason ? html`<span class="tb-row-note">${card.blockedReason}</span>` : null}
       </span>
       <span class="tb-row-tags">
-        ${card.priority === "urgent" || card.priority === "high" ? html`<span class=${`tb-tag p-${card.priority}`}>${t(card.priority === "urgent" ? "tasks.urgentTag" : "tasks.highTag")}</span>` : null}
         ${card.status === "review" ? html`<span class=${`tb-tag st-review${waitsForYou(card) ? " you" : ""}`}>${reviewLabel(card)}</span>` : null}
         ${gap ? html`<span class="tb-tag wrapup" title=${t("tasks.wrapLine", gap)}>${t("tasks.wrapTag")}</span>` : null}
         ${card.size ? html`<span class="tb-size" title=${t("tasks.size")}>${t(`tasks.size${card.size}`)}</span>` : null}
@@ -330,11 +443,14 @@ function Row({ card, subs, main, flash, now, subsAsRows, who, expanded, onToggle
           onClick=${(e) => { e.stopPropagation(); onToggleSubs(); }}>${bar}<${Icon} name="chevron" size=${14} cls=${expanded ? "tb-chev open" : "tb-chev"} /></button>`}
       <span class="tb-tile-stats">
         ${card.acceptance.length ? html`<span class=${accepted === card.acceptance.length ? "all" : ""} title=${t(card.kind === "main" ? "tasks.definition" : "tasks.acceptance")}><${Icon} name="check" size=${13} />${accepted}/${card.acceptance.length}</span>` : null}
-        ${card.unmetDeps.length ? html`<span title=${t("tasks.waitsFor", card.unmetDeps.join(", "))}><${Icon} name="clock" size=${13} /></span>` : null}
+        ${waitsOn(card) ? html`<span title=${t("tasks.waitsFor", waitsList(card, ", "))}><${Icon} name="clock" size=${13} /></span>` : null}
         ${card.commentCount ? html`<span class=${replied ? "reply" : ""} title=${replied ? t("tasks.agentReplied") : t("tasks.comments")}><${Icon} name="chat" size=${13} />${card.commentCount}</span>` : null}
       </span>
-      ${who ? html`<span class="tb-row-who"><${Who} name=${card.assignee} empty=${t("tasks.nobody")} /></span>` : null}
+      <span class=${`tb-row-prio p-${card.priority}`}>${t(`tasks.${card.priority}`)}</span>
+      ${who ? html`<span class="tb-row-who"><${OwnerChip} card=${card} cards=${cards} lead=${lead} canAssign=${writable && card.status !== "done" && card.status !== "cancelled"} onPick=${onOwner} /></span>` : null}
       <span class="tb-row-time muted" title=${t("taskview.changed", longTime(card.updatedAt))}>${relTime(card.updatedAt, now)}</span>
+      ${onMore ? html`<button type="button" class="icon-btn tb-more" aria-label=${t("taskview.more")} title=${t("taskview.more")}
+        onClick=${(e) => { e.stopPropagation(); onMore(card, e.currentTarget); }}><${Icon} name="more" size=${16} /></button>` : null}
     </div>
     ${hasSubs && expanded && !subsAsRows ? html`<${SubList} subs=${subs} older=${progress.total - subs.length} onOpen=${onOpen} />` : null}
   </li>`;

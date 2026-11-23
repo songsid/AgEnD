@@ -5,6 +5,7 @@ import { html, useEffect, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
 import { appStore, createStore, useStore } from "/assets/app-store.js";
 import { identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
+import { dotState } from "/assets/instance-nav.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
 
@@ -28,7 +29,7 @@ register("tasks", {
     emptyBoard: "No main tasks here yet", emptyFiltered: "No main tasks match the filter",
     emptyBoardHint: "A main task is an outcome you want. Assign it to an instance: it does a small one directly and splits a big one into sub tasks.",
     subProgress: "Sub tasks {0}/{1}", showSubs: "Show sub tasks", hideSubs: "Hide sub tasks", olderSubs: "{0} more finished earlier",
-    acceptance: "Acceptance", definition: "Definition of done", waitsFor: "Waits for {0}", comments: "Comments", agentReplied: "An instance replied",
+    acceptance: "Acceptance", definition: "Definition of done", waitsFor: "Waits for {0}", hiddenWait: "a card that is not public", hiddenWaitN: "{0} cards that are not public", comments: "Comments", agentReplied: "An instance replied",
     needsReview: "Needs review", needsReviewTitle: "Stops at review for your confirmation", urgentTag: "Urgent", highTag: "High",
     waitingTitle: "Waiting for you", waitingEmpty: "Nothing is waiting for you.", confirm: "Confirm", sendBack: "Send back", answer: "Answer",
     confirmed: "{0} confirmed", sentBack: "{0} sent back", answered: "Answered {0}",
@@ -52,7 +53,7 @@ register("tasks", {
     readOnly: "The public link shows the board read-only. To change it, open the dashboard on the machine running AgEnD.",
     tileHint: "Enter opens it · Alt+↑/↓ moves it in its column · Alt+←/→ to the next status",
     conflictAgain: "{0} changed meanwhile (it is now {1}). Your text is kept — send it again?", sendAgain: "Send again", conflictLabel: "What you wrote",
-    nowDoing: "Working on", nowBlocked: "Blocked", nowNext: "Next", ownerTip: "Main task owner: {0}", moreCards: "+{0}",
+    nowDoing: "Working on", nowBlocked: "Blocked", nowNext: "Next", subWorkers: "Assigned to its sub tasks", moreCards: "+{0}",
     wrapTag: "To fill in", wrapLine: "Not wrapped up yet: {0}", gapUnchecked: "{0} checklist items unchecked", gapUncheckedOne: "1 checklist item unchecked",
     gapNoResult: "no result", confirmGapTitle: "Confirm {0}?", confirmAnyway: "Confirm anyway",
     confirmGapLabel: "{0}. You can send it back to have it filled in — or confirm anyway, with a note if you like",
@@ -83,6 +84,8 @@ register("tasks", {
     workWaitsFor: "waits for {0}", workNone: "Nothing on the board", workNewComments: "Comments it has not read yet",
     workOutside: "Not in the fleet", workFailed: "Could not read who works on what: {0}", workJoin: ", ",
     detailsBoard: "Task board",
+    // The quick create (fleet-task-create.js)
+    quickHint: "A title is enough — fill in the rest on the card.", moreOptions: "More options", createMore: "Project, assignee and priority",
   },
   "zh-TW": {
     open: "待辦", claimed: "進行中", blocked: "卡住", review: "待確認", done: "完成", cancelled: "取消",
@@ -103,7 +106,7 @@ register("tasks", {
     emptyBoard: "這個專案還沒有主任務", emptyFiltered: "沒有符合篩選的主任務",
     emptyBoardHint: "主任務是你要的成果，可大可小。指派給 Agent，它會自己決定直接做，或先拆成子任務。",
     subProgress: "子任務 {0}/{1}", showSubs: "展開子任務", hideSubs: "收起子任務", olderSubs: "另有 {0} 張比較早完成",
-    acceptance: "驗收條件", definition: "完成定義", waitsFor: "等 {0} 完成", comments: "留言", agentReplied: "Agent 有新回覆",
+    acceptance: "驗收條件", definition: "完成定義", waitsFor: "等 {0} 完成", hiddenWait: "一張不公開的卡", hiddenWaitN: "{0} 張不公開的卡", comments: "留言", agentReplied: "Agent 有新回覆",
     needsReview: "需確認", needsReviewTitle: "做完要停在待確認，等你確認", urgentTag: "緊急", highTag: "優先",
     waitingTitle: "待你處理", waitingEmpty: "沒有等你處理的事。", confirm: "確認", sendBack: "退回", answer: "回覆",
     confirmed: "已確認 {0}", sentBack: "已退回 {0}", answered: "已回覆 {0}",
@@ -127,7 +130,7 @@ register("tasks", {
     readOnly: "公開連結上的任務板只能看。要修改，請在執行 AgEnD 的那台機器上開啟儀表板。",
     tileHint: "Enter 打開 · Alt+↑/↓ 在欄內移動 · Alt+←/→ 移到前一個／下一個狀態",
     conflictAgain: "{0} 在這之間被改過（現在是{1}）。你寫的內容還在，要再送一次嗎？", sendAgain: "再送一次", conflictLabel: "你寫的內容",
-    nowDoing: "執行中", nowBlocked: "卡住", nowNext: "下一步", ownerTip: "主任務負責人：{0}", moreCards: "+{0}",
+    nowDoing: "執行中", nowBlocked: "卡住", nowNext: "下一步", subWorkers: "子任務的負責人", moreCards: "+{0}",
     wrapTag: "待補齊", wrapLine: "負責人還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapUncheckedOne: "還有 1 項沒勾",
     gapNoResult: "沒有產出總結", confirmGapTitle: "確認 {0}？", confirmAnyway: "還是確認",
     confirmGapLabel: "{0}。可以先退回請負責人補齊；還是要確認的話，可以留一句確認意見",
@@ -158,6 +161,8 @@ register("tasks", {
     workWaitsFor: "等 {0}", workNone: "看板上沒有它的卡", workNewComments: "有它還沒看過的留言",
     workOutside: "不在 fleet 裡", workFailed: "讀不到工作清單：{0}", workJoin: "、",
     detailsBoard: "任務看板",
+    // 快速建立（fleet-task-create.js）
+    quickHint: "只要標題就能建立，其他欄位建立後在卡片上補。", moreOptions: "更多選項", createMore: "專案、負責人與優先度",
   },
 });
 
@@ -282,6 +287,16 @@ export function wrapUpText(card) {
 }
 
 /**
+ * What a card waits for. Over the public link a card kept out of sight is not numbered: `unmetDeps` leaves it
+ * out and `hiddenUnmet` counts those left out (absent on the dashboard and for an admin session). `waitsOn` is true while
+ * any dependency is unfinished — numbered or not — `hiddenWaits` words those left out ("a card that is not public": no
+ * number, ever; "" when none) and `waitsList` words them all: the numbers, then that.
+ */
+export const waitsOn = (card) => (card.unmetDeps || []).length > 0 || card.hiddenUnmet > 0;
+export const hiddenWaits = (card) => (card.hiddenUnmet > 0 ? t(card.hiddenUnmet === 1 ? "tasks.hiddenWait" : "tasks.hiddenWaitN", card.hiddenUnmet) : "");
+export const waitsList = (card, join) => [...(card.unmetDeps || []), hiddenWaits(card)].filter(Boolean).join(join);
+
+/**
  * Who works on a main task right now: its sub tasks in progress, else the blocked ones, else those that can start
  * (dependencies done). Null when there are none, or when the main task waits for you or is finished. Its owner is not
  * always the one at work: a review step belongs to the reviewer.
@@ -293,8 +308,26 @@ export function currentWork(main, subs) {
     const cards = live.filter((s) => s.status === status);
     if (cards.length) return { label, tone, cards };
   }
-  const ready = live.filter((s) => s.status === "open" && !(s.unmetDeps || []).length);
+  const ready = live.filter((s) => s.status === "open" && !waitsOn(s));
   return ready.length ? { label: "tasks.nowNext", tone: "open", cards: ready } : null;
+}
+
+/**
+ * The ONE thing a board tile's status line says — the first that applies, so every tile has the same rows:
+ *   1. why it is stuck (its own reason, else a blocked sub task) → 2. whom it waits for (the person, or the agent that
+ *   confirms) → 3. what is running (the agent's mark and/or the sub task in progress) → 4. what is next →
+ *   5. its sub tasks' progress; `null` when there is nothing to say (the row stays, empty).
+ * `now`: `currentWork(card, subs)`; `run`: `runOf(card, …)`; `hasSubs`: the card follows sub tasks. Pure: tests import it.
+ */
+export function tileStatus(card, { now = null, run = null, hasSubs = false } = {}) {
+  if (card.status === "blocked" && card.blockedReason) return { kind: "blocked", reason: card.blockedReason, now: null };
+  if (now && now.tone === "blocked") return { kind: "blocked", reason: "", now };
+  if (card.status === "review") return { kind: "review", label: reviewLabel(card), you: waitsForYou(card) };
+  const running = !!run && run.state !== "idle";
+  const doing = now && now.tone === "claimed" ? now : null;
+  if (running || doing) return { kind: "running", run: running ? run : null, now: doing };
+  if (now) return { kind: "next", now };
+  return hasSubs ? { kind: "progress" } : null;
 }
 
 /** The instances behind some cards, each once ("" for a card nobody has taken). */
@@ -365,6 +398,15 @@ export function notesForPeople(notes) {
 
 /** Over the temporary public link the board is read-only (its writes are refused there). */
 export const onPublicLink = () => typeof document !== "undefined" && !!document.body && document.body.dataset.publicLink === "1";
+/**
+ * A viewer whose writes the host refuses — a guest, or a session over the public link that is not an admin's (an
+ * admin session over the link writes as itself, M-3278: the page marks it `data-link-media`). What changes a card at the
+ * board's own tile (the avatar's picker) is not offered to them; they read.
+ */
+export const boardReadOnly = () => {
+  const d = typeof document !== "undefined" && document.body ? document.body.dataset : null;
+  return !!d && (d.tier === "guest" || (d.publicLink === "1" && d.linkMedia !== "1"));
+};
 
 // ── Asking for a line of text (a reason, an answer) ──────────
 
@@ -495,16 +537,27 @@ export function StatusPill({ status, card = null }) {
  * Who a card is with, as taskhall shows it: a round initial, then the name. An instance's initial takes its identity
  * colour (#1958, the sidebar's), painted through the CSSOM; a person's, or anyone not in the fleet, stays grey.
  */
-export function Who({ name, title, empty = "—" }) {
-  const { instances } = useStore(appStore);
+export function Who({ name, title, empty = "—", plain = false, presence = false }) {
+  const { instances, exec, awaiting } = useStore(appStore);
   useIdentityColors();
   if (!name) return html`<span class="tb-person none"><span class="tb-who">${empty}</span></span>`;
   const it = (instances || []).find((i) => i.name === name);
   const id = it ? identityOf(it) : null;
-  return html`<span class="tb-person" title=${title || name}>
-    <span class="tb-av idc" aria-hidden="true" ref=${(el) => paintIdentity(el, id)}>${initialOf(name)}</span><span class="tb-who">${name}</span></span>`;
+  // `plain`: no tooltip of its own (the avatar's info card says more). `presence`: an instance the viewer sees has its state's dot
+  // on the avatar (the dashboard's own `dotState`); one they do not see has none — nothing is said of it.
+  const state = presence && it ? dotState(it, (exec || {})[name], (awaiting || {})[name]) : null;
+  return html`<span class="tb-person" title=${plain ? undefined : title || name}>
+    <span class="tb-av idc" aria-hidden="true" ref=${(el) => paintIdentity(el, id)}>${initialOf(name)}${state ? html`<span class=${`tb-av-dot st-${state}`}></span>` : null}</span><span class="tb-who">${name}</span></span>`;
 }
 const initialOf = (name) => (Array.from(name.trim())[0] || "?").toLocaleUpperCase();
+
+/**
+ * The element the task board's page scrolls in (the panel's body): a card's page starts at its top, and the board comes
+ * back to the place it was left. `from`: any element of the board (default: the board's root).
+ */
+export function scrollBox(from = typeof document !== "undefined" ? document.querySelector(".tb") : null) {
+  try { return (from && typeof from.closest === "function" && from.closest(".panel-body")) || null; } catch { return null; }
+}
 
 /** A per-device preference (localStorage may be unavailable: then nothing is remembered). */
 export function readStored(key, fallback) {

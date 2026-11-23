@@ -215,8 +215,8 @@ describe("a right click on a card", () => {
   });
 });
 
-describe("Previous / Next in a card's dialog", () => {
-  const step = () => q("dialog[open] .tc-steps");
+describe("Previous / Next on a card's page", () => {
+  const step = () => q(".tp .tc-steps");
   it("the board's cards in the order shown; the arrows and K / J step, not while typing", async () => {
     await mount();
     fire(q('[data-tile="M-1"] .tb-tile-title'), "click");
@@ -255,7 +255,7 @@ describe("Previous / Next in a card's dialog", () => {
     await mount();
     fire(q('[data-tile="M-2"] .tb-tile-title'), "click");
     await settle(10);
-    const child = qa("dialog[open] .tc-children button").find((b) => b.textContent.includes("S-2"));
+    const child = qa(".tp .tc-children button").find((b) => b.textContent.includes("S-2"));
     fire(child, "click"); await settle(10);
     expect(step().querySelector(".tc-step-at").textContent).toBe("2 / 2");
     fire(step().querySelectorAll("button")[0], "click"); await settle(10);

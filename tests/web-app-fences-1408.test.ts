@@ -393,20 +393,23 @@ describe("3g. a main task's tile says who works on it now, not only who owns it"
   it("the sub task in progress and its worker; else a blocked one; else the next one that can start", async () => {
     let t = await tile(board("claimed", [{ status: "claimed", assignee: "beta" }, { status: "open", assignee: "alpha" }]), "now1");
     expect(t.querySelector(".tb-tile-now").textContent).toBe("Working onS-1Review the API");
-    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("beta");
-    expect(t.querySelector(".tb-tile-foot .tb-person").getAttribute("title")).toBe("Main task owner: alpha");
+    // The foot's avatar is the card's own assignee (what the picker changes); who works on it now follows it.
+    expect(t.querySelector(".tb-tile-foot .tb-owner .tb-who").textContent).toBe("alpha");
+    expect(t.querySelector(".tb-tile-foot .tb-people .tb-who").textContent).toBe("beta");
     t = await tile(board("blocked", [{ status: "blocked", assignee: "beta" }]), "now2");
     expect(t.querySelector(".tb-now-label").textContent).toBe("Blocked");
     t = await tile(board("open", [{ status: "open", assignee: null, unmetDeps: [] }, { status: "open", assignee: "beta", unmetDeps: ["S-1"] }]), "now3");
     expect(t.querySelector(".tb-tile-now").textContent).toBe("NextS-1Review the API");
-    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("Unassigned");
+    expect(t.querySelector(".tb-tile-foot .tb-owner .tb-who").textContent).toBe("alpha");
+    expect(t.querySelector(".tb-tile-foot .tb-people"), "the next sub task has nobody: nobody is added").toBeNull();
     t = await tile(board("review", [{ status: "done", assignee: "beta" }]), "now4");
     expect(t.querySelector(".tb-tile-now")).toBeNull();
-    expect(t.querySelector(".tb-tile-foot .tb-who").textContent).toBe("Waiting for you");
+    expect(t.querySelector(".tb-tile-status .tb-tile-waits").textContent, "whom it waits for is the status row's").toBe("Waiting for you");
+    expect(t.querySelector(".tb-tile-foot .tb-owner .tb-who").textContent, "…and the foot keeps the owner").toBe("alpha");
   });
 });
 
-describe("3h. taskhall's looks: the card opens as a drawer; a tile's people have a round initial", () => {
+describe("3h. taskhall's looks: the card opens as a page; a tile's people have a round initial", () => {
   it("the initial takes an instance's identity colour; a person, or nobody, has none", async () => {
     const person = { ...REVIEW_CARD, id: "M-2", uuid: "u2", status: "open", assignee: "Ann" };
     const nobody = { ...REVIEW_CARD, id: "M-3", uuid: "u3", status: "open", assignee: null };
@@ -424,7 +427,7 @@ describe("3h. taskhall's looks: the card opens as a drawer; a tile's people have
     expect(foot("M-3").querySelector(".tb-person.none .tb-who").textContent).toBe("Unassigned");
   });
 
-  it("a tile's title opens the card in a drawer (a phone keeps the sheet: the stylesheet's), its assignee with the initial", async () => {
+  it("a tile's title opens the card as a page of its own (no dialog), its assignee with the initial; Back returns to the board", async () => {
     handler = (path, init) => {
       if (path === "/ui/tasks/board") return BOARD;
       if (path === "/ui/tasks/cards/M-1" && (init.method ?? "GET") === "GET") return { card: REVIEW_CARD, parent: null, children: [], comments: [], logs: [], history: [] };
@@ -434,11 +437,14 @@ describe("3h. taskhall's looks: the card opens as a drawer; a tile's people have
     await settle(6);
     p.root.querySelector(".tb-project-open").click(); await settle(6);
     p.root.querySelector('[data-tile="M-1"] .tb-tile-title').click(); await settle(8);
-    const d = p.root.querySelector("dialog");
-    expect(d.className).toBe("dlg dlg-wide dlg-drawer");
-    expect(d.querySelector(".tc-meta .tb-person .tb-av").textContent).toBe("A");
-    d.querySelector(".dlg-x").click(); await settle(4);                     // closed: ?card= leaves the address
+    const page = p.root.querySelector(".tp");
+    expect(page.getAttribute("data-card")).toBe("M-1");
     expect(p.root.querySelector("dialog")).toBeNull();
+    expect(page.querySelector(".tp-props .tb-person .tb-av").textContent).toBe("A");
+    expect(p.root.querySelector(".tb-columns"), "the page takes the board's place").toBeNull();
+    page.querySelector(".tp-back").click(); await settle(4);               // closed: ?card= leaves the address
+    expect(p.root.querySelector(".tp")).toBeNull();
+    expect(p.root.querySelector(".tb-columns")).toBeTruthy();
   });
 });
 
@@ -475,9 +481,8 @@ describe("3i. who works on what: the board's Instance drawer (taskhall's)", () =
       ["Can start", "S-4", "nobody's: can be taken", false], ["Waiting on", "S-5", "waits for S-4", false],
     ]);
     insts[0].querySelector(".tw-line").click(); await settle(8);
-    const open = [...p.root.querySelectorAll("dialog")];
-    expect(open.map((x: any) => x.getAttribute("aria-label"))).toEqual(["S-2 Card S-2"]);                  // the drawer gave way to the card
-    open[0].querySelector(".dlg-x").click(); await settle(4);
+    expect([...p.root.querySelectorAll("dialog")], "the drawer gave way").toEqual([]);
+    expect(p.root.querySelector(".tp").getAttribute("data-card")).toBe("S-2");                              // to the card's page
     app.appStore.set((st: any) => ({ ...st, exec: {} }));
   });
 });

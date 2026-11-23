@@ -156,7 +156,9 @@ describe("rounded boxes get a straight left bar, never a coloured border-left (#
     expect(decl(bar!.body, "border-radius")).toBeNull();
     const selectors = selectorsOf(bar!.selector);
     for (const place of [".reply-bar", ".msg-quote", ".p-log .log-item.k-error", ".p-log .log-item.s-failed", ".org-node", ".us-basis",
-      ".us-partial", ".cmd-card.bad", ".tb-tile"]) expect(selectors, place).toContain(`${place}::before`);
+      ".us-partial", ".cmd-card.bad"]) expect(selectors, place).toContain(`${place}::before`);
+    // The board's tile no longer draws it (the user: the coloured bar gets in the way of reading).
+    expect(selectors).not.toContain(".tb-tile::before");
     // Its box is the bar's containing block.
     const host = rulesOf(css).find((r) => selectorsOf(r.selector).includes(".lbar") && decl(r.body, "position") === "relative");
     expect(host && selectorsOf(host.selector)).toEqual(selectors.map((s) => s.replace(/::before$/, "")));

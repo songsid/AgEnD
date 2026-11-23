@@ -41,7 +41,6 @@
 .tb-view-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: var(--s-3) 0; }
 .tb-view-bar > .menu > .menu-text.active { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
 .tb-view-bar .menu-list { left: 0; right: auto; max-height: min(70vh, 520px); overflow-y: auto; }
-.tb-columns.no-done { grid-template-columns: repeat(4, minmax(176px, 1fr)); }
 .tb-filters { display: contents; }
 .tb-chip { display: inline-flex; align-items: center; min-height: 30px; max-width: 100%; border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface); font-size: var(--fs-xs); }
 .tb-chip-field { padding: 0 var(--s-2) 0 var(--s-3); color: var(--text-2); white-space: nowrap; }
@@ -52,18 +51,22 @@
 .tb-chip .menu { min-width: 0; }
 .tb-chip .menu-text { min-height: 28px; max-width: 240px; padding: 0 var(--s-2); border: 0; border-left: 1px solid var(--border); border-radius: 0; background: none; }
 .tb-chip .menu-text > span { overflow: hidden; text-overflow: ellipsis; }
-.tb-list { display: flex; flex-direction: column; gap: var(--s-4); }
-.tb-group-head { display: flex; align-items: center; gap: var(--s-2); margin: 0 0 var(--s-1); padding: var(--s-1) var(--s-2); border-radius: var(--r-sm); background: var(--surface); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+/* The list is Settings' list (the Agent page's): one rounded, bordered container on the surface, a header row and each
+   group's heading on --surface-2, rows between thin lines — so Tasks and Settings read as one product. */
+.tb-list { display: flex; flex-direction: column; gap: 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); overflow: hidden; }
+.tb-group-head { display: flex; align-items: center; gap: var(--s-2); margin: 0; padding: 10px var(--s-4); border-top: 1px solid var(--border); border-radius: 0; background: var(--surface-2); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .tb-rows { display: flex; flex-direction: column; margin: 0; padding: 0; list-style: none; }
 .tb-row { border-bottom: 1px solid var(--border); cursor: pointer; }
-.tb-row:hover { background: var(--surface); }
+.tb-row:hover { background: var(--surface-2); }
+.tb-group:last-child .tb-rows > .tb-row:last-child { border-bottom: 0; }
 .tb-row.flash { animation: tb-flash 1.6s var(--ease); }
-.tb-row-line { display: flex; align-items: center; gap: var(--s-2); min-height: 40px; padding: var(--s-1) var(--s-2); font-size: var(--fs-sm); min-width: 0; }
-.tb-row.is-sub .tb-row-line { padding-left: var(--s-6); }
+.tb-row-line { display: flex; align-items: center; gap: var(--s-2); min-height: 44px; padding: var(--s-1) var(--s-4); font-size: var(--fs-sm); min-width: 0; }
+.tb-row.is-sub .tb-row-line { padding-left: calc(var(--s-4) * 2); }
 .tb-row-main { flex-shrink: 0; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-3); white-space: nowrap; }
 .tb-row-text { flex: 1; display: flex; align-items: baseline; gap: var(--s-2); min-width: 0; }
 .tb-row-title { flex-shrink: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-weight: var(--fw-medium); text-align: left; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-row-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.tb-row-text > .tr-mark { flex: none; align-self: center; }
 .tb-row-note { flex: 1 1 0; min-width: 0; font-size: var(--fs-xs); color: var(--danger); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-row-tags { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; }
 .tb-row-progress { display: inline-flex; align-items: center; gap: var(--s-1); flex-shrink: 0; padding: 2px var(--s-1); border: 0; border-radius: var(--r-sm); background: none; color: var(--text-2); font-size: var(--fs-xs); white-space: nowrap; }
@@ -73,14 +76,14 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tb-row-who { display: inline-flex; flex-shrink: 0; width: 140px; min-width: 0; font-size: var(--fs-xs); }
 .tb-row-who .tb-who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tb-row-time { flex-shrink: 0; width: 7em; font-size: var(--fs-xs); text-align: right; white-space: nowrap; }
-.tb-row > .tb-subs { margin: 0 var(--s-2) var(--s-2) var(--s-6); }
+.tb-row > .tb-subs { margin: 0 var(--s-4) var(--s-2) calc(var(--s-4) * 2); }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   /* A phone's row: number and title on the first line, the rest under them. */
   .tb-row-line { flex-wrap: wrap; row-gap: var(--s-1); }
   .tb-row-text { flex: 1 1 calc(100% - 96px); }
   .tb-row-who { width: auto; }
   .tb-row-time { width: auto; margin-left: auto; }
-  .tb-row.is-sub .tb-row-line { padding-left: var(--s-4); }
+  .tb-row.is-sub .tb-row-line { padding-left: calc(var(--s-4) + var(--s-3)); }
 }
 
 /* A card's menu at the pointer (fleet-task-menu.js): the app's menu, fixed where the right click was; and the card's
@@ -92,4 +95,380 @@ button.tb-row-progress:hover { background: var(--surface-2); }
 .tc-step-at { min-width: 3.5em; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; text-align: center; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) {
   .tb-row.flash { animation: none; }
+}
+
+/* ── The toolbar: board / list, search, Filter and Display in one row (fleet-task-view.js TaskToolbar) ─────────────── */
+.tb-view-bar { gap: var(--s-2); }
+/* A segmented switch (board / list, the phone's statuses, the timeline's filter): its own class, not the Fleet tabs' .seg-item,
+   which a phone shortens to its open tab's label. */
+.tb-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: var(--r-full); background: var(--surface); }
+.tb-seg-btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s-2); min-height: 30px; padding: 0 var(--s-3); border: 0; border-radius: var(--r-full); background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); white-space: nowrap; cursor: pointer; }
+.tb-seg-btn:hover { background: var(--surface-2); color: var(--text); }
+.tb-seg-btn.active { background: var(--bg); color: var(--text); font-weight: var(--fw-semibold); box-shadow: var(--shadow-1); }
+.tb-seg-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tb-find { flex: 0 1 260px; min-width: 160px; }
+.tb-find input { min-height: 30px; }
+
+/* ── The list: a header to sort by, folding groups, priority and ⋯ per row ─────────────────────────────────────── */
+.tb-list-head { display: flex; align-items: center; gap: var(--s-2); padding: 12px var(--s-4); background: var(--surface-2); font-size: var(--fs-xs); color: var(--text-2); }
+.tb-lh-dot { flex: none; width: 8px; }
+.tb-lh { display: inline-flex; align-items: center; gap: 2px; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: var(--fw-semibold); cursor: pointer; white-space: nowrap; }
+.tb-lh:hover, .tb-lh.active { color: var(--text); }
+.tb-lh:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.tb-lh-code { flex: none; width: 4.5em; }
+.tb-lh-title { flex: 1; min-width: 0; }
+.tb-lh-prio { flex: none; width: 84px; }
+.tb-lh-who { flex: none; width: 140px; }
+.tb-lh-time { flex: none; width: 7em; justify-content: flex-end; }
+.tb-lh-more { flex: none; width: 32px; }
+.tb-row-code { flex: none; width: 4.5em; }
+.tb-row-prio { flex: none; width: 84px; font-size: var(--fs-xs); color: var(--text-3); }
+.tb-row-prio.p-urgent { color: var(--danger); font-weight: var(--fw-semibold); }
+.tb-row-prio.p-high { color: var(--warn); font-weight: var(--fw-semibold); }
+.tb-more { width: 32px; height: 32px; color: var(--text-3); }
+.tb-row-line > .tb-more { flex: none; }
+.tb-group-toggle { display: flex; align-items: center; gap: var(--s-2); width: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.tb-group-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.tb-group.shut .tb-group-head { margin-bottom: 0; }
+
+/* A tile's ⋯: there for touch (no right click), quiet beside the title on a desk until the tile is pointed at. */
+.tb-tile-more { margin: calc(-1 * var(--s-1)) calc(-1 * var(--s-2)) calc(-1 * var(--s-1)) 0; opacity: 0; }
+.tb-tile:hover .tb-tile-more, .tb-tile:focus-within .tb-tile-more, .tb-tile-more:focus-visible { opacity: 1; }
+.tb-status-seg { display: none; }
+.tb-status-seg .tb-count { margin-left: 0; }
+
+/* ── A card as a page ──────────────────────────────────────────────────────────────────────────────────────────── */
+.tp { display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.tp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); min-width: 0; }
+/* Previous / Next, the link, Mark blocked and ⋯ stay together at the right edge — on their own line, right-aligned, when the bar wraps. */
+.tp-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--s-2); margin-left: auto; min-width: 0; }
+.tp-crumbs { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-2); min-width: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.tp-crumbs > .tp-crumb + .tp-crumb::before { content: "›"; margin-right: var(--s-2); color: var(--text-3); }
+.tp-crumb { overflow-wrap: anywhere; }
+.tp-grid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(300px, 22vw, 460px); grid-template-rows: auto auto 1fr; grid-template-areas: "head side" "body side" "activity side"; column-gap: var(--s-6); row-gap: var(--s-4); align-items: start; }
+.tp-head { grid-area: head; display: flex; flex-direction: column; gap: var(--s-3); min-width: 0; }
+.tp-body { grid-area: body; display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+.tp-activity { grid-area: activity; display: flex; flex-direction: column; gap: var(--s-4); min-width: 0; }
+/* Settings' card (.s-section-layout .card) — a thin border, --r-md, 20px inside — for the properties box. The activity is
+   not a box: it is a stream (below) of cards (what people and agents say) and thin rows (what the system did). */
+.tp-side.card { border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: none; padding: var(--s-5); }
+/* Above the title: the card's number and status, and (at the right edge) that the status follows the sub tasks. */
+.tp-idrow { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); min-width: 0; }
+.tp-idrow > .tp-derived { margin-left: auto; }
+.tp-code { font-size: var(--fs-sm); }
+.tp-derived { display: inline-flex; align-items: center; padding: 2px var(--s-2); border-radius: var(--r-full); background: var(--warn-bg); color: var(--warn); font-size: var(--fs-xs); font-weight: var(--fw-semibold); }
+.tp-block-btn { border-radius: var(--r-full); }
+/* The side column is the app's plain .card (surface, --r-md, its padding and gap); this only places it. */
+.tp-side { grid-area: side; position: sticky; top: var(--s-2); margin: 0; min-width: 0; }
+/* The properties in three groups — core state, project and people, flow — each under a small heading, a thin line between. */
+.tp-side { gap: 0; }
+.tp-group { display: flex; flex-direction: column; gap: var(--s-1); padding-block: var(--s-3); }
+.tp-group:first-child { padding-top: 0; }
+.tp-group + .tp-group { border-top: 1px solid var(--border); }
+.tp-group-title { margin: 0; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); text-transform: uppercase; letter-spacing: 0.04em; }
+.tp-props { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; }
+.tp-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; gap: var(--s-2); min-height: 34px; font-size: var(--fs-sm); }
+.tp-row > dt { color: var(--text-2); }
+.tp-row > dd { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin: 0; min-width: 0; }
+.tp-opened { margin: 0; padding-top: var(--s-3); border-top: 1px solid var(--border); font-size: var(--fs-xs); }
+.tp-static { display: inline-flex; align-items: center; min-height: 30px; padding: 0 var(--s-2); border: 1px solid transparent; }
+.tp-prio.p-urgent { color: var(--danger); font-weight: var(--fw-semibold); }
+.tp-prio.p-high { color: var(--warn); font-weight: var(--fw-semibold); }
+/* A property is a chip: its value on a button; it shows a border on hover and when open. The menu opens under it. */
+.tp-chip { display: inline-flex; align-items: center; gap: var(--s-1); max-width: 100%; min-height: 30px; padding: 0 var(--s-2); border: 1px solid transparent; border-radius: var(--r-sm); background: none; color: var(--text); font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.tp-chip:hover, .tp-chip[aria-expanded="true"] { border-color: var(--border); background: var(--bg); }
+.tp-chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tp-chip > .icon { flex: none; color: var(--text-3); }
+.tp-chip-value { display: inline-flex; align-items: center; min-width: 0; overflow-wrap: anywhere; }
+.tp-chip-menu { min-width: 0; max-width: 100%; }
+.tp-chip-menu > .menu-list { left: 0; right: auto; min-width: 200px; max-height: min(60vh, 420px); overflow-y: auto; }
+.tp-chip-menu > .menu-list.menu-up { top: auto; bottom: calc(100% + var(--s-1)); }
+.tp-chip-menu > .menu-list.menu-compact { max-height: 180px; }
+.tp-chip-menu > .menu-list.menu-short { max-height: 96px; }
+.tp-chip-menu > .menu-list { transform: translateX(var(--menu-shift, 0px)); }
+.tp-more > .menu-list { min-width: 200px; }
+/* A row whose value is a sentence or a card (Now, Your confirmation) takes the full width, its name above it. */
+.tp-row.tp-block { grid-template-columns: minmax(0, 1fr); gap: 0; align-items: start; padding: var(--s-1) 0; }
+.tp-row .tc-now { flex-wrap: wrap; }
+.tp-row .tc-now .tc-child-title { flex-basis: 100%; order: 3; }
+.tp-row .tb-check { align-items: flex-start; }
+.tp-row .tb-check input { margin-top: 3px; }
+/* "Needs my confirmation" is a switch: the app's `.s-ui-toggle` (its rules are in app.css, which now covers the Fleet page too, as Settings and the Hub). */
+.tp-switch { display: inline-flex; align-items: center; gap: var(--s-2); min-width: 0; cursor: pointer; }
+
+/* The spec (what people wrote): a field that holds text, and the quiet "+ Add" buttons for the ones that do not. */
+.tp-spec { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.tp-adders { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; }
+.tp-add { display: inline-flex; align-items: center; gap: var(--s-1); min-height: 30px; padding: 0 var(--s-3) 0 var(--s-2); border: 1px solid var(--border); border-radius: var(--r-full); background: none; color: var(--text-2); font: inherit; font-size: var(--fs-sm); white-space: nowrap; cursor: pointer; }
+.tp-add > .icon { color: var(--text-3); }
+.tp-add:hover { border-color: var(--border-strong); background: var(--surface); color: var(--text); }
+.tp-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* What the agent wrote and does (state, result, activity): apart from the spec — the accent's straight bar and a tint. With
+   nothing to show it is one line (.is-strip). */
+.tr-run.tp-agent { --lbar-color: var(--accent); margin: 0; border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--border)); background: color-mix(in srgb, var(--accent) 5%, var(--surface)); padding-left: calc(var(--s-3) + 3px); }
+.tp-agent-icon { display: inline-flex; flex: none; color: var(--accent); }
+.tp-agent-fields { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.tp-agent-add { display: flex; }
+.tp-agent .tc-text:hover { background: var(--bg); }
+.tr-run.tp-agent.is-strip { display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-2); min-height: 40px; padding: var(--s-1) var(--s-3); border-radius: var(--r-md); background: var(--accent-dim); color: var(--text-2); font-size: var(--fs-sm); }
+.tp-agent-note { min-width: 0; overflow-wrap: anywhere; }
+.tp-agent.is-strip .tp-add { min-height: 26px; background: var(--bg); font-size: var(--fs-xs); }
+
+/* ── One invisible grid for the page ─────────────────────────────────────────────────────────────────────
+   Nothing is drawn: every row of the main column has the same two columns — a label (--tp-label), then its value — so the
+   texts of the spec, the agent's fields and the sub tasks start on one vertical line, and a label sits on its value's first
+   baseline. What a hover box or an edit box takes (its padding and border, --tp-inset) hangs out into the gutter on the left
+   (a negative margin), so the TEXT is on the line, not the box. The side column does the same: a label column and a value
+   column, a chip's text on the value column's edge. On a phone the label is above its value, the left edge the same. */
+.tp { --tp-label: clamp(7rem, 6vw, 10rem); --tp-gap: var(--s-3); --tp-inset: calc(var(--s-2) + 1px); --tp-measure: 72rem; }
+/* The page fills the content area. What grows with the width: the label column (7rem up to 10rem), the properties column
+   (300px up to 460px, a share of the window) and the main column, which takes the rest. What does not: the length of a line of PROSE (a
+   field's text, a comment's words) stops at --tp-measure, so a long text never becomes one line across a wide screen; the frames,
+   the checklist, the sub tasks and the activity cards keep the full width. */
+.tp .tc-text, .tp .tl-body { max-width: var(--tp-measure); }
+.tp .tc-field, .tp .tp-subs { display: grid; grid-template-columns: var(--tp-label) minmax(0, 1fr); column-gap: var(--tp-gap); align-items: start; min-width: 0; }
+.tp .tc-field > h3, .tp .tp-subs > h3 { margin: 0; padding-top: var(--tp-inset); font-size: var(--fs-sm); line-height: var(--lh-sm); font-weight: var(--fw-regular); letter-spacing: 0; text-transform: none; color: var(--text-2); overflow-wrap: anywhere; }
+.tp .tc-field.tone-blocked > h3 { color: var(--danger); }
+.tp .tp-subs > h3 { font-weight: var(--fw-semibold); color: var(--text); }
+.tc-field-body { min-width: 0; }
+.tp .tc-text { width: calc(100% + var(--tp-inset)); margin-left: calc(-1 * var(--tp-inset)); line-height: var(--lh-sm); }
+.tp .tc-text.empty { min-height: 0; padding-block: var(--s-2); font-size: var(--fs-sm); }
+.tp .tc-edit { width: calc(100% + var(--tp-inset)); margin-left: calc(-1 * var(--tp-inset)); }
+.tp .tc-title { margin-left: calc(-1 * var(--tp-inset)); }
+.tp .tc-title-edit { margin-left: calc(-1 * var(--tp-inset)); }
+/* The definition of done: its first row on the label's baseline, the checkboxes on the value column's edge. */
+.tp .tc-checklist { gap: 0; padding-top: calc(var(--tp-inset) - 2px); }
+.tp .tc-checklist li { padding-block: 2px; }
+.tp .tc-checklist .tb-check { line-height: var(--lh-sm); }
+.tp .tc-editlist { margin-left: calc(-1 * var(--s-3)); }
+/* The agent's block: its fields share the page's value column — its own left padding (and bar and border) is taken off the label column. */
+.tp-agent { --tp-agent-inset: calc(var(--s-3) + 4px); }
+.tp-agent .tc-field { grid-template-columns: calc(var(--tp-label) - var(--tp-agent-inset)) minmax(0, 1fr); }
+/* The sub tasks: a count and the bar, then a row each of four columns — status, number, title, who — and a line to add one. */
+.tp-subs-head { display: flex; align-items: center; gap: var(--s-3); padding-top: var(--tp-inset); min-height: calc(var(--lh-sm) + var(--tp-inset)); }
+.tp-subs-count { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.tp-subs-head > .tb-bar { flex: 0 1 12rem; margin-left: auto; }
+.tp-subs .tc-children { gap: 0; margin: var(--s-1) 0 0; }
+.tp-subs .tc-children button { display: grid; grid-template-columns: 6.5rem 3.5rem minmax(0, 1fr) auto; align-items: center; column-gap: var(--s-2); width: calc(100% + var(--s-2)); min-height: 32px; margin-left: calc(-1 * var(--s-2)); padding: var(--s-1) 0 var(--s-1) var(--s-2); }
+.tp-subs .tc-children .tb-pill { justify-self: start; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-subs .tc-children .tb-who { max-width: 9rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.tp-subs .tc-quick-add { display: block; width: calc(100% + var(--tp-inset)); min-height: 32px; margin-left: calc(-1 * var(--tp-inset)); padding: var(--s-1) var(--s-2); border: 1px solid transparent; background: none; resize: none; }
+.tp-subs .tc-quick-add:hover { background: var(--surface); }
+.tp-subs .tc-quick-add:focus { border-color: var(--focus); background: var(--bg); }
+/* The side column: a chip's (or a plain value's) text on the value column's edge. */
+.tp-side .tp-row:not(.tp-block) .tp-chip-menu, .tp-side .tp-static { margin-left: calc(-1 * var(--tp-inset)); }
+
+/* Text edited in place: the title, the fields, the checklist (fleet-task-edit.js). No buttons unless a conflict asks. */
+.tc-title-edit { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--s-1); }
+.tc-title-edit .tc-title-input { width: 100%; }
+.tc-edit-bar .err { color: var(--danger); }
+.tc-text.empty { min-height: 0; padding-block: var(--s-1); font-size: var(--fs-xs); }
+.tc-actions { border-bottom: 0; padding-bottom: 0; }
+.tc-actions:empty { display: none; }
+
+/* The timeline: comments, progress and history in one list; the comment box under it (fleet-task-activity.js). */
+.tl { display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; }
+.tl-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.tl-bar > h3 { margin: 0; font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text); text-transform: none; letter-spacing: 0; }
+.tl-filter { padding: 0; background: none; }
+.tl-filter .tb-seg-btn { min-height: 28px; padding: 0 var(--s-2); font-size: var(--fs-xs); }
+.tl-filter .tb-seg-btn.active { background: var(--surface-2); box-shadow: none; }
+/* The stream is a column — a comment or a progress note is a card of its own, the system's
+   lines between cards are thin rows, folded when there are many. The cards are 1px, --r-md, --surface, 16px inside, 12px apart; no
+   coloured bar at their edge, an agent's too (the badge says it). */
+.tl-list { display: flex; flex-direction: column; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
+.tl-item { min-width: 0; font-size: var(--fs-sm); overflow-wrap: anywhere; }
+.tl-card { padding: var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.tl-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-xs); }
+.tl-head .tb-who { font-weight: var(--fw-semibold); color: var(--text); font-size: var(--fs-sm); max-width: none; }
+/* The author: a bigger avatar (28px; its state dot grows with it), centred with the name, and one button for both — it opens the info
+   card (the board's own, fleet-task-owner.js) with the instance's Agent page. */
+.tl-who-wrap { display: inline-flex; min-width: 0; }
+.tl-who-btn { display: inline-flex; align-items: center; min-width: 0; padding: 0; border: 0; border-radius: var(--r-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.tl-who-btn:hover .tb-who { text-decoration: underline; }
+.tl-who-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.tl-head .tb-person { align-items: center; gap: var(--s-2); }
+.tl-head .tb-av { width: 28px; height: 28px; font-size: var(--fs-xs); }
+.tl-head .tb-av-dot { width: 11px; height: 11px; right: -2px; bottom: -2px; }
+.tl-time { margin-left: auto; font-size: var(--fs-xs); white-space: nowrap; }
+.tl-body { white-space: pre-wrap; padding-left: 36px; }   /* under the name: the avatar's width (28px) and the gap after it (8px) */
+/* The chat's Markdown, in the card's text size. */
+.tl-body.md { white-space: normal; }
+/* The chat's Markdown, as the chat draws it (`.msg .md …` in app.css): the same values — a test compares them — so a comment and a
+   message read alike. The one difference: a table's header is --surface-2 (a card is --surface, as the page is for a message). */
+.tl-body.md p { margin: 0 0 var(--s-3); }
+.tl-body.md p:last-child, .tl-body.md > :last-child { margin-bottom: 0; }
+.tl-body.md code { font-family: var(--font-mono); font-size: 0.88em; background: var(--inline-code); border-radius: 4px; padding: 1px 5px; }
+.tl-body.md a { color: var(--accent); text-decoration: underline; }
+.tl-body.md blockquote { margin: var(--s-2) 0; padding-left: var(--s-3); border-left: 3px solid var(--border-strong); color: var(--text-2); }
+.tl-body.md ul, .tl-body.md ol { margin: var(--s-1) 0 var(--s-3); padding-left: 22px; }
+.tl-body.md ul { list-style: disc; }
+.tl-body.md ol { list-style: decimal; }
+.tl-body.md li > ul, .tl-body.md li > ol { margin: 2px 0; }
+.tl-body.md h3, .tl-body.md h4, .tl-body.md h5, .tl-body.md h6 { margin: var(--s-3) 0 var(--s-2); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.tl-body.md hr { border: 0; border-top: 1px solid var(--border); margin: var(--s-3) 0; }
+.tl-body.md .codeblock pre code { background: none; padding: 0; border-radius: 0; font-size: inherit; }
+.tl-body.md .tbl { overflow-x: auto; margin: var(--s-2) 0 0; padding-bottom: var(--s-3); }
+.tl-body.md table { border-collapse: collapse; font-size: var(--fs-sm); }
+.tl-body.md th, .tl-body.md td { border: 1px solid var(--border); padding: 5px 9px; text-align: left; vertical-align: top; overflow-wrap: break-word; word-break: normal; min-width: 5em; }
+.tl-body.md th { background: var(--surface-2); font-weight: var(--fw-semibold); }
+.tl-body.md .al-c { text-align: center; } .tl-body.md .al-r { text-align: right; }
+.tl-body.md .tk-k { color: var(--tk-k); } .tl-body.md .tk-s { color: var(--tk-s); } .tl-body.md .tk-n { color: var(--tk-n); } .tl-body.md .tk-c { color: var(--tk-c); font-style: italic; }
+/* A day change: a thin rule with the day in a small pill (only when the list spans days). */
+.tl-day { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: var(--s-3); margin-block: var(--s-2) var(--s-1); color: var(--text-3); font-size: var(--fs-xs); }
+.tl-day::before, .tl-day::after { content: ""; border-top: 1px solid var(--border); }
+.tl-day > span { padding: 1px var(--s-3); border: 1px solid var(--border); border-radius: var(--r-full); background: var(--bg); }
+/* A system line: a small mark (a status change's is the status's), the sentence the name leads, the time at the right — smaller than a
+   comment and in the secondary colour, on the same 16px as a card's content so its mark is under the avatars. A run of them has
+   a gap of its own; more than three are one button, "› N activities". */
+.tl-run { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.tl-lines { display: flex; flex-direction: column; gap: var(--s-1); margin: 0; padding: 0; list-style: none; }
+.tl-line, .tl-more { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: baseline; column-gap: var(--s-2); padding: 0 var(--s-4); color: var(--text-2); font-size: var(--fs-xs); }
+.tl-mark { display: inline-flex; align-items: center; justify-content: center; align-self: center; width: 20px; color: var(--text-3); }
+.tl-sentence { min-width: 0; }
+/* "› N activities" is an arrow and a word like the rows under it: no fill, no border, no rounding — pointing at it only turns the
+   text to the primary colour; the keyboard's focus still draws a ring. */
+.tl-more { width: 100%; min-height: 28px; border: 0; border-radius: 0; background: none; box-shadow: none; font: inherit; font-size: var(--fs-xs); text-align: left; cursor: pointer; }
+.tl-more:hover, .tl-more:active { background: none; color: var(--text); }
+.tl-more:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tl-more > span:last-child { grid-column: 2 / 4; }
+.tl-event .tl-who > b { font-weight: var(--fw-regular); }
+.tl-event > .tl-mark .tb-dot { opacity: 0.8; }
+.tl-event .tr-by { background: none; color: var(--text-3); }
+/* In a thin row an agent's badge is its robot mark on a desk (the word is its tooltip and its text for a screen reader); a phone has room for the word. */
+@media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) { .tl-line .tr-by { font-size: 0; padding-inline: var(--s-1); } }
+.tl-event .tl-time { color: var(--text-3); }
+.tl-count { font-variant-numeric: tabular-nums; }
+.tl-who { display: inline-flex; align-items: baseline; gap: var(--s-1); min-width: 0; max-width: 100%; }
+.tl-who > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-who > .tb-tag { flex: none; }
+/* A progress note's tag, and the badge on an instance's avatar. */
+.tl-kind { background: var(--surface-2); color: var(--text-2); }
+.tl-text { min-width: 0; }
+.tl-none { margin: 0; }
+/* The comment box is the last card of the stream: the same card, the text area without a box of its own, Send inside at the bottom right. */
+.tc-composer { flex-direction: column; align-items: stretch; gap: var(--s-2); padding: var(--s-3) var(--s-4); border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); }
+.tc-composer:focus-within { border-color: var(--focus); box-shadow: 0 0 0 3px var(--accent-dim); }
+.tc-compose-box { position: relative; flex: 1; min-width: 0; }
+.tc-composer .tc-compose-box textarea { display: block; min-height: 56px; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.tc-composer .tc-compose-box textarea:focus { border-color: transparent; box-shadow: none; }
+.tc-composer > .btn { align-self: flex-end; }
+
+/* The quick create: a title, three chips, the rest folded away (fleet-task-create.js). */
+.tb-qc-title { width: 100%; min-height: 40px; padding: 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--bg); color: var(--text); font-size: var(--fs-md); font-weight: var(--fw-semibold); }
+.tb-qc-title:focus { border-color: var(--focus); outline: none; box-shadow: 0 0 0 3px var(--accent-dim); }
+.tb-qc-hint { margin: 0; }
+.tb-qc-chips { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+.tb-qc-chip { display: inline-flex; align-items: center; gap: var(--s-2); min-height: 32px; max-width: 100%; padding: 0 var(--s-2) 0 var(--s-3); border: 1px solid var(--border); border-radius: var(--r-full); background: var(--surface); font-size: var(--fs-xs); color: var(--text-2); }
+.tb-qc-chip > span { white-space: nowrap; }
+.tb-qc-chip > select { min-width: 0; max-width: 16em; min-height: 28px; padding: 0 var(--s-1); border: 0; background: none; color: var(--text); font-size: var(--fs-sm); }
+.tb-qc-more { display: flex; flex-direction: column; gap: var(--s-3); }
+.tb-qc-more > summary { cursor: pointer; font-size: var(--fs-sm); color: var(--text-2); margin-bottom: var(--s-3); }
+.tb-qc-more > .field, .tb-qc-more > .tb-form-row, .tb-qc-more > .tb-check { margin-top: var(--s-3); }
+
+/* ── A phone: one column (the properties right under the title), one status at a time, ⋯ on every card ───────── */
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .tp-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-template-areas: "head" "body" "side" "activity"; }
+  .tp-side { position: static; padding: var(--s-3); }
+  .tp-row { grid-template-columns: 88px minmax(0, 1fr); min-height: var(--tap); }
+  .tp-chip { min-height: var(--tap); }
+  .tp-watch-x { width: var(--tap); height: var(--tap); }
+  .tp-watch-add > .btn, .tp-watch-add > button { min-height: var(--tap); }
+  .tp-bar .icon-btn, .tp-bar .btn { min-height: var(--tap); }
+  .tp-bar .icon-btn { min-width: var(--tap); }
+  .tc-actions .btn { min-height: var(--tap); }
+  .tp-add { min-height: var(--tap); }
+  .tp-agent.is-strip .tp-add { min-height: var(--tap); }
+  .tp-subs .tc-children button, .tp-subs .tc-quick-add { min-height: var(--tap); }
+  /* The label above its value, the same left edge; the sub task's who under its title; a timeline line's actor above its words. */
+  .tp .tc-field, .tp .tp-subs, .tp-agent .tc-field { grid-template-columns: minmax(0, 1fr); }
+  .tp .tc-field > h3, .tp .tp-subs > h3 { padding-top: 0; }
+  .tp .tc-checklist { padding-top: 0; }
+  .tp-subs-head { padding-top: var(--s-1); min-height: 0; }
+  .tp-subs .tc-children button { grid-template-columns: 5.5rem 3rem minmax(0, 1fr); }
+  .tp-subs .tc-children .tb-who { grid-column: 3; justify-self: start; max-width: 100%; }
+  /* A phone: the cards and the rows keep their forms with less inside (12px), the time under a long sentence does not push it. */
+  .tl-card { padding: var(--s-3); }
+  .tl-line, .tl-more { padding: 0 var(--s-3); }
+  .tc-composer { padding: var(--s-3); }
+  .tc-composer > .btn { align-self: stretch; min-height: var(--tap); }
+  .tl-filter .tb-seg-btn { min-height: var(--tap); }
+  .tb-view-bar { gap: var(--s-2); }
+  .tb-view-toggle { order: -1; }
+  .tb-find { flex: 1 1 100%; order: 0; }
+  .tb-view-toggle .tb-seg-btn, .tb-view-bar .menu-text { min-height: var(--tap); }
+  .tb-list-head { display: none; }
+  .tb-row-code { width: auto; }
+  .tb-row-prio { width: auto; }
+  .tb-more { width: var(--tap); height: var(--tap); }
+  .tb-tile-more { opacity: 1; margin: calc(-1 * var(--s-3)) calc(-1 * var(--s-3)) 0 0; }
+  .tb-tile-top { min-height: 0; }
+  .tb-group-toggle { min-height: var(--tap); }
+  .tb-status-seg { display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr)); width: 100%; margin: 0 0 var(--s-3); border-radius: var(--r-md); }
+  .tb-status-seg .tb-seg-btn { min-height: var(--tap); padding: 0 var(--s-2); border-radius: var(--r-sm); font-size: var(--fs-xs); }
+  .tb-col:not(.is-current) { display: none; }
+  .tb-col > .tb-col-head { display: none; }
+  .tb-qc-chip { min-height: var(--tap); }
+  .tb-qc-chip > select { min-height: var(--tap); }
+  .tb-qc-more > summary { padding-block: calc((var(--tap) - 1lh) / 2); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tp-chip { transition: none; }
+  .p-fleet input.s-ui-toggle::after { transition: none; }
+}
+
+/* ── what the agent is doing on a card ─────────────────────────────────────────────────────────────── */
+/* The mark beside a tile's or a row's number, and the state on the card's page: a dot that breathes only while the
+   assignee is working (still, with reduced motion; the word says it either way). Busy with several cards: quiet grey. */
+.tr-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.tr-mark, .tr-state { display: inline-flex; align-items: center; gap: var(--s-1); padding: 1px var(--s-2); border-radius: var(--r-full); background: var(--accent-dim); color: var(--accent); font-size: var(--fs-2xs); font-weight: var(--fw-semibold); white-space: nowrap; }
+.tr-state { padding: 2px var(--s-2); font-size: var(--fs-xs); }
+.tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: pulse 1.2s ease-in-out infinite; }
+.tr-mark.shared { background: var(--surface-2); color: var(--text-2); }
+.tr-mark.s-needs, .tr-state.s-needs { background: var(--warn-bg); color: var(--warn); }
+.tr-mark.s-stuck, .tr-state.s-stuck { background: var(--danger-bg); color: var(--danger); }
+.tr-state.s-idle { background: var(--surface-2); color: var(--text-2); }
+/* On a tile the mark is in the status row, under the title (before the sub task at work, when there is one): the number, priority and size already fill a narrow column. */
+.tb-tile-run { display: flex; align-items: center; gap: var(--s-2); }
+.tb-tile-run > .tb-tile-now { flex: 1; min-width: 0; }
+.tb-tile.running { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--bg)); }
+/* The assignee on a tile or a row is a button (the card page's picker); pointing at it shows the instance's card. */
+.tb-owner { display: inline-flex; min-width: 0; }
+.tb-owner-btn { display: inline-flex; align-items: center; min-width: 0; margin: -2px; padding: 2px var(--s-2) 2px 2px; border: 1px solid transparent; border-radius: var(--r-full); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+button.tb-owner-btn:hover { border-color: var(--border); background: var(--surface); }
+.tb-owner-btn:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.tb-owner-btn.is-static { cursor: inherit; }
+.tb-owner-btn .tb-person { min-width: 0; }
+.tb-tile-foot > .tb-owner { flex: 0 1 auto; }
+.tb-tile-foot > .tb-people { flex: 1 1 0; display: flex; align-items: center; gap: var(--s-2); min-width: 0; overflow: hidden; }
+.tb-people-sep { color: var(--text-3); }
+.tb-tile-foot > .tb-tile-stats { margin-left: auto; }
+.tb-owner-pop { position: fixed; left: 0; top: 0; z-index: 45; width: min(300px, calc(100vw - 16px)); }
+.tb-owner-card { padding: var(--s-3); border: 1px solid var(--border-strong); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-2); color: var(--text); font-size: var(--fs-xs); font-weight: var(--fw-regular); cursor: default; }
+.toc-head { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.toc-spacer { flex: 1; }
+/* The way to the instance's Agent page (a person's card has none). */
+.toc-open { display: inline-flex; align-items: center; gap: 2px; margin-top: var(--s-2); color: var(--accent); font-size: var(--fs-xs); font-weight: var(--fw-semibold); text-decoration: none; }
+.toc-open:hover { text-decoration: underline; }
+.toc-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: var(--r-sm); }
+.toc-rows { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s-1) var(--s-3); margin: 0; }
+.toc-rows > dt { color: var(--text-2); }
+.toc-rows > dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+.tb-row.running { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.tb-row.running:hover { background: var(--accent-dim); }
+/* The card's "Agent activity": who, their state, the way to their conversation, and (an admin, tool progress on) the steps. */
+.tr-run { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3); }
+.tr-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); min-width: 0; }
+.tr-title { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-semibold); }
+.tr-note { margin: 0; font-size: var(--fs-sm); }
+.tr-run .act-block { margin: 0; }
+/* The timeline marks what an agent did: the shared straight bar (`.lbar`, app.css; the 3px it takes are added to the
+   padding) and an "Agent" tag after its name. */
+.tr-by { background: var(--surface-2); color: var(--text-2); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .tr-open { min-height: var(--tap); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
 }
