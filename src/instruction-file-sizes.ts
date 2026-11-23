@@ -38,15 +38,22 @@ export const INSTRUCTION_FILE_WARN_BYTES = 50 * 1024;
 /** Codex's default `project_doc_max_bytes` (read from the audited binaries). */
 export const CODEX_PROJECT_DOC_MAX_BYTES = 32 * 1024;
 
-/** The instructions file each CLI reads from its working directory (fleet-manager INSTRUCTIONS_FILENAME's). */
-const PROJECT_FILE: Record<string, string> = {
+/**
+ * The instructions file each CLI reads from its working directory — the same files their writeConfig() appends fleet
+ * instructions to, and the one General's instructions are written to (fleet-manager.ts uses this table).
+ */
+export const INSTRUCTIONS_FILENAME: Readonly<Record<string, string>> = Object.freeze({
   "claude-code": "CLAUDE.md",
-  codex: "AGENTS.md",
-  opencode: "AGENTS.md",
-  grok: "AGENTS.md",
-  muse: "AGENTS.md",
-  antigravity: join(".agents", "AGENTS.md"),
-};
+  "codex": "AGENTS.md",
+  "opencode": "AGENTS.md",
+  "kiro-cli": ".kiro/steering/project.md",
+  // Grok reads AGENTS.md project docs; agy reads .agents/AGENTS.md (board 0340ec89: not the lowercase name).
+  "grok": "AGENTS.md",
+  // muse init scaffolds AGENTS.md and the binary reads it as project rules.
+  "muse": "AGENTS.md",
+  "antigravity": ".agents/AGENTS.md",
+  "mock": "CLAUDE.md",
+});
 const KIRO_STEERING = join(".kiro", "steering");
 
 const cache = new Map<string, { mtimeMs: number; size: number }>();
@@ -79,7 +86,7 @@ export function instructionFileSizes(inst: Partial<InstanceConfig>, backend: str
       try { names = readdirSync(join(cwd, KIRO_STEERING)).filter((n) => n.endsWith(".md")).sort(); } catch { /* none */ }
       for (const n of names) add(join(KIRO_STEERING, n), "file", fileSize(join(cwd, KIRO_STEERING, n)));
     } else {
-      const rel = PROJECT_FILE[backend] ?? "CLAUDE.md";
+      const rel = INSTRUCTIONS_FILENAME[backend] ?? "CLAUDE.md";
       const codex = backend === "codex";
       add(rel, "file", fileSize(join(cwd, rel)), codex ? CODEX_PROJECT_DOC_MAX_BYTES : INSTRUCTION_FILE_WARN_BYTES, codex);
     }

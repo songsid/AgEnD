@@ -307,6 +307,7 @@ import { RuntimeCoordinator } from "./runtime-coordinator.js";
 import { runtimeUpdateAttention } from "./runtime-update-attention.js";
 import { RuntimeWindowsBridge } from "./runtime-windows-bridge.js";
 import { FleetWindowsRuntime, type NativeRuntimePatch, type NativeExecutionResult } from "./fleet-windows-runtime.js";
+import { INSTRUCTIONS_FILENAME } from "./instruction-file-sizes.js";
 import { NativeMcpSessions } from "./native-mcp.js";
 import { nativeProviderMcpSupported } from "./windows-cli-providers.js";
 import { cachedNativeModelCatalog, refreshNativeModelCatalogAfterSignIn } from "./native-model-catalog.js";
@@ -25164,19 +25165,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
 
   // ── Topic icon + auto-archive ─────────────────────────────────────────────
 
-  private static INSTRUCTIONS_FILENAME: Record<string, string> = {
-    "claude-code": "CLAUDE.md",
-    "codex": "AGENTS.md",
-    "opencode": "AGENTS.md",
-    "kiro-cli": ".kiro/steering/project.md",
-    // Grok reads AGENTS.md project docs; agy reads .agents/AGENTS.md (board 0340ec89: not the lowercase name) — the
-    // same files their writeConfig() appends fleet instructions to.
-    "grok": "AGENTS.md",
-    // muse init scaffolds AGENTS.md and the binary reads it as project rules.
-    "muse": "AGENTS.md",
-    "antigravity": ".agents/AGENTS.md",
-    "mock": "CLAUDE.md",
-  };
+  /** Each CLI's project instructions file (one table, shared with the Details size card: instruction-file-sizes.ts). */
+  private static INSTRUCTIONS_FILENAME: Readonly<Record<string, string>> = INSTRUCTIONS_FILENAME;
 
   private static GENERAL_INSTRUCTIONS = GENERAL_ROLE_INSTRUCTIONS;
 

@@ -51,7 +51,9 @@ const FAMILIES: ReadonlyArray<{ why: string; files: Readonly<Record<string, numb
   { why: "the audited releases of each CLI (AGEND-136): a ledger of facts per CLI id that the Windows pane gate and the Update button read, kept as one table keyed by id (a Record<CliId, …> the compiler completes)", files: { "src/cli-audited.ts": 1 } },
   { why: "code for Kiro that compares its id with the default backend's", files: { "src/kiro-engine-status.ts": 1, "src/kiro-migrate.ts": 2 } },
   { why: "quota notices (which backends have one)", files: { "src/quota-notice-config.ts": 1, "src/ui/settings-quota-notice.js": 1 } },
-  { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 11 } },
+  { why: "fleet-manager.ts: Windows General workspaces, Kiro-only paths, effort and display switches, and its backend tables", files: { "src/fleet-manager.ts": 10 } },
+  // M-3522: the instructions file each CLI reads, moved out of fleet-manager.ts (one table, used there and by the Details size card).
+  { why: "the project instructions file each CLI reads from its working directory", files: { "src/instruction-file-sizes.ts": 1 } },
   { why: "behaviour keyed by CLI id (credential homes, the login hosts a link may point at, usage readers): the keys are checked against the registry by cli-registry-completeness.test.ts", files: {
     "src/backend/credential-profile.ts": 1, "src/login-url.ts": 1, "src/usage/providers.ts": 2,
     // AGEND-119: a keep-alive run per CLI (the switch is checked by the compiler against `host.keepAlive`'s ids) and the words that say what the switch does for each.
