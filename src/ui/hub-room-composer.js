@@ -81,29 +81,49 @@ export function mentionsIn(text, detail) {
 
 /**
  * M-3533 (#4355 review): who a mention put in the box stands for — the office card's "@ it" and the members panel's — is
- * that member, not every member of its name. `bindings` [{ name, id }]: each still in the text as `@name` replaces what
- * reading the text gives for that name (two agents called Notes: the one picked, not both); one no longer in the text
- * (removed or edited) binds nothing.
+ * that member, not every member of its name. A binding is one mention where it was put: { name, id, start } (its `@name`
+ * at `start`). Edits move or retire it (shiftBindings); only one still whole at its place binds (intactBindings).
  */
+const tokenAt = (s, b) => s.startsWith(`@${b.name}`, b.start) && !/[\w-]/.test(s.charAt(b.start + 1 + b.name.length));
 /**
- * The bindings `text` still carries: for each name, the newest as many as the text mentions it (`@name` tokens) — a
- * mention deleted or edited takes its binding with it at once, so a later pick or a retyped name cannot revive it.
+ * The bindings after the text changed from `prev` to `next`: the edit is what lies between their common start and end; a
+ * mention before it stays, one after it moves by the change in length, one the edit touches is gone (deleted or edited:
+ * a later pick or a name retyped by hand cannot revive it).
  */
-export function liveBindings(text, bindings = []) {
-  const s = String(text || ""), list = Array.isArray(bindings) ? bindings.filter((b) => b && typeof b.name === "string" && typeof b.id === "string") : [];
-  const left = new Map();
-  for (const b of list) if (!left.has(b.name)) left.set(b.name, (s.match(atName(b.name, "g")) || []).length);
-  const out = [];
-  for (const b of [...list].reverse()) { const n = left.get(b.name); if (n > 0) { out.unshift(b); left.set(b.name, n - 1); } }
-  return out;
+export function shiftBindings(prev, next, bindings = []) {
+  const a = String(prev || ""), b = String(next || "");
+  if (a === b) return bindings;
+  let p = 0; while (p < a.length && p < b.length && a[p] === b[p]) p++;
+  let q = 0; while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++;
+  const editEnd = a.length - q, delta = b.length - a.length;
+  return (Array.isArray(bindings) ? bindings : []).flatMap((x) => {
+    const end = x.start + 1 + x.name.length;
+    if (end <= p) return [x];
+    if (x.start >= editEnd) return [{ ...x, start: x.start + delta }];
+    return [];
+  });
 }
+/** The bindings still whole where they were put in `text`. */
+export const intactBindings = (text, bindings = []) => (Array.isArray(bindings) ? bindings : [])
+  .filter((b) => b && typeof b.name === "string" && typeof b.id === "string" && Number.isInteger(b.start) && tokenAt(String(text || ""), b));
+/**
+ * The mentions `text` sends: as read (mentionsIn), except that a name whose every `@name` is a bound mention sends the
+ * members bound — two agents called Notes, picked one each, send those two; one picked and one typed by hand reads as
+ * typed (both).
+ */
 export function boundMentions(text, detail, bindings = []) {
-  const s = String(text || ""), out = mentionsIn(s, detail);
-  const live = (Array.isArray(bindings) ? bindings : []).filter((b) => b && typeof b.name === "string" && typeof b.id === "string" && atName(b.name).test(s));
+  const s = String(text || ""), out = mentionsIn(s, detail), live = intactBindings(s, bindings);
   if (!live.length) return out;
-  const named = new Set(live.map((b) => b.name.toLocaleLowerCase("en-US")));
-  const same = new Set(agentsOf(detail).filter((a) => named.has(String(a.name).toLocaleLowerCase("en-US"))).map((a) => a.id));
-  return [...new Set([...out.filter((id) => !same.has(id)), ...live.map((b) => b.id)])];
+  const byName = new Map();
+  for (const b of live) { const k = b.name.toLocaleLowerCase("en-US"); byName.set(k, [...(byName.get(k) || []), b]); }
+  let result = out;
+  for (const [k, list] of byName) {
+    const name = list[0].name, said = (s.match(atName(name, "g")) || []).length;
+    if (list.length < said) continue;
+    const same = new Set(agentsOf(detail).filter((a) => String(a.name).toLocaleLowerCase("en-US") === k).map((a) => a.id));
+    result = [...result.filter((id) => !same.has(id)), ...list.map((b) => b.id)];
+  }
+  return [...new Set(result)];
 }
 
 // M-3308: the paste helpers live with the Hub's files (hub-attachments.js), shared with the 1:1 question's composer (M-3311).
@@ -132,9 +152,13 @@ export function refusalText(r) {
  */
 export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
-  const bindings = useRef([]);
-  // A binding lives as long as its mention: every change of the text retires the ones it no longer carries.
-  useEffect(() => { bindings.current = liveBindings(value, bindings.current); }, [value]);
+  // M-3533: the mentions put in the box for a member, where they were put; every change of the text moves or retires
+  // them (shiftBindings) before a new one is added (`adding`: the one an insertion carries, at its place).
+  const bindings = useRef([]), seen = useRef(""), adding = useRef([]);
+  useEffect(() => {
+    bindings.current = shiftBindings(seen.current, value, bindings.current); seen.current = value;
+    if (adding.current.length) { bindings.current = [...bindings.current, ...adding.current]; adding.current = []; }
+  }, [value]);
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
@@ -146,8 +170,13 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   // 「在這裡 @ 它」 from the members panel or the office card: the mention goes into the box, after what is there, bound to
   // the member it was picked for (`bind`: { name, id }; see boundMentions).
   if (insertRef) insertRef.current = (text, bind = null) => {
-    if (bind) bindings.current = [...bindings.current, bind];
-    setValue((v) => `${v && !/\s$/.test(v) ? `${v} ` : v}${text} `); setTimeout(() => input.current?.focus(), 0);
+    setValue((v) => {
+      const base = v && !/\s$/.test(v) ? `${v} ` : v;
+      // Appended: the binding goes in after the text's own change is applied (an edit at the end touches nothing before).
+      if (bind) adding.current = [...adding.current, { ...bind, start: base.length + text.indexOf(`@${bind.name}`) }];
+      return `${base}${text} `;
+    });
+    setTimeout(() => input.current?.focus(), 0);
   };
   const complete = (o) => {
     const next = `${value.slice(0, at.start)}${o.label} ${value.slice(caret)}`;
@@ -158,9 +187,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     // M-3125: `canSendEmpty` — files are ready to go, so a post may be the files alone (the server takes it).
     const text = value.trim(); if ((!text && !canSendEmpty) || busy || closed) return;
     setBusy(true); setMsg(null);
-    const r = await store.send(text, { mentions: boundMentions(text, detail, bindings.current), ...(reply ? { replyTo: reply.roomMessage } : {}) });
+    const r = await store.send(text, { mentions: boundMentions(value, detail, bindings.current), ...(reply ? { replyTo: reply.roomMessage } : {}) });
     setBusy(false);
-    if (r.ok) { setValue(""); bindings.current = []; onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
+    if (r.ok) { setValue(""); onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
   };
   const onKeyDown = (e) => {
     if (palette && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPick((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length); return; }

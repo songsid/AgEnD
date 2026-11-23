@@ -63,6 +63,8 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; s
   return { pg, fx, room, reads, posts, restore: () => { g.fetch = realFetch; } };
 }
 const q = (pg: AppPage, s: string) => pg.root.querySelector(s) as any;
+/** The message box shown (in the office it stays mounted, hidden, with its draft). */
+const docked = (pg: AppPage) => { const d = q(pg, ".hub-dock"); return !!d && !d.hasAttribute("hidden"); };
 const openMenu = async (pg: AppPage) => { fire(q(pg, ".hub-room-menu button"), "click"); await settle(); return [...pg.root.querySelectorAll("[role=menuitem], [role=menuitemcheckbox]")] as any[]; };
 
 describe("the drawing's input (pure)", () => {
@@ -128,7 +130,7 @@ describe("the room page", () => {
       const tabs = q(pg, ".hub-chat-head .hub-room-tabs");
       expect([...tabs.querySelectorAll(".seg-item")].map((a: any) => [a.textContent, a.classList.contains("active")])).toEqual([["Chat", true], ["Office", false]]);
       const head = [...q(pg, ".hub-chat-head").children].map((e: any) => e.className); expect(head.indexOf("hub-head-tools") - head.findIndex((c: string) => c.includes("hub-room-tabs"))).toBe(1);
-      expect([!!q(pg, ".hub-dock"), !!q(pg, ".hub-room-office")]).toEqual([true, false]);
+      expect([docked(pg), !!q(pg, ".hub-room-office")]).toEqual([true, false]);
       // On the Fleet dashboard's own origin an admin session may edit the fleet's offices, and the page has the fleet's
       // stream: the room's office edits nothing and listens to none of it.
       const heard: string[] = [], realAuth = g.AgendAuth;
@@ -139,7 +141,7 @@ describe("the room page", () => {
       expect(heard.filter((k) => /office|message/.test(k))).toEqual([]);
       expect([!!q(pg, ".hub-room-office .oo-edit"), !!q(pg, ".hub-room-office .oo-layout")]).toEqual([false, false]);
       expect(pg.window.location.search).toContain("view=office");
-      expect([!!q(pg, ".hub-room-office .oo"), !!q(pg, ".hub-dock"), !!q(pg, ".hub-room-card"), !!q(pg, ".hub-room-page .thread"), !!q(pg, ".hub-room-office select.oo-office"), !!q(pg, ".hub-room-office .oo-edit")])
+      expect([!!q(pg, ".hub-room-office .oo"), docked(pg), !!q(pg, ".hub-room-card"), !!q(pg, ".hub-room-page .thread"), !!q(pg, ".hub-room-office select.oo-office"), !!q(pg, ".hub-room-office .oo-edit")])
         .toEqual([true, false, false, false, false, false]);
       expect(reads.length).toBeGreaterThan(0);
       const desks = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.getAttribute("aria-label"));
@@ -154,8 +156,18 @@ describe("the room page", () => {
       // The member list's own name for it (what the composer resolves), not the office's label.
       expect(agentNames).toContain(q(pg, ".hub-dock textarea").value);
       fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo"));
-      fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => q(pg, ".hub-dock"));
-      expect([!!q(pg, ".hub-dock"), !!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office")]).toEqual([true, false, false]);
+      fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => docked(pg));
+      expect([docked(pg), !!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office")]).toEqual([true, false, false]);
+    } finally { restore(); }
+  });
+  it("a draft in the box is still there after a look at the office", async () => {
+    const { pg, restore } = await roomPage();
+    try {
+      const box = q(pg, ".hub-dock textarea"); box.value = "half a question"; box.selectionStart = box.value.length; fire(box, "input"); await settle(3);
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo"));
+      expect(docked(pg)).toBe(false);
+      fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => docked(pg));
+      expect(q(pg, ".hub-dock textarea").value).toBe("half a question");
     } finally { restore(); }
   });
   it("off, or a Hub that does not serve it: no tabs and no menu item; a view=office address shows the chat", async () => {
@@ -163,7 +175,7 @@ describe("the room page", () => {
     try {
       expect(q(pg, ".hub-room-tabs")).toBeNull();
       expect((await openMenu(pg)).map((b) => b.textContent.trim())).not.toContain("Office");
-      expect([!!q(pg, ".hub-dock"), reads]).toEqual([true, []]);
+      expect([docked(pg), reads]).toEqual([true, []]);
     } finally { restore(); }
   });
   it("a first read that fails says so in plain words with a retry, and Chat still works", async () => {
@@ -175,7 +187,7 @@ describe("the room page", () => {
       expect(q(pg, ".hub-room-office .error-state p").textContent).toBe("Can't load the office right now. The chat still works.");
       status = 200; fire(q(pg, ".hub-room-office .error-state button"), "click"); await until(() => q(pg, ".hub-room-office .oo"));
       expect(!!q(pg, ".hub-room-office .oo")).toBe(true);
-      fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => q(pg, ".hub-dock"));
+      fire(q(pg, ".hub-room-tabs .seg-item"), "click"); await until(() => docked(pg));
       expect(!!q(pg, ".hub-room-page .hub-dock")).toBe(true);
     } finally { restore(); }
   });
@@ -194,7 +206,7 @@ describe("the room page", () => {
       fire(inOffice.find((b) => b.textContent.trim() === "辦公室選項"), "click"); await until(() => q(pg, ".oo-sheet .oo-hide-asleep"));
       expect(!!q(pg, ".oo-sheet .oo-sheet-bar .oo-hide-asleep")).toBe(true);
       fire(q(pg, ".oo-sheet .oo-sheet-fit"), "click"); await until(() => !q(pg, ".oo-sheet"));
-      fire(q(pg, ".hub-back"), "click"); await until(() => q(pg, ".hub-dock"));
+      fire(q(pg, ".hub-back"), "click"); await until(() => docked(pg));
       expect([!!q(pg, ".hub-room-office"), q(pg, ".hub-chat-title .s").textContent.includes("辦公室")]).toEqual([false, false]);
     } finally { restore(); }
   });
@@ -263,7 +275,8 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
     fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo-desk"));
     const desk = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].find((e: any) => pick(e.textContent)) as any;
     fire(desk, "click"); await until(() => q(pg, ".oo-card-action"));
-    fire(q(pg, ".oo-card-action"), "click"); await until(() => q(pg, ".hub-dock textarea")?.value);
+    const before = q(pg, ".hub-dock textarea")?.value ?? "";
+    fire(q(pg, ".oo-card-action"), "click"); await until(() => docked(pg) && q(pg, ".hub-dock textarea")?.value !== before);
     return q(pg, ".hub-dock textarea");
   };
   const send = async (pg: AppPage, posts: any[], box: any) => { const n = posts.length; fire(box, "keydown", { key: "Enter" }); await until(() => posts.length > n); return posts.at(-1); };
@@ -282,6 +295,22 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       const again = q(pg, ".hub-dock textarea"); again.value = `@${a.name} again`; again.selectionStart = again.value.length; fire(again, "input"); await settle(2);
       const typed = await send(pg, posts, q(pg, ".hub-dock textarea"));
       expect([typed.text, typed.mentions.includes(a.id), typed.mentions.includes(b.id)]).toEqual([`@${a.name} again`, true, true]);
+    } finally { restore(); }
+  });
+  it.each([["second"], ["first"]])("two picked mentions of one name (A then B): deleting the %s sends only the other's member", async (which) => {
+    const left = (n: string) => (which === "second" ? `@${n} ` : ` @${n} `);
+    const { pg, room, posts, restore } = await roomPage({ sameName: true });
+    try {
+      const [a, b] = room.members.filter((m: any) => m.kind === "agent").slice(0, 2);
+      const labels = () => [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].map((e: any) => e.textContent).filter((l: string) => /^Notes/.test(l));
+      await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => labels().length === 2);
+      let box = await askFrom(pg, (l) => l === labels().find((x) => x !== `Notes (${a.owner.name})`));
+      expect(box.value).toBe(`@${a.name} @${b.name} `);
+      const kept = which === "second" ? a : b, gone = which === "second" ? b : a;
+      box = q(pg, ".hub-dock textarea"); box.value = left(a.name); box.selectionStart = box.value.length; fire(box, "input"); await settle(3);
+      const post = await send(pg, posts, box);
+      expect([post.mentions.includes(kept.id), post.mentions.includes(gone.id)]).toEqual([true, false]);
     } finally { restore(); }
   });
   it("a mention deleted or edited takes its binding with it: A, deleted, then B sends B only; A, deleted, retyped by hand is unbound", async () => {
@@ -309,13 +338,21 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       expect([unbound.text, unbound.mentions.includes(a.id), unbound.mentions.includes(b.id)]).toEqual([`@${a.name} hello`, true, true]);
     } finally { restore(); }
   });
-  it("liveBindings keeps, per name, only as many as the text mentions, newest first", async () => {
+  it("a binding follows its own mention through edits: either of two @Notes deleted leaves the other's member", async () => {
     const composer = await import("/ui/js/hub-room-composer.js");
-    const A = { name: "Notes", id: "e1" }, B = { name: "Notes", id: "e2" }, P = { name: "Planner", id: "e3" };
-    expect(composer.liveBindings("@Notes hi", [A, B])).toEqual([B]);
-    expect(composer.liveBindings("@Notes and @Notes", [A, B])).toEqual([A, B]);
-    expect(composer.liveBindings("@Note hi", [A, P])).toEqual([]);
-    expect(composer.liveBindings("@Planner", [A, P])).toEqual([P]);
+    const detail = { me: { id: "me" }, members: [{ kind: "agent", id: "e1", name: "Notes" }, { kind: "agent", id: "e2", name: "Notes" }] };
+    const text = "@Notes @Notes ", A = { name: "Notes", id: "e1", start: 0 }, B = { name: "Notes", id: "e2", start: 7 };
+    expect(composer.boundMentions(text, detail, [A, B]).sort()).toEqual(["e1", "e2"]);
+    const noB = "@Notes  ", left = composer.shiftBindings(text, noB, [A, B]);
+    expect([left, composer.boundMentions(noB, detail, left)]).toEqual([[A], ["e1"]]);
+    const noA = " @Notes ", right = composer.shiftBindings(text, noA, [A, B]);
+    expect([right, composer.boundMentions(noA, detail, right)]).toEqual([[{ ...B, start: 1 }], ["e2"]]);
+    // Edited inside the mention: gone; typed before it: moved; a hand-typed @Notes beside a bound one reads as typed.
+    expect(composer.shiftBindings("@Notes hi", "@Note hi", [A])).toEqual([]);
+    expect(composer.shiftBindings("@Notes hi", "so @Notes hi", [A])).toEqual([{ ...A, start: 3 }]);
+    expect(composer.boundMentions("@Notes and @Notes", detail, [A]).sort()).toEqual(["e1", "e2"]);
+    // A binding whose text no longer stands at its place binds nothing.
+    expect(composer.intactBindings("hello @Notes", [A])).toEqual([]);
   });
   it.each([["en", "@Room assistant"], ["zh-TW", "@房間助理"]])("the room assistant, by the box's own word for it (%s)", async (lang, word) => {
     const { pg, posts, restore } = await roomPage({ lang });
@@ -328,7 +365,7 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
   it("a binding goes with its mention: edited away, it binds nothing", async () => {
     const composer = await import("/ui/js/hub-room-composer.js");
     const detail = { me: { id: "me" }, members: [{ kind: "agent", id: "e1", name: "Notes" }, { kind: "agent", id: "e2", name: "Notes" }, { kind: "agent", id: "e3", name: "Planner" }] };
-    const bound = [{ name: "Notes", id: "e2" }];
+    const bound = [{ name: "Notes", id: "e2", start: 0 }];
     expect(composer.boundMentions("@Notes hi", detail, bound)).toEqual(["e2"]);
     expect(composer.boundMentions("@Notes and @Planner", detail, bound).sort()).toEqual(["e2", "e3"]);
     expect(composer.boundMentions("@Note hi", detail, bound)).toEqual([]);

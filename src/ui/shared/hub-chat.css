@@ -229,3 +229,5 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
 .hub-room-office { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--s-2) var(--s-3); overflow: auto; }
 .hub-room-office > .oo { flex: 1 1 auto; min-height: 0; }
 .hub-room-office-note, .hub-room-office-loading { padding: var(--s-4); }
+/* The message box stays mounted under the office (its draft and picked mentions kept), not shown. */
+.hub-room-page .hub-dock[hidden] { display: none !important; }
