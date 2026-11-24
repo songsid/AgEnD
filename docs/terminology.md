@@ -56,7 +56,7 @@ The zh-TW UI uses these words. Keep config keys, slash commands, paths, CLI butt
 | store | 儲存區 | alias | 別名 |
 | bytes | 位元組 | checksum | 校驗碼 |
 | coding (CLI) | 程式開發 | engine | 引擎 |
-| exit code | 結束代碼 | fallback (model) | 備援模型 |
+| exit code | 結束碼 (#3515) | fallback (model) | 備援模型 |
 | flow | 流程 | forward | 轉交 |
 | hostname | 主機名稱 | instructions | 指示 |
 | manager | 管理程式 | mapping | 對應表 |

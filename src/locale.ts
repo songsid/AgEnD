@@ -2759,7 +2759,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "card.expired": "這些按鈕已過期，{0} 仍在等待：請在它的終端機回答（儀表板 → 檢視）。",
     "card.someone_on_dashboard": "儀表板上的使用者",
     "interactive.assist_request": "[system] 已確認協助 {0} 的人工輸入（提示類型：{1}）。請查看該 Agent 的 tmux 窗格，向使用者回報正在等待的操作，並在輸入任何內容前取得明確授權。絕不可要求或接受使用者在聊天中傳送密碼；密碼只能由操作員直接在 tmux 輸入。",
-    "exit.instance_notice": "🛑 {0} 已停止（正常退出，結束代碼 0）。管理員可至 General 重新啟動。",
+    "exit.instance_notice": "🛑 {0} 已停止（正常退出，結束碼 0）。管理員可至 General 重新啟動。",
     "exit.general_notice": "🛑 {0} 已停止（正常退出）。要重新啟動嗎？",
     "exit.restart": "重啟",
     "exit.ignore": "忽略",
