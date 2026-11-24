@@ -68,11 +68,13 @@ describe("zoomed out past TAG_READ_K: the names as chips, not 3 px tags", () => 
     expect(scene("cozy", true).tags).toEqual([]);
   });
   it("the CSS: the people row shows over the stage's foot, whole touch targets, a call first and marked", () => {
-    const row = rule(".oo[data-tags-off]:not(.fs) .oo-desks");
+    const row = rule(".oo[data-tags-off] .oo-desks");
     for (const k of ["position: absolute", "clip: auto", "overflow-x: auto", "display: flex"]) expect(row).toContain(k);
-    expect(rule(".oo[data-tags-off]:not(.fs) .oo-desk")).toContain("min-height: var(--tap)");
-    expect(rule(".oo[data-tags-off]:not(.fs) .oo-desks > li[data-call]")).toContain("order: -1");
-    expect(rule(".oo[data-tags-off]:not(.fs) .oo-desks > li[data-call] .oo-desk")).toContain("border-color: var(--warn)");
+    expect(rule(".oo[data-tags-off] .oo-desk")).toContain("min-height: var(--tap)");
+    // Prism #4423: fullscreen too (its canvas draws no tags either below TAG_READ_K) — no rule leaves .fs out.
+    expect(CSS).not.toMatch(/\.oo\[data-tags-off\]:not\(\.fs\)/);
+    expect(rule(".oo[data-tags-off] .oo-desks > li[data-call]")).toContain("order: -1");
+    expect(rule(".oo[data-tags-off] .oo-desks > li[data-call] .oo-desk")).toContain("border-color: var(--warn)");
   });
 });
 
