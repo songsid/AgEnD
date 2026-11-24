@@ -10,7 +10,7 @@ import { lang } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
-import { collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
+import { agentPictureSrc, collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
 import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { roomSource, RoomSourceMark } from "./hub-room-source.js";
 import { firstCharacter } from "/assets/instance-nav.js";
@@ -91,7 +91,11 @@ export function agentAvatar(m) {
  * slot M-3256's source badge had: every agent row's badge was the same logo, so the avatar now says "an agent" (people's
  * rows have none) and the source is said by the row's title, its accessible name and the agent's card (the design check).
  */
-function AgentAvatar({ m }) {
+function AgentAvatar({ m, roomId = null }) {
+  // R2b: the disc its owner's sidebar shows, filling the circle as there (instance-nav.js .av img); one that fails to load
+  // gives the R2a avatar back.
+  const src = agentPictureSrc(roomId, m?.id, "disc", m?.look?.disc), [broken, setBroken] = useState(null);
+  if (src && broken !== src) return html`<span class="hub-agent-av pic" aria-hidden="true"><img src=${src} alt="" loading="lazy" decoding="async" onError=${() => setBroken(src)} /></span>`;
   const a = agentAvatar(m);
   // The colour goes in through the CSSOM (no style attribute: the dashboard's CSP, web-csp-1300).
   const paint = (el) => { if (!el?.style) return; if (a.color) { el.style.setProperty("--av", a.color); el.style.setProperty("--av-ink", a.ink); } else { el.style.removeProperty("--av"); el.style.removeProperty("--av-ink"); } };
@@ -159,7 +163,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     // R2a: an agent's avatar takes the source mark's slot (the source in the row's title, accessible name and card). The
     // room assistant has the sidebar's 「Hub 助理」 disc (its first character, "H"), so the column lines up.
     const agentRow = m.kind === "agent" || m.kind === "later";
-    const mark = agentRow ? html`<${AgentAvatar} m=${m} />` : m.kind === "assistant" ? html`<${AgentAvatar} m=${{ name: hroom("hubAssistant") }} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`;
+    const mark = agentRow ? html`<${AgentAvatar} m=${m} roomId=${roomId} />` : m.kind === "assistant" ? html`<${AgentAvatar} m=${{ name: hroom("hubAssistant") }} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`;
     return html`<span class="hub-member-name">${mark}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;

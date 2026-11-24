@@ -161,10 +161,10 @@ describe("M-3533 R2b: agent pictures on the Hub", () => {
     expect(hubLinkCapabilities({ features: [] })).not.toContain(HUB_AGENT_PICTURES_CAPABILITY);
   });
 
-  it("not offered yet: the composed Hub leaves agent-pictures-v1 off until R2b-page draws the pictures", async () => {
+  it("offered: the composed Hub offers agent-pictures-v1 now that the room page draws the pictures (R2b-page)", async () => {
     r = await s3bRig({ roomOffice: true });
-    expect(r.http.agentPicturesV1).toBeUndefined();
-    expect(hubLinkCapabilities(r.http)).not.toContain(HUB_AGENT_PICTURES_CAPABILITY);
+    expect(r.http.agentPicturesV1).toBe(true);
+    expect(hubLinkCapabilities(r.http)).toContain(HUB_AGENT_PICTURES_CAPABILITY);
     const f = { v: 1 as const, type: "agent.pictures" as const, requestId: randomUUID(), linkEpoch: 1, payload: { revision: "9".repeat(64), agents: [] } };
     expect(parseMemberFrame(encodeMemberFrame(f))).toEqual(f);
   });
