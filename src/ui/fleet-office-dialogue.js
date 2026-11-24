@@ -17,6 +17,8 @@ import { own, PORTRAIT_STATES } from "./fleet-office-pack.js";
 
 export const DLG = {
   TEXT_MAX: 120,
+  /** The whole line kept for the click-through box (talk "Dialogue box"): read page by page. */
+  FULL_MAX: 4000,
   /** A message older than this on the server's clock is not news (a replay, a catch-up). */
   FRESH_MS: 90_000,
   /** How long an answer stays before it fades. */
@@ -58,7 +60,8 @@ export function createDialogue() {
     heard(instance, person, text, t) {
       if (typeof instance !== "string" || !instance) return null;
       convs.delete(instance);
-      const c = { id: ++seq, instance, person: person || null, text: text == null ? null : clip(text), reply: null, heardAt: t, answeredAt: null, shownAt: null, replyShownAt: null };
+      const c = { id: ++seq, instance, person: person || null, text: text == null ? null : clip(text), full: text == null ? null : clip(text, DLG.FULL_MAX),
+        reply: null, replyFull: null, heardAt: t, answeredAt: null, shownAt: null, replyShownAt: null, page: 0, pageAt: null };
       convs.set(instance, c);
       while (convs.size > DLG.MAX) convs.delete(convs.keys().next().value);
       rev++;
@@ -68,7 +71,9 @@ export function createDialogue() {
       const c = convs.get(instance);
       if (!c || c.answeredAt !== null) return null;
       c.reply = text == null ? null : clip(text);
+      c.replyFull = text == null ? null : clip(text, DLG.FULL_MAX);
       c.answeredAt = t;
+      c.page = 0; c.pageAt = null; c.wholeAt = null;     // the reply reads from its first page
       rev++;
       return c;
     },
@@ -78,11 +83,12 @@ export function createDialogue() {
      * comes; an answer never shown (its agent not drawn here, or waiting in the queue): WAIT_MS after it came. A
      * conversation never answered: WAIT_MS after it was heard.
      */
-    sweep(t, still = false) {
+    sweep(t, still = false, hold = false) {
       let gone = false;
       for (const [k, c] of convs) {
+        // `hold` (the click-through box): an answer shown stays until it is clicked away (drop).
         const over = c.answeredAt === null ? t >= c.heardAt + DLG.WAIT_MS
-          : c.replyShownAt !== null ? t >= c.replyShownAt + DLG.HOLD_MS + (still ? 0 : DLG.FADE_MS) : t >= c.answeredAt + DLG.WAIT_MS;
+          : c.replyShownAt !== null ? !hold && t >= c.replyShownAt + DLG.HOLD_MS + (still ? 0 : DLG.FADE_MS) : t >= c.answeredAt + DLG.WAIT_MS;
         if (over) { convs.delete(k); gone = true; }
       }
       if (gone) rev++;
@@ -92,6 +98,10 @@ export function createDialogue() {
     size: () => convs.size,
     rev: () => rev,
     clear() { if (convs.size) { convs.clear(); rev++; } },
+    /** One conversation clicked away (the click-through box's last page). */
+    drop(instance) { if (convs.delete(instance)) rev++; },
+    /** Skip: every answered conversation goes now (those still waiting for a reply stay). */
+    skip() { let gone = false; for (const [k, c] of convs) if (c.answeredAt !== null) { convs.delete(k); gone = true; } if (gone) rev++; return gone; },
   };
 }
 

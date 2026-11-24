@@ -57,7 +57,7 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
   const own = (c: any) => cls(c).find((x) => x.startsWith("oo-"));
   // Each element child of `el`, by what it is (the text between them is the template's whitespace).
   const kinds = (el: any) => (el.childNodes as any[]).filter((c) => c && c.tagName).map((c: any) => c.tagName === "H3" ? "heading" : c.tagName === "HR" ? "rule"
-    : cls(c).includes("oo-pick") ? (c.querySelector(".oo-office") ? "office" : c.querySelector(".oo-team") ? "team" : c.querySelector(".oo-style") ? "style" : "pick")
+    : cls(c).includes("oo-pick") ? (c.querySelector(".oo-office") ? "office" : c.querySelector(".oo-team") ? "team" : c.querySelector(".oo-style") ? "style" : c.querySelector(".oo-talk-mode") ? "talk" : "pick")
     : cls(c).includes("oo-people") ? "people" : own(c) ?? c.tagName.toLowerCase());
 
   if (!narrow) {
@@ -80,7 +80,7 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       expect(btn().getAttribute("aria-expanded")).toBe("true");
       expect(q(".oo-display-pop .oo-display-h").textContent.trim()).toBe("Display options");   // the same heading as a room's
       const list = q(".oo-display-pop .oo-display-list");
-      expect(kinds(list)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "oo-key-tick"]);
+      expect(kinds(list)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
       expect(q(".oo-sheet")).toBeNull();                                       // not a modal sheet
       // A tick: saved and applied at once, the dropdown still open.
       fire(q(".oo-hide-asleep input"), "change"); await settle(3);
@@ -134,7 +134,7 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       expect(got.slice(0, 4)).toEqual(["office", "team", "people", "heading"]);
       expect(q(".oo-sheet .oo-sheet-h").textContent.trim()).toBe("Display options");
       const rule = got.indexOf("rule"), heading = got.indexOf("heading");
-      expect(got.slice(heading + 1, rule)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "oo-key-tick"]);
+      expect(got.slice(heading + 1, rule)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "talk", "oo-key-tick"]);
       expect(got.slice(rule + 1)).toEqual(expect.arrayContaining(["oo-edit"]));
       expect(q(".oo-display-pop")).toBeNull();                                  // the phone keeps its sheet
     });

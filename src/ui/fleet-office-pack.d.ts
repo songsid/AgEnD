@@ -25,7 +25,7 @@ export interface PackArea { name: string; rect: { x: number; y: number; w: numbe
 export interface PackFurniture { id: string; sprite: PackStrip; x: number; y: number; depth: number | "y"; activeWhen: string[] | null; activeSprite: PackStrip | null;
   activeFor?: string[] | null; loop?: boolean; activeOn?: "state" | "seated"; hides?: boolean; label: string | null }
 export interface CheckedPack {
-  format: 1; id: string; scale: number; background?: string; foreground?: string; matte?: string;
+  format: 1; id: string; scale: number; /** Its own canvas (logical units), else 1280×720. */ canvas?: { w: number; h: number }; background?: string; foreground?: string; matte?: string;
   areas: Record<string, PackArea>; stateZones: Record<string, string> | null; door: PackPoint;
   /** #2736: where a letter from another office lands, or null (the waypoint nearest the middle). */
   mailDrop: PackPoint | null;
@@ -41,7 +41,9 @@ export interface CheckedPack {
   /** #2861: the dialogue box's faces — each an expression (idle, working, needs) → file. */
   portraits?: { default?: PackPortrait; byInstance: Record<string, PackPortrait>; byUser: Record<string, PackPortrait>; npc: Record<string, PackPortrait> };
   /** #2861: the dialogue box's look — a 9-slice frame and colours (#rrggbb). */
-  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string };
+  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string;
+    /** The reply over a head (the Office's "Over their head" talk): its 9-slice frame, colours and entrance. */
+    bubble?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string; enter?: "pop" | "fade" | "none" } };
   /** #4256: optional agent profile card preset, visual style, and layout. */
   card?: PackCard;
   /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */
@@ -97,6 +99,8 @@ export interface LayoutOverrides {
   edges?: Array<[string, string]>;
 }
 export const LOGICAL: { w: number; h: number };
+export const CANVAS: { min: { w: number; h: number }; max: { w: number; h: number } };
+export function canvasOf(pack: unknown): { w: number; h: number };
 export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
 export const BUBBLE_KEYS: string[];
@@ -137,7 +141,7 @@ export function packSceneImages(pack: CheckedPack): string[];
 export function packPortraitImages(pack: CheckedPack): string[];
 export const PORTRAIT_STATES: string[];
 export function packStrips(pack: CheckedPack): Array<{ at: string; strip: PackStrip }>;
-export function checkLayoutOverrides(x: unknown): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
+export function checkLayoutOverrides(x: unknown, canvas?: { w: number; h: number }): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
 export function applyOverrides(pack: CheckedPack, ov: LayoutOverrides | null | undefined): { ok: true; pack: CheckedPack } | { ok: false; error: string };
 export function fitNight<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;
 export function fitSeatFor<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;

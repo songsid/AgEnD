@@ -63,6 +63,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
 | **Drag and pat** | pick people up and pat or feed them: see [Bedtime, strolls and mail](#bedtime-strolls-and-mail) (zones styles) | per device, on by default |
 | **Dialogue** | the [dialogue box](#the-dialogue-box): what people say to agents here, and the replies | per browser, off by default |
+| **Talk** | what **Chat** does here: the pop-up window, a side panel, the dialogue box or over their head; see [Talk from the Office](#talk-from-the-office) (dashboard only) | per browser, Pop-up window by default |
 | **Key** | what the things carried between desks mean, in a strip above the scene (with **Live** on) | per browser |
 
 **The styles.**
@@ -77,7 +78,7 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 
 **Crowds.** An area with more people than seats packs the rest into a tighter grid, then shows "+N" in its corner. There only calls and work get bubbles (a few at most), and name tags show on hover or focus.
 
-**All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. A tile's label, or a double-click on the tile, opens that office. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
+**All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. It is where the Office opens until you pick something else in the switcher. A tile's label, or a click on the tile (off its people), opens that office for this visit; **← All offices** in the bar goes back. A pick from the switcher is kept per device, as before. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
 
 **Carousel…** (the same switcher, two or more stored offices, on the signed-in dashboard) is signage for a TV: each ticked office fills the screen in turn, at the interval you pick (15 seconds to 10 minutes). **Carousel n/m offices ▾** in the bar opens a scrollable checklist (Select all / Select none; Esc or a click outside closes it), so twenty offices still leave the bar one row; the order is the stored list. **Pause** and **Next** sit in the bar and in fullscreen; Space pauses, ← / → (or N / P, or a remote's play/next/previous) step. The offices and the interval are kept in this browser; playing starts whenever you enter the carousel. Edit offices and Edit layout wait. A share link does not offer it.
 
@@ -113,7 +114,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9). Every coordinate in the manifest is in these logical units. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 4096 px a side, so a 5120-wide canvas's background is drawn scaled up). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -209,6 +210,7 @@ A person's line for a state comes from the first of these that has lines for it,
 - A portrait is a file, or expressions by state (`idle`, `working`, `needs`; at least one). A missing state shows `idle`, then any it has. Transparent PNGs up to 1024×1536 px, drawn standing (bottom-anchored) behind the box.
 - `default` is for agents. `byInstance` (up to 500) names instances; `byUser` (up to 200) a person's account as the chat records it, `adapter:id`; `npc` (up to 128) a furniture item the pack defines.
 - `dialogBox.frame` is a 9-slice picture up to 512×512 px with `slice` image px a side (1–128, default 8); the colours are `#rrggbb`, each defaulting to the dashboard's.
+- `dialogBox.bubble` styles the reply drawn over a head when **Talk** is "Over their head" (below): the same keys (`frame` up to 512×512, `slice` default 6, `background`, `border`, `text`, `name`) plus `enter`, how it comes in: `pop` (default), `fade` or `none`. Without it the reply is on light paper, like the state bubbles.
 - They're loaded only the first time the box needs them.
 
 **Custom snacks and eating animations (#4255).** A pack can ship optional snacks and an `eat` pose (`characters.<set>.eat`, any single-sheet, multi-sheet, or frame-list strip):
@@ -279,7 +281,7 @@ A person's line for a state comes from the first of these that has lines for it,
 
 On a stored office in a zones style, a fleet admin can move things with **Edit layout**. Changes are kept as that office's own *overrides*; the pack stays as it was uploaded, and other offices on the same pack aren't affected.
 
-- The overlay shows the 1280×720 coordinate grid (**Show coordinates**) and a handle for every seat, furniture item, the door, the mail drop and each waypoint. The mail drop is an envelope where letters from other offices land; on a pack that doesn't name one it's dashed and shows where letters land now, and dragging it gives the office its own. Each empty seat shows a faint figure posed for its area.
+- The overlay shows the pack's coordinate grid, 1280×720 unless it sets `canvas` (**Show coordinates**) and a handle for every seat, furniture item, the door, the mail drop and each waypoint. The mail drop is an envelope where letters from other offices land; on a pack that doesn't name one it's dashed and shows where letters land now, and dragging it gives the office its own. Each empty seat shows a faint figure posed for its area.
 - Drag a handle, or Tab to one and use the arrow keys (Shift moves by 10).
 - **Add waypoint** / **Remove waypoint**; with a waypoint selected, **Join to** another one or **Unjoin** a corridor.
 - An item that sleeps at bedtime also has a night handle, "Item {id} (night)": its night picture drawn faint, a moon, and a thin line to its day place. Drag it to give the item its own night place; **Back to the pack's night place** undoes that.
@@ -332,6 +334,35 @@ What it shows:
 - A screen reader hears each line once (a polite live region).
 
 **Faces.** A pack's `portraits` (below) are used first. Otherwise an agent is drawn as its avatar (its identity-card picture, bot avatar or persona emoji) in a frame, else its initial; a person as their initial. A share link has no avatars: portraits, else initials.
+
+### Talk from the Office
+
+**Talk** in **⚙ Display options** picks what a person's **Chat** (their card, a desk, the dialogue box) does. It's per browser, and only on the dashboard (never a share link or a guest page):
+
+| Talk | What Chat does |
+|---|---|
+| **Pop-up window** (default) | Opens their chat in its own window, as before. |
+| **Side panel** | A panel beside the office: their recent messages, the reply rendered as in the chat, a box to type in. On a phone, a sheet from the bottom. |
+| **Dialogue box** | A visual-novel box laid over the foot of the scene (the Office keeps its size), with their portrait large beside it and a line inside the box to type to them. |
+| **Over their head** | The reply is drawn over their head on the map, a page at a time, with a line under the scene to type to them. |
+
+- **Enter** sends; **Shift+Enter** is a new line (and Enter while typing with an input method never sends).
+- Every way shows the same conversation as the chat: what you send here is in the chat, and their replies arrive live.
+- **Open full chat** opens the chat itself, for files, quotes, reactions and the rest.
+- One talk at a time: with **Side panel** or **Over their head** the [dialogue box](#the-dialogue-box) isn't shown under it, and with **Dialogue box** the talk box takes its place. **Dialogue box** works whether or not **Dialogue** is ticked, and leaves that tick as you set it.
+
+**The Dialogue box way.** The box shows only their side: the whole reply, typed out, two lines a page (three on a phone), with ▼ once a page is whole. A click on the box (or Enter or Space) shows the rest of the page at once, then the next page, and after the last page closes the reply. The words keep clear of the portrait. The pack's `dialogBox` colours are used, else a night blue with gold. **History** opens the conversation's backlog over the box: both sides, the reply rendered as in the chat, and **Open full chat**. **×** closes the box.
+
+**Over their head.** The reply is wrapped into pages over their head, in the pack's `dialogBox.bubble` style (below), else light paper. **Full reply** under the scene shows their last reply whole.
+
+**Reading** (the box's own buttons, and the row under the scene for Over their head; per browser):
+
+| Reading | What it does |
+|---|---|
+| **Click** (default) | Each page waits for a click. |
+| **Auto** | A typed page goes on by itself after a pause that grows with its length (1.4–5 s). |
+| **Fast** | Typed quickly, and goes on after a short pause. |
+| **Skip** | Closes every reply shown now. |
 
 ## Share a view
 
@@ -485,7 +516,8 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `format` | ✅ | `1` |
 | `id` | ✅ | 1–40 letters, digits, `_` or `-`. Not `pixel`, `studio`, `cozy`, `guild` or `school`; ids that differ only in case clash |
 | `scale` | ❌ | logical units per image pixel, 1–8 (default 2) |
-| `background` | with `stateZones` | the scene's picture, 16:9 |
+| `canvas` | ❌ | `[w, h]`: the scene's size in logical units, 640–5120 × 360–2880 (default 1280×720). An older AgEnD refuses a pack with it |
+| `background` | with `stateZones` | the scene's picture, 16:9 (with `canvas`: its shape) |
 | `foreground` | ❌ | a 16:9 picture over the scene (with `stateZones` only) |
 | `matte` | ❌ | `#rrggbb`, the colour around the scene |
 | `areas` | with `stateZones` | `{ name: { rect: [x, y, w, h], seats: [seat, …] } }`, up to 32 areas and 64 seats each |
@@ -507,7 +539,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
 | `card` | ❌ | `{ preset?, style?, layout? }`: optional Agent profile card preset (`default`, `rpg`, `compact`, `dossier`), WCAG-checked `#rrggbb` colours, `backgroundImage` (≤ 1024×1024 px), 9-slice `frame` (≤ 512×512 px), and layout overrides (#4256) |
 
-A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
+A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down, or across and down the pack's own `canvas`. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
 ### Strips
 
@@ -521,7 +553,7 @@ A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "
 | `w`, `h` | 1–512 image pixels per frame | — |
 | `fps` | 0–30; 0 shows the first frame only | 4 |
 | `ax`, `ay` | the anchor in image pixels | bottom centre |
-| `dw`, `dh` | the displayed size in logical units (1–1280, 1–720) | `w·scale`, `h·scale` |
+| `dw`, `dh` | the displayed size in logical units (1 to the canvas's width, 1 to its height: 1280 and 720 by default) | `w·scale`, `h·scale` |
 | `once` | `true`: play once from frame 0 and hold the last frame | `false` |
 | `loopFrom` | `0` to `totalFrames − 1`: play intro frames `0 .. loopFrom − 1` once, then loop from `loopFrom` (not with `once: true`) | `0` |
 | `row`, `col` | 0–4095: cut the frames from a bigger sheet — frame *i* is the `w × h` cell at column `col + i` of row `row`, so one picture can hold several poses and be shared by several strips. Its picture must then be at least `(col + frames)·w × (row + 1)·h` (a strip without them needs exactly `frames·w × h`). Not with a frame list | — |
@@ -631,3 +663,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
 | Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |
 | Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file and 42 MiB a pack (#4382; 64 Mpx of decoded pixels, unchanged). An older AgEnD refuses a pack that uses them | 2.4.0-beta |
+| A pack's own canvas size, `canvas: [w, h]` (640×360 to 5120×2880) (#4403). An older AgEnD refuses a pack that sets it | 2.4.0-beta |

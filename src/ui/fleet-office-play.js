@@ -192,8 +192,9 @@ export function createSnacks() {
     feed,
     place(snack, at, t, ctx = {}) {
       if (!snack || !at) return null;
-      const x = Math.max(16, Math.min(LOGICAL.w - 16, Math.round(at.x)));
-      const y = Math.max(16, Math.min(LOGICAL.h - 16, Math.round(at.y)));
+      const cw = (ctx.graph && ctx.graph.width) || LOGICAL.w, ch = (ctx.graph && ctx.graph.height) || LOGICAL.h;
+      const x = Math.max(16, Math.min(cw - 16, Math.round(at.x)));
+      const y = Math.max(16, Math.min(ch - 16, Math.round(at.y)));
       while (placed.length >= SNACK.MAX_PLACED) placed.shift();
       const item = {
         id: `sn-${++seq}`,

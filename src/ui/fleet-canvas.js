@@ -31,6 +31,7 @@ import { avatarOf, firstCharacter, namesOf } from "/assets/instance-nav.js";
 import { identityClasses, identityOf, paintIdentity, useIdentityColors } from "/assets/identity-color.js";
 import { buildOrgView, nodeText, OrgChart, OrgSummary } from "./fleet-org.js";
 import { Office, useOfficePhone } from "./fleet-office.js";
+import * as officeTalk from "./fleet-office-talk.js";
 import { OC, REST_KEY, SUM_LINE, canvasLayout, hits, needle, openingRegion, summaryRows } from "./fleet-canvas-layout.js";
 import { createTrafficStore, FAR_K, HEAD, POLL_MS, sendingBy, trafficEdges } from "./fleet-traffic.js";
 import { routeScene } from "./fleet-route-scene.js";
@@ -513,7 +514,7 @@ export function OrgCanvas({ org, app, lease }) {
     </div>
     ${mode === "canvas" && live && keyOpen ? html`<${Legend} />` : null}
     ${mode === "list" ? html`<${OrgChart} org=${org} app=${app} bare=${true} sending=${sending} />`
-      : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${guestPage() ? null : openOfficeChatWindow}
+      : mode === "office" ? html`<${Office} view=${view} traffic=${live ? traffic : null} q=${q} lease=${lease} onOpen=${guestPage() ? null : openOfficeChatWindow} chatUi=${guestPage() ? null : officeTalk}
           more=${officeSheet && officeMore} onMore=${officeSheet ? setOfficeMore : null} live=${live} onLive=${setLive} />`
       : html`<${Canvas} view=${view} folded=${folded} onFold=${onFold} q=${q} jump=${jump} traffic=${live ? traffic : null} />`}
   </div>`;

@@ -1,0 +1,283 @@
+{
+  "sourceHead": "3bbe54e5de2e2f81c6753a716d902d2ca14e93d6",
+  "baseRef": "074e5886017b12fad33f7c8b33677705b918012b",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the panel takes the members rail's place",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the panel and its width select have the page's own background (rgb(255, 255, 255))",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: a wider panel names Reply about this page beside its icon",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: Reply about this page puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the panel takes the members rail's place",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the panel and its width select have the page's own background (rgb(33, 33, 33))",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: a wider panel names Reply about this page beside its icon",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: Reply about this page puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: the panel and its width select have the page's own background (rgb(255, 255, 255))",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: ⋯ names Reply about this page",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: on a phone Reply closes the page and puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: the panel and its width select have the page's own background (rgb(33, 33, 33))",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: ⋯ names Reply about this page",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: on a phone Reply closes the page and puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3591-desk-en-light-before-1-card.png",
+      "sha256": "8c209d636423c7d770b60513720086c2ecffce29dbb652c47e126a7d704b1df1"
+    },
+    {
+      "path": "m3591-desk-en-light-after-1-card.png",
+      "sha256": "bb785922addec3d3d7d8fe24ec70d3aee219d5f7f1e206c4b1c00ea0872827a5"
+    },
+    {
+      "path": "m3591-desk-en-light-after-2-running.png",
+      "sha256": "fb801fad566cd9a9aadc17b8e1e8fecc66f5de825fd06eb7c937617b924266ce"
+    },
+    {
+      "path": "m3591-desk-en-light-after-3-panel.png",
+      "sha256": "4312b94ac66d4262b01bbbf5587718e8a7ea98daf9e64e295918ad5a35f1c3d5"
+    },
+    {
+      "path": "m3591-desk-en-light-after-3b-panel-wide-reply.png",
+      "sha256": "6b1e8f432cfde2f0b22abb13137f426516b12ac0b53c396a36fa17dfa00405a5"
+    },
+    {
+      "path": "m3591-desk-en-light-after-4-reply-line.png",
+      "sha256": "d924963139323bb01bb0b7ac70c8a8021979959046c8eccf30d3293586564f33"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-before-1-card.png",
+      "sha256": "2eaeb86453f883da7bf72bf6db0566fe557ab707f1ca5b16f3edde6ec93c0b7c"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-1-card.png",
+      "sha256": "3d529c129cff37a198ae5d368c3aa54e50250703133b1c2117584cb580d2ee1f"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-2-running.png",
+      "sha256": "4be4710fdf5e28dcd3fcc3e64351ad353c6d10237c9103097a78b781e3759bf4"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-3-panel.png",
+      "sha256": "c5352503d90e76ca9a439723acf582e791b616576fe591d6eba69f452d5019a3"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-3b-panel-wide-reply.png",
+      "sha256": "530890f20bf82207aac2cd70eff4186be53441f3cd3d9baec95ec944dc7571ce"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-4-reply-line.png",
+      "sha256": "9935a5fd7942ddcb488914cbdcb8272b54c8aac838e9df9ab4b168aeff8093db"
+    },
+    {
+      "path": "m3591-phone-en-light-before-1-card.png",
+      "sha256": "20e868fe362baf049fcf7fedebb53c979438bcfa14edbb4b8327c6584e12bb69"
+    },
+    {
+      "path": "m3591-phone-en-light-after-1-card.png",
+      "sha256": "d66ebd0bc8ee2e68413b6b2d615b8cc60ca2576eae72309c8b2a9ff4fb62f464"
+    },
+    {
+      "path": "m3591-phone-en-light-after-2-running.png",
+      "sha256": "016e1e564bb305484511ff6a2536fc0d2645a49d2ddc869bd57baa0a3f0101eb"
+    },
+    {
+      "path": "m3591-phone-en-light-after-3-panel.png",
+      "sha256": "bb60a1ea6f9bf1b265f24b04c03c05c546c61ea24c2136f74f84491716873315"
+    },
+    {
+      "path": "m3591-phone-en-light-after-3b-more-reply.png",
+      "sha256": "a92c27a5f6220131e06cac87b134019feb5d2283d71dfa1b8dc1e8224ebdf349"
+    },
+    {
+      "path": "m3591-phone-en-light-after-4-reply-line.png",
+      "sha256": "8c3cd84826f2d0e9d5d1d2ca5fd79e55175deb720d9f39f0317719421cb1364f"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-before-1-card.png",
+      "sha256": "c3963f0707d0076420accf2224fb08ad062cd0b95bd5291545ca0e0202d113cc"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-1-card.png",
+      "sha256": "e24cde23df960153779683a31035822667b5d0ce992529050f11b4d3c78c3b0f"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-2-running.png",
+      "sha256": "caab013f07b8f7f3954eea7638fab82d105d52134da54451d341c54e7c3f7083"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-3-panel.png",
+      "sha256": "8324a4d46a37b8978c9e484b65941c3d83daeddc02bc2fc317eff22583ab0ca4"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-3b-more-reply.png",
+      "sha256": "47c1113c458f685ca42fb32f310ef9683327f8966d1ba816a026e20be07c1bb3"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-4-reply-line.png",
+      "sha256": "6d9c4f74d8095c8ce3f55e30c33898c91daaebc5b429c9eda305e7b0269e3eaf"
+    }
+  ],
+  "replyControl": {
+    "en": {
+      "name": "Reply about this page",
+      "title": "Reply to the message this page came in, naming the page — you write what to change"
+    },
+    "zh-TW": {
+      "name": "回覆這個頁面",
+      "title": "回覆這個頁面所在的訊息並註明頁面——要改什麼由你來寫"
+    }
+  }
+}

@@ -27,7 +27,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
+import { canvasOf, checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
 /**
@@ -116,9 +116,11 @@ function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; heigh
     }
   }
   const bg = pack.background ? sizes.get(pack.background) : undefined;
-  if (bg && bg.width * 9 !== bg.height * 16) return refuse(400, "skin_background_aspect", `background: ${pack.background} is ${bg.width}×${bg.height} px; it must be 16:9`);
+  // The canvas's shape, reduced ("2560:1440" reads 16:9; 5120:2160 reads 64:27).
+  const cv = canvasOf(pack), gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a), g = gcd(cv.w, cv.h), shape = `${cv.w / g}:${cv.h / g}`;
+  if (bg && bg.width * cv.h !== bg.height * cv.w) return refuse(400, "skin_background_aspect", `background: ${pack.background} is ${bg.width}×${bg.height} px; it must be ${shape === "16:9" ? "16:9" : `the canvas's shape, ${shape}`}`);
   const fg = pack.foreground ? sizes.get(pack.foreground) : undefined;
-  if (fg && fg.width * 9 !== fg.height * 16) return refuse(400, "skin_foreground_aspect", `foreground: ${pack.foreground} is ${fg.width}×${fg.height} px; it must be 16:9`);
+  if (fg && fg.width * cv.h !== fg.height * cv.w) return refuse(400, "skin_foreground_aspect", `foreground: ${pack.foreground} is ${fg.width}×${fg.height} px; it must be ${shape === "16:9" ? "16:9" : `the canvas's shape, ${shape}`}`);
   // #2861: a portrait is a half-body picture (at most PORTRAIT_MAX); the dialogue box's frame a small 9-slice (FRAME_MAX).
   const p = pack.portraits;
   const portraits = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)].flatMap((e) => (e ? Object.values(e) : [])) : [];
@@ -126,11 +128,12 @@ function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; heigh
     const s = sizes.get(src);
     if (s && (s.width > PORTRAIT_MAX.w || s.height > PORTRAIT_MAX.h)) return refuse(400, "skin_portrait_dimensions", `portraits: ${src} is ${s.width}×${s.height} px; at most ${PORTRAIT_MAX.w}×${PORTRAIT_MAX.h}`);
   }
-  const frame = pack.dialogBox?.frame;
-  if (frame) {
+  for (const [at, box] of [["dialogBox", pack.dialogBox], ["dialogBox.bubble", pack.dialogBox?.bubble]] as const) {
+    const frame = box?.frame;
+    if (!frame) continue;
     const s = sizes.get(frame);
-    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `dialogBox.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
-    if (s && pack.dialogBox?.slice && (pack.dialogBox.slice * 2 >= s.width || pack.dialogBox.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `dialogBox.slice: ${pack.dialogBox.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
+    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `${at}.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
+    if (s && box.slice && (box.slice * 2 >= s.width || box.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `${at}.slice: ${box.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
   }
   // #4256: card backgroundImage (CARD_BG_MAX) and 9-slice frame (FRAME_MAX + slice bounds).
   const cardBg = pack.card?.style?.backgroundImage;

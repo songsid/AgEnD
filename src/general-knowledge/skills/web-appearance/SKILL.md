@@ -343,7 +343,7 @@ tools are not in your list), you can publish them yourself instead of asking a p
 The skin-pack manifest format — every key, its ranges, multi-sheet (`src: [...]`, up to 32 sheets / 600 frames) and
 frame-list (`frames: [{ src, ms? }]`) long animations with `durations`, `once` and `loopFrom`, optional custom `snacks`
 (1–12 items) and `characters.<set>.eat` strips (#4255), a minimal example — and
-the limits (220 files, 42 MiB, a 64 Mpx decoded-pixel cap), `row`/`col` sheet cells, the `pat`, `stand` and `walkLeft` strips and the card's `gap` and `motion` are in the Office guide:
+the limits (220 files, 42 MiB, a 64 Mpx decoded-pixel cap), `row`/`col` sheet cells, a pack's own `canvas: [w, h]` size (640×360 to 5120×2880; default 1280×720), the `pat`, `stand` and `walkLeft` strips and the card's `gap` and `motion` are in the Office guide:
 [docs/office.md → Make a skin pack](https://github.com/songsid/AgEnD/blob/main/docs/office.md#make-a-skin-pack). Point people there too when they ask how the Office works.
 
 ## Limits

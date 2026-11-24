@@ -33,6 +33,8 @@ const LOBBY_KEY = "agend_org_office_lobby";
 const KEY_OPEN_KEY = "agend_org_office_key";
 /** #2861: whether the dialogue box shows here (default: off — nothing changes until a person ticks it). */
 const DIALOGUE_KEY = "agend_org_office_dialogue";
+const TALK_KEY = "agend_org_office_talk";
+const TALK_READ_KEY = "agend_org_office_talk_read";
 /** #4010: { ids, interval } — the offices in the carousel and the seconds each is shown (playing is not kept). */
 const CAROUSEL_KEY = "agend_org_office_carousel";
 /** #2540: { "<office>@<style>": [k, cx, cy] (and a 1 after them: a fit) } — the last VIEWS_MAX views, the most recent last. */
@@ -221,7 +223,8 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
      * #2554's All offices (fleet-office-overview.js ALL_ID; with fewer than two offices stored: the auto office), or
      * #4010's carousel (fleet-office-carousel.js CAROUSEL_ID; with fewer than two ticked: the whole fleet).
      */
-    choice: () => { const v = read(CHOICE_KEY); return typeof v === "string" && v && v.length <= 40 ? v : AUTO_ID; },
+    /** The office picked here, else `none` (by default the whole fleet's). */
+    choice: (none = AUTO_ID) => { const v = read(CHOICE_KEY); return typeof v === "string" && v && v.length <= 40 ? v : none; },
     saveChoice: (id) => write(CHOICE_KEY, String(id)),
     /** #4010: this browser's carousel pick ({ ids, interval }), or null (nothing saved here yet). */
     carousel: () => {
@@ -269,6 +272,12 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     /** #2861: whether the dialogue box shows here (default: off). */
     dialogueOn: () => read(DIALOGUE_KEY) === "1",
     saveDialogueOn: (v) => write(DIALOGUE_KEY, v ? "1" : "0"),
+    /** How a person is talked to from here (fleet-office-talk.js TALK_MODES), as kept; null: never picked. */
+    talkMode: () => read(TALK_KEY),
+    saveTalkMode: (v) => write(TALK_KEY, String(v)),
+    /** How a reply plays in the box and the bubble (fleet-office-talk.js READ_MODES), as kept; null: never picked. */
+    talkRead: () => read(TALK_READ_KEY),
+    saveTalkRead: (v) => write(TALK_READ_KEY, String(v)),
     saveLobbyTile: (v) => write(LOBBY_KEY, v ? "1" : "0"),
     /** The view kept for `key` (an office and its style): { k, cx, cy } (fleet-office-view.js savedOf), or null. */
     view: (key) => {
