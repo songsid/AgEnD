@@ -59,10 +59,11 @@ agent unknown to it. `GEN_MCP=<script>` makes `gen-cmd.ts` register one stdio se
 (`GEN_MCP_MARK` is handed to it as `STUB_MARK`). `stub-mcp.mjs` is that server: it answers the MCP handshake and logs
 each start, request and exit.
 
-`mcp-start.sh <VERSION>` (inside `netns.sh`, with `AUDIT`, `PORT` and `MARK` set) runs a fresh launch, a turn, an
-in-place `/model` switch, another turn, quit, a production resume launch and a turn, and prints the log. On 0.171.0
-and 0.172.0 alike, the server starts and lists its tools within about 1.5 s of each launch, before any turn, and stays
-up through the turns and the switch. Codex 0.172.0 defers only servers that are not `required`, when it rebuilds its
+`mcp-start.sh <VERSION>` (inside `netns.sh`, with `AUDIT`, `PORT` and `MARK` set) runs a fresh launch, two turns,
+quit, a production resume launch and a turn, and prints the log. It checks on the pane that each turn reached codex.
+On 0.171.0 and 0.172.0 alike, the server starts and lists its tools within about 1.5 s of each launch, before any turn,
+and stays up through the turns until quit. An in-place rebuild (the one case 0.172.0 may defer) isn't exercised: the
+mock lists no models, so a `/model` switch is refused. Codex 0.172.0 defers only servers that are not `required`, when it rebuilds its
 server set in the same process with a tool catalog already cached. A launch has no earlier set, so it never defers.
 
 ## Codex 0.164.0
