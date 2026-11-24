@@ -124,3 +124,12 @@ export function headerCounts(members) {
 export function collapse(list, limit = 8) {
   return { shown: list.slice(0, limit), rest: Math.max(0, list.length - limit) };
 }
+
+/**
+ * M-3533 R2b: an agent's picture in this room — for the room's members only; `?v=` is the hash the room shows, so a new
+ * picture is a new address. null when there is none (or the room or agent is unknown).
+ */
+export function agentPictureSrc(roomId, exposureId, slot, hash) {
+  return roomId && exposureId && typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash)
+    ? `/hub/v1/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(exposureId)}/picture/${slot}?v=${hash}` : null;
+}
