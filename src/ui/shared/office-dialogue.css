@@ -53,3 +53,55 @@
 .ot-play { display: flex; gap: 2px; flex: 0 0 auto; align-self: center; }
 .ot-play .ot-read.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 @media (max-width: 599px) { .ot-bar-row { flex-wrap: wrap; } .ot-play { order: -1; width: 100%; justify-content: flex-end; } }
+
+/* Talk "Dialogue box" on the scene (fleet-office-talk.js TalkStage): over the stage's foot; the Office keeps its size. */
+.ot-stage { position: absolute; inset: 0; z-index: 4; pointer-events: none; container-type: size; }
+.ot-stage .ot-box, .ot-stage .ot-tools { pointer-events: auto; }
+.ot-figure { position: absolute; right: 1.5cqw; bottom: 2cqh; z-index: 2; height: 74cqh; max-width: 34cqw; object-fit: contain; object-position: right bottom;
+  pointer-events: none; user-select: none; -webkit-user-select: none; filter: drop-shadow(var(--shadow-1)); }
+.ot-box { position: absolute; left: 2.5cqw; right: 2.5cqw; bottom: 2.5cqh; z-index: 1; display: flex; flex-direction: column; gap: 0.55em;
+  padding: 0.9em calc(var(--ot-pad, 0px) + 1em) 0.9em 1.3em; font-size: max(var(--fs-sm), 1.45cqw); line-height: 1.5; color: var(--ot-text);
+  background: color-mix(in srgb, var(--ot-bg) 93%, transparent); border: 2px solid var(--ot-gold); border-radius: 0.9em;
+  box-shadow: var(--shadow-2), inset 0 0 0 1px color-mix(in srgb, var(--ot-gold) 35%, transparent); }
+.ot-tools { position: absolute; top: -1.9em; right: calc(var(--ot-pad, 0px) + 0.6em); display: flex; gap: 0.3em; font-size: 0.72em; }
+.ot-tool { padding: 0.2em 0.8em; color: var(--ot-text); background: color-mix(in srgb, var(--ot-bg) 88%, transparent); border: 1px solid var(--ot-gold);
+  border-radius: 99em; font: inherit; cursor: pointer; }
+.ot-tool.on { color: var(--ot-bg); background: var(--ot-name); font-weight: 700; }
+.ot-tool:focus-visible, .ot-link:focus-visible, .ot-read:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ot-read { display: flex; flex-direction: column; gap: 0.55em; cursor: pointer; min-width: 0; }
+.ot-heard { display: flex; align-items: center; gap: 0.8em; min-width: 0; }
+.ot-face { flex: 0 0 auto; width: 2.6em; height: 2.6em; display: grid; place-items: center; overflow: hidden; font-weight: 700; color: var(--ot-name);
+  background: color-mix(in srgb, var(--ot-bg) 70%, var(--ot-gold)); border: 2px solid var(--ot-gold); border-radius: 0.4em; }
+.ot-face img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.ot-plate { position: relative; isolation: isolate; flex: 0 0 auto; display: inline-flex; align-items: center; padding: 0.1em 1.25em; font-weight: 700; color: var(--ot-name);
+  background: var(--ot-gold); clip-path: polygon(0.75em 0, calc(100% - 0.75em) 0, 100% 50%, calc(100% - 0.75em) 100%, 0.75em 100%, 0 50%); }
+.ot-plate::before { content: ""; position: absolute; inset: 2px; z-index: -1; background: var(--ot-bg);
+  clip-path: polygon(0.7em 0, calc(100% - 0.7em) 0, 100% 50%, calc(100% - 0.7em) 100%, 0.7em 100%, 0 50%); }
+.ot-said { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.12em; }
+.ot-rule { height: 1px; background: linear-gradient(90deg, var(--ot-gold), color-mix(in srgb, var(--ot-gold) 15%, transparent)); }
+.ot-answer { display: flex; align-items: flex-start; gap: 1em; min-width: 0; }
+.ot-words { flex: 1 1 auto; min-width: 0; min-height: 3em; font-size: 1.12em; line-height: 1.6; white-space: pre-line; overflow-wrap: anywhere; }
+.ot-status { font-style: italic; color: var(--ot-name); opacity: 0.85; }
+.ot-cue { margin-left: 0.35em; color: var(--ot-name); animation: ot-cue 1s ease-in-out infinite; }
+@keyframes ot-cue { 50% { transform: translateY(0.18em); opacity: 0.55; } }
+.ot-agent { margin-top: 0.15em; }
+.ot-more-n { align-self: flex-end; font-size: 0.75em; color: var(--ot-name); }
+.ot-line { display: flex; align-items: center; gap: 0.7em; }
+.ot-stage .ot-compose { flex: 1 1 auto; align-items: center; }
+.ot-stage .ot-input { min-height: 2.3em; font-size: 0.95em; color: var(--ot-text); background: color-mix(in srgb, var(--ot-bg) 80%, black);
+  border: 1.5px solid var(--ot-gold); border-radius: 0.5em; padding: 0.45em 0.8em; }
+.ot-stage .ot-input::placeholder { color: color-mix(in srgb, var(--ot-text) 55%, transparent); }
+.ot-stage .ot-send { min-height: 2.3em; padding: 0.35em 1.4em; font-size: 0.95em; font-weight: 700; color: var(--ot-bg); border: 0; border-radius: 0.45em;
+  background: linear-gradient(180deg, var(--ot-name), var(--ot-gold)); }
+.ot-stage .ot-send:disabled { opacity: 0.6; }
+.ot-sep { color: var(--ot-gold); opacity: 0.7; }
+.ot-link { flex: 0 0 auto; padding: 0; font: inherit; font-size: 0.95em; color: var(--ot-name); background: none; border: 0; text-decoration: underline;
+  text-underline-offset: 0.2em; cursor: pointer; white-space: nowrap; }
+/* A phone: the portrait stands behind the box, its face above it; the words use the box's whole width. */
+.ot-stage.phone .ot-figure { z-index: 0; right: 0; height: 62cqh; max-width: 60cqw; }
+.ot-stage.phone .ot-box { left: 2cqw; right: 2cqw; bottom: 1.5cqh; padding: 0.8em 0.9em; font-size: max(var(--fs-sm), 3.4cqw); }
+.ot-stage.phone .ot-tools { right: 0.6em; }
+.ot-stage.phone .ot-face { width: 2.1em; height: 2.1em; }
+@media (prefers-reduced-motion: reduce) { .ot-cue { animation: none; } }
+/* While the box is up, the snack tray (bottom left of the scene) waits under it. */
+.oo-stage:has(.ot-stage) .oo-snacks { display: none; }

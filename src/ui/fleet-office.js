@@ -1960,8 +1960,31 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const talkWho = talkTo ? people.find((d) => d.node && d.node.name === talkTo) || null : null;
   const talkLabel = talkWho ? nodeText(talkWho.node).primary : talkTo;
   const sidePanel = tmode === "panel" && !!talkTo;
+  /** Talk "Dialogue box": what the box on the scene shows now (fleet-office-talk.js TalkStage), or null. */
+  const stagePeek = () => {
+    const d = dlgRef.current;
+    const pf = d ? pickFront(dlg.list(), (n) => d.who.has(n), (n) => d.who.get(n).look?.pose === "paused") : { front: null, more: 0 };
+    const conv = pf.front, name = conv ? conv.instance : talkTo;
+    if (!name) return null;
+    const who = d ? d.who.get(name) : null, node = who ? who.node : (people.find((x) => x.node && x.node.name === name) || {}).node;
+    if (!node) return null;
+    const sk = (who && who.skin) || skin, pack = sk && sk.pack, person = conv ? conv.person : null, act = actsHere && actsHere.get(name);
+    const pic = (src) => { const im = src && sk && typeof sk.picture === "function" ? sk.picture(src, () => {}) : null; return im && im.src ? im.src : null; };
+    return {
+      name, label: nodeText(node).primary, conv, more: pf.more,
+      person: person ? person.name || to("dlgSomeone") : null, mine: !!(conv && chat.mine(name, conv.full ?? conv.text)),
+      status: node.state === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null,
+      portrait: pack ? pic(portraitSrc(pack, { agent: name, state: node.state })) : null,
+      face: person && pack ? pic(portraitSrc(pack, { account: person.account })) : null, faceText: person ? firstCharacter(person.name || "?") : "",
+      colours: (pack && pack.dialogBox) || null,
+    };
+  };
+  const stageOps = {
+    now, skip: () => skipTalk(), target: (n) => { if (talkTo !== n) setTalkTo(n); },
+    drop: (instance) => { dlg.drop(instance); dlgWake(); },
+  };
   // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
-  const dockShown = dialogueOn && dlgVisible && (tmode === "window" || tmode === "box");
+  const dockShown = dialogueOn && dlgVisible && tmode === "window";
   dlgRef.current = dialogueOn ? {
     vn: tmode === "box", read: readMode,
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
@@ -2619,6 +2642,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
       <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(carouselPick ? "labelCarousel" : overview ? "labelAll" : "label")}
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onClick=${onClick} ondblclick=${onDblClick}></canvas>
+      ${tmode === "box" ? html`<${chatUi.TalkStage} peek=${stagePeek} ops=${stageOps} talk=${chat} read=${readMode} onRead=${pickRead} phone=${phone}
+        onFull=${openFull} onClose=${() => { dlg.skip(); setTalkTo(null); dlgWake(); }} />` : null}
       ${overview ? tiles.map((tl) => {
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };
         return tl.lobby ? html`<span key=${tl.key} ref=${at} class="oo-tile-label lobby">${text}</span>`
@@ -2715,7 +2740,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
       aria-label=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : dlgSay} title=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
-    ${tmode === "box" || tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
+    ${tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
       read=${readMode} onRead=${pickRead} onSkip=${skipTalk} />` : null}
     ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} sheet=${phone}
       onClose=${() => setTalkTo(null)} onFull=${openFull} top=${stageRef.current ? stageRef.current.offsetTop : null} />` : null}

@@ -16,6 +16,7 @@ register("otalk", {
     full: "Open full chat", reply: "Full reply", close: "Close", loading: "Loading…", failed: "Not sent — try again",
     empty: "No messages yet. Say hello.", sending: "Sending…", talkTo: "Talking to {0}", file: "[a file]",
     next: "Click: the rest, the next page, or close",
+    you: "You",
     play: "Reading", read_click: "Click", read_auto: "Auto", read_fast: "Fast", skip: "Skip",
     readTitle: "Click: each line waits for a click. Auto: it goes on by itself. Fast: quickly. Skip: close every reply now.",
   },
@@ -26,6 +27,7 @@ register("otalk", {
     full: "開啟完整聊天", reply: "完整回覆", close: "關閉", loading: "載入中…", failed: "沒送出去，請再試一次",
     empty: "還沒有訊息，打個招呼吧。", sending: "傳送中…", talkTo: "正在和 {0} 對話", file: "［檔案］",
     next: "點一下：顯示全部、下一頁或關閉",
+    you: "你",
     play: "播放", read_click: "點擊", read_auto: "自動", read_fast: "快速", skip: "跳過",
     readTitle: "點擊：每句等你點一下。自動：自己往下播。快速：很快地往下播。跳過：現在就關掉所有回覆。",
   },
@@ -63,7 +65,7 @@ export function talkTextOf(m) {
 export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` } = {}) {
   // said: name → its last live reply over the head, { text, at, page, pageAt, pages, whole, wholeAt } (the drawing
   // fills pages / whole / wholeAt; advance() turns the page or lets it go).
-  const threads = new Map(), subs = new Set(), said = new Map();
+  const threads = new Map(), subs = new Set(), said = new Map(), sent = new Set();   // sent: "name|text" said from here
   const changed = (name) => { for (const fn of [...subs]) fn(name); };
   const thread = (name) => { if (!threads.has(name)) threads.set(name, { msgs: [], loaded: false, loading: false, error: false }); return threads.get(name); };
   const row = (m) => {
@@ -75,6 +77,8 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
     thread: (name) => thread(name),
     /** The live reply over `name`'s head, until it is read (advance) or skipped; else null. */
     recent(name) { return said.get(name) || null; },
+    /** Whether `text` to `name` was sent from this page (the box names its speaker "You"). */
+    mine(name, text) { return sent.has(`${name}|${String(text || "").trim()}`); },
     /** A click on it (or its turn to go on): the page whole while it types, else the next page, else it goes. */
     advance(name) {
       const r = said.get(name);
@@ -106,6 +110,7 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
       const words = String(text || "").trim();
       if (!words) return false;
       const th = thread(name), clientId = rid(), mine = { key: `c-${clientId}`, role: "user", text: words, pending: true, clientId };
+      sent.add(`${name}|${words}`); if (sent.size > 200) sent.delete(sent.values().next().value);
       th.msgs.push(mine); keep(th); changed(name);
       try {
         const r = await f("/ui/send", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: name, message: words, clientId }) });
@@ -205,6 +210,110 @@ export function TalkBar({ talk, name, label, onFull, read = null, onRead = null,
           onClick=${() => onRead(m)}>${tt(`read_${m}`)}</button>`)}
         <button type="button" class="btn btn-sm ot-skip" onClick=${onSkip}>${tt("skip")}</button>
       </div>` : null}
+    </div>
+  </div>`;
+}
+
+// ── Variant B, on the scene: the dialogue box laid over the foot of the Office, a visual novel's ──
+// The Office keeps its size and place: the box, the portrait and the line to type in are an overlay on the stage.
+// `peek()` (the Office's) is what it shows now: { name, label, conv, person, mine, status, portrait, face, faceText,
+// more } or null; `ops` { now, drop(instance), skip(), target(name) }. Each conversation keeps its page and typing
+// (page, pageAt, wholeAt, shownAt, replyShownAt) as the canvas box did.
+const PAGE_LINES = { desk: 2, phone: 3 };
+let measureCtx = null;
+const measurer = (font) => {
+  if (!measureCtx && typeof document !== "undefined") measureCtx = document.createElement("canvas").getContext("2d");
+  if (!measureCtx) return (s) => [...s].length * 16;
+  measureCtx.font = font;
+  return (s) => measureCtx.measureText(s).width;
+};
+export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClose }) {
+  const [, tick] = useState(0), reply = useRef(null), root = useRef(null), fig = useRef(null);
+  const v = peek();
+  const live = !!(v && v.conv);
+  useEffect(() => {
+    if (!v) return undefined;
+    const h = setInterval(() => tick((x) => x + 1), 50);
+    return () => clearInterval(h);
+  }, [!!v]);
+  // The text keeps clear of the portrait: its drawn width, as a property (the page's CSP allows no style attribute).
+  useLayoutEffect(() => {
+    const el = root.current, im = fig.current;
+    if (!el || !el.style) return;
+    // Beside the portrait (a desk): the words end where the drawn figure begins (object-fit: contain, at the right).
+    const box = el.querySelector(".ot-box");
+    let pad = 0;
+    if (!phone && box && im && im.complete && im.naturalWidth) {
+      const br = box.getBoundingClientRect(), fr = im.getBoundingClientRect();
+      const drawnW = Math.min(fr.width, (fr.height * im.naturalWidth) / im.naturalHeight);
+      pad = Math.max(0, Math.round(br.right - (fr.right - drawnW)));
+    }
+    el.style.setProperty("--ot-pad", `${pad}px`);
+    // The pack's dialogBox colours, else a visual novel's night blue and gold.
+    const k = (v && v.colours) || {};
+    for (const [name, val] of [["--ot-bg", k.background || "#141b2d"], ["--ot-gold", k.border || "#c8a165"], ["--ot-text", k.text || "#f4f1ea"], ["--ot-name", k.name || "#ffd27a"]]) el.style.setProperty(name, val);
+  });
+  if (!v) return null;
+  const t = ops.now(), c = v.conv;
+  // The reply, page by page (PAGE_LINES), typed at the reading mode's pace; the heard line stays whole.
+  let lines = [], page = 0, pages = 1, n = Infinity, whole = true, pageChars = 0;
+  const answered = !!(c && c.answeredAt !== null);
+  if (c) {
+    if (c.shownAt == null) c.shownAt = t;
+    if (answered && c.replyShownAt == null) c.replyShownAt = t;
+  }
+  if (answered) {
+    const el = reply.current, w = el ? el.clientWidth : 0;
+    const cs = typeof getComputedStyle === "function" && el ? getComputedStyle(el) : null;
+    const all = w > 0 ? wrap(measurer((cs && cs.font) || "16px sans-serif"), c.replyFull ?? c.reply ?? "", w, 400) : [c.replyFull ?? c.reply ?? ""];
+    const per = phone ? PAGE_LINES.phone : PAGE_LINES.desk;
+    pages = Math.max(1, Math.ceil(all.length / per)); page = Math.min(c.page || 0, pages - 1);
+    lines = all.slice(page * per, page * per + per);
+    pageChars = lines.reduce((a, l) => a + [...l].length, 0);
+    const pace = readPace(read, pageChars);
+    n = Math.floor(((t - (c.pageAt ?? c.replyShownAt)) * pace.cps) / 1000);
+    whole = n >= pageChars;
+    if (whole && c.wholeAt == null) c.wholeAt = t;
+    if (whole && pace.wait < Infinity && t - c.wholeAt >= pace.wait) setTimeout(() => step(true), 0);
+  }
+  const last = page >= pages - 1;
+  function step(auto = false) {
+    if (!auto && v.name) ops.target(v.name);   // the line below talks to whoever the box shows
+    if (!c || !answered) return;
+    if (!whole) c.pageAt = -1e15;
+    else if (!last) { c.page = page + 1; c.pageAt = ops.now(); c.wholeAt = null; }
+    else ops.drop(c.instance);
+    tick((x) => x + 1);
+  }
+  const shown = answered ? typed(lines, n).join("\n") : "";
+  const keep = (e) => e.stopPropagation();   // the stage's pan, zoom keys and clicks stay off the box
+  return html`<div class=${`ot-stage${phone ? " phone" : ""}`} ref=${root} onPointerDown=${keep} onKeyDown=${keep} onWheel=${keep} onClick=${keep}>
+    ${v.portrait ? html`<img class="ot-figure" ref=${fig} src=${v.portrait} alt="" draggable="false" />` : null}
+    <div class="ot-box" role="group" aria-label=${tt("talkTo", v.label)}>
+      <div class="ot-tools">
+        ${READ_MODES.map((m) => html`<button key=${m} type="button" class=${`ot-tool${read === m ? " on" : ""}`} aria-pressed=${read === m ? "true" : "false"} onClick=${() => onRead(m)}>${tt(`read_${m}`)}</button>`)}
+        <button type="button" class="ot-tool" onClick=${ops.skip}>${tt("skip")}</button>
+        <button type="button" class="ot-tool ot-x" aria-label=${tt("close")} title=${tt("close")} onClick=${onClose}>×</button>
+      </div>
+      <div class="ot-read" role="button" tabindex="0" aria-label=${tt("next")} onClick=${() => step()}
+        onKeyDown=${(e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); step(); } }}>
+        ${c && c.person ? html`<div class="ot-heard">
+          <span class="ot-face">${v.face ? html`<img src=${v.face} alt="" />` : v.faceText}</span>
+          <span class="ot-plate">${v.mine ? tt("you") : v.person}</span>
+          <span class="ot-said">${c.full ?? c.text ?? ""}</span>
+        </div>
+        <div class="ot-rule"></div>` : null}
+        <div class="ot-answer">
+          <div class="ot-words" ref=${reply} aria-live="polite">${answered ? shown : html`<span class="ot-status">${live ? v.status || "" : ""}</span>`}${answered && whole ? html`<span class="ot-cue" aria-hidden="true">▼</span>` : null}</div>
+          <span class="ot-plate ot-agent">${v.label}</span>
+        </div>
+        ${v.more > 0 ? html`<span class="ot-more-n">+${v.more}</span>` : null}
+      </div>
+      <div class="ot-line">
+        <${Composer} talk=${talk} name=${v.name} label=${v.label} autoFocus=${!live} />
+        <span class="ot-sep" aria-hidden="true">|</span>
+        <button type="button" class="ot-link" onClick=${onFull}>${tt("full")}</button>
+      </div>
     </div>
   </div>`;
 }

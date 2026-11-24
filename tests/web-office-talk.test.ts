@@ -199,14 +199,11 @@ describe("talking on the page", () => {
   const picker = () => p.root.querySelector(".oo-talk-mode");
   const pick = async (v: string) => { const s = picker(); s.value = v; fire(s, "change"); await settle(4); };
   const dialogue = () => p.root.querySelector(".oo-dialogue input");
-  /** A message to atlas, then a click on the dialogue box: what the box opens (the talk, in the picked way). */
+  /** A message to atlas, then a click on the box over the scene: whom the line below talks to. */
   const clickBox = async () => {
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "hi", ts: new Date().toISOString() });
     await tick(20);
-    const cv = p.root.querySelector(".oo-dialogue-canvas");
-    cv.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 180, right: 960, bottom: 180 });
-    const L = D.fitBox(D.boxLayout(960, 180), 1, false);
-    fire(cv, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6 }); await tick(6);
+    p.root.querySelector(".ot-stage .ot-read").click(); await tick(6);
   };
   const type = async (el: any, text: string) => { el.value = text; fire(el, "input"); await settle(2); fire(el, "keydown", { key: "Enter" }); await tick(4); };
 
@@ -216,8 +213,9 @@ describe("talking on the page", () => {
     expect([...picker().querySelectorAll("option")].map((o: any) => o.value)).toEqual(["window", "panel", "box", "bubble"]);
     expect(p.root.querySelector(".ot-bar")).toBeNull();
     expect(p.root.querySelector(".ot-panel")).toBeNull();
+    expect(p.root.querySelector(".ot-stage")).toBeNull();
   });
-  it("dialogue box: picking it turns the box on and puts a line under it; Enter sends to the one clicked", async () => {
+  it("dialogue box: laid over the scene (no row under it); who spoke, the line to type in, the full chat a click away", async () => {
     const opened = vi.fn(() => ({ opener: null })), prior = (p.window as any).open; (p.window as any).open = opened;
     p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
     const priorAuth = (globalThis as any).AgendAuth; (globalThis as any).AgendAuth = { sessionEnded: () => false };
@@ -226,74 +224,77 @@ describe("talking on the page", () => {
       await pick("box");
       expect(dialogue().checked).toBe(true);
       expect(localStorage.getItem("agend_org_office_talk")).toBe("box");
-      const input = () => p.root.querySelector(".ot-bar .ot-input");
-      expect(input().disabled).toBe(true);                                          // nobody picked yet
+      expect(p.root.querySelector(".ot-stage")).toBeNull();                         // nobody yet: the scene as it was
       await clickBox();
       expect(opened).not.toHaveBeenCalled();                                         // no pop-up
-      expect(input().disabled).toBe(false);
+      expect(p.root.querySelector(".oo-stage .ot-stage")).not.toBeNull();            // on the scene...
+      expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();                // ...not a row under it
+      expect(p.root.querySelector(".ot-bar")).toBeNull();
+      expect([...p.root.querySelectorAll(".ot-stage .ot-plate")].map((e: any) => e.textContent)).toEqual(["Alex", "atlas"]);
+      expect(p.root.querySelector(".ot-said").textContent).toBe("hi");
+      const input = () => p.root.querySelector(".ot-stage .ot-input");
       await type(input(), "status please");
       expect(sends).toEqual([expect.objectContaining({ instance: "atlas", message: "status please" })]);
       expect(input().value).toBe("");
-      // The last reply in full, on demand; the whole chat is still one click away.
-      p.root.querySelector(".ot-more").click(); await settle(4);
-      expect(p.root.querySelector(".ot-reply").textContent).toContain("Earlier reply");
-      p.root.querySelector(".ot-bar .ot-full").click(); await settle(4);
+      // What was said from here is said by "You".
+      emit("message", { instance: "atlas", role: "user", sender: "Example person", text: "status please", ts: new Date().toISOString() });
+      await tick(10);
+      expect(p.root.querySelector(".ot-heard .ot-plate").textContent).toBe("You");
+      p.root.querySelector(".ot-stage .ot-link").click(); await settle(4);
       expect(opened).toHaveBeenCalledTimes(1);
       expect((opened.mock.calls[0] as any)[0]).toBe("/ui/chat/atlas?presentation=popout");
+      // x: a reply still awaited stays; once answered, x closes it and the scene is as it was.
+      p.root.querySelector(".ot-stage .ot-x").click(); await tick(6);
+      expect(p.root.querySelector(".ot-heard")).not.toBeNull();
+      emit("message", { instance: "atlas", role: "agent", text: "ok", ts: new Date().toISOString() });
+      await tick(6);
+      p.root.querySelector(".ot-stage .ot-x").click(); await tick(6);
+      expect(p.root.querySelector(".ot-stage")).toBeNull();
     } finally {
       (p.window as any).open = prior; (globalThis as any).AgendAuth = priorAuth;
       delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
     }
   });
-  it("dialogue box reads like a visual novel: the whole reply page by page, ▼, each click the rest / next page / close", async () => {
+  it("dialogue box reads like a visual novel: the whole reply page by page, a cue, each click the rest / next page / close", async () => {
     await office();
     await pick("box");
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "tell me everything", ts: new Date().toISOString() });
     const long = `開頭${"長".repeat(600)}結尾在這裡`;
     emit("message", { instance: "atlas", role: "agent", text: long, ts: new Date().toISOString() });
-    await tick(20);
-    const cv = () => p.root.querySelector(".oo-dialogue-canvas");
-    const said = () => (cv()?._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
-    expect(cv().getAttribute("aria-label")).toBe("Click: the rest, the next page, or close");
-    const seen = new Set<string>();
-    let clicks = 0;
-    while (cv() && clicks < 80) {
-      for (const s of said()) seen.add(s);
-      const el = cv();
-      el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 180, right: 960, bottom: 180 });
-      const L = D.fitBox(D.boxLayout(960, 180), 1, false);
-      fire(el, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6, detail: 2 }); await tick(3);   // quick clicks count too
+    await tick(10);
+    const words = () => p.root.querySelector(".ot-stage .ot-words");
+    Object.defineProperty(words(), "clientWidth", { value: 120, configurable: true });   // 20 characters a line at 6 px
+    await tick(4);
+    expect(p.root.querySelector(".ot-read").getAttribute("aria-label")).toBe("Click: the rest, the next page, or close");
+    let seen = "", clicks = 0, cue = false;
+    while (p.root.querySelector(".ot-heard") && clicks < 200) {
+      seen += words().textContent; cue = cue || words().textContent.includes("▼");
+      p.root.querySelector(".ot-read").click(); await tick(2);
       clicks++;
     }
-    expect(cv()).toBeNull();                                        // the last page clicked: closed (nothing else waits)
-    const all = [...seen].join("");
-    expect(all).toContain("開頭");
-    expect(all).toContain("結尾在這裡");                              // the whole reply was read, not its first 120 characters
-    expect([...seen]).toContain("▼");
-    expect(clicks).toBeGreaterThan(2);
+    expect(p.root.querySelector(".ot-heard")).toBeNull();                            // the last page clicked: closed
+    expect(seen).toContain("開頭");
+    expect(seen).toContain("結尾在這裡");                                            // the whole reply, not its first 120 characters
+    expect(cue).toBe(true);
+    expect(clicks).toBeGreaterThan(10);                                               // page by page
   });
-  it("the reading controls: Click by default, kept per browser; Auto plays the box on by itself; Skip closes every reply", async () => {
+  it("the reading controls: Click by default, kept per browser; Fast plays the box on by itself; Skip closes every reply", async () => {
     await office();
     await pick("box");
-    const btn = (k: string) => p.root.querySelector(`.ot-play .${k}`);
-    const reads = () => [...p.root.querySelectorAll(".ot-play .ot-read")].map((b: any) => [b.textContent, b.getAttribute("aria-pressed")]);
-    expect(reads()).toEqual([["Click", "true"], ["Auto", "false"], ["Fast", "false"]]);
-    // Skip: every answered conversation in the box goes at once.
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "q", ts: new Date().toISOString() });
     emit("message", { instance: "atlas", role: "agent", text: "an answer", ts: new Date().toISOString() });
     await tick(10);
-    expect(p.root.querySelector(".oo-dialogue-canvas")).not.toBeNull();
-    btn("ot-skip").click(); await tick(10);
-    expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
-    // Fast: the answer plays and closes by itself, no click.
-    [...p.root.querySelectorAll(".ot-play .ot-read")][2].click(); await settle(2);
-    expect(localStorage.getItem("agend_org_office_talk_read")).toBe("fast");
+    const tools = () => [...p.root.querySelectorAll(".ot-stage .ot-tool")];
+    expect(tools().slice(0, 3).map((b: any) => [b.textContent, b.getAttribute("aria-pressed")])).toEqual([["Click", "true"], ["Auto", "false"], ["Fast", "false"]]);
+    tools()[3].click(); await tick(6);                                                // Skip
+    expect(p.root.querySelector(".ot-heard")).toBeNull();
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "q2", ts: new Date().toISOString() });
     emit("message", { instance: "atlas", role: "agent", text: "ok", ts: new Date().toISOString() });
     await tick(6);
-    expect(p.root.querySelector(".oo-dialogue-canvas")).not.toBeNull();
-    for (let i = 0; i < 40 && p.root.querySelector(".oo-dialogue-canvas"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));
-    expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
+    tools()[2].click(); await settle(2);                                              // Fast
+    expect(localStorage.getItem("agend_org_office_talk_read")).toBe("fast");
+    for (let i = 0; i < 40 && p.root.querySelector(".ot-heard"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));
+    expect(p.root.querySelector(".ot-heard")).toBeNull();                            // played and closed by itself
   });
   it("the store keeps the whole line and holds an answer until it is clicked away", () => {
     const d = D.createDialogue();
@@ -316,6 +317,7 @@ describe("talking on the page", () => {
     // One way at a time: the dialogue box is not under the panel (its checkbox stays as it was).
     expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
     expect(p.root.querySelector(".ot-bar")).toBeNull();
+    expect(p.root.querySelector(".ot-stage")).toBeNull();
     expect(dialogue().checked).toBe(true);
     expect(p.root.querySelector(".oo").className).toContain("ot-side");
     expect(panel.querySelector(".ot-head").textContent).toContain("atlas");
