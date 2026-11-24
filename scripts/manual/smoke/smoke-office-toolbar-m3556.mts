@@ -143,6 +143,10 @@ for (const c of CASES) {
       const share = await box(page, ".oo-sheet .oo-share"), bb = await body.boundingBox();
       ok(res, "last action reachable", !!share && !!bb && share.y + share.height <= bb.y + bb.height + 1, { share, bb });
       ok(res, "no fade at the end", !(await body.evaluate((e: any) => e.hasAttribute("data-more"))));
+      // Content that grows while the sheet is open brings the fade back without a scroll (Prism r3 P3).
+      const regrown = await body.evaluate(async (e: any) => { const x = document.createElement("div"); x.style.height = "240px"; e.querySelector(".oo-sheet-bar").appendChild(x);
+        await new Promise((r) => setTimeout(r, 250)); const on = e.hasAttribute("data-more"); x.remove(); return on; });
+      ok(res, "fade follows content", regrown);
       await page.screenshot({ path: shotPath(SMOKE, tag, "2b-options-end") });
       await page.keyboard.press("Escape"); await page.waitForTimeout(300);
       // The page's ⋯ keeps no pressed look once the sheet is closed (a tap left :hover stuck on touch).

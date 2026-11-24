@@ -2330,7 +2330,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const upd = () => { const below = el.scrollTop + el.clientHeight < el.scrollHeight - 2; if (below) el.setAttribute("data-more", ""); else el.removeAttribute("data-more"); };
     const raf = globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(upd) : (upd(), 0);
     el.addEventListener("scroll", upd, { passive: true }); globalThis.addEventListener?.("resize", upd);
-    return () => { globalThis.cancelAnimationFrame?.(raf); el.removeEventListener("scroll", upd); globalThis.removeEventListener?.("resize", upd); };
+    // Its content can change while it is open (another office, All offices' lobby tile, a note): re-measure then too
+    // (Prism #3556 r3 P3).
+    const RO = globalThis.ResizeObserver, ro = typeof RO === "function" ? new RO(upd) : null;
+    if (ro) { ro.observe(el); for (const c of el.children || []) ro.observe(c); }
+    return () => { globalThis.cancelAnimationFrame?.(raf); el.removeEventListener("scroll", upd); globalThis.removeEventListener?.("resize", upd); ro?.disconnect(); };
   }, [compact, more]);
   // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
   const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
