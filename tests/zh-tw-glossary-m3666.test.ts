@@ -90,6 +90,7 @@ describe("M-3666: the approved words, on the strings the audit found", () => {
     expect(t("inst.dialog_parked_hold_claude_resume")).toContain("「Resume full session as-is」");
     expect(t("delivery.forged_warning", "peer", "xmsg-1")).toMatch(/；Delivery not found$/);
     expect(t("dashboard.progress.fail.download-failed")).toContain("proxy");
+    expect(t("setup.platform_general.skipped")).toContain("quickstart →「Add another platform」");   // quickstart prints it in English
   });
 
   it("the web UI: persona → 人設, team → 團隊, pane → 窗格, emoji and `workspaces` kept", () => {
