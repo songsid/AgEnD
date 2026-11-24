@@ -87,7 +87,7 @@ import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, sna
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
-import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
+import { OK_MAX, OK_MIN, cardSpot, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
 
 register("orgo", {
@@ -254,6 +254,8 @@ const UP_MS = 1800;
 const FIND_K = 2;
 /** #2661: below this stage width (CSS px) the card is a bottom sheet. */
 const SHEET_W = 560;
+/** M-3633: the corner of an area its name takes (logical units, from the area's top left): a floating card keeps off it. */
+const AREA_LABEL = { w: 320, h: 44 };
 /**
  * M-3253 (Argon's phone review): the Office's phone layout — a phone's width (the shell's), or a phone turned sideways (a
  * coarse pointer in a short window: an iPhone's 956 × 440 is wider than 899 px). There the Office's tools are one ⋯ sheet,
@@ -1464,10 +1466,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
     const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
-    let x = p.x + gap;
-    if (x + cw > sz.w - 8) x = p.x - gap - cw;
-    x = Math.max(8, Math.min(x, sz.w - cw - 8));
-    const y = Math.max(8, Math.min(p.y - 24, sz.h - ch - 8));
+    // M-3633: clear of the areas' names — the corner each one's name takes (the Office's own, or one a pack paints there).
+    const avoid = zones && !overview ? Object.values(L.areas || {}).map((ar) => {
+      const q = toScreen(v, ar.rect.x, ar.rect.y);
+      return { x: q.x, y: q.y, w: Math.min(ar.rect.w, AREA_LABEL.w) * v.k, h: Math.min(ar.rect.h, AREA_LABEL.h) * v.k };
+    }) : [];
+    const { x, y } = cardSpot({ px: p.x, py: p.y, gap, cw, ch, w: sz.w, h: sz.h, avoid });
     el.style.setProperty("transform", `translate(${Math.round(x)}px, ${Math.round(y)}px)`);
   };
   /**

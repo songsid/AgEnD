@@ -411,8 +411,12 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const placeNow = useRef(place);
   placeNow.current = place;
   useEffect(() => () => { if (placeNow.current) placeNow.current(null); }, []);
-  // A bottom sheet closes on a swipe down (60 px or more).
-  const down = (e) => { if (sheet) swipe.current = e.clientY; };
+  // A bottom sheet closes on a swipe down (60 px or more) — M-3633: from its top only; scrolled into it, the swipe scrolls.
+  const down = (e) => {
+    if (!sheet) return;
+    const t = e.currentTarget, sc = (t && typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t;
+    swipe.current = sc && sc.scrollTop > 0 ? null : e.clientY;
+  };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
 
   // Legacy default path (packs without `card`): preserve exact markup and classes.

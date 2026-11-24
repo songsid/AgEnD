@@ -70,6 +70,32 @@ export const desksK = (dpr = 1) => Math.max(1, Math.round(dpr)) / dpr;
 export const openingView = (w, h, size, dpr, zones, mode = "contain") => (zones ? fitScene(w, h, size, mode) : { k: desksK(dpr), x: 0, y: 0 });
 /** One axis of clampPan: offset `o` of a scene `s` long in a viewport `n` long. */
 const clampAxis = (o, s, n) => (s >= n ? Math.min(0, Math.max(n - s, o)) : (n - s) / 2);
+/** How much of the area labels a `cw`×`ch` box at (x, y) covers (px²). */
+const covered = (x, y, cw, ch, avoid) => avoid.reduce((a, r) => a + Math.max(0, Math.min(x + cw, r.x + r.w) - Math.max(x, r.x)) * Math.max(0, Math.min(y + ch, r.y + r.h) - Math.max(y, r.y)), 0);
+/**
+ * M-3633: where a person's floating card goes (stage px): beside them — right of `px` by `gap`, else left — level with
+ * their head (`py` − 24), inside the stage (`w`×`h`, 8 px clear). Clear of the areas' labels (`avoid`, rects on the
+ * stage) where it can be: the same spot when it covers none, else that side lower (just under the label it met), else
+ * the other side; with none clear, the spot covering the least.
+ */
+export function cardSpot({ px, py, gap, cw, ch, w, h, avoid = [] }) {
+  const cx = (x) => Math.max(8, Math.min(x, w - cw - 8)), cy = (y) => Math.max(8, Math.min(y, h - ch - 8));
+  const right = px + gap, left = px - gap - cw;
+  const sides = right + cw > w - 8 ? [left, right] : [right, left];
+  const spots = [];
+  for (const s of sides) {
+    const x = cx(s), y = cy(py - 24);
+    spots.push({ x, y });
+    for (const r of avoid) if (r.y + r.h + 6 > y && r.y + r.h + 6 + ch <= h - 8) spots.push({ x, y: r.y + r.h + 6 });
+  }
+  let best = spots[0], least = Infinity;
+  for (const p of spots) {
+    const c = covered(p.x, p.y, cw, ch, avoid);
+    if (c === 0) return p;
+    if (c < least) { least = c; best = p; }
+  }
+  return best;
+}
 /**
  * The view kept on the scene: along an axis where the scene is at least the viewport it covers the viewport (no gap at
  * either edge); where it is smaller it is centred on that axis. Nothing can be scrolled off-screen.
