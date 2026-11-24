@@ -337,7 +337,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | as above | inherited | Per-channel overrides |
 | `backend_options` | object | merged defaults | Backend-specific options and credential profile |
 | `display_name` / `description` | string | — | Agent label and description |
-| `web_echo` | boolean | follows `web.echo_to_channel` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel`. Unset rooms follow the fleet-wide switch (default `true`); `false` never echoes |
+| `web_echo` | boolean | follows `web.echo_to_channel` | Copy this room’s web chat to the platform. An explicit room value overrides the fleet-wide switch; unset rooms inherit it (default `true`); `false` never echoes |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
 | `reply_triggers` | boolean | from defaults | Override native-reply triggering for this collab room |
