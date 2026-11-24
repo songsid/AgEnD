@@ -2322,6 +2322,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
   }, [dispOpen]);
+  // M-3556: the phone sheet is taller than a phone: while more is below its fold, its foot fades (data-more on the body).
+  useEffect(() => {
+    if (!compact || !more) return undefined;
+    const el = globalThis.document?.querySelector?.(".oo-sheet .dlg-body");
+    if (!el || typeof el.addEventListener !== "function") return undefined;
+    const upd = () => { const below = el.scrollTop + el.clientHeight < el.scrollHeight - 2; if (below) el.setAttribute("data-more", ""); else el.removeAttribute("data-more"); };
+    const raf = globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(upd) : (upd(), 0);
+    el.addEventListener("scroll", upd, { passive: true }); globalThis.addEventListener?.("resize", upd);
+    return () => { globalThis.cancelAnimationFrame?.(raf); el.removeEventListener("scroll", upd); globalThis.removeEventListener?.("resize", upd); };
+  }, [compact, more]);
   // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
   const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}

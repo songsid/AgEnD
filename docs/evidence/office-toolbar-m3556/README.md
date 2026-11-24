@@ -40,11 +40,13 @@ All captures are of the real app, taken headless with Chromium and made-up data:
 | Hub room, desk (gear open, then closed with Esc) | a sheet opened from the gear (#4370) | `room-desk-zh-TW-light-2-options.png`, `room-desk-zh-TW-light-3-closed.png`, `room-desk-en-dark-2-options.png`, `room-desk-en-dark-3-closed.png` |
 | Hub room, desk, a 340 px stage (Prism P2) | the dropdown ran past the stage's foot | `room-desk-zh-TW-light-short-340-2-options.png` |
 | Fleet office, desk, a 520 px window | — | `after-desk-dark-en-short-2-options.png` |
+| Fleet office, All offices: 大廳格 (lobby tile) | — | `after-desk-light-zh-TW-all-offices-2-options.png` |
+| Phone sheet scrolled to its end (分享… reachable, no fade) | — | `after-phone-light-zh-TW-2b-options-end.png`, `after-phone-dark-en-2b-options-end.png` (and `-reduced-`) |
 | Hub room, phone (⋯ → 辦公室選項) | unchanged | `room-phone-zh-TW-dark-2-sheet.png`, `room-phone-en-light-2-sheet.png` |
 
 ## Checks
 
-`scripts/manual/smoke/smoke-office-toolbar-m3556.mts` (ui-gate, HP 19756) passes 9 cases (desk and phone × light zh-TW and dark en × reduced motion off and on, plus a 520 px window); its output is `result.json`.
+`scripts/manual/smoke/smoke-office-toolbar-m3556.mts` (ui-gate, HP 19756) passes 10 cases (desk and phone × light zh-TW and dark en × reduced motion off and on, a 520 px window, and All offices); its output is `result.json`.
 
 - **Desk:**
   - the bar is one row, with scope on the left and ⚙ on the right;
@@ -77,3 +79,14 @@ The room captures came from a scratch Hub rig (not in the repo). It recorded:
   - On a 340 px stage, the earlier head put the last option at 382–414 px against the stage's 400 px foot, so it was clipped.
   - Now it sits at 190–222 px, inside the stage, and takes a click.
 - **P3, Esc focus.** Esc from inside the dropdown hands focus back to its button (⚙ or the room's gear). The rig shows `focusOnGear` false on the earlier head and true now; the unit tests cover both offices.
+
+**The Leader's capture check (eight nits):**
+
+1. **Desk dropdown over the zoom stack.** The Fleet dropdown now opens left of the stage's zoom stack; the smoke checks they don't overlap.
+2. **Stray blue bar under the room's fullscreen button after Esc.** Focus does return to the gear. The bar was the gear's focus outline, clipped by the zoom stack. Zoom-stack buttons now draw focus as a ring inside the button (`room-desk-*-3-closed.png`).
+3. **Phone sheet cut at the fold.** The rows keep their 44 px tap height, so the sheet can't fit a phone. Instead, while more is below, its foot fades out over the rows (`data-more` on the sheet's body). At the end the fade goes, and 分享… is on screen. The smoke checks both.
+4. **⋯ stuck grey after the sheet closes.** That was a tap leaving `:hover` stuck on touch; there's no hover background on touch now. The smoke checks the colour; without the fix, all four phone cases fail.
+5. **"搜." beside Ctrl K on the 340 px room capture.** Pre-existing: #4370's head without this PR shows the same.
+6. **Zone label under sprites in the room.** Pre-existing: the same on #4370's head. M-3539 (#4376) covers it.
+7. **The room gear has no label.** Both dropdowns now open with a 顯示選項 heading, and every phone sheet has one, including a room's. The gear itself stays an icon: the zoom stack is a 36 px column, and its tooltip and accessible name already read 顯示選項.
+8. **大廳格.** Captured under All offices.

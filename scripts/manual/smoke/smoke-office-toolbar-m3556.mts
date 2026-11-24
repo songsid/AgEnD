@@ -130,8 +130,8 @@ for (const c of CASES) {
       ok(res, "heading", (await page.locator(".oo-sheet .oo-sheet-h").innerText()).trim() === w.display);
       // Taller than the screen: it scrolls, with a shadow at its foot until the end; the last action is reachable.
       const body = page.locator(".oo-sheet .dlg-body");
-      const sc = await body.evaluate((e: any) => ({ sh: e.scrollHeight, ch: e.clientHeight, bg: getComputedStyle(e).backgroundImage }));
-      ok(res, "sheet scrolls, shadow shown", sc.sh > sc.ch && /gradient/.test(sc.bg), sc);
+      const sc = await body.evaluate((e: any) => ({ sh: e.scrollHeight, ch: e.clientHeight, more: e.hasAttribute("data-more"), fade: getComputedStyle(e, "::after").backgroundImage }));
+      ok(res, "sheet scrolls, foot fades", sc.sh > sc.ch && sc.more && /gradient/.test(sc.fade), sc);
       const o = await box(page, ".oo-sheet .oo-office"), t = await box(page, ".oo-sheet .oo-team");
       ok(res, "pickers spaced", !!o && !!t && t.y - (o.y + o.height) >= 6, { o, t });
       if (c.rm) {
@@ -142,6 +142,7 @@ for (const c of CASES) {
       await body.evaluate((e: any) => { e.scrollTop = e.scrollHeight; }); await page.waitForTimeout(300);
       const share = await box(page, ".oo-sheet .oo-share"), bb = await body.boundingBox();
       ok(res, "last action reachable", !!share && !!bb && share.y + share.height <= bb.y + bb.height + 1, { share, bb });
+      ok(res, "no fade at the end", !(await body.evaluate((e: any) => e.hasAttribute("data-more"))));
       await page.screenshot({ path: shotPath(SMOKE, tag, "2b-options-end") });
       await page.keyboard.press("Escape"); await page.waitForTimeout(300);
       // The page's ⋯ keeps no pressed look once the sheet is closed (a tap left :hover stuck on touch).

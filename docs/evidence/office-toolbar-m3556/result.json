@@ -44,13 +44,31 @@
     ]
    },
    "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 140,
+      "width": 340,
+      "height": 256
+     },
+     "zb": {
+      "x": 1316,
+      "y": 154,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
    "dropdown on screen": {
     "pass": true,
     "detail": {
-     "x": 1006,
+     "x": 948,
      "y": 140,
      "width": 340,
-     "height": 228
+     "height": 256
     }
    },
    "no note": true,
@@ -112,13 +130,31 @@
     ]
    },
    "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 182,
+      "width": 340,
+      "height": 256
+     },
+     "zb": {
+      "x": 1316,
+      "y": 196,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
    "dropdown on screen": {
     "pass": true,
     "detail": {
-     "x": 1006,
+     "x": 948,
      "y": 182,
      "width": 340,
-     "height": 228
+     "height": 256
     }
    },
    "no note": true,
@@ -180,27 +216,45 @@
     ]
    },
    "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 140,
+      "width": 340,
+      "height": 272
+     },
+     "zb": {
+      "x": 1316,
+      "y": 154,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
    "dropdown on screen": {
     "pass": true,
     "detail": {
-     "x": 1006,
+     "x": 948,
      "y": 140,
      "width": 340,
-     "height": 244
+     "height": 272
     }
    },
    "reduced: one line under Drag and pat": {
     "pass": true,
     "detail": {
      "nb": {
-      "x": 1019,
-      "y": 243,
+      "x": 961,
+      "y": 271,
       "width": 314,
       "height": 24
      },
      "lb": {
-      "x": 1047,
-      "y": 219,
+      "x": 989,
+      "y": 247,
       "width": 65,
       "height": 24
      },
@@ -260,27 +314,45 @@
     ]
    },
    "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 182,
+      "width": 340,
+      "height": 272
+     },
+     "zb": {
+      "x": 1316,
+      "y": 196,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
    "dropdown on screen": {
     "pass": true,
     "detail": {
-     "x": 1006,
+     "x": 948,
      "y": 182,
      "width": 340,
-     "height": 244
+     "height": 272
     }
    },
    "reduced: one line under Drag and pat": {
     "pass": true,
     "detail": {
      "nb": {
-      "x": 1019,
-      "y": 285,
+      "x": 961,
+      "y": 313,
       "width": 314,
       "height": 24
      },
      "lb": {
-      "x": 1047,
-      "y": 261,
+      "x": 989,
+      "y": 289,
       "width": 82,
       "height": 24
      },
@@ -318,6 +390,15 @@
     ]
    },
    "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 730,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(255, 255, 255) 85%)"
+    }
+   },
    "pickers spaced": {
     "pass": true,
     "detail": {
@@ -336,6 +417,28 @@
     }
    },
    "no note": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,
@@ -364,6 +467,15 @@
     ]
    },
    "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 730,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(33, 33, 33) 85%)"
+    }
+   },
    "pickers spaced": {
     "pass": true,
     "detail": {
@@ -382,6 +494,28 @@
     }
    },
    "no note": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,
@@ -410,6 +544,15 @@
     ]
    },
    "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 742,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(255, 255, 255) 85%)"
+    }
+   },
    "pickers spaced": {
     "pass": true,
     "detail": {
@@ -447,6 +590,28 @@
    },
    "reduced: said only there": true,
    "reduced: box off and locked": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
    "reduced: card has no Pat/Feed, no hint": true,
    "noOverflow": true,
    "noPageErrors": {
@@ -476,6 +641,15 @@
     ]
    },
    "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 742,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(33, 33, 33) 85%)"
+    }
+   },
    "pickers spaced": {
     "pass": true,
     "detail": {
@@ -513,6 +687,28 @@
    },
    "reduced: said only there": true,
    "reduced: box off and locked": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
    "reduced: card has no Pat/Feed, no hint": true,
    "noOverflow": true,
    "noPageErrors": {
@@ -526,8 +722,8 @@
     "pass": true,
     "detail": {
      "lb": {
-      "x": 1019,
-      "y": 369,
+      "x": 961,
+      "y": 397,
       "width": 314,
       "height": 32
      },
@@ -535,6 +731,15 @@
     }
    },
    "short: last option works": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-zh-TW-all-offices": {
+   "mounted": true,
+   "all offices: lobby tile offered": true,
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,

@@ -78,6 +78,7 @@ for (const narrow of [false, true]) describe(narrow ? "phone" : "desk", () => {
       await office();
       btn().click(); await settle(2);
       expect(btn().getAttribute("aria-expanded")).toBe("true");
+      expect(q(".oo-display-pop .oo-display-h").textContent.trim()).toBe("Display options");   // the same heading as a room's
       const list = q(".oo-display-pop .oo-display-list");
       expect(kinds(list)).toEqual(["style", "oo-hide-asleep", "oo-play", "oo-night", "oo-dialogue", "oo-key-tick"]);
       expect(q(".oo-sheet")).toBeNull();                                       // not a modal sheet
