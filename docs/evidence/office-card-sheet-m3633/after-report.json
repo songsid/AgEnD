@@ -19,7 +19,8 @@
    ],
    "peopleAboveSheet": null,
    "actionsInView": true,
-   "scrolls": true
+   "scrolls": true,
+   "touch": null
   },
   "desk-light-zh-TW": {
    "errors": [],
@@ -39,7 +40,8 @@
    ],
    "peopleAboveSheet": null,
    "actionsInView": true,
-   "scrolls": false
+   "scrolls": false,
+   "touch": null
   },
   "phone-dark-zh-TW": {
    "errors": [],
@@ -63,7 +65,35 @@
     "Gamma"
    ],
    "actionsInView": true,
-   "scrolls": true
+   "scrolls": true,
+   "touch": {
+    "start": {
+     "open": true,
+     "scrolls": true,
+     "scrollTop": 0,
+     "grip": {
+      "x": 179,
+      "y": 439,
+      "h": 32
+     },
+     "mid": {
+      "x": 195,
+      "y": 676.2
+     }
+    },
+    "afterUpOnContent": {
+     "open": true,
+     "scrollTop": 145
+    },
+    "afterDownOnContentScrolled": {
+     "open": true,
+     "scrollTop": 40
+    },
+    "gripHeight": 32,
+    "afterGripDown": {
+     "open": false
+    }
+   }
   },
   "phone-light-en": {
    "errors": [],
@@ -87,10 +117,39 @@
     "Gamma"
    ],
    "actionsInView": true,
-   "scrolls": true
+   "scrolls": true,
+   "touch": {
+    "start": {
+     "open": true,
+     "scrolls": true,
+     "scrollTop": 0,
+     "grip": {
+      "x": 179,
+      "y": 439,
+      "h": 32
+     },
+     "mid": {
+      "x": 195,
+      "y": 676.2
+     }
+    },
+    "afterUpOnContent": {
+     "open": true,
+     "scrollTop": 166
+    },
+    "afterDownOnContentScrolled": {
+     "open": true,
+     "scrollTop": 61
+    },
+    "gripHeight": 32,
+    "afterGripDown": {
+     "open": false
+    }
+   }
   }
  },
  "pack": {
   "ok": true
- }
+ },
+ "source": "93a63fbb07707c16b403cc9c296d6adee82b00ce"
 }

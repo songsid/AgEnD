@@ -108,7 +108,31 @@ try {
         labelOverlapPx: over.map(Math.round), peopleAboveSheet: sheet ? people.filter((p) => p.bottom !== null && p.bottom <= r.top).map((p) => p.n) : null, people,
         actionsInView: ar ? ar.top >= r.top - 1 && ar.bottom <= Math.min(vh, r.bottom) + 1 : null, scrolls: card.scrollHeight > card.clientHeight + 1 || ((card.querySelector(".oo-card-body") as HTMLElement | null)?.scrollHeight ?? 0) > ((card.querySelector(".oo-card-body") as HTMLElement | null)?.clientHeight ?? 0) + 1 };
     }, LABELS);
-    report.cases[key] = { errors, csp: await csp(), ...m };
+    let touch: any = null;
+    if (c.device === "phone") {
+      // Real touches (CDP Input.dispatchTouchEvent, as a finger): Prism #4414's pointercancel case.
+      const cdp = await ctx.newCDPSession(page);
+      const drag = async (x: number, y0: number, y1: number) => {
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x, y: y0 }] });
+        for (let i = 1; i <= 8; i++) { await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x, y: y0 + ((y1 - y0) * i) / 8 }] }); await page.waitForTimeout(16); }
+        await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await page.waitForTimeout(400);
+      };
+      const st = () => page.evaluate(() => { const el = document.querySelector(".oo-card.sheet") as HTMLElement | null; if (!el) return { open: false };
+        const sc = (el.querySelector(".oo-card-body") as HTMLElement | null) || el, g = (el.querySelector(".oo-card-grip") as HTMLElement).getBoundingClientRect(), b = sc.getBoundingClientRect();
+        return { open: true, scrolls: el.hasAttribute("data-scrolls"), scrollTop: Math.round(sc.scrollTop), grip: { x: g.x + g.width / 2, y: g.y + g.height / 2, h: Math.round(g.height) }, mid: { x: b.x + b.width / 2, y: b.y + b.height * 0.6 } }; });
+      const s0 = await st();
+      await drag(s0.mid.x, s0.mid.y, s0.mid.y - 160);                     // up on the content: it scrolls
+      const s1 = await st();
+      await drag(s1.mid.x, s1.mid.y - 100, s1.mid.y + 20);                 // down on the content, scrolled in: it scrolls back, stays open
+      const s2 = await st();
+      await page.evaluate(() => { const el = document.querySelector(".oo-card.sheet") as HTMLElement; ((el.querySelector(".oo-card-body") as HTMLElement | null) || el).scrollTop = 0; });
+      await page.waitForTimeout(200);
+      const s3 = await st();
+      await drag(s3.grip.x, s3.grip.y, s3.grip.y + 120);                   // down from the grip at its top: it closes
+      const s4 = await st();
+      touch = { start: s0, afterUpOnContent: { open: s1.open, scrollTop: s1.scrollTop }, afterDownOnContentScrolled: { open: s2.open, scrollTop: s2.scrollTop }, gripHeight: s3.grip.h, afterGripDown: { open: s4.open } };
+    }
+    report.cases[key] = { errors, csp: await csp(), ...m, touch };
     await ctx.close();
   }
 } finally { await fx.close(); }
