@@ -25,8 +25,26 @@ and authorized source-room administrators. Lists never reveal other rooms' reque
 Writes require the observed revision; stale writes return 409. Refused identities
 return 403, unavailable stores 503. Each list is bounded to 50 rows.
 The person filter is an exact server-issued identity key, never a fuzzy name search.
+Contact authorization identifies a person by **platform + user id**, across bot
+connections on that platform. Adapter ids remain transport/proof metadata; a
+second bot observing the message does not create another person or remove their
+configured Fleet-admin role. Discord and Telegram ids remain separate namespaces.
+The target platform's configured Fleet-admin lists supply eligible approvers;
+its explicit approver selection and all grant action/resource/incarnation bounds
+still apply. This does not change inbound routing, outbound bot selection, or
+human receipt verification.
+
+Known historical origins that list only one person through several adapters are
+read as one human origin, including after restart. Explicit unknown origins and
+mixed single-person markers remain restricted; genuinely different people remain
+mixed. No state-file edit is needed. Recovery never auto-approves, dispatches or
+replays an old pending application: it still needs a decision. New work from a
+configured admin can proceed normally. Existing grants keep their expiry/use
+limits. New selector keys contain `[platform, userId]`; old three-field selector
+keys are accepted with the adapter field treated only as historical metadata.
+
 The UI may display server labels but must preserve the whole returned identity.
-In slice 1 an approver must be a Fleet admin for the target's adapter. The
+In slice 1 an approver must be a configured Fleet admin on the target's platform. The
 verified host operator may also approve. The picker uses `eligibleApprovers`,
 never arbitrary names or message-supplied identities. Non-admin approvers are
 deferred; they do not receive global administrator rights through this feature.
@@ -136,7 +154,7 @@ replacement starts with a fresh policy revision, rejecting a stale open editor.
 Old application content is visible only through a still-current source or target
 identity. Routine daemon restarts preserve an incarnation and never resend input.
 
-The contact table is managed by the target adapter's Fleet administrators, while
+The contact table is managed by configured Fleet administrators on the target's platform, while
 its configured approvers decide applications. The verified host operator is an
 explicit override. A contact grant conveys only dispatch rights. A recipient's
 action rights, credentials and shell are not granted or contained by this ticket.

@@ -287,7 +287,7 @@ describe("Fleet → Authorizations", () => {
     expect(calls.some(c => c.method === "POST")).toBe(false);
     fire(button(dialog, "Approve once and save rules"), "click"); await settle(6);
     const body = calls.find((c) => c.method === "POST")!.body;
-    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date("2026-12-01T10:00").toISOString(), [JSON.stringify([ALEX.platform, ALEX.adapterId, ALEX.userId])]]);
+    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date("2026-12-01T10:00").toISOString(), [JSON.stringify([ALEX.platform, ALEX.userId])]]);
   });
   it("decided elsewhere (409 already-decided): said, and the request read again", async () => {
     let reads = 0;
@@ -308,8 +308,8 @@ describe("Fleet → Authorizations", () => {
     fire(button(pg.root.querySelector(".contact-ticket-origin"), "Alex"), "click"); await settle(4);
     fire(button(pg.root, "Show more"), "click"); await settle(4);
     expect(calls.map((c) => c.url)).toEqual(["/ui/api/contact-authorizations?status=pending", "/ui/api/contact-authorizations",
-      "/ui/api/contact-authorizations?agent=web-dev", `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","dc-main","1001"]')}`,
-      `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","dc-main","1001"]')}&cursor=c2`]);
+      "/ui/api/contact-authorizations?agent=web-dev", `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","1001"]')}`,
+      `/ui/api/contact-authorizations?agent=web-dev&person=${encodeURIComponent('["discord","1001"]')}&cursor=c2`]);
     fire(pg.root.querySelector(".contact-person-filter .chip-x"), "click"); await settle(4);
     expect(calls.at(-1)?.url).toBe("/ui/api/contact-authorizations?agent=web-dev");
   });
