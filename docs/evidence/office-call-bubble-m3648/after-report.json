@@ -9,7 +9,7 @@
     "s": "Still thinking…",
     "x": 1100,
     "y": 667,
-    "at": 9261.900000035763
+    "at": 9253
    },
    "distinct": [
     "Still thinking…"
@@ -18,12 +18,12 @@
   "desk-dark-zh-TW": {
    "errors": [],
    "csp": [],
-   "bubbleLines": 121,
+   "bubbleLines": 122,
    "lastBubble": {
     "s": "還在想…",
     "x": 1100,
     "y": 646,
-    "at": 9265.5
+    "at": 9252.199999988079
    },
    "distinct": [
     "還在想…"
@@ -32,12 +32,12 @@
   "phone-dark-zh-TW": {
    "errors": [],
    "csp": [],
-   "bubbleLines": 121,
+   "bubbleLines": 120,
    "lastBubble": {
     "s": "還在想…",
     "x": 296,
     "y": 487,
-    "at": 9189.200000047684
+    "at": 9255.5
    },
    "distinct": [
     "還在想…"
@@ -46,17 +46,17 @@
   "phone-light-en": {
    "errors": [],
    "csp": [],
-   "bubbleLines": 112,
+   "bubbleLines": 113,
    "lastBubble": {
     "s": "Still thinking…",
     "x": 296,
     "y": 487,
-    "at": 9211.699999988079
+    "at": 9254.400000035763
    },
    "distinct": [
     "Still thinking…"
    ]
   }
  },
- "source": "5d2a7988bad7a08009322eb73dc4651cbec6dee4"
+ "source": "73dbafa4ce16b616270e6e81145383e80c08bb30"
 }
