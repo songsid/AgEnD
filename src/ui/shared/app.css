@@ -3353,6 +3353,17 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tb-project-pct { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); }
 .tb-project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); font-size: var(--fs-xs); color: var(--text-2); }
 .tb-project-menu { position: absolute; top: var(--s-2); right: var(--s-2); }
+/* No project, made hard to miss (fleet-task-sort.js): Home's list (the Waiting box's frame), the tile first and outlined, the header's link. */
+.tb-sort-hint { margin: 0 0 var(--s-2); }
+.tb-sort-row { gap: var(--s-2) var(--s-3); }
+.tb-sort-row .tb-wait-title { flex: 1 1 240px; }
+.tb-sort-meta { font-size: var(--fs-xs); white-space: nowrap; }
+.tb-sort-pick { flex: 0 0 auto; min-width: 140px; }
+.tb-sort-foot { display: flex; margin-top: var(--s-2); }
+.tb-project.needs-sort { border-color: var(--warn-line); }
+.tb-project.needs-sort:hover { border-color: var(--warn); }
+.tb-sort-link { border: 0; cursor: pointer; }
+.tb-sort-link:hover { text-decoration: underline; }
 .tb-archived { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
 .tb-archived > .tb-projects { align-self: stretch; }
 
@@ -3552,6 +3563,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tb-wait-main > .tb-pill { min-width: 0; }
   .tb-wait-actions { flex-basis: 100%; margin-left: 0; }
   .tb-wait-actions > .muted { margin-right: auto; }
+  .tb-sort-pick { flex: 1 1 100%; min-height: var(--tap); }
   /* #2299: on the board its toasts come in above the tabs, not over its title, search and progress — unless a card's
      sheet is open (its buttons are at the bottom). */
   .shell:has(.tb-home, .tb-board-page):not(:has(dialog[open])) .toasts { top: auto; bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3)); }
