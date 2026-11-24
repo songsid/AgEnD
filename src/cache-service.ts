@@ -17,9 +17,9 @@
  * thread (kiro-usage-run.ts) — for the usage report only; the cache analysis leaves Kiro out.
  */
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
-import { addSpeed, addTurn, claudeLine, codexLine, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
+import { addSpeed, addTurn, claudeLine, codexLine, codexRebuild, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
 import { PRICES_CHECKED, PRICE_SOURCES } from "./cache-prices.js";
 import { addCoverage, carryPruned, foldHours, pruneDays, readDays, readLifetime, writeDays, type UsageDays, type UsageLifetime } from "./usage-rollup.js";
@@ -104,6 +104,13 @@ export const WINDOWS: Record<CacheWindow, number> = { "24h": 86_400_000, "7d": 7
 /** A window name as asked (a query string, a tool argument); anything unknown is the default, 7 days. */
 export const cacheWindow = (w: string): CacheWindow => (Object.prototype.hasOwnProperty.call(WINDOWS, w) ? w as CacheWindow : "7d");
 
+interface RolloutMetadata { ino: number; cwd: string | null; id?: string | null; parent?: string | null }
+interface RolloutFile { path: string; ino: number; size: number; sessionId?: string; parentPath?: string; identityOnly?: boolean; orphaned?: true; missingParent?: string }
+const rolloutSessionId = (path: string): string => {
+  const stem = basename(path, ".jsonl");
+  return /^rollout-.*-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.exec(stem)?.[1] ?? stem;
+};
+
 export interface InstanceReport {
   name: string;
   backend: string;
@@ -148,7 +155,7 @@ export class CacheService {
   private readonly lifetimes = new Map<string, UsageLifetime>();
   private readonly dirty = new Set<string>();
   /** Rollout path → the inode its session_meta was read from, and the cwd it names (null: not a session_meta). */
-  private meta: Record<string, { ino: number; cwd: string | null }> | null = null;
+  private meta: Record<string, RolloutMetadata> | null = null;
   private metaDirty = false;
   private running: Promise<void> | null = null;
   private timer: ReturnType<typeof setInterval> | null = null;
@@ -224,7 +231,7 @@ export class CacheService {
     this.unread.clear();
     for (;;) {
       const left = await this.pass();
-      if (left === 0) { this.caughtUp = true; await this.recordCoverage(); }
+      if (left === 0) { this.caughtUp = ![...this.ledgers.values()].some(l => l.codexRebuild); await this.recordCoverage(); }
       // Stop looping when: all caught up, explicitly stopped, or closing (stop()
       // fenced new admission — let the current physical pass write its dirty data,
       // then exit rather than scanning the full backlog during shutdown).
@@ -362,31 +369,76 @@ export class CacheService {
       if (this.stopped) break;
       const kind = kindOf(inst.backend);
       if (!kind || shared.has(inst.name)) { await this.keepHistory(inst, cutoff); continue; }
-      const ledger = await this.ledgerFor(inst);
+      const published = await this.ledgerFor(inst);
+      // A bounded, restartable replacement generation repairs already inflated recent hours. Do not publish a
+      // partially read replacement, nor tag old totals as repaired merely because new dedupe was enabled.
+      let ledger = kind === "codex" && (published.codexMethod !== 1 || published.codexRebuild)
+        ? (published.codexRebuild ??= codexRebuild(published, cutoff)) : published;
       if (kind === "kiro" || kind === "opencode" || kind === "antigravity") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
+      const listed = new Set(files.map((f) => f.path));
+      if (kind === "codex") for (const generation of new Set([published, ledger])) {
+        for (const f of files) {
+          if (generation.files[f.path]) continue;
+          const id = "sessionId" in f && typeof f.sessionId === "string" ? f.sessionId : rolloutSessionId(f.path);
+          const moved = Object.entries(generation.files).find(([path, cur]) => !listed.has(path) && cur.kind === "codex" && cur.ino === f.ino && (cur.sessionId ?? rolloutSessionId(path)) === id);
+          if (!moved) continue;
+          const [before, cur] = moved;
+          generation.files[f.path] = cur; delete generation.files[before];
+          for (const event of Object.values(generation.codexEvents ?? {})) if (event.path === before) event.path = f.path;
+          this.dirty.add(inst.name);
+        }
+      }
+      if (kind === "codex" && ledger === published && files.some(f => "parentPath" in f && f.parentPath && published.files[f.path]?.orphaned)) {
+        ledger = published.codexRebuild = codexRebuild(published, cutoff);
+      }
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
       // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
       // until it is readable again — bounded by its own files.
-      const listed = new Set(files.map((f) => f.path));
+      const terminalParents = new Set(files.flatMap(f => "missingParent" in f && typeof f.missingParent === "string" ? [f.missingParent] : []));
+      if (ledger !== published && Object.entries(published.files).some(([path, f]) => f.kind === "codex" && (f.last?.t ?? 0) >= cutoff && !listed.has(path) && !terminalParents.has(f.sessionId ?? rolloutSessionId(path)))) {
+        // A repair cannot turn unavailable recent source data into a measured zero. Keep the published generation;
+        // a later complete inventory can resume the candidate without erasing the only surviving accounting.
+        this.unread.add(inst.name);
+      }
       // #3066 §1d: a Codex turn's profile is the one its run was launched under (read once a pass, off the thread).
       const spans = kind === "codex" && inst.profileTimelinePath ? await readProfileTimeline(inst.profileTimelinePath) : null;
       const profileOf = spans && spans.length ? (t: number) => profileAt(spans, t) : inst.profile;
       if (!this.unread.has(inst.name)) for (const path of Object.keys(ledger.files)) if (!listed.has(path)) { delete ledger.files[path]; this.dirty.add(inst.name); }
+      let instanceBehind = false;
       for (const f of files) {
         let cur = ledger.files[f.path];
         if (!cur) { cur = ledger.files[f.path] = { kind, ino: f.ino, offset: 0 }; this.dirty.add(inst.name); }
         else if (cur.ino !== f.ino || f.size < cur.offset) { cur = this.followFromEnd(ledger, f.path, cur, f.ino, f.size); this.dirty.add(inst.name); }
+        if ("sessionId" in f && typeof f.sessionId === "string" && cur.sessionId !== f.sessionId) {
+          cur.sessionId = f.sessionId; this.dirty.add(inst.name);
+        }
+        if ("orphaned" in f && f.orphaned) cur.orphaned = true; else delete cur.orphaned;
         if (cur.offset >= f.size) continue;
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
         if (cur.stalled === f.size) continue;
-        if (budget <= 0) { behindBytes += f.size - cur.offset; behindFiles++; continue; }
-        const done = await this.read(ledger, cur, f.path, budget, cutoff, profileOf);
+        const parentPath = "parentPath" in f ? f.parentPath : undefined;
+        const parent = parentPath ? files.find(p => p.path === parentPath) : undefined;
+        const parentCursor = parent ? ledger.files[parent.path] : undefined;
+        const waitingForParent = parent && (parentCursor?.offset ?? 0) < parent.size && parentCursor?.stalled !== parent.size;
+        if (waitingForParent && this.unread.has(inst.name)) continue;
+        if (budget <= 0 || waitingForParent) { behindBytes += f.size - cur.offset; behindFiles++; instanceBehind = true; continue; }
+        const done = await this.read(ledger, cur, f.path, budget, cutoff, profileOf, "identityOnly" in f && f.identityOnly === true);
         if (done.failed) this.unread.add(inst.name);
         this.dirty.add(inst.name);
         budget -= done.read;
-        if (done.behind > 0) { behindBytes += done.behind; behindFiles++; }
+        if (done.behind > 0) { behindBytes += done.behind; behindFiles++; instanceBehind = true; }
+      }
+      if (kind === "codex" && !this.unread.has(inst.name)) {
+        // Retain old fingerprints as long as an inventoried descendant still references them, including ancient
+        // inherited prefixes. Pruning by event date would recount an old prefix when a new fork appears today.
+        for (const [key, event] of Object.entries(ledger.codexEvents ?? {})) if (!ledger.files[event.path]) delete ledger.codexEvents![key];
+      }
+      if (ledger !== published) {
+        this.dirty.add(inst.name);
+        if (instanceBehind || this.unread.has(inst.name)) continue;
+        this.ledgers.set(inst.name, ledger);
       }
       // #2122: fold, then prune — the ledger never drops an hour the rollup does not durably hold.
       pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff));
@@ -633,16 +685,27 @@ export class CacheService {
     return ledger.files[path] = next;
   }
 
-  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string | ((t: number) => string)): Promise<{ read: number; behind: number; failed?: true }> {
+  private async read(ledger: Ledger, cur: FileCursor, path: string, budget: number, cutoff: number, profile?: string | ((t: number) => string), identityOnly = false): Promise<{ read: number; behind: number; failed?: true }> {
     const pf = (t: number): string | undefined => (typeof profile === "function" ? profile(t) : profile);
     try {
       const res = await scanJsonl(path, cur.offset, { maxBytes: budget, ino: cur.ino }, (line) => {
         if (cur.kind === "grok") { for (const t of grokLine(line, cur)) addTurn(ledger, cur, t, cutoff, pf(t.t)); return; }
         const turn = cur.kind === "claude" ? claudeLine(line, cur) : cur.kind === "muse" ? museLine(line, cur) : codexLine(line, cur);
-        if (turn) addTurn(ledger, cur, turn, cutoff, pf(turn.t));
+        let replay = identityOnly;
+        if (turn?.eventKey) {
+          const events = ledger.codexEvents ??= dict();
+          const original = events[turn.eventKey];
+          if (original !== undefined) {
+            replay = true; turn.t = original.t;
+            if (!ledger.files[original.path]) original.path = path;
+          } else events[turn.eventKey] = { t: turn.t, path };
+        }
+        // Mark only the response matched by this count, not other responses sharing its timestamp.
+        if (replay && turn?.codexPending) turn.codexPending.replay = true;
+        if (turn) addTurn(ledger, cur, turn, cutoff, pf(turn.t), !replay);
         // #3066 §2: responses timed by these lines (their last block seen) — counted into their hour, under the profile in
         // effect at their time (§1d), then dropped.
-        if (cur.speeds?.length) { for (const s of cur.speeds) addSpeed(ledger, cur, s, cutoff, pf(s.t)); delete cur.speeds; }
+        if (cur.speeds?.length) { if (!identityOnly) for (const s of cur.speeds) addSpeed(ledger, cur, s, cutoff, pf(s.t)); delete cur.speeds; }
       });
       if (res.replaced) { this.followFromEnd(ledger, path, cur, res.ino, res.size); return { read: 0, behind: 0 }; }
       cur.offset = res.offset;
@@ -742,10 +805,10 @@ export class CacheService {
     return out;
   }
 
-  /** Codex rollouts of the last KEEP_DAYS, by the instance whose working directory their session_meta names. */
-  private async codexFilesByInstance(insts: CacheInstance[], cutoff: number): Promise<Map<string, Array<{ path: string; ino: number; size: number }>>> {
-    const out = new Map<string, Array<{ path: string; ino: number; size: number }>>();
-    const codexInsts = insts.filter((i) => kindOf(i.backend) === "codex");
+  /** Recent Codex rollouts, with their ancestors first even when those ancestors have old mtimes. */
+  private async codexFilesByInstance(insts: CacheInstance[], cutoff: number): Promise<Map<string, RolloutFile[]>> {
+    const out = new Map<string, RolloutFile[]>();
+    const codexInsts = insts.filter(i => kindOf(i.backend) === "codex");
     if (!codexInsts.length) return out;
     const byCwd = new Map<string, string>();
     for (const i of codexInsts) for (const k of await cwdKeys(i.workingDirectory)) byCwd.set(k, i.name);
@@ -753,40 +816,82 @@ export class CacheService {
       this.meta = dict();
       try {
         for (const [p, v] of Object.entries(JSON.parse(await readFile(this.o.metaPath, "utf8")) as Record<string, unknown>)) {
-          const e = v as { ino?: unknown; cwd?: unknown } | null;
-          if (e && typeof e.ino === "number" && (typeof e.cwd === "string" || e.cwd === null)) this.meta[p] = { ino: e.ino, cwd: e.cwd };
+          const e = v as Partial<RolloutMetadata> | null;
+          if (e && typeof e.ino === "number" && (typeof e.cwd === "string" || e.cwd === null)) this.meta[p] = {
+            ino: e.ino, cwd: e.cwd,
+            ...(typeof e.id === "string" || e.id === null ? { id: e.id } : {}),
+            ...(typeof e.parent === "string" || e.parent === null ? { parent: e.parent } : {}),
+          };
         }
       } catch { /* none yet */ }
     }
-    let rollouts: Array<{ path: string; mtimeMs: number }> = [];
-    // A listing that could not read part of the tree may miss any codex instance's rollouts: none of them is covered.
-    const unlisted = (): void => { for (const i of codexInsts) this.unread.add(i.name); };
-    try {
-      const root = this.o.codexSessionsDir();
-      rollouts = this.o.listRollouts(root).filter((r) => r.mtimeMs >= cutoff);
-      if ((this.o.rolloutsUnreadable?.(root) ?? 0) > 0) unlisted();
-    } catch (err) { if (!gone(err)) unlisted(); /* else no sessions yet */ }
-    const live = new Set<string>();
-    for (const r of rollouts) {
-      live.add(r.path);
-      let st;
-      try { st = await stat(r.path); } catch (err) { if (!gone(err)) unlisted(); continue; }
-      let m = this.meta![r.path];
-      // Read once per physical file; a first line still being written is read again next pass.
-      if (!m || m.ino !== st.ino) {
-        const read = await rolloutMeta(r.path);
-        // Unreadable (not gone, not just unfinished): whose it is cannot be known, so no codex instance is covered.
-        if (read === "unreadable") { unlisted(); delete this.meta![r.path]; continue; }
-        if (read) { m = this.meta![r.path] = read; this.metaDirty = true; } else { delete this.meta![r.path]; continue; }
-      }
-      const name = m.cwd ? byCwd.get(resolve(m.cwd)) : undefined;
-      // The meta belongs to the inode it was read from; a file replaced since is read again next pass.
-      if (!name || m.ino !== st.ino) continue;
-      const list = out.get(name) ?? [];
-      list.push({ path: r.path, ino: st.ino, size: st.size });
-      out.set(name, list);
+    const rollouts = new Map<string, { path: string; mtimeMs: number; archived: boolean }>();
+    let complete = true;
+    const unlisted = (): void => { complete = false; for (const i of codexInsts) this.unread.add(i.name); };
+    const root = this.o.codexSessionsDir();
+    for (const dir of new Set([root, join(dirname(root), "archived_sessions")])) {
+      try {
+        for (const r of this.o.listRollouts(dir)) if (!rollouts.has(r.path)) rollouts.set(r.path, { ...r, archived: dir !== root });
+        if ((this.o.rolloutsUnreadable?.(dir) ?? 0) > 0) unlisted();
+      } catch (err) { if (!gone(err)) unlisted(); }
     }
-    for (const p of Object.keys(this.meta!)) if (!live.has(p)) { delete this.meta![p]; this.metaDirty = true; }
+    const live = new Set(rollouts.keys());
+    const inventory = new Map<string, RolloutFile & { meta: RolloutMetadata; recent: boolean; archived: boolean }>();
+    const sessions = new Map<string, string>();
+    // Codex filenames carry the session ID. Cached header IDs support older/custom names. Only recent files and
+    // ancestors they reference are stat'ed/read here; the shared listing already maintains the historical inventory.
+    for (const r of rollouts.values()) {
+      const id = rolloutSessionId(r.path);
+      sessions.set(id, r.path);
+      if (this.meta[r.path]?.id) sessions.set(this.meta[r.path]!.id!, r.path);
+    }
+    const load = async (path: string): Promise<(RolloutFile & { meta: RolloutMetadata; recent: boolean; archived: boolean }) | undefined> => {
+      const existing = inventory.get(path);
+      if (existing) return existing;
+      const r = rollouts.get(path);
+      if (!r) return;
+      let st;
+      try { st = await stat(path); } catch (err) { if (!gone(err)) unlisted(); return; }
+      let m = this.meta![path];
+      if (!m || m.ino !== st.ino || m.id === undefined || m.parent === undefined) {
+        const read = await rolloutMeta(path);
+        if (read === "unreadable") { unlisted(); delete this.meta![path]; return; }
+        if (read) { m = this.meta![path] = read; this.metaDirty = true; } else { delete this.meta![path]; return; }
+      }
+      if (m.ino !== st.ino) return;
+      const f = { path, ino: st.ino, size: st.size, meta: m, recent: r.mtimeMs >= cutoff, archived: r.archived };
+      inventory.set(path, f);
+      if (m.id) sessions.set(m.id, path);
+      return f;
+    };
+    for (const r of rollouts.values()) if (r.mtimeMs >= cutoff) await load(r.path);
+    for (const inst of codexInsts) {
+      const selected = new Map<string, RolloutFile>();
+      const visiting = new Set<string>();
+      const visit = async (path: string): Promise<boolean> => {
+        if (selected.has(path)) return true;
+        if (visiting.has(path)) { this.unread.add(inst.name); return false; }
+        const f = await load(path);
+        if (!f) { this.unread.add(inst.name); return false; }
+        visiting.add(path);
+        let parentPath = f.meta.parent ? sessions.get(f.meta.parent) : undefined;
+        if (parentPath && (await load(parentPath))?.meta.id !== f.meta.parent) parentPath = undefined;
+        let orphaned: true | undefined;
+        if (f.meta.parent) {
+          if (parentPath) {
+            if (!await visit(parentPath)) { visiting.delete(path); return false; }
+          } else if (complete) orphaned = true;
+          else { visiting.delete(path); this.unread.add(inst.name); return false; }
+        }
+        visiting.delete(path);
+        const owner = f.meta.cwd ? byCwd.get(resolve(f.meta.cwd)) : undefined;
+        selected.set(path, { path, ino: f.ino, size: f.size, ...(f.meta.id ? { sessionId: f.meta.id } : {}), ...(parentPath ? { parentPath } : {}), ...(orphaned ? { orphaned, missingParent: f.meta.parent! } : {}), ...(owner !== inst.name || (f.archived && !f.recent) ? { identityOnly: true } : {}) });
+        return true;
+      };
+      for (const f of [...inventory.values()]) if (f.recent && f.meta.cwd && byCwd.get(resolve(f.meta.cwd)) === inst.name) await visit(f.path);
+      out.set(inst.name, [...selected.values()]);
+    }
+    for (const p of Object.keys(this.meta)) if (!live.has(p)) { delete this.meta[p]; this.metaDirty = true; }
     return out;
   }
 
@@ -908,7 +1013,7 @@ async function cwdKeys(dir: string): Promise<string[]> {
  * line that is not a session_meta; "unreadable" when it is there and could not be read (EACCES, EIO… — #2122: not a
  * real absence).
  */
-export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: string | null } | null | "unreadable"> {
+export async function rolloutMeta(path: string): Promise<RolloutMetadata | null | "unreadable"> {
   let fh;
   try {
     fh = await open(path, "r");
@@ -916,11 +1021,12 @@ export async function rolloutMeta(path: string): Promise<{ ino: number; cwd: str
     const buf = Buffer.alloc(META_MAX_BYTES);
     const { bytesRead } = await fh.read(buf, 0, META_MAX_BYTES, 0);
     const nl = buf.subarray(0, bytesRead).indexOf(10);
-    if (nl === -1) return bytesRead >= META_MAX_BYTES ? { ino, cwd: null } : null;
+    if (nl === -1) return bytesRead >= META_MAX_BYTES ? { ino, cwd: null, id: null, parent: null } : null;
     try {
-      const d = JSON.parse(buf.toString("utf8", 0, nl)) as { type?: unknown; payload?: { cwd?: unknown } };
-      return { ino, cwd: d.type === "session_meta" && typeof d.payload?.cwd === "string" ? d.payload.cwd : null };
-    } catch { return { ino, cwd: null }; }
+      const d = JSON.parse(buf.toString("utf8", 0, nl)) as { type?: unknown; payload?: { cwd?: unknown; id?: unknown; forked_from_id?: unknown } };
+      const p = d.type === "session_meta" ? d.payload : undefined;
+      return { ino, cwd: typeof p?.cwd === "string" ? p.cwd : null, id: typeof p?.id === "string" ? p.id : null, parent: typeof p?.forked_from_id === "string" ? p.forked_from_id : null };
+    } catch { return { ino, cwd: null, id: null, parent: null }; }
   } catch (err) {
     return gone(err) ? null : "unreadable";
   } finally {

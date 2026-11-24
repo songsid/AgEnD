@@ -77,7 +77,7 @@ it("a Hub window refuses before a ticket and also stops a previously pending app
   const { manager, outbox, setHub } = rig();
   setHub(true);
   const response = await call(manager, "send_to_instance", { instance_name: "worker", message: "Read public status" });
-  expect(response.mock.calls[0]?.[1]).toContain("while it answers a Hub question");
+  expect(response.mock.calls[0]?.[1]).toContain("this turn is answering a Hub question");
   expect(outbox.contactAuthorizations.list().items).toEqual([]);
   setHub(false);
   const held = await call(manager, "send_to_instance", { instance_name: "worker", message: "Read public status" });

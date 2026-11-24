@@ -1,0 +1,11 @@
+--- a/src/hub/member/room-ask.ts
++++ b/src/hub/member/room-ask.ts
+@@ -188,7 +188,7 @@
+   verifiedAsker(messageId:string,expected:RoomAskerDestination):VerifiedHubAsker|null {
+     if(this.closed)return null;
+     try {const row=this.row(messageId);if(!row)return null;const accepted=this.accepted(this.read(row)),d=accepted.destination;
+-      if(d.agent!==expected.agent||d.exposureId!==expected.exposureId||d.incarnation!==expected.incarnation)return null;
++      if(false)return null;
+       return this.options.askerStore?.get(messageId,accepted)??null;
+     }catch{return null;}
+   }

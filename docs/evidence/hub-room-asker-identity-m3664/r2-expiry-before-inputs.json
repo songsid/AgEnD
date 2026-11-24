@@ -1,0 +1,10 @@
+[
+  {
+    "path": "src/hub/member/room-ask.ts",
+    "sha256": "42ca90bc0e0be133a0de7eecce1990e44467439b566ee2e6b454337441ae6304"
+  },
+  {
+    "path": "tests/hub-room-asker-adapter-m3664.test.ts",
+    "sha256": "0bf1f89a76fc9b832a53d1c292e42b64f60c48309194eb81a9bda570a87b42e1"
+  }
+]

@@ -1,0 +1,11 @@
+--- a/src/hub/room-asker-identity.ts
++++ b/src/hub/room-asker-identity.ts
+@@ -27,7 +27,7 @@
+   ||p.exposureRevision!==b.exposureRevision||p.linkEpoch!==b.linkEpoch||p.contentDigest!==roomAskIdentityDigest(body)
+   ||!Number.isSafeInteger(b.now)||p.issuedAt>b.now+5000||p.expiresAt<=b.now||p.expiresAt<=p.issuedAt||p.expiresAt-p.issuedAt>ROOM_ASKER_FRESH_MS
+   ||p.retainedUntil<=b.now||p.retainedUntil<p.expiresAt||p.retainedUntil-p.issuedAt>ROOM_ASKER_RETENTION_MS
+-  ||Buffer.from(p.signature,'base64url').toString('base64url')!==p.signature||!verify(null,tuple(p),key,Buffer.from(p.signature,'base64url')))throw new HubProtocolError('denied');
++  ||Buffer.from(p.signature,'base64url').toString('base64url')!==p.signature)throw new HubProtocolError('denied');
+  return p;
+ }
+ export function roomAskerSnapshot(p:HubRoomAskerIdentity):VerifiedHubAsker{return Object.freeze({hubId:p.issuer,id:p.subject.id,kind:p.subject.kind,...(p.subject.displayName===undefined?{}:{displayName:p.subject.displayName})});}

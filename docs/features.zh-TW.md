@@ -1429,7 +1429,7 @@ fleet 在單一事件迴圈上運作，迴圈上任何慢的事都會拖住其�
 - **辦公室裡的 agent**（#2578）：替某個 agent 打開 **辦公室** dashboard 功能後（`office_access: true`，沒設定就是關閉），它可以讀取自己所在的辦公室（`office_view`），並短暫指揮自己的角色（`office_set`：走動、說一句話、擺姿勢）。見[辦公室裡的 agent](office.zh-TW.md#辦公室裡的-agent)。
 - **Agent 發布外觀包**（#2692）：替某個 agent 打開 **辦公室外觀包** 後（`office_pack_access: true`，獨立的開關，沒設定就是關閉），它可以檢查、上傳、取代、刪除與還原辦公室的外觀包；每次變更都會記錄、在 General 通知管理員，而且預設要等管理員核准。見[讓 agent 管理外觀包](office.zh-TW.md#讓-agent-管理外觀包)。
 - **Fleet → 快取**（`/ui/fleet/cache`，#1468）：每個 instance 的提示快取過期分析與保溫建議。資料來自本機 transcript，以牌價計算，並顯示查證日期。2.2.5 起（#2010）會顯示 5 分鐘與 1 小時快取寫入的比例，並實際量測 5 分鐘快取能撐多久：計算每個 instance 過去 7 天內 5 到 60 分鐘的間隔，至少有 10 個時，若最多 10% 重寫了快取，就當作 1 小時來模擬；若至少一半重寫了，卡片會建議改用 `backend_options.claude-code.prompt_cache_ttl: "1h"` 而不是保溫（這個自選設定會在 instance 下次啟動時帶入 `CLAUDE_CODE_PROMPT_CACHE_TTL`；不設定時由 CLI 自己決定）。agent 可以用 `get_cache_report` 讀取同一份報告：General、coordinator 與 full 權限組合看得到所有 instance，其他 instance 只看得到自己那一列。
-- **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse 未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
+- **Fleet → 用量**（`/ui/fleet/usage`，2.2.5，#2122）：每個 agent 的 token、請求數、已送達訊息數與依牌價換算的 API 等值（不是實際花費），可依 agent、backend、模型、憑證 profile 或 team 分組，期間可選今天、7 天、本月、全部或自訂日期；附每日趨勢、能分辨「沒有用量」與「未收集」的日曆熱度圖，以及同一份資料的 CSV。可量測 Claude Code、Codex、Grok、Muse、OpenCode 與 Antigravity（Codex 與 Muse 的快取寫入顯示為「未回報」；Muse Spark 1.3 依牌價，其他 Muse 模型仍未定價）；Kiro 不記錄 token 數，依文字長度估算並標示「估算」；其他 CLI 會列出原因。自 fleet 啟動起收集並保留 400 天；agent 以 `get_usage_report` 讀取。◔ 用量對話框有連到這裡的連結。
   - **速度**（#3066）：每個模型本身生成時的每秒輸出 token 數（不含工具執行時間），以「速度」欄與「各模型速度」卡片呈現，並列出可計時的請求數；累積 30 個可計時的回應後，另顯示 p10–p90 範圍。`get_usage_report` 以 `speed` 回傳。Claude Code 的回應從第一個 token（以思考區塊開頭時，由其思考時間推得）計到最後一個區塊。Codex 的回應則以回應時窗計時，依 codex 0.147 之後寫入的項目時間：從第一個模型項目開始到最後一個結束，扣除伺服器端網頁搜尋的時間。rollout 不標記第一個 token，所以這個時窗可能含有一部分等待第一個 token 的時間。方法參考 [tokdash](https://github.com/JingbiaoMei/tokdash)（MIT，Jingbiao Mei；見 `THIRD_PARTY_NOTICES.md`）。
 - **新增 agent**（2.2.5，#2074）：側欄清單最後的按鈕會打開新增 agent 對話框。側欄收合時，☰ 旁邊的 **+** 有同樣的作用；手機上它在選單抽屜裡。只有能新增 agent 的 session 看得到它。
 - **篩選側欄時**（2.2.5，#1936）：你正在看的 instance 會留在最上面的**目前**底下，不論是否符合篩選。
@@ -1568,7 +1568,7 @@ Agent 可以用**環境效果**裝飾自己的聊天：飄落的花瓣、雪花�
 後端已依網頁登入身分保存五個擁有者效果選擇（`fx.sidebar`、`fx.header`、`fx.page`、`fx.box`、`fx.cursor`）。
 Discord 與 Telegram 身分各自獨立，不合併帳號。透過 `agend web --code` 登入的純網頁使用者，使用
 **整台主機共用的 operator** 儲存區；所有以該 operator 登入的人都會共用。Header token 不能讀寫這五個欄位。
-既有公開偏好仍為主機共用，不做遷移；個人檔案與自訂 CSS 內部的身分規則維持原樣。設定 → 外觀提供五個選擇器。開啟效果後，不需 HTML 預覽同意或其服務，頁面／頁首／側邊欄／區塊選擇會在支援的 stock 頁面播放，與聊天共用同一個 pool，並提供各槽的暫停／恢復及失效／清除控制。游標選擇不需 HTML 預覽同意即可套用主機的靜態 PNG，保留明確指定的按鈕／文字／拖曳游標；拖曳中或無法套用時會還原一般游標。不執行 Worker 程式，也不占用 frame 名額。
+既有公開偏好仍為主機共用，不做遷移；個人檔案與自訂 CSS 內部的身分規則維持原樣。設定 → 外觀提供五個選擇器。開啟效果後，不需 HTML 預覽同意或其服務，頁面／頁首／側邊欄／區塊選擇會在支援的 stock 頁面播放，與聊天共用同一個 pool，並提供各槽的暫停／恢復及失效／清除控制。游標選擇不需 HTML 預覽同意即可套用主機的靜態 PNG，保留明確指定的按鈕／文字／拖曳游標；拖曳中或無法套用時會還原一般游標。不執行 Worker 程式，也不佔用 frame 名額。
 
 效果取消共享後，他人的個人選擇會在下次資源授權時失效，游標圖片也一樣。已儲存的選擇會保留為不可用，
 直到使用者清除，並繼續保留其檔案引用。這刻意比聊天效果的保留執行政策嚴格：個人選擇遵循目前的共享權限，

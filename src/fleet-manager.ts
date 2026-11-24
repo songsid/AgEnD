@@ -24,7 +24,7 @@ import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
 import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
-import type { ContactRequest } from "./contact-auth-store.js";
+import { contactPersonKey, normalizeContactPersonKey, type ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -334,7 +334,8 @@ import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { WebPinStore } from "./web-pin-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
-import { OfficeActs } from "./web-office-acts.js";
+import { OfficeActs, officeMembers } from "./web-office-acts.js";
+import { characterPlan, ownCharacter } from "./hub-character-plan.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
 import { WebAppearance } from "./web-appearance.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
@@ -2714,6 +2715,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
             attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
+            attachQuestionSettled: read => { this.hubQuestionSettled = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentIntro: port => { this.hubAgentIntro=port; },
@@ -2878,7 +2880,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const person = humanCards(this.dataDir).get(name)?.portrait ?? null, own = theme.card?.portrait ?? null;
       if (person || own) portrait = { key: person ? `card:${person}` : `agent-card:${own}`, load: () => cardPicture({ dataDir: this.dataDir, themeStore: this.themeStore }, name, "portrait") };
     } catch { /* unreadable: no pictures */ }
-    return { disc, portrait };
+    let character: import("./hub/member/agent-pictures.js").MemberCharacterSource | null = null;
+    try { character = this.hubCharacterSource(name); } catch { /* unreadable offices or packs: no character */ }
+    return { disc, portrait, character };
+  }
+
+  /**
+   * M-3533 R2c: the agent's own character (hub-character-plan.ts ownCharacter): the set its owner gave it by name in
+   * the first of these offices (their own order) holding it, else in the "All" office's pack. The key is that pack's version
+   * and the set's name: a changed pack, set or office changes it; the pictures are read and cut only then.
+   */
+  private hubCharacterSource(name: string): import("./hub/member/agent-pictures.js").MemberCharacterSource | null {
+    const list = this.officeStore.list();
+    if (!list.readable) return null;
+    let chart: { names: string[]; teams: Array<{ name: string; members: string[] }> } | null = null;
+    const holds = (office: { members: readonly string[] }, agent: string) => {
+      if (!office.members.length) return true;
+      if (office.members.includes(agent)) return true;
+      if (!office.members.some(m => m.startsWith("team:"))) return false;
+      chart ??= (() => { const c = this.orgChart(); return { names: Object.keys(c.instances), teams: c.teams }; })();
+      return officeMembers({ members: [...office.members] }, chart).includes(agent);
+    };
+    const hit = ownCharacter({ offices: list.offices, autoSkin: list.autoSkin ?? null, holds, pack: id => this.officeSkins.pack(id) }, name);
+    if (!hit) return null;
+    const sha = this.officeSkins.list().packs.find(p => p.id === hit.packId)?.sha;
+    if (!sha) return null;
+    return { key: `${hit.packId}@${sha}:${hit.set}`, load: () => {
+      const pack = this.officeSkins.pack(hit.packId), files = this.officeSkins.get(hit.packId)?.files;
+      const plan = pack && files ? characterPlan(pack.characters[hit.set]) : null;
+      if (!plan) return null;
+      const pictures = new Map<string, Uint8Array>();
+      for (const src of plan.sources) { const id = files![src], bytes = id ? this.officeSkins.picture(hit.packId, id) : null; if (!bytes) return null; pictures.set(src, bytes); }
+      return { plan, pictures };
+    } };
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */
@@ -3085,7 +3119,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private contactWindows(): HubContactWindows {
     return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
   }
-  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
+  /**
+   * M-3660: each agent's running Hub answer turn as its daemon tells it (re-told on every connect): a correlation id, or
+   * null for "confirmed none". An agent missing here is unknown (this fleet has not heard from its daemon since it
+   * started): nothing settled lifts its windows then — they hold until the daemon says (Prism #4420 P2-1).
+   */
+  private readonly hubAnswerTurns = new Map<string, string | null>();
+  /**
+   * M-3660: the agent's daemon is about to write a Hub question into its idle pane: the answer turn's window opens (none for
+   * a share that opted out). A window that cannot be saved still holds in memory: fail closed.
+   */
+  private hubQuestionInput(agent: string, correlationId: string, contactLimit = true): void {
+    this.hubAnswerTurns.set(agent, correlationId);
+    if (!contactLimit) return;
+    try { this.contactWindows().begin(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be saved; it holds until this fleet restarts or it expires"); }
+  }
+  /** M-3660: that answer turn is over (its idle edge, or the next turn's write): the window closes, whatever came of it. */
+  private hubQuestionTurnEnded(agent: string, correlationId: string): void {
+    if (this.hubAnswerTurns.get(agent) === correlationId) this.hubAnswerTurns.set(agent, null);
+    try { this.contactWindows().answered(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be closed; it will expire"); }
+  }
+  /**
+   * M-3660: what the daemon says on (re)connect — the turn it is answering now, or none. A lost hub_question_input or
+   * hub_question_turn_ended (a stale connection, a fleet or daemon restart) is made good here: with no turn running every
+   * window of the agent ends; with one, that one holds and the rest end.
+   */
+  private hubQuestionTurnState(agent: string, correlationId: string | null, contactLimit = true): void {
+    try { this.contactWindows().closeAgent(agent, correlationId ?? undefined); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact windows could not be reconciled; they will expire"); }
+    if (correlationId) this.hubQuestionInput(agent, correlationId, contactLimit);
+    else this.hubAnswerTurns.set(agent, null);
+  }
+  /** M-3660: a daemon's Hub turn signal (from its current connection). "unknown" (an unreadable turn record) changes nothing. */
+  private hubTurnSignal(agent: string, msg: Record<string, unknown>): void {
+    const cid = typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId) ? msg.correlationId : null;
+    if (msg.type === "hub_question_turn_state") { if (msg.unknown !== true && (cid || msg.correlationId === null)) this.hubQuestionTurnState(agent, cid, msg.contactLimit !== false); }
+    else if (cid && msg.type === "hub_question_input") this.hubQuestionInput(agent, cid, msg.contactLimit !== false);
+    else if (cid && msg.type === "hub_question_turn_ended") this.hubQuestionTurnEnded(agent, cid);
+  }
+  /** M-3660: the agent's daemon has told this fleet its current turn, and it is not this question (unknown is never "none"). */
+  private hubAnswerTurnKnownNone(agent: string, correlationId: string): boolean {
+    return this.hubAnswerTurns.has(agent) && this.hubAnswerTurns.get(agent) !== correlationId;
+  }
+  /** M-3660: a settled question lifts its window only outside its own running answer turn; inside it, the turn's end does. */
+  private hubSettledOutsideTurn(): ((agent: string, correlationId: string) => boolean) | undefined {
+    const settled = this.hubQuestionSettled;
+    return settled ? (agent, correlationId) => this.hubAnswerTurnKnownNone(agent, correlationId) && settled(agent, correlationId) : undefined;
+  }
+  /** M-3660: the member side's "this question is no longer being answered" reader (null: no member service attached). */
+  private hubQuestionSettled: ((agent: string, correlationId: string) => boolean) | null = null;
+  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent, this.hubSettledOutsideTurn()); }
+  hubContactQuestion(agent: string): string | null { return this.contactWindows().restrictingQuestion(agent, this.hubSettledOutsideTurn()); }
   /**
    * M-3313 (#4145 for the Hub): what a Hub question or room notification hands the agent, with this fleet's sign-in
    * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
@@ -3138,6 +3224,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       task_summary: "A question from the Hub",
     };
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
+    // M-3660: the share's opt-out travels with the question; its daemon's hub_question_input then opens no window.
+    if (input.contactLimit === false) ipcMeta.hub_contact_limit = "off";
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         const classic=this.isClassicInstance(input.agent);
@@ -3147,8 +3235,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
-        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
-        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        // M-3660: the window covers only the turn that answers the question. The agent's daemon (Classic rooms' too)
+        // writes it only into an idle pane, as a turn of its own, and says so just before the write (hub_question_input),
+        // so a question waiting behind another turn — or never written — opens nothing.
         return input.stillCurrent();
       } });
     return result !== false;
@@ -3256,7 +3345,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const result = this.hubReports?.(input) ?? null;
     if (!result) return null;
     return result.then(outcome => {
-      if (outcome.ok) {
+      // M-3660: an accepted answer inside its own running answer turn does not lift it: the turn's end does.
+      if (outcome.ok && this.hubAnswerTurnKnownNone(input.caller, input.correlationId)) {
         try { this.contactWindows().answered(input.caller, input.correlationId); }
         catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
       }
@@ -5685,12 +5775,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return incarnation;
   }
 
+  /** Eligible connections share a platform; the current Fleet-admin gate still decides each user's role. */
+  private contactAdminAdapterIds(adapter: ChannelAdapter): string[] {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return [...new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)])];
+  }
+  /** Contact permissions identify a person by platform/user; sibling bot connections do not create new people. */
+  private contactDefaultApprovers(name: string): ContactPerson[] {
+    const adapter = this.contactAdapter(name);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
+    const people = this.contactAdminAdapterIds(adapter).flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
+      platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
+    return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];
+  }
   contactAdminOf(name: string, actor: ContactPerson): boolean {
     if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
     const adapter = this.contactAdapter(name);
-    if (!adapter || actor.adapterId !== adapter.id || actor.platform !== adapter.type) return false;
-    return this.isFleetAdmin(actor.userId, adapter.id)
-      || (!!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true);
+    if (!adapter || actor.platform !== adapter.type) return false;
+    if (this.contactAdminAdapterIds(adapter).some(id => this.isFleetAdmin(actor.userId, id))) return true;
+    return !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
   }
 
   private contactService(): ContactAuthService {
@@ -5699,11 +5802,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       restricted: name => this.contactRoom(name)?.restrictedMode === true,
       legacyClassic: name => !!this.contactRoom(name) && this.contactRoom(name)?.restrictedMode !== true,
       adminOf: (name, actor) => this.contactAdminOf(name, actor),
-      defaultApprovers: name => {
-        const adapter = this.contactAdapter(name);
-        if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
-        return (this.adminListOf(adapter.id) ?? []).map(userId => ({ platform: adapter.type as "discord" | "telegram", adapterId: adapter.id, userId, label: userId }));
-      },
+      defaultApprovers: name => this.contactDefaultApprovers(name),
       generation: name => this.contactGeneration(name),
       hubRestricted: name => this.hubContactRestricted(name),
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
@@ -5913,7 +6012,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const view = service.view(ticket, actor);
         if (filter.status && view.state !== filter.status) return [];
-        if (filter.person && !view.origin.people.some(person => JSON.stringify([person.platform, person.adapterId, person.userId]) === filter.person)) return [];
+        if (filter.person && !view.origin.people.some(person => contactPersonKey(person) === normalizeContactPersonKey(filter.person ?? ""))) return [];
         return [view];
       } catch { return []; }
     }) };
@@ -6965,6 +7064,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
+  /** M-3674: the last turn another agent started for `name` (the delivery outbox), ISO or null; never throws. */
+  lastAgentTurnOf(name: string): string | null {
+    try { return this.deliveryOutbox?.lastAgentTurn(name) ?? null; } catch { return null; }
+  }
+
   lastActivityMs(name: string): number {
     return this.lastActivity.get(name) ?? 0;
   }
@@ -13825,6 +13929,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
         } else if(msg.type==="hub_room_turn_ended"){
           if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
+        } else if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended" || msg.type === "hub_question_turn_state") {
+          // M-3660: only the instance's current daemon speaks for its pane's turns.
+          if (this.instanceIpcClients.get(name) === ipc) this.hubTurnSignal(name, msg);
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);
@@ -31665,6 +31772,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               // User activity is persisted by the daemon, so both the board and
               // auto-pause retain an accurate age across fleet restarts.
               lastActivity,
+              // M-3674: the last turn another agent started (lastActivity is a person's side).
+              lastAgentTurn: inst.classic ? null : this.lastAgentTurnOf(inst.name),
               currentTask,
               idle: this.getInstanceIdle(inst.name),
               ...this.instancePresentation(inst.name),
@@ -32084,7 +32193,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
-          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
+          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,last_agent_turn:this.lastAgentTurnOf(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
@@ -32154,6 +32263,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
         ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // M-3674: its last turn another agent started (a message from another instance it took up), beside last_reply.
+        last_agent_turn: this.lastAgentTurnOf(name) ?? undefined,
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);

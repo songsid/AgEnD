@@ -1,3 +1,4 @@
+import {tForLocale} from "../src/locale.js";
 /**
  * M-3632: Needs you → "Try again" on held Hub work. The item carries `hubRetry` only when the member says the held question
  * may be asked again; the button posts its id to /ui/needs/hub-retry (a signed-in write with CSRF), which hands it to the
@@ -95,6 +96,13 @@ describe("M-3632 the Try again button", () => {
     expect(button(label)).toBeTruthy();
     expect(p.root.textContent).toContain(words);
     i18n.setLang("en", { store: false });
+  });
+  it.each(["en","zh-TW"]as const)("%s: room-clock warning shows its locale detail without a Try again action",async lang=>{
+    i18n.setLang(lang,{store:false});
+    const items=deriveNeedsYou({instances:[],prompts:[],deliveries:[],ownerOf:()=>undefined,hubExecution:[{id:"room-clock:fixture",kind:"hold",agent:"desk",messageId:"fixture",exposureId:"fixture",since:Date.now(),detail:tForLocale(lang,"hub.room.clockSkew")}]});
+    expect(items[0]).not.toHaveProperty("hubRetry");app.appStore.set({needs:items});await mount();await settle(4);
+    expect(p.root.textContent).toContain(tForLocale(lang,"hub.room.clockSkew"));expect(button(lang==="en"?"Try again":"再試一次")).toBeFalsy();expect(posts()).toEqual([]);
+    i18n.setLang("en",{store:false});
   });
   it("one POST with the item's id; the button is off while it runs", async () => {
     i18n.setLang("en", { store: false });

@@ -90,7 +90,7 @@ describe("what the page says", () => {
   it("zh-TW: the same, in plain words", async () => {
     i18n.setLang("zh-TW", { store: false });
     await mount();
-    for (const s of ["使用這台電腦 Windows 上的 CLI", "允許其他 Windows 電腦配對", "這台電腦仍是你的 Fleet。另一台 Windows 電腦只執行一個小 runner，不是 Fleet",
+    for (const s of ["使用這台電腦 Windows 上的 CLI", "允許其他 Windows 電腦配對", "這台電腦仍是你的 Fleet。另一台 Windows 電腦只執行一個小執行程式，不是 Fleet",
       "每台 Windows 電腦同時執行的 Agent 數", "請勿使用 Tailscale Funnel", "另一台電腦如何連線", "開啟時，和其他存取設定一樣需要 Fleet 管理員確認；關閉不需 Fleet 管理員確認，你在這裡確認後就會立即生效。"]) expect(text(), s).toContain(s);
     expect(text()).not.toContain("Use this PC's Windows CLIs");
   });

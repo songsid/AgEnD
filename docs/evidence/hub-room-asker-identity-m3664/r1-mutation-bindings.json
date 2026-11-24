@@ -1,0 +1,30 @@
+[
+  {
+    "name": "expiry-gc",
+    "path": "src/hub/member/room-asker-store.ts",
+    "baselineDigest": "40c3702060f2506f1f1172a08093c5c9e1b5e3d5c3642819a59e197ecab950ad",
+    "mutantDigest": "d5c07096f9a83ac9b5fe0b209d1b3eea4fad8b5fb34b8929ee09be3de94ee0a5",
+    "exit": 1
+  },
+  {
+    "name": "delivery-principal",
+    "path": "src/hub/rooms/asker-identity.ts",
+    "baselineDigest": "900bd06bfed2aaedf408846cd52622d33cfef08f28a934b862a0e7765deb920b",
+    "mutantDigest": "0ee15671cfd557862ae90a83a84d5b0bf4ccd1f0bcfc7288ad44e3d7cca61e7f",
+    "exit": 1
+  },
+  {
+    "name": "orphan-retry",
+    "path": "src/hub/member/room-asker-store.ts",
+    "baselineDigest": "40c3702060f2506f1f1172a08093c5c9e1b5e3d5c3642819a59e197ecab950ad",
+    "mutantDigest": "3befb9fe26e8af0c0ec9453f0ceca9449a7d67ad9c1f000bea7ba3bf4e388bfa",
+    "exit": 1
+  },
+  {
+    "name": "clock-auth",
+    "path": "src/hub/member/room-ask.ts",
+    "baselineDigest": "42ca90bc0e0be133a0de7eecce1990e44467439b566ee2e6b454337441ae6304",
+    "mutantDigest": "e309c4745c82610c963c384331c18c0b59f4e8ec868ff7b7e82753f613df5443",
+    "exit": 1
+  }
+]

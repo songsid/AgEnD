@@ -100,6 +100,8 @@ export interface TmuxHoldInput { instance: string | null; key: string; detail: s
 export interface HubShareLapseInput { agent: string; key: string; since: number }
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
+  /** Bounded server-owned diagnostic for an authenticated room-proof clock hold. */
+  detail?: string;
   proposal?: NonNullable<NeedsYouItem["hubProposal"]>;
   /** M-3632: a held question the owner may send back through the Hub's checks ("Try again"). */
   retry?: true;
@@ -363,7 +365,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
   // Hub proposals remain display-only in the member owner's local inbox.
   for (const attention of inputs.hubExecution ?? []) items.push({
     id: `hub:${attention.id}`, type: "hub", instance: attention.agent,
-    reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: "", since: attention.since,
+    reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: oneLine(attention.detail??"",320), since: attention.since,
     ...(attention.proposal ? { hubProposal: attention.proposal } : {}),
     ...(attention.kind === "hold" && attention.close ? { hubClose: true as const } : {}),
     ...(attention.kind === "hold" && attention.retry ? { hubRetry: true as const } : {}),
