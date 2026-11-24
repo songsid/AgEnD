@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+// @ts-expect-error — a JS module of the app, with no types
 import * as T from "../src/ui/fleet-office-talk.js";
 import * as D from "../src/ui/fleet-office-dialogue.js";
 import * as PK from "../src/ui/fleet-office-pack.js";
@@ -36,7 +37,7 @@ describe("the talk store (createTalk)", () => {
     });
     const talk = T.createTalk({ fetch: f as any, rid: () => "client-0001" });
     const seen: string[] = [];
-    talk.subscribe((n) => seen.push(n));
+    talk.subscribe((n: string) => seen.push(n));
     await talk.open("atlas"); await talk.open("atlas");
     expect(calls.filter(([u]) => u.startsWith("/ui/history"))).toHaveLength(1);
     expect(calls[0]![0]).toBe("/ui/history?instance=atlas&limit=50");
@@ -307,10 +308,10 @@ describe("talking on the page", () => {
   });
   it("the store keeps the whole line and holds an answer until it is clicked away", () => {
     const d = D.createDialogue();
-    d.heard("atlas", { name: "A" }, "x".repeat(500), 0);
+    d.heard("atlas", { name: "A", account: null }, "x".repeat(500), 0);
     const c = d.answered("atlas", `${"y".repeat(500)}end`, 10)!;
-    expect(c.reply.length).toBeLessThanOrEqual(D.DLG.TEXT_MAX);
-    expect(c.replyFull.endsWith("end")).toBe(true);
+    expect(c.reply!.length).toBeLessThanOrEqual(D.DLG.TEXT_MAX);
+    expect(c.replyFull!.endsWith("end")).toBe(true);
     D.stageOf(c, 20, false, false);                                 // shown
     expect(d.sweep(20 + D.DLG.HOLD_MS + D.DLG.FADE_MS + 1, false, true)).toBe(false);
     expect(d.size()).toBe(1);

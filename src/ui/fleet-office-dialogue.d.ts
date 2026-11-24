@@ -1,7 +1,9 @@
 // Types for fleet-office-dialogue.js (#2861): the Office's dialogue box — the page's module, read by tests.
-export const DLG: { TEXT_MAX: number; FRESH_MS: number; HOLD_MS: number; FADE_MS: number; SLIDE_MS: number; WAIT_MS: number; CPS: number; MAX: number };
+export const DLG: { TEXT_MAX: number; FULL_MAX: number; FRESH_MS: number; HOLD_MS: number; FADE_MS: number; SLIDE_MS: number; WAIT_MS: number; CPS: number; MAX: number };
 export interface DialogPerson { name: string; account: string | null }
-export interface Conversation { id: number; instance: string; person: DialogPerson | null; text: string | null; reply: string | null; heardAt: number; answeredAt: number | null; shownAt: number | null; replyShownAt: number | null }
+export interface Conversation { id: number; instance: string; person: DialogPerson | null; text: string | null; full: string | null; reply: string | null; replyFull: string | null; heardAt: number; answeredAt: number | null; shownAt: number | null; replyShownAt: number | null;
+  /** The click-through box (talk "Dialogue box"): the page shown, when it began typing, when it was whole. */
+  page: number; pageAt: number | null; wholeAt?: number | null }
 export interface DialogLayout {
   narrow: boolean; box: { x: number; y: number; w: number; h: number };
   portrait: { h: number; foot: number; maxW: number; left: number; right: number };
@@ -12,7 +14,8 @@ export function clip(text: unknown, max?: number): string;
 export function createDialogue(): {
   heard(instance: string, person: DialogPerson | null, text: string | null, t: number): Conversation | null;
   answered(instance: string, text: string | null, t: number): Conversation | null;
-  sweep(t: number, still?: boolean): boolean; list(): Conversation[]; size(): number; rev(): number; clear(): void;
+  sweep(t: number, still?: boolean, hold?: boolean): boolean; list(): Conversation[]; size(): number; rev(): number; clear(): void;
+  drop(instance: string): void; skip(): boolean;
 };
 export function pickFront(list: Conversation[], shown: (name: string) => boolean, asleep: (name: string) => boolean): { front: Conversation | null; more: number };
 export function messageOf(m: unknown, serverNow: number): ({ kind: "heard"; instance: string; person: DialogPerson; text: string; files: boolean } | { kind: "answered"; instance: string; text: string; files: boolean }) | null;
