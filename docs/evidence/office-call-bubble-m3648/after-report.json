@@ -1,0 +1,76 @@
+{
+ "label": "after",
+ "cases": {
+  "desk-light-en": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 113,
+   "lastBubble": {
+    "s": "Still thinking…",
+    "x": 1100,
+    "y": 667,
+    "at": 9260.299999952316
+   },
+   "distinct": [
+    "Still thinking…"
+   ]
+  },
+  "desk-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 122,
+   "lastBubble": {
+    "s": "還在想…",
+    "x": 1100,
+    "y": 646,
+    "at": 9266.799999952316
+   },
+   "distinct": [
+    "還在想…"
+   ]
+  },
+  "phone-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 121,
+   "lastBubble": {
+    "s": "還在想…",
+    "x": 296,
+    "y": 487,
+    "at": 9213.699999988079
+   },
+   "distinct": [
+    "還在想…"
+   ]
+  },
+  "phone-dark-zh-TW-zoomed": {
+   "zoom": "200%",
+   "bubbleLines": 118,
+   "distinct": [
+    "嗯，卡住了？"
+   ]
+  },
+  "phone-light-en": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 112,
+   "lastBubble": {
+    "s": "Still thinking…",
+    "x": 296,
+    "y": 487,
+    "at": 9214.899999976158
+   },
+   "distinct": [
+    "Still thinking…"
+   ]
+  },
+  "phone-light-en-zoomed": {
+   "zoom": "200%",
+   "bubbleLines": 115,
+   "distinct": [
+    "Hmm, stuck?"
+   ]
+  }
+ },
+ "source": "73dbafa4"
+}

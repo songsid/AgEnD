@@ -51,14 +51,15 @@ for (const c of matrix(process.env.MATRIX ?? "quick")) {
   const card = await page.locator(".oo-card").evaluate((el: any) => ({
     state: el.querySelector(".oo-card-state")?.textContent, xp: el.querySelector(".oo-card-xp")?.textContent, badge: el.querySelector(".oo-badge")?.textContent,
     badgeTier: el.querySelector(".oo-badge")?.className, rows: [...el.querySelectorAll(".oo-card-rows dt")].map((d: any) => d.textContent),
-    instanceH: el.querySelector(".oo-card-instance")?.getBoundingClientRect().height, buttons: [...el.querySelectorAll(".oo-card-actions button")].map((b: any) => b.textContent),
+    instanceH: el.querySelector(".oo-card-instance")?.getBoundingClientRect().height, buttons: [...el.querySelectorAll(".oo-card-actions button")].map((b: any) => b.className),
     avatarPainted: (() => { const cv = el.querySelector("canvas"); const d = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data; for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; })(),
   }));
   await page.screenshot({ path: shotPath(SMOKE, c, "card") });
   const phone = c.device === "phone";
   record(`${caseName(c)} Enter on a desk opens the card`, {
     "a card": !!box,
-    ...(phone ? { "a bottom sheet": sheet === 1, "just above the tab bar": !!box && Math.abs(box.y + box.height - ((await page.locator("nav.tabs").boundingBox())?.y ?? -99)) < 2 }
+    // M-3166 took the phone's tab bar away: the sheet sits on the window's foot.
+    ...(phone ? { "a bottom sheet": sheet === 1, "on the window's foot": !!box && Math.abs(box.y + box.height - (await page.evaluate(() => innerHeight))) < 2 }
       : { "320 px wide": !!box && Math.round(box.width) === 320, "inside the stage": !!box && !!stage && box.x >= stage.x && box.x + box.width <= stage.x + stage.width + 1 }),
     "the title in the state line": /·/.test(card.state ?? ""),
     "Lv 50 and its tokens": (card.xp ?? "").includes("Lv 50"),
@@ -66,7 +67,8 @@ for (const c of matrix(process.env.MATRIX ?? "quick")) {
     "badge 50, gold tier": card.badge === "50" && /tier-4/.test(card.badgeTier ?? ""),
     "five rows": card.rows.length === 5,
     "the instance name one line": (card.instanceH ?? 99) <= 18.5,
-    "Find and Chat": card.buttons.length === 2,
+    // M-3293: Pat and Feed (Drag and pat is on by default), then Find and Chat.
+    "Pat, Feed, Find and Chat": ["oo-card-pat", "oo-card-feed", "oo-card-find", "oo-card-chat"].every((k, i) => (card.buttons[i] ?? "").split(/\s+/).includes(k)) && card.buttons.length === 4,
     "the avatar drawn": card.avatarPainted,
   }, { card, box, stage });
   await page.keyboard.press("Escape");

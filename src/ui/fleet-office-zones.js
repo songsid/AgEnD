@@ -605,20 +605,27 @@ export function bubbleAt(name, state, ms, lines) {
  * (the most typed out) — one already showing keeps its place. Each takes its spot, or one row up (`lift`) when that is
  * free; else it waits for another round. Returns the placed ones, each with its `dy` (0 or -lift). `rank` (optional,
  * bubbleRank): a lower one goes first (else: calling 0, the rest 2); `blocked`: boxes no bubble may cover (name tags).
+ * M-3648: `soft` (the areas' names, M-3539) blocks every bubble but a call: one calling for the person (stuck, needs
+ * you, crashed) that finds both spots taken tries a second row up, then may cover an area's name — never a tag or
+ * another bubble (no two bubbles overlap) — so a name alone never keeps a call out (on Cozy a stuck agent stands right
+ * under "Help desk", and its "Hmm, stuck?" went missing in beta.20).
  */
-export function placeBubbles(items, lift = 22, blocked = []) {
+export function placeBubbles(items, lift = 22, blocked = [], soft = []) {
   const rank = (it) => (it.rank ?? (it.calling ? 0 : 2));
   const order = [...items].sort((a, b) => (rank(a) - rank(b)) || (b.shown - a.shown) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   const taken = [...blocked], out = [];
-  const hits = (r) => taken.some((t) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
+  const hit = (list, r) => list.some((t) => r.x < t.x + t.w && t.x < r.x + r.w && r.y < t.y + t.h && t.y < r.y + r.h);
+  const at = (it, dy) => {
+    const r = { x: it.box.x, y: it.box.y + dy, w: it.box.w, h: it.box.h };
+    return { r, t: it.tail ? { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } : null };
+  };
+  const first = (it, dys, lists) => dys.find((dy) => { const { r, t } = at(it, dy); return !lists.some((l) => hit(l, r) || (t && hit(l, t))); });
   for (const it of order) {
-    for (const dy of [0, -lift]) {
-      const r = { x: it.box.x, y: it.box.y + dy, w: it.box.w, h: it.box.h };
-      const t = it.tail ? { x: it.tail.x - 1, y: r.y + r.h, w: 9, h: Math.max(0, it.tail.y - (r.y + r.h)) } : null;
-      if (hits(r) || (t && hits(t))) continue;
-      taken.push(r); if (t) taken.push(t); out.push({ ...it, dy });
-      break;
-    }
+    let dy = first(it, [0, -lift], [taken, soft]);
+    if (dy === undefined && it.calling) dy = first(it, [-2 * lift], [taken, soft]) ?? first(it, [0, -lift, -2 * lift], [taken]);
+    if (dy === undefined) continue;
+    const { r, t } = at(it, dy);
+    taken.push(r); if (t) taken.push(t); out.push({ ...it, dy });
   }
   return out;
 }
