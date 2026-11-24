@@ -28,6 +28,21 @@ export { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.j
 import { HUB_REPORT_TARGET, type HubReportExtras, type HubReportOutcome } from "../hub-report-target.js";
 export const HUB_ANSWER_MAX = 128 * 1024;
 const HELD_MAX = 256;
+/** M-3632: waits before asking the Hub again after it could not answer before input; one more try each, then a hold. */
+export const HUB_BEGIN_RETRY_MS: readonly number[] = [2_000, 10_000, 30_000];
+/** M-3632: holds that may be tried again from Needs you: nothing reached the agent, so asking the Hub again is safe. */
+const RETRYABLE_HOLDS: ReadonlySet<string> = new Set(["unavailable", "stale", "files-unavailable"]);
+/**
+ * M-3632: a refusal before input that asking again can change — the Hub (or its link) could not answer just now. A Hub
+ * refusal that is a decision (revoked, denied, expired, not found, conflict, invalid) is not.
+ */
+function transientBeforeInput(err: unknown): boolean {
+  const e = err as { code?: unknown; reasonCode?: unknown } | null;
+  if (!e || typeof e !== "object") return false;
+  if (e.code === "unavailable" || e.code === "stale") return true;            // no ready link / the link changed under it
+  if (e.code === "denied") return e.reasonCode === "unavailable" || e.reasonCode === "backpressure";
+  return e instanceof HubProtocolError && ["unavailable", "backpressure", "timeout"].includes(e.code);
+}
 class HubButtonRefusal extends Error {}
 
 export function migrateHubRepresentative(db: Database.Database): void {
@@ -86,6 +101,8 @@ export interface HubRepresentativeOptions {
   attentionChanged(): void;
   log(level: "info" | "warn", message: string, meta?: Record<string, unknown>): void;
   now?: () => number;
+  /** M-3632: the waits before asking the Hub again after it could not answer before input (default HUB_BEGIN_RETRY_MS). */
+  beginRetryMs?: readonly number[];
 }
 
 
@@ -93,6 +110,8 @@ export class HubRepresentativeExecution {
   private closed = false;
   private recovered = false;
   private readonly running = new Set<string>();
+  /** M-3632: automatic re-asks so far by row id, and the wait before the next (memory only; a restart starts over). */
+  private readonly retries = new Map<string, { attempts: number; timer: NodeJS.Timeout | null }>();
   private receiptsTail: Promise<void> = Promise.resolve();
   constructor(private readonly options: HubRepresentativeOptions) {}
 
@@ -100,7 +119,7 @@ export class HubRepresentativeExecution {
   private row(where: "source" | "cid" | "message_id" | "id", value: string): Row | null {
     return (this.options.db.prepare(`SELECT * FROM hub_representative_questions WHERE ${where}=?`).get(value) as Row | undefined) ?? null;
   }
-  private setState(row: Row, state: State, from: readonly State[], extra: { reason?: string; cid?: string; answer?: string } = {}): boolean {
+  private setState(row: Row, state: State, from: readonly State[], extra: { reason?: string | null; cid?: string | null; answer?: string } = {}): boolean {
     const db = this.options.db;
     const result = db.prepare(`UPDATE hub_representative_questions SET state=?, at=?${extra.reason !== undefined ? ", reason=@reason" : ""}${extra.cid !== undefined ? ", cid=@cid" : ""}${extra.answer !== undefined ? ", answer=@answer" : ""}
       WHERE id=@id AND state IN (${from.map(s => `'${s}'`).join(",")})`)
@@ -223,7 +242,7 @@ export class HubRepresentativeExecution {
     try { rows = this.options.db.prepare("SELECT * FROM hub_representative_questions WHERE state='queued' ORDER BY at LIMIT 64").all() as Row[]; }
     catch (err) { this.options.log("warn", "Hub question queue could not be read", { err: String(err) }); return; }
     for (const row of rows) {
-      if (this.running.has(row.id)) continue;
+      if (this.running.has(row.id) || this.retries.get(row.id)?.timer) continue;   // M-3632: still waiting to ask again
       this.running.add(row.id);
       void this.dispatch(row).catch((err: unknown) => {
         this.options.log("warn", "Hub question delivery failed", { messageId: row.message_id, err: String(err) });
@@ -306,13 +325,28 @@ export class HubRepresentativeExecution {
       if (this.refresh(row) !== "dispatching" || !this.currentFor(row)) { this.hold(row, "stale"); return false; }
       this.options.journal.markInputIntent(row.message_id, request, lease, this.fenceOf(row));
       if (!this.setState(row, "input", ["dispatching"])) throw new HubProtocolError("uncertain");
+      this.forgetRetry(row.id);
       return true;
     } catch (err) {
       // After the intent was written, a failed transition is uncertain (never re-queued); before it, a plain hold.
       let intent = false;
       try { this.question(row); } catch { intent = true; }
-      if (intent) this.uncertain(row, err); else this.hold(row, "unavailable");
-      this.options.log("warn", "Hub question held before input", { messageId: row.message_id, err: String(err) });
+      if (intent) { this.uncertain(row, err); this.options.log("warn", "Hub question held before input", { messageId: row.message_id, err: String(err) }); return false; }
+      // M-3632: nothing reached the agent. When the Hub only could not answer, ask it again later (it re-checks everything);
+      // a Hub decision, or still no answer after the last wait, is a hold the owner sees.
+      const tried = this.retries.get(row.id)?.attempts ?? 0;
+      const waits = this.options.beginRetryMs ?? HUB_BEGIN_RETRY_MS;
+      if (transientBeforeInput(err) && tried < waits.length && this.setState(row, "queued", ["dispatching"], { cid: null })) {
+        const delay = waits[tried]!, wait = { attempts: tried + 1, timer: null as NodeJS.Timeout | null };
+        wait.timer = setTimeout(() => { wait.timer = null; if (!this.closed) this.pump(); }, delay); wait.timer.unref?.();
+        this.retries.set(row.id, wait);
+        this.options.log("info", "Hub question will ask the Hub again", { messageId: row.message_id, attempt: tried + 1, inMs: delay, err: String(err) });
+        return false;
+      }
+      // A Hub decision is "refused" (Try again would only be refused again); anything else that never got an answer is "unavailable".
+      const decided = (err as { code?: unknown } | null)?.code === "denied" && !transientBeforeInput(err);
+      this.hold(row, decided ? "refused" : "unavailable");
+      this.options.log("warn", "Hub question held before input", { messageId: row.message_id, attempts: tried, err: String(err) });
       return false;
     }
   }
@@ -446,6 +480,7 @@ export class HubRepresentativeExecution {
   }
   /** A hold always lands (state first); its audit record is attempted and a failure is logged. */
   private hold(row: Row, reason: string): void {
+    this.forgetRetry(row.id);
     if (!this.setState(row, "held", HOLDABLE, { reason })) return;
     try { this.auditRequired(row, "representative.held", "held", reason); }
     catch (err) { this.options.log("warn", "Hub audit append failed", { action: "representative.held", err: String(err) }); }
@@ -478,10 +513,40 @@ export class HubRepresentativeExecution {
   }
   attentionItems(): HubExecutionAttentionInput[] {
     const rows = this.options.db.prepare(`SELECT * FROM hub_representative_questions WHERE state='held' ORDER BY at DESC LIMIT ${HELD_MAX}`).all() as Row[];
-    return rows.map(r => ({ id: `hold:${r.id}`, kind: "hold" as const, agent: r.agent, messageId: r.message_id, exposureId: r.exposure_id, since: r.at }));
+    return rows.map(r => ({ id: `hold:${r.id}`, kind: "hold" as const, agent: r.agent, messageId: r.message_id, exposureId: r.exposure_id, since: r.at,
+      ...(this.retryable(r) ? { retry: true } : {}) }));
+  }
+  /** M-3632: a held question that never reached the agent (the journal still holds it, no input intent) and was held for a reason asking again can change. */
+  private retryable(row: Row): boolean {
+    if (row.state !== "held" || !RETRYABLE_HOLDS.has(row.reason ?? "")) return false;
+    try { this.question(row); return true; } catch { return false; }
+  }
+  /**
+   * M-3632: Needs you → "Try again" on a held question. It goes back to the queue and through the whole hand-off again:
+   * consent and lifecycle here, then the Hub's begin lease (the Hub re-checks the asker, grant and message). Nothing is
+   * delivered without that lease; a real refusal is held again.
+   */
+  retryHeld(attentionId: string): "queued" | "not-found" | "not-retryable" {
+    const id = attentionId.startsWith("hold:") ? attentionId.slice(5) : attentionId;
+    const row = this.row("id", id);
+    if (!row || row.state !== "held") return "not-found";
+    if (!this.retryable(row) || !this.currentFor(row)) return "not-retryable";
+    if (!this.setState(row, "queued", ["held"], { reason: null, cid: null })) return "not-found";
+    this.forgetRetry(row.id);
+    try { this.auditRequired(row, "representative.retry", "completed"); }
+    catch (err) { this.options.log("warn", "Hub audit append failed", { action: "representative.retry", err: String(err) }); }
+    this.options.attentionChanged();
+    this.pump();
+    return "queued";
+  }
+  private forgetRetry(id: string): void {
+    const wait = this.retries.get(id);
+    if (wait?.timer) clearTimeout(wait.timer);
+    this.retries.delete(id);
   }
   async close(): Promise<void> {
     this.closed = true;
+    for (const id of [...this.retries.keys()]) this.forgetRetry(id);
     await this.receiptsTail;
   }
 }

@@ -19,6 +19,8 @@ import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
 import { buttonsDigest } from "../src/hub/buttons-model.js";
+import { HubAuthorizationError } from "../src/hub/client.js";
+import { HUB_BEGIN_RETRY_MS } from "../src/hub/representative.js";
 
 const dbs: Database.Database[] = [];
 const reps: HubRepresentativeExecution[] = [];
@@ -120,6 +122,68 @@ function fixture(opts: { legacy?: boolean; handOff?: boolean; buttons?: boolean;
     setHandOff: (v: boolean) => { handOff = v; }, whileWaiting: (fn: () => void) => { onDeliver = fn; },
     failAuditOf: (action: string | null) => { failAudit = action; }, exchange: (mode: "ok" | "reject" | "bad-ack") => { exchangeMode = mode; } };
 }
+
+describe("M-3632 a Hub that could not answer before input", () => {
+  afterEach(() => { vi.useRealTimers(); });
+  /** The begin lease refused by `outcomes` in order (then granted); admit is always granted. */
+  const begins = (f: ReturnType<typeof fixture>, outcomes: Array<Error>) => {
+    const real = f.authorize.getMockImplementation()!;
+    f.authorize.mockImplementation(async (r: HubAuthorizationRequest) => { if (r.phase === "begin" && outcomes.length) throw outcomes.shift()!; return real(r); });
+  };
+  const busy = () => new HubAuthorizationError("denied", "unavailable");
+  it("asks the Hub again after a wait instead of holding, and delivers once the Hub agrees", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const f = fixture(); f.publish(); begins(f, [busy(), busy()]);
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "first hand-off refused");
+    expect(f.state(q.identity.messageId)?.state).toBe("queued");
+    expect(f.rep.attentionItems()).toEqual([]);
+    f.rep.pump(); await tick();
+    expect(f.handed).toEqual([false]);                              // waiting: a pump does not jump the wait
+    vi.advanceTimersByTime(HUB_BEGIN_RETRY_MS[0]!); await until(() => f.handed.length === 2, "second try");
+    vi.advanceTimersByTime(HUB_BEGIN_RETRY_MS[1]!); await until(() => f.handed.length === 3, "third try");
+    expect(f.handed).toEqual([false, false, true]);
+    expect(f.state(q.identity.messageId)?.state).toBe("delivered");
+    expect(f.authorize.mock.calls.map(([r]) => r.phase)).toEqual(["admit", "begin", "begin", "begin"]);
+  });
+  it("holds after the last wait, and Needs you can try again — through the Hub's begin lease, never blind", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const f = fixture(); f.publish(); begins(f, Array.from({ length: HUB_BEGIN_RETRY_MS.length + 1 }, busy));
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.handed.length === 1, "first");
+    for (const [k, ms] of HUB_BEGIN_RETRY_MS.entries()) { vi.advanceTimersByTime(ms); await until(() => f.handed.length === k + 2, `try ${k + 2}`); }
+    await until(() => f.state(q.identity.messageId)?.state === "held", "held");
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "unavailable" });
+    const [item] = f.rep.attentionItems();
+    expect(item).toMatchObject({ kind: "hold", messageId: q.identity.messageId, retry: true });
+    const beforeBegins = f.authorize.mock.calls.filter(([r]) => r.phase === "begin").length;
+    expect(f.rep.retryHeld(item!.id)).toBe("queued");
+    await until(() => f.state(q.identity.messageId)?.state === "delivered", "delivered after Try again");
+    expect(f.authorize.mock.calls.filter(([r]) => r.phase === "begin").length).toBe(beforeBegins + 1);
+    expect(f.handed.at(-1)).toBe(true);
+    expect(f.audit).toContain("representative.retry");
+  });
+  it("a Hub decision (revoked) is held at once, not retried, and offers no Try again", async () => {
+    const f = fixture(); f.publish(); begins(f, [new HubAuthorizationError("denied", "revoked")]);
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.state(q.identity.messageId)?.state === "held", "held");
+    expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "refused" });
+    expect(f.authorize.mock.calls.filter(([r]) => r.phase === "begin")).toHaveLength(1);
+    const [item] = f.rep.attentionItems();
+    expect(item!.retry).toBeUndefined();
+    expect(f.rep.retryHeld(item!.id)).toBe("not-retryable");
+  });
+  it("Try again refuses a question that may already have reached the agent (uncertain), and an unknown id", async () => {
+    const f = fixture(); f.publish();
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.state(q.identity.messageId)?.state === "delivered", "delivered");
+    f.rep.fence(q.identity.messageId, "uncertain");
+    const [item] = f.rep.attentionItems();
+    expect(item!.retry).toBeUndefined();
+    expect(f.rep.retryHeld(item!.id)).toBe("not-retryable");
+    expect(f.rep.retryHeld("hold:" + randomUUID())).toBe("not-found");
+  });
+});
 
 describe("Hub representative adapter (#3145)", () => {
   it("#3878: adopts a legacy queued representative question and completes it once after the link returns", async () => {

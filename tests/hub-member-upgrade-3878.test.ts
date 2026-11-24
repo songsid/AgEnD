@@ -39,6 +39,7 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => r.identity.hubId,
       agents: () => [{ name: "probe", display: "Probe" }], representative: {
         agentToken: agent => agent === "probe" ? "owned-generation" : null, attachReports() {},
+        beginRetryMs: [],   // M-3632: this fixture's Hub never grants the begin lease; hold at once, as the alpha.3 format it reproduces did
         deliver: async input => { attempts.push(input); const ok = await input.beforeInput(); if (ok) inputs.push(input); return ok; },
       }, attachExposures: value => { api = value; }, attachAttention() {}, pokeAttention() {},
       linkState: value => links.push(value), report() {}, log() {} });

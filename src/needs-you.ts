@@ -59,6 +59,8 @@ export interface NeedsYouItem {
   kiroChoice?: true;
   /** Member-local display only; never an approval capability or a public-link projection. */
   hubProposal?: { action: string; arguments: string; argumentsDigest: string; consequences: string };
+  /** M-3632: held Hub work the owner may send back through the Hub's checks (Needs you → "Try again"). */
+  hubRetry?: true;
   /** Display only. reason=dialog remains readable in an old panel; repair is in Settings. */
   runtimeUpdate?: true;
   /**
@@ -98,6 +100,8 @@ export interface HubShareLapseInput { agent: string; key: string; since: number 
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
   proposal?: NonNullable<NeedsYouItem["hubProposal"]>;
+  /** M-3632: a held question the owner may send back through the Hub's checks ("Try again"). */
+  retry?: true;
 }
 
 /** A fleet prompt offered on the dashboard (hang / exit-restart / interactive-assist), as the fleet holds it. */
@@ -359,6 +363,7 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     id: `hub:${attention.id}`, type: "hub", instance: attention.agent,
     reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: "", since: attention.since,
     ...(attention.proposal ? { hubProposal: attention.proposal } : {}),
+    ...(attention.kind === "hold" && attention.retry ? { hubRetry: true as const } : {}),
   });
 
   // M-3543: a shared agent's Hub share lapsed with its backend/folder change; under that agent, until it is shared again.
@@ -432,6 +437,7 @@ export function renderSignature(items: readonly NeedsYouItem[], nowMs: number): 
     i.card ? i.card.version : null,
     i.lane ?? null,
     i.hubProposal ?? null,
+    i.hubRetry ?? false,
     i.runtimeUpdate ?? false,
     i.hostAlert ?? null,
   ]));

@@ -44,6 +44,9 @@ register("needs", {
     otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
+    hubRetry: "Try again", hubRetrying: "Trying again…", hubRetryDone: "Sent back to the Hub for its checks. It goes to the agent once the Hub allows it.",
+    hubRetryGone: "This item has already changed. The list will refresh.", hubRetryNot: "This one can't be tried again: the Hub refused it, or the agent changed. Ask the person to send the question again.",
+    hubHoldDetail: "The Hub could not confirm this question before it reached the agent. Try again asks the Hub again; nothing is sent without its OK.",
     ageNow: "just now", ageMin: "{0} min ago", ageHour: "{0} h ago", ageDay: "{0} d ago",
     notifySection: "This device", notifyTitle: "Notify me on this device", notifyOn: "Notifications are on for this browser while a tab is open.",
     notifyOff: "Get a desktop notification when something new needs you while this tab is in the background.",
@@ -69,6 +72,9 @@ register("needs", {
     otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
+    hubRetry: "再試一次", hubRetrying: "重試中…", hubRetryDone: "已重新交給 Hub 檢查，Hub 同意後就會交給 Agent。",
+    hubRetryGone: "這個項目已經有變化，清單會重新整理。", hubRetryNot: "這則無法再試：Hub 已拒絕，或 Agent 已變更。請提問的人重新送出問題。",
+    hubHoldDetail: "Hub 在問題交給 Agent 之前無法確認。「再試一次」會重新詢問 Hub，沒有 Hub 同意不會送出。",
     ageNow: "剛剛", ageMin: "{0} 分鐘前", ageHour: "{0} 小時前", ageDay: "{0} 天前",
     notifySection: "這台裝置", notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",
@@ -279,17 +285,33 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", item.id, res && res.ok ? "done" : null);
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
+  // M-3632: held Hub work → back through the Hub's checks (the server re-asks the Hub for its lease; never delivered blind).
+  const retryHub = async () => {
+    if (claims.get().acks[item.id]) return;
+    setClaim("acks", item.id, "busy");
+    let res = null, body = null;
+    try {
+      res = await fetch("/ui/needs/hub-retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) });
+      body = await res.json().catch(() => ({}));
+    } catch { body = null; }
+    const ok = !!(res && res.ok);
+    setClaim("acks", item.id, ok ? "done" : null);
+    toast(ok ? tn("hubRetryDone") : res && res.status === 404 ? tn("hubRetryGone") : res && res.status === 409 ? tn("hubRetryNot") : t("app.failed"), ok);
+  };
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
     <span class="n-icon"><${Icon} name=${ICON[item.type] || "alert"} size=${18} /></span>
     <div class="n-body">
       <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
       ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
+      ${item.type === "hub" && item.hubRetry ? html`<p class="n-detail">${tn("hubHoldDetail")}</p>` : null}
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
       ${item.type==='host'?(item.hostAlert?html`<${HostAlertActions} record=${item.hostAlert}/>`:html`<a class="btn btn-sm" href=${fleetPath('host-health')}>${hostAlertText('open')}</a>`):null}
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
+        ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!ack} onClick=${retryHub}>
+            <${Icon} name="restart" size=${14} />${ack === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
         ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
