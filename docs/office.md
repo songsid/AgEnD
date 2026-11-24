@@ -113,7 +113,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape. The view fits the whole canvas and zooms as before; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape (a picture is at most 4096 px a side, so a 5120-wide canvas's background is drawn scaled up). The view fits the whole canvas, on a phone too, and zooms out as far as it needs to; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -508,7 +508,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `portraits`, `dialogBox` | ❌ | the dialogue box's faces and look (see [Make a skin pack](#make-a-skin-pack)) |
 | `card` | ❌ | `{ preset?, style?, layout? }`: optional Agent profile card preset (`default`, `rpg`, `compact`, `dossier`), WCAG-checked `#rrggbb` colours, `backgroundImage` (≤ 1024×1024 px), 9-slice `frame` (≤ 512×512 px), and layout overrides (#4256) |
 
-A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
+A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": false }`, inside its area. Coordinates run 0–1280 across and 0–720 down, or across and down the pack's own `canvas`. A name the pack declares can't be one every object already has (`constructor`, `toString`, `__proto__`, …).
 
 ### Strips
 
@@ -522,7 +522,7 @@ A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "
 | `w`, `h` | 1–512 image pixels per frame | — |
 | `fps` | 0–30; 0 shows the first frame only | 4 |
 | `ax`, `ay` | the anchor in image pixels | bottom centre |
-| `dw`, `dh` | the displayed size in logical units (1–1280, 1–720) | `w·scale`, `h·scale` |
+| `dw`, `dh` | the displayed size in logical units (1 to the canvas's width, 1 to its height: 1280 and 720 by default) | `w·scale`, `h·scale` |
 | `once` | `true`: play once from frame 0 and hold the last frame | `false` |
 | `loopFrom` | `0` to `totalFrames − 1`: play intro frames `0 .. loopFrom − 1` once, then loop from `loopFrom` (not with `once: true`) | `0` |
 | `row`, `col` | 0–4095: cut the frames from a bigger sheet — frame *i* is the `w × h` cell at column `col + i` of row `row`, so one picture can hold several poses and be shared by several strips. Its picture must then be at least `(col + frames)·w × (row + 1)·h` (a strip without them needs exactly `frames·w × h`). Not with a frame list | — |
@@ -632,3 +632,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
 | Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |
 | Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file and 42 MiB a pack (#4382; 64 Mpx of decoded pixels, unchanged). An older AgEnD refuses a pack that uses them | 2.4.0-beta |
+| A pack's own canvas size, `canvas: [w, h]` (640×360 to 5120×2880) (#4403). An older AgEnD refuses a pack that sets it | 2.4.0-beta |

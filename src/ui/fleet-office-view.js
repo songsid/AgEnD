@@ -1,5 +1,5 @@
 // #2540: the Office view's canvas controls — the pure part (fleet-office.js applies it). The office fills the Fleet
-// panel; its scene (the zones' 1280×720 logical canvas, or the desks layout) is panned and zoomed like the org chart's
+// panel; its scene (the zones' logical canvas: 1280×720 or a pack's own, or the desks layout) is panned and zoomed like the org chart's
 // canvas (fleet-canvas-view.js: the same view { k, x, y }, gestures, wheel and keys), with these of its own:
 //
 // - Pixel levels for the steps. + and − step to the next pixel level (one logical unit a whole number of device px:
@@ -17,36 +17,45 @@
 // background). It paints the whole canvas outside the scene (and the stage behind it), never the page's grey.
 import { clampK, pinchTo, zoomTo } from "./fleet-canvas-view.js";
 import { CANVAS_MAX } from "./fleet-office-model.js";
+import { CANVAS, LOGICAL } from "./fleet-office-pack.js";
 
-/** The zoom's range, in CSS px per logical unit. */
+/** The zoom's range, in CSS px per logical unit: OK_MIN is the floor for a scene the default canvas's size (1280×720). */
 export const OK_MIN = 0.1, OK_MAX = 8;
+/**
+ * #4405: a scene's own zoom floor. A scene bigger than the default canvas (a pack's `canvas: [w, h]`, All offices) may
+ * shrink as far on screen as the default one at OK_MIN (5120×2880: 0.025, still 128 px wide), so Fit shows it whole on
+ * a phone and − reaches that; never below OK_FLOOR, the biggest pack canvas's.
+ */
+const floorOf = (w, h) => Math.min(OK_MIN, OK_MIN * LOGICAL.w / Math.max(1, w), OK_MIN * LOGICAL.h / Math.max(1, h));
+export const OK_FLOOR = floorOf(CANVAS.max.w, CANVAS.max.h);
+export const minK = (w, h) => Math.max(OK_FLOOR, floorOf(w, h));
 const EPS = 1e-6;
-const clampO = (k) => clampK(k, OK_MIN, OK_MAX);
+const clampO = (k, lo = OK_MIN) => clampK(k, lo, OK_MAX);
 /** The highest pixel level within the range at this ratio (at least 1). */
 const topLevel = (dpr) => Math.max(1, Math.floor(OK_MAX * dpr + EPS));
 
 /** `k` on its pixel level: k·dpr rounded to a whole number when it is 1 or more; as it is (in range) below that. */
-export function snapK(k, dpr = 1) {
-  const c = clampO(k), n = c * dpr;
+export function snapK(k, dpr = 1, lo = OK_MIN) {
+  const c = clampO(k, lo), n = c * dpr;
   if (n < 1 - EPS) return c;
   return Math.min(topLevel(dpr), Math.max(1, Math.round(n))) / dpr;
 }
 /** Whether `k` is a pixel level (a whole number of device px per logical unit). */
 export const isPixelK = (k, dpr = 1) => k * dpr >= 1 - EPS && Math.abs(k * dpr - Math.round(k * dpr)) < 1e-6;
-/** One step in (`dir` > 0) or out: the next pixel level; below one device pixel a unit, by 1.25. */
-export function stepK(k, dir, dpr = 1) {
+/** One step in (`dir` > 0) or out: the next pixel level; below one device pixel a unit, by 1.25 (down to `lo`). */
+export function stepK(k, dir, dpr = 1, lo = OK_MIN) {
   const n = k * dpr;
   if (dir > 0) {
     if (n >= 1 - EPS) return Math.min(topLevel(dpr), Math.floor(n + EPS) + 1) / dpr;
-    return n * 1.25 >= 1 - EPS ? 1 / dpr : clampO(k * 1.25);
+    return n * 1.25 >= 1 - EPS ? 1 / dpr : clampO(k * 1.25, lo);
   }
   if (n > 1 + EPS) return Math.max(1, Math.ceil(n - EPS) - 1) / dpr;
-  return clampO(k * 0.8);
+  return clampO(k * 0.8, lo);
 }
 /** The view at scale `k` (in range, continuous: the wheel's) about the viewport point (cx, cy). */
-export const zoomOffice = (v, k, cx, cy) => zoomTo(v, clampO(k), cx, cy);
+export const zoomOffice = (v, k, cx, cy, lo = OK_MIN) => zoomTo(v, clampO(k, lo), cx, cy);
 /** A pinch step: `raw` the zoom the pinch has reached (continuous); the world point under the old midpoint follows. */
-export const pinchOffice = (v, from, to, raw) => pinchTo(v, from, to, clampO(raw));
+export const pinchOffice = (v, from, to, raw, lo = OK_MIN) => pinchTo(v, from, to, clampO(raw, lo));
 
 /** The fit modes: "contain" (the whole scene shows) and "cover" (the panel is filled, the overflow cropped). */
 export const FIT_MODES = ["contain", "cover"];
@@ -54,7 +63,7 @@ export const fitModeOk = (m) => (m === "cover" ? "cover" : "contain");
 /** The scale at which a `w`×`h` scene fits a `size` viewport: contain (the whole scene) or cover (the whole panel). */
 export function fitK(w, h, size, mode = "contain", margin = 0) {
   const sx = (size.w - 2 * margin) / Math.max(1, w), sy = (size.h - 2 * margin) / Math.max(1, h);
-  return clampO(fitModeOk(mode) === "cover" ? Math.max(sx, sy) : Math.min(sx, sy));
+  return clampO(fitModeOk(mode) === "cover" ? Math.max(sx, sy) : Math.min(sx, sy), minK(w, h));
 }
 /** The scene at fitK, centred. */
 export function fitScene(w, h, size, mode = "contain", margin = 0) {
@@ -110,17 +119,17 @@ export function wholeInView(v, size, w, h) {
 
 /** What is kept of a view: { k, cx, cy }, and `fit: true` when it is a fit (it is fitted again, to the size then). */
 export const savedOf = (v, size, fit = false) => ({ k: v.k, cx: (size.w / 2 - v.x) / v.k, cy: (size.h / 2 - v.y) / v.k, ...(fit ? { fit: true } : {}) });
-/** A kept view, checked: { k, cx, cy } with finite numbers (k in range), else null. */
+/** A kept view, checked: { k, cx, cy } with finite numbers (k in range: down to OK_FLOOR, a big canvas's), else null. */
 export function savedOk(x) {
   if (!x || typeof x !== "object") return null;
   const { k, cx, cy } = x;
   if (![k, cx, cy].every((n) => typeof n === "number" && Number.isFinite(n)) || k <= 0) return null;
   if (Math.abs(cx) > 1e6 || Math.abs(cy) > 1e6) return null;
-  return { k: clampO(k), cx, cy, ...(x.fit === true ? { fit: true } : {}) };
+  return { k: clampO(k, OK_FLOOR), cx, cy, ...(x.fit === true ? { fit: true } : {}) };
 }
-/** The view a kept one gives in a `size` viewport: the same zoom, the same logical point in the middle. */
-export function viewFromSaved(s, size) {
-  const k = clampO(s.k);
+/** The view a kept one gives in a `size` viewport: the same zoom (within the scene's floor `lo`), the same logical point in the middle. */
+export function viewFromSaved(s, size, lo = OK_MIN) {
+  const k = clampO(s.k, lo);
   return { k, x: size.w / 2 - s.cx * k, y: size.h / 2 - s.cy * k };
 }
 

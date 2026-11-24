@@ -87,7 +87,7 @@ import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, sna
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
-import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
+import { OK_MAX, clampPan, desksK, minK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
 
 register("orgo", {
@@ -1531,11 +1531,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * under the zoom controls at the side.
    */
   const fitL = (mode) => fitScene(L.width, L.height, size, mode, overview && mode !== "cover" ? FIT_PAD : 0);
+  /** #4405: this scene's zoom floor — lower than OK_MIN for a pack's big canvas (or All offices), so − reaches its Fit. */
+  const kLo = minK(L.width, L.height);
   /** The view an office opens on: its kept one (a kept fit: fitted to this size), else its opening; and whether a fit. */
   const openView = () => {
     const kept = store.view(officeKey);
     if (kept && kept.fit) return { v: fitL(fitMode), fit: true };
-    if (kept) return { v: viewFromSaved(kept, size), fit: false };
+    if (kept) return { v: viewFromSaved(kept, size, kLo), fit: false };
     const fitted0 = zones || overview;                                 // All offices opens whole, as a zones scene
     return { v: overview ? fitL(fitMode) : openingView(L.width, L.height, size, ratio, fitted0, fitMode), fit: fitted0 };
   };
@@ -1569,7 +1571,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     fit(next);
   };
   /** + / −: the next pixel level about the stage's middle. */
-  const zoomStep = (dir) => { const v = view0(), k = stepK(v.k, dir, ratio); raw.current = k; setView(zoomTo(v, k, size.w / 2, size.h / 2)); };
+  const zoomStep = (dir) => { const v = view0(), k = stepK(v.k, dir, ratio, kLo); raw.current = k; setView(zoomTo(v, k, size.w / 2, size.h / 2)); };
   /** Bring a box (logical units) into view, unchanged when it already is. */
   const show = (b) => {
     const v = view0(), p = toScreen(v, b.x, b.y);
@@ -1914,7 +1916,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return d ? { key: p.prefix + d.key, node: d.node } : null;
   };
   const g = gestures(drag.current, { el: () => stageRef.current, pan: (dx, dy) => { const v = view0(); setView({ ...v, x: v.x + dx, y: v.y + dy }); },
-    pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current)); } });
+    pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(kLo, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current, kLo)); } });
   /** Where a drag pans: the canvas, and Edit layout's overlay off its handles (the controls, the bar and the list: never). */
   const onScene = (el) => !!el && (el === canvasRef.current || (typeof el.closest === "function" && !!el.closest(".ol-svg") && !el.closest(".ol-handle")));
   /** M-3293 / M-3445: update the floor-level seat drop targets while carrying `h` ({ name, at }). */
@@ -2010,8 +2012,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!onScene(e.target) && !(typeof e.target?.closest === "function" && e.target.closest(".ol-handle, .oo-tile-label"))) return;
     e.preventDefault();
     const r = stageRef.current.getBoundingClientRect(), v = view0();
-    raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * wheelFactor(e)));
-    if (raw.current !== v.k) setView(zoomOffice(v, raw.current, e.clientX - r.left, e.clientY - r.top));
+    raw.current = Math.min(OK_MAX, Math.max(kLo, raw.current * wheelFactor(e)));
+    if (raw.current !== v.k) setView(zoomOffice(v, raw.current, e.clientX - r.left, e.clientY - r.top, kLo));
   };
   const onKeyDown = (e) => {
     if (e.defaultPrevented) return;                                  // Edit layout's handles move with the arrows
@@ -2087,7 +2089,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const wk = zones ? walkers.at(d.node.name, at) : null;
       return { key: d.key, node: d.node, x: wk ? wk.x : d.box.x + d.box.w / 2, y: wk ? wk.y - 32 : d.box.y + d.box.h / 2 };
     });
-    return nearestPerson(list, w.x, w.y, TAP_R / Math.max(OK_MIN, view0().k));
+    return nearestPerson(list, w.x, w.y, TAP_R / Math.max(kLo, view0().k));
   };
   /** M-3432 (#4255): feed an awake person a snack (plays eat animation + hearts + feed bubble + optional Tell). */
   const feedPerson = (name, snack, at) => {

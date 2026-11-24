@@ -24,9 +24,9 @@
 // @property {(ctx, room, env) => void} drawRoom          desks: a room's floor, wall and name (room: autoLayout's)
 // @property {(ctx, desk, look, env) => void} drawDeskBack    desks: behind the character — chair, desk top, screen, lamp
 // @property {(ctx, desk, look, env) => void} drawDeskFront   desks: in front — the desk's front, its sign, folders, name tag
-// @property {(ctx, L, env) => void} [drawBackground]     zones: the whole 1280×720 background, areas and their names
+// @property {(ctx, L, env) => void} [drawBackground]     zones: the whole canvas's background (1280×720, or a pack's own), areas and their names
 // @property {(ctx, item, active, ms, env) => void} [drawFurniture]   zones: one furniture item (active: activeWhen holds)
-// @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole 1280×720 scene, above
+// @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole scene (its canvas), above
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
 // @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
@@ -526,7 +526,7 @@ const ZONE_FLOOR = {
 };
 function drawBackground(ctx, L, env) {
   const { pal } = env, F = ZONE_FLOOR[env.mode], T = 24;
-  px(ctx, 0, 0, LOGICAL.w, LOGICAL.h, F.hall);
+  px(ctx, 0, 0, L.width || LOGICAL.w, L.height || LOGICAL.h, F.hall);   // #4405: the whole canvas, a pack's own too (its picture not loaded)
   for (const a of Object.values(L.areas)) {
     const [c1, c2] = F[a.name] || F.desks, r = a.rect;
     px(ctx, r.x, r.y, r.w, r.h, c1);

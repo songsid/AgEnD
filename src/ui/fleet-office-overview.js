@@ -5,7 +5,7 @@
 //
 // - Shown when at least two offices are stored (overviewOk); an id no stored office can have (ALL_ID: '*' is not an
 //   office id's character), kept per device as any office pick is.
-// - The tiles: each as large as its office's drawn content — a zones scene its 1280×720, a desks office its rooms'
+// - The tiles: each as large as its office's drawn content — a zones scene its canvas (1280×720, or a pack's own), a desks office its rooms'
 //   bounds (cropToRooms: an office of three is small) — scaled down to at most CELL_W × CELL_H, never up; a LABEL band
 //   above each (the page's label sits there), GAP apart, M from the edge. Shelf packing in the stored order (the lobby
 //   last): a row takes tiles while they fit a row width, each row as tall as its tallest tile and centred across. The

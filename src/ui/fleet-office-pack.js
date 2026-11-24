@@ -5,14 +5,15 @@
 // logical canvas, named areas with ordered seat slots, furniture with a depth, and a state → area map. No code or art of
 // it is used here — the idea of the format only.
 //
-// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), which
-// the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
+// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), or on the
+// pack's own `canvas: [w, h]` (#4405: 640×360 to 5120×2880, CANVAS), which the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
 //
 //   {
 //     "format": 1,                                    required
 //     "id": "cozy",                                   letters, digits, - and _ (≤ 40); not a built-in skin's id
 //     "scale": 2,                                     1–8 (default 2)
-//     "background": "office.png",                     drawn over the whole 1280×720 canvas (16:9)
+//     "canvas": [2560, 1440],                         optional (#4405): the logical canvas, CANVAS.min to CANVAS.max
+//     "background": "office.png",                     drawn over the whole canvas (16:9; with "canvas", its shape)
 //     "foreground": "front.png",                      optional, with stateZones: drawn over the whole canvas (16:9, as
 //                                                     the background) above the people, the furniture and the items in
 //                                                     the air, below the name tags, bubbles and "+n" counts (and Edit
@@ -141,8 +142,8 @@
 // The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
 // with where it broke.
 //
-// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1–1280 and
-// 1–720): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
+// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1 to the
+// canvas's width and 1 to its height): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
 // the frame's aspect. The anchor (ax, ay) stays in image pixels and moves with it. So art drawn at 120×120 px shows at
 // 96×96 with "dw": 96, "dh": 96 — whatever the pack's scale. What a person hovers or clicks is the box drawn (stripBox).
 //
@@ -152,7 +153,7 @@
 // (own()).
 //
 // The host keeps an uploaded pack whole and never changes it: every PNG starts with its signature, a STRIP's image is
-// exactly frames·w × h, the background and the foreground are 16:9, and each file and the pack have a size cap (web-office-skins.ts).
+// exactly frames·w × h, the background and the foreground are 16:9 (or the pack's canvas's shape), and each file and the pack have a size cap (web-office-skins.ts).
 //
 // ── Layout overrides (the Office view's "Edit layout": a stored office's own positions on a zones pack) ──
 //
@@ -169,7 +170,7 @@
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …] }
 //                                                     the walkable graph, replaced whole (edges need waypoints)
 //
-// Every coordinate is on the same 1280×720 logical canvas, in the same ranges as the pack's. checkLayoutOverrides is
+// Every coordinate is on the same logical canvas as the pack's (1280×720, or its own), in the same ranges. checkLayoutOverrides is
 // the shape (the host checks it on every PUT /ui/offices); applyOverrides puts them on a checked pack, refusing a
 // seat outside its area, an area or furniture the pack does not have, or a seat count that differs (the host checks
 // that too, for a pack it keeps). A night place goes on the item's `night` (its x, y), so at bedtime (nightFurniture)

@@ -2,7 +2,7 @@
 // furniture, the door and the walkable graph's waypoints — and adds or removes waypoints and the corridors between
 // them. The pack stays as it was uploaded: what differs from it is kept as the office's `overrides` (fleet-office-pack.js
 // overridesBetween), saved with the whole list and the rev read (PUT /ui/offices; a change made meanwhile is a 409).
-// Reset goes back to the pack's own positions. A "show coordinates" overlay draws the 1280×720 logical grid.
+// Reset goes back to the pack's own positions. A "show coordinates" overlay draws the logical grid (1280×720, or the pack's own canvas).
 //
 // #2665: an item with a `night` (#2568) has a night handle too — its night strip drawn faint on the canvas (as the
 // seats' figures, #2558), a moon, and a thin line to its day place. One that sleeps in place shows it on its day place

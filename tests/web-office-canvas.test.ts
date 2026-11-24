@@ -7,11 +7,16 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as PK from "../src/ui/fleet-office-pack.js";
 // @ts-expect-error — a JS module of the app, with no types
-import { zonesLayout } from "../src/ui/fleet-office-zones.js";
+import { WANDER, walkTargets, zonesLayout } from "../src/ui/fleet-office-zones.js";
+// @ts-expect-error — a JS module of the app, with no types
+import * as V from "../src/ui/fleet-office-view.js";
+// @ts-expect-error — a JS module of the app, with no types
+import { spriteSkin } from "../src/ui/fleet-office-skin.js";
 // @ts-expect-error — a JS module of the app, with no types
 import { addWaypoint, moveHandle } from "../src/ui/fleet-office-layout.js";
 import { checkSkinUpload } from "../src/web-office-skins.js";
 import { checkOffices } from "../src/web-office-store.js";
+import { dropConflicts, overrideConflicts } from "../src/web-office-pack-tools.js";
 
 const FIXTURE = join(process.cwd(), "tests", "fixtures", "office-skin-clinic");
 const MANIFEST = () => JSON.parse(readFileSync(join(FIXTURE, "manifest.json"), "utf8"));
@@ -59,7 +64,74 @@ describe("a pack's canvas", () => {
     const b64 = (f: string) => readFileSync(join(FIXTURE, f)).toString("base64");
     const r = checkSkinUpload({ manifest: { ...MANIFEST(), canvas: [1280, 960] }, files: { "office_bg.png": b64("office_bg.png"), "fox_idle.png": b64("fox_idle.png") } }, "me", 1);
     expect(r.ok).toBe(false);
-    expect(r.ok ? null : r.detail).toMatch(/must be the canvas's shape, 1280:960/);
+    expect(r.ok ? null : r.detail).toMatch(/must be the canvas's shape, 4:3/);
     expect(checkSkinUpload({ manifest: { ...MANIFEST(), canvas: [2560, 1440] }, files: { "office_bg.png": b64("office_bg.png"), "fox_idle.png": b64("fox_idle.png") } }, "me", 1).ok).toBe(true);
+  });
+  it("a pack re-uploaded on a smaller canvas: the office's points off it are conflicts; dropped, the rest stays", () => {
+    const small = (PK.checkSkinPack({ ...MANIFEST(), id: "big" }) as any).pack;      // the same id, no canvas: 1280×720
+    const offices = [{ id: "o", name: "O", skin: "big", members: [], overrides: { pack: "big", door: [2000, 1300], mailDrop: [600, 400] } }];
+    const c = overrideConflicts(offices as never, small);
+    // Without dropping: one conflict, the door (the change is refused, naming it).
+    expect(c).toEqual([{ office: "o", name: "O", entry: "door", rule: "door: a point on the canvas (1280×720)" }]);
+    // Dropping it: the office keeps its mail drop, and what is left fits the smaller pack.
+    const [o] = dropConflicts(offices as never, c) as any[];
+    expect(o.overrides).toEqual({ pack: "big", mailDrop: [600, 400] });
+    expect(PK.applyOverrides(small, o.overrides).ok).toBe(true);
+    // On the canvas they were made for: no conflict at all.
+    const big = (PK.checkSkinPack({ ...BIG(), id: "big" }) as any).pack;
+    expect(overrideConflicts(offices as never, big)).toEqual([]);
+  });
+  it("its background picture not loaded: the fallback hall paints the whole big canvas, not 1280×720 of it", () => {
+    const pack = (PK.checkSkinPack(BIG()) as any).pack;
+    const rects: number[][] = [];
+    const ctx: any = new Proxy({}, { get: (_t, k) => (k === "fillRect" ? (...a: number[]) => rects.push(a) : k === "measureText" ? () => ({ width: 10 }) : () => {}), set: () => true });
+    spriteSkin(pack, new Map()).drawBackground(ctx, zonesLayout(pack, []), { mode: "dark", pal: { border: "#000", text: "#fff" }, labels: { areas: {} } });
+    expect(rects[0]).toEqual([0, 0, 2560, 1440]);
+  });
+  it("people walk the whole big canvas: an idle person in an area past 1280 strolls there, never clamped to 1280×720", () => {
+    const pack = (PK.checkSkinPack({ ...BIG(), stateZones: { ...MANIFEST().stateZones, idle: "east", default: "east" },
+      waypoints: [...MANIFEST().waypoints, { id: "e1", x: 2150, y: 1180 }, { id: "e2", x: 2300, y: 1000 }],
+      edges: [...MANIFEST().edges, ["e1", "e2"]] }) as any).pack;
+    const L = zonesLayout(pack, [{ name: "alpha", state: "idle", label: "Alpha" }]);
+    const desks = L.rooms.flatMap((r: any) => r.desks);
+    expect(desks[0].seat.x).toBeGreaterThan(1280);
+    const spots = Array.from({ length: 2 * WANDER.PERIOD / 1000 }, (_, i) => walkTargets(desks, L, i * 1000).get("alpha"));
+    const away = spots.filter((q: any) => q.x !== desks[0].seat.x || q.y !== desks[0].seat.y);
+    expect(away.length).toBeGreaterThan(0);
+    for (const q of spots) { expect(q.x).toBeGreaterThan(1280); expect(q.x).toBeLessThanOrEqual(2560); expect(q.y).toBeLessThanOrEqual(1440); }
+  });
+});
+
+describe("the view of a big canvas (#4405: Fit on a phone)", () => {
+  const PHONE = { w: 390, h: 600 };
+  it("Fit (contain) shows a 5120×2880 canvas whole on a phone, centred; − reaches it and stops at the scene's floor", () => {
+    const v = V.fitScene(5120, 2880, PHONE);
+    expect(v.k).toBeCloseTo(390 / 5120, 9);
+    expect(5120 * v.k).toBeLessThanOrEqual(PHONE.w + 1e-9);
+    expect(v.x).toBeCloseTo(0, 9);
+    expect(V.minK(5120, 2880)).toBe(V.OK_FLOOR);
+    expect(V.OK_FLOOR).toBeCloseTo(0.025, 12);                                    // 5120 units still 128 px wide
+    // Zooming out from 0.1 goes on, below Fit, down to the floor and no further.
+    let k = 0.1; const lo = V.minK(5120, 2880);
+    for (let i = 0; i < 40; i++) k = V.stepK(k, -1, 3, lo);
+    expect(k).toBe(lo);
+    expect(V.zoomOffice({ k: 0.1, x: 0, y: 0 }, 0.001, 0, 0, lo).k).toBe(lo);
+    expect(V.snapK(0.001, 1, lo)).toBe(lo);
+    // A kept view at that zoom comes back as it was (the store's check keeps it; the scene's floor allows it).
+    const kept = V.savedOk({ k: 0.03, cx: 2560, cy: 1440 });
+    expect(kept.k).toBe(0.03);
+    expect(V.viewFromSaved(kept, PHONE, lo).k).toBe(0.03);
+  });
+  it("the floor follows the scene's size, never below OK_FLOOR; the default canvas keeps OK_MIN exactly as before", () => {
+    expect(V.minK(1280, 720)).toBe(V.OK_MIN);
+    expect(V.minK(640, 360)).toBe(V.OK_MIN);
+    expect(V.minK(2560, 1440)).toBeCloseTo(0.05, 12);
+    expect(V.minK(5120, 360)).toBeCloseTo(0.025, 12);
+    expect(V.minK(100000, 720)).toBe(V.OK_FLOOR);
+    // The ordinary canvas: Fit, − and a kept view as before.
+    expect(V.fitScene(1280, 720, PHONE).k).toBeCloseTo(390 / 1280, 9);
+    expect(V.fitK(1280, 720, { w: 50, h: 50 })).toBe(V.OK_MIN);
+    expect(V.stepK(V.OK_MIN, -1, 1)).toBe(V.OK_MIN);
+    expect(V.viewFromSaved({ k: 0.03, cx: 640, cy: 360 }, PHONE).k).toBe(V.OK_MIN);
   });
 });
