@@ -86,7 +86,7 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 
 ## Set up an office
 
-A fleet admin, on the dashboard reached directly (not over the public link), uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
+A fleet admin, from an admin session, uses **Edit offices** in the Office bar. On a screen 1200 px or wider it opens as a panel on the right, in place of the AI usage rail, with the Office still usable beside it. Narrower, it's a centred dialog. × or Esc closes it.
 
 1. **Add office**, and give it a name.
 2. **Who is in it**: **Everyone**; **Picked**, then whole teams or single instances (with none ticked yet it still shows everyone); or **Nobody (NPCs only)**: no agent sits there, only its style's NPCs (#2752). In `web-offices.json` everyone is `"members": []` and nobody is `"members": ["team:"]`, a team with no name, which no team has.
@@ -492,7 +492,7 @@ To use the same titles in every office without editing each pack, set them once 
 
 - Every office uses the fleet's titles, whatever its style.
 - An office drawn in a pack that has its own `levels` uses the pack's `titles` instead, if the pack has any. Pinned titles are merged: the fleet's `fixed` and the pack's both apply, and the pack's entry wins for a name that's in both.
-- Only an admin session on the dashboard reached directly can change them (`PUT /ui/office-level-titles`, counted with the offices' saves). They're kept in `web-offices.json` beside the offices and served with them (`GET /ui/offices`'s `levels`), so every page and share link picks a change up at once.
+- Only an admin session can change them (`PUT /ui/office-level-titles`, counted with the offices' saves). They're kept in `web-offices.json` beside the offices and served with them (`GET /ui/offices`'s `levels`), so every page and share link picks a change up at once.
 - A share link gets every title, but a pinned title only for the people it shows, and for names that aren't instances (NPCs).
 
 ## Who can do what
@@ -500,8 +500,9 @@ To use the same titles in every office without editing each pack, set them once 
 | | Fleet admin, dashboard reached directly | Fleet admin, public link | Read-only session | Guest | Share-link viewer |
 |---|---|---|---|---|---|
 | See the Office | ✅ | ✅ | ✅ | ❌ | ✅ one office or all, read-only |
-| Edit offices, upload or delete packs, Edit layout | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Level titles for every office | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Edit offices, Edit layout | ✅ | ✅ | ❌ | ❌ | ❌ |
+| Upload or delete skin packs | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Level titles for every office | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Approve agents' pack changes | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Share… and Revoke | ✅ | ✅ | ❌ | ❌ | ❌ |
 

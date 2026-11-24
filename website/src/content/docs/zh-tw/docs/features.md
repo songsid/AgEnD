@@ -34,7 +34,7 @@ Fleet 在 `127.0.0.1` 的 `health_port`（預設 19280）上提供一個儀表�
 
 **登入。** 在 General 送 `/web`（fleet 管理員），或在主機上執行 `agend web`，然後在登入頁輸入一次性代碼。代碼只能用一次、5 分鐘後失效。直接連到儀表板時，session 預設維持 48 小時（可設定）；透過公開連結開的 session 最多 8 小時、閒置 30 分鐘就結束，連結關閉時也會結束。用 `/web` 的代碼登入時，agent 看到的你就是你的 Discord 或 Telegram 帳號 — 用私下傳給你的代碼登入的瀏覽器會直接通過驗證，以你的帳號權限行事；否則只用來認人，不給任何權限。
 
-**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。用自己的網域（具名 Cloudflare tunnel，用 `web.public_link.hostname` 設定）時，網址每次都相同，最長可以開到七天，或直到你關掉為止。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 但公開連結還是會擋下一些變更（排程、team 的修改和辦公室儲存只能在直接連線的儀表板做）— 所以不要轉傳。
+**從手機連。** `/web` 也能透過 Cloudflare Quick Tunnel 開一個**臨時公開連結**：你選它之前什麼都不會公開，連結和代碼私下傳給你，預設兩小時後關閉（或用 `/web revoke` 關掉）。用自己的網域（具名 Cloudflare tunnel，用 `web.public_link.hostname` 設定）時，網址每次都相同，最長可以開到七天，或直到你關掉為止。拿到它的人可以用你的聊天、終端機、檔案和大部分的儀表板 — 透過公開連結的管理員 session 也能修改排程、team 和辦公室；唯讀 session 或訪客不行 — 所以不要轉傳。
 
 完整說明：[web-dashboard.zh-TW.md](https://github.com/songsid/AgEnD/blob/main/docs/web-dashboard.zh-TW.md)。
 
