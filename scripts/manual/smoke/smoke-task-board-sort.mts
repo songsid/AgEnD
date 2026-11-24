@@ -5,7 +5,9 @@
 //     is the first and says "N to sort"; nothing overflows sideways (desk and phone);
 //  2. choosing a project in a picker files the card for real (the server writes it): it leaves the list, the count drops;
 //  3. a project's board says how many are not in a project, and its link opens No project, whose header says what the place is;
-//  4. a board with nothing to sort draws none of it.
+//  4. a board with nothing to sort draws none of it;
+//  5. on a phone every new control measures at least the --tap size (44px) both ways — the picker, a short row title, the
+//     list's footer button and a project's header link — and the desk keeps the dense link and footer (under 44px).
 // The shots are the "before" when run on the base commit with SHOTS_ONLY=1 (same seed; the checks name new things).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> MATRIX=desk-light-en,phone-dark-zh-TW HP=48640 \
 //   npx tsx scripts/manual/smoke/smoke-task-board-sort.mts
@@ -49,6 +51,16 @@ const results: any = { smoke: SMOKE, cases: {} };
 let failed = 0;
 const shotsOnly = !!process.env.SHOTS_ONLY;
 const OVERFLOW = `(() => document.documentElement.scrollWidth <= window.innerWidth + 1)()`;
+const TAP = 44;   // --tap, the style guide's touch minimum (§7)
+/** A control's drawn box, rounded to a tenth of a pixel (what a finger gets). */
+async function box(loc: any): Promise<{ w: number; h: number } | null> {
+  const b = await loc.boundingBox();
+  return b ? { w: Math.round(b.width * 10) / 10, h: Math.round(b.height * 10) / 10 } : null;
+}
+const tappable = (b: { w: number; h: number } | null) => !!b && b.w >= TAP && b.h >= TAP;
+/** A project's tile by its name (not its place: the No project tile moves first, so before and after open the same board). */
+const tileOf = (page: any, c: MatrixCase, en: string, zh: string) =>
+  page.locator(".tb-project").filter({ has: page.locator(".tb-project-name", { hasText: new RegExp(`^${labelOf(c, { en, zh })}$`) }) }).locator(".tb-project-open");
 
 for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) {
   const name = caseName(c);
@@ -77,10 +89,19 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       chk.badgeHasCount = /7/.test(r.badge);
       chk.listAboveProjects = await page.evaluate(() => { const a = document.querySelector(".tb-sort"), b = document.querySelector(".tb-projects"); return !!a && !!b && a.getBoundingClientRect().bottom <= b.getBoundingClientRect().top + 1; });
       chk.noSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
-      // the picker takes the row's width on a phone, and every control is tall enough to tap
-      const pick = await page.locator(".tb-sort-pick").first().boundingBox();
-      r.pick = pick; chk.pickerVisible = !!pick && pick.width > 100;
-      if (phone) chk.pickerTappable = !!pick && pick.height >= 40;
+      // the picker takes the row's width on a phone; each new control on Home, measured as drawn: the picker, the row title
+      // with the shortest text (one line, the smallest box), the footer button
+      const pick = await box(page.locator(".tb-sort-pick").first());
+      r.pick = pick; chk.pickerVisible = !!pick && pick.w > 100;
+      const titles = await page.locator(".tb-sort-row .tb-wait-title").allInnerTexts();
+      const shortest = titles.reduce((best, t, i) => (t.length < titles[best]!.length ? i : best), 0);
+      r.shortTitle = { text: titles[shortest]!.trim(), box: await box(page.locator(".tb-sort-row .tb-wait-title").nth(shortest)) };
+      r.foot = await box(page.locator(".tb-sort-foot .btn"));
+      if (phone) {
+        chk.pickerTappable = tappable(pick);
+        chk.shortTitleTappable = tappable(r.shortTitle.box);
+        chk.footTappable = tappable(r.foot);
+      } else chk.deskFootStaysDense = !!r.foot && r.foot.h < TAP;
       // choosing a project files the card for real
       const option = await page.locator(".tb-sort-pick").first().locator("option").nth(2).getAttribute("value");   // the second project
       await page.locator(".tb-sort-pick").first().selectOption(option!);
@@ -91,11 +112,13 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       chk.filedInTheServer = fm.scheduler.db.board.listCards({ project: Number(option) }).cards.length === 1;
       await page.screenshot({ path: shotPath(SMOKE, c, "2-after-filing") });
       // a project's board: the link, then No project
-      await page.locator(".tb-project-open").nth(1).click();
+      await tileOf(page, c, "Game", "遊戲").click();
       await page.waitForSelector(".tb-board-page", { timeout: 10000 });
       await page.waitForTimeout(400);
       r.linkText = (await page.locator(".tb-sort-link").innerText()).trim();
       chk.projectLink = /6/.test(r.linkText);
+      r.link = await box(page.locator(".tb-sort-link"));
+      if (phone) chk.linkTappable = tappable(r.link); else chk.deskLinkStaysDense = !!r.link && r.link.h < TAP;
       await page.screenshot({ path: shotPath(SMOKE, c, "3-project-board") });
       await page.locator(".tb-sort-link").click();
       await page.waitForFunction(() => !document.querySelector(".tb-sort-link"), null, { timeout: 8000 }).catch(() => {});
@@ -106,7 +129,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       await page.screenshot({ path: shotPath(SMOKE, c, "4-no-project") });
       chk.noSidewaysScrollThere = await page.evaluate(OVERFLOW) as boolean;
     } else {
-      await page.locator(".tb-project-open").nth(1).click().catch(() => {});
+      await tileOf(page, c, "Game", "遊戲").click().catch(() => {});
       await page.waitForTimeout(500);
       await page.screenshot({ path: shotPath(SMOKE, c, "3-project-board") });
     }

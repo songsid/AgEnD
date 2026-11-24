@@ -3364,6 +3364,14 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tb-project.needs-sort:hover { border-color: var(--warn); }
 .tb-sort-link { border: 0; cursor: pointer; }
 .tb-sort-link:hover { text-decoration: underline; }
+/* On a phone or a touch screen every new control is the --tap size (style guide §7): the header's link, a row's title (a
+   short one included), the list's footer button and the picker. The desk keeps the dense look. */
+@media (pointer: coarse), (max-width: 899px) {
+  .tb-sort-link { min-height: var(--tap); padding-inline: var(--s-3); }
+  .tb-sort-row .tb-wait-title { min-height: var(--tap); align-content: center; }
+  .tb-sort-foot .btn { min-height: var(--tap); }
+  .tb-sort-pick { min-height: var(--tap); }
+}
 .tb-archived { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
 .tb-archived > .tb-projects { align-self: stretch; }
 
@@ -3563,7 +3571,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tb-wait-main > .tb-pill { min-width: 0; }
   .tb-wait-actions { flex-basis: 100%; margin-left: 0; }
   .tb-wait-actions > .muted { margin-right: auto; }
-  .tb-sort-pick { flex: 1 1 100%; min-height: var(--tap); }
+  .tb-sort-pick { flex: 1 1 100%; }
   /* #2299: on the board its toasts come in above the tabs, not over its title, search and progress — unless a card's
      sheet is open (its buttons are at the bottom). */
   .shell:has(.tb-home, .tb-board-page):not(:has(dialog[open])) .toasts { top: auto; bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3)); }
