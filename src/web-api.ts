@@ -68,7 +68,7 @@ import { CreateInstanceArgs, CreateScheduleArgs, UpdateScheduleArgs, validateArg
 import { scheduleView } from "./web-schedules.js";
 import { DEFAULT_SCHEDULER_CONFIG } from "./scheduler/index.js";
 import type { Schedule, ScheduleRetry } from "./scheduler/types.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, cardCode, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, archiveAfterDays, cardCode, type Actor as BoardActor, type TaskBoard } from "./scheduler/task-board.js";
 import { TASK_REF_SEPARATOR, cardsForRefs, taskReadWay, taskRefBlock, taskRefCodes, taskRefView } from "./chat-task-refs.js";
 import { readStatuslineModel, resolveInstanceContext } from "./topic-commands.js";
 import { z } from "zod";
@@ -486,7 +486,7 @@ export interface WebApiContext extends ClaudeCredentialApi {
     channel?: { group_id?: number | string; mode?: string };
     health_port?: number;
     web?: { echo_to_channel?: boolean; usage_panel?: boolean; usage_report_on_public_link?: boolean; office_levels?: boolean; upload_max_file_mb?: number; upload_max_total_mb?: number; search?: { enabled?: boolean; public_link?: boolean } };
-    defaults?: { backend?: string; effort?: string };
+    defaults?: { backend?: string; effort?: string; task_board?: { archive_after_days?: number } };
     instances: Record<string, { topic_id?: number | string; working_directory: string; description?: string; display_name?: string; backend?: string; model?:string; backend_options?:Record<string,Record<string,unknown>>; runtime?: "wsl" | "windows"; machine_id?: string; native_agent_id?: string; native_sandbox?: "read-only" | "workspace-write" }>;
     teams?: Record<string, { members: string[]; description?: string }>;
   } | null;
@@ -4026,8 +4026,10 @@ export function handleWebRequest(
   // ── Task board (scheduler/task-board.ts) ──────────────
   // Reads are the session's; every write is the signed-in person's, through the same rules an instance's tools use.
 
-  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
+  if (path === "/ui/tasks/board" || path === "/ui/tasks/search" || path === "/ui/tasks/refs" || path === "/ui/tasks/work" || path === "/ui/tasks/archive" || path.startsWith("/ui/tasks/cards") || path.startsWith("/ui/tasks/projects")) {
     const board = ctx.scheduler?.db.board;
+    // M-3668: how many days after it finished a main task leaves the board (defaults.task_board.archive_after_days).
+    const archiveDays = archiveAfterDays(ctx.fleetConfig?.defaults?.task_board?.archive_after_days);
     if (!board) { json(res, 503, { error: "The task board is not available", code: "unavailable", key: "unavailable" }); return true; }
     // M-3278 (decision 7933bf90): an admin session changes the board over the public link too, as itself (boardActor), and
     // sees it whole; a read-only session over the link keeps the link's hiding.
@@ -4113,16 +4115,16 @@ export function handleWebRequest(
         // The instances with the task board switched off: no card is handed to them (the pickers mark them), and a
         // fleet.yaml edit changes them with the revision unchanged.
         const boardOff = taskBoardOffNames(ctx.fleetConfig).filter((n) => !hiddenName(n));
-        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
+        const key = gateway ? null : `${rev}:${allDone ? 1 : 0}:${archiveDays}:${Math.floor(Date.now() / 60_000)}:${board.goneDispatchers(ctx.dispatcherGone)}:${boardOff.join("\u0000")}`;
         const kept = key ? boardBodies.get(board) : undefined;
         if (kept && kept.key === key) { jsonText(res, 200, kept.body); return true; }
-        const cards = board.boardCards(undefined, allDone).filter((c) => !hidden(c));
+        const cards = board.boardCards(undefined, allDone, archiveDays).filter((c) => !hidden(c));
         // #2352: over the public link a hidden lead is not named (the project reads as having none).
         const projects = board.listProjects(true).map((p) => (p.leadInstance && hiddenName(p.leadInstance) ? { ...p, leadInstance: null } : p));
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone) });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone, archiveDays), archiveAfterDays: archiveDays });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;
@@ -4163,6 +4165,8 @@ export function handleWebRequest(
         const results = hits.map(({ card: c, match }, i) => ({
           card: views[i],
           match,
+          // M-3668: a card the board has archived says so (its number and this search still open it).
+          ...(board.isArchived(c, archiveDays) ? { archived: true } : {}),
           project: c.projectId === null ? null : names.get(c.projectId) ?? null,
           parentTitle: c.parent && !hiddenRef(c.parent) ? board.findCard(c.parent)?.title ?? null : null,
         }));
@@ -4186,7 +4190,21 @@ export function handleWebRequest(
       if (method === "GET" && card && !card[2]) {
         const found = board.getCard(ref);
         if (hidden(found)) { json(res, 404, { error: "no such card", code: "not_found" }); return true; }
-        json(res, 200, shown(board.detail(ref, scope, ctx.dispatcherGone)));
+        json(res, 200, { ...shown(board.detail(ref, scope, ctx.dispatcherGone)), ...(board.isArchived(found, archiveDays) ? { archived: true, archiveAfterDays: archiveDays } : {}) });
+        return true;
+      }
+      if (method === "GET" && path === "/ui/tasks/archive") {
+        // M-3668: a project's archived main tasks (`project`: an id, or "none"), newest first, a page at a time (`before`),
+        // filtered by who had them (`assignee`). Over the public link, not a card that names an instance kept out of sight.
+        const p = url.searchParams.get("project") ?? "none";
+        const project = p === "none" ? null : /^\d{1,9}$/.test(p) ? Number(p) : NaN;
+        if (Number.isNaN(project)) { json(res, 400, { error: "invalid project", code: "invalid" }); return true; }
+        const who = url.searchParams.get("assignee");
+        const list = board.archiveList(project, archiveDays, { before: url.searchParams.get("before"), limit: Number(url.searchParams.get("limit")) || 50,
+          assignee: who && !hiddenName(who) ? who : null });
+        const cards = list.cards.filter((c) => !hidden(c));
+        json(res, 200, { cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), next: list.next, total: list.total,
+          assignees: list.assignees.filter((n) => !hiddenName(n)), archiveAfterDays: archiveDays });
         return true;
       }
       if (method === "POST" && path === "/ui/tasks/cards") {

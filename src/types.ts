@@ -350,6 +350,12 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
      * project), as a project's lead follows its project's. Absent: none.
      */
     leader?: string;
+    /**
+     * M-3668: the dashboard archives a finished main task (done or cancelled) this many days after it finished: it leaves
+     * the board's columns and the projects' numbers, and is found in the project's Archive list, by search and by its
+     * number; moving it to To do reopens it. A view rule only (nothing is deleted). Whole days 0–3650; 0 = never; default 3.
+     */
+    archive_after_days?: number;
   };
   webhooks?: WebhookConfig[];
 }

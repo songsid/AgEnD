@@ -55,6 +55,18 @@ export const CARD_LIMITS = {
 
 /** How far back finished sub tasks and cancelled main tasks stay on the board. */
 const BOARD_DAYS = 14;
+/**
+ * M-3668 (the user, 11-24): a finished main task — done or cancelled — leaves the dashboard's board this many days after it
+ * finished (defaults.task_board.archive_after_days; 0 = never). A view rule only: nothing in the database changes, search
+ * and its number still find it, and moving it to To do reopens it (its status, not its age, makes it archived).
+ */
+export const ARCHIVE_AFTER_DAYS = 3;
+/** The archive age as fleet.yaml gives it: a whole number of days, 0–3650; anything else is the default. */
+export function archiveAfterDays(v: unknown): number {
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 3650 ? v : ARCHIVE_AFTER_DAYS;
+}
+/** M-3668: how many finished main tasks a project's Done column counts as "this week". */
+const WEEK_MS = 7 * 86_400_000;
 const BATCH_MAX = 30;
 
 /**
@@ -217,6 +229,9 @@ export interface ProjectStats {
   waiting: number;
   blocked: number;
   lastActivity: string | null;
+  /** M-3668: finished main tasks archived (left out of the numbers above), and main tasks finished in the last 7 days. */
+  archived: number;
+  doneWeek: number;
 }
 
 /** A card as the dashboard draws it: references by card number. */
@@ -971,8 +986,18 @@ export class TaskBoard {
    * tasks — or every done main task with `allDone` (the Done column's "All"). Older finished work stays in the
    * database and in the projects' numbers (projectStats), not in every board read.
    */
-  boardCards(days = BOARD_DAYS, allDone = false): Card[] {
+  boardCards(days = BOARD_DAYS, allDone = false, archiveDays = 0): Card[] {
     const since = new Date(this.now().getTime() - days * 86_400_000).toISOString();
+    if (archiveDays > 0) {
+      // M-3668: finished main tasks until they are archived (`allDone` no longer reads past it: the Archive list does).
+      const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+      return (this.db.prepare(
+        `SELECT * FROM tasks WHERE
+           (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR COALESCE(done_at, updated_at) >= ?))
+           OR (kind = 'sub' AND status != 'cancelled' AND (status != 'done' OR COALESCE(done_at, updated_at) >= ?))
+         ORDER BY sort`,
+      ).all(kept, since) as Row[]).map(toCard);
+    }
     const rows = this.db.prepare(
       `SELECT * FROM tasks WHERE
          (kind = 'main' AND (status NOT IN ('done', 'cancelled') OR (status = 'done' AND (? OR COALESCE(done_at, updated_at) >= ?)) OR (status = 'cancelled' AND updated_at >= ?)))
@@ -988,11 +1013,16 @@ export class TaskBoard {
    * units done), cards waiting for the person and blocked, and the last change. One pass over the table. #2080: waiting
    * counts only the cards in review the person confirms (waitsForPerson, `gone` as for Needs you), never an agent's.
    */
-  projectStats(gone?: GoneDispatcher): Record<string, ProjectStats> {
-    const rows = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, needs_review, dispatcher, dispatcher_kind FROM tasks").all() as Row[];
+  projectStats(gone?: GoneDispatcher, archiveDays = 0): Record<string, ProjectStats> {
+    const rows = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, done_at, needs_review, dispatcher, dispatcher_kind FROM tasks").all() as Row[];
+    const nowMs = this.now().getTime(), kept = archiveDays > 0 ? new Date(nowMs - archiveDays * 86_400_000).toISOString() : null;
+    const week = new Date(nowMs - WEEK_MS).toISOString();
+    const finished = (r: Row) => ((r.done_at as string | null) ?? (r.updated_at as string));
+    // M-3668: an archived main task (and its sub tasks) is left out of every number but `archived`.
+    const archivedMains = new Set(kept ? rows.filter((r) => r.kind === "main" && (r.status === "done" || r.status === "cancelled") && finished(r) < kept).map((r) => r.id as string) : []);
     const subs = new Map<string, Progress>();
     for (const r of rows) {
-      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled") continue;
+      if (r.kind !== "sub" || !r.parent_id || r.status === "cancelled" || archivedMains.has(r.parent_id as string)) continue;
       const p = subs.get(r.parent_id as string) ?? { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 };
       p.total++;
       p[r.status as Exclude<CardStatus, "cancelled">]++;
@@ -1001,9 +1031,12 @@ export class TaskBoard {
     const out: Record<string, ProjectStats> = {};
     for (const r of rows) {
       const key = r.project_id === null || r.project_id === undefined ? "none" : String(r.project_id);
-      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null };
+      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null, archived: 0, doneWeek: 0 };
       if (!st.lastActivity || (r.updated_at as string) > st.lastActivity) st.lastActivity = r.updated_at as string;
       const status = r.status as CardStatus;
+      if (r.kind === "main" && status === "done" && finished(r) >= week) st.doneWeek++;
+      if (archivedMains.has(r.id as string)) { st.archived++; continue; }
+      if (r.kind === "sub" && archivedMains.has(r.parent_id as string)) continue;
       if (status === "cancelled") continue;
       if (status === "review" && waitsForPerson({ status, needsReview: Number(r.needs_review) === 1,
         dispatcher: r.dispatcher ? { kind: r.dispatcher_kind === "person" ? "person" : "instance", name: r.dispatcher as string } : null }, gone)) st.waiting++;
@@ -1017,6 +1050,37 @@ export class TaskBoard {
     }
     for (const st of Object.values(out)) st.percent = st.units.total ? Math.round((st.units.done / st.units.total) * 100) : 0;
     return out;
+  }
+
+  /** M-3668: whether the dashboard has archived this card (a sub task goes with its main task). */
+  isArchived(card: Card, archiveDays: number): boolean {
+    if (archiveDays <= 0) return false;
+    const main = card.kind === "sub" && card.parent ? this.byUuid(card.parent) : card;
+    if (!main || main.kind !== "main" || (main.status !== "done" && main.status !== "cancelled")) return false;
+    return (main.doneAt ?? main.updatedAt) < new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+  }
+
+  /**
+   * M-3668: a project's archived main tasks (`project` null: No project), the most recently finished first, a page at a
+   * time (`before`: the last one's cursor), and who they were assigned to (the list's filter, `assignee`).
+   */
+  archiveList(project: number | null, archiveDays: number, opts: { before?: string | null; limit?: number; assignee?: string | null } = {}):
+    { cards: Card[]; next: string | null; total: number; assignees: string[] } {
+    if (archiveDays <= 0) return { cards: [], next: null, total: 0, assignees: [] };
+    const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
+    const where = `kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ? AND ${project === null ? "project_id IS NULL" : "project_id = ?"}`;
+    const base: unknown[] = [kept, ...(project === null ? [] : [project])];
+    const assignees = (this.db.prepare(`SELECT DISTINCT assignee FROM tasks WHERE ${where} AND assignee IS NOT NULL ORDER BY assignee`).all(...base) as { assignee: string }[]).map((r) => r.assignee);
+    const who = opts.assignee ? " AND assignee = ?" : "", whoArgs = opts.assignee ? [opts.assignee] : [];
+    const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}${who}`).get(...base, ...whoArgs) as { n: number }).n;
+    const cursor = typeof opts.before === "string" ? /^(.+)\|([^|]+)$/.exec(opts.before) : null;
+    const after = cursor ? " AND (COALESCE(done_at, updated_at) < ? OR (COALESCE(done_at, updated_at) = ? AND id < ?))" : "";
+    const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
+    const rows = this.db.prepare(`SELECT * FROM tasks WHERE ${where}${who}${after} ORDER BY COALESCE(done_at, updated_at) DESC, id DESC LIMIT ?`)
+      .all(...base, ...whoArgs, ...(cursor ? [cursor[1], cursor[1], cursor[2]] : []), limit + 1) as Row[];
+    const cards = rows.slice(0, limit).map(toCard);
+    const last = cards[cards.length - 1];
+    return { cards, next: rows.length > limit && last ? `${last.doneAt ?? last.updatedAt}|${last.uuid}` : null, total, assignees };
   }
 
   view(card: Card, scope: ReadScope = {}, gone?: GoneDispatcher): CardView {

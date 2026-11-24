@@ -587,3 +587,8 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 @media (prefers-reduced-motion: reduce) {
   .tr-mark.s-working .tr-dot, .tr-state.s-working .tr-dot { animation: none; }
 }
+
+/* M-3668: the Done column's "Show 20 more" under its newest cards; this week's count beside its title; the Archive's filter. */
+.tb-done-more { display: block; margin: var(--s-2) auto; }
+.tb-col-head .tb-done-week { font-size: var(--fs-xs); }
+.tb-archive-who { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }

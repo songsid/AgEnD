@@ -374,7 +374,7 @@ export function CardPage({ id, tick, projects, cards = [], boardOff = [], doing 
     ${bar({ parent, actions: html`${copyBtn}${blockBtn}${more}` })}
     <div class="tp-grid">
       <div class="tp-head">
-        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />
+        <div class="tp-idrow"><span class="tb-code tp-code">${card.id}</span><${StatusPill} status=${card.status} card=${card} />${detail.archived ? html`<span class="tb-tag" title=${t("tasksArchive.tagTip", detail.archiveAfterDays ?? "")}>${t("tasksArchive.tag")}</span>` : null}
           ${derived && !finished ? html`<span class="tp-derived">${t("taskcard.followsSubs")}</span>` : null}</div>
         <div class="tc-head" ref=${head} tabindex="-1" role="heading" aria-level="2">
           ${can ? html`<${InlineTitle} value=${card.title} version=${card.version} limit=${LIMIT.title} onSave=${(title, base) => save({ title }, base)} />` : html`<h2 class="tc-title">${card.title}</h2>`}
