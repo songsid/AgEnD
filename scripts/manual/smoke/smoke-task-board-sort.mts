@@ -8,6 +8,8 @@
 //  4. a board with nothing to sort draws none of it;
 //  5. on a phone every new control measures at least the --tap size (44px) both ways — the picker, a short row title, the
 //     list's footer button and a project's header link — and the desk keeps the dense link and footer (under 44px).
+// Shots: on a phone also Home scrolled to the No project tile (1b); a project's board is shot once the filing toast is gone.
+// The page head's own controls (Instances, New project, search; not this change's) are measured and recorded, before and after.
 // The shots are the "before" when run on the base commit with SHOTS_ONLY=1 (same seed; the checks name new things).
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> MATRIX=desk-light-en,phone-dark-zh-TW HP=48640 \
 //   npx tsx scripts/manual/smoke/smoke-task-board-sort.mts
@@ -75,6 +77,16 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
     await page.waitForSelector(".tb-home .tb-project", { timeout: 15000 });
     await page.waitForTimeout(600);
     await page.screenshot({ path: shotPath(SMOKE, c, "1-home") });
+    // the page head's controls, as they are (they come from the base; recorded so before and after can be compared)
+    r.head = { buttons: await Promise.all((await page.locator(".tb-home .tb-head-actions .btn").all()).map(async (b: any) => ({ text: (await b.innerText()).trim(), box: await box(b) }))),
+      search: await box(page.locator(".tb-home .tb-search input")) };
+    if (phone) {   // the No project tile is below the list on a phone: a shot scrolled to it
+      await tileOf(page, c, "No project", "未分類").scrollIntoViewIfNeeded();
+      await page.waitForTimeout(300);
+      await page.screenshot({ path: shotPath(SMOKE, c, "1b-home-tile") });
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.locator(".tb-home").evaluate((el: any) => { for (let n = el; n; n = n.parentElement) n.scrollTop = 0; });
+    }
     if (!shotsOnly) {
       const rows = await page.locator(".tb-sort-row").count();
       r.rows = rows;
@@ -119,6 +131,9 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       chk.projectLink = /6/.test(r.linkText);
       r.link = await box(page.locator(".tb-sort-link"));
       if (phone) chk.linkTappable = tappable(r.link); else chk.deskLinkStaysDense = !!r.link && r.link.h < TAP;
+      // the filing toast (app-wide, 4 s, a tap closes it) is gone before the shot, so no card is under it
+      await page.waitForFunction(() => !document.querySelector(".toasts .toast"), null, { timeout: 8000 }).catch(() => {});
+      chk.noToastOverTheBoard = (await page.locator(".toasts .toast").count()) === 0;
       await page.screenshot({ path: shotPath(SMOKE, c, "3-project-board") });
       await page.locator(".tb-sort-link").click();
       await page.waitForFunction(() => !document.querySelector(".tb-sort-link"), null, { timeout: 8000 }).catch(() => {});

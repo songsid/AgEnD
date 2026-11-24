@@ -3,7 +3,7 @@
  * the tile for it was the last on Home (and only there) while the page reopens the project last looked at. When the board has a
  * project and a live main task has none:
  *  - Home lists the newest such cards (at most five) above the projects, each with a picker that files it at once, and the
- *    No project tile comes first with "N to sort";
+ *    No project tile comes first with "N to file";
  *  - a project's header says how many are not in a project, and its link opens No project;
  *  - the No project board says what the place is for.
  * A board with no active project asks for nothing (No project is then the whole board); finished, cancelled and sub task
@@ -103,7 +103,7 @@ describe("Home", () => {
     await mount();
     const section = q(".tb-sort");
     expect(section, "the list is there").toBeTruthy();
-    expect(text(section.querySelector(".tb-section-title"))).toBe("Not in a project yet (7)");
+    expect(text(section.querySelector(".tb-section-title"))).toBe("No project: 7 to file");
     expect(qa(".tb-sort-row").map((r) => r.dataset.sort)).toEqual(["M-16", "M-15", "M-14", "M-13", "M-12"]);
     expect(text(qa(".tb-sort-row")[0])).toContain("Loose 16");
     expect(text(qa(".tb-sort-row")[0])).toContain("by master");
@@ -116,7 +116,7 @@ describe("Home", () => {
     const tiles = qa(".tb-projects .tb-project");
     expect(text(tiles[0].querySelector(".tb-project-name"))).toBe("No project");
     expect(tiles[0].classList.contains("needs-sort")).toBe(true);
-    expect(text(tiles[0].querySelector(".tb-sort-flag"))).toBe("7 to sort");
+    expect(text(tiles[0].querySelector(".tb-sort-flag"))).toBe("7 to file");
     expect(tiles.slice(1).map((t) => text(t.querySelector(".tb-project-name")))).toEqual(["Game", "Shop"]);
     const options = [...qa(".tb-sort-pick")[0].querySelectorAll("option")].map((o: any) => text(o));
     expect(options).toEqual(["File in…", "Game", "Shop"]);
@@ -187,7 +187,7 @@ describe("a project's board", () => {
     await mount({ agend_tasks_project: "1" });
     expect(text(q(".tb-title h2"))).toBe("Game");
     const link = q(".tb-sort-link");
-    expect(text(link)).toBe("7 not in a project →");
+    expect(text(link)).toBe("7 in No project →");
     fire(link, "click"); await settle(8);
     expect(text(q(".tb-title h2"))).toBe("No project");
     expect(q(".tb-sort-link"), "No project does not link to itself").toBeNull();
@@ -206,8 +206,9 @@ describe("the words", () => {
       for (const k of keys) expect(i18n.tIn(lang, `tasksort.${k}`, "A", "B"), `${lang} ${k}`).not.toBe(`tasksort.${k}`);
     }
     i18n.setLang("zh-TW", { store: false });
-    expect(i18n.t("tasksort.title", 7)).toBe("還沒有專案（7）");
-    expect(i18n.t("tasksort.tileBadge", 7)).toBe("7 張待整理");
+    expect(i18n.t("tasksort.title", 7)).toBe("未分類：7 張待歸檔");
+    expect(i18n.t("tasksort.tileBadge", 7)).toBe("7 張待歸檔");
+    expect(i18n.t("tasksort.headerLink", 7)).toBe("未分類 7 張");   // one name for the place: the tile's 未分類
     expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 已歸到 Shop");
     i18n.setLang("en", { store: false });
     expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 filed in Shop");
