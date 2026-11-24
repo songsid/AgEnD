@@ -219,8 +219,8 @@ try {
       });
       check(`${tag}: Echo alone takes a top-row seat under its area's name`, !!echo, echo);
       // The area's name is left of the seat (92 scene units, about two of Echo's widths): the crop reaches it and the top edge above.
-      if (echo) { const x = Math.max(0, echo.x - echo.w * 3.5), y = Math.max(0, echo.y - echo.h * 1.6);
-        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.w * 6, (phone ? 390 : 1366) - x), height: Math.min(echo.h * 3, (phone ? 844 : 900) - y) }); }
+      if (echo) { const x = Math.max(0, echo.x - echo.w * 4.8), y = Math.max(0, echo.y - echo.h * 1.6);
+        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.w * 7.3, (phone ? 390 : 1366) - x), height: Math.min(echo.h * 3, (phone ? 844 : 900) - y) }); }
       await page.goto(`${origin}/ui/hub/exposures`); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(1500);
       const lines = await page.evaluate(() => [...document.querySelectorAll("[data-picture-large=character]")].map((e) => (e.textContent || "").trim()));
       check(`${tag}: My agents tells the owner Notes's character is too large`, lines.length === 1 && /512 KB/.test(lines[0]!), lines);
