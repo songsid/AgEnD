@@ -1,0 +1,48 @@
+{
+  "task": "M-3673",
+  "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "integrationBase": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
+  "sourceBindings": {
+    "src/cache-ledger.ts": {
+      "sha256": "14dc4495b7d7ba1c05ef5fe9581d94979f70af9e74cc47242b5d45cca8e30301",
+      "gitBlob": "112d9ab0fa3a8c9f051ca8868f4e9211aa22d0c4"
+    },
+    "src/cache-service.ts": {
+      "sha256": "a074444c7bb8b27a2930a26ff280df442fec612b810da0b53b74baa95452d43f",
+      "gitBlob": "57029b3cd1f7d340495862fde8877dbae25827e0"
+    },
+    "tests/cache-codex-replay-m3673.test.ts": {
+      "sha256": "4e1bd4121fd54bf10a2e62315dbbf3e41e04a8de2591bd5c3ae083ad771c806c",
+      "gitBlob": "2c10d3980f7419ee57db6ea912f2684968712588"
+    }
+  },
+  "validation": {
+    "failFirst": {
+      "scope": "Original two-case service fixture before implementation; current file adds further controls",
+      "outcome": "one copied-history assertion failed; distinct-request control passed"
+    },
+    "affected": {
+      "command": "npx vitest run tests/cache-codex-replay-m3673.test.ts tests/cache-analysis-1468.test.ts tests/usage-speed-3066.test.ts tests/usage-report-2122.test.ts tests/usage-reasoning-2122.test.ts tests/usage-snapshot-2122.test.ts",
+      "files": 6,
+      "passed": 132
+    },
+    "sourceTypes": {
+      "command": "npx tsc --noEmit",
+      "errors": 0
+    },
+    "testTypes": {
+      "command": "npx tsc --noEmit -p tsconfig.test.json",
+      "errors": 0
+    },
+    "changelog": "805 fragments valid; includes both new list-item fragments",
+    "public": "clean"
+  },
+  "limits": [
+    "Synthetic public fixtures only; private transcript/account identifiers and local usage totals excluded",
+    "Recent retained Codex contributions repaired; existing durable daily/lifetime archives remain unchanged",
+    "Missing source data or ancestry keeps published accounting and incomplete coverage",
+    "Mixed-reader historical untagged gaps retained without adding rebuilt historical gaps again",
+    "Legacy events without a stable turn ID retain per-file cumulative suppression",
+    "No provider calls, live fleet restart or cron execution/submission"
+  ]
+}
