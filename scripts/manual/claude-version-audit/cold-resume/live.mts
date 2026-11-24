@@ -19,7 +19,7 @@ const RIG = process.env.RIG!, BIN = process.env.BIN!, SOCK = join(RIG, "sock");
 const tmux = (...a: string[]) => execFileSync("tmux", ["-S", SOCK, ...a], { encoding: "utf8" });
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const TIER = { fiveHourCredits: { default_claude_max_20x: 1000 }, creditsPerMillionTokens: { "claude-opus-5-5": 1000 } };
-const CASES: Record<string, { v: string; width: number; flags: Record<string, unknown> }> = {
+const CASES: Record<string, { v: string; width: number; flags: Record<string, unknown>; userSettings?: Record<string, unknown> }> = {
   "319-lookup": { v: "319", width: 160, flags: { tengu_amber_tally: TIER } },
   "319-nolookup": { v: "319", width: 160, flags: { tengu_amber_tally: { ...TIER, newConversationPointer: false } } },
   "319-summary-lookup": { v: "319", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
@@ -53,6 +53,14 @@ const CASES: Record<string, { v: string; width: number; flags: Record<string, un
   "330-summary-lookup": { v: "330", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
   "330-summary-newfocus": { v: "330", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
   "330-summary-newfocus-80": { v: "330", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  // 2.1.331 audit (M-3652): the summary row is gone; tengu_eager_brooks no longer adds a third option.
+  "331-lookup": { v: "331", width: 160, flags: { tengu_amber_tally: TIER } },
+  "331-nolookup": { v: "331", width: 160, flags: { tengu_amber_tally: { ...TIER, newConversationPointer: false } } },
+  "331-summary-lookup": { v: "331", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true } },
+  "331-summary-newfocus": { v: "331", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  "331-summary-newfocus-80": { v: "331", width: 80, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true, tengu_stateful_mitten: true } },
+  // With the flag, 2.1.331 compacts a cold --continue on its own, with no dialog, unless idleCompaction is off.
+  "331-summary-noidle": { v: "331", width: 160, flags: { tengu_amber_tally: TIER, tengu_eager_brooks: true }, userSettings: { idleCompaction: false } },
 };
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return this; } } as any;
 
@@ -62,6 +70,7 @@ async function run(name: string): Promise<boolean> {
   const home = join(RIG, `acc-${name}`), inst = join(RIG, `acc-inst-${name}`), work = join(RIG, "w1");
   rmSync(home, { recursive: true, force: true }); rmSync(inst, { recursive: true, force: true });
   cpSync(join(RIG, "h1-aged-backup"), home, { recursive: true }); mkdirSync(inst, { recursive: true });
+  if (c.userSettings) { const f = join(home, ".claude", "settings.json"); writeFileSync(f, JSON.stringify({ ...JSON.parse(readFileSync(f, "utf8")), ...c.userSettings })); }
   // An instance that has run before: its session marker, so buildCommand resumes (--continue).
   writeFileSync(join(inst, "session-id"), "acc\n");
   const envs = readFileSync(join(RIG, "envs3"), "utf8").trim().replaceAll(join(RIG, "h1"), home);

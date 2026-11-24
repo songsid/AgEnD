@@ -373,6 +373,9 @@ export function claudeColdResumePromptState(pane: string): { titled: boolean; ex
  * its own (`claude-2.1.31[89]-cold-resume-live-*` fixtures, 80 and 160 columns). 2.1.319 adds a third option behind the server
  * flag `tengu_eager_brooks`, on the launch trigger only: "Resume from summary" (compacts, then continues). Escape keeps
  * its meaning (`onCancel` → "dismiss": the prompt goes, the full conversation stays — checked live at 0/0.3/1.5 s).
+ * 2.1.331 drops that third option (M-3652): the prompt always has two, and under the same flag a cold `--continue` now
+ * compacts on its own before any prompt shows (only `idleCompaction: false` or auto-compact off keeps the dialog). The
+ * three-option grammar stays for hosts still on 2.1.319–2.1.330.
  */
 const COLD_RESUME_OPTION_ROW = /^[ \t]*(?:[❯›][ \t]*)?(?:([1-3])\.[ \t]*)?(Resume from summary|Start a new conversation|Resume)(?:[ \t]{2,}(\S.*?))?[ \t]*$/;
 const COLD_RESUME_LOOKUP_DESCRIPTION = "Claude can look this one up if you refer to it later";
