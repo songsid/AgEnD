@@ -65,8 +65,11 @@ export class HubAgentPictures {
       if (!f || f.status !== "active" || f.generation !== row.generation || !e || e.fleet_id !== row.fleet_id || e.state !== "published")
         db.prepare("DELETE FROM hub_agent_pictures WHERE exposure_id=?").run(row.exposure_id);
     }
-    db.prepare(`DELETE FROM hub_agent_picture_files WHERE sha256 NOT IN
-      (SELECT disc FROM hub_agent_pictures WHERE disc IS NOT NULL UNION SELECT portrait FROM hub_agent_pictures WHERE portrait IS NOT NULL)`).run();
+    // A file lives only while some row names it as it is — its type and size (Prism #4393 R2): a reference that declares it
+    // otherwise is never shown and keeps nothing alive, whatever order the reports and uploads came in.
+    db.prepare(`DELETE FROM hub_agent_picture_files WHERE NOT EXISTS (SELECT 1 FROM hub_agent_pictures p WHERE
+      (p.disc = hub_agent_picture_files.sha256 AND p.disc_mime = hub_agent_picture_files.mime AND p.disc_size = length(hub_agent_picture_files.bytes))
+      OR (p.portrait = hub_agent_picture_files.sha256 AND p.portrait_mime = hub_agent_picture_files.mime AND p.portrait_size = length(hub_agent_picture_files.bytes)))`).run();
   }
   prune(): void { this.core.atomic(db => this.sweep(db)); }
 
@@ -83,8 +86,16 @@ export class HubAgentPictures {
         const e = readExposure(db, a.exposureId);
         // A row for an agent that is not this Fleet's published share is not an error (the report may cross a withdrawal): skipped.
         if (!e || e.fleet_id !== fleet.id || e.state !== "published" || e.owner !== personKeyString(fleet.owner)) continue;
+        // Prism (#4393 R1): a hash fixes its bytes, so a picture held already with another type or size than this row declares
+        // can never be this row's. It is not recorded: it keeps no file alive, and an agent never holds more than its cap.
+        const fits = (ref: { sha256: string; mime: string; size: number } | null) => {
+          if (!ref) return null;
+          const held = db.prepare("SELECT mime, length(bytes) AS size FROM hub_agent_picture_files WHERE sha256=?").get(ref.sha256) as { mime: string; size: number } | undefined;
+          return !held || (held.mime === ref.mime && held.size === ref.size) ? ref : null;
+        };
+        const disc = fits(a.disc), portrait = fits(a.portrait);
         db.prepare("INSERT INTO hub_agent_pictures VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(a.exposureId, fleet.id, fleet.generation,
-          a.disc?.sha256 ?? null, a.disc?.mime ?? null, a.disc?.size ?? null, a.portrait?.sha256 ?? null, a.portrait?.mime ?? null, a.portrait?.size ?? null,
+          disc?.sha256 ?? null, disc?.mime ?? null, disc?.size ?? null, portrait?.sha256 ?? null, portrait?.mime ?? null, portrait?.size ?? null,
           (a.tooLarge ?? []).join(","), this.core.now());
       }
       this.sweep(db);

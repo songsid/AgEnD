@@ -131,6 +131,46 @@ describe("M-3533 R2b: agent pictures on the Hub", () => {
     expect((await w.member(w.notes)).look.portrait).toBe(sha(big));
   });
 
+  // Prism (#4393 R1): naming a held picture with another size does not keep it alive beside a new one — one agent, one cap.
+  it("a replacement that names the old picture with a wrong size frees it: one agent never holds more than 512 KB", async () => {
+    const w = await world(), a = JPEG(512 * 1024, 16), b = JPEG(512 * 1024 - 1, 17);
+    await w.send("agent.pictures", { revision: "1".repeat(64), agents: [{ exposureId: w.notes, disc: null, portrait: ref(a, "image/jpeg") }] });
+    for (const c of chunks(a, "image/jpeg")) await w.send("agent.picture", c);
+    expect((await w.member(w.notes)).look.portrait).toBe(sha(a));
+    const next = await w.send("agent.pictures", { revision: "2".repeat(64), agents: [{ exposureId: w.notes, disc: { sha256: sha(a), mime: "image/jpeg", size: 1 }, portrait: ref(b, "image/jpeg") }] });
+    expect(next).toEqual({ ok: true, need: [sha(b)] });
+    for (const c of chunks(b, "image/jpeg")) await w.send("agent.picture", c);
+    const held = r!.db.prepare("SELECT sha256, length(bytes) AS n FROM hub_agent_picture_files").all() as any[];
+    expect(held).toEqual([{ sha256: sha(b), n: b.length }]);
+    expect((await w.member(w.notes)).look).toEqual({ portrait: sha(b) });
+  });
+
+  // Prism (#4393 R2): the other order — the wrong-size reference comes first, before anyone holds the picture.
+  it("a wrong-size reference made before the picture is held keeps nothing alive once its valid holder goes; valid sharers keep it", async () => {
+    const w = await world(), a = JPEG(512 * 1024, 18), b = JPEG(512 * 1024 - 1, 19);
+    const held = () => (r!.db.prepare("SELECT sha256, length(bytes) AS n FROM hub_agent_picture_files ORDER BY sha256").all() as any[]);
+    // X (Notes) names A as a 1-byte disc beside its own portrait B, while nobody holds A.
+    expect(await w.send("agent.pictures", { revision: "3".repeat(64), agents: [{ exposureId: w.notes, disc: { sha256: sha(a), mime: "image/jpeg", size: 1 }, portrait: ref(b, "image/jpeg") }] }))
+      .toEqual({ ok: true, need: expect.arrayContaining([sha(a), sha(b)]) });
+    // Y (Planner) reports A validly and uploads it; X uploads B.
+    await w.send("agent.pictures", { revision: "4".repeat(64), agents: [{ exposureId: w.notes, disc: { sha256: sha(a), mime: "image/jpeg", size: 1 }, portrait: ref(b, "image/jpeg") },
+      { exposureId: w.plan, disc: null, portrait: ref(a, "image/jpeg") }] });
+    for (const c of [...chunks(a, "image/jpeg"), ...chunks(b, "image/jpeg")]) await w.send("agent.picture", c);
+    expect(held().map((x) => x.sha256)).toEqual([sha(a), sha(b)].sort());
+    expect([(await w.member(w.notes)).look, (await w.member(w.plan)).look]).toEqual([{ portrait: sha(b) }, { portrait: sha(a) }]);
+    // Y is withdrawn: A goes with it — X's wrong-size reference does not keep it. X holds only its own B.
+    await r!.http.receive(r!.frame("exposure.snapshot", { revision: 2, exposures: [w.ex(w.notes, "Notes"), w.ex(w.plan, "Planner", "withdrawn")] }, w.link) as never, w.link);
+    expect(held()).toEqual([{ sha256: sha(b), n: b.length }]);
+  });
+
+  it("two agents naming one picture as it is: it stays while either does", async () => {
+    const w = await world(), a = PNG(2500, 20);
+    await w.send("agent.pictures", { revision: "5".repeat(64), agents: [{ exposureId: w.notes, disc: ref(a, "image/png"), portrait: null }, { exposureId: w.plan, disc: ref(a, "image/png"), portrait: null }] });
+    await w.send("agent.picture", chunks(a, "image/png")[0]);
+    await r!.http.receive(r!.frame("exposure.snapshot", { revision: 2, exposures: [w.ex(w.notes, "Notes"), w.ex(w.plan, "Planner", "withdrawn")] }, w.link) as never, w.link);
+    expect([(r!.db.prepare("SELECT count(*) AS n FROM hub_agent_picture_files").get() as any).n, (await w.member(w.notes)).look]).toEqual([1, { disc: sha(a) }]);
+  });
+
   it("withdrawn or revoked: swept without a report from that Fleet; a file another agent still shows is kept", async () => {
     const w = await world(), shared = PNG(1700, 13), own = PNG(1750, 14);
     // A second Fleet whose agent shows the same picture.

@@ -1381,6 +1381,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${fullAdmin && teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
       ${fullAdmin && roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${fullAdmin && assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
+      ${/* M-3592: how long a sign-in lasts; nothing from a Hub without the setting (the card's read fails). */ ""}
+      ${fullAdmin ? html`<${LazyRoomPart} load=${() => import("./hub-session-limits.js")} name="HubSessionLimitsCard" props=${{ client: hubClient() }} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}

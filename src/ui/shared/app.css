@@ -5292,3 +5292,13 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
 }
+
+/* M-3610: Fleet › Tasks on a phone (or a coarse pointer) — every toolbar control a full tap target (--tap, 44px): the
+   Fleet tab pills, the search boxes (home, a project), Instances / New project / New main task, and a project's Back and
+   Stats. A desktop with a fine pointer keeps its compact bar. */
+@media (max-width: 899px), (pointer: coarse) {
+  .p-fleet .seg .seg-item { min-height: var(--tap); }
+  .p-fleet .tb-search input { min-height: var(--tap); }
+  .p-fleet :is(.tb-head-actions, .tb-title, .tb-stats) .btn { min-height: var(--tap); }
+  .p-fleet .tb-project-menu .icon-btn { width: var(--tap); height: var(--tap); }   /* a project tile's ⋯ */
+}
