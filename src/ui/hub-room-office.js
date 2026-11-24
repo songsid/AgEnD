@@ -136,7 +136,7 @@ export function named(d, members = []) {
  * `members` the room's (its detail's: owner, introduction, the list's states); `onMention(member)` the card's "@ it" (the
  * page switches to Chat with the mention in the box); `more` / `onMore` a phone's options sheet, opened from the room's ⋯.
  */
-export function RoomOffice({ client, roomId, members, onMention = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS, load = loadDrawing }) {
+export function RoomOffice({ client, roomId, members, onMention = null, onOpenChat = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS, load = loadDrawing }) {
   const [phase, setPhase] = useState("loading");      // loading | live | failed | off
   const [d, setD] = useState(null);
   const [kit, setKit] = useState(null);
@@ -191,7 +191,12 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
       oneOffice=${true} readOnly=${true} stream=${false} storage=${storage} words=${(node) => officeWords(node, members)}
       cardRows=${(name) => officeCardRows(members, shown.instances.find((i) => i.name === name)?.member)}
       cardName=${(name) => shown.instances.find((i) => i.name === name)?.plain || ""}
-      cardAction=${onMention ? (name) => { const m = memberOf(name); return m ? { label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) } : null; } : null}
+      cardAction=${onMention || onOpenChat ? (name) => { const m = memberOf(name); if (!m) return null;
+        // M-3565: the member card's 「和它一對一對話」 too, when this viewer may ask the agent (as there: canAsk).
+        const acts = [...(onMention ? [{ label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) }] : []),
+          // The card's row beside "Find in office" and "@ it" is narrow: a short label; the whole words its title and name.
+          ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOneShort"), title: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
+        return acts.length > 1 ? acts : acts[0] || null; } : null}
       foldBar=${true} more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
 }

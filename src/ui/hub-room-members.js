@@ -115,8 +115,16 @@ export function ownerAgent(name) {
  * - onSettings();
  * - compact (M1): true / false for that list whatever the size; absent, a room over COMPACT_OVER gets the compact one.
  */
-export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined } = {}) {
+export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined, focus = null } = {}) {
   const [presence, setPresence] = useState({}), [open, setOpen] = useState(null), [expanded, setExpanded] = useState(false);
+  // M-3565: `focus` ({ id, n }: a message's agent name pressed): that agent's card open, its owner's group unfolded, in view.
+  useEffect(() => {
+    if (!focus || !focus.id) return;
+    // Always in view: no filter left hiding it, the list unfolded past its first rows (#4389 review); then its card.
+    setQ(""); setExpanded(true); setOpen(focus.id);
+    const t = setTimeout(() => { try { document.querySelector(`.hub-room-members [data-member="${CSS.escape(focus.id)}"]`)?.scrollIntoView({ block: "nearest" }); } catch { /* none */ } }, 0);
+    return () => clearTimeout(t);
+  }, [focus && focus.n]);
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [gone, setGone] = useState({}), [q, setQ] = useState("");
   useEffect(() => { setPresence({}); setGone({}); }, [detail]);
   useEffect(() => client.subscribeRooms?.({
@@ -155,7 +163,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     return html`<span class="hub-member-name">${mark}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;
-  const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id}>
+  const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id} data-member=${m.id}>
         <button type="button" class="hub-member-open" title=${roomSource(m)?.label || ""} aria-label=${`${m.name}. ${memberStatus(m).text}. ${roomSource(m)?.label || ""}`} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
           <strong>${m.name}</strong>${m.intro?html`<p class="note">${m.intro}</p>`:null}${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
@@ -186,7 +194,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
       ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
     </section>
     ${agents.length ? html`<section><h4>${filtering ? hm("agentsMatch", groups.reduce((n, g) => n + g.shown.length, 0), agents.length) : heads.agent}</h4>
-      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
+      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering || (!!focus && g.agents.some((a) => a.id === focus.id))}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
     </section>` : null}`;
   };
   return html`<aside class=${`hub-room-members${compact ? " compact" : ""}`}>
