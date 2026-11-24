@@ -185,7 +185,7 @@ function Composer({ talk, name, label, autoFocus }) {
 }
 
 /** Variant A: the conversation in a side panel (a bottom sheet on a phone). */
-export function TalkPanel({ talk, name, label, state, sheet, onClose, onFull, top = null }) {
+export function TalkPanel({ talk, name, label, state, stateLabel = null, sheet, onClose, onFull, top = null }) {
   const th = useThread(talk, name), list = useRef(null), box = useRef(null);
   useLayoutEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [th && th.msgs.length, name]);
   // Where the map starts (beside it, not over the bar); set as a property: the page's CSP allows no style attribute.
@@ -196,7 +196,7 @@ export function TalkPanel({ talk, name, label, state, sheet, onClose, onFull, to
   if (!name) return null;
   return html`<aside ref=${box} class=${`ot-panel${sheet ? " sheet" : ""}`} role="complementary" aria-label=${tt("talkTo", label)}>
     <header class="ot-head">
-      <div class="ot-who"><strong>${label}</strong>${state ? html`<span class=${`ot-state st-${state}`}>${state}</span>` : null}</div>
+      <div class="ot-who"><strong>${label}</strong>${state ? html`<span class=${`ot-state st-${state}`}>${stateLabel || state}</span>` : null}</div>
       ${onFull ? html`<button type="button" class="btn btn-sm btn-ghost ot-full" onClick=${onFull}>${tt("full")}</button>` : null}
       <button type="button" class="icon-btn ot-close" aria-label=${tt("close")} title=${tt("close")} onClick=${onClose}>×</button>
     </header>
@@ -372,9 +372,10 @@ export function replyStyle(b, env) {
  * A reply in a bubble over a head, its tail at (x, y) (logical units: the map's transform): the name, then a page of
  * REPLY.lines wrapped lines. `age`: ms since it arrived, for its entrance (pop / fade / none; 0: whole at once);
  * `frame` { im, slice, k }: a 9-slice picture instead of the drawn box; `read` { page, n }: that page, its first `n`
- * characters typed, and ▼ once it is whole (none: page 0, whole, no ▼). Returns the box, the pages and the page's length.
+ * characters typed, and ▼ once it is whole (none: page 0, whole, no ▼). `fit` { l, r }: the box kept between them
+ * (#4406: on screen), its tail still at x. Returns the box, the pages and the page's length.
  */
-export function drawReply(ctx, x, y, name, text, age, style, frame, read = null) {
+export function drawReply(ctx, x, y, name, text, age, style, frame, read = null, fit = null) {
   ctx.save();
   const font = (wt) => `${wt} ${REPLY.font}px system-ui, sans-serif`;
   ctx.font = font(400);
@@ -386,7 +387,9 @@ export function drawReply(ctx, x, y, name, text, age, style, frame, read = null)
   ctx.font = font(700);
   const nameW = name ? ctx.measureText(name).width : 0;
   const w = Math.ceil(Math.max(nameW, textW) + REPLY.pad * 2), h = (name ? REPLY.line : 0) + lines.length * REPLY.line + REPLY.pad * 2 - 2;
-  const bx = Math.round(x - Math.min(24, w / 2)), by = Math.round(y - h - 10);
+  let bx0 = x - Math.min(24, w / 2);
+  if (fit) bx0 = Math.max(fit.l, Math.min(bx0, fit.r - w));
+  const bx = Math.round(bx0), by = Math.round(y - h - 10);
   const f = age > 0 ? Math.min(1, age / REPLY.enterMs) : 1, ease = 1 - (1 - f) ** 3;
   if (style.enter === "fade") ctx.globalAlpha *= ease;
   if (style.enter === "pop" && f < 1) {

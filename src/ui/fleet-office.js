@@ -807,8 +807,17 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   for (const { sp, said } of replies) {
     // Typed out from its page's start, at the reading mode's pace; ▼ once whole; Auto / Fast: it goes on by itself.
     const cps = rp.pace(rp.read).cps, n = ms > 0 ? Math.floor(((tSaid - (said.pageAt ?? said.at)) * cps) / 1000) : Infinity;
-    const box = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null,
-      { page: said.page, n });
+    // #4406: never smaller than its own size on the page — zoomed out (a phone's whole office at 30 %), it is drawn at
+    // 1 CSS px a unit about its tail, so the words stay readable; zoomed in, as the map.
+    const u = Math.max(1, (rp.ratio || 1) / a);
+    // And kept on screen: the canvas's visible width in this part's units, into the bubble's own (scaled about its tail).
+    const vl = -ox / a, vr = ((ctx.canvas && ctx.canvas.width) || Infinity) / a - ox / a, m = 6 / u;
+    const fit = Number.isFinite(vr) ? { l: sp.x + (vl - sp.x) / u + m, r: sp.x + (vr - sp.x) / u - m } : null;
+    ctx.save(); ctx.translate(sp.x, sp.y); ctx.scale(u, u); ctx.translate(-sp.x, -sp.y);
+    const b0 = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null,
+      { page: said.page, n }, fit);
+    ctx.restore();
+    const box = { ...b0, x: sp.x + (b0.x - sp.x) * u, y: sp.y + (b0.y - sp.y) * u, w: b0.w * u, h: b0.h * u };
     said.pages = box.pages;
     if (n >= box.len && !said.whole) { said.whole = true; said.wholeAt = tSaid; }
     if (said.whole && tSaid - said.wholeAt >= rp.pace(rp.read, box.len).wait) rp.chat.advance(sp.look.name);
@@ -1758,7 +1767,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.clearRect(0, 0, BW, BH);
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
-    for (const p of s.overview ? s.parts : [s.part]) p.reply = replyRef.current;
+    for (const p of s.overview ? s.parts : [s.part]) p.reply = replyRef.current ? { ...replyRef.current, ratio: s.ratio } : null;
     if (!s.overview) {
       // #4379 review: an open card (beside its person, or a bottom sheet) covers part of the scene: a name tag under it is
       // left out whole, never a fragment showing past its edge. Its box in bitmap px, as the canvas lies on the page.
@@ -2707,7 +2716,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
     ${tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
       read=${readMode} onRead=${pickRead} onSkip=${skipTalk} />` : null}
-    ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} sheet=${phone}
+    ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} stateLabel=${talkWho ? stateOf(talkWho.node) : null} sheet=${phone}
       onClose=${() => setTalkTo(null)} onFull=${openFull} top=${stageRef.current ? stageRef.current.offsetTop : null} />` : null}
   </div>`;
 }

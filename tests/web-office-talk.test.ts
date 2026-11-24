@@ -172,6 +172,16 @@ describe("the reply over a head (drawReply) and its look in a pack", () => {
     expect(T.replyStyle({ background: "#112233", enter: "fade" }, { mode: "light" })).toMatchObject({ background: "#112233", text: "#1d1d22", enter: "fade" });
     expect(T.replyStyle(null, null).enter).toBe("pop");
   });
+  it("#4406: `fit` keeps the box on screen (a head near the right edge), its tail still at the head", () => {
+    const style = T.replyStyle(null, null), say = "word ".repeat(40);
+    const free = T.drawReply(ctx(), 980, 200, "Atlas", say, 0, style, null);
+    expect(free.x + free.w).toBeGreaterThan(1000);                                  // past an edge at 1000 without it
+    const kept = T.drawReply(ctx(), 980, 200, "Atlas", say, 0, style, null, null, { l: 0, r: 1000 });
+    expect(kept.x + kept.w).toBeLessThanOrEqual(1000);
+    expect(kept.x).toBeLessThan(980);
+    expect(kept.w).toBe(free.w);
+    expect(T.drawReply(ctx(), 10, 200, "Atlas", say, 0, style, null, null, { l: 0, r: 1000 }).x).toBeGreaterThanOrEqual(0);   // and the left edge
+  });
   it("a 9-slice frame is drawn instead of the box when it is loaded", () => {
     const c = ctx(), im = { naturalWidth: 24, naturalHeight: 24 };
     T.drawReply(c, 300, 200, "", "ok", 0, T.replyStyle(null, null), { im, slice: 6, k: 1 });
@@ -388,6 +398,10 @@ describe("talking on the page", () => {
     expect((await dialogue()).checked).toBe(false);                               // never ticked for the person
     expect(p.root.querySelector(".oo").className).toContain("ot-side");
     expect(panel.querySelector(".ot-head").textContent).toContain("atlas");
+    // #4406: the state in the page's words (as the card's), never the raw key.
+    const pill = panel.querySelector(".ot-state");
+    expect(pill.textContent).not.toMatch(/^[a-z]+$/);
+    expect(["Idle", "Working", "Paused", "Needs you", "Stopped"]).toContain(pill.textContent);
     expect(panel.querySelector(".ot-md").innerHTML).toContain("Earlier reply");
     const input = panel.querySelector(".ot-input");
     input.value = "line one"; fire(input, "input"); await settle(2);

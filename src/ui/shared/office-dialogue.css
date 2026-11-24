@@ -49,7 +49,7 @@
 .ot-reply { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); max-height: 50dvh; overflow-y: auto; z-index: 7; padding: 10px 34px 10px 12px;
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-2); }
 .ot-reply .ot-close { position: absolute; top: 4px; right: 4px; }
-@media (max-width: 599px) { .ot-bar .ot-full { display: none; } .ot-to { display: none; } }
+@media (max-width: 599px) { .ot-to { display: none; } }
 .ot-play { display: flex; gap: 2px; flex: 0 0 auto; align-self: center; }
 .ot-play .ot-read.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 @media (max-width: 599px) { .ot-bar-row { flex-wrap: wrap; } .ot-play { order: -1; width: 100%; justify-content: flex-end; } }
@@ -96,6 +96,15 @@
 .ot-stage.phone .ot-box { left: 2cqw; right: 2cqw; bottom: 1.5cqh; padding: 0.8em 0.9em; font-size: max(var(--fs-sm), 3.4cqw); }
 .ot-stage.phone .ot-tools { right: 0.6em; }
 @media (prefers-reduced-motion: reduce) { .ot-cue { animation: none; } }
+/* #4406: on a phone or a touch screen every talk control is a whole touch target (--tap, 44 px). */
+@media (max-width: 899px), (pointer: coarse) {
+  .ot-tool, .ot-stage .ot-send, .ot-send, .ot-link, .ot-panel .ot-full, .ot-panel .ot-close, .ot-reply .ot-close, .ot-bar .btn,
+  .ot-log .ot-x { min-height: var(--tap, 44px); min-width: var(--tap, 44px); }
+  .ot-tool, .ot-link { display: inline-flex; align-items: center; justify-content: center; }
+  .ot-link { padding: 0 0.5em; }
+  .ot-tools { top: calc(-1 * var(--tap, 44px) - 6px); gap: 4px; font-size: 0.85em; }
+  .ot-input { min-height: var(--tap, 44px); }
+}
 /* While the box is up, the snack tray (bottom left of the scene) waits under it. */
 .oo-stage:has(.ot-stage) .oo-snacks { display: none; }
 /* History (TalkLog): both sides of the conversation, over the box's text column. */
