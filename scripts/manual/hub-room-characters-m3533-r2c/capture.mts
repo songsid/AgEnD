@@ -209,7 +209,9 @@ try {
         return { x: r.x + x0 * k, y: r.y + y0 * k, w: (x1 - x0 + 1) * k, h: (y1 - y0 + 1) * k };
       });
       check(`${tag}: Echo is found on the Studio (large) scene`, !!echo, echo);
-      if (echo) { const pad = Math.max(40, echo.h * 1.5); await shot("3z-top-row-title-close", { x: Math.max(0, echo.x - pad * 1.6), y: Math.max(0, echo.y - pad), width: echo.w + pad * 3.2, height: echo.h + pad * 1.6 }); }
+      // The area's top band: its name is at its top left, so the crop reaches well left of Echo and above its head.
+      if (echo) { const u = Math.max(echo.w, 12), x = Math.max(0, echo.x - u * 7), y = Math.max(0, echo.y - echo.h * 0.9);
+        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.x + echo.w + u * 2 - x, phone ? 390 - x : 1366 - x), height: echo.h * 2.2 }); }
       await page.goto(`${origin}/ui/hub/exposures`); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(1500);
       const lines = await page.evaluate(() => [...document.querySelectorAll("[data-picture-large=character]")].map((e) => (e.textContent || "").trim()));
       check(`${tag}: My agents tells the owner Notes's character is too large`, lines.length === 1 && /512 KB/.test(lines[0]!), lines);
