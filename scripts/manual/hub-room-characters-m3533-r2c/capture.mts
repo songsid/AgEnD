@@ -56,7 +56,7 @@ function robotSheet(body: [number, number, number]): Buffer {
 const robotSet = (src: string) => Object.fromEntries(ROWS.map((pose, row) => [pose, { src, frames: FRAMES[pose], w: CW, h: CH, fps: pose === "paused" ? 1 : 4, ax: CW / 2, ay: CH - 2, dw: CW * 2, dh: CH * 2, row, col: 0 }]));
 /** Noise: a set far over the Hub's 512 KB (dropped whole; its owner is told). */
 function noiseSheet(): Buffer {
-  const side = 256, frames = 32, data = new Uint8Array(side * frames * side * 4);
+  const side = 256, frames = 16, data = new Uint8Array(side * frames * side * 4);
   let x = 2463534242; for (let i = 0; i < data.length; i++) { x ^= x << 13; x ^= x >>> 17; x ^= x << 5; data[i] = i % 4 === 3 ? 255 : x & 255; }
   return encodePng({ width: side * frames, height: side, data });
 }
@@ -66,7 +66,7 @@ const SHEETS: Record<string, { set: Record<string, unknown>; sheet: Buffer }> = 
   nova: { set: robotSet("robot.png"), sheet: robotSheet([72, 132, 228]) },
   echo: { set: robotSet("robot.png"), sheet: robotSheet([84, 176, 112]) },
   quill: { set: { idle: { src: "robot.png", frames: 4, w: 32, h: 48, fps: 4, ax: 16, ay: 44, dw: 64, dh: 96 } }, sheet: FOX },
-  notes: { set: { idle: { src: "robot.png", frames: 32, w: 256, h: 256, fps: 4, ax: 128, ay: 250, dw: 64, dh: 64 } }, sheet: noiseSheet() },
+  notes: { set: { idle: { src: "robot.png", frames: 16, w: 256, h: 256, fps: 4, ax: 128, ay: 250, dw: 64, dh: 64 } }, sheet: noiseSheet() },
 };
 const characterOf = (agent: string) => {
   const s = SHEETS[agent];
