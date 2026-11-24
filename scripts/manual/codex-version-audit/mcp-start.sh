@@ -22,7 +22,9 @@ trap 'bash "$R" "$V" stop >/dev/null 2>&1 || true' EXIT
 SOCK="$(bash "$R" "$V" paths | tr ' ' '\n' | sed -n 's/^SOCK=//p')"
 pane() { if [ -n "${CAPTURE:-}" ]; then bash -c "$CAPTURE"; else tmux -f /dev/null -L "$SOCK" capture-pane -p -S - -t main; fi; }
 # Each turn must reach codex, or the log says nothing about it: checked on the pane right after.
-reached() { if pane 2>/dev/null | grep -qF "$1"; then echo "--- reached: $1" >> "$MARK"; else echo "--- NOT reached: $1" >> "$MARK"; failed=1; fi; }
+# The pane is read whole first: `pane | grep -q` under pipefail failed when grep's early exit sent SIGPIPE to the
+# pane's writer (exit 141), so a turn that was on the pane read as NOT reached (#4421 CI, a different PR's run).
+reached() { local p; p="$(pane 2>/dev/null)" || p=""; if grep -qF -- "$1" <<<"$p"; then echo "--- reached: $1" >> "$MARK"; else echo "--- NOT reached: $1" >> "$MARK"; failed=1; fi; }
 # The server must have started after this launch's step line, and before its first turn.
 started() { awk -v s="--- $1 @" 'index($0, s) == 1 { on = 1; next } on && /^--- / { exit } on && / start$/ { ok = 1 } END { exit !ok }' "$MARK" \
   || fail "the MCP server did not start after $1"; }

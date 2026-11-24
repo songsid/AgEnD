@@ -9,7 +9,7 @@ import { HubMemberSharingLink } from "../member/sharing-link.js";
 import { sharingNotice } from "../member/sharing-result.js";
 import { HubMemberAgentCatalog, memberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
 import { HubMemberAgentPictures, type MemberPictureSources } from "../member/agent-pictures.js";
-import { reduceInWorker } from "../../hub-picture-reduce.js";
+import { cropInWorker, reduceInWorker } from "../../hub-picture-reduce.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -815,7 +815,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
       // M-3533 R2b: each published share's pictures, for the Hub's room offices (agent-pictures-v1, when the Hub offers it).
-      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker,
+      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker, crop: cropInWorker,
         exposures: () => exposures.list().flatMap(row => { const e = row.committed?.exposure; return e && e.state === "published" ? [{ id: e.id, agent: row.agent }] : []; }),
         sources: agent => options.pictureSources!(agent),
         failed: () => options.log("warn", "Shared agents' pictures were not sent to the Hub") }) : null;
@@ -828,6 +828,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         agentIntro: true,
         agentCatalog: !!catalog,
         agentPictures: !!pictures,
+        agentCharacters: !!pictures,
         exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,

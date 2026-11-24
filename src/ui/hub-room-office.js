@@ -9,7 +9,7 @@ import { lang } from "/assets/app-i18n.js";
 import { createLease } from "/assets/app-ctx.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hroom } from "./hub-room-strings.js";
-import { agentPictureSrc, presenceView } from "./hub-room-presence.js";
+import { agentCharacterSrc, agentPictureSrc, presenceView } from "./hub-room-presence.js";
 
 /** How often a shown office is read again (the share page's POLL_MS). */
 export const ROOM_OFFICE_POLL_MS = 5000;
@@ -32,6 +32,73 @@ const RESERVED = (name) => name.startsWith("team:") || Object.prototype.hasOwnPr
 const safeKey = (name) => (RESERVED(name) ? `\u2060${name}` : name);
 const clip = (text, n) => { const c = [...text]; return c.length > n ? `${c.slice(0, n - 1).join("")}…` : text; };
 const STORAGE_PREFIX = "agend_hub_room_office:";
+
+/**
+ * M-3533 R2c: an agent's own character in a room office is fitted into the built-in figure's box (fleet-office-skin.js
+ * charBox: 48 × 66), kept in proportion, never larger — one scale for everyone in the room (Lumen's choice, B, over the
+ * pack's own scale: at 64 × 96 a robot stood twice a figure's height and crossed its area's edge and name). Its feet stay
+ * on the seat, as a figure's. Drawn unsmoothed, as the Fleet office draws every strip.
+ */
+export const CHARACTER_FIT = { w: 48, h: 66 };
+/**
+ * An agent's character as the drawing takes it (a checked pack's strips, fleet-office-pack.js), its pictures at `src(pose,
+ * hash)`, each fitted into CHARACTER_FIT; null when it has none or a strip is not a well-formed one.
+ */
+export function characterSet(character, src) {
+  if (!character || typeof character !== "object") return null;
+  const out = {};
+  for (const [pose, st] of Object.entries(character)) {
+    const url = st && src(pose, st.sha256);
+    const nums = st && ["frames", "w", "h", "fps", "ax", "ay", "dw", "dh"].every((k) => typeof st[k] === "number" && Number.isFinite(st[k]));
+    if (!url || !nums || !(st.frames >= 1 && st.dw > 0 && st.dh > 0)) return null;
+    const k = Math.min(1, CHARACTER_FIT.w / st.dw, CHARACTER_FIT.h / st.dh);
+    out[pose] = { src: url, frames: st.frames, w: st.w, h: st.h, fps: st.fps, ax: st.ax, ay: st.ay, dw: st.dw * k, dh: st.dh * k,
+      ...(Array.isArray(st.durations) ? { durations: st.durations } : {}), ...(st.once === true ? { once: true } : {}), ...(typeof st.loopFrom === "number" ? { loopFrom: st.loopFrom } : {}) };
+  }
+  return Object.keys(out).length ? out : null;
+}
+/** A picture loaded for the drawing (an Image once it has loaded; null if it fails). */
+const loadImage = (url) => new Promise((resolve) => {
+  if (typeof Image !== "function") { resolve(null); return; }
+  const im = new Image();
+  im.onload = () => resolve(im); im.onerror = () => resolve(null);
+  im.src = url;
+});
+
+/**
+ * M-3533 R2c: the room's agents' own characters, each drawn only once all its pictures have loaded (an agent is drawn wholly
+ * with its set or wholly as the figure). `instances` the drawing's (named), `load` an image loader (tests).
+ */
+export function useCharacters(roomId, instances, load = loadImage) {
+  const [images, setImages] = useState(() => new Map());
+  const wanted = useMemo(() => {
+    const sets = new Map();
+    for (const i of Array.isArray(instances) ? instances : []) {
+      const set = i && i.member ? characterSet(i.character, (pose, hash) => agentCharacterSrc(roomId, i.member, pose, hash)) : null;
+      if (set) sets.set(i.name, set);
+    }
+    return sets;
+  }, [roomId, instances]);
+  const urls = useMemo(() => [...new Set([...wanted.values()].flatMap((set) => Object.values(set).map((st) => st.src)))].sort(), [wanted]);
+  useEffect(() => {
+    let live = true;
+    const missing = urls.filter((u) => !images.has(u));
+    for (const u of missing) load(u).then((im) => { if (live) setImages((m) => new Map(m).set(u, im)); });
+    return () => { live = false; };
+  }, [urls.join("\n")]);
+  // Each read of the room makes new objects: the drawing gets a new skin only when the characters themselves change.
+  const sig = JSON.stringify([...wanted]);
+  return useMemo(() => {
+    const sets = Object.create(null), ready = new Map();
+    for (const [name, set] of wanted) {
+      const strips = Object.values(set);
+      if (!strips.every((st) => images.get(st.src))) continue;
+      sets[name] = set;
+      for (const st of strips) ready.set(st.src, images.get(st.src));
+    }
+    return Object.keys(sets).length ? { sets, images: ready } : null;
+  }, [sig, images]);
+}
 
 /** The Office drawing, loaded once on first use (the Hub serves it; a fleet page has it already). */
 let drawing = null;
@@ -175,6 +242,7 @@ export function RoomOffice({ client, roomId, members, onMention = null, onOpenCh
   }, [lease, attempt]);
   const shown = useMemo(() => (d ? named(d, members) : null), [d, members]);
   holder.d = shown;
+  const characters = useCharacters(roomId, shown?.instances);
   const view = useMemo(() => (kit && shown ? kit.buildOrgView(shown.org, officeApp(shown)) : null), [kit, shown]);
   const memberOf = (name) => {
     const id = shown?.instances.find((i) => i.name === name)?.member;
@@ -198,6 +266,6 @@ export function RoomOffice({ client, roomId, members, onMention = null, onOpenCh
           ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOneShort"), title: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
         return acts.length > 1 ? acts : acts[0] || null; } : null}
       cardPhoto=${(name) => { const i = shown.instances.find((x) => x.name === name); return i?.member ? agentPictureSrc(roomId, i.member, "portrait", i.picture?.portrait) : null; }}
-      foldBar=${true} more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
+      foldBar=${true} more=${more} onMore=${onMore} characters=${characters} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
 }

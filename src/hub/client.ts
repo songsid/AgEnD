@@ -4,7 +4,7 @@ import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
-import { HUB_AGENT_PICTURES_CAPABILITY } from "./agent-pictures-model.js";
+import { HUB_AGENT_CHARACTERS_CAPABILITY, HUB_AGENT_PICTURES_CAPABILITY } from "./agent-pictures-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
@@ -47,6 +47,8 @@ export interface HubClientOptions {
   agentCatalog?: boolean;
   /** M-3533 R2b: report shared agents' pictures (agent-pictures-v1) when the Hub offers it. */
   agentPictures?: boolean;
+  /** M-3533 R2c: this member sends its agents' own characters when the Hub offers agent-characters-v1. */
+  agentCharacters?: boolean;
   exposureRequests?: boolean;
   roomMentionFeedback?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
@@ -198,6 +200,7 @@ export class HubMemberClient implements HubMemberTransport {
       if(this.options.agentIntro && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_INTRO_CAPABILITY))features.add(HUB_AGENT_INTRO_CAPABILITY);
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.agentPictures && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_PICTURES_CAPABILITY)) features.add(HUB_AGENT_PICTURES_CAPABILITY);
+      if (this.options.agentCharacters && features.has(HUB_AGENT_PICTURES_CAPABILITY) && frame.payload.capabilities?.includes(HUB_AGENT_CHARACTERS_CAPABILITY)) features.add(HUB_AGENT_CHARACTERS_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       // M-3543: the Hub takes a lapsed row and a Share again of a published agent (only with exposure requests).
       if (features.has(HUB_EXPOSURE_REQUEST_CAPABILITY) && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_LAPSE_CAPABILITY)) features.add(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);

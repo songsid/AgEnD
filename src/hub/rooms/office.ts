@@ -57,10 +57,14 @@ export interface RoomOfficeAgent {
   color?: { person: string }; avatar?: { kind: "emoji"; text: string };
   /** M-3533 R2b: content hashes of the pictures the Hub holds for it (the room's picture route serves them to members). */
   picture?: { disc?: string; portrait?: string };
+  /** M-3533 R2c: its own character from its owner's skin pack, a strip a pose (the room's character route serves each). */
+  character?: RoomCharacter;
 }
+/** M-3533 R2c: an agent's own character as a room office draws it (agent-pictures.ts HubCharacterLook): a hash and the pack's fields a pose. */
+export type RoomCharacter = Record<string, { sha256: string; frames: number; w: number; h: number; fps: number; durations?: number[]; once?: true; loopFrom?: number; ax: number; ay: number; dw: number; dh: number }>;
 
 /** M-3533 R2a: an agent's look from its owner's agent catalog (agent-catalog-model.ts row `avatar`): colour, emoji. */
-export interface RoomOfficeLook { color: string | null; emoji: string | null; disc?: string; portrait?: string }
+export interface RoomOfficeLook { color: string | null; emoji: string | null; disc?: string; portrait?: string; character?: RoomCharacter }
 
 /** M-3533 R2a: the look a room's member list draws (its avatar): a checked colour and emoji, or null when it has neither. */
 export function memberLook(look: RoomOfficeLook | null | undefined): { color?: string; emoji?: string; disc?: string; portrait?: string } | null {
@@ -81,8 +85,10 @@ export function withLook(agent: RoomOfficeAgent, look: RoomOfficeLook | null | u
   const color = typeof look.color === "string" && /^#[0-9a-f]{6}$/i.test(look.color) ? look.color.toLowerCase() : null;
   const emoji = typeof look.emoji === "string" && look.emoji.trim() ? look.emoji.trim() : null;
   const picture = pictureOf(look);
+  // M-3533 R2c: whole or not at all (agent-pictures.ts holds a set only when every strip is held), each strip a hash.
+  const character = look.character && Object.values(look.character).every(st => !!st && /^[a-f0-9]{64}$/.test(st.sha256)) && Object.keys(look.character).length ? look.character : null;
   return { ...agent, ...(color ? { color: { person: color } } : {}), ...(emoji ? { avatar: { kind: "emoji" as const, text: emoji } } : {}),
-    ...(picture.disc || picture.portrait ? { picture } : {}) };
+    ...(picture.disc || picture.portrait ? { picture } : {}), ...(character ? { character } : {}) };
 }
 
 /** The member list's presences: a personal agent whose computer is offline answers "later", when it is back. */

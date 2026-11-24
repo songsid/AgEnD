@@ -7,19 +7,19 @@
     },
     {
       "path": "src/hub/client.ts",
-      "sha256": "37838366fa951a5a5bff9447cd6c17f4e035ba71fa8aee3ef529ec39e05f817a"
+      "sha256": "1b3614cb54bd14a0458da00e0133dbd54b5140c57c1a9f436dda979057177f5a"
     },
     {
       "path": "src/hub/compose/member.ts",
-      "sha256": "15f9d3f2543972a85136eba30dc5458cca8528136b24dbc997342e2721c416e1"
+      "sha256": "455ff4a76d43521a0663b6bfca9073b5f04fd96ca6da6dffc38952cbb4725947"
     },
     {
       "path": "src/hub/compose/server.ts",
-      "sha256": "d26a81e1a6f857d4c19a113fed5c9ecb6e6e74e93eafbdf84cd616592fe4a388"
+      "sha256": "30d3392c585c69991dacd966d35ec32da4a66d46a5605704231f72571d3d2d82"
     },
     {
       "path": "src/hub/http/compose.ts",
-      "sha256": "c8538e4b3dafb06f30a2d05c370dc79058a581383ab2b71c836fb59e34b142ce"
+      "sha256": "f11769fb2b1de573289bac46b7a701f5a1d33137bec4b1125b0728dc6ab6ff62"
     },
     {
       "path": "src/hub/http/deps.ts",
@@ -59,7 +59,7 @@
     },
     {
       "path": "src/hub/server.ts",
-      "sha256": "56759b41b804a331da9011a6827821355ba2d70156a3cd25266619f703c8ad4b"
+      "sha256": "c6188f8a5c38c29ee93eaca0b74d6d9d3288b072da12e9c7be70e4b6f3cc8c81"
     },
     {
       "path": "src/hub/types.ts",
@@ -75,7 +75,7 @@
     },
     {
       "path": "tests/hub-room-asker-negotiation-m3664.test.ts",
-      "sha256": "5843428a74b1fcf1c7bdc050649f4ebff3f4dcd41bd234216d4f2c047cf0dd1a"
+      "sha256": "f86b24288f225558029f3d324a7b4cdcb505ee90a77a1e5dde47bab41a7a6aca"
     },
     {
       "path": "tests/hub-room-asker-source-m3664.test.ts",
@@ -99,7 +99,7 @@
     },
     {
       "path": "src/locale.ts",
-      "sha256": "147d671beedc20e45a1fc0e766e0e9210ea0c22dd078edb6545c4abaf13ac093"
+      "sha256": "0ed5c4d3bd799805404b34b8cacd9a7381945331f912f152f9a17f7a337a7be2"
     },
     {
       "path": "tests/hub-needs-retry-m3632.test.ts",
@@ -300,6 +300,30 @@
       "sha256": "d10ad380a520963d437250026f234f14c3fe296cc85dea6d15b2555e1a6d35e1"
     },
     {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-affected.log",
+      "sha256": "4cf774f5e644252820906080554c3b63fe02542502c61f668a0039d1ebf66f78"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-bindings.json",
+      "sha256": "438bcff276e0268fba73633a7df090da683dfdccfdc875757e007d3e7de5cc05"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-integration.md",
+      "sha256": "70c7a6312d82c989da1b871d03582dea1835b14c61eeb734218d703d22ce9fc4"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-resolutions.patch",
+      "sha256": "cec81987251d74d15bf3380b21494d16d69f8aa5f1a445b21a620b9f9e58afce"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "path": "docs/evidence/hub-room-asker-identity-m3664/test-types-final.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
@@ -311,5 +335,7 @@
       "path": "docs/evidence/hub-room-asker-identity-m3664/two-phase.patch",
       "sha256": "1e700cad9699d28a81d56c34ca1c3ad491e814fd3c53a0e42403d0f3bd67db89"
     }
-  ]
+  ],
+  "integrationBase": "a12b8fe3243fe7908fc58a0742be26095fca1e3f",
+  "sourceClearHead": "cddc5d7b88638c1b38900bdd62a7648ae5da07ca"
 }
