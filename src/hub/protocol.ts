@@ -1,3 +1,4 @@
+import {roomAskerIdentitySchema} from './room-asker-identity-model.js';
 import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
 import {roomBriefSchema} from "./room-brief-model.js";
 import {agentIntroSchema,agentIntroResultSchema} from "./agent-intro-model.js";
@@ -110,9 +111,10 @@ export const answerButtonsSchema = z.strictObject({ id: z.string().regex(/^[a-f0
 export const answerSchema = z.strictObject({ messageId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer), contentDigest: hash, releaseLease: leaseSchema,
   attachments: attachmentList.optional(), buttons: answerButtonsSchema.optional() });
 export const roomContextSchema = z.strictObject({ author: plain(256), text: plain(HUB_LIMITS.question), at: epoch, repliedTo: z.literal(true).optional() });
-export const roomAskSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
+export const roomAskBaseSchema = z.strictObject({ messageId: uuid, roomId: uuid, roomName: plain(120), exposureId: uuid,
   asker: z.strictObject({ name: plain(256) }), text: plain(HUB_LIMITS.question), contextState: roomContextStateSchema.optional(), brief:roomBriefSchema.optional(), context: z.array(roomContextSchema).max(31)
     .refine(rows => rows.length <= 30 || rows.filter(r => r.repliedTo).length === 1), attachments: attachmentList.optional() });
+export const roomAskSchema=roomAskBaseSchema.extend({askerIdentity:roomAskerIdentitySchema.optional()});
 export const roomAnswerSchema = z.strictObject({ notAnswered:z.literal("finished-without-answer").optional(),messageId: uuid, roomId: uuid, exposureId: uuid, answerId: uuid, text: plain(HUB_LIMITS.answer),
   buttons: answerButtonsSchema.optional(), attachments: attachmentList.optional(),mentionFeedback:z.literal(true).optional() }).refine(v=>!v.notAnswered||v.text===""&&!v.buttons&&!v.attachments);
 export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: uuid,mentionRefusals:roomMentionFeedbackSchema.optional() });

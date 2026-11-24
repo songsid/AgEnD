@@ -1,0 +1,23 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts (19 tests | 1 failed | 18 skipped) 115ms
+     × crash between prepare and legacy commit can re-prepare a new cid without refreshing admission identity/deadline 111ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > crash between prepare and legacy commit can re-prepare a new cid without refreshing admission identity/deadline
+Error: Hub protocol: conflict
+ ❯ HubRoomAskerStore.prepare src/hub/member/room-asker-store.ts:73:127
+
+ ❯ HubRoomAskAdapter.prepareAsker src/hub/member/room-ask.ts:204:32
+ ❯ HubRoomAskAdapter.accept src/hub/member/room-ask.ts:259:39
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:20:599
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 18 skipped (19)
+   Start at  23:57:13
+   Duration  1.66s (transform 893ms, setup 175ms, import 1.10s, tests 115ms, environment 0ms)

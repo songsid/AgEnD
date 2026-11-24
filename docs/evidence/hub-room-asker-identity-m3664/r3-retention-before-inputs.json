@@ -1,0 +1,10 @@
+[
+  {
+    "path": "src/hub/rooms/agents.ts",
+    "sha256": "0b92d0b71923f7d2572762638beb533754495bbc2c799d7dbd7786f4885d9956"
+  },
+  {
+    "path": "tests/hub-room-asker-source-m3664.test.ts",
+    "sha256": "ed008e838ef09142878e397adb95e3a7c66d3bc870364ba413053f97c22d7f30"
+  }
+]
