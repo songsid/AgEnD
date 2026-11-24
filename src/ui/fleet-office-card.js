@@ -411,11 +411,24 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const placeNow = useRef(place);
   placeNow.current = place;
   useEffect(() => () => { if (placeNow.current) placeNow.current(null); }, []);
-  // A bottom sheet closes on a swipe down (60 px or more) — M-3633: from its top only; scrolled into it, the swipe scrolls.
+  // A bottom sheet closes on a swipe down (60 px or more). M-3633 (Prism #4414): a sheet whose content scrolls lets the
+  // browser scroll it (touch-action pan-y — and a browser that takes a touch for scrolling cancels the pointer, so a
+  // swipe there could never finish): it closes from its grip, a handle the browser leaves to the page (touch-action
+  // none, kept at its top). One that fits closes from anywhere, as before. `data-scrolls` says which (the CSS).
+  const scrolls = () => { const t = box.current, sc = t && ((typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t); return !!sc && sc.scrollHeight > sc.clientHeight + 1; };
+  useLayoutEffect(() => {
+    const t = box.current;
+    if (!t || !sheet || typeof t.setAttribute !== "function") return undefined;
+    const mark = () => { if (scrolls()) t.setAttribute("data-scrolls", ""); else t.removeAttribute("data-scrolls"); };
+    mark();
+    const RO = globalThis.ResizeObserver, ro = typeof RO === "function" ? new RO(mark) : null;
+    if (ro) { ro.observe(t); for (const el of t.querySelectorAll?.(".oo-card-body, .oo-card-body > *, .oo-card > *") ?? []) ro.observe(el); }
+    return () => { if (ro) ro.disconnect(); };
+  });
   const down = (e) => {
     if (!sheet) return;
-    const t = e.currentTarget, sc = (t && typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t;
-    swipe.current = sc && sc.scrollTop > 0 ? null : e.clientY;
+    const onGrip = !!(e.target && typeof e.target.closest === "function" && e.target.closest(".oo-card-grip"));
+    swipe.current = onGrip || !scrolls() ? e.clientY : null;
   };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
 

@@ -21,7 +21,13 @@ describe("the phone sheet (app.css)", () => {
     expect(rule(".oo-card.sheet")).toContain("max-height: var(--oo-sheet-max, 50dvh)");
     expect(rule(".oo-card-custom.sheet .oo-card-body")).toContain("max-height: var(--oo-sheet-max, 50dvh)");
     expect(CSS).not.toMatch(/\.oo-card[^{]*\.sheet[^{]*\{[^}]*75dvh/);
-    expect(rule(".oo-card.sheet")).toContain("touch-action: pan-y");
+    // Prism #4414: a browser that takes a touch for scrolling cancels the pointer — a sheet that fits keeps the swipe
+    // (none); one that scrolls scrolls natively (pan-y) and closes from its grip, which the browser never takes.
+    expect(rule(".oo-card.sheet")).toContain("touch-action: none");
+    expect(rule(".oo-card.sheet[data-scrolls], .oo-card-custom.sheet[data-scrolls] .oo-card-body")).toContain("touch-action: pan-y");
+    const grip = rule(".oo-card.sheet .oo-card-grip");
+    expect(grip).toContain("touch-action: none");
+    expect(grip).toContain("position: sticky");
     const actions = rule(".oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions");
     expect(actions).toContain("position: sticky");
     expect(actions).toContain("background: var(--oo-card-bg, var(--surface))");
@@ -47,12 +53,17 @@ describe("a swipe down closes the sheet only from its top", () => {
     swipe(c.el, 30); expect(c.closed()).toBe(0);
     swipe(c.el, 80); expect(c.closed()).toBe(1);
   });
-  it("scrolled into it: the same swipe scrolls it and never closes it", async () => {
+  it("a sheet that scrolls: marked, a swipe on its content scrolls (never closes), one from its grip closes", async () => {
     const c = await open();
-    c.el.scrollTop = 120;
-    swipe(c.el, 80); expect(c.closed()).toBe(0);
-    c.el.scrollTop = 0;
-    swipe(c.el, 80); expect(c.closed()).toBe(1);
+    Object.defineProperty(c.el, "scrollHeight", { configurable: true, value: 900 });
+    Object.defineProperty(c.el, "clientHeight", { configurable: true, value: 420 });
+    const rows = c.el.querySelector(".oo-card-rows") ?? c.el.querySelector(".oo-card-head");
+    fire(rows, "pointerdown", { clientY: 100, bubbles: true }); fire(rows, "pointerup", { clientY: 200, bubbles: true });
+    expect(c.closed()).toBe(0);
+    const grip = c.el.querySelector(".oo-card-grip");
+    expect(grip).not.toBeNull();
+    fire(grip, "pointerdown", { clientY: 100, bubbles: true }); fire(grip, "pointerup", { clientY: 200, bubbles: true });
+    expect(c.closed()).toBe(1);
   });
 });
 
