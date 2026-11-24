@@ -227,7 +227,7 @@ export class HubMemberClient implements HubMemberTransport {
           if ((value.type === "room.answer" || value.type === "agent.state") && (!features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "room.answer" && value.payload.buttons && !features.has(HUB_ROOM_BUTTONS_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "room.react" && (!features.has(HUB_ROOM_REACT_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY))) return Promise.reject(new HubProtocolError("incompatible"));
-          if (value.type === "room.post" && (value.payload.direct || value.payload.attachments) && !features.has(HUB_DIRECT_POST_CAPABILITY)) throw new HubProtocolError("incompatible");
+          if (value.type === "room.post" && (value.payload.direct || value.payload.attachments) && !features.has(HUB_DIRECT_POST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "room.list" || value.type === "room.post" || value.type === "room.members" || value.type === "people.search" || value.type === "room.post-answer-ack") && (!features.has(HUB_ROOM_POST_CAPABILITY) || !features.has(HUB_ROOM_ASK_CAPABILITY) || !features.has("welcome-caps-v1"))) return Promise.reject(new HubProtocolError("incompatible"));
           return link.send(value);
         },

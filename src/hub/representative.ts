@@ -339,6 +339,12 @@ export class HubRepresentativeExecution {
     }
   }
 
+  private directFollowUp(row:Row):string|undefined {
+    if(!this.currentFor(row)||!this.options.link()?.current()||!this.options.link()?.features?.has("direct-posts-v1"))return;
+    const room=this.options.directRooms?.room(row.message_id);
+    return room?`To send this person a new message, use hub_room_post(room=${room}).`:undefined;
+  }
+
   /**
    * The outbound hook: a report_result to HUB_REPORT_TARGET. Returns null when the correlation id is not a live Hub id
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
@@ -350,7 +356,11 @@ export class HubRepresentativeExecution {
     if (!row || row.agent !== input.caller) return null;
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
-    if (!this.setState(row, "answering", ["input", "delivered"])) return null;
+    if (!this.setState(row, "answering", ["input", "delivered"])) {
+      const hint=this.directFollowUp(row);
+      if(this.refresh(row)==="released"&&hint)return Promise.resolve({ok:false,message:`Not sent: this Hub question already has its one answer. ${hint}`});
+      return null;
+    }
     return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
   }
 
