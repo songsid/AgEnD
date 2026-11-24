@@ -198,7 +198,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const sharing = new HubSharingService(core);
   const personal=personalFactory?.(core);
   if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
-  const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core);
+  const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core, deps.log);
   const grantSearch = new HubGrantSearch(core);
   const ownerIntro=(e:{id:string;fleetId:string|null})=>{
     const value=intros.projection(e.id),report=e.fleetId?agentCatalogs.reportOf(e.fleetId):null;
