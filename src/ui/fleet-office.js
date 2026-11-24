@@ -301,7 +301,7 @@ function looksOf(L, work, q, mode, zones, badge = () => null) {
     // At night (#2568) the idle are drawn asleep (their state stays idle: the tooltip and the list say so).
     return [d.key, { name: n.name, label: nodeText(n).primary, state: n.state, pose: officePose(d.night ? "paused" : n.state), night: !!d.night, light: lightOf(n.state), lamp: lampOf(n.state),
       sign: zones ? null : signOf(n.state), coat: coatOf(n.i, n.i ? identityOf(n.i) : null, mode), work: work.get(n.name) || 0, dim: !!q && !match, match, free: zones,
-      badge: badge(n.name) }];
+      badge: badge(n.name), fit: n.i && n.i.tag_fit && typeof n.i.tag_fit === "object" ? n.i.tag_fit : null }];
   }));
 }
 /** A stored office's own layout on a zones style (its overrides); `ignored`: they do not fit this style. */
@@ -364,7 +364,7 @@ const hidingBox = (f) => {
 /** #2698: name tags in one row centred on (x, y) — each { look, x } (its centre), TAG_GAP apart. */
 const TAG_GAP = 4;
 export function tagRow(ctx, x, y, looks) {
-  const ws = looks.map((l) => tagBox(ctx, x, y, l.label).w), total = ws.reduce((a, w) => a + w, 0) + TAG_GAP * Math.max(0, ws.length - 1);
+  const ws = looks.map((l) => tagBox(ctx, x, y, l.label, false, l.fit).w), total = ws.reduce((a, w) => a + w, 0) + TAG_GAP * Math.max(0, ws.length - 1);
   let left = x - total / 2;
   return looks.map((look, i) => { const cx = Math.round(left + ws[i] / 2); left += ws[i] + TAG_GAP; return { look, x: cx }; });
 }
@@ -623,10 +623,14 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const tagged = (q) => !((tagsOff || over.has(q.d.area)) && q.d.key !== hot && !q.look.match);
     const taken = [];
     const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
+    // Under an open card (`p.cover`, bitmap px; #4379 review): no tag, rather than a piece of one past the card's edge.
+    const cv = p.cover ? { x: (p.cover.x - ox) / a, y: (p.cover.y - oy) / a, w: p.cover.w / a, h: p.cover.h / a } : null;
+    const covered = (b) => !!cv && b.x < cv.x + cv.w && cv.x < b.x + b.w && b.y < cv.y + cv.h && cv.y < b.y + b.h;
     for (const q of people) {
       if ((live.hidden.has(q.look.name) && q.look.name !== heldName) || !tagged(q)) continue;
+      if (covered(tagBox(ctx, q.at.x, q.at.y, q.look.label, false, q.look.fit))) continue;
       sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
-      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
+      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label, false, q.look.fit);
       tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
     }
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
@@ -639,7 +643,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       if (!on.length) {
         if (!tagsOff && f.label) {
           const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
-          sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge));
+          if (!covered(box)) { sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge)); }
         }
         continue;
       }
@@ -651,8 +655,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         const q = f.label ? on[i - 1] : on[i];
         if (q) speakers.push({ look: q.look, x: r.x + 10, y: top, area: q.d.area });
         if (q ? !tagged(q) : tagsOff) continue;
+        if (covered(tagBox(ctx, r.x, f.y, r.look.label, false, r.look.fit))) continue;
         sk.drawTag(ctx, r.x, f.y, r.look, env);
-        const box = tagBox(ctx, r.x, f.y, r.look.label);
+        const box = tagBox(ctx, r.x, f.y, r.look.label, false, r.look.fit);
         tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));
         if (q) held.push({ name: q.look.name, id: f.id, box });
       }
@@ -664,8 +669,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (!tagsOff) for (const q of people) {
       if (live.hidden.has(q.look.name) || !crowded(q)) continue;
       for (const dy of [0, COMPACT_ROW]) {
-        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
+        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true, q.look.fit), foot = tagFootprint(ctx, box, q.look.badge, true);
         if (touches(foot)) continue;
+        if (covered(foot)) break;
         sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
         tags.push(box); taken.push(foot);
         break;
@@ -1633,6 +1639,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
+      // #4379 review: an open card (beside its person, or a bottom sheet) covers part of the scene: a name tag under it is
+      // left out whole, never a fragment showing past its edge. Its box in bitmap px, as the canvas lies on the page.
+      const cardNow = cardEl.current, cvNow = canvasRef.current;
+      if (cardNow && cvNow && typeof cardNow.getBoundingClientRect === "function" && typeof cvNow.getBoundingClientRect === "function") {
+        const r = cardNow.getBoundingClientRect(), c = cvNow.getBoundingClientRect();
+        s.part.cover = r.width > 0 && r.height > 0 ? { x: (r.left - c.left) * s.ratio, y: (r.top - c.top) * s.ratio, w: r.width * s.ratio, h: r.height * s.ratio } : null;
+      } else s.part.cover = null;
       const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""), false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
@@ -2376,7 +2389,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
-        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
+        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; placeCard();
+          // #4379 review: the tags it covers (or uncovers) are judged at the next frame; a still scene draws one now.
+          if (was !== el && scene.current) { scene.current.dirty = true; const go = () => (still ? draw(0) : loop.current?.wake()); if (typeof requestAnimationFrame === "function") requestAnimationFrame(go); else go(); } }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
         onReact=${play ? (kind) => {
           const n = cardOf.node.name;

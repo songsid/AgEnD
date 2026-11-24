@@ -57,6 +57,24 @@ describe("#2860 a crowded area keeps compact tags", () => {
     for (const n of untagged) expect(crowded.has(n), n).toBe(true);           // only a crowd's can be left to hover
   });
 
+  // #4379 review: an open card covered a tag but for a piece of it past the card's edge. With the card's box on the part
+  // (`cover`, bitmap px), every tag (full or compact) touching it is left out whole; the others are as without a card.
+  it("an open card: no tag under it, not even a piece; the rest as without one", () => {
+    const s = scene(20);
+    const all = s.draw().map((t) => ({ ...t, box: K.tagBox(s.ctx, t.x, t.y, t.label, t.compact) }));
+    const pick = all.find((t) => !t.compact) ?? all[0];
+    // A card whose right edge cuts through the middle of one tag (as the room assistant's 「理」 showed past it).
+    const cover = { x: pick.box.x - 200, y: pick.box.y - 40, w: 200 + pick.box.w / 2, h: 80 };
+    s.part.cover = cover;
+    const under = s.draw().map((t) => ({ ...t, box: K.tagBox(s.ctx, t.x, t.y, t.label, t.compact) }));
+    s.part.cover = null;
+    expect(under.some((t) => t.label === pick.label && !t.compact), "the cut tag is left out").toBe(false);
+    for (const t of under) expect(touch(t.box, cover), `${t.label} under the card`).toBe(false);
+    const outside = all.filter((t) => !touch(t.box, cover)).map((t) => `${t.label}@${t.x},${t.y}`);
+    expect(under.filter((t) => !t.compact).map((t) => `${t.label}@${t.x},${t.y}`)).toEqual(outside.filter((k) => all.find((t) => `${t.label}@${t.x},${t.y}` === k)!.compact === false));
+    expect(s.draw().length, "closed: every tag back").toBe(all.length);
+  });
+
   it("no two tags touch, their level badges included", () => {
     for (const n of [12, 16, 20]) {
       const s = scene(n);
