@@ -69,15 +69,36 @@ function rig(type: "telegram" | "discord", defaults: Record<string, unknown> = {
   vi.spyOn(fm, "notifyInstanceTopic").mockImplementation(() => {});
   vi.spyOn(fm, "sendCancelButton").mockResolvedValue(undefined);
   const respond = vi.fn().mockResolvedValue(undefined);
+  const menus: { text: string; choices: { id: string; label: string }[] }[] = [];
+  let lastChannel = USER;
   let inbound = 0;
   async function say(chatId = USER, userId = USER, text = "/start codex") {
+    lastChannel = chatId;
     await fm.handleInboundMessage({ source: "telegram", adapterId: id, chatId, userId, username: "requester", text,
       messageId: String(++inbound), timestamp: new Date(), isBotMessage: false });
     await flush();
   }
   async function slash(channelId = "new-channel", userId = USER, guildId: string | null = "other-guild") {
+    lastChannel = channelId;
     await fm.dispatchSlash({ command: "start", channelId, channelName: "room", guildId: guildId ?? undefined, userId, username: "requester",
-      options: { backend: "codex" }, respond }, id, adapter);
+      options: { backend: "codex" }, respond,
+      respondButtons: async (text: string, choices: { id: string; label: string }[]) => {
+        menus.push({ text, choices });
+        return "mode-menu";
+      },
+    }, id, adapter);
+    await flush();
+  }
+  async function pickRestricted(userId: string) {
+    const prompted = adapter.promptUser.mock.calls.at(-1) as unknown[] | undefined;
+    const menu = menus.at(-1);
+    const choices = (prompted ? prompted[2] : menu?.choices) as { id: string }[] | undefined;
+    const chatId = prompted ? String(prompted[0]) : lastChannel;
+    const choice = choices?.find(item => item.id.endsWith(":restricted"));
+    expect(choice, "restricted choice").toBeTruthy();
+    await fm.receiveAdapterCallback({
+      callbackData: choice!.id, chatId, messageId: "chooser", userId, ack: vi.fn(),
+    }, id, adapter, () => true);
     await flush();
   }
   async function click(action: string, userId = FLEET_ADMIN, overrides: Record<string, unknown> = {}) {
@@ -91,7 +112,7 @@ function rig(type: "telegram" | "discord", defaults: Record<string, unknown> = {
     return data;
   }
   const persisted = () => yaml.load(readFileSync(join(dir, "classicBot.yaml"), "utf8")) as any;
-  return { fm, classic, adapter, start, forward, respond, say, slash, click, persisted, id, logger };
+  return { fm, classic, adapter, start, forward, respond, say, slash, click, pickRestricted, persisted, id, logger };
 }
 async function flush() { for (let i = 0; i < 4; i++) await Promise.resolve(); }
 function expectRequest(r: ReturnType<typeof rig>) {
@@ -165,8 +186,12 @@ describe("new ClassicBot access requests (#1418)", () => {
     const r = rig(scope === "guild" ? "discord" : "telegram", { admin_users: [ADMIN] });
     if (scope === "guild") await r.slash("channel-admin", ADMIN);
     else await r.say(scope === "group" ? "-1007" : ADMIN, ADMIN, scope === "group" ? "/start@OurBot codex" : "/start codex");
+    expect(r.start).not.toHaveBeenCalled();
+    expect(r.classic.getAll()).toHaveLength(0);
+    await r.pickRestricted(ADMIN);
     expect(r.start).toHaveBeenCalledOnce();
     expect(r.classic.getAll()).toHaveLength(1);
+    expect(r.classic.getAll()[0]!.restrictedMode).toBe(true);
     expect(r.adapter.notifyAlert).not.toHaveBeenCalled();
   });
 
@@ -190,6 +215,7 @@ describe("new ClassicBot access requests (#1418)", () => {
     await r.fm.receiveAdapterCallback(callback, r.id, r.adapter, () => true);
     expect(r.adapter.sendText.mock.calls.filter((c: any[]) => c[1] === t("classic.request_allowed"))).toHaveLength(1);
     await r.say();
+    await r.pickRestricted(USER);
     expect(r.start).toHaveBeenCalledOnce();
   });
 
@@ -233,6 +259,7 @@ describe("new ClassicBot access requests (#1418)", () => {
     expect(r.persisted().defaults.admin_users).toEqual([USER]);
     expect(r.persisted().defaults.allowed_users).toBeUndefined();
     await r.say("-10042", USER, "/start@OurBot codex");
+    await r.pickRestricted(USER);
     expect(r.start).toHaveBeenCalledOnce();
   });
 
@@ -244,6 +271,7 @@ describe("new ClassicBot access requests (#1418)", () => {
     expect(r.classic.isAdmin(USER)).toBe(false);
     expect(r.adapter.sendText).toHaveBeenLastCalledWith("new-channel", t("classic.request_allowed"));
     await r.slash();
+    await r.pickRestricted(USER);
     expect(r.start).toHaveBeenCalledOnce();
   });
 
