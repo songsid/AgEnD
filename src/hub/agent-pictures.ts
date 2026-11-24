@@ -65,8 +65,11 @@ export class HubAgentPictures {
       if (!f || f.status !== "active" || f.generation !== row.generation || !e || e.fleet_id !== row.fleet_id || e.state !== "published")
         db.prepare("DELETE FROM hub_agent_pictures WHERE exposure_id=?").run(row.exposure_id);
     }
-    db.prepare(`DELETE FROM hub_agent_picture_files WHERE sha256 NOT IN
-      (SELECT disc FROM hub_agent_pictures WHERE disc IS NOT NULL UNION SELECT portrait FROM hub_agent_pictures WHERE portrait IS NOT NULL)`).run();
+    // A file lives only while some row names it as it is — its type and size (Prism #4393 R2): a reference that declares it
+    // otherwise is never shown and keeps nothing alive, whatever order the reports and uploads came in.
+    db.prepare(`DELETE FROM hub_agent_picture_files WHERE NOT EXISTS (SELECT 1 FROM hub_agent_pictures p WHERE
+      (p.disc = hub_agent_picture_files.sha256 AND p.disc_mime = hub_agent_picture_files.mime AND p.disc_size = length(hub_agent_picture_files.bytes))
+      OR (p.portrait = hub_agent_picture_files.sha256 AND p.portrait_mime = hub_agent_picture_files.mime AND p.portrait_size = length(hub_agent_picture_files.bytes)))`).run();
   }
   prune(): void { this.core.atomic(db => this.sweep(db)); }
 
