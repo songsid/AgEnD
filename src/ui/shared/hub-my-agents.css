@@ -33,3 +33,9 @@
  .hub-my-agents .hub-agent-choice .s-row.hub-row { display: grid; grid-template-columns: 44px 28px minmax(0, 1fr); }
  .hub-agent-choice .hub-agent-pause { grid-column: 3; justify-self: start; }
 }
+/* M-3565 (the user, 11-24): an agent's name opens its page (who may ask, recent askers): it reads as a link — the accent
+   colour and a ›, underlined on hover or focus — not as plain bold text. */
+.hub-agent-link { color: var(--accent); }
+.hub-agent-link::after { content: "›"; margin-inline-start: var(--s-1); }
+.hub-agent-link:hover strong, .hub-agent-link:focus-visible strong { text-decoration: underline; }
+.hub-agent-who { display: inline-flex; align-items: center; gap: var(--s-1); flex-wrap: wrap; }

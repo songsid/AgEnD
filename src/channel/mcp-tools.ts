@@ -158,6 +158,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Read the last N lines of an instance's output log (default 50, max 200)."],
   ["get_fleet_config", schemas.GetFleetConfigArgs,
     "Read fleet configuration. scope='defaults' for fleet defaults, scope='instance' + name for a specific instance."],
+  ["propose_contact_change", schemas.ProposeContactChangeArgs,
+    "General asks; admin confirms. See web-dashboard."],
   ["update_instance_config", schemas.UpdateInstanceConfigArgs,
     "Update a specific instance's config (backend, model, auto_pause_after, display_name, description, backend_options). Saves to fleet.yaml. General alone may also set another portable/local agent’s tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile (classicBot.yaml); the answer names the profile it relaunched on."],
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,

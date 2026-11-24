@@ -7,6 +7,10 @@ roles: [general, worker]
 ## Actions
 
 - **create** — a new task. Naming a board field (project, parent, acceptance, scope, size, …) makes it a board card.
+  A main task with no `project`: the board's only project, else the one you lead; with several and none yours, `create` is
+  refused and lists them — ask the person which one (do not guess), then create again. `project: "none"` only when nobody
+  can answer (a scheduled or automated run) or the person says no project: tell them, ask which project it belongs to, move it
+  once they say and keep the rule in your soul.md. Tell the person the card as `#M-n` and its project (the answer says it).
 - **list** — paged compact rows by default; follow `next_cursor` with the same filters. `filter_status` includes done/cancelled;
   `verbose: true` returns full records; `detail: true` the legacy full answer. Only the legacy detail/verbose lists cap an
   unfiltered result at 100; filters lift that cap. `stale: true`: claimed cards whose assignee stopped.
