@@ -24,5 +24,5 @@ export const ContactPermissionsSchema = z.strictObject({ revision: z.number().in
 
 /** Compare authority identities, never mutable labels. */
 export function sameContactPerson(left: ContactPerson, right: ContactPerson): boolean {
-  return left.platform === right.platform && left.adapterId === right.adapterId && left.userId === right.userId;
+  return left.platform === right.platform && left.userId === right.userId;
 }
