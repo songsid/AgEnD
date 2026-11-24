@@ -116,6 +116,19 @@ describe("M-3533 R2b: the Fleet sends its shared agents' pictures", () => {
     w.sender.close();
   });
 
+  // Prism (review of #4393): two agents whose sources happen to share a key (two uploads with one mtime) keep their own pictures.
+  it("two agents whose sources share a key each send their own picture", async () => {
+    const w = await world(), one = twoTone(64, 64, 0.1), two = twoTone(64, 64, 0.9);
+    w.sources.set("notes", { disc: w.source("profile:1", one), portrait: null });
+    w.sources.set("plan", { disc: w.source("profile:1", two), portrait: null });
+    w.sender.connected(w.memberLink); await w.sender.refresh();
+    const [a, b] = [(await w.served(w.notes, "disc")).bytes, (await w.served(w.plan, "disc")).bytes];
+    // Row 32: blue in Notes's picture (red above 10%), red in Planner's (red above 90%) — each its own.
+    const blueAt32 = (png: Buffer) => decodePng(png, { maxSide: 64 }).data[(32 * 64) * 4 + 2];
+    expect([a.equals(b), blueAt32(a), blueAt32(b)]).toEqual([false, 255, 0]);
+    w.sender.close();
+  });
+
   it("a refused chunk is not taken as sent: the next tick sends again", async () => {
     const w = await world();
     w.sources.set("notes", { disc: w.source("profile:1", twoTone(64, 64, 0.5)), portrait: null });

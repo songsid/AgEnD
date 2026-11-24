@@ -3,13 +3,14 @@
  * takes them in chunks, keeps one copy per hash while a report names it, and serves an agent's disc or portrait only to the
  * members of a room holding that agent. A picture over its cap is reported as too large: only its owner's view says so.
  */
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash, randomUUID } from "node:crypto";
 import { s3bRig } from "./helpers/hub-s3b-rig.js";
 import { personKeyString } from "../src/hub/identity.js";
 import { hubLinkCapabilities } from "../src/hub/compose/server.js";
 import { hubWelcomeCapabilities } from "../src/hub/server.js";
 import { HUB_FLEET_UPDATE_CAPABILITY, HUB_OPTIONAL_CAPABILITIES, parseMemberFrame, encodeMemberFrame } from "../src/hub/protocol.js";
+import { HUB_PICTURES_SWEEP_MS } from "../src/hub/agent-pictures.js";
 import { HUB_AGENT_PICTURES_CAPABILITY, HUB_PICTURE_CHUNK, HUB_PICTURE_DISC_MAX, agentPicturesRowSchema, sniffPicture } from "../src/hub/agent-pictures-model.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
@@ -110,14 +111,68 @@ describe("M-3533 R2b: agent pictures on the Hub", () => {
     } finally { abort.abort(); await reader.cancel().catch(() => {}); }
   });
 
+  // Prism (review of #4393): a picture is stored, and shown, only as its row declares it — its type and size, so the caps hold.
+  it("a chunk must be the picture as its row declared it; a held file another row declares differently is never shown for it", async () => {
+    const w = await world(), real = PNG(40_000, 11);
+    // The row declares a 1,000-byte disc; the chunks carry the real 40,000 bytes under that hash.
+    await w.send("agent.pictures", { revision: "b".repeat(64), agents: [{ exposureId: w.notes, disc: { sha256: sha(real), mime: "image/png", size: 1000 }, portrait: null }] });
+    expect(await w.send("agent.picture", chunks(real, "image/png")[0])).toEqual({ ok: false, code: "not-wanted" });
+    expect((await w.member(w.notes)).look?.disc).toBeUndefined();
+    // A big picture held for one agent's portrait, then named as another's disc with a small size: not shown as that disc.
+    const big = JPEG(HUB_PICTURE_CHUNK + 10_000, 12);
+    await w.send("agent.pictures", { revision: "c".repeat(64), agents: [{ exposureId: w.notes, disc: null, portrait: ref(big, "image/jpeg") }] });
+    for (const c of chunks(big, "image/jpeg")) await w.send("agent.picture", c);
+    expect((await w.member(w.notes)).look.portrait).toBe(sha(big));
+    const res = await w.send("agent.pictures", { revision: "e".repeat(64), agents: [{ exposureId: w.notes, disc: null, portrait: ref(big, "image/jpeg") },
+      { exposureId: w.plan, disc: { sha256: sha(big), mime: "image/jpeg", size: 2000 }, portrait: null }] });
+    expect(res).toEqual({ ok: true, need: [] });
+    expect((await w.member(w.plan)).look?.disc).toBeUndefined();
+    expect((await w.picture(w.a, w.plan, "disc")).status).toBe(404);
+    expect((await w.member(w.notes)).look.portrait).toBe(sha(big));
+  });
+
+  it("withdrawn or revoked: swept without a report from that Fleet; a file another agent still shows is kept", async () => {
+    const w = await world(), shared = PNG(1700, 13), own = PNG(1750, 14);
+    // A second Fleet whose agent shows the same picture.
+    const otherFleet = randomUUID(), other = randomUUID();
+    r!.store.mutate({ requestId: randomUUID(), at: Date.now(), actor: { kind: "local-host" }, action: "fixture.fleet", result: "completed" }, (state: any) => {
+      state.fleets.push({ id: otherFleet, owner: r!.admin, generation: 1, credentialHash: null, status: "active", label: "Other fleet" }); });
+    const otherLink = r!.link(otherFleet, r!.admin, 1, ["welcome-caps-v1", HUB_AGENT_PICTURES_CAPABILITY]);
+    await r!.http.receive(r!.frame("exposure.snapshot", { revision: 1, exposures: [{ ...w.ex(other, "Other"), fleetId: otherFleet }] }, otherLink) as never, otherLink);
+    await w.send("agent.pictures", { revision: "f".repeat(64), agents: [{ exposureId: w.notes, disc: ref(shared, "image/png"), portrait: null }, { exposureId: w.plan, disc: ref(own, "image/png"), portrait: null }] });
+    await w.send("agent.picture", chunks(shared, "image/png")[0]); await w.send("agent.picture", chunks(own, "image/png")[0]);
+    await r!.http.receive(r!.frame("agent.pictures", { revision: "f".repeat(64), agents: [{ exposureId: other, disc: ref(shared, "image/png"), portrait: null }] }, otherLink) as never, otherLink);
+    const files = () => (r!.db.prepare("SELECT sha256 FROM hub_agent_picture_files ORDER BY sha256").all() as any[]).map((x) => x.sha256);
+    const rows = () => (r!.db.prepare("SELECT exposure_id FROM hub_agent_pictures ORDER BY exposure_id").all() as any[]).map((x) => x.exposure_id);
+    expect(files()).toEqual([sha(shared), sha(own)].sort());
+    // Withdrawn: its snapshot sweeps it at once. The picture the other Fleet's agent shows stays.
+    await r!.http.receive(r!.frame("exposure.snapshot", { revision: 2, exposures: [w.ex(w.notes, "Notes"), w.ex(w.plan, "Planner", "withdrawn")] }, w.link) as never, w.link);
+    expect([rows().includes(w.plan), files()]).toEqual([false, [sha(shared), sha(own)].sort().filter((h) => h !== sha(own))]);
+    // Revoked (no report comes from a revoked Fleet): hidden at once, gone at the next sweep; the shared file stays for the other.
+    r!.store.mutate({ requestId: randomUUID(), at: Date.now(), actor: { kind: "local-host" }, action: "fixture.revoke", result: "completed" }, (state: any) => {
+      const f = state.fleets.find((x: any) => x.id === w.fleetId); f.status = "revoked"; f.generation++; });
+    expect(rows()).toContain(w.notes);
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    try {
+      await r!.restartHttp();
+      vi.advanceTimersByTime(HUB_PICTURES_SWEEP_MS);
+      expect([rows(), files()]).toEqual([[other], [sha(shared)]]);
+    } finally { vi.useRealTimers(); }
+  });
+
   it("refuses a chunk nobody asked for, a wrong hash, a type its bytes do not show, and a short chunk", async () => {
     const w = await world(), disc = PNG(1500, 5), other = PNG(1600, 6);
-    await w.send("agent.pictures", { revision: "5".repeat(64), agents: [{ exposureId: w.notes, disc: ref(disc, "image/png"), portrait: null }] });
-    expect(await w.send("agent.picture", chunks(other, "image/png")[0])).toEqual({ ok: false, code: "not-wanted" });
-    const forged = { ...chunks(other, "image/png")[0], sha256: sha(disc) };
+    // Planner's row declares a JPEG for bytes that are a PNG.
+    await w.send("agent.pictures", { revision: "5".repeat(64), agents: [{ exposureId: w.notes, disc: ref(disc, "image/png"), portrait: null },
+      { exposureId: w.plan, disc: ref(other, "image/jpeg"), portrait: null }] });
+    const third = PNG(1500, 15);   // as long as the declared disc, other bytes
+    expect(await w.send("agent.picture", chunks(third, "image/png")[0])).toEqual({ ok: false, code: "not-wanted" });
+    const forged = { ...chunks(third, "image/png")[0], sha256: sha(disc) };
     expect(await w.send("agent.picture", forged)).toEqual({ ok: false, code: "invalid" });
-    const asJpeg = { ...chunks(disc, "image/png")[0], mime: "image/jpeg" };
-    expect(await w.send("agent.picture", asJpeg)).toEqual({ ok: false, code: "invalid" });
+    // Another type than its row declares: not wanted. The type its row declares, which its bytes do not show: refused.
+    expect(await w.send("agent.picture", { ...chunks(disc, "image/png")[0], mime: "image/jpeg" })).toEqual({ ok: false, code: "not-wanted" });
+    expect(await w.send("agent.picture", chunks(other, "image/jpeg")[0])).toEqual({ ok: false, code: "invalid" });
+    expect((await w.member(w.plan)).look?.disc).toBeUndefined();
     const short = { ...chunks(disc, "image/png")[0], data: disc.subarray(0, 100).toString("base64") };
     expect(await w.send("agent.picture", short)).toEqual({ ok: false, code: "invalid" });
     expect((await w.member(w.notes)).look?.disc).toBeUndefined();
