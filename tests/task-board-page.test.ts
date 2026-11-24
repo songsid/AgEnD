@@ -1398,6 +1398,12 @@ describe("the columns that do not fit the window", () => {
     expect(css).toMatch(/\.tb-status-seg \.tb-seg-btn \{[^}]*border-radius: calc\(var\(--drawn\) \/ 2\) \/ calc\(var\(--tap\) \/ 2\);/);
     expect(css).toMatch(/:focus-visible::after \{\s*content: ""; position: absolute; inset: 0; border-radius: var\(--r-full\); outline: 2px solid var\(--focus\); outline-offset: 2px;/);
     expect(readFileSync(join(UI, "shared", "app.css"), "utf8")).toMatch(/\.tb-sort-row \.tb-sort-pick \{[^}]*border-radius: calc\(\(var\(--tap\) - 12px\) \/ 2\) \/ calc\(var\(--tap\) \/ 2\);/);
+    // The waiting row on a phone: the name, then the two answers on ONE line (they shared two lines at 360px); a 320px phone gives the name its own line.
+    const app = readFileSync(join(UI, "shared", "app.css"), "utf8");
+    expect(app).toMatch(/\.tb-wait-actions \{ flex-basis: 100%; margin-left: 0; flex-wrap: nowrap; \}[\s\S]*\.tb-wait-actions \.btn \{ flex: 1 0 auto; padding-inline: var\(--s-2\); \}/);
+    const at = app.indexOf(".tb-wait-actions { flex-basis: 100%; margin-left: 0; flex-wrap: nowrap; }");
+    expect(app.slice(app.lastIndexOf("@media", at), at), "in the phone's media query").toContain("(max-width: 899px)");
+    expect(app).toMatch(/@media \(max-width: 339px\) \{\s*\.tb-wait-actions \{ flex-wrap: wrap; \}\s*\.tb-wait-actions > \.muted \{ flex-basis: 100%; \}/);
     // a control is grown by a transparent border and a negative margin, never drawn bigger
     const grown = css.slice(css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn"), css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn") + 600);
     expect(grown).toMatch(/min-height: var\(--tap\); border-block: var\(--grow\) solid transparent; margin-block: calc\(-1 \* var\(--grow\)\); background-clip: padding-box;/);

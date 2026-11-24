@@ -213,6 +213,13 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
     }
     return { bad, m };
   }
+  /** The waiting row's two answers (Confirm, Send back): on one line, inside the row, their words not cut (the box is not narrower than its text). */
+  async function waitingAnswers() {
+    const b = await tapBoxes({ confirm: ".tb-wait-row .tb-wait-actions .btn-primary", back: ".tb-wait-row .tb-wait-actions .btn:not(.btn-primary)", row: ".tb-wait-row" });
+    const cut = await page.evaluate(() => [...document.querySelectorAll(".tb-wait-row .tb-wait-actions .btn")].map((el: any) => el.scrollWidth > el.clientWidth + 1)) as boolean[];
+    const inside = !!b.row && [b.confirm, b.back].every((x) => !!x && x.x >= b.row!.x - 0.5 && x.x + x.w <= b.row!.x + b.row!.w + 0.5);
+    return { b, oneLine: sameRow(b.confirm, b.back, 2), inside, cut: cut.some(Boolean), ok: sameRow(b.confirm, b.back, 2) && inside && !cut.some(Boolean) };
+  }
   const unreached = (m: Record<string, boolean | null>) => Object.entries(m).filter(([, v]) => v !== true).map(([k]) => k);
   const overlaps = (boxes: Record<string, Box | null>) => {
     const names = Object.keys(boxes).filter((k) => boxes[k]);
@@ -246,6 +253,9 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.homeNoOverlap = overlaps(head).length === 0;
         r.homeUnreached = unreached(await reach({ agent: ".tb-home .tb-head-actions .btn:not(.btn-primary)", add: ".tb-home .tb-head-actions .btn-primary", search: ".tb-home .tb-search input" }));
         chk.homeBoxesReachTheControl = r.homeUnreached.length === 0;
+        const wa = await waitingAnswers();
+        r.waiting = wa;
+        chk.waitingAnswersOneLine = wa.ok;
         const hc = await corners({ agent: ".tb-home .tb-head-actions .btn:not(.btn-primary)", add: ".tb-home .tb-head-actions .btn-primary", search: ".tb-home .tb-search input", pick: ".tb-sort-pick" }, ["search"]);
         r.homeCorners = hc.m; r.homeCornersBad = hc.bad;
         chk.homeCornersAreTheDesks = hc.bad.length === 0;
@@ -486,6 +496,9 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         r.narrowHome = NH;
         r.narrowHomeOverlaps = overlaps(NH);
         chk.narrowHomeNoOverlap = r.narrowHomeOverlaps.length === 0;
+        const wn = await waitingAnswers();
+        r.narrowWaiting = wn;
+        chk.narrowWaitingAnswersOneLine = wn.ok;
         chk.narrowHomeTappable = tappable(NH.agent) && tappable(NH.add) && tappable(NH.search);
         r.narrowHomeUnreached = unreached(await reach({ agent: ".tb-home .tb-head-actions .btn:not(.btn-primary)", add: ".tb-home .tb-head-actions .btn-primary", search: ".tb-home .tb-search input" }));
         chk.narrowHomeBoxesReachTheControl = r.narrowHomeUnreached.length === 0;
@@ -493,6 +506,15 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         chk.narrowHomeNoSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
         chk.narrowHomeInsideTheScreen = Object.values(NH).every((b) => !b || (b.x >= -0.5 && b.x + b.w <= 360 + 0.5));
         await page.screenshot({ path: shotPath(SMOKE, c, "8b-narrow-360-home") });
+        // a 320px phone (the smallest still about): the name has a line of its own, the two answers share the next one
+        await page.setViewportSize({ width: 320, height: 700 }); await page.waitForTimeout(600);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        const w3 = await waitingAnswers();
+        r.waiting320 = w3;
+        chk.waitingAnswersOneLine320 = w3.ok;
+        chk.home320NoSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
+        await page.screenshot({ path: shotPath(SMOKE, c, "8c-narrow-320-home") });
+        await page.setViewportSize({ width: 360, height: 740 }); await page.waitForTimeout(500);
         await page.locator(".tb-project").filter({ has: page.locator(".tb-project-name", { hasText: new RegExp(`^${labelOf(c, { en: "Game", zh: "遊戲" })}$`) }) }).locator(".tb-project-open").click();
         await page.waitForSelector(".tb-board-page", { timeout: 10000 }); await page.waitForTimeout(400);
         // a touch screen wider than a phone (a tablet on its side: touch, 1024px) keeps the desk's layout; its controls get the 44px boxes too

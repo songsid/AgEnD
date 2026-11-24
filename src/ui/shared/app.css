@@ -3591,13 +3591,22 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tc-meta { padding: 0; background: none; }
   /* #2299: a phone's waiting row: pill and title on one line, the actions under them (assignee left, buttons right). */
   .tb-wait-main > .tb-pill { min-width: 0; }
-  .tb-wait-actions { flex-basis: 100%; margin-left: 0; }
-  .tb-wait-actions > .muted { margin-right: auto; }
+  /* The assignee, then the answers on one line: the two buttons share what the name leaves (they never part onto two lines, as they did at 360px);
+     a long name gives way with "…" before a button does, and a lone button (Answer) keeps its own width at the right. */
+  .tb-wait-actions { flex-basis: 100%; margin-left: 0; flex-wrap: nowrap; }
+  .tb-wait-actions > .muted { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tb-wait-actions .btn { flex: 1 0 auto; padding-inline: var(--s-2); }
+  .tb-wait-actions > button:only-of-type { flex: 0 0 auto; padding-inline: var(--s-4); }
   /* #2299: on the board its toasts come in above the tabs, not over its title, search and progress — unless a card's
      sheet is open (its buttons are at the bottom). */
   .shell:has(.tb-home, .tb-board-page):not(:has(dialog[open])) .toasts { top: auto; bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3)); }
   /* …and they do not pile down the board: an older confirmation gives way to two newer toasts; an error never does. */
   .shell:has(.tb-home, .tb-board-page) .toasts > .toast.ok:nth-last-child(n+3) { display: none; }
+}
+/* A very narrow phone (320px): the waiting row's name has a line of its own and the two buttons share the next one. */
+@media (max-width: 339px) {
+  .tb-wait-actions { flex-wrap: wrap; }
+  .tb-wait-actions > .muted { flex-basis: 100%; }
 }
 /* On a desk a project's columns reach the bottom of the page, as taskhall's: a card drops anywhere down a column, and
    an empty column still reads as one. The page's column, the board and its scroller pass the height down as flex. */
