@@ -49,6 +49,25 @@ describe("DeliveryOutbox.lastAgentTurn", () => {
     expect(outbox.lastAgentTurn("forge")).toBe("2026-11-24T16:00:00.000Z");
     outbox.close();
   });
+  it("whatever the admission order: one old row taken up after 64 newer ones were delivered (Prism #4430 r2)", () => {
+    const path = tempDb(), outbox = new DeliveryOutbox(path, "m-1");
+    row(path, outbox, 1, { state: "delivered", consumed: "2026-11-24T16:00:00.000Z", finished: "2026-11-24T08:00:00.000Z" });
+    for (let n = 2; n <= 66; n++) row(path, outbox, n, { state: "delivered", finished: "2026-11-24T10:00:00.000Z" });
+    expect(outbox.lastAgentTurn("forge")).toBe("2026-11-24T16:00:00.000Z");
+    outbox.close();
+  });
+  it("one indexed step: the plan walks idx_delivery_agent_turn in order (no table scan, no sort)", () => {
+    const path = tempDb(), outbox = new DeliveryOutbox(path, "m-1");
+    outbox.close();
+    const db = new Database(path);
+    const plan = db.prepare(`EXPLAIN QUERY PLAN SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
+      WHERE target_instance=? AND state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance
+      ORDER BY COALESCE(consumed_at, finished_at) DESC LIMIT 1`).all("forge") as Array<{ detail: string }>;
+    db.close();
+    const detail = plan.map((p) => p.detail).join(" | ");
+    expect(detail).toContain("USING INDEX idx_delivery_agent_turn (target_instance=?)");
+    expect(detail).not.toMatch(/TEMP B-TREE|SCAN deliveries/);
+  });
   it("never a queued, failed or cancelled one, one it sent itself, one to someone else", () => {
     const path = tempDb(), outbox = new DeliveryOutbox(path, "m-1");
     row(path, outbox, 1, { state: "delivered", finished: "2026-11-24T09:00:00.000Z" });

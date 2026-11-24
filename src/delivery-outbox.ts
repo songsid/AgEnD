@@ -585,9 +585,6 @@ function mapObligation(row: ReplyObligationRow): ReplyObligation {
 }
 
 /** Durable admission and fenced state transitions for the fleet delivery queue. */
-/** M-3674: how many of a target's newest delivered messages lastAgentTurn reads for the latest activity time. */
-export const AGENT_TURN_WINDOW = 64;
-
 export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
   private workingStateJournal?: WorkingStateJournal;
@@ -635,22 +632,24 @@ export class DeliveryOutbox extends EventEmitter {
     return this.workingStateJournal.get(instance);
   }
 
-  /** Bounded metadata query, distinct from the existing unbounded reminder API. */
   /**
    * M-3674: when `instance` last took up a message another instance sent it — send_to_instance's family (task, report,
    * query, update), a steer or a broadcast: the newest delivered one, at the turn that took it up (consumed_at), else
    * when it was delivered (finished_at); ISO, or null (none kept). The agent-started side of an agent's activity, beside
-   * its last reply to a person (web chat history). The latest of those times, not the newest row's (Prism #4430: an
-   * older message can be taken up after a newer one was delivered) — among the target's AGENT_TURN_WINDOW newest
-   * delivered rows, read back along the (target, state, seq) index, so a status frame never scans its whole history.
+   * its last reply to a person (web chat history). The latest of those times over all its kept rows, not the newest
+   * row's (Prism #4430: an older message can be taken up after any number of newer ones were delivered). Read from
+   * idx_delivery_agent_turn, which holds only these rows ordered by that time per target: the walk starts at this
+   * agent's newest entry and stops at the first, so a status frame neither scans nor sorts its history.
    */
   lastAgentTurn(instance: string): string | null {
-    const row = this.db.prepare(`SELECT MAX(at) AS at FROM (SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
+    // Ordered by the indexed expression: the index is walked from its newest end and the first row is the answer.
+    const row = this.db.prepare(`SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
       WHERE target_instance=? AND state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance
-      ORDER BY created_seq DESC LIMIT ${AGENT_TURN_WINDOW})`).get(instance) as { at: string | null } | undefined;
+      ORDER BY COALESCE(consumed_at, finished_at) DESC LIMIT 1`).get(instance) as { at: string | null } | undefined;
     return row && typeof row.at === "string" && row.at ? row.at : null;
   }
 
+  /** Bounded metadata query, distinct from the existing unbounded reminder API. */
   workingObligations(instance: string): { references: WorkingStateReference[]; total: number } {
     const total = this.db.prepare(`SELECT COALESCE(SUM((owner_instance=?) + (requester_instance=?)),0) AS n
       FROM reply_obligations WHERE state='open' AND (owner_instance=? OR requester_instance=?)`)
@@ -878,6 +877,11 @@ export class DeliveryOutbox extends EventEmitter {
     this.ensureColumn("deliveries", "content_sha256", "TEXT");
     // #1201: the CLI's transcript showed the delivery consumed (when, and as its own turn or mid-turn).
     this.ensureColumn("deliveries", "consumed_at", "TEXT");
+    // M-3674: an agent's latest agent-started turn — its delivered messages from another instance, by the time they were
+    // taken up (else delivered). A partial expression index, so lastAgentTurn reads the newest entry first whatever the
+    // rows' admission order (Prism #4430: a late-consumed old message can be the newest activity).
+    this.db.exec(`CREATE INDEX IF NOT EXISTS idx_delivery_agent_turn ON deliveries (target_instance, (COALESCE(consumed_at, finished_at)))
+      WHERE state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance`);
     this.ensureColumn("deliveries", "consumed_via", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_content_sha256", "TEXT");
     this.ensureColumn("delivery_attempts", "pasted_bytes_sha256", "TEXT");
