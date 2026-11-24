@@ -74,7 +74,7 @@ register("needs", {
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
     hubRetry: "再試一次", hubRetrying: "重試中…", hubRetryDone: "已重新詢問 Hub。",
     hubRetryGone: "這個項目已經有變化，清單會重新整理。", hubRetryNot: "這則無法再試：Hub 已拒絕，或 Agent 已變更。請提問的人重新送出問題。",
-    hubHoldDetail: "Hub 在問題交給 Agent 之前無法確認。「再試一次」會重新詢問 Hub，沒有 Hub 同意不會送出。",
+    hubHoldDetail: "Hub 在問題交給 Agent 之前無法確認。按「再試一次」會重新詢問 Hub，未經 Hub 同意不會送出。",
     ageNow: "剛剛", ageMin: "{0} 分鐘前", ageHour: "{0} 小時前", ageDay: "{0} 天前",
     notifySection: "這台裝置", notifyTitle: "在這台裝置通知我", notifyOn: "這個瀏覽器的通知已開啟（需要開著分頁）。",
     notifyOff: "分頁在背景時，有新的事等你處理就跳出桌面通知。",

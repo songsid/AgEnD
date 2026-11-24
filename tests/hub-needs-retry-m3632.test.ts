@@ -86,7 +86,7 @@ describe("M-3632 the Try again button", () => {
   beforeEach(async () => { await p.unmount(); reqs = []; app.appStore.set({ ready: true, needsLoaded: true, needs: [{ ...ITEM }], instances: [] }); });
   const mount = () => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" }));
   const button = (text: string) => p.root.querySelectorAll("button").find((b: any) => b.textContent.includes(text));
-  it.each([["en", "Try again", "nothing is sent without its OK"], ["zh-TW", "再試一次", "沒有 Hub 同意不會送出"]])("%s: the held item explains and offers Try again", async (lang, label, words) => {
+  it.each([["en", "Try again", "nothing is sent without its OK"], ["zh-TW", "再試一次", "未經 Hub 同意不會送出"]])("%s: the held item explains and offers Try again", async (lang, label, words) => {
     i18n.setLang(lang, { store: false });
     await mount(); await settle(4);
     expect(button(label)).toBeTruthy();
