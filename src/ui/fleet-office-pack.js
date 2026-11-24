@@ -5,14 +5,15 @@
 // logical canvas, named areas with ordered seat slots, furniture with a depth, and a state → area map. No code or art of
 // it is used here — the idea of the format only.
 //
-// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), which
-// the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
+// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), or on the
+// pack's own `canvas: [w, h]` (#4405: 640×360 to 5120×2880, CANVAS), which the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
 //
 //   {
 //     "format": 1,                                    required
 //     "id": "cozy",                                   letters, digits, - and _ (≤ 40); not a built-in skin's id
 //     "scale": 2,                                     1–8 (default 2)
-//     "background": "office.png",                     drawn over the whole 1280×720 canvas (16:9)
+//     "canvas": [2560, 1440],                         optional (#4405): the logical canvas, CANVAS.min to CANVAS.max
+//     "background": "office.png",                     drawn over the whole canvas (16:9; with "canvas", its shape)
 //     "foreground": "front.png",                      optional, with stateZones: drawn over the whole canvas (16:9, as
 //                                                     the background) above the people, the furniture and the items in
 //                                                     the air, below the name tags, bubbles and "+n" counts (and Edit
@@ -141,8 +142,8 @@
 // The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
 // with where it broke.
 //
-// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1–1280 and
-// 1–720): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
+// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1 to the
+// canvas's width and 1 to its height): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
 // the frame's aspect. The anchor (ax, ay) stays in image pixels and moves with it. So art drawn at 120×120 px shows at
 // 96×96 with "dw": 96, "dh": 96 — whatever the pack's scale. What a person hovers or clicks is the box drawn (stripBox).
 //
@@ -152,7 +153,7 @@
 // (own()).
 //
 // The host keeps an uploaded pack whole and never changes it: every PNG starts with its signature, a STRIP's image is
-// exactly frames·w × h, the background and the foreground are 16:9, and each file and the pack have a size cap (web-office-skins.ts).
+// exactly frames·w × h, the background and the foreground are 16:9 (or the pack's canvas's shape), and each file and the pack have a size cap (web-office-skins.ts).
 //
 // ── Layout overrides (the Office view's "Edit layout": a stored office's own positions on a zones pack) ──
 //
@@ -169,7 +170,7 @@
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …] }
 //                                                     the walkable graph, replaced whole (edges need waypoints)
 //
-// Every coordinate is on the same 1280×720 logical canvas, in the same ranges as the pack's. checkLayoutOverrides is
+// Every coordinate is on the same logical canvas as the pack's (1280×720, or its own), in the same ranges. checkLayoutOverrides is
 // the shape (the host checks it on every PUT /ui/offices); applyOverrides puts them on a checked pack, refusing a
 // seat outside its area, an area or furniture the pack does not have, or a seat count that differs (the host checks
 // that too, for a pack it keeps). A night place goes on the item's `night` (its x, y), so at bedtime (nightFurniture)
@@ -178,6 +179,15 @@
 // office (#2665, web-office-store.ts).
 
 export const LOGICAL = { w: 1280, h: 720 };
+/** A pack's own canvas (`canvas: [w, h]`, logical units): from CANVAS.min to CANVAS.max a side; without one, LOGICAL. */
+export const CANVAS = { min: { w: 640, h: 360 }, max: { w: 5120, h: 2880 } };
+/** The canvas a checked pack's scene is on: its own, else LOGICAL (every built-in style, every older pack). */
+export const canvasOf = (pack) => (pack && pack.canvas) || LOGICAL;
+// The canvas the manifest being checked declares (checkSkinPack), or an office's overrides are checked on
+// (checkLayoutOverrides: its pack's, else CANVAS.max when the pack is not known yet; applyOverrides then keeps every
+// point on the pack's own). Both checks are synchronous.
+let C = LOGICAL;
+
 /** The people's depth: furniture below it is drawn under them, the rest over them. */
 export const CHAR_DEPTH = 1000;
 export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
@@ -238,7 +248,7 @@ function num(v, lo, hi, at) { if (typeof v !== "number" || !Number.isFinite(v) |
 function src(v, at) { if (typeof v !== "string" || !SRC.test(v) || v.includes("..") || v.startsWith("/")) throw new Refused(at, "a file name in the pack"); return v; }
 function point(v, at) {
   if (!Array.isArray(v) || v.length !== 2) throw new Refused(at, "[x, y]");
-  return { x: num(v[0], 0, LOGICAL.w, `${at}[0]`), y: num(v[1], 0, LOGICAL.h, `${at}[1]`) };
+  return { x: num(v[0], 0, C.w, `${at}[0]`), y: num(v[1], 0, C.h, `${at}[1]`) };
 }
 /** Where an item sorts: by depth, a "y" one among the people (after every number under them, before the rest). */
 const order = (f) => (f.depth === "y" ? CHAR_DEPTH - 0.5 : f.depth);
@@ -277,7 +287,7 @@ export function checkStrip(v, at = "strip", scale = 2) {
   obj(v, at);
   keys(v, ["src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom", "row", "col"], at);
   const w = int(v.w, 1, 512, `${at}.w`), h = int(v.h, 1, 512, `${at}.h`);
-  const dw0 = v.dw === undefined ? null : num(v.dw, 1, LOGICAL.w, `${at}.dw`), dh0 = v.dh === undefined ? null : num(v.dh, 1, LOGICAL.h, `${at}.dh`);
+  const dw0 = v.dw === undefined ? null : num(v.dw, 1, C.w, `${at}.dw`), dh0 = v.dh === undefined ? null : num(v.dh, 1, C.h, `${at}.dh`);
   const dw = dw0 ?? (dh0 !== null ? (dh0 * w) / h : w * scale), dh = dh0 ?? (dw0 !== null ? (dw0 * h) / w : h * scale);
   const ax = v.ax === undefined ? w / 2 : num(v.ax, 0, w, `${at}.ax`), ay = v.ay === undefined ? h : num(v.ay, 0, h, `${at}.ay`);
   if (v.once !== undefined && typeof v.once !== "boolean") throw new Refused(`${at}.once`, "true or false");
@@ -369,7 +379,7 @@ export function checkStrip(v, at = "strip", scale = 2) {
 function nightOf(v, at, scale) {
   if (v === undefined) return null;
   obj(v, at); keys(v, ["sprite", "x", "y"], at);
-  return { sprite: checkStrip(v.sprite, `${at}.sprite`, scale), x: v.x === undefined ? null : num(v.x, 0, LOGICAL.w, `${at}.x`), y: v.y === undefined ? null : num(v.y, 0, LOGICAL.h, `${at}.y`) };
+  return { sprite: checkStrip(v.sprite, `${at}.sprite`, scale), x: v.x === undefined ? null : num(v.x, 0, C.w, `${at}.x`), y: v.y === undefined ? null : num(v.y, 0, C.h, `${at}.y`) };
 }
 /** A furniture item's walk (#2596): its walking strips, picked by heading as a character set's (poseStrip); "walk" required. */
 function walkOf(v, at, scale) {
@@ -398,7 +408,7 @@ function seatOf(v, at, rect) {
   let p = null, extra = {};
   if (isObj(v)) {
     keys(v, ["x", "y", "for", "lend"], at);
-    p = { x: num(v.x, 0, LOGICAL.w, `${at}.x`), y: num(v.y, 0, LOGICAL.h, `${at}.y`) };
+    p = { x: num(v.x, 0, C.w, `${at}.x`), y: num(v.y, 0, C.h, `${at}.y`) };
     if (v.lend !== undefined && typeof v.lend !== "boolean") throw new Refused(`${at}.lend`, "true or false");
     if (v.lend !== undefined && v.for === undefined) throw new Refused(`${at}.lend`, "only with for");
     if (v.for !== undefined) extra = { for: owners(v.for, `${at}.for`), lend: v.lend === true };
@@ -714,11 +724,17 @@ export function checkLevels(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
+    keys(x, ["format", "id", "scale", "canvas", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
     const scale = x.scale === undefined ? 2 : int(x.scale, 1, 8, "scale");
+    let canvas = null;
+    if (x.canvas !== undefined) {
+      if (!Array.isArray(x.canvas) || x.canvas.length !== 2) throw new Refused("canvas", "[w, h]");
+      canvas = { w: int(x.canvas[0], CANVAS.min.w, CANVAS.max.w, "canvas[0]"), h: int(x.canvas[1], CANVAS.min.h, CANVAS.max.h, "canvas[1]") };
+    }
+    C = canvas || LOGICAL;
     if (x.matte !== undefined && !matteOk(x.matte)) throw new Refused("matte", "a colour as #rrggbb");
     if (x.straight !== undefined && typeof x.straight !== "boolean") throw new Refused("straight", "true or false");
     const areas = {};
@@ -729,8 +745,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (!nameOk(name)) throw new Refused(at, "a name of letters, digits, _ or - (not an inherited one)");
       obj(a, at); keys(a, ["rect", "seats"], at);
       if (!Array.isArray(a.rect) || a.rect.length !== 4) throw new Refused(`${at}.rect`, "[x, y, w, h]");
-      const [rx, ry] = [num(a.rect[0], 0, LOGICAL.w, `${at}.rect[0]`), num(a.rect[1], 0, LOGICAL.h, `${at}.rect[1]`)];
-      const rect = { x: rx, y: ry, w: num(a.rect[2], 1, LOGICAL.w - rx, `${at}.rect[2]`), h: num(a.rect[3], 1, LOGICAL.h - ry, `${at}.rect[3]`) };
+      const [rx, ry] = [num(a.rect[0], 0, C.w, `${at}.rect[0]`), num(a.rect[1], 0, C.h, `${at}.rect[1]`)];
+      const rect = { x: rx, y: ry, w: num(a.rect[2], 1, C.w - rx, `${at}.rect[2]`), h: num(a.rect[3], 1, C.h - ry, `${at}.rect[3]`) };
       const seats = list(a.seats, LIMIT.seats, `${at}.seats`).map((s, i) => seatOf(s, `${at}.seats[${i}]`, rect));
       if (!seats.length) throw new Refused(`${at}.seats`, "at least one seat");
       areas[name] = { name, rect, seats };
@@ -756,7 +772,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       obj(w, at); keys(w, ["id", "x", "y"], at);
       if (typeof w.id !== "string" || !ID.test(w.id) || ids.has(w.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or -");
       ids.add(w.id);
-      waypoints.push({ id: w.id, x: num(w.x, 0, LOGICAL.w, `${at}.x`), y: num(w.y, 0, LOGICAL.h, `${at}.y`) });
+      waypoints.push({ id: w.id, x: num(w.x, 0, C.w, `${at}.x`), y: num(w.y, 0, C.h, `${at}.y`) });
     }
     const edges = list(x.edges ?? [], LIMIT.edges, "edges").map((e, i) => {
       if (!Array.isArray(e) || e.length !== 2 || !ids.has(e[0]) || !ids.has(e[1]) || e[0] === e[1]) throw new Refused(`edges[${i}]`, "two different waypoint ids");
@@ -776,7 +792,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (f.hides !== undefined && typeof f.hides !== "boolean") throw new Refused(`${at}.hides`, "true or false");
       if (f.hides !== undefined && f.activeFor === undefined) throw new Refused(`${at}.hides`, "only with activeFor");
       if (f.label !== undefined && (typeof f.label !== "string" || !f.label.trim() || [...f.label].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(f.label))) throw new Refused(`${at}.label`, `1–${LIMIT.line} characters`);
-      return { id: f.id, sprite: checkStrip(f.sprite, `${at}.sprite`, scale), x: num(f.x, 0, LOGICAL.w, `${at}.x`), y: num(f.y, 0, LOGICAL.h, `${at}.y`),
+      return { id: f.id, sprite: checkStrip(f.sprite, `${at}.sprite`, scale), x: num(f.x, 0, C.w, `${at}.x`), y: num(f.y, 0, C.h, `${at}.y`),
         depth: f.depth === "y" ? "y" : depth(f.depth ?? 0, `${at}.depth`), activeWhen: f.activeWhen === undefined ? null : states(f.activeWhen, `${at}.activeWhen`),
         activeSprite: f.activeSprite === undefined ? null : checkStrip(f.activeSprite, `${at}.activeSprite`, scale),
         activeFor: f.activeFor === undefined ? null : names(f.activeFor, `${at}.activeFor`), loop: f.loop === true,
@@ -820,8 +836,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
     return { ok: true, pack: {
-      format: 1, id: x.id, scale, background: opt(x.background, "background"), foreground: opt(x.foreground, "foreground"), matte: x.matte === undefined ? undefined : x.matte.toLowerCase(), areas, stateZones,
-      door: x.door === undefined ? { x: LOGICAL.w / 2, y: LOGICAL.h - 10 } : point(x.door, "door"),
+      format: 1, id: x.id, scale, ...(canvas ? { canvas } : {}), background: opt(x.background, "background"), foreground: opt(x.foreground, "foreground"), matte: x.matte === undefined ? undefined : x.matte.toLowerCase(), areas, stateZones,
+      door: x.door === undefined ? { x: C.w / 2, y: C.h - 10 } : point(x.door, "door"),
       mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       // #3681: only when the pack has them, so an older pack checks to exactly what it did.
@@ -834,6 +850,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
     throw err;
+  } finally {
+    C = LOGICAL;
   }
 }
 /** The checked pack, or null. */
@@ -885,7 +903,8 @@ const reservedOf = (s) => (s.for && s.for.length ? { for: [...s.for], lend: s.le
 /** A seat with reservation `r` ({ for, lend }; for [] or null: none) in place of its own. */
 const reserve = (s, r) => { const { for: _f, lend: _l, ...p } = s; return r && r.for.length ? { ...p, for: [...r.for], lend: r.lend === true } : p; };
 /** An office's layout overrides, strictly (their shape and ranges): { ok: true, overrides } or { ok: false, error }. */
-export function checkLayoutOverrides(x) {
+export function checkLayoutOverrides(x, canvas = LOGICAL) {
+  C = canvas;
   try {
     obj(x, "overrides");
     keys(x, ["pack", "seats", "furniture", "furnitureNight", "seatFor", "door", "mailDrop", "waypoints", "edges"], "overrides");
@@ -953,7 +972,7 @@ export function checkLayoutOverrides(x) {
         obj(w, at); keys(w, ["id", "x", "y"], at);
         if (typeof w.id !== "string" || !ID.test(w.id) || ids.has(w.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or -");
         ids.add(w.id);
-        return { id: w.id, x: num(w.x, 0, LOGICAL.w, `${at}.x`), y: num(w.y, 0, LOGICAL.h, `${at}.y`) };
+        return { id: w.id, x: num(w.x, 0, C.w, `${at}.x`), y: num(w.y, 0, C.h, `${at}.y`) };
       });
       const seen = new Set();
       out.edges = list(x.edges ?? [], OV_LIMIT.edges, "overrides.edges").map((e, i) => {
@@ -968,6 +987,8 @@ export function checkLayoutOverrides(x) {
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
     throw err;
+  } finally {
+    C = LOGICAL;
   }
 }
 
@@ -1004,6 +1025,12 @@ export function applyOverrides(pack, ov) {
       if (!q && !n) return f;
       return { ...f, ...(q ? { x: q[0], y: q[1] } : {}), ...(n ? { night: { ...f.night, x: n[0], y: n[1] } } : {}) };
     });
+    // Every point on the pack's own canvas (overrides checked before their pack was known were held to the largest).
+    const cv = canvasOf(pack), on = (q, at) => { if (q && (q[0] > cv.w || q[1] > cv.h)) throw new Refused(at, `a point on the canvas (${cv.w}×${cv.h})`); };
+    for (const [id, q] of Object.entries(ov.furniture || {})) on(q, `overrides.furniture.${id}`);
+    for (const [id, q] of Object.entries(ov.furnitureNight || {})) on(q, `overrides.furnitureNight.${id}`);
+    on(ov.door, "overrides.door"); on(ov.mailDrop, "overrides.mailDrop");
+    for (const [i, w] of (ov.waypoints || []).entries()) on([w.x, w.y], `overrides.waypoints[${i}]`);
     const door = ov.door ? { x: ov.door[0], y: ov.door[1] } : pack.door;
     const mailDrop = ov.mailDrop ? { x: ov.mailDrop[0], y: ov.mailDrop[1] } : pack.mailDrop ?? null;
     const graph = ov.waypoints ? { waypoints: ov.waypoints.map((w) => ({ ...w })), edges: (ov.edges || []).map((e) => [e[0], e[1]]) } : { waypoints: pack.waypoints, edges: pack.edges };
