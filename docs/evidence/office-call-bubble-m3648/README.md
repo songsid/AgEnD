@@ -1,6 +1,6 @@
 # Office: a call's bubble always shows (M-3648)
 
-These are captures of the real Office UI on the built-in **Cozy** style, taken in headless Chromium with the smoke fixture. There are two fixture agents: General, who is idle, and Example helper, who looks stuck. A stuck agent goes to Cozy's Help desk, right under the "Help desk" name. `capture.mts` is the capture script. It records every stuck line ("Hmm, stuck?" / "Still thinking…" / 「嗯，卡住了？」 / 「還在想…」) drawn on the Office canvas over 9 s, with where it was drawn.
+These are captures of the real Office UI on the built-in **Cozy** style, taken in headless Chromium with the smoke fixture. There are two fixture agents: General, who is idle, and Example helper, who looks stuck. A stuck agent goes to Cozy's Help desk, right under the "Help desk" name. `capture.mts` is the capture script. It records every stuck line drawn on the Office canvas over 9 s, with where it was drawn. Cozy's stuck state says one of two lines, chosen by name and round: "Hmm, stuck?" or "Still thinking…" (「嗯，卡住了？」 / 「還在想…」). Both are the stuck bubble; the header's "1 Looks stuck" confirms the agent is stuck.
 
 - **Before:** release tip `82e95256` (v2.4.0-beta.20 has the same code since #4376).
 - **After:** `73dbafa4`.
@@ -8,9 +8,11 @@ These are captures of the real Office UI on the built-in **Cozy** style, taken i
 | Case | Before: stuck lines drawn | After: stuck lines drawn |
 |---|---|---|
 | Desk, en (light) | **0**: no bubble over the stuck agent | 113 (`Still thinking…` a row above the Help desk name) |
-| Desk, zh-TW (dark) | 116 (the shorter 求救區 name leaves room) | 122 |
-| Phone, zh-TW (dark) | 121 | 120 |
-| Phone, en (light) | **0** | 113 |
+| Desk, zh-TW (dark) | 122 (the shorter 求救區 name leaves room) | 121 |
+| Phone, zh-TW (dark), at Fit (30 %) | 119 | 118 |
+| Phone, en (light), at Fit (30 %) | **0** | 114 |
+| Phone, zh-TW, zoomed to 200 % on the helper (its card's Find in office), `…-zoomed.png` | 119 | 118: 「嗯，卡住了？」 readable beside 求救區 |
+| Phone, en, zoomed to 200 %, `…-zoomed.png` | **0**: only "Help desk" and the name tag | 114: "Hmm, stuck?" readable, a row up beside "Help desk" |
 
 The counts are in `before-report.json` and `after-report.json`. No run had page errors or CSP violations.
 

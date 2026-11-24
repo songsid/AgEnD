@@ -27,6 +27,20 @@ try {
     await page.goto(`${fx.base}/ui/fleet/org`);
     await page.locator(".oo-canvas").waitFor(); await page.waitForTimeout(9000);   // a few bubble rounds
     await page.screenshot({ path: join(OUT, `${key}-office.png`) });
+    if (c.device === "phone") {
+      // Zoomed in on the helper, to read it: its card's "Find in office" (200 %), then the card closed.
+      const desk = page.locator('.oo-desk[data-name="example-agent"]');
+      await desk.focus(); await page.keyboard.press("Enter");
+      await page.locator(".oo-card").waitFor(); await page.locator(".oo-card-find").click(); await page.waitForTimeout(800);
+      if (await page.locator(".oo-card").count()) { await page.locator(".oo-card-close").click(); }
+      // No focus left on the person's accessible desk (its tooltip would sit over the bubble).
+      await page.evaluate(() => { (document.activeElement as HTMLElement | null)?.blur?.(); }); await page.mouse.move(5, 5);
+      await page.evaluate(() => { (window as any).__said = []; });
+      await page.waitForTimeout(9000);
+      await page.screenshot({ path: join(OUT, `${key}-zoomed.png`) });
+      const z = await page.evaluate(() => ({ said: ((window as any).__said as any[]).map((x) => x.s), pct: document.querySelector(".oo-zoom-pct")?.textContent }));
+      report.cases[`${key}-zoomed`] = { zoom: z.pct, bubbleLines: z.said.length, distinct: [...new Set(z.said)] };
+    }
     const said = await page.evaluate(() => ((window as any).__said as any[]));
     report.cases[key] = { errors, csp: await csp(), bubbleLines: said.length, lastBubble: said.length ? said[said.length - 1] : null, distinct: [...new Set(said.map((x: any) => x.s))] };
     await ctx.close();
