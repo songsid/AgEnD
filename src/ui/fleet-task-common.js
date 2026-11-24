@@ -100,7 +100,7 @@ register("tasks", {
     reviewYou: "等你確認", reviewBy: "等 {0} 確認", reviewByTip: "由 {0} 確認，不是你",
     main: "主任務", sub: "子任務", urgent: "緊急", high: "高", normal: "一般", low: "低",
     sizeS: "小", sizeM: "中", sizeL: "大", sizeNone: "未定",
-    projects: "專案", noProject: "未分類", noProjectDesc: "fleet 在專案以外開的 task",
+    projects: "專案", noProject: "未分類", noProjectDesc: "Fleet 在專案以外開的任務",
     newProject: "新增專案", newMain: "主任務", archived: "已封存", archive: "封存", restore: "恢復",
     rename: "編輯專案", projectName: "名稱", projectDesc: "說明",
     projectLead: "負責的 Agent", projectLeadNone: "無（General）", projectLeadHint: "這個專案裡等你處理的卡片（待確認或卡住）會在負責 Agent 的頻道顯示按鈕；若卡片是某個 Agent 派出的，則顯示在派出者的頻道。", projectLeadGone: "{0}（已不在 fleet 中）", projectLeadChip: "負責：{0}", create: "建立", save: "儲存", cancel: "取消",
