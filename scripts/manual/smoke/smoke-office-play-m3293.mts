@@ -13,6 +13,8 @@ import { officeCapturePassed, selectOfficeCaptureCases } from "../smoke-fixture/
 //   npx --prefix <checkout> tsx scripts/manual/smoke/smoke-office-play-m3293.mts
 // ui-gate: {"name": "Office drag and pat (local only)", "hp": 19707}
 import { writeFileSync } from "node:fs";
+import { openOfficePersonCard as currentCard, closeOfficePersonCard } from "../smoke-fixture/office-smoke-card.js";
+import { findOfficePersonPoint as findPerson, pinOfficePointerClock, resumeOfficePointerClock, officePointerClockIsLive } from "../smoke-fixture/office-smoke-pointer.js";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
 
 const SMOKE = "smoke-office-play-m3293";
@@ -24,16 +26,6 @@ const r: any = { cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };
 const frame = `new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(document.querySelector(".oo-canvas").classList.contains("hot")))))`;
 const hotAt = async (page: any, x: number, y: number) => { await page.mouse.move(x, y); return await page.evaluate(frame) as boolean; };
-/** A point on the canvas over a person (desk: the pointer lights the canvas up), scanning from the middle out; or null. */
-async function findPerson(page: any): Promise<{ x: number; y: number } | null> {
-  const b = await page.locator(".oo-canvas").boundingBox();
-  const pts: Array<[number, number]> = [];
-  for (let y = b.y + 40; y < b.y + b.height - 30; y += 22) for (let x = b.x + 30; x < b.x + b.width - 30; x += 22) pts.push([x, y]);
-  const mid = { x: b.x + b.width / 2, y: b.y + b.height / 2 };
-  pts.sort((p, q) => Math.hypot(p[0] - mid.x, p[1] - mid.y) - Math.hypot(q[0] - mid.x, q[1] - mid.y));
-  for (const [x, y] of pts) if (await hotAt(page, x, y)) return { x, y: y + 6 };
-  return null;
-}
 /** Phone: a tap that opens a card is over a person (closed again). */
 async function findPersonTouch(page: any): Promise<{ x: number; y: number } | null> {
   if (process.env.M3513_CAPTURE_ONLY === "1") {
@@ -58,12 +50,6 @@ async function openOffice(page: any, base: string, lang: string) {
 }
 const writes = (log: any[]) => log.filter((q) => q.method !== "GET");
 const currentCapture = process.env.M3513_CAPTURE_ONLY === "1";
-async function currentCard(page: any) {
-  // Speech bubbles now have their own chat action; the accessible person target opens its card.
-  const person = page.locator("button.oo-desk").first(); await person.focus(); await person.press("Enter");
-  await page.locator(".oo-card").waitFor();
-}
-
 
 for (const c of selectedCases) {
   const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}`;
@@ -89,12 +75,12 @@ for (const c of selectedCases) {
       ok(res, "reduced:toggle off and locked", !(await box.isChecked()) && (await box.isDisabled()));
       const at = await findPerson(page);
       ok(res, "reduced:person found", !!at);
-      if (currentCapture) await currentCard(page);
-      else if (at) { await page.mouse.click(at.x, at.y); await page.waitForTimeout(400); }
+      await currentCard(page);
       ok(res, "reduced:card has no Pat/Feed", (await page.locator(".oo-card").count()) === 1 && (await page.locator(".oo-card-pat, .oo-card-feed").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "1-card") });
     } else if (c.device === "desk") {
       ok(res, "toggle:on by default", await box.isChecked());
+      await pinOfficePointerClock(page);
       const at = await findPerson(page);
       ok(res, "person found", !!at, at);
       if (!at) throw new Error("no person found on the canvas");
@@ -104,6 +90,8 @@ for (const c of selectedCases) {
       const area = { x: drop.x - 24, y: drop.y - 60, width: 48, height: 72 };
       const empty = await page.screenshot({ clip: area });
       await page.mouse.move(at.x, at.y); await page.mouse.down();
+      await resumeOfficePointerClock(page); // the real press owns its person now; drag and walk-back use live time
+      ok(res, "pointer clock: live before gesture", await officePointerClockIsLive(page));
       for (let i = 1; i <= 12; i++) { await page.mouse.move(at.x + (drop.x - at.x) * i / 12, at.y + (drop.y - at.y) * i / 12); await page.waitForTimeout(30); }
       await page.waitForTimeout(250);
       const carrying = await page.screenshot({ clip: area });
@@ -118,8 +106,7 @@ for (const c of selectedCases) {
       ok(res, "they walk off the drop point", left);
       await page.waitForTimeout(4000);
       await page.screenshot({ path: shotPath(SMOKE, tag, "4-back") });
-      if (currentCapture) await currentCard(page);
-      else { const again = await findPerson(page); if (again) { await page.mouse.click(again.x, again.y); await page.waitForTimeout(400); } }
+      await currentCard(page);
       ok(res, "card: Pat and Feed", (await page.locator(".oo-card-pat").count()) === 1 && (await page.locator(".oo-card-feed").count()) === 1);
       await page.locator(".oo-card-pat").click(); await page.waitForTimeout(700);
       await page.screenshot({ path: shotPath(SMOKE, tag, "5-pat") });
@@ -141,29 +128,30 @@ for (const c of selectedCases) {
       const n2 = log.length;
       await page.locator(".oo-card-feed").click(); await page.waitForTimeout(600);
       ok(res, "tell off again: nothing sent", writes(log.slice(n2)).length === 0);
-      await page.locator(".oo-card-close").click().catch(() => {}); await page.waitForTimeout(150);
+      await closeOfficePersonCard(page);
       await page.locator(".oo-card-pat").count();   // (closed)
       // A pat with the card closed: the hearts and the words over them (the card hid them above).
-      if (currentCapture) { await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); }
-      else { const again2 = await findPerson(page); if (again2) { await page.mouse.click(again2.x, again2.y); await page.waitForTimeout(300); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click(); await page.waitForTimeout(500); } }
+      await currentCard(page); await page.locator(".oo-card-pat").click(); await closeOfficePersonCard(page); await page.waitForTimeout(500);
       await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
       // Off: no Pat/Feed, and a drag pans (no one carried).
-      await page.locator(".oo-card-close").click().catch(() => {});
+      ok(res, "pat words: card is closed before toggle", (await page.locator(".oo-card").count()) === 0);
       await box.click(); await page.waitForTimeout(300);
       ok(res, "toggle off: kept here", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === "0");
-      if (currentCapture) await currentCard(page);
-      else { const off = await findPerson(page); if (off) { await page.mouse.click(off.x, off.y); await page.waitForTimeout(400); } }
+      await currentCard(page);
       ok(res, "toggle off: no Pat/Feed", (await page.locator(".oo-card-pat").count()) === 0);
       await box.click();   // back on, for the next case's defaults (each case is its own browser context anyway)
     } else {
       ok(res, "toggle:on by default (none stored)", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === null);
+      await pinOfficePointerClock(page);
       const at = await findPersonTouch(page);
       ok(res, "person found (tap)", !!at, at);
       if (!at) throw new Error("no person found by tapping");
       const n0 = log.length;
       const cdp = await page.context().newCDPSession(page);
       const touch = (type: string, x: number, y: number) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y, id: 1 }] });
-      await touch("touchStart", at.x, at.y); await page.waitForTimeout(700);           // a long press: held still
+      await touch("touchStart", at.x, at.y); await resumeOfficePointerClock(page);
+      ok(res, "pointer clock: live before gesture", await officePointerClockIsLive(page));
+      await page.waitForTimeout(700);           // a long press: held still
       for (let i = 1; i <= 10; i++) { await touch("touchMove", at.x + 12 * i, at.y + 6 * i); await page.waitForTimeout(40); }
       await page.waitForTimeout(200);
       await page.screenshot({ path: shotPath(SMOKE, tag, "1-long-press-carried") });
@@ -176,6 +164,7 @@ for (const c of selectedCases) {
     ok(res, "noOverflow", !(await page.evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
     ok(res, "noPageErrors", p.errors.length === 0, p.errors);
   } catch (err) {
+    await resumeOfficePointerClock(page).catch(() => {});
     res.failed = [...(res.failed ?? []), `threw: ${String(err).slice(0, 240)}`];
     await page.screenshot({ path: shotPath(SMOKE, tag, "error") }).catch(() => {});
   }

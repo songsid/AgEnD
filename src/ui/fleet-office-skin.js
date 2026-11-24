@@ -30,6 +30,8 @@
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
 // @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
+// @property {(ctx, area, env) => {x,y,w,h}} [areaTitleBox] zones (M-3539): where an area's name is written; name tags keep clear of it
+// @property {(ctx, area, env) => void} [drawAreaTitle]  zones (M-3539): the name written again over the people standing on it
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
 //   zones `desk` is the character's box at its current position (its feet at desk.seat); walking, `look.heading` is
 //   the current step's { dx, dy }
@@ -530,10 +532,43 @@ function drawBackground(ctx, L, env) {
     for (let y = r.y; y < r.y + r.h; y += T) for (let x = r.x + (((y - r.y) / T) % 2) * T; x < r.x + r.w; x += 2 * T) px(ctx, x, y, Math.min(T, r.x + r.w - x), Math.min(T, r.y + r.h - y), c2);
     ctx.save();
     ctx.strokeStyle = pal.border; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-    ctx.fillStyle = pal.text; ctx.font = "600 16px system-ui, sans-serif"; ctx.textBaseline = "top"; ctx.textAlign = "left";
-    ctx.fillText(fitText(ctx, env.labels.areas[a.name] || a.name, r.w - 60), r.x + 12, r.y + 10);
     ctx.restore();
+    writeAreaTitle(ctx, a, env);
   }
+}
+/** The studio's area name font: written at the top left of its area, under the people (drawBackground). */
+const AREA_TITLE_FONT = "600 16px system-ui, sans-serif";
+/**
+ * M-3539: the box an area's name takes, in logical units: { x, y, w, h, text } — what drawBackground writes, the space
+ * the name tags keep clear of, and where drawAreaTitle writes it again over the people when one stands on it.
+ */
+export function areaTitleBox(ctx, area, env) {
+  const r = area.rect;
+  ctx.save();
+  ctx.font = AREA_TITLE_FONT;
+  const text = fitText(ctx, env.labels.areas[area.name] || area.name, r.w - 60);
+  const w = Math.ceil(ctx.measureText ? ctx.measureText(text).width : text.length * 9);
+  ctx.restore();
+  return { x: r.x + 12, y: r.y + 10, w, h: 18, text };
+}
+function writeAreaTitle(ctx, area, env) {
+  const b = areaTitleBox(ctx, area, env);
+  ctx.save();
+  ctx.fillStyle = env.pal.text; ctx.font = AREA_TITLE_FONT; ctx.textBaseline = "top"; ctx.textAlign = "left";
+  ctx.fillText(b.text, b.x, b.y);
+  ctx.restore();
+}
+/**
+ * M-3539: an area's name written again over the people, on a plate of the page's surface (a person standing at the top
+ * of a crowded area covered 休息區): called by the scene only for a name a figure stands on.
+ */
+function drawAreaTitle(ctx, area, env) {
+  const b = areaTitleBox(ctx, area, env);
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = env.pal.surface; ctx.fillRect(b.x - 4, b.y - 2, b.w + 8, b.h + 2);
+  ctx.restore();
+  writeAreaTitle(ctx, area, env);
 }
 function drawFurniture(ctx, f, active, ms, env) {
   const x = f.x, y = f.y;
@@ -582,7 +617,7 @@ function drawFurniture(ctx, f, active, ms, env) {
 /** @type {OfficeSkin} */
 /** #2540: the studio's matte is its hall floor (the scene's edge), so the panel around the scene reads as more of it. */
 const studioMatte = (env) => (ZONE_FLOOR[env.mode] || ZONE_FLOOR.dark).hall;
-export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, matte: studioMatte };
+export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, areaTitleBox, drawAreaTitle, matte: studioMatte };
 
 // ── M-3533 R1b: the studio for a large Hub room — the same canvas, desks and spacing; a big room runs out of seats to
 // rest in, not desks (most agents are idle most of the time), so its lounge is as large as the work area beside it, a

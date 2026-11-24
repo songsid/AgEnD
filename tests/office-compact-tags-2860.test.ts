@@ -79,7 +79,10 @@ describe("#2860 a crowded area keeps compact tags", () => {
     const foot = few.footprint(badged), edge = { x: foot.x - 300, y: foot.y - 40, w: 300 + (badged.box.x - foot.x) / 2 + 0.5, h: 80 };
     expect([touch(edge, badged.box), touch(edge, foot)], "the edge cuts only the badge").toEqual([false, true]);
     few.part.cover = edge;
-    expect(few.draw(hot).some((t) => t.label === badged.label), "its badge under the card: left out").toBe(false);
+    // Not there: its badge would be under the card. Left out, or (M-3539's places) drawn at its next place, clear of the card.
+    const moved = few.draw(hot).filter((t) => t.label === badged.label);
+    for (const t of moved) expect(touch(few.footprint(t), edge), `${t.label} at ${t.x},${t.y}`).toBe(false);
+    expect(moved.some((t) => t.x === badged.x && t.y === badged.y && t.compact === badged.compact), "not at its covered place").toBe(false);
     few.part.cover = null;
     const outside = all.filter((t) => !touch(t.box, cover)).map((t) => `${t.label}@${t.x},${t.y}`);
     expect(under.filter((t) => !t.compact).map((t) => `${t.label}@${t.x},${t.y}`)).toEqual(outside.filter((k) => all.find((t) => `${t.label}@${t.x},${t.y}` === k)!.compact === false));
