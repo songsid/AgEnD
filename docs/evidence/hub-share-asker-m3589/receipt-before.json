@@ -1,0 +1,98 @@
+{
+  "stage": "before",
+  "checks": [
+    {
+      "name": "group created",
+      "ok": true
+    },
+    {
+      "name": "agent joined",
+      "ok": true
+    },
+    {
+      "name": "grant created",
+      "ok": true
+    },
+    {
+      "name": "direct created",
+      "ok": true
+    },
+    {
+      "name": "group question accepted",
+      "ok": true
+    },
+    {
+      "name": "direct question accepted",
+      "ok": true
+    },
+    {
+      "name": "before/desk-light-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-light-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-light-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-light-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-dark-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-dark-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-dark-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/desk-dark-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-light-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-light-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-light-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-light-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-dark-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-dark-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-dark-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "before/phone-dark-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "no page errors",
+      "ok": true
+    }
+  ],
+  "errors": []
+}

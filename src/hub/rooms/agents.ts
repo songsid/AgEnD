@@ -166,9 +166,10 @@ export class HubRoomAgents {
     const total = rows.reduce((v, r) => v + r.n, 0), failed = n("expired"), blocked = n("retired");
     const missing=total===1&&failed===1&&db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='finished-without-answer'").get(parentId);
     const stopped = total === 1 && blocked === 1 && db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='owner-stopped-sharing'").get(parentId);
+    const lapsed = total === 1 && blocked === 1 && db.prepare("SELECT 1 FROM hub_room_deliveries WHERE parent_id=? AND reason_code='share-needs-reshare'").get(parentId);
     return { total, answered: n("answered"), working: n("sent"), later: n("queued"),
       ...(failed ? { failed } : {}), ...(blocked ? { blocked } : {}),
-      ...(total === 1 && failed === 1 ? { reason: missing?"finished-without-answer" as const:"expired" as const } : total === 1 && blocked === 1 ? { reason: stopped ? "owner-stopped-sharing" as const : "retired" as const } : {}) };
+      ...(total === 1 && failed === 1 ? { reason: missing?"finished-without-answer" as const:"expired" as const } : total === 1 && blocked === 1 ? { reason: lapsed ? "share-needs-reshare" as const : stopped ? "owner-stopped-sharing" as const : "retired" as const } : {}) };
   }
   /** Called inside the person's message transaction, once per idempotency key. */
   /**
@@ -225,6 +226,10 @@ export class HubRoomAgents {
           payloadRef, digest(bytes), now, now + 24 * 60 * 60_000, source?.id ?? null, source?.revision ?? null, source?.fleet_id ?? null, operation?.receipt_id ? 1 : 0);
       if(roster)db.prepare("INSERT INTO hub_room_brief_deliveries VALUES(?,?)").run(id,JSON.stringify(roster));
       if (contextState) db.prepare("UPDATE hub_room_deliveries SET context_generation=? WHERE id=?").run(contextState.generation,id);
+      if (this.core.shareLapsed(db, e.id)) {
+        db.prepare("UPDATE hub_room_deliveries SET state='retired',reason_code='share-needs-reshare' WHERE id=?").run(id);
+        db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(replyId);
+      }
       this.automation.child(db, parent, replyId, e.id);
       const projected=exposureOf(e);
       if(projected.kind==="personal"){
@@ -316,11 +321,12 @@ export class HubRoomAgents {
       const rows = db.prepare(`SELECT * FROM hub_room_deliveries WHERE state IN ('queued','sent') AND ${where}`).all(value) as Delivery[];
       return rows.filter(d => {
         const expired = this.core.now() >= d.expires_at;
-        if (!expired && (dueOnly || this.valid(db, d))) return false;
+        const lapsed = !expired && this.core.shareLapsed(db, d.exposure_id);
+        if (!expired && !lapsed && (dueOnly || this.valid(db, d))) return false;
         const exposure = readExposure(db, d.exposure_id);
         const publicationChanged = !expired && exposure && exposure.revision > d.exposure_revision
           && this.valid(db, { ...d, exposure_revision: exposure.revision });
-        db.prepare("UPDATE hub_room_deliveries SET state=?,reason_code=? WHERE id=?").run(expired ? "expired" : "retired", publicationChanged ? "publication-changed" : null, d.id);
+        db.prepare("UPDATE hub_room_deliveries SET state=?,reason_code=? WHERE id=?").run(expired ? "expired" : "retired", lapsed ? "share-needs-reshare" : publicationChanged ? "publication-changed" : null, d.id);
         db.prepare("UPDATE hub_room_posts SET stage='not-answered' WHERE id=?").run(d.reply_id); return true;
       });
     });

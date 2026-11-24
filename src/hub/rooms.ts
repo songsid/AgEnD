@@ -93,6 +93,21 @@ export class HubRoomsService {
     const old = this.links.get(link.fleetId);
     if (!old || old.linkEpoch <= link.linkEpoch) this.links.set(link.fleetId, link);
   }
+
+  /** Settles already queued/in-flight questions when this Fleet reports that consent lapsed. */
+  shareLapsesChanged(fleetId: string): void {
+    this.core.atomic((db, tx) => {
+      const rows = db.prepare("SELECT * FROM hub_messages WHERE fleet_id=? AND stage IN ('queued','delivered','consumed')").all(fleetId) as MessageRow[];
+      for (const msg of rows) if (this.core.shareLapsed(db, msg.exposure_id)) this.cancelLapsed(db, tx, msg);
+    });
+  }
+  private cancelLapsed(db: Database.Database, tx: HubTx, msg: MessageRow): HubReceipt {
+    const now = this.core.now();
+    db.prepare("UPDATE hub_messages SET stage='cancelled',reason_code='share-needs-reshare',stage_at=? WHERE id=?").run(now, msg.id);
+    this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "local-host" }, action: "question.cancelled", result: "held",
+      reasonCode: "share-needs-reshare", messageId: msg.id, roomId: msg.room_id, fleetId: msg.fleet_id ?? undefined, exposureId: msg.exposure_id });
+    return receiptOf({ ...msg, stage: "cancelled", reason_code: "share-needs-reshare", stage_at: now });
+  }
   forget(): void { this.links.clear(); this.polls.clear(); }
   presence(exposureId: string): "idle" | "working" | "paused" | "offline" | "later" {
     const exposure = this.core.atomic(db => readExposure(db, exposureId));
@@ -325,6 +340,7 @@ export class HubRoomsService {
     if(exposure.kind==="personal"){
       const port=this.core.deps.personal;if(!port)throw new HubProtocolError("unavailable");port.enqueue(db,exposure,{direct:id});
     }
+    if (this.core.shareLapsed(db, exposure.id)) return { receipt: this.cancelLapsed(db, tx, readMessage(db, id)!), fleet: null };
     return { receipt: { messageId: id, contentDigest: digest, stage: "queued", sequence: 0, at: now }, fleet: exposure.fleetId };
   }
 
@@ -471,6 +487,7 @@ export class HubRoomsService {
         const frame = this.core.atomic((db, tx): HubServerFrame | null => {
           const msg = readMessage(db, first.id);
           if (!msg || msg.stage !== "queued" || msg.sent_epoch === link.linkEpoch || !link.current()) return null;
+          if (this.core.shareLapsed(db, msg.exposure_id)) { this.cancelLapsed(db, tx, msg); return null; }
           const facts = eligible ? messageFacts(db, msg, now, permit) : { ok: false as const, reason: "revoked" as const };
           if (!facts.ok) {
             const stage = facts.reason === "expired" ? "failed" : "cancelled";
@@ -535,7 +552,7 @@ export class HubRoomsService {
       if (POSITIVE.includes(msg.stage) && next !== 0 && next < known) throw new HubProtocolError("stale");   // never downgrade evidence
       db.prepare("INSERT INTO hub_receipts(fleet_id, sequence, message_id, content_digest, stage, at, member_delivery_id, reason_code) VALUES(?,?,?,?,?,?,?,?)")
         .run(link.fleetId, r.sequence, r.messageId, r.contentDigest, r.stage, r.at, r.memberDeliveryId ?? null, r.reasonCode ?? null);
-      const stopped = msg.stage === "cancelled" && msg.reason_code === "owner-stopped-sharing";
+      const stopped = msg.stage === "cancelled" && (msg.reason_code === "owner-stopped-sharing" || msg.reason_code === "share-needs-reshare");
       const stage = stopped ? msg.stage : msg.stage === "answered" && r.stage !== "answered" && !TERMINAL.has(r.stage) ? msg.stage : r.stage;
       db.prepare("UPDATE hub_messages SET stage=?, member_sequence=?, reason_code=?, stage_at=? WHERE id=?").run(stage, r.sequence, stopped ? msg.reason_code : r.reasonCode ?? null, stopped ? msg.stage_at : now, msg.id);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "member", fleetId: link.fleetId }, action: `receipt.${r.stage}`, result: r.stage === "uncertain" ? "held" : "completed",

@@ -366,6 +366,13 @@ Sharing lets nobody ask yet. The owner allows a person, an AD security group, or
 
 ## Asking an agent
 
+If the agent's backend, working folder or runtime changes after sharing, its old sharing consent stops applying.
+The owner gets **Needs you** and **Share again** on the sharing row. The agent's room tools explain
+`share_needs_reshare`. On an updated Hub, direct and room questions say the agent is unavailable until its owner
+shares it again, rather than waiting for an answer. Share again requires the owner's action and keeps who may ask
+and their original expiry. Old refused questions stay refused; ask again after the owner re-shares. A catalog lapse
+report can only refuse work: it cannot grant consent to a new incarnation.
+
 On the Hub: **Chats** → **New chat** lists only the agents someone allowed you to ask ("Answers for *owner* · you can
 ask until *date*"). Pick one and **Ask**.
 

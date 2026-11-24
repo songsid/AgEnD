@@ -15,11 +15,11 @@ export interface RoomMessage {
   text: string; mentions: string[]; replyTo?: string; idempotencyKey?: string;
   files?: { id: string; name: string; size: number; mime: string; url: string }[];
   warning?: "assistant-unavailable";
-  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "finished-without-answer" | "owner-stopped-sharing" | "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
+  ask?: { total: number; answered: number; working: number; later: number; failed?: number; blocked?: number; reason?: "share-needs-reshare" | "finished-without-answer" | "owner-stopped-sharing" | "expired" | "retired" | "unavailable" | "interrupted" | "unknown" };
   answerTo?: string;
   /** The immediate question's person-member id (same identity as room.me.id), never an agent owner's id. */
   askedBy?: string;
-  reasonCode?: "finished-without-answer" | "owner-stopped-sharing";
+  reasonCode?: "finished-without-answer" | "owner-stopped-sharing" | "share-needs-reshare";
   stage?: "queued" | "working" | "answered" | "not-answered";
   /** M-3596, a 1:1 room's open question (its answer row, no text yet): when the agent got it; else how many came first. */
   startedAt?: number; ahead?: number;
