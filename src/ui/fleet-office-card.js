@@ -416,14 +416,21 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   // swipe there could never finish): it closes from its grip, a handle the browser leaves to the page (touch-action
   // none, kept at its top). One that fits closes from anywhere, as before. `data-scrolls` says which (the CSS).
   const scrolls = () => { const t = box.current, sc = t && ((typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t); return !!sc && sc.scrollHeight > sc.clientHeight + 1; };
+  // …and (Leader #4414) a card whose content scrolls — a sheet, or a desk card held shorter under an area's name —
+  // says there is more below: `data-more` while it is not scrolled to its end, a fade over the pinned actions (the CSS).
   useLayoutEffect(() => {
     const t = box.current;
-    if (!t || !sheet || typeof t.setAttribute !== "function") return undefined;
-    const mark = () => { if (scrolls()) t.setAttribute("data-scrolls", ""); else t.removeAttribute("data-scrolls"); };
+    if (!t || typeof t.setAttribute !== "function") return undefined;
+    const sc = (typeof t.querySelector === "function" && t.querySelector(".oo-card-body")) || t;
+    const mark = () => {
+      if (sheet && scrolls()) t.setAttribute("data-scrolls", ""); else t.removeAttribute("data-scrolls");
+      if (sc.scrollHeight - sc.scrollTop - sc.clientHeight > 2) t.setAttribute("data-more", ""); else t.removeAttribute("data-more");
+    };
     mark();
     const RO = globalThis.ResizeObserver, ro = typeof RO === "function" ? new RO(mark) : null;
     if (ro) { ro.observe(t); for (const el of t.querySelectorAll?.(".oo-card-body, .oo-card-body > *, .oo-card > *") ?? []) ro.observe(el); }
-    return () => { if (ro) ro.disconnect(); };
+    if (typeof sc.addEventListener === "function") sc.addEventListener("scroll", mark, { passive: true });
+    return () => { if (ro) ro.disconnect(); if (typeof sc.removeEventListener === "function") sc.removeEventListener("scroll", mark); };
   });
   const down = (e) => {
     if (!sheet) return;

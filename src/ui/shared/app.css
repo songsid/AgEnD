@@ -2656,6 +2656,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* …and on a desk, a card held shorter under an area's name (it scrolls) keeps its actions at its foot the same way. */
 .oo-card .oo-card-actions { position: sticky; bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); z-index: 2;
   margin-bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); padding-bottom: var(--oo-card-frame-pad, var(--s-3)); background: var(--oo-card-bg, var(--surface)); }
+/* …and while there is more to scroll (data-more), the content fades into them: a cue that the card goes on. */
+.oo-card[data-more] .oo-card-actions::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--s-7); pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--oo-card-bg, var(--surface))); }
 .oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions { position: sticky; bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px)));
   z-index: 2; margin-bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px))); padding: var(--s-2) 0 max(var(--s-4), env(safe-area-inset-bottom, 0px));
   background: var(--oo-card-bg, var(--surface)); }

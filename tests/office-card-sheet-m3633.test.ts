@@ -70,6 +70,30 @@ describe("a swipe down closes the sheet only from its top", () => {
   });
 });
 
+describe("a card that scrolls says there is more (Leader #4414)", () => {
+  it("the CSS: while data-more, the content fades into the pinned actions", () => {
+    const fade = rule(".oo-card[data-more] .oo-card-actions::before");
+    expect(fade).toContain("linear-gradient(to bottom, transparent, var(--oo-card-bg, var(--surface)))");
+    expect(fade).toContain("pointer-events: none");
+  });
+  it("data-more while not scrolled to its end; none at the end", async () => {
+    const card = await import("/ui/js/fleet-office-card.js");
+    const p = page();
+    try {
+      const model = card.cardModel({ node: { name: "n", display_name: "Notes", status: "running", execution_state: "idle" }, lv: () => 1, levels: null, share: true, rows: [], display: "Notes", state: "Idle", now: "", where: "" });
+      await p.mount(h(card.OfficeCard, { model, avatar: () => {}, sheet: false, place: () => {}, onFind: () => {}, onClose: () => {} }));
+      await settle(4);
+      const el = p.root.querySelector(".oo-card") as any;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, value: 600 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+      el.scrollTop = 0; fire(el, "scroll"); await settle(2);
+      expect(el.hasAttribute("data-more")).toBe(true);
+      el.scrollTop = 200; fire(el, "scroll"); await settle(2);
+      expect(el.hasAttribute("data-more")).toBe(false);
+    } finally { await p.unmount(); p.restore(); }
+  });
+});
+
 describe("cardSpot: beside the person, clear of the areas' names", () => {
   const base = { gap: 20, cw: 300, ch: 400, w: 1200, h: 700 };
   it("no names in the way: right of them, level with their head (as before)", () => {
