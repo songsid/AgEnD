@@ -21,6 +21,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, mounted, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-office-drag-seat-m3445";
 const OUT_DIR = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
@@ -381,8 +382,7 @@ try {
     await mounted(page, 30000);
     await openOffice(page, fx.base, "en");
     const playBox = page.locator(".oo-play input[type='checkbox']");
-    const disabled = await playBox.isDisabled();
-    const checked = await playBox.isChecked();
+    const [disabled, checked] = await withDisplay(page, async () => [await playBox.isDisabled(), await playBox.isChecked()]);   // M-3556: in ⚙ Display options
     await page.screenshot({ path: shotPath(SMOKE, "desk-light-en-reduced", "1-reduced-motion") });
     const cspViolations = await csp();
     report.cases.reducedMotion = { disabled, checked, errors, cspViolations };
