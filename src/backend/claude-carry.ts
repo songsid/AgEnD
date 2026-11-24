@@ -145,6 +145,11 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
   /** #4408 review: the target as decided on (size, mtime); it must be the same at the swap, or the carry stops. */
   let targetStamp: { size: number; mtimeMs: number } | null = null;
   if (targetSize !== null) {
+    // #4408 review: the target as it is BEFORE anything of it is read; every decision below is about this file, and it
+    // must still be this file after the reads and at the swap (else a turn written meanwhile could lose to an older source).
+    const before = await stat(target).catch(() => null);
+    const unchanged = async () => { const st = await stat(target).catch(() => null);
+      return !!before && !!st && st.size === before.size && st.mtimeMs === before.mtimeMs; };
     if (!await isOlderCopy(target, targetSize, source, sourceSize).catch(() => false)) {
       // M-3629: another history of this conversation (each profile went on with it). The source goes over it only when
       // its last turn is later; the target's copy is then kept beside it, never lost. Newer, the same, or unknown: refused.
@@ -154,9 +159,9 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
           ? "the new profile already holds a different version of this conversation, and which is newer can't be told"
           : "the new profile already holds a version of this conversation at least as new" };
       }
+      if (!before || !await unchanged()) return { carried: false, reason: "the new profile's copy of this conversation changed while it was being compared" };
       backup = carryBackupName(name, (req.now ?? Date.now)());
-      const st = await stat(target);
-      targetStamp = { size: st.size, mtimeMs: st.mtimeMs };
+      targetStamp = { size: before.size, mtimeMs: before.mtimeMs };
     }
     replacedOlderCopy = true;
   }
