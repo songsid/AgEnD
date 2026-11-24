@@ -7054,6 +7054,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
+  /** M-3674: the last turn another agent started for `name` (the delivery outbox), ISO or null; never throws. */
+  lastAgentTurnOf(name: string): string | null {
+    try { return this.deliveryOutbox?.lastAgentTurn(name) ?? null; } catch { return null; }
+  }
+
   lastActivityMs(name: string): number {
     return this.lastActivity.get(name) ?? 0;
   }
@@ -31749,6 +31754,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               // User activity is persisted by the daemon, so both the board and
               // auto-pause retain an accurate age across fleet restarts.
               lastActivity,
+              // M-3674: the last turn another agent started (lastActivity is a person's side).
+              lastAgentTurn: inst.classic ? null : this.lastAgentTurnOf(inst.name),
               currentTask,
               idle: this.getInstanceIdle(inst.name),
               ...this.instancePresentation(inst.name),
@@ -32168,7 +32175,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
-          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
+          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,last_agent_turn:this.lastAgentTurnOf(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
@@ -32238,6 +32245,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
         ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // M-3674: its last turn another agent started (a message from another instance it took up), beside last_reply.
+        last_agent_turn: this.lastAgentTurnOf(name) ?? undefined,
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);
