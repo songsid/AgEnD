@@ -279,7 +279,7 @@ A person's line for a state comes from the first of these that has lines for it,
 
 On a stored office in a zones style, a fleet admin can move things with **Edit layout**. Changes are kept as that office's own *overrides*; the pack stays as it was uploaded, and other offices on the same pack aren't affected.
 
-- The overlay shows the 1280×720 coordinate grid (**Show coordinates**) and a handle for every seat, furniture item, the door, the mail drop and each waypoint. The mail drop is an envelope where letters from other offices land; on a pack that doesn't name one it's dashed and shows where letters land now, and dragging it gives the office its own. Each empty seat shows a faint figure posed for its area.
+- The overlay shows the pack's coordinate grid, 1280×720 unless it sets `canvas` (**Show coordinates**) and a handle for every seat, furniture item, the door, the mail drop and each waypoint. The mail drop is an envelope where letters from other offices land; on a pack that doesn't name one it's dashed and shows where letters land now, and dragging it gives the office its own. Each empty seat shows a faint figure posed for its area.
 - Drag a handle, or Tab to one and use the arrow keys (Shift moves by 10).
 - **Add waypoint** / **Remove waypoint**; with a waypoint selected, **Join to** another one or **Unjoin** a corridor.
 - An item that sleeps at bedtime also has a night handle, "Item {id} (night)": its night picture drawn faint, a moon, and a thin line to its day place. Drag it to give the item its own night place; **Back to the pack's night place** undoes that.
