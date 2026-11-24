@@ -133,6 +133,10 @@ is never kept." Fields **Account** and **Password**, button **Sign in**.
   again later." → the Hub cannot reach the company directory; nothing the user typed is wrong.
 - When the page was opened from a Fleet that is connecting, the button reads **Sign in and connect Fleet**: that one
   press signs in and approves the connection.
+- **How long a sign-in lasts** is the administrator's choice (Administration → **Sign-in** / 登入時間). By default a
+  sign-in ends 8 hours after signing in, or after 1 hour with no Hub page open. An open Hub page, even in a
+  background tab, counts as using the Hub, so only closing every Hub page starts the idle clock. When it ends, the page
+  asks the person to sign in again.
 
 ## Connecting your own AI app
 
@@ -669,6 +673,14 @@ are separate UI work; do not claim those screens or a remote-update switch from 
   listed there too and need **Acknowledge**.
 - **This Hub** shows the Hub's name (**Hub name**, up to 64 characters) and what identifies it; **Edit AD connection**
   opens the directory settings.
+- **Sign-in** (登入時間) sets how long a sign-in lasts.
+  - **Sign people out after** (登入多久後要重新登入): from 1 hour to 7 days, default 8 hours.
+  - **Or after this long without using the Hub** (或多久沒使用 Hub 就登出): from 15 minutes to 24 hours, default 1 hour.
+    It can't be longer than the first.
+  - A longer sign-in time applies to new sign-ins only. A shorter one also signs out anyone already signed in longer
+    than it, counted from when they signed in. The time without use applies to everyone at once.
+  - An open Hub page counts as using it, so the second limit applies only when no Hub page is open.
+  - Saving is recorded in the audit log.
 - **Tabs** (M-3162): Administration opens on **Overview** (總覽) where the Hub serves it. The tabs are **Overview**,
   **Manage** (管理項目, everything above on one page), **Teams**, **Groups** and **This Hub** (這個 Hub); a tab whose
   feature is off isn't shown. Overview has **Today** / **7 days**, refreshes every minute, and its line under the

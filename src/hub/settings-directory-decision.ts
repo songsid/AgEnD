@@ -211,7 +211,7 @@ export function createHubDirectorySettingsDecision(deps: HubDirectoryDecisionDep
         .run(input.at, compensation.id, compensation.recovery.expiresAt).changes !== 1) throw new HubProtocolError("conflict");
       if (advanceHubSessionEpoch(db, input.expected.directoryEpoch) !== nextEpoch) throw new HubProtocolError("uncertain");
       if (successor) db.prepare("INSERT INTO hub_sessions(token_hash,id,person,created_at,seen_at,expires_at,state,directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
-        .run(successor.tokenHash, successor.id, successor.person, successor.at, successor.at, successor.expiresAt, nextEpoch);
+        .run(successor.tokenHash, successor.id, successor.person, successor.signedInAt ?? successor.at, successor.at, successor.expiresAt, nextEpoch);
       const changed = db.prepare("UPDATE hub_settings_head SET operation_id=?,directory_epoch=? WHERE singleton=1 AND directory_epoch=? AND operation_id IS ?")
         .run(input.id, nextEpoch, input.expected.directoryEpoch, input.expected.operationId);
       if (changed.changes !== 1) throw new HubProtocolError("conflict");

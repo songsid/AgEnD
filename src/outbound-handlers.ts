@@ -1,3 +1,4 @@
+import { ProposeContactChangeArgs } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
@@ -79,6 +80,7 @@ import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type Hub
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
+  requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
   classicContactRestricted?(instance: string): boolean;
@@ -1233,7 +1235,19 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
   respond(status);
 };
 
-/** #2598 B2: ask for a fleet admin's Confirm on a kiro classic → TUI move; the move itself runs on the click. */
+/** General proposes; only the system platform callback can confirm. */
+const proposeContactChange: Handler = async (ctx, raw, respond, meta) => {
+  const parsed = validateArgs(ProposeContactChangeArgs, raw, "propose_contact_change");
+  if (!parsed.ok) { respond(null, parsed.error); return; }
+  if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true || !meta.callerCurrent?.()) {
+    respond(null, "Only a current configured General may propose a contact change"); return;
+  }
+  if (!ctx.requestContactChange) { respond(null, "Contact proposals are unavailable; use the web Permissions or Authorizations page"); return; }
+  try { respond(await ctx.requestContactChange(meta.instanceName, parsed.data.change, meta.callerCurrent)); }
+  catch (error) { respond(null, `Contact proposal not applied: ${(error as Error).message}`); }
+};
+
+/** #2598 B2: a fleet admin confirms the kiro classic → TUI move. */
 const migrateKiroInstance: Handler = async (ctx, rawArgs, respond) => {
   const v = validateArgs(MigrateKiroInstanceArgs, rawArgs, "migrate_kiro_instance");
   if (!v.ok) { respond(null, v.error); return; }
@@ -2633,6 +2647,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["get_effort", getEffort],
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
+  ["propose_contact_change", proposeContactChange],
   ["migrate_kiro_instance", migrateKiroInstance],
   ["reconcile_kiro_instance", reconcileKiroInstance],
   ["get_usage", getUsage],

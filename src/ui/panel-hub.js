@@ -342,6 +342,24 @@ function HubSignIn() {
 }
 
 /**
+ * M-3565: a room's 「和它一對一對話」 — the viewer's own chat with that agent: the one they have, else one started as 新對話
+ * starts it (their grant for that agent, from the catalog). Resolves to whether it opened; says why not when it did not.
+ */
+export async function openDirectChat(member, rooms = []) {
+  const id = member && member.id;
+  if (!id) return false;
+  const have = rooms.find((r) => r && r.kind === "direct" && !r.archived && (r.agent || r.legacy || {}).exposureId === id);
+  if (have) { navigate(roomPath(have.id)); return true; }
+  const cat = await hubClient().catalog().catch(() => null);
+  const it = cat && Array.isArray(cat.askable) ? cat.askable.find((x) => x && x.exposure && x.exposure.id === id && x.grant) : null;
+  if (!it) { toast(hw("errNotFound"), false); return false; }
+  const r = await hubClient().openRoom(it.exposure.id, it.grant.id);
+  if (!r.ok) { toast(errText(r), false); return false; }
+  await refreshRooms(); navigate(roomPath(r.room.id));
+  return true;
+}
+
+/**
  * M-3563: hand a login that worked to the browser's password manager (Chrome, Edge: the Credential Management API), the
  * account exactly as typed. Where the browser has none, or the person declines, nothing happens; never an error.
  */
@@ -354,11 +372,16 @@ export function rememberLogin(login, password) {
 }
 
 /** Load a list from the client; `reload` reads it again. null while loading, { error } on failure. */
-function useRead(read) {
+export function useRead(read) {
   const [data, setData] = useState(null);
-  const live = useRef(true);
-  const failed = (error) => { if (live.current) setData((old) => ({ ...old, error })); };
-  const reload = () => read().then((r) => { if (live.current) { if (r.ok) setData(r); else failed(errText(r)); } }, () => failed(hw("errFailed")));
+  const live = useRef(true), latest = useRef(0);
+  // M-3567 (Prism): only the newest read may answer. A return reads again while the first read can still be on its way; that
+  // older answer, success or failure, landing last must not undo the fresh one (a grant given while away would vanish).
+  const reload = () => {
+    const n = ++latest.current, current = () => live.current && n === latest.current;
+    const failed = (error) => { if (current()) setData((old) => ({ ...old, error })); };
+    return read().then((r) => { if (current()) { if (r.ok) setData(r); else failed(errText(r)); } }, () => failed(hw("errFailed")));
+  };
   useEffect(() => { live.current = true; reload(); return () => { live.current = false; }; }, []);
   return [data, reload];
 }
@@ -387,7 +410,32 @@ function noteUnread(d) {
   // Read through (0): its @ mark goes too; the next list read has the Hub's own answer for both.
   roomsStore.set({ ...s, rooms: s.rooms.map((r) => (r.id === d.roomId ? { ...r, unread: n, ...(n === 0 ? { mentioned: false } : {}) } : r)) });
 }
-/** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
+/** M-3567: the gap between a page left and a page back (another tab, another window) is when a grant or a new room lands. */
+export const RETURN_MIN_MS = 5_000;
+/**
+ * M-3567: `fn` when the person comes back to the page — it is shown again (visibilitychange) or its window gains focus —
+ * at most once per RETURN_MIN_MS (both fire on one return). The 30 s poll pauses while the page is hidden, so a grant
+ * given meanwhile showed only after a reload.
+ */
+export function useOnReturn(fn) {
+  const latest = useRef(fn);
+  latest.current = fn;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    let last = -Infinity;
+    const back = () => {
+      if (document.hidden) return;
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();   // a gap, not a date
+      if (now - last < RETURN_MIN_MS) return;
+      last = now; latest.current();
+    };
+    document.addEventListener("visibilitychange", back);
+    const w = typeof window !== "undefined" ? window : null;
+    w?.addEventListener?.("focus", back);
+    return () => { document.removeEventListener("visibilitychange", back); w?.removeEventListener?.("focus", back); };
+  }, []);
+}
+/** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden; again on return). */
 function useRooms() {
   const rs = useStore(roomsStore);
   useEffect(() => {
@@ -395,6 +443,7 @@ function useRooms() {
     const tick = setInterval(() => { if (session && (typeof document === "undefined" || !document.hidden)) refreshRooms(); }, ROOMS_MS);
     return () => clearInterval(tick);
   }, []);
+  useOnReturn(() => { if (session) refreshRooms(); });
   return rs;
 }
 // A room's id as the list gives it (today's are UUIDs; a Hub with rooms may name them otherwise): matched against the list
@@ -611,7 +660,7 @@ function HubChats() {
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
-    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
+    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} openDirect=${(m) => openDirectChat(m, rs.rooms)} goList=${() => navigate("/ui/hub")}
     onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} pinsOn=${roomPinsLive()}
     view=${viewParam() === "office" ? "office" : "chat"} officeHref=${(v) => roomViewPath(id, v)} onView=${(v) => navigate(roomViewPath(id, v))} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
@@ -637,6 +686,8 @@ function HubChats() {
 function ChatLauncher() {
   const s = useSession(), rs = useRooms();
   const [cat, reloadCat] = useRead(() => hubClient().catalog());
+  // M-3567: a grant given while the page was away (a Team's, a person's) is listed on return, with no reload.
+  useOnReturn(() => reloadCat());
   const [inRooms, setInRooms] = useState([]);
   const [q, setQ] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState(null), [newRoom, setNewRoom] = useState(false);
   const groups = rs.rooms.filter((r) => r.kind === "group" && !r.archived).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 5);
@@ -1330,6 +1381,8 @@ function HubAdminPage({ groups = false, companyJoin = false, directory = false }
       ${fullAdmin && teamsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-teams.js")} name="HubTeamsEntry" props=${{ client: hubClient() }} />` : null}
       ${fullAdmin && roomsLive() ? html`<${LazyRoomPart} load=${() => import("./hub-admin-rooms.js")} name="AdminRooms" props=${{ client: hubClient() }} />` : null}
       ${fullAdmin && assistantSession?.features?.includes("room-assistant-v1") && hubClient().assistantAdminV1 === true ? html`<${LazyAssistantAdmin} />` : null}
+      ${/* M-3592: how long a sign-in lasts; nothing from a Hub without the setting (the card's read fails). */ ""}
+      ${fullAdmin ? html`<${LazyRoomPart} load=${() => import("./hub-session-limits.js")} name="HubSessionLimitsCard" props=${{ client: hubClient() }} />` : null}
       ${view.error ? html`<${ErrorState} message=${view.error} onRetry=${reload} />` : null}
       ${msg ? html`<p class="err" role="alert">${msg}</p>` : null}
       ${/* M-3141 (versions spec §3.1): the recommended version, a small card above the list. */ ""}

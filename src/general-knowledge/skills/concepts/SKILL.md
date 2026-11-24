@@ -3,6 +3,7 @@ name: concepts
 description: AgEnD product concepts and definitions — fleet, instances, General, tool sets, delivery, schedules, and the rest; the agents' built-in role reference
 roles: [general, worker]
 ---
+
 # AgEnD concepts and definitions
 
 Draft. Each term states what the code on main does today, verified against the
@@ -150,7 +151,7 @@ WebFetch refuses explicit non-public URL forms. DNS and redirects are not pinned
 selected MCP tools keep their own access, and old conversation memory is not erased.
 When it delegates work for a person in the room, it keeps the requester with the worker and correlation, then summarizes the matching result in its bound channel and mentions that requester. Unrelated peer reports, chatter and FYI stay quiet.
 
-New rooms start in restricted mode. Non-admin peer relays are held for a target's Fleet administrator to approve; existing rooms stay legacy until an administrator switches them. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately.
+New rooms start in restricted mode. Non-admin peer relays are held for a target's Fleet administrator to approve; existing rooms stay legacy until an administrator switches them. Contact approval authorizes dispatch only, not the worker's later actions. Native tool coverage is reported separately. General may use `propose_contact_change` to propose room mode, contact-ticket or existing-rule changes. The daemon posts a bound confirmation to the target connection’s General; only a currently authorized Discord/Telegram person may confirm. General never confirms or applies its own proposal. Host-only targets use the web.
 
 - Code: `src/classic-channel-manager.ts`.
 - Refs: `docs/permissions.md`.
