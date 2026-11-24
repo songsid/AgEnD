@@ -205,10 +205,28 @@ it('compact model schema retains the strict runtime variants and all field bound
     {kind:'mode',target:'room',mode:'legacy',ticket_id:'extra'}, {kind:'grant-revoke',target:'worker'},
     {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'not-a-date',remaining_uses:null},
     {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'2027-01-01T00:00:00Z',remaining_uses:0},
+    {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'2027-01-01T00:00:00Z',remaining_uses:null,grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:null}},
     {kind:'ticket-decision',ticket_id:'Rfake',decision:'decline',grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:null}},
     {kind:'ticket-decision',ticket_id:'Rfake',decision:'approve-once',grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:10001}},
   ];
   expect(invalid.length).toBeGreaterThan(0);
   for(const change of invalid)expect(ProposeContactChangeArgs.safeParse({change}).success,JSON.stringify(change)).toBe(false);
   expect(ProposeContactChangeArgs.safeParse({change:{kind:'mode',target:'room',mode:'legacy'}}).success).toBe(true);
+  expect(ProposeContactChangeArgs.safeParse({change:{kind:'ticket-decision',ticket_id:'Rfake',decision:'approve-once',grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:null}}}).success).toBe(true);
+});
+it.each(['grant-adjust','grant-revoke'] as const)('%s crosses the real FleetManager write boundary and retains neighboring metadata', async kind => {
+  const r=rig();
+  r.store.writePolicy('worker',{revision:0,grants:[person,other].map(p=>({id:'',person:p,source:'room',target:'worker',verbs:['send_to_instance' as const],expiresAt:new Date(Date.now()+86400000).toISOString(),remainingUses:null}))},admin,n=>r.gen.get(n)!);
+  const before=structuredClone(r.store.policy('worker','w1')), row=before.grants[0]!, neighbor=before.grants[1]!;
+  r.fm.contactPermissions=(_name:string,actor:ContactPerson)=>({...r.store.policy('worker','w1'),canManage:r.service.canManage('worker',actor),canSetMode:false,eligibleApprovers:[admin]});
+  r.fm.webChatOwner=()=>true; r.fm.lifecycle={daemons:new Map()}; r.fm.emitSseEvent=vi.fn(); r.fm.needsYouItems=()=>[];
+  r.fm.writeContactPermissions=FleetManager.prototype.writeContactPermissions.bind(r.fm);
+  const expiresAt=new Date(Date.now()+2*86400000).toISOString();
+  const e=await r.post({kind,target:'worker',grant_id:row.id,...(kind==='grant-adjust'?{expires_at:expiresAt,remaining_uses:3}:{})});
+  await r.click(e);
+  const after=r.store.policy('worker','w1');
+  if(kind==='grant-adjust')expect(after.grants[0]).toEqual({...row,expiresAt,remainingUses:3});
+  else expect(after.grants).toEqual([neighbor]);
+  expect(after.grants.find(g=>g.id===neighbor.id)).toEqual(neighbor);
+  expect(after.revision).toBe(before.revision+1);
 });

@@ -95,7 +95,12 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
       pins.set(row.source, host.generation(row.source));
       if (row.sourceGeneration !== pins.get(row.source) || row.targetGeneration !== targetGeneration) throw Error("stale-generation");
       payload = { revision: policy.revision, grants: policy.grants.filter(g => input.kind !== "grant-revoke" || g.id !== row.id)
-        .map(g => g.id === row.id && input.kind === "grant-adjust" ? { ...g, expiresAt: input.expires_at, remainingUses: input.remaining_uses } : g) };
+        .map(g => {
+          const { id, person, source, target, verbs, expiresAt, remainingUses } = g;
+          return { id, person, source, target, verbs,
+            expiresAt: id === row.id && input.kind === "grant-adjust" ? input.expires_at : expiresAt,
+            remainingUses: id === row.id && input.kind === "grant-adjust" ? input.remaining_uses : remainingUses };
+        }) };
       summary.push(t("contactProposal.rule", beforeCjk(personName(row.person))), t("contactProposal.sourceType", typed(row.source, row.verbs)),
         ...(input.kind === "grant-revoke" ? [t("contactProposal.revoke")] : [t("contactProposal.until", when(input.expires_at)), ...(input.remaining_uses === null ? [] : [t("contactProposal.uses", input.remaining_uses)])]), t("contactProposal.boundary"));
     }
