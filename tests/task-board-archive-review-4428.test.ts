@@ -69,6 +69,24 @@ describe("1. the Archive list leaves out what the reader may not see before it p
   });
 });
 
+describe("1b. the board's numbers and epoch leave out what the reader may not see (#4428 review R1)", () => {
+  it("projectStats and boardEpoch with leaveOut: a hidden instance's cards (and a hidden main task's sub tasks) count nowhere", () => {
+    const { board, raw } = open();
+    const shown = finished(board, "Visible", 5);
+    const secret = finished(board, "Hidden", 5, { assignee: "spy" });
+    const live = board.createCards(ANN, { cards: [{ title: "Hidden live", assignee: "spy" }] }).cards[0]!;
+    board.createCards(ANN, { cards: [{ parent: live.code, title: "Its step", assignee: "dev-a" }] });
+    raw.prepare("UPDATE tasks SET created_by = 'spy' WHERE code = ?").run(shown.code);       // the visible one, made by the spy: hidden too
+    const all = board.projectStats(undefined, 3).none!, seen = board.projectStats(undefined, 3, ["spy"]).none;
+    expect([all.archived, all.mains, all.units.total]).toEqual([2, 1, 1]);
+    expect(seen).toBeUndefined();                                     // nothing left in No project
+    expect([board.boardEpoch(3), board.boardEpoch(3, undefined, ["spy"])]).toEqual(["3:2:0:0", "3:0:0:0"]);
+    // Without names, as before.
+    expect(board.projectStats(undefined, 3, [])).toEqual(board.projectStats(undefined, 3));
+    void secret;
+  });
+});
+
 describe("2. the board's epoch: what time alone changes in a board read", () => {
   it("moves when a card crosses the archive line, this week's line or the recent window — with no write, the revision unchanged", () => {
     const { path } = open();

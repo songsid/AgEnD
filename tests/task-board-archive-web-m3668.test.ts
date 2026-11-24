@@ -142,4 +142,31 @@ describe("#4428 review: the web routes", () => {
     expect([moved.body.unchanged, moved.body.rev, moved.body.epoch === epoch, moved.body.cards.some((x: any) => x.id === c.code), moved.body.stats.none.archived])
       .toEqual([undefined, rev, false, false, 1]);
   });
+
+  // #4428 review R1 (Prism, 6043264710): the board's metadata over the link is scoped to what the reader may see.
+  it("over the link a read-only session's epoch and project numbers leave out hidden instances' cards (an admin and the local page count them)", async () => {
+    const db = scratch(), board = db.board;
+    // Prism's case: nothing visible, one hidden archived card — plus a hidden live main with a visible-looking step, and
+    // one created by the hidden instance and one it handed out.
+    const secret = finished(board, "SECRET_ARCHIVED", 5);
+    (board as any).db.prepare("UPDATE tasks SET assignee = 'spy' WHERE code = ?").run(secret.code);
+    const live = board.createCards(ANN, { cards: [{ title: "Hidden live", assignee: "spy" }] }).cards[0]!;
+    const step = board.createCards(ANN, { cards: [{ parent: live.code, title: "Its step", assignee: "dev-a" }] }).cards[0]!;
+    board.createCards({ kind: "instance", name: "spy" }, { cards: [{ title: "Made by the spy", assignee: "dev-a" }] });
+    const handed = finished(board, "Handed out by the spy", 1);
+    (board as any).db.prepare("UPDATE tasks SET dispatcher = 'spy', dispatcher_kind = 'instance' WHERE code = ?").run(handed.code);
+    const link = await viaLink(db, "/ui/tasks/board", fleetConfig);
+    // The one card the board shows (as before this change): the step, which names no hidden instance; its main task's
+    // link is hidden (#2303). It counts in no project number: its main task is not counted.
+    expect([link.body.cards.map((c: any) => c.id), link.body.epoch, link.body.stats]).toEqual([[step.code], "3:0:0:0", {}]);
+    expect(JSON.stringify(link.body)).not.toMatch(/SECRET_ARCHIVED|Hidden live|Made by the spy|spy/);
+    for (const opts of [{ tier: "admin" as const }, { local: true }]) {
+      const all = await viaLink(db, "/ui/tasks/board", fleetConfig, opts);
+      expect([JSON.stringify(opts), all.body.epoch, all.body.stats.none.archived, all.body.stats.none.mains, all.body.stats.none.doneWeek])
+        .toEqual([JSON.stringify(opts), "3:1:0:0", 1, 3, 2]);
+    }
+    // The link's same-revision read: its own epoch answers `unchanged`; the unscoped one does not.
+    const again = await viaLink(db, `/ui/tasks/board?rev=${link.body.rev}&epoch=${encodeURIComponent(link.body.epoch)}`, fleetConfig);
+    expect(again.body.unchanged).toBe(true);
+  });
 });

@@ -4110,7 +4110,9 @@ export function handleWebRequest(
         // has not moved a card across one of the board's lines (archived, this week, the recent window) since it read:
         // `epoch` says where they stood (a page that sends none, an older one, always gets the board).
         const rev = board.revision();
-        const epoch = board.boardEpoch(archiveDays);
+        // #4428 review: over the public link the hidden instances' cards move neither the epoch nor any project number.
+        const leaveOut = hiddenNames();
+        const epoch = board.boardEpoch(archiveDays, undefined, leaveOut);
         if (url.searchParams.get("rev") === String(rev) && url.searchParams.get("epoch") === epoch) { json(res, 200, { rev, epoch, unchanged: true }); return true; }
         const allDone = url.searchParams.get("done") === "all";
         // #2296: every open Tasks tab reads the board again after each change; on the dashboard they all get the same
@@ -4129,7 +4131,7 @@ export function handleWebRequest(
         // #2355 review: the names a project's lead may be — the fleet's instances (a Classic-only room is not one); over the
         // public link, not a hidden one.
         const leads = Object.keys(ctx.fleetConfig?.instances ?? {}).filter((n) => !hiddenName(n)).sort();
-        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone, archiveDays), archiveAfterDays: archiveDays, epoch });
+        const body = JSON.stringify({ rev, cards: board.views(cards, scope, ctx.dispatcherGone).map(unnumbered), projects, leads, boardOff, stats: board.projectStats(ctx.dispatcherGone, archiveDays, leaveOut), archiveAfterDays: archiveDays, epoch });
         if (key) boardBodies.set(board, { key, body });
         jsonText(res, 200, body);
         return true;

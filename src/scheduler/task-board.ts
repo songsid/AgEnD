@@ -1010,22 +1010,35 @@ export class TaskBoard {
   }
 
   /**
+   * #4428 review: ` AND …` leaving out the cards that name one of `names` (assigned to, created by or handed out by one:
+   * the public link's hiding, web-api boardHiding), with its values; empty when none.
+   */
+  private unseen(names: readonly string[] = []): { sql: string; args: string[] } {
+    const out = [...new Set(names)];
+    if (!out.length) return { sql: "", args: [] };
+    const marks = out.map(() => "?").join(", ");
+    return { sql: ` AND (assignee IS NULL OR assignee NOT IN (${marks})) AND created_by NOT IN (${marks}) AND (dispatcher IS NULL OR dispatcher NOT IN (${marks}))`,
+      args: [...out, ...out, ...out] };
+  }
+
+  /**
    * #4428 review: what time alone changes in a board read and its numbers — how many finished cards have passed each
    * of its lines (archived, out of this week's count, out of the recent window) — with the archive age. A card passes a
    * line without a write (the revision stays), so a page's "same revision" read is answered `unchanged` only when this
-   * matches too. One counting pass, no rows.
+   * matches too. One counting pass, no rows. `leaveOut`: as projectStats (the public link's hidden instances' cards never
+   * move it).
    */
-  boardEpoch(archiveDays = 0, days = BOARD_DAYS): string {
+  boardEpoch(archiveDays = 0, days = BOARD_DAYS, leaveOut: readonly string[] = []): string {
     const nowMs = this.now().getTime();
     const at = (ms: number) => new Date(nowMs - ms).toISOString();
-    const kept = archiveDays > 0 ? at(archiveDays * 86_400_000) : "", week = at(WEEK_MS), since = at(days * 86_400_000);
+    const kept = archiveDays > 0 ? at(archiveDays * 86_400_000) : "", week = at(WEEK_MS), since = at(days * 86_400_000), hide = this.unseen(leaveOut);
     const r = this.db.prepare(
       `SELECT
          COALESCE(SUM(kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ?), 0) AS archived,
          COALESCE(SUM(kind = 'main' AND status = 'done' AND COALESCE(done_at, updated_at) < ?), 0) AS week,
          COALESCE(SUM(status IN ('done', 'cancelled') AND (CASE WHEN kind = 'main' AND status = 'cancelled' THEN updated_at ELSE COALESCE(done_at, updated_at) END) < ?), 0) AS old
-       FROM tasks`,
-    ).get(kept, week, since) as { archived: number; week: number; old: number };
+       FROM tasks WHERE 1${hide.sql}`,
+    ).get(kept, week, since, ...hide.args) as { archived: number; week: number; old: number };
     return `${archiveDays}:${r.archived}:${r.week}:${r.old}`;
   }
 
@@ -1034,9 +1047,15 @@ export class TaskBoard {
    * work units (a main task's sub tasks, or one unit for a main task without them; a done main task counts all its
    * units done), cards waiting for the person and blocked, and the last change. One pass over the table. #2080: waiting
    * counts only the cards in review the person confirms (waitsForPerson, `gone` as for Needs you), never an agent's.
+   * #4428 review: `leaveOut` names (the public link's hidden instances) — their cards, and a hidden main task's sub tasks,
+   * count nowhere, as the board read leaves them out.
    */
-  projectStats(gone?: GoneDispatcher, archiveDays = 0): Record<string, ProjectStats> {
-    const rows = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, done_at, needs_review, dispatcher, dispatcher_kind FROM tasks").all() as Row[];
+  projectStats(gone?: GoneDispatcher, archiveDays = 0, leaveOut: readonly string[] = []): Record<string, ProjectStats> {
+    const all = this.db.prepare("SELECT id, kind, status, project_id, parent_id, updated_at, done_at, needs_review, dispatcher, dispatcher_kind, assignee, created_by FROM tasks").all() as Row[];
+    const unseenNames = new Set(leaveOut);
+    const names = (r: Row) => [r.assignee, r.created_by, r.dispatcher].some((n) => typeof n === "string" && unseenNames.has(n));
+    const hiddenMains = unseenNames.size ? new Set(all.filter((r) => r.kind === "main" && names(r)).map((r) => r.id as string)) : new Set<string>();
+    const rows = unseenNames.size ? all.filter((r) => !names(r) && !(r.kind === "sub" && hiddenMains.has(r.parent_id as string))) : all;
     const nowMs = this.now().getTime(), kept = archiveDays > 0 ? new Date(nowMs - archiveDays * 86_400_000).toISOString() : null;
     const week = new Date(nowMs - WEEK_MS).toISOString();
     const finished = (r: Row) => ((r.done_at as string | null) ?? (r.updated_at as string));
@@ -1092,11 +1111,9 @@ export class TaskBoard {
     { cards: Card[]; next: string | null; total: number; assignees: string[] } {
     if (archiveDays <= 0) return { cards: [], next: null, total: 0, assignees: [] };
     const kept = new Date(this.now().getTime() - archiveDays * 86_400_000).toISOString();
-    const out = [...new Set(opts.leaveOut ?? [])];
-    const marks = out.map(() => "?").join(", ");
-    const unseen = out.length ? ` AND (assignee IS NULL OR assignee NOT IN (${marks})) AND created_by NOT IN (${marks}) AND (dispatcher IS NULL OR dispatcher NOT IN (${marks}))` : "";
-    const where = `kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ? AND ${project === null ? "project_id IS NULL" : "project_id = ?"}${unseen}`;
-    const base: unknown[] = [kept, ...(project === null ? [] : [project]), ...out, ...out, ...out];
+    const hide = this.unseen(opts.leaveOut);
+    const where = `kind = 'main' AND status IN ('done', 'cancelled') AND COALESCE(done_at, updated_at) < ? AND ${project === null ? "project_id IS NULL" : "project_id = ?"}${hide.sql}`;
+    const base: unknown[] = [kept, ...(project === null ? [] : [project]), ...hide.args];
     const assignees = (this.db.prepare(`SELECT DISTINCT assignee FROM tasks WHERE ${where} AND assignee IS NOT NULL ORDER BY assignee`).all(...base) as { assignee: string }[]).map((r) => r.assignee);
     const who = opts.assignee ? " AND assignee = ?" : "", whoArgs = opts.assignee ? [opts.assignee] : [];
     const total = (this.db.prepare(`SELECT COUNT(*) AS n FROM tasks WHERE ${where}${who}`).get(...base, ...whoArgs) as { n: number }).n;
