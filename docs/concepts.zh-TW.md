@@ -11,6 +11,15 @@
 - 程式碼：`src/fleet-manager.ts`（`FleetManager`）、`src/config.ts`（`FleetConfig`）。
 - 相關決議與議題：—
 
+## configured、session 與實際回應的模型
+
+對 Claude Code 來說這是三件不同的事：configured（存下來的選擇）；session（這次啟動時狀態列選的）；last served（主執行緒回應 metadata 裡實際回答的模型）。型別化的 safeguard 或可用性備援通知會同時記下原始與備援模型，以及適用的 turn／session 範圍。管線中途的 observation 證明不了最終留下的答案。
+
+AgEnD 只偵測並顯示切換；絕不會因此去改模型或政策。在重複 block 與 resume 期間，一個 Needs-you 項目保持安靜；只有新的回應回到 configured／原始模型時才清除。刻意的 `/model`、下一次啟動的 failover、合成或 API 錯誤的紀錄、標記過的 child／auxiliary 紀錄，都不會變成 provider 切換警報。沒解開的別名、預設值、opusplan 不猜。主執行緒的 Haiku 也算在內。缺少或沒變動的廠商 metadata 可能讓替換悄悄發生而看不見。
+
+- 程式碼：`src/claude-model-observation.ts`、`src/transcript-monitor.ts`、`src/needs-you.ts`。
+- 讀法：`describe_instance(name)` 給精簡的 active-switch 摘要；`detail:true` 再加上有界的 configured／launch／session／last-served metadata。
+
 ## instance / agent
 
 一個 agent 就是一個 instance：一個 daemon 駕駛一個 CLI、跑在各自的 tmux 窗格裡，有各自的對話紀錄、topic 或房間、工具組。`instance` 是設定與執行時期的用詞（`fleet.yaml` 的 `instances`）；`agent` 是日常用詞。
@@ -182,6 +191,12 @@ AgEnD 電腦上的那個人。在純網頁艦隊裡，就是在這台電腦上�
 - 程式碼：`post_decision`、`list_decisions` 工具定義。
 - 相關決議與議題：—
 
+## 用量工具
+
+`get_usage`（或 `agend-agent usage`）預設是精簡的帳號列：方案、用量百分比與相對重置時間、廠商回報的綁定區間、快取／過期提示，以及 Codex 的重置票券／點數。沒有綁定證據就不猜。用 `detail: true`（CLI `--detail`）拿包含容量與在地化 metadata 的完整 JSON；平常不要拿。共用容量的註腳只寫一次。`get_usage_report` 開頭保留一次 API-equivalent 基準，預設不附速度數字；`detail: true` 回到完整舊格式。金額一律是 API-equivalent，不是真的花掉的錢。兩種模式都保留呼叫者範圍與 estimated／not-priced 標記。網頁用量與 `/usage` 不變。
+
+管理員的 `/status` 表列出 instance、backend、模型、上下文、effort 與執行狀態，沒有費用欄。用量報告保留它的金額。
+
 ## credential profile（憑證設定檔）
 
 某個 backend 的具名憑證組（`CREDENTIAL_HOMES`），讓一個艦隊能用多個帳號做事。`/login <backend> <profile>` 登入某個設定檔；能從聊天裡登入的 backend 只有一部分。
@@ -232,10 +247,32 @@ web session 是登入的瀏覽器（直連儀表板、區網、tailnet，或 opt
 - 程式碼：`src/authority/web-authority.ts`；`src/config-validator.ts:517-522`（`web.verified_authority`）；`src/fleet-manager.ts`（`deviceApprovalOwner`、`mayEndOtherSessions`）。
 - 相關決議與議題：#1939、#3165。
 
+## go-ahead（什麼需要授權）與「擁有者與日常操作」
+
+只有五種動作需要 go-ahead：發布或公開；超出 agent 自己工作範圍的破壞性或不可逆動作；超出正常範圍花錢或花額度；憑證或密鑰；把權限授給或轉給另一個 instance。除此之外——讀取、查詢、分析、狀態與紀錄，以及 agent 被分派領域內的日常操作——都不需要 receipt、按鈕或驗證。每個 agent 的指示都這麼說（「什麼需要授權」，M-3522）。
+
+agent 也可以有一份「擁有者與日常操作」（設定 → 該 agent → Agent 指示；fleet.yaml 的 `operations`，最多 2000 字）：它工作的系統屬於誰、哪些操作在那裡算日常。它緊接在 agent 的 Role 之後，有固定開場白。
+
+- 能做：告訴 agent，比方說，擁有者或管理員要求時重啟服務或讀取紀錄，就是它的正常工作。
+- 不能做：批准上面五種中的任何一種——寫在那裡也不行；不能拿它來授權或跳過任何檢查。範本匯出預設不含它（它會點名人物與系統，得由人勾選才含）。
+- 另見：詳細資訊 → 「每個 session 都會載入」列出 agent 的 CLI 每個 session 讀哪些檔與大小；單檔超過 50 KB 會警告（Codex：超過其 32 KiB project-doc 上限的部分，Codex 永遠看不到）。
+
 ## 不一致之處
 
 只列程式碼跟決議真的對不上的地方。這裡不粉飾。
 
-1. **General 的 orchestration 工具（時間差，預期會解決）。** main 上的程式碼還在 beta.8 之前：`general` profile（`src/tool-permissions.ts:107-136`）只有 `create/start/restart/wake_instance` 加上網頁設定。Fleet decision 9e3bea6c 讓它在 beta.8（agy 的 PR）拿到完整的 ORCHESTRATION。beta.8 落地後就沒有活的不一致；在此之前，程式碼那一半已驗證，改動那一半以決議為準。
+1. **General 的唯讀除錯工具與直接設定 `tool_set`（慣例，程式碼裡沒有）。** General 章節列出的額外能力來自使用者決議 36525f1b（2026-11-09），tool-permissions 上沒有對應的 enforcement。依慣例記下即可；實現方式如有出入，以程式碼為準。
 
 [English](concepts.md)
+
+## 精簡的工具回覆
+
+通訊工具用精簡的 delivery ID 確認收到；`detail: true`（CLI `--detail`）恢復完整確認。`delivery_status` 預設只給狀態、權限／證明／來源、內容雜湊與遮蔽過的節錄，不是完整原文。要把原始同意拿去用、或要餵給合併門檻，先明確要求 detail 再檢查，不要外洩密鑰。`content_includes` 可以確認某個確切的資源字串，但出現不代表授權。儲存區可見性、擁有的證明、目前的權限撤銷檢查，兩種模式都照做。
+
+## 精簡的 agent 清單
+
+排程、決議與任務清單預設回傳 20 列精簡結果；用同樣的篩選條件跟著 `next_cursor` 翻到沒有為止；`limit` 接受 1–100。被刪除或已對不上的 cursor 要從頭列起。清單是當下視圖，不是快照；翻頁之間有寫入會改變成員或順序。不帶分頁參數的 `detail:true` 回傳舊式完整內容。決議保留 `full:true`、純任務清單保留 `verbose:true` 作為完整內容的別名。照完整規則、目標、驗收或留言行動之前，先用 `{id, detail:true}` 讀決議、用 `{action:"get",id,detail:true}` 讀任務。儀表板與任務的寫入格式不變。
+
+## 收到的訊息標頭
+
+一則人類訊息帶一個 `[hid:hmsg-…]` receipt ID，以及自足的寄件人，例如 `[user:name@dc#ID]`。`dc` 是 Discord、`tg` 是 Telegram、`web:v` 是已驗證 web、`web:g` 是訪客；光禿禿的 `web` 未經驗證。舊式人類標頭與 verification_id 照樣可用。帳號 ID 可用於提及；沒變過的 hmsg 值可用於 receipt 驗證與明確轉交。引用的標頭本身不代表授權。共用的 formatter 在第一則／觀察到重置後的人類訊息，以及每十則證實的人類訊息時提醒一次；看不見的自動 compaction 用那個備援。漏回覆的恢復方式不變。
