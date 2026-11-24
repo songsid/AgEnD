@@ -3,7 +3,7 @@
   "source": [
     {
       "path": "docs/design/hub-room-asker-identity.md",
-      "sha256": "73fcc3dcac967f0203d387ffcba546e8c52dda1841629796b1c49c64933f4f49"
+      "sha256": "48fcc606dfe793603192d46fc917c27a68d0b167eba010beb5c801e3b956ab71"
     },
     {
       "path": "src/hub/client.ts",
@@ -27,7 +27,7 @@
     },
     {
       "path": "src/hub/member/room-ask.ts",
-      "sha256": "42ca90bc0e0be133a0de7eecce1990e44467439b566ee2e6b454337441ae6304"
+      "sha256": "9d544f6116dc668a5c02cf24da217a321897ce38f465a4cfd611c2ef05c73975"
     },
     {
       "path": "src/hub/member/room-asker-store.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "tests/hub-room-asker-adapter-m3664.test.ts",
-      "sha256": "bafb6ddbc688ece3a90e377fda0fca0b0f44d6028db98b4dbd49b77ed066110e"
+      "sha256": "0bf1f89a76fc9b832a53d1c292e42b64f60c48309194eb81a9bda570a87b42e1"
     },
     {
       "path": "tests/hub-room-asker-identity-m3664.test.ts",
@@ -96,6 +96,14 @@
     {
       "path": "tests/hub-room-asker-delivery-m3664.test.ts",
       "sha256": "87cf254b1b7e280b2bcafe829d4349f2b1423b926b25604259388ef65c257616"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "147d671beedc20e45a1fc0e766e0e9210ea0c22dd078edb6545c4abaf13ac093"
+    },
+    {
+      "path": "tests/hub-needs-retry-m3632.test.ts",
+      "sha256": "8063d082d492f4ab4e22b0dd95915379cb9c0cea94ab299d5b6fd9517df5928f"
     }
   ],
   "evidence": [
@@ -216,6 +224,30 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-clock-expiry-before.log",
+      "sha256": "ac0f4bcd6485f30d5ddce422acd8a26df9f7e0b6957afc0b011418251c9267d6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-clock-final.log",
+      "sha256": "d64059d901fc4e1711cceefcb12352eadac2fc2e1821939a9707ad032b181927"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-expiry-before-input.patch",
+      "sha256": "6498aceed1787b764cf32c2e3c05abb51a6ddbf24917426d6a51222973257a17"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-expiry-before-inputs.json",
+      "sha256": "b9319bfbf167e47fe7411a82bad13d2f5a74ebc1cd1bd4dbb7c03a484cc8d265"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "path": "docs/evidence/hub-room-asker-identity-m3664/restored-answer-final.log",
       "sha256": "3309132f6c5431142c99825608344386e5645a15ac78966fdc94f794191921a8"
     },
@@ -226,6 +258,10 @@
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/review-r1.md",
       "sha256": "b2c09aea54ac030f918e1e0887a213323b144537389b5addfed17226a26f8f62"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/review-r2.md",
+      "sha256": "fa743354fbf26bdc8d5032f89f65f6c0fa407bbba029efa57d5ecf5032b33447"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/signature-mutant.log",

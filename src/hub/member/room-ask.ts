@@ -1,3 +1,4 @@
+import {tForLocale} from "../../locale.js";
 import {HubRoomAskerClockError} from "../room-asker-identity.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,type RoomAskerDestination,type VerifiedHubAsker,type HubRoomAskerIdentity} from "../room-asker-identity-model.js";
 import type {HubRoomAskerStore,RoomAskerAccepted} from "./room-asker-store.js";
@@ -141,7 +142,7 @@ export function verifyRoomAskJournal(db: Database.Database, options: Pick<RoomAs
 /** Injectable until Track R's negotiated socket dispatcher and room membership checks are composed. */
 export class HubRoomAskAdapter {
   private closed = false;
-  private readonly clockHolds=new Map<string,import("../../needs-you.js").HubExecutionAttentionInput>();
+  private readonly clockHolds=new Map<string,{item:import("../../needs-you.js").HubExecutionAttentionInput;expiresAt:number}>();
   private link: RoomAskLink | null = null;
   private readonly binding: string;
   private readonly key: Buffer;
@@ -197,7 +198,13 @@ export class HubRoomAskAdapter {
     }catch{return null;}
   }
   attentionItems():import("../../needs-you.js").HubExecutionAttentionInput[]{
-    return this.closed?[]:[...this.clockHolds.values()].filter(item=>this.options.localExposure(item.exposureId)?.agent===item.agent);
+    if(this.closed)return [];
+    const now=this.options.now?.()??Date.now(),items:import("../../needs-you.js").HubExecutionAttentionInput[]=[];
+    for(const [key,hold]of this.clockHolds){
+      if(now>=hold.expiresAt||this.options.localExposure(hold.item.exposureId)?.agent!==hold.item.agent){this.clockHolds.delete(key);continue;}
+      items.push(hold.item);
+    }
+    return items;
   }
   private prepareAsker(proof:HubRoomAskerIdentity,saved:Saved,source:RoomAskLink,replay:boolean):void{
     try{
@@ -206,8 +213,8 @@ export class HubRoomAskAdapter {
     }catch(error){
       if(error instanceof HubRoomAskerClockError&&(!replay||["queued","dispatching"].includes(this.row(saved.ask.messageId)?.state??""))){
         if(this.clockHolds.size>=4096&&!this.clockHolds.has(saved.ask.exposureId))this.clockHolds.delete(this.clockHolds.keys().next().value!);
-        this.clockHolds.set(saved.ask.exposureId,{id:`room-clock:${saved.ask.exposureId}`,kind:"hold",agent:saved.local.agent,messageId:saved.ask.messageId,exposureId:saved.ask.exposureId,since:this.options.now?.()??Date.now(),
-          detail:this.options.locale==="zh-TW"?"這台電腦與 Hub 的時鐘可能不同，或問題送達得太晚。請檢查兩邊的時間；Hub 會重試，這個問題尚未交給 Agent。":"This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent."});
+        this.clockHolds.set(saved.ask.exposureId,{expiresAt:proof.retainedUntil,item:{id:`room-clock:${saved.ask.exposureId}`,kind:"hold",agent:saved.local.agent,messageId:saved.ask.messageId,exposureId:saved.ask.exposureId,since:this.options.now?.()??Date.now(),
+          detail:tForLocale(this.options.locale??"en","hub.room.clockSkew")}});
         this.options.attentionChanged?.();
       }
       throw error;
