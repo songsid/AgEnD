@@ -1,0 +1,272 @@
+{
+  "sourceHead": "ad9ce99ae81976c1d54f32505550fb4246fe12ee",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "the board's numbers: archived and this week's are counted",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the project tile says how many are archived",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the Done column shows its newest 20",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: its header says this week's count",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the board's header has \"Archived · 20\"",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: \"Show 20 more\" shows the next 20",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the Archive lists the archived cards, newest first",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: search marks an archived card",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: its page says Archived",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the project tile says how many are archived",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the Done column shows its newest 20",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: its header says this week's count",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the board's header has \"Archived · 20\"",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: \"Show 20 more\" shows the next 20",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the Archive lists the archived cards, newest first",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: search marks an archived card",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: its page says Archived",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the project tile says how many are archived",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the Done column shows its newest 20",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: its header says this week's count",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the board's header has \"Archived · 20\"",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: on a phone this week's count stands over the Done cards",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: \"Show 20 more\" shows the next 20",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the Archive lists the archived cards, newest first",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: search marks an archived card",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: its page says Archived",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the project tile says how many are archived",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the Done column shows its newest 20",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: its header says this week's count",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the board's header has \"Archived · 20\"",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: on a phone this week's count stands over the Done cards",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: \"Show 20 more\" shows the next 20",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the Archive lists the archived cards, newest first",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: search marks an archived card",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: its page says Archived",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3668-desk-en-light-1-home.png",
+      "sha256": "26d978e17148c4689426ec09e11d3a1f8945b585e8b6f0ddfb6f23f3dc1df62b"
+    },
+    {
+      "path": "m3668-desk-en-light-2-board.png",
+      "sha256": "e4eaf0e608e023ba751019d7a325c2768fb116fd930e362c00b61bdbe4d20855"
+    },
+    {
+      "path": "m3668-desk-en-light-2b-show-more.png",
+      "sha256": "4ce7b3031ca9f562ba4f42b6b69443fd2f4388f7891a10247e0093709f247f87"
+    },
+    {
+      "path": "m3668-desk-en-light-3-archive.png",
+      "sha256": "2950a4b1781603fcc8d8af83e88aaecf2d12439e9486f52c3517cf407f5faee0"
+    },
+    {
+      "path": "m3668-desk-en-light-4-search.png",
+      "sha256": "6b177fe9ef07e47b6a128fedbf871465fc1c2cb2daf776f8463d8b9fbecaf2f4"
+    },
+    {
+      "path": "m3668-desk-en-light-5-card.png",
+      "sha256": "4b96f4b3d741c7fc13239cae64adeee5ec95d62b473b2a20354c4ff7f98792de"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-1-home.png",
+      "sha256": "77fe90bc54568bca28e93aaabfa77c3a77ce1b9cbaae88e363540273494b6a71"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-2-board.png",
+      "sha256": "a9abb09388c1b577ed7fea1a6ae9d32fd164171dd694aeed28121e86fa9f8170"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-2b-show-more.png",
+      "sha256": "437554c3425a0f7a531f0c1ee5f5b85a53b7ffdf463962046cdeaadcf6d92f0f"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-3-archive.png",
+      "sha256": "833f95232c5b433029a102789ce796672a6809ac2cc6da855c303bdc8313607c"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-4-search.png",
+      "sha256": "cdf996de0a5b63ce8830ac144f8f0bc6569ece30ab8137ad59df24d34cb38fd7"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-5-card.png",
+      "sha256": "ee060536954ccebf5677eed4ec97e954ce3f5b709f574217a34ea9cfe642f888"
+    },
+    {
+      "path": "m3668-phone-en-light-1-home.png",
+      "sha256": "941519729fad6ea7cdb94d31ce0937ed3b37f349efb68f49ba4d164b0f7f205d"
+    },
+    {
+      "path": "m3668-phone-en-light-2-board.png",
+      "sha256": "3bbaafb54543f0eafbdb27f2d8276e3c07a60b8c52daa939150e9d8a94c9f5ca"
+    },
+    {
+      "path": "m3668-phone-en-light-2b-show-more.png",
+      "sha256": "834ac76c839e9f84a27b396aa01a15aad0b27b568f4c55891aee98dee664f06f"
+    },
+    {
+      "path": "m3668-phone-en-light-3-archive.png",
+      "sha256": "a2a8d125eedfa73955cd612fc4a704d1f6b135db7ee5459e5253628f2ea1ce41"
+    },
+    {
+      "path": "m3668-phone-en-light-4-search.png",
+      "sha256": "964338ce9af2d4ffd4df70176912abb90c938d1e69041ca789de01acc7de70f2"
+    },
+    {
+      "path": "m3668-phone-en-light-5-card.png",
+      "sha256": "7f93207765e04d9bedfa7686b572c8c51880e5c27729393d49a06e3473dc6c25"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-1-home.png",
+      "sha256": "a555af737bbe86708ca9c94c0c64399bdc3714871cfc53a501d4c8b71120db62"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-2-board.png",
+      "sha256": "08e7f629ef69de5f15e79bf8bfb016044b8b14d6d68e48f5c56af65ec5bc2ccb"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-2b-show-more.png",
+      "sha256": "49d223de674e56aacd75edaf65696a3a8187e3e13f819d72beaf77d3c16efbcc"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-3-archive.png",
+      "sha256": "11b0a0b32bb991a7fc7e6b53cf625f59156ff507b11807b26bde60fec2a06892"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-4-search.png",
+      "sha256": "8a60436d5723ba789ddcd659fbd21ac071d6f5ccd9fcd0ed08630b2bf92b318b"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-5-card.png",
+      "sha256": "29a84c17b4e5adbbb7ae83adad38a66f0b5ca91e11908a790961b9e97d1d624e"
+    }
+  ],
+  "board": {
+    "archived": 20,
+    "doneWeek": 45,
+    "mains": 40
+  },
+  "measured": {
+    "desk-en-light-nameLines": 1,
+    "desk-zh-TW-dark-nameLines": 1,
+    "phone-en-light-nameLines": 3,
+    "phone-zh-TW-dark-nameLines": 2
+  },
+  "summary": "39/39"
+}
