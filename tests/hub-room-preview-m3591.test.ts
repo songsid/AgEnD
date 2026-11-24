@@ -5,10 +5,12 @@
  * - the page's previews follow the Hub shell's data (here: not offered, in the Hub's words) — never the unset fallback;
  * - Open in panel opens the room's panel where the members rail was; the members button closes the page and brings the
  *   rail back; "Reply about this page" puts its line in the room's box, once; leaving for the office closes the page;
- * - this browser's opt-in (the card's menu) asks in the Hub's words, as in a one-to-one chat.
+ * - this browser's opt-in (the card's menu) asks in the Hub's words, as in a one-to-one chat;
+ * - #4407 review: an agent's name (its member card) with a page shown closes the page, as the members button does.
  */
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
 import { createHubRoomsFixture } from "./support/hub-rooms-fixture.js";
 
 let client: any, shell: any, store: any, router: any, i18n: any, hubPanel: any, pp: any;
@@ -88,6 +90,18 @@ describe("a group room's HTML page (M-3591)", () => {
     members.click();
     await until(() => $(pg, ".hub-room-page > .u-rail"));
     expect([$(pg, ".pv-panel"), pp.shownKey(), members.getAttribute("aria-pressed")]).toEqual([null, null, "true"]);
+  });
+
+  it("#4407 review: an agent's name with a page shown closes the page and opens its card in the members rail", async () => {
+    const pg = await groupRoom();
+    await press($(pg, ".hub-room-page .msg.agent .pv-open"));
+    await until(() => $(pg, ".hub-room-page > .pv-panel"));
+    expect($(pg, ".hub-room-page > .u-rail")).toBeNull();
+    const answer = [...pg.root.querySelectorAll(".hub-room-page .msg.agent")].find((m: any) => m.querySelector(".pv-open")) as any;
+    fire(answer.querySelector(".hub-source-trigger"), "click"); await settle(10);
+    await until(() => $(pg, ".hub-room-page > .u-rail .hub-member-card"));
+    expect([$(pg, ".hub-room-page > .pv-panel"), pp.shownKey(), $(pg, ".hub-room-page").classList.contains("with-rail")]).toEqual([null, null, true]);
+    expect($(pg, ".hub-room-page > .u-rail .hub-member-card").textContent).toContain(answer.querySelector(".hub-source-trigger").textContent.split(" · ")[0]);
   });
 
   it("leaving the room closes its page and lets go of the box", async () => {

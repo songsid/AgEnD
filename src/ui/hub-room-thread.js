@@ -633,7 +633,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const focusMember = (id) => {
     const m = (store.detail()?.members || []).find((x) => x && x.kind === "agent" && x.id === id);
     if (!m) return false;
-    if (wideNow.current) setRail(true); else setSheet(true);
+    // M-3591 (#4407 review): on a desk the rail is where a shown page's panel is — close the page first, as the members
+    // button does (read when pressed: the thread keeps this hook from its first render).
+    if (wideNow.current) { if (panelOpenFor(panelKey)) closePanel(); setRail(true); } else setSheet(true);
     setFocus({ id, n: Date.now() });
     return true;
   };

@@ -32,9 +32,16 @@ const check = (name: string, ok: unknown, detail?: unknown) => { receipt.checks.
 const PAGE = `<!doctype html><meta charset="utf-8"><title>Q3 report</title>
 <style>body{font:15px system-ui,sans-serif;margin:0;padding:20px;background:#f6f8fb;color:#172033}h1{margin:0 0 4px;font-size:20px}p{margin:0 0 14px;color:#4a5568}
 .bars{display:flex;gap:12px;align-items:flex-end;height:150px;padding:12px;background:#fff;border-radius:12px;box-shadow:0 1px 3px #0002}
-.bar{flex:1;background:#3b82f6;border-radius:6px 6px 0 0;color:#fff;font-size:12px;text-align:center;padding-top:4px}.a{height:55%}.b{height:72%}.c{height:90%}</style>
+.bar{flex:1;background:#3b82f6;border-radius:6px 6px 0 0;color:#fff;font-size:12px;text-align:center;padding-top:4px}.a{height:55%}.b{height:72%}.c{height:90%}
+@media (prefers-color-scheme:dark){body{background:#1b1f27;color:#e6e9ef}p{color:#a9b1c1}.bars{background:#262c37;box-shadow:none}}</style>
 <h1>Q3 report / 第三季報告</h1><p>Sales by month (made-up numbers). 每月銷售（虛構數字）。</p>
 <div class="bars"><div class="bar a">Jul</div><div class="bar b">Aug</div><div class="bar c">Sep</div></div>`;
+// The rooms fixture's roster, as obviously made-up sample names in these captures (the fixture itself is unchanged).
+const NAMES: Record<string, Record<string, string>> = {
+  en: { "王經理": "Sam Sample", "陳主任": "Alex Sample", "吳小安": "Casey Sample", "林小華": "Jordan Sample", "周小明": "Riley Sample" },
+  "zh-TW": { "王經理": "範例主管", "陳主任": "範例同事", "吳小安": "範例組員", "林小華": "範例夥伴", "周小明": "範例訪客" },
+};
+const sampleNames = (text: string, lang: string) => Object.entries(NAMES[lang]!).reduce((t, [from, to]) => t.split(from).join(to), text);
 const FILE_ID = "aaaaaaaa-0000-4000-8000-0000000000f1", FILE_URL = `/hub/v1/rooms/room-weekly/files/${FILE_ID}`;
 
 const port = 49800 + Math.floor(Math.random() * 90), origin = `https://127.0.0.1:${port}`, previewOrigin = `https://127.0.0.1:${port + 1}`;
@@ -73,7 +80,7 @@ try {
         if (u.pathname.endsWith("/events")) return q.fulfill({ status: 200, headers: { "content-type": "text/event-stream" }, body: "retry: 600000\n\n" });
         if (u.pathname === FILE_URL) return q.fulfill({ status: 200, headers: { "content-type": "application/octet-stream", "content-disposition": 'attachment; filename="q3-report.html"' }, body: PAGE });
         const raw = req.postData(), answer = fx.handle({ method: req.method(), path, headers: req.headers(), body: raw ? JSON.parse(raw) : undefined });
-        return q.fulfill({ status: answer?.status ?? 200, contentType: "application/json", body: JSON.stringify(answer?.body ?? {}) });
+        return q.fulfill({ status: answer?.status ?? 200, contentType: "application/json", body: sampleNames(JSON.stringify(answer?.body ?? {}), lang) });
       });
       if (when === "before") await context.route("**/ui/js/*.js", (route: any) => {
         const name = new URL(route.request().url()).pathname.split("/").pop()!;
@@ -106,13 +113,38 @@ try {
         await p.locator(".hub-room-page > .pv-panel iframe").first().waitFor({ timeout: 15000 }).catch(() => {});
         check(`${tag}: Open in panel opens the room's side panel`, await p.locator(".hub-room-page > .pv-panel").isVisible());
         if (device === "desk") check(`${tag}: the panel takes the members rail's place`, (await p.locator(".hub-room-page > .u-rail").count()) === 0);
+        // The panel's own chrome (header, toolbar, the width select) is the app's surface in either theme; only the agent's
+        // page inside the frame has its own colours.
+        const look = await p.evaluate(() => {
+          const bg = (sel: string) => { const el = document.querySelector(sel); return el ? getComputedStyle(el).backgroundColor : null; };
+          return { body: bg("body"), panel: bg(".hub-room-page > .pv-panel"), width: bg(".hub-room-page > .pv-panel .pv-width") };
+        });
+        check(`${tag}: the panel and its width select have the page's own background (${look.body})`, look.panel === look.body && (look.width === null || look.width === look.body), look);
         await shot("3-panel");
-        const reply = p.locator(".hub-room-page .pv-fb-reply").first();
-        if (await reply.isVisible().catch(() => false)) {
+        if (device === "desk") {
+          // Narrower than 560 px the panel's toolbar shows icons only (with their titles); dragged wider, each says its name.
+          await p.locator(".hub-room-page > .pv-divider").focus(); await p.keyboard.press("Home"); await p.waitForTimeout(300);
+          const reply = p.locator(".hub-room-page > .pv-panel .pv-fb-reply");
+          await reply.hover();
+          const label = (await reply.locator(".lbl").boundingBox())?.width ?? 0;
+          check(`${tag}: a wider panel names Reply about this page beside its icon`, label > 20 && /Reply about this page|回覆這個頁面/.test(await reply.innerText()), { label, text: await reply.innerText() });
+          receipt.replyControl = { ...(receipt.replyControl || {}), [lang]: { name: await reply.innerText(), title: await reply.getAttribute("title") } };
+          await shot("3b-panel-wide-reply");
           await reply.click(); await p.waitForTimeout(200);
           const box = await p.locator(".hub-room-page #msgIn").inputValue();
           check(`${tag}: Reply about this page puts its line in the room's box`, /Q3 report/.test(box), box);
-          if (device === "desk") await shot("4-reply-line");
+          await shot("4-reply-line");
+        } else {
+          // A phone's toolbar keeps Preview, views and full screen; the rest, Reply about this page among them, is in ⋯.
+          await p.locator(".hub-room-page > .pv-panel .pv-toolbar-more").click();
+          const reply = p.locator(".pv-toolbar-dialog .pv-fb-reply");
+          await reply.waitFor({ timeout: 5000 });
+          check(`${tag}: ⋯ names Reply about this page`, /Reply about this page|回覆這個頁面/.test(await reply.innerText()), await reply.innerText());
+          await shot("3b-more-reply");
+          await reply.click(); await p.waitForTimeout(400);
+          const box = await p.locator(".hub-room-page #msgIn").inputValue();
+          check(`${tag}: on a phone Reply closes the page and puts its line in the room's box`, /Q3 report/.test(box) && !(await p.locator(".hub-room-page > .pv-panel").count()), box);
+          await shot("4-reply-line");
         }
       }
       check(`${tag}: no page errors`, errors.length === 0, errors);
