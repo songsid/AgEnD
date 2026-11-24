@@ -435,6 +435,7 @@
     }
    },
    "no fade at the end": true,
+   "fade follows content": true,
    "⋯ not stuck pressed": {
     "pass": true,
     "detail": "rgba(0, 0, 0, 0)"
@@ -512,6 +513,7 @@
     }
    },
    "no fade at the end": true,
+   "fade follows content": true,
    "⋯ not stuck pressed": {
     "pass": true,
     "detail": "rgba(0, 0, 0, 0)"
@@ -608,6 +610,7 @@
     }
    },
    "no fade at the end": true,
+   "fade follows content": true,
    "⋯ not stuck pressed": {
     "pass": true,
     "detail": "rgba(0, 0, 0, 0)"
@@ -705,6 +708,7 @@
     }
    },
    "no fade at the end": true,
+   "fade follows content": true,
    "⋯ not stuck pressed": {
     "pass": true,
     "detail": "rgba(0, 0, 0, 0)"

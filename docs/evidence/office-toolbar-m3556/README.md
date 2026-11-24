@@ -84,7 +84,7 @@ The room captures came from a scratch Hub rig (not in the repo). It recorded:
 
 1. **Desk dropdown over the zoom stack.** The Fleet dropdown now opens left of the stage's zoom stack; the smoke checks they don't overlap.
 2. **Stray blue bar under the room's fullscreen button after Esc.** Focus does return to the gear. The bar was the gear's focus outline, clipped by the zoom stack. Zoom-stack buttons now draw focus as a ring inside the button (`room-desk-*-3-closed.png`).
-3. **Phone sheet cut at the fold.** The rows keep their 44 px tap height, so the sheet can't fit a phone. Instead, while more is below, its foot fades out over the rows (`data-more` on the sheet's body). At the end the fade goes, and 分享… is on screen. The smoke checks both.
+3. **Phone sheet cut at the fold.** The rows keep their 44 px tap height, so the sheet can't fit a phone. Instead, while more is below, its foot fades out over the rows (`data-more` on the sheet's body). At the end the fade goes, and 分享… is on screen. The smoke checks both, and that content which grows while the sheet is open brings the fade back without a scroll (Prism r3).
 4. **⋯ stuck grey after the sheet closes.** That was a tap leaving `:hover` stuck on touch; there's no hover background on touch now. The smoke checks the colour; without the fix, all four phone cases fail.
 5. **"搜." beside Ctrl K on the 340 px room capture.** Pre-existing: #4370's head without this PR shows the same.
 6. **Zone label under sprites in the room.** Pre-existing: the same on #4370's head. M-3539 (#4376) covers it.
