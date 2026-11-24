@@ -42,6 +42,13 @@ describe("DeliveryOutbox.lastAgentTurn", () => {
     expect(outbox.lastAgentTurn("forge")).toBe("2026-11-24T12:00:00.000Z");
     outbox.close();
   });
+  it("the latest activity, not the newest row (Prism #4430): an older message taken up after a newer one was delivered", () => {
+    const path = tempDb(), outbox = new DeliveryOutbox(path, "m-1");
+    row(path, outbox, 1, { state: "delivered", consumed: "2026-11-24T16:00:00.000Z", finished: "2026-11-24T09:00:00.000Z" });   // older row, its turn later
+    row(path, outbox, 2, { state: "delivered", consumed: null, finished: "2026-11-24T10:00:00.000Z" });                           // newer row, delivered earlier
+    expect(outbox.lastAgentTurn("forge")).toBe("2026-11-24T16:00:00.000Z");
+    outbox.close();
+  });
   it("never a queued, failed or cancelled one, one it sent itself, one to someone else", () => {
     const path = tempDb(), outbox = new DeliveryOutbox(path, "m-1");
     row(path, outbox, 1, { state: "delivered", finished: "2026-11-24T09:00:00.000Z" });

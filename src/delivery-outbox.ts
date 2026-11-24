@@ -585,6 +585,9 @@ function mapObligation(row: ReplyObligationRow): ReplyObligation {
 }
 
 /** Durable admission and fenced state transitions for the fleet delivery queue. */
+/** M-3674: how many of a target's newest delivered messages lastAgentTurn reads for the latest activity time. */
+export const AGENT_TURN_WINDOW = 64;
+
 export class DeliveryOutbox extends EventEmitter {
   private readonly db: Database.Database;
   private workingStateJournal?: WorkingStateJournal;
@@ -637,12 +640,14 @@ export class DeliveryOutbox extends EventEmitter {
    * M-3674: when `instance` last took up a message another instance sent it — send_to_instance's family (task, report,
    * query, update), a steer or a broadcast: the newest delivered one, at the turn that took it up (consumed_at), else
    * when it was delivered (finished_at); ISO, or null (none kept). The agent-started side of an agent's activity, beside
-   * its last reply to a person (web chat history). One indexed step back from the newest row (target, state, seq).
+   * its last reply to a person (web chat history). The latest of those times, not the newest row's (Prism #4430: an
+   * older message can be taken up after a newer one was delivered) — among the target's AGENT_TURN_WINDOW newest
+   * delivered rows, read back along the (target, state, seq) index, so a status frame never scans its whole history.
    */
   lastAgentTurn(instance: string): string | null {
-    const row = this.db.prepare(`SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
+    const row = this.db.prepare(`SELECT MAX(at) AS at FROM (SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
       WHERE target_instance=? AND state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance
-      ORDER BY created_seq DESC LIMIT 1`).get(instance) as { at: string | null } | undefined;
+      ORDER BY created_seq DESC LIMIT ${AGENT_TURN_WINDOW})`).get(instance) as { at: string | null } | undefined;
     return row && typeof row.at === "string" && row.at ? row.at : null;
   }
 
