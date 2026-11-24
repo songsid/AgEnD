@@ -103,7 +103,7 @@
   .ot-tool, .ot-link { display: inline-flex; align-items: center; justify-content: center; }
   .ot-link { padding: 0 0.5em; }
   .ot-tools { top: calc(-1 * var(--tap, 44px) - 6px); gap: 4px; font-size: 0.85em; }
-  .ot-input, .ot-stage .ot-input { min-height: var(--tap, 44px); font-size: max(16px, 0.95em); }   /* 16 px: no zoom on focus (iOS) */
+  .ot-input, .ot-stage .ot-input { min-height: var(--tap, 44px); font-size: max(var(--fs-md), 0.95em); }   /* tokens.css: 16 px on a field here (#1611, no iOS zoom) */
 }
 /* While the box is up, the snack tray (bottom left of the scene) waits under it. */
 .oo-stage:has(.ot-stage) .oo-snacks { display: none; }

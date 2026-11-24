@@ -63,11 +63,15 @@ for (const c of CASES) {
       await fetch("/ui/offices", { method: "PUT", headers: { "content-type": "application/json" },
         body: JSON.stringify({ rev: g.rev ?? 0, offices: [{ id: "front", name: "Front desk", skin: "cozy", members: ["general", "example-agent-01"] }, { id: "lab", name: "Lab", skin: "studio", members: ["example-agent-02", "example-agent-03"] }] }) });
     });                                                                    // the rest are in no office: All offices' lobby tile
+    // #4406: with offices the Office opens on All offices (the home map); the bar's own checks are of one office's view
+    // (Drag and pat and the team picker are not on the map), so they start in Whole fleet, as before.
+    if (!all) await page.evaluate(() => localStorage.setItem("agend_org_office", "auto"));
     await page.goto(`${base}/ui/fleet/org`);
     await page.locator(".oc-tools .seg-inline button", { hasText: w.office }).click();
     await page.waitForSelector(".oo-canvas", { timeout: 15000 }); await page.waitForTimeout(2000);
     if (all) {
-      // All offices: the lobby tile (大廳格) is one of the options.
+      // #4406: a fresh browser opens on All offices, the home map. The lobby tile (大廳格) is one of its options.
+      ok(res, "all offices: opens there", (await page.locator(".oo-office").inputValue()) === "*all");
       await page.locator(".oo-office").selectOption("*all"); await page.waitForTimeout(1500);
       await page.locator(".oo-display-btn").click(); await page.waitForTimeout(300);
       ok(res, "all offices: lobby tile offered", (await page.locator(".oo-display-pop .oo-lobby-tile input").count()) === 1 && !(await page.locator(".oo-display-pop .oo-lobby-tile input").isDisabled()));

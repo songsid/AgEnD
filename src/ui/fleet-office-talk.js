@@ -311,7 +311,7 @@ export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClos
   const shown = answered ? typed(lines, n).join("\n") : "";
   const keep = (e) => e.stopPropagation();   // the stage's pan, zoom keys and clicks stay off the box
   return html`<div class=${`ot-stage${phone ? " phone" : ""}`} ref=${root} onPointerDown=${keep} onKeyDown=${keep} onWheel=${keep} onClick=${keep}>
-    ${v.portrait ? html`<img class="ot-figure" ref=${fig} src=${v.portrait} alt="" draggable="false" />` : null}
+    ${v.portrait ? html`<img class="ot-figure" ref=${fig} src=${v.portrait} alt="" draggable=${false} />` : null}
     <div class=${`ot-box${live ? " live" : ""}`} role="group" aria-label=${tt("talkTo", v.label)}>
       ${log ? html`<${TalkLog} talk=${talk} name=${v.name} label=${v.label} onFull=${onFull} onClose=${() => setLog(false)} />` : null}
       <div class="ot-tools">
