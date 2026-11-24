@@ -2690,6 +2690,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
           catalogAgents: () => this.hubCatalogAgents(),
+          pictureSources: agent => this.hubPictureSources(agent),
           sharingNotice: value => this.recordHubSharingNotice(value),
           attachSharing: controller => { this.hubSharingController = controller; },
           maxCrossInstanceMessageBytes: () => this.fleetConfig?.defaults?.max_cross_instance_message_bytes,
@@ -2837,6 +2838,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : isNativeExecInstance(config) ? { ...base, shareable: false as const, reason: "remote-windows" as const }
         : { ...base, shareable: true as const };
     });
+  }
+
+  /**
+   * M-3533 R2b: an agent's pictures for the Hub's room offices, as this Fleet shows them (hub-office-visit.md "Decided while
+   * building"). The disc is the sidebar's (webIdentityImage + instance-nav.js avatarOf): a profile picture, else its theme
+   * avatar while the owner shows agents' themes (fx.show), else its bot's avatar, else a Discord custom persona emoji; a
+   * Unicode emoji or an initial is no picture (the catalog's emoji stays). The portrait is the identity card's (a person's,
+   * else the agent's own). Cheap keys only: the bytes are read when a key changes (hub/member/agent-pictures.ts).
+   */
+  private hubPictureSources(name: string): import("./hub/member/agent-pictures.js").MemberPictureSources {
+    let disc: import("./hub/member/agent-pictures.js").MemberPictureSource | null = null;
+    let portrait: import("./hub/member/agent-pictures.js").MemberPictureSource | null = null;
+    try {
+      const profileFile = profileIdentities(this.dataDir).get(name)?.avatar_path;
+      let profileVersion: string | null = null;
+      if (profileFile && imageMimeForFile(profileFile)) {
+        try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileFile))).mtimeMs).toString(36); } catch { /* removed */ }
+      }
+      let theme: ReturnType<ThemeStore["get"]>["theme"] = { v: 1 };
+      try { theme = this.themeStore.get(name).theme; } catch { /* unreadable themes: none */ }
+      let themesShown = true;
+      try { themesShown = (this.webPrefs.read(OPERATOR).values as Record<string, unknown>)["fx.show"] !== false; } catch { /* the default: shown */ }
+      // The key names the file and its version (Prism #4393: two agents' uploads may share an mtime).
+      if (profileVersion) disc = { key: `profile:${basename(profileFile!)}:${profileVersion}`, load: () => this.webImage("avatar", name) };
+      else if (themesShown && theme.avatar) { const id = theme.avatar; disc = { key: `theme:${id}`, load: () => this.themeStore.asset(name, id) }; }
+      else {
+        const bots = this.webBots(), connection = bots.own.get(name) ?? bots.speaking.get(name);
+        const owner = connection ? this.botOwner(connection) : null;
+        const source = connection && owner?.adapter.fetchBotAvatar ? this.botAvatarSource(connection, owner) : null;
+        const bot = source ? this.webImageCache("avatars").peek(source.key, source.load) : null;
+        if (source && bot) disc = { key: `${source.key}:${bot.version}`, load: () => this.webImageCache("avatars").read(source.key) };
+        else {
+          const emoji = normalizeEmoji((this.ownInstanceConfig(name)?.status_emojis as Record<string, unknown> | undefined)?.delivered);
+          const cached = emoji?.kind === "custom" ? this.webImageCache("emoji").read(`emoji:${emoji.id}`) : null;
+          if (emoji?.kind === "custom" && cached) disc = { key: `emoji:${emoji.id}:${cached.version}`, load: () => this.webImageCache("emoji").read(`emoji:${emoji.id}`) };
+        }
+      }
+      const person = humanCards(this.dataDir).get(name)?.portrait ?? null, own = theme.card?.portrait ?? null;
+      if (person || own) portrait = { key: person ? `card:${person}` : `agent-card:${own}`, load: () => cardPicture({ dataDir: this.dataDir, themeStore: this.themeStore }, name, "portrait") };
+    } catch { /* unreadable: no pictures */ }
+    return { disc, portrait };
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */

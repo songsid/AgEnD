@@ -265,17 +265,17 @@ describe("host upload, storage, folder reader & share-link pruning", () => {
     expect(reloaded?.characters.default?.needs?.durations).toEqual([500, 200, 500]);
   });
 
-  it("enforces SKIN_LIMITS.packPixels (96 Mpx decoded pixel cap)", () => {
+  it("enforces SKIN_LIMITS.packPixels (64 Mpx decoded pixel cap)", () => {
     const m = BASE_MANIFEST();
     m.id = "huge-pixels";
     // 5 furniture items each referencing a 4096×3584 PNG (14.68 Mpx each → 5 × 14.68 = 73.4 Mpx > 64 Mpx),
     // while each single PNG is <= 16 Mpx and tiny compressed bytes.
     const big = png(4096, 3584).toString("base64"); // 14,680,064 px < 16 Mpx; 8 frames of 512×3584? No, h max is 512!
-    // Use 4096×512 = 2,097,152 px (2 Mpx) × 49 files = 98 Mpx > 96 Mpx!
+    // Use 4096×512 = 2,097,152 px (2 Mpx) × 33 files = 66 Mpx > 64 Mpx!
     const strip2M = png(4096, 512).toString("base64");
     const files: Record<string, string> = { "office_bg.png": BG_PNG.toString("base64"), "fox_idle.png": FOX_PNG.toString("base64") };
     m.furniture = [];
-    for (let i = 0; i < 49; i++) {
+    for (let i = 0; i < 33; i++) {
       const f = `big_${i}.png`;
       m.furniture.push({ id: `f${i}`, sprite: { src: f, frames: 8, w: 512, h: 512 }, x: 10, y: 10 });
       files[f] = strip2M;
@@ -284,10 +284,10 @@ describe("host upload, storage, folder reader & share-link pruning", () => {
     const refused = checkSkinUpload({ manifest: m, files }, "tester", 1);
     expect(refused).toMatchObject({ ok: false, status: 400, error: "skin_too_many_pixels" });
 
-    // 47 × 2 Mpx = 94 Mpx (+ bg/fox < 0.3 Mpx) <= 96 Mpx passes.
-    m.furniture = m.furniture.slice(0, 47);
-    for (let i = 47; i < 49; i++) delete files[`big_${i}.png`];
-    expect(SKIN_LIMITS.packPixels).toBe(96 * 1024 * 1024);
+    // 30 × 2 Mpx = 60 Mpx (+ bg/fox < 0.3 Mpx) <= 64 Mpx passes.
+    m.furniture = m.furniture.slice(0, 30);
+    for (let i = 30; i < 33; i++) delete files[`big_${i}.png`];
+    expect(SKIN_LIMITS.packPixels).toBe(64 * 1024 * 1024);
     expect(checkSkinUpload({ manifest: m, files }, "tester", 1).ok).toBe(true);
   });
 

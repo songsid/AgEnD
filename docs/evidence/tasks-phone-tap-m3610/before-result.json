@@ -1,0 +1,246 @@
+{
+ "cases": {
+  "phone-light-zh-TW": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: all ≥44 px": {
+    "pass": false,
+    "detail": [
+     {
+      "sel": ".p-fleet .tb-home .tb-search input",
+      "text": "搜尋卡片",
+      "w": 358,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "Agent",
+      "w": 99,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "新增專案",
+      "w": 114,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-project-menu .icon-btn",
+      "text": "更多動作",
+      "w": 36,
+      "h": 36,
+      "icon": true
+     }
+    ]
+   },
+   "failed": [
+    "home: all ≥44 px",
+    "project: all ≥44 px"
+   ],
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: all ≥44 px": {
+    "pass": false,
+    "detail": [
+     {
+      "sel": ".p-fleet .tb-head-back",
+      "text": "專案",
+      "w": 76,
+      "h": 30,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-insights",
+      "text": "統計",
+      "w": 68,
+      "h": 26,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "Agent",
+      "w": 99,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "主任務",
+      "w": 100,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-board-page .tb-search input",
+      "text": "搜尋",
+      "w": 358,
+      "h": 30,
+      "icon": false
+     }
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: all ≥44 px": {
+    "pass": false,
+    "detail": [
+     {
+      "sel": ".p-fleet .tb-home .tb-search input",
+      "text": "Search cards",
+      "w": 358,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "Instances",
+      "w": 128,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "New project",
+      "w": 145,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-project-menu .icon-btn",
+      "text": "More actions",
+      "w": 36,
+      "h": 36,
+      "icon": true
+     }
+    ]
+   },
+   "failed": [
+    "home: all ≥44 px",
+    "project: all ≥44 px"
+   ],
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: all ≥44 px": {
+    "pass": false,
+    "detail": [
+     {
+      "sel": ".p-fleet .tb-head-back",
+      "text": "Projects",
+      "w": 104,
+      "h": 30,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-insights",
+      "text": "Insights",
+      "w": 95,
+      "h": 26,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "Instances",
+      "w": 128,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-head-actions .btn",
+      "text": "Main task",
+      "w": 127,
+      "h": 36,
+      "icon": false
+     },
+     {
+      "sel": ".p-fleet .tb-board-page .tb-search input",
+      "text": "Search",
+      "w": 358,
+      "h": 30,
+      "icon": false
+     }
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-en": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: desktop compact (unchanged)": {
+    "pass": true,
+    "detail": [
+     "Tasks 89×34",
+     "Schedules 114×34",
+     "Teams 90×34",
+     "Org chart 108×34",
+     "Cache 90×34",
+     "Usage 88×34",
+     "Authorizations 138×34",
+     "Host health 119×34",
+     "Search cards 244×36",
+     "Instances 122×36",
+     "New project 135×36",
+     "More actions 36×36"
+    ]
+   },
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: desktop compact (unchanged)": {
+    "pass": true,
+    "detail": [
+     "Tasks 89×34",
+     "Schedules 114×34",
+     "Teams 90×34",
+     "Org chart 108×34",
+     "Cache 90×34",
+     "Usage 88×34",
+     "Authorizations 138×34",
+     "Host health 119×34",
+     "Projects 100×30",
+     "Insights 88×26",
+     "Instances 122×36",
+     "Main task 121×36",
+     "Board 63×30",
+     "List 45×30",
+     "Columns to the left 40×30",
+     "Columns to the right 40×30",
+     "Search 260×30"
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": false
+}

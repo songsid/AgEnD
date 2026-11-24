@@ -33,11 +33,12 @@ const MiB = 1024 * 1024;
 /**
  * #2632: a pack for a whole fleet. Sized for 30 characters, each one sheet of every pose (row/col cells, ~1600×1920,
  * ~1.3 MB, ~3 Mpx): 42 MiB a pack (was 6, then 20) — about 20 s on 4G, the share page shows when its pictures are in;
- * 96 Mi px decoded (was 64; ≈ 384 MiB RGBA, within a phone tab's budget); 4 MiB a file (was 2) for a sheet; 220 files
+ * 64 Mi px decoded, unchanged (≈ 256 MiB RGBA: measured with real art the 42 MiB byte cap binds first, near 87 Mi px, and a
+ * real-device phone image budget is not yet measured — #4383 keeps the proven cap); 4 MiB a file (was 2) for a sheet; 220 files
  * (was 64, then 160) so the one-picture-per-pose layout still fits 30 × 7.
  */
 export const SKIN_LIMITS = {
-  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 96 * MiB, name: 60, src: 200,
+  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
 } as const;
 /** The most an upload's body may be: every picture's base64 (4/3) plus the manifest and the envelope. */
 export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes + 64 * 1024;

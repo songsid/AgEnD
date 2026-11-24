@@ -4,6 +4,8 @@ import { HubMemberSharing } from "../member/sharing.js";
 import { HubMemberSharingLink } from "../member/sharing-link.js";
 import { sharingNotice } from "../member/sharing-result.js";
 import { HubMemberAgentCatalog, memberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
+import { HubMemberAgentPictures, type MemberPictureSources } from "../member/agent-pictures.js";
+import { reduceInWorker } from "../../hub-picture-reduce.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -102,6 +104,8 @@ export interface HubMemberFactoryOptions {
   /** The owner's local agents, each with the S4 provider it would run under (null: none). */
   agents(): import("../member/exposure-api.js").HubMemberAgent[];
   catalogAgents?(): MemberCatalogAgent[];
+  /** M-3533 R2b: an agent's pictures as its owner's Fleet shows them (the sidebar's disc, the identity card's portrait). */
+  pictureSources?(agent: string): MemberPictureSources;
   sharingNotice?(notice: import("../../hub-sharing-notice.js").HubSharingNotice): Promise<boolean>;
   attachSharing?(controller: import("../../hub-sharing-notice.js").HubSharingController | null): void;
   /** Current Fleet message-body limit, applied to room history rendering only. */
@@ -788,6 +792,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const catalog: HubMemberAgentCatalog | null = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing, lapsed: agent => shareLapsed(agent),
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
+      // M-3533 R2b: each published share's pictures, for the Hub's room offices (agent-pictures-v1, when the Hub offers it).
+      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker,
+        exposures: () => exposures.list().flatMap(row => { const e = row.committed?.exposure; return e && e.state === "published" ? [{ id: e.id, agent: row.agent }] : []; }),
+        sources: agent => options.pictureSources!(agent),
+        failed: () => options.log("warn", "Shared agents' pictures were not sent to the Hub") }) : null;
+      teardown.add("shared agents' pictures", () => pictures?.close());
       client = new HubMemberClient({
         allowOfflineStart: true,
         log: options.log,
@@ -795,6 +805,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         receiveRecommendations: !!recommendations,
         agentIntro: true,
         agentCatalog: !!catalog,
+        agentPictures: !!pictures,
         exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,
@@ -825,6 +836,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (l.current() && live()) {
             online = l;
             catalog?.connected(l);
+            pictures?.connected(l);
             sharingLink?.connected(l);
             quota.start(l);
             terminalHold = false; reportLink("online");
@@ -886,6 +898,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         hold: (code) => {
           catalog?.disconnected();
+          pictures?.disconnected();
           sharingLink?.disconnected();
           stopDisplay();
           stopRooms();

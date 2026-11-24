@@ -171,12 +171,17 @@ describe("one SQL decision and narrow browser successor", () => {
   it("atomically ends every old session and creates only the actor's fresh token/CSRF with the old absolute expiry", async () => {
     const { r, browser, input, rotation } = await setup(), other = await r.signIn();
     const expiry = (r.db.prepare("SELECT expires_at FROM hub_sessions LIMIT 1").get() as {expires_at:number}).expires_at;
+    r.setNow(r.now + 60_000);                                                            // decided a minute after signing in
     const saved = r.decision.decide(input, () => {}, rotation);
     expect(saved.browserSession).toMatchObject({v:1,previousSessionId:input.actor.sessionId});
     expect(r.db.prepare("SELECT state,directory_epoch,expires_at FROM hub_sessions ORDER BY rowid").all()).toEqual([
       { state: "ended", directory_epoch: 0, expires_at: expiry }, { state: "ended", directory_epoch: 0, expires_at: expiry },
       { state: "active", directory_epoch: 1, expires_at: expiry },
     ]);
+    // M-3592 (#4397 review): the successor keeps the predecessor's sign-in time, so a lower sign-in limit counts from
+    // when the person signed in, not from the rotation.
+    const signedIn = (r.db.prepare("SELECT created_at FROM hub_sessions WHERE id=?").get(input.actor.sessionId) as { created_at: number }).created_at;
+    expect(r.db.prepare("SELECT created_at FROM hub_sessions WHERE state='active'").get()).toEqual({ created_at: signedIn });
     expect(() => r.sessions.completeDirectoryRotation(rotation, input.id)).toThrow(); // old mounted core
     await r.remount(); r.setMounted(false);
     expect(() => r.sessions.completeDirectoryRotation(rotation, input.id)).toThrow();
