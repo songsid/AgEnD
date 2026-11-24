@@ -83,8 +83,16 @@ export class HubAgentPictures {
         const e = readExposure(db, a.exposureId);
         // A row for an agent that is not this Fleet's published share is not an error (the report may cross a withdrawal): skipped.
         if (!e || e.fleet_id !== fleet.id || e.state !== "published" || e.owner !== personKeyString(fleet.owner)) continue;
+        // Prism (#4393 R1): a hash fixes its bytes, so a picture held already with another type or size than this row declares
+        // can never be this row's. It is not recorded: it keeps no file alive, and an agent never holds more than its cap.
+        const fits = (ref: { sha256: string; mime: string; size: number } | null) => {
+          if (!ref) return null;
+          const held = db.prepare("SELECT mime, length(bytes) AS size FROM hub_agent_picture_files WHERE sha256=?").get(ref.sha256) as { mime: string; size: number } | undefined;
+          return !held || (held.mime === ref.mime && held.size === ref.size) ? ref : null;
+        };
+        const disc = fits(a.disc), portrait = fits(a.portrait);
         db.prepare("INSERT INTO hub_agent_pictures VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(a.exposureId, fleet.id, fleet.generation,
-          a.disc?.sha256 ?? null, a.disc?.mime ?? null, a.disc?.size ?? null, a.portrait?.sha256 ?? null, a.portrait?.mime ?? null, a.portrait?.size ?? null,
+          disc?.sha256 ?? null, disc?.mime ?? null, disc?.size ?? null, portrait?.sha256 ?? null, portrait?.mime ?? null, portrait?.size ?? null,
           (a.tooLarge ?? []).join(","), this.core.now());
       }
       this.sweep(db);

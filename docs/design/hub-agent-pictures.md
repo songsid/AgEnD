@@ -29,7 +29,7 @@ The capability is offered in the welcome only: it takes no hello slot, and only 
    - a row of this Fleet names it with exactly that type and size (the caps were checked on that row).
    A refusal leaves the report unsent, so the next tick tries again.
 
-The Hub keeps one copy per hash (`hub_agent_picture_files`). A row shows a held file only if it is the type and size the row declares, so naming another agent's larger picture by its hash shows nothing. A room shows a picture only once the Hub holds it, so a changed picture never shows the old one meanwhile. A picture that lands, changes or goes emits `member.changed` to every room holding the agent: its open pages read the members again. Unsharing or revoking hides the pictures at once. A withdrawal is swept as its snapshot arrives; anything else retired (a revoked Fleet sends no report) is swept within a minute. A file another agent still shows is kept.
+The Hub keeps one copy per hash (`hub_agent_picture_files`). A row naming a held file with another type or size than it has is not recorded for that picture (a hash fixes its bytes, so it could never match): it shows nothing and keeps no file alive, so one agent never holds more than its cap. A room shows a picture only once the Hub holds it, so a changed picture never shows the old one meanwhile. A picture that lands, changes or goes emits `member.changed` to every room holding the agent: its open pages read the members again. Unsharing or revoking hides the pictures at once. A withdrawal is swept as its snapshot arrives; anything else retired (a revoked Fleet sends no report) is swept within a minute. A file another agent still shows is kept.
 
 ## Who can see them
 

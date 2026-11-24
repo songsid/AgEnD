@@ -131,6 +131,20 @@ describe("M-3533 R2b: agent pictures on the Hub", () => {
     expect((await w.member(w.notes)).look.portrait).toBe(sha(big));
   });
 
+  // Prism (#4393 R1): naming a held picture with another size does not keep it alive beside a new one — one agent, one cap.
+  it("a replacement that names the old picture with a wrong size frees it: one agent never holds more than 512 KB", async () => {
+    const w = await world(), a = JPEG(512 * 1024, 16), b = JPEG(512 * 1024 - 1, 17);
+    await w.send("agent.pictures", { revision: "1".repeat(64), agents: [{ exposureId: w.notes, disc: null, portrait: ref(a, "image/jpeg") }] });
+    for (const c of chunks(a, "image/jpeg")) await w.send("agent.picture", c);
+    expect((await w.member(w.notes)).look.portrait).toBe(sha(a));
+    const next = await w.send("agent.pictures", { revision: "2".repeat(64), agents: [{ exposureId: w.notes, disc: { sha256: sha(a), mime: "image/jpeg", size: 1 }, portrait: ref(b, "image/jpeg") }] });
+    expect(next).toEqual({ ok: true, need: [sha(b)] });
+    for (const c of chunks(b, "image/jpeg")) await w.send("agent.picture", c);
+    const held = r!.db.prepare("SELECT sha256, length(bytes) AS n FROM hub_agent_picture_files").all() as any[];
+    expect(held).toEqual([{ sha256: sha(b), n: b.length }]);
+    expect((await w.member(w.notes)).look).toEqual({ portrait: sha(b) });
+  });
+
   it("withdrawn or revoked: swept without a report from that Fleet; a file another agent still shows is kept", async () => {
     const w = await world(), shared = PNG(1700, 13), own = PNG(1750, 14);
     // A second Fleet whose agent shows the same picture.
