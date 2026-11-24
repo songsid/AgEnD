@@ -85,12 +85,45 @@ const px = (ctx, x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(Math.round(
 const art = (ctx, d, c, r, w, h, color, dy = 0) => px(ctx, d.x + CX - 5 * P + c * P, d.y + TOP + dy + r * P, w * P, h * P, color);
 
 /** Text shortened to `max` px with an ellipsis (canvas measures; a grapheme cluster is not split). */
-export function fitText(ctx, s, max) {
+export function fitText(ctx, s, max, fit = null) {
   const str = String(s);
   if (!ctx.measureText || ctx.measureText(str).width <= max) return str;
+  const kept = fit && ownedTail(str, fit.owner) ? fitOwned(ctx, str, fit.owner, max) : null;
+  if (kept) return kept;
+  // A shorter word for the same one, when the whole label does not fit (the room assistant's "Assistant").
+  if (fit && typeof fit.short === "string" && fit.short && ctx.measureText(fit.short).width <= max) return fit.short;
   const chars = Array.from(str);
   while (chars.length && ctx.measureText(`${chars.join("")}…`).width > max) chars.pop();
   return `${chars.join("")}…`;
+}
+
+/**
+ * A Hub room's agent told apart by its owner (hub-room-office.js named: `fit.owner` = [open, owner, close], the label's end).
+ * Too long for its tag, the owner part stays and the name is cut — the owner is what tells two agents of one name apart
+ * (#4379 review). Still too long: the owner's first word, then its first character. Never wider than `max`.
+ */
+const ownedTail = (str, tail) => Array.isArray(tail) && tail.length === 3 && tail.every((t) => typeof t === "string") && !!tail[1].trim()
+  && str.length > tail.join("").length && str.endsWith(tail.join(""));
+function fitOwned(ctx, str, [open, owner, close], max) {
+  const base = str.slice(0, str.length - `${open}${owner}${close}`.length);
+  const w = (t) => ctx.measureText(t).width, name = Array.from(base);
+  const parts = [owner.trim(), owner.trim().split(/\s+/)[0], Array.from(owner.trim())[0]].filter((v, i, a) => v && a.indexOf(v) === i);
+  const cut = (tail, least) => {
+    const c = [...name];
+    while (c.length > least && w(`${c.join("")}…${tail}`) > max) c.pop();
+    return c.length >= least && w(`${c.join("")}…${tail}`) <= max ? `${c.join("")}…${tail}` : null;
+  };
+  const [full, first = full, initial = first] = parts, tail = (p) => `${open}${p}${close}`;
+  // The owner is what tells them apart: the whole owner with the name cut comes before the owner's first word (two
+  // owners may share it: "Alex A", "Alex B"), the first word before its initial, which comes only when nothing else fits.
+  const tries = [() => (w(`${base}${tail(full)}`) <= max ? `${base}${tail(full)}` : null), () => cut(tail(full), 2),
+    () => (w(`${base}${tail(first)}`) <= max ? `${base}${tail(first)}` : null), () => cut(tail(first), 2), () => cut(tail(first), 1),
+    () => { const o = Array.from(first);                                                        // the whole name, the owner's word cut
+      for (let n = o.length - 1; n >= 3; n--) { const t = `${base}${tail(`${o.slice(0, n).join("")}…`)}`; if (w(t) <= max) return t; }
+      return null; },
+    () => (w(`${base}${tail(initial)}`) <= max ? `${base}${tail(initial)}` : null), () => cut(tail(initial), 2), () => cut(tail(initial), 1)];
+  for (const t of tries) { const r = t(); if (r) return r; }
+  return null;
 }
 
 // ── The built-in pixel skin ──
@@ -343,11 +376,11 @@ const TAG_FONT = "600 10px system-ui, sans-serif";
 const COMPACT = { font: "500 9px system-ui, sans-serif", textW: 48, pad: 6, top: 2, h: 11 };
 const NORMAL = { font: TAG_FONT, textW: TAG_TEXT_W, pad: 10, top: 3, h: 14 };
 /** The box a name tag under feet at (x, y) takes (what drawTag draws; bubbles keep clear of it, #2513). */
-export function tagBox(ctx, x, y, label, compact = false) {
+export function tagBox(ctx, x, y, label, compact = false, fit = null) {
   const k = compact ? COMPACT : NORMAL;
   ctx.save();
   ctx.font = k.font;
-  const t = fitText(ctx, label, k.textW), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
+  const t = fitText(ctx, label, k.textW, fit), w = Math.ceil((ctx.measureText ? ctx.measureText(t).width : t.length * 6) + k.pad);
   ctx.restore();
   return { x: Math.round(x - w / 2), y: y + k.top, w, h: k.h, text: t };
 }
@@ -402,7 +435,7 @@ const BADGE_FONT = "700 8px system-ui, sans-serif";
 /** Zones: a name tag under someone's feet at (x, y); `compact` (#2860): the smaller one a crowded area keeps on. */
 function drawTag(ctx, x, y, look, env, compact = false) {
   const { pal } = env;
-  const b = tagBox(ctx, x, y, look.label, compact);
+  const b = tagBox(ctx, x, y, look.label, compact, look.fit);
   ctx.save();
   if (look.dim) ctx.globalAlpha = 0.35;
   ctx.font = compact ? COMPACT.font : TAG_FONT;

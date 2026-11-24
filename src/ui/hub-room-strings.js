@@ -9,7 +9,7 @@ register("hubRoom", {
   en: {
     // §1 vocabulary (on-screen terms)
     chat: "Chat", room: "Room", members: "Members", roomManager: "Room manager",
-    roomAssistant: "Room assistant", hubAssistant: "Hub assistant",
+    roomAssistant: "Room assistant", roomAssistantTag: "Assistant", hubAssistant: "Hub assistant",
     mentionAll: "@All agents", invitation: "Invitation", replyLater: "Reply later", team: "Team",
     // §2 layout
     search: "Search", roomsGroup: "Rooms", agentsGroup: "Agents",
@@ -164,7 +164,7 @@ register("hubRoom", {
   },
   "zh-TW": {
     chat: "對話", room: "房間", members: "成員", roomManager: "房間管理",
-    roomAssistant: "房間助理", hubAssistant: "Hub 助理",
+    roomAssistant: "房間助理", roomAssistantTag: "助理", hubAssistant: "Hub 助理",
     mentionAll: "@所有 Agent", invitation: "邀請", replyLater: "稍後回覆", team: "團隊",
     search: "搜尋", roomsGroup: "房間", agentsGroup: "Agent",
     roomSub: "{0} 人 · {1} 個 Agent", providedByHub: "Hub 提供",
