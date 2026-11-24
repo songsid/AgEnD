@@ -3369,7 +3369,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
    border or padding, negative margins keep the line); a row is one list line, its title and meta one 44px+ target, the
    picker a compact control at its end. The desk keeps the dense look. */
 @media (pointer: coarse), (max-width: 899px) {
-  .tb-sort-link { --grow: calc((var(--tap) - 26px) / 2); border-block: var(--grow) solid transparent; background-clip: padding-box; margin-block: calc(-1 * var(--grow)); }
+  /* (.tb-flag.st-review's background shorthand would reset the clip: this selector outranks it) */
+  .tb-stats .tb-flag.tb-sort-link { --grow: calc((var(--tap) - 26px) / 2); border-block: var(--grow) solid transparent; background-clip: padding-box; margin-block: calc(-1 * var(--grow)); }
+  /* the stats line stays as it was (%, bar, count, Insights); the link comes last, on its own line when it does not fit */
+  .tb-stats .tb-sort-link { order: 1; }
   .tb-sort-foot .btn { min-height: var(--tap); margin-block: calc((30px - var(--tap)) / 2); }
   .tb-sort-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px var(--s-3); }
   .tb-sort-row .tb-wait-title { grid-area: 1 / 1 / 3 / 2; align-self: stretch; align-content: flex-start; min-height: var(--tap); padding-bottom: calc(var(--lh-xs) + 2px); }
