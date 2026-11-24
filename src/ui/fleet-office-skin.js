@@ -983,6 +983,21 @@ export function loadBuiltInSkin(id, { image = defaultImage } = {}) {
   }, () => { p.job = null; return null; });
   return p.job;
 }
+/**
+ * M-3533 R2c: a style with some people drawn in their own characters (a Hub room office: each agent's set from its owner's
+ * pack, hub-character-plan.ts). `sets`: name → { pose: strip } (strips as a checked pack's, each a single sheet);
+ * `images`: src → a loaded picture. Only the drawing of people changes — the style's scene, desks, tags and words are its
+ * own. Someone without a set, or whose set is not wholly loaded, is the style's figure. Set ids are made here, so a name
+ * (even "default") never becomes everyone's fallback.
+ */
+export function withCharacters(base, sets, images) {
+  const names = sets ? Object.keys(sets) : [];
+  if (!names.length) return base;
+  const characters = Object.create(null), byInstance = Object.create(null);
+  names.forEach((name, i) => { characters[`set${i}`] = sets[name]; byInstance[name] = `set${i}`; });
+  const sk = spriteSkin({ id: base.id, characters, byInstance, props: {}, room: {}, desk: {} }, images, base);
+  return { ...base, drawCharacter: sk.drawCharacter, charBox: sk.charBox };
+}
 /** #2631: the cozy's picture (loadBuiltInSkin for "cozy"). */
 export const loadCozySkin = (opts = {}) => loadBuiltInSkin("cozy", opts);
 /** A skin by id: a built-in one, else a pack loaded here (`packs`: id → skin), else the default (pixel). */

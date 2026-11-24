@@ -8,17 +8,25 @@ import { createHash, randomUUID } from "node:crypto";
 import type { HubMemberLink } from "../client.js";
 import { canonicalArguments } from "../identity.js";
 import {
-  agentPictureResultSchema, agentPicturesResultSchema, HUB_AGENT_PICTURES_CAPABILITY, HUB_PICTURE_AGENT_MAX, HUB_PICTURE_CHUNK,
-  HUB_PICTURE_DISC_MAX, sniffPicture, type HubAgentPicturesRow, type HubPictureMime, type HubPictureRef, type HubPictureSlot,
+  agentPictureResultSchema, agentPicturesResultSchema, characterSetBytes, HUB_AGENT_CHARACTERS_CAPABILITY, HUB_AGENT_PICTURES_CAPABILITY, HUB_PICTURE_AGENT_MAX, HUB_PICTURE_CHUNK,
+  HUB_PICTURE_DISC_MAX, sniffPicture, type HubAgentPicturesRow, type HubCharacterSet, type HubPictureMime, type HubPictureOmitted, type HubPictureRef, type HubPictureSlot,
 } from "../agent-pictures-model.js";
-import type { PictureReduce } from "../../hub-picture-reduce.js";
+import type { CharacterCrop, PictureReduce } from "../../hub-picture-reduce.js";
+import type { CharacterPlan } from "../../hub-character-plan.js";
 
 /** A picture as the Fleet has it: `key` changes whenever the bytes would (a version, a content id); `load` reads them. */
 export interface MemberPictureSource { key: string; load(): { bytes: Buffer } | null }
-export interface MemberPictureSources { disc: MemberPictureSource | null; portrait: MemberPictureSource | null }
+/**
+ * M-3533 R2c: the agent's own character (hub-character-plan.ts): `key` changes whenever its pack, its set or the agent's office
+ * would change what is cut; `load` gives the plan and its pack pictures by `src`.
+ */
+export interface MemberCharacterSource { key: string; load(): { plan: CharacterPlan; pictures: ReadonlyMap<string, Uint8Array> } | null }
+export interface MemberPictureSources { disc: MemberPictureSource | null; portrait: MemberPictureSource | null; character?: MemberCharacterSource | null }
 interface Prepared { bytes: Buffer; ref: HubPictureRef }
 /** null: no readable picture; "too-large": over every cap (never kept in memory). */
 type Made = Prepared | "too-large" | null;
+/** A character cut and hashed: its set as the report names it and each picture's bytes; null: none that can be sent. */
+type MadeCharacter = { set: HubCharacterSet; bytes: Map<string, Prepared> } | "too-large" | null;
 
 export const MEMBER_PICTURES_POLL_MS = 5_000;
 
@@ -30,12 +38,15 @@ export class HubMemberAgentPictures {
   private stopped = false;
   /** Prepared pictures by source key and slot; only the keys in use are kept. */
   private made = new Map<string, Made>();
+  private characters = new Map<string, MadeCharacter>();
   constructor(private readonly options: {
     current(): boolean;
     /** The published shares: exposure id and the agent behind it. */
     exposures(): Array<{ id: string; agent: string }>;
     sources(agent: string): MemberPictureSources;
     reduce: PictureReduce;
+    /** M-3533 R2c: cuts a character's poses (cropInWorker); none: characters are not sent. */
+    crop?: CharacterCrop;
     failed?(): void;
   }) {}
   connected(link: HubMemberLink | null): void {
@@ -46,7 +57,7 @@ export class HubMemberAgentPictures {
     void this.refresh();
   }
   disconnected(): void { this.link = null; this.sent = null; if (this.timer) clearInterval(this.timer); this.timer = null; }
-  close(): void { this.stopped = true; this.disconnected(); this.made.clear(); }
+  close(): void { this.stopped = true; this.disconnected(); this.made.clear(); this.characters.clear(); }
 
   refresh(): Promise<void> {
     if (this.running) return this.running;
@@ -73,17 +84,49 @@ export class HubMemberAgentPictures {
     return made;
   }
 
+  /**
+   * M-3533 R2c: the character cut (each pose its PNG), hashed. A picture the pack cannot give or that does not cut (not a
+   * PNG, unreadable): null — never an uncut sheet. Over the agent's whole cap on its own: "too-large".
+   */
+  private async prepareCharacter(agent: string, source: MemberCharacterSource): Promise<MadeCharacter> {
+    const cacheKey = JSON.stringify([agent, "character", source.key]);
+    if (this.characters.has(cacheKey)) return this.characters.get(cacheKey)!;
+    let made: MadeCharacter = null;
+    const loaded = this.options.crop ? source.load() : null;
+    const cut = loaded && loaded.plan.sources.every(src => { const b = loaded.pictures.get(src); return !!b && sniffPicture(b) === "image/png"; })
+      ? await this.options.crop!(loaded.pictures, Object.values(loaded.plan.poses).map(p => p!.cut)) : null;
+    if (loaded && cut) {
+      const set: HubCharacterSet = {}, bytes = new Map<string, Prepared>();
+      for (const [pose, p] of Object.entries(loaded.plan.poses)) {
+        const png = cut.get(pose);
+        if (!png || !p) { set[pose as keyof HubCharacterSet] = undefined; continue; }
+        const ref: HubPictureRef = { sha256: createHash("sha256").update(png).digest("hex"), mime: "image/png", size: png.length };
+        bytes.set(ref.sha256, { bytes: png, ref });
+        set[pose as keyof HubCharacterSet] = { ...ref, mime: "image/png", ...p.meta };
+      }
+      const whole = Object.keys(loaded.plan.poses).every(pose => !!set[pose as keyof HubCharacterSet]);
+      made = !whole ? null : characterSetBytes(set) > HUB_PICTURE_AGENT_MAX ? "too-large" : { set, bytes };
+    }
+    this.characters.set(cacheKey, made);
+    return made;
+  }
+
   private async flush(): Promise<void> {
     const link = this.link;
     const live = () => !this.stopped && this.link === link && !!link?.current() && this.options.current();
     if (!link || !live()) return;
     const shares = this.options.exposures().slice().sort((a, b) => a.id.localeCompare(b.id));
-    const keyed = shares.map(s => { const src = this.options.sources(s.agent); return { ...s, src, key: [src.disc?.key ?? null, src.portrait?.key ?? null] as const }; });
-    const signature = JSON.stringify(keyed.map(k => [k.id, k.agent, ...k.key]));
+    // M-3533 R2c: characters only to a Hub that offered them (an older Hub's strict row refuses the field).
+    const characters = !!this.options.crop && link.features.has(HUB_AGENT_CHARACTERS_CAPABILITY);
+    const keyed = shares.map(s => { const src = this.options.sources(s.agent);
+      return { ...s, src, key: [src.disc?.key ?? null, src.portrait?.key ?? null] as const, character: characters ? src.character ?? null : null }; });
+    const signature = JSON.stringify(keyed.map(k => [k.id, k.agent, ...k.key, k.character?.key ?? null]));
     if (signature === this.sent) return;
     // Forget pictures no share uses now.
     const inUse = new Set(keyed.flatMap(k => [k.key[0] !== null ? HubMemberAgentPictures.cacheKey(k.agent, "disc", k.key[0]) : "", k.key[1] !== null ? HubMemberAgentPictures.cacheKey(k.agent, "portrait", k.key[1]) : ""]));
     for (const k of [...this.made.keys()]) if (!inUse.has(k)) this.made.delete(k);
+    const charactersInUse = new Set(keyed.filter(k => k.character).map(k => JSON.stringify([k.agent, "character", k.character!.key])));
+    for (const k of [...this.characters.keys()]) if (!charactersInUse.has(k)) this.characters.delete(k);
     const rows: HubAgentPicturesRow[] = [], bytes = new Map<string, Prepared>();
     for (const k of keyed) {
       const disc = k.src.disc ? await this.prepare(k.agent, k.key[0]!, "disc", k.src.disc) : null;
@@ -91,9 +134,16 @@ export class HubMemberAgentPictures {
       const portrait = k.src.portrait ? await this.prepare(k.agent, k.key[1]!, "portrait", k.src.portrait) : null;
       // The portrait has what the disc leaves of the agent's 512 KB: the disc is never the one dropped (the design's order).
       const portraitRef = portrait && portrait !== "too-large" && portrait.ref.size <= HUB_PICTURE_AGENT_MAX - (discRef?.ref.size ?? 0) ? portrait : null;
-      const tooLarge: HubPictureSlot[] = [...(disc === "too-large" ? ["disc" as const] : []), ...(portrait && !portraitRef ? ["portrait" as const] : [])];
+      // M-3533 R2c: the character has what the avatar and portrait leave, whole or not at all (dropped first, Lumen R2c 3).
+      const character = k.character ? await this.prepareCharacter(k.agent, k.character) : null;
+      const left = HUB_PICTURE_AGENT_MAX - (discRef?.ref.size ?? 0) - (portraitRef?.ref.size ?? 0);
+      const characterRef = character && character !== "too-large" && characterSetBytes(character.set) <= left ? character : null;
+      const tooLarge: HubPictureOmitted[] = [...(disc === "too-large" ? ["disc" as const] : []), ...(portrait && !portraitRef ? ["portrait" as const] : []),
+        ...(character && !characterRef ? ["character" as const] : [])];
       for (const p of [discRef, portraitRef]) if (p) bytes.set(p.ref.sha256, p);
-      rows.push({ exposureId: k.id, disc: discRef?.ref ?? null, portrait: portraitRef?.ref ?? null, ...(tooLarge.length ? { tooLarge } : {}) });
+      if (characterRef) for (const [h, p] of characterRef.bytes) bytes.set(h, p);
+      rows.push({ exposureId: k.id, disc: discRef?.ref ?? null, portrait: portraitRef?.ref ?? null, ...(characterRef ? { character: characterRef.set } : {}),
+        ...(tooLarge.length ? { tooLarge } : {}) });
     }
     if (!live()) return;
     const revision = createHash("sha256").update(canonicalArguments({ agents: rows })).digest("hex");

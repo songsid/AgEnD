@@ -56,3 +56,29 @@ it("the portrait: the agent's own identity-card picture, keyed by its id; none w
   const s = f.sources();
   expect([s.portrait.key, s.portrait.load().bytes.toString()]).toEqual([`agent-card:${"c".repeat(32)}`, "portrait"]);
 });
+
+// M-3533 R2c: its own character is the set its owner's pack names for it, read from the Fleet's real office and pack stores.
+it("R2c: the character is the set the owner's pack names for it in the first office holding it; keyed by the pack's version and the set", async () => {
+  const { readFileSync } = await import("node:fs");
+  const { cropInProcess } = await import("../src/hub-picture-reduce.js");
+  const { decodePng } = await import("../src/web-png.js");
+  const f = fleet("");
+  const FIXTURE = join(process.cwd(), "tests", "fixtures", "office-skin-clinic");
+  const manifest = { ...JSON.parse(readFileSync(join(FIXTURE, "manifest.json"), "utf8")), byInstance: { docs: "fox" } };
+  const files = { "office_bg.png": readFileSync(join(FIXTURE, "office_bg.png")).toString("base64"), "fox_idle.png": readFileSync(join(FIXTURE, "fox_idle.png")).toString("base64") };
+  expect(f.fm.officeSkins.add({ manifest, files }, "admin")).toMatchObject({ ok: true });
+  // No office holds it in that pack yet: no character (its All office is the built-in style).
+  expect(f.sources().character).toBeNull();
+  expect(f.fm.officeStore.replace([{ id: "front", name: "Front", skin: manifest.id, members: [] }], 0)).toMatchObject({ ok: true });
+  const c = f.sources().character;
+  expect(c.key).toMatch(new RegExp(`^${manifest.id}@[0-9a-f]+:fox$`));
+  const loaded = c.load();
+  // The clinic's fox has only idle: every room pose is drawn with it (filled inside the set).
+  expect(Object.keys(loaded.plan.poses).sort()).toEqual(["idle", "paused", "stand", "working"]);
+  expect([...loaded.pictures.keys()]).toEqual(["fox_idle.png"]);
+  const cut = (await cropInProcess(loaded.pictures, Object.values(loaded.plan.poses).map((p: any) => p.cut)))!;
+  const idle = decodePng(cut.get("idle")!, { maxSide: 512 });
+  expect([idle.width, idle.height]).toEqual([4 * 32, 48]);
+  // Another agent the pack does not name: none (the pack's default is nobody's own).
+  expect(f.fm.hubPictureSources("other").character).toBeNull();
+});

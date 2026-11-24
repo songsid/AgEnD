@@ -71,7 +71,7 @@ import { nodeText, stateWords } from "./fleet-org.js";
 import { hits, needle } from "./fleet-canvas-layout.js";
 import { AUTO_ID, LOBBY, autoLayout, backingScale, coatOf, createFlights, customLayout, deskAt, desksOf, filterOk, lampOf, layoutOk, lightOf, membersOf,
   officePose, officeRooms, signOf, workOn } from "./fleet-office-model.js";
-import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint } from "./fleet-office-skin.js";
+import { BUILT_IN_SKINS, CHAR_DEPTH, DEFAULT_PAL, PICTURE_SKINS, bubbleBox, pixelSkin, loadBuiltInSkin, loadPackSkin, modeOf, skinFor, tagBox, tagFootprint, withCharacters } from "./fleet-office-skin.js";
 import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER, createMail, createWalkers, isNight, linesFor, npcKey, personAt, placeBubbles, routeStaysInArea, thinBubbles, walkTargets, zonesLayout } from "./fleet-office-zones.js";
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
@@ -944,7 +944,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, chatUi = null, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null, characters = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -1323,7 +1323,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (zones && layout && !layoutStale) return { skin: { ...baseSkin, pack: layout.draft }, ignored: false };
     return withOverrides(baseSkin, zones, custom);
   }, [baseSkin, zones, custom, layout, layoutStale]);
-  const skin = placed.skin;
+  // M-3533 R2c: a Hub room office's agents in their own characters (`characters`: { sets, images }), over its style.
+  const skin = useMemo(() => (characters ? withCharacters(placed.skin, characters.sets, characters.images) : placed.skin), [placed.skin, characters]);
   // While Edit layout is open: a faint figure on every seat, in the pose its area is for (#2558), so a seat is placed by
   // what will stand, sit or lie there, not by a dot.
   const ghosts = zones && !!layout && !layoutStale;
