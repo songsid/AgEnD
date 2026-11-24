@@ -4,7 +4,7 @@
 // shows its newest 20 at a time. A module of its own (a new URL): a tab holding an older fleet-tasks.js or
 // fleet-task-common.js is never linked against a name it lacks.
 import { html, useEffect, useRef, useState } from "/assets/app-html.js";
-import { register, t } from "/assets/app-i18n.js";
+import { lang, register, t } from "/assets/app-i18n.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { StatusPill, Who, relTime } from "./fleet-task-common.js";
@@ -15,15 +15,15 @@ register("tasksArchive", {
     title: "{0} · archived", lead: "Main tasks finished more than {0} days ago. Search finds them too, and a card's number opens it; move one to To do to reopen it.",
     who: "Assigned to", everyone: "Everyone", more: "Show more", none: "Nothing archived here.", noneWho: "Nothing archived for {0}.", failed: "The archive could not be read.",
     done: "Done {0}", cancelled: "Cancelled {0}", count: "{0} of {1}",
-    week: "{0} this week", weekTip: "Main tasks finished in the last 7 days, archived ones included",
+    week: "{0} done this week", weekArchived: "{0} done this week · {1} archived", weekTip: "Main tasks done in the last 7 days. The archived ones are off the board: the header's Archived link lists them",
     showMore: "Show {0} more", doneShow: "Show", tag: "Archived", tagTip: "Finished more than {0} days ago: off the board, not deleted", tile: "{0} archived",
   },
   "zh-TW": {
     link: "已封存 · {0}", linkTip: "完成超過 {0} 天：已離開看板，仍可用搜尋或卡片編號找到",
     title: "{0} · 已封存", lead: "完成超過 {0} 天的主任務。搜尋也找得到，用卡片編號也能開啟；移回「待辦」即可重新開啟。",
     who: "負責", everyone: "所有人", more: "顯示更多", none: "這裡沒有封存的卡片。", noneWho: "{0} 沒有封存的卡片。", failed: "無法讀取封存清單。",
-    done: "{0}完成", cancelled: "{0}取消", count: "{0} / {1}",
-    week: "本週 {0} 張", weekTip: "近 7 天完成的主任務，含已封存的",
+    done: "{0} 完成", cancelled: "{0} 取消", count: "{0} / {1}",
+    week: "本週完成 {0} 張", weekArchived: "本週完成 {0} 張 · 其中 {1} 張已封存", weekTip: "近 7 天完成的主任務。已封存的不在看板上，可從標題列的「已封存」查看",
     showMore: "再顯示 {0} 張", doneShow: "顯示", tag: "已封存", tagTip: "完成超過 {0} 天：已離開看板，沒有刪除", tile: "已封存 {0} 張",
   },
 });
@@ -32,6 +32,17 @@ register("tasksArchive", {
 export const DONE_PAGE = 20;
 /** Finished cards, the most recently finished first (when they finished, else their last change). */
 export const newestDone = (cards) => [...cards].sort((a, b) => String(b.doneAt || b.updatedAt || "").localeCompare(String(a.doneAt || a.updatedAt || "")) || String(b.id).localeCompare(String(a.id)));
+
+/** The Done column's "this week" line: how many main tasks were done in the last 7 days, and how many of them are archived. */
+export const weekLabel = (stats) => (stats && stats.archivedWeek > 0 ? t("tasksArchive.weekArchived", stats.doneWeek || 0, stats.archivedWeek) : t("tasksArchive.week", (stats && stats.doneWeek) || 0));
+
+/** A finish time as the Archive shows it: "Nov 21, 14:05" / "11月21日 14:05" (with the year when it isn't this year's). */
+export function finishedAt(iso, now = new Date()) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const opts = { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false, ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) };
+  return new Intl.DateTimeFormat(lang() === "zh-TW" ? "zh-TW" : "en", opts).format(d);
+}
 
 /** The board header's way to the Archive list (none when nothing is archived). */
 export function ArchivedLink({ count, days, onOpen }) {
@@ -65,7 +76,10 @@ export function ArchiveDialog({ project, name, days, onOpen, onClose, fetchJson 
     } catch { if (mine === seq.current) setState((s) => ({ ...s, phase: "failed" })); }
   };
   useEffect(() => { setState((s) => ({ ...s, phase: "loading", cards: [], next: null })); void load(); }, [project, who]);
-  const finished = (c) => t(c.status === "cancelled" ? "tasksArchive.cancelled" : "tasksArchive.done", relTime(c.doneAt || c.updatedAt));
+  // When it finished, as a date and time (#4428 capture check: a relative "3 days ago" rounds 3.3 days down, which read as
+  // contradicting "more than 3 days"); the relative time is its tooltip.
+  const at = (c) => c.doneAt || c.updatedAt;
+  const finished = (c) => t(c.status === "cancelled" ? "tasksArchive.cancelled" : "tasksArchive.done", finishedAt(at(c)));
   const body = state.phase === "failed" ? html`<${ErrorState} message=${t("tasksArchive.failed")} onRetry=${() => load()} />`
     : state.phase === "loading" && !state.cards.length ? html`<${Skeleton} variant="list" lines=${4} />`
     : !state.cards.length ? html`<${Empty} icon="tasks" title=${who ? t("tasksArchive.noneWho", who) : t("tasksArchive.none")} />`
@@ -75,7 +89,7 @@ export function ArchiveDialog({ project, name, days, onOpen, onClose, fetchJson 
           <span class="tb-row-text"><button type="button" class="tb-row-title" title=${c.title} onClick=${(e) => { e.stopPropagation(); onOpen(c); }}>${c.title}</button></span>
           <${StatusPill} status=${c.status} card=${c} />
           <span class="tb-row-who"><${Who} name=${c.assignee} /></span>
-          <span class="tb-row-time muted">${finished(c)}</span>
+          <span class="tb-row-time muted" title=${relTime(at(c))}>${finished(c)}</span>
         </div></li>`)}</ul></div>`;
   const tools = state.assignees.length > 1 || who ? html`<label class="tb-archive-who">${t("tasksArchive.who")}
       <select class="tb-select" value=${who} onChange=${(e) => setWho(e.target.value)}>

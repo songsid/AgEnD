@@ -229,9 +229,13 @@ export interface ProjectStats {
   waiting: number;
   blocked: number;
   lastActivity: string | null;
-  /** M-3668: finished main tasks archived (left out of the numbers above), and main tasks finished in the last 7 days. */
+  /**
+   * M-3668: finished main tasks archived (left out of the numbers above), main tasks done in the last 7 days, and how many
+   * of those are archived already (the Done column shows the rest: "45 done this week · 8 archived").
+   */
   archived: number;
   doneWeek: number;
+  archivedWeek: number;
 }
 
 /** A card as the dashboard draws it: references by card number. */
@@ -1072,10 +1076,10 @@ export class TaskBoard {
     const out: Record<string, ProjectStats> = {};
     for (const r of rows) {
       const key = r.project_id === null || r.project_id === undefined ? "none" : String(r.project_id);
-      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null, archived: 0, doneWeek: 0 };
+      const st = out[key] ??= { mains: 0, units: { total: 0, open: 0, claimed: 0, blocked: 0, review: 0, done: 0 }, percent: 0, waiting: 0, blocked: 0, lastActivity: null, archived: 0, doneWeek: 0, archivedWeek: 0 };
       if (!st.lastActivity || (r.updated_at as string) > st.lastActivity) st.lastActivity = r.updated_at as string;
       const status = r.status as CardStatus;
-      if (r.kind === "main" && status === "done" && finished(r) >= week) st.doneWeek++;
+      if (r.kind === "main" && status === "done" && finished(r) >= week) { st.doneWeek++; if (archivedMains.has(r.id as string)) st.archivedWeek++; }
       if (archivedMains.has(r.id as string)) { st.archived++; continue; }
       if (r.kind === "sub" && archivedMains.has(r.parent_id as string)) continue;
       if (status === "cancelled") continue;

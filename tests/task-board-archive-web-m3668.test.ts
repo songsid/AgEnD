@@ -60,7 +60,7 @@ describe("the web routes", () => {
     const fresh = finished(board, "Fresh", 1), old = finished(board, "Shipped long ago", 5);
     const b = await get(fm, "/ui/tasks/board");
     expect([b.status, b.body.archiveAfterDays, b.body.cards.map((c: any) => c.id).includes(fresh.code), b.body.cards.map((c: any) => c.id).includes(old.code)]).toEqual([200, 3, true, false]);
-    expect([b.body.stats.none.archived, b.body.stats.none.doneWeek]).toEqual([1, 2]);
+    expect([b.body.stats.none.archived, b.body.stats.none.doneWeek, b.body.stats.none.archivedWeek]).toEqual([1, 2, 1]);
     const a = await get(fm, "/ui/tasks/archive?project=none");
     expect([a.status, a.body.cards.map((c: any) => c.id), a.body.total]).toEqual([200, [old.code], 1]);
     expect((await get(fm, "/ui/tasks/archive?project=x")).status).toBe(400);

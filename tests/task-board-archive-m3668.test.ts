@@ -65,7 +65,7 @@ describe("the rule: archived N days after a main task finished (a view rule)", (
     board.createCards(ANN, { cards: [{ title: "Live", assignee: "dev-a" }] });
     finished(board, "Fresh", 1); finished(board, "Old", 5); finished(board, "Older", 9); finished(board, "Dropped", 6, { status: "cancelled" });
     const st = board.projectStats(undefined, 3).none!;
-    expect([st.mains, st.units.total, st.units.done, st.percent, st.archived, st.doneWeek]).toEqual([2, 2, 1, 50, 3, 2]);
+    expect([st.mains, st.units.total, st.units.done, st.percent, st.archived, st.doneWeek, st.archivedWeek]).toEqual([2, 2, 1, 50, 3, 2, 1]);   // "Old" (5 days): this week's and archived
     // Without archiving (the task tool's view): every card, as before.
     const all = board.projectStats().none!;
     expect([all.mains, all.archived]).toEqual([4, 0]);
@@ -110,7 +110,7 @@ const card = (over: Record<string, unknown>) => ({ id: "M-1", uuid: String(over.
 // 45 done in the last two days (newest M-100), one open.
 const DONE = Array.from({ length: 45 }, (_, i) => card({ id: `M-${100 - i}`, title: `Finished ${100 - i}`, status: "done", sort: 10 + i, doneAt: new Date(NOW - i * 3_600_000).toISOString() }));
 const OPEN = card({ id: "M-1", title: "Still to do", status: "open" });
-const STATS = { 1: { mains: 46, units: { total: 46, open: 1, claimed: 0, blocked: 0, review: 0, done: 45 }, percent: 98, waiting: 0, blocked: 0, lastActivity: ago(0), archived: 1591, doneWeek: 355 } };
+const STATS = { 1: { mains: 46, units: { total: 46, open: 1, claimed: 0, blocked: 0, review: 0, done: 45 }, percent: 98, waiting: 0, blocked: 0, lastActivity: ago(0), archived: 1591, doneWeek: 355, archivedWeek: 310 } };
 const ARCHIVED = card({ id: "M-7", title: "Shipped long ago", status: "done", doneAt: ago(12) });
 
 beforeAll(async () => {
@@ -150,7 +150,8 @@ describe("the page: the Done column, the Archive", () => {
     await board();
     expect(doneTiles()).toEqual(DONE.slice(0, 20).map((c) => c.id));
     const head = q('.tb-col[aria-label="Done"] .tb-col-head');
-    expect(head.querySelector(".tb-done-week").textContent).toBe("355 this week");
+    // #4428 capture check: the week's count says how many of them are archived (the column shows the rest).
+    expect(head.querySelector(".tb-done-week").textContent).toBe("355 done this week · 310 archived");
     expect(head.querySelector(".tb-count").textContent).toBe("45");
     fire(q(".tb-done-more"), "click"); await settle(4);
     expect(doneTiles()).toHaveLength(40);
@@ -210,5 +211,23 @@ describe("the page: the Done column, the Archive", () => {
       const reads = seen.filter((s) => s.startsWith("/ui/tasks/board"));
       expect(reads).toEqual([`/ui/tasks/board?rev=1&epoch=${encodeURIComponent("3:12:40:7")}`]);
     } finally { app.appStore.set({ streamOn: before }); }
+  });
+
+  // #4428 capture check: with none of this week's archived, the line says only how many; the Archive's rows say when, as
+  // a date and time (a rounded "3 days ago" read as contradicting "more than 3 days"), the relative time their tooltip.
+  it("this week's line without archived ones; the Archive's finish time is a date and time", async () => {
+    const { finishedAt, weekLabel } = await import("/ui/js/fleet-task-archive.js") as any;
+    expect([weekLabel({ doneWeek: 12, archivedWeek: 0 }), weekLabel({ doneWeek: 12, archivedWeek: 4 })]).toEqual(["12 done this week", "12 done this week · 4 archived"]);
+    const now = new Date("2026-11-25T00:00:00Z"), at = "2026-11-21T06:05:00Z";
+    expect(finishedAt(at, now)).toMatch(/^Nov 21, \d\d:05$/);
+    expect(finishedAt("2025-11-21T06:05:00Z", now)).toMatch(/2025/);
+    (await import("/assets/app-i18n.js") as any).setLang("zh-TW");
+    try {
+      expect([weekLabel({ doneWeek: 12, archivedWeek: 4 }), finishedAt(at, now)]).toEqual(["本週完成 12 張 · 其中 4 張已封存", expect.stringMatching(/^11月21日 \d\d:05$/)]);
+    } finally { (await import("/assets/app-i18n.js") as any).setLang("en"); }
+    await board();
+    fire(q(".tb-archived-link"), "click"); await settle(6);
+    const time = q(".tb-archive .tb-row-time");
+    expect([time.textContent.startsWith("Done "), /ago/.test(time.textContent), /ago/.test(time.getAttribute("title"))]).toEqual([true, false, true]);
   });
 });
