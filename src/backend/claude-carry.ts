@@ -15,13 +15,15 @@
  */
 import { constants as fsConstants } from "node:fs";
 import { copyFile, cp, mkdir, open, readdir, rename, rm, stat, statfs, utimes } from "node:fs/promises";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { claudeProjectKey } from "./claude-code.js";
 
 export type CarryResult =
   | { carried: true; sessionId: string; bytes: number; ms: number; replacedOlderCopy: boolean;
       /** M-3629: the target's own copy (a different history, older by its last turn), kept beside it under this name. */
-      backedUp?: string }
+      backedUp?: string;
+      /** …and its session folder, when it had one. */
+      backedUpFolder?: string }
   | { carried: false; reason: string };
 
 export interface CarryRequest {
@@ -140,6 +142,8 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
 
   const targetSize = await sizeOf(target);
   let replacedOlderCopy = false, backup: string | null = null;
+  /** #4408 review: the target as decided on (size, mtime); it must be the same at the swap, or the carry stops. */
+  let targetStamp: { size: number; mtimeMs: number } | null = null;
   if (targetSize !== null) {
     if (!await isOlderCopy(target, targetSize, source, sourceSize).catch(() => false)) {
       // M-3629: another history of this conversation (each profile went on with it). The source goes over it only when
@@ -151,6 +155,8 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
           : "the new profile already holds a version of this conversation at least as new" };
       }
       backup = carryBackupName(name, (req.now ?? Date.now)());
+      const st = await stat(target);
+      targetStamp = { size: st.size, mtimeMs: st.mtimeMs };
     }
     replacedOlderCopy = true;
   }
@@ -168,12 +174,27 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
   const tag = `.carry-${process.pid}-${Math.floor(started)}`;
   const tmpFile = join(toDir, `.${name}${tag}`);
   const tmpFolder = join(toDir, `.${sid}${tag}`);
+  // M-3629 (#4408 review): replacing another history, the target's transcript AND its session folder are moved aside
+  // whole (never merged into), and both are put back if the source can't take their place.
+  const backupFolder = backup ? join(toDir, carryBackupName(sid, (req.now ?? Date.now)())) : null;
+  const moved = { file: false, folder: false, placedFolder: false };
   try {
     // A copy-on-write clone where the filesystem has one (btrfs, xfs, APFS), a plain copy elsewhere.
     await copyFile(source, tmpFile, fsConstants.COPYFILE_FICLONE);
-    // The session's folder first, so the transcript never appears before the files it refers to.
-    if (await sizeOf(join(fromDir, sid)) !== null) {
-      await cp(join(fromDir, sid), tmpFolder, { recursive: true, errorOnExist: false, force: true });
+    const sourceFolder = await sizeOf(join(fromDir, sid)) !== null;
+    if (sourceFolder) await cp(join(fromDir, sid), tmpFolder, { recursive: true, errorOnExist: false, force: true });
+    if (backup && backupFolder) {
+      // Fenced: the target must be as it was when its last turn was read — a turn written since (the new profile in
+      // use meanwhile) stops the carry, and the target stays as it is.
+      const st = await stat(target).catch(() => null);
+      if (!st || !targetStamp || st.size !== targetStamp.size || st.mtimeMs !== targetStamp.mtimeMs) {
+        throw new Error("the new profile's copy of this conversation changed during the carry");
+      }
+      await rename(target, join(toDir, backup)); moved.file = true;
+      if (await sizeOf(join(toDir, sid)) !== null) { await rename(join(toDir, sid), backupFolder); moved.folder = true; }
+      // The session's folder first, so the transcript never appears before the files it refers to.
+      if (sourceFolder) { await rename(tmpFolder, join(toDir, sid)); moved.placedFolder = true; }
+    } else if (sourceFolder) {
       if (await sizeOf(join(toDir, sid)) === null) await rename(tmpFolder, join(toDir, sid));
       else {
         // Switching back: the folder is there already. It takes the copy's files; its own extra files stay.
@@ -181,12 +202,14 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
         await rm(tmpFolder, { recursive: true, force: true });
       }
     }
-    // M-3629: the target's own (older) history is kept, renamed, before the source takes its place.
-    if (backup) await rename(target, join(toDir, backup));
     await rename(tmpFile, target);
   } catch (err) {
-    // The target's own copy is put back if it was moved aside and the source never took its place: never lose either.
-    if (backup && await sizeOf(target) === null) await rename(join(toDir, backup), target).catch(() => undefined);
+    // Never lose either: what was moved aside goes back, what was placed comes out.
+    if (backup && backupFolder) {
+      if (moved.placedFolder) await rm(join(toDir, sid), { recursive: true, force: true }).catch(() => undefined);
+      if (moved.folder) await rename(backupFolder, join(toDir, sid)).catch(() => undefined);
+      if (moved.file && await sizeOf(target) === null) await rename(join(toDir, backup), target).catch(() => undefined);
+    }
     await rm(tmpFile, { force: true }).catch(() => undefined);
     await rm(tmpFolder, { recursive: true, force: true }).catch(() => undefined);
     return { carried: false, reason: `copy failed: ${(err as Error).message}` };
@@ -203,5 +226,6 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
   await cp(join(req.fromConfigDir, "file-history", sid), join(req.toConfigDir, "file-history", sid), { recursive: true, errorOnExist: false, force: false })
     .catch(() => undefined);
 
-  return { carried: true, sessionId: sid, bytes: sourceSize + folderBytes, ms: Math.round(performance.now() - started), replacedOlderCopy, ...(backup ? { backedUp: backup } : {}) };
+  return { carried: true, sessionId: sid, bytes: sourceSize + folderBytes, ms: Math.round(performance.now() - started), replacedOlderCopy, ...(backup ? { backedUp: backup } : {}),
+    ...(moved.folder && backupFolder ? { backedUpFolder: basename(backupFolder) } : {}) };
 }

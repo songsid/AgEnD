@@ -424,6 +424,34 @@ describe("M-3629 another history in the new profile: the newer one by its last t
     expect(await carry(w, { now: () => NOW })).toEqual({ carried: false, reason: "the new profile already holds a different version of this conversation, and which is newer can't be told" });
   });
 
+  it("#4408 review: the target's session folder is kept whole beside it too, never merged into; the source's takes its place", async () => {
+    const ours = turns(3, 0, "a") + turns(4, 10, "b"), theirs = turns(3, 0, "a") + turns(2, 5, "c");
+    const w = setup(ours, theirs);
+    mkdirSync(join(w.toProj, SID, "tool-results"), { recursive: true });
+    writeFileSync(join(w.toProj, SID, "tool-results", "r1.txt"), "THEIR output");          // conflicts with the source's r1.txt
+    writeFileSync(join(w.toProj, SID, "tool-results", "only-theirs.txt"), "theirs only");
+    const r = await carry(w, { now: () => NOW });
+    const kept = carryBackupName(SID, NOW);
+    expect(r).toMatchObject({ carried: true, backedUp: carryBackupName(`${SID}.jsonl`, NOW), backedUpFolder: kept });
+    expect(readdirSync(join(w.toProj, SID, "tool-results")).sort()).toEqual(["r1.txt"]);        // exactly the source's folder
+    expect(readFileSync(join(w.toProj, SID, "tool-results", "r1.txt"), "utf8")).toBe("tool output");
+    expect(readFileSync(join(w.toProj, kept, "tool-results", "r1.txt"), "utf8")).toBe("THEIR output");   // theirs, untouched
+    expect(readFileSync(join(w.toProj, kept, "tool-results", "only-theirs.txt"), "utf8")).toBe("theirs only");
+    expect(hidden(w.toProj)).toEqual([]);
+  });
+
+  it("#4408 review: a turn written to the target while the carry stages its copy stops the carry; the target stays as it is", async () => {
+    const ours = turns(3, 0, "a") + turns(4, 10, "b"), theirs = turns(3, 0, "a") + turns(2, 5, "c");
+    const w = setup(ours, theirs);
+    const late = turns(1, 30, "c");                                                            // a later turn in the new profile
+    const r = await carry(w, { now: () => NOW, freeBytes: async () => {                     // runs between the decision and the copy
+      writeFileSync(join(w.toProj, `${SID}.jsonl`), theirs + late); return 1e12; } });
+    expect(r).toEqual({ carried: false, reason: "copy failed: the new profile's copy of this conversation changed during the carry" });
+    expect(readFileSync(join(w.toProj, `${SID}.jsonl`), "utf8")).toBe(theirs + late);
+    expect(readdirSync(w.toProj).filter((n) => n.includes("agend-backup"))).toEqual([]);
+    expect(hidden(w.toProj)).toEqual([]);
+  });
+
   it("lastTurnAt: the last line with a timestamp, past a partial last line, from the file's end", async () => {
     const d = tempDir(), f = join(d, "t.jsonl");
     writeFileSync(f, turns(2, 0, "a") + '{"type":"user","timestamp":"2026-11-24T09:00:00.000Z"}\n{"type":"assist');

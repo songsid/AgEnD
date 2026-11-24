@@ -25,7 +25,7 @@ const T0 = Date.parse("2026-11-24T08:00:00Z");
 const turns = (n: number, from: number, tag: string) => Array.from({ length: n }, (_, i) =>
   JSON.stringify({ type: "user", sessionId: SID, uuid: `${tag}${from + i}`, timestamp: new Date(T0 + (from + i) * 60_000).toISOString() }) + "\n").join("");
 
-it("the copy can't take the target's place: the target's own history is put back, unchanged, and the switch says why", async () => {
+it("the copy can't take the target's place: the target's own history and session folder are put back, unchanged, and the switch says why", async () => {
   const root = mkdtempSync(join(tmpdir(), "agend-3629-")); dirs.push(root);
   const work = join(root, "work"); mkdirSync(work);
   const from = join(root, "a"), to = join(root, "b"), key = claudeProjectKey(work);
@@ -34,9 +34,15 @@ it("the copy can't take the target's place: the target's own history is put back
   const ours = turns(2, 0, "a") + turns(2, 10, "b"), theirs = turns(2, 0, "a") + turns(1, 4, "c");
   writeFileSync(join(fromProj, `${SID}.jsonl`), ours);
   writeFileSync(join(toProj, `${SID}.jsonl`), theirs);
+  // Both have a session folder, with a file of the same name: the target's must come back unchanged (#4408 review).
+  mkdirSync(join(fromProj, SID), { recursive: true }); writeFileSync(join(fromProj, SID, "agent-1.jsonl"), "OURS");
+  mkdirSync(join(toProj, SID), { recursive: true }); writeFileSync(join(toProj, SID, "agent-1.jsonl"), "THEIRS");
+  writeFileSync(join(toProj, SID, "only-theirs.jsonl"), "kept");
   const r = await carryClaudeConversation({ sessionId: SID, workingDirectory: work, fromConfigDir: from, toConfigDir: to, freeBytes: async () => 1e12 });
   expect(r).toEqual({ carried: false, reason: "copy failed: EIO: placing the copy failed" });
   expect(readFileSync(join(toProj, `${SID}.jsonl`), "utf8")).toBe(theirs);
-  expect(readdirSync(toProj).sort()).toEqual([`${SID}.jsonl`]);                // no backup or temporary file left over
+  expect(readdirSync(toProj).sort()).toEqual([SID, `${SID}.jsonl`]);          // no backup or temporary file left over
+  expect(readdirSync(join(toProj, SID)).sort()).toEqual(["agent-1.jsonl", "only-theirs.jsonl"]);
+  expect(readFileSync(join(toProj, SID, "agent-1.jsonl"), "utf8")).toBe("THEIRS");
   expect(readFileSync(join(fromProj, `${SID}.jsonl`), "utf8")).toBe(ours);
 });
