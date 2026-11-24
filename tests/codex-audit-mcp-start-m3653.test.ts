@@ -71,6 +71,14 @@ describe("mcp-start.sh fails when it proved nothing", () => {
     expect(r.log).toContain("--- reached: hello");
   });
 
+  it("a pane whose writer is still writing after the turn's line: still reached (no SIGPIPE race, #4421 CI)", () => {
+    // grep -q exits on "hello"; the writer's later output then meets a closed pipe. Before the fix that was exit 141,
+    // pipefail made it NOT reached — on CI it depended on scheduling, here the pause makes it certain.
+    const r = run({ CAPTURE: "printf 'hello\\n'; sleep 0.2; printf 'again\\nafter resume\\n'" });
+    expect(r.status, r.why).toBe(0);
+    expect(r.log).not.toContain("NOT reached");
+  });
+
   it("a pane that can't be read: exit 1, every turn NOT reached", () => {
     const r = run({ CAPTURE: "exit 3" });
     expect(r.status, r.why).toBe(1);

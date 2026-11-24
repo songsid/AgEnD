@@ -1,0 +1,191 @@
+{
+  "auditSnapshot": "074e58860",
+  "input": "Leader supplied all15 audit rows inline; original external report was not directly read",
+  "currentAlphaBase": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "rows": [
+    {
+      "file": "src/locale.ts",
+      "key": "dashboard.progress.fail.origin-port-in-use",
+      "before": "固定 tunnel 的本機來源連接埠已被占用 — 請關閉衝突的程式，或選擇其他來源連接埠並更新 Cloudflare 路由",
+      "after": "固定 tunnel 的本機來源連接埠已被佔用 — 請關閉衝突的程式，或選擇其他來源連接埠並更新 Cloudflare 路由",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.preparing",
+      "before": "📦 正在更新 AgEnD... ({0}s)",
+      "after": "📦 正在更新 AgEnD...（{0}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.downloading",
+      "before": "⬇️ 下載及安裝中... ({0}s)",
+      "after": "⬇️ 下載及安裝中...（{0}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.installed",
+      "before": "已安裝 v{0} — 正在重啟 fleet ({1}s)",
+      "after": "已安裝 v{0} — 正在重啟 fleet（{1}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.stopping",
+      "before": "🔄 停止 Fleet... ({0}s)",
+      "after": "🔄 停止 Fleet...（{0}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.starting",
+      "before": "🚀 啟動 Fleet... ({0}s)",
+      "after": "🚀 啟動 Fleet...（{0}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.complete",
+      "before": "✅ 更新完成 — v{0} · {1}/{2} 個 Agent 已就緒 ({3}s)",
+      "after": "✅ 更新完成 — v{0} · {1}/{2} 個 Agent 已就緒（{3}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.already_current",
+      "before": "✅ 已是最新版本 — v{0} ({1}s)",
+      "after": "✅ 已是最新版本 — v{0}（{1}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.failed",
+      "before": "❌ 更新在「{0}」階段失敗：{1} ({2}s)",
+      "after": "❌ 更新在「{0}」階段失敗：{1}（{2}s）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "login.remote_unsupported_agent_cli",
+      "before": "⛔ {0} 的遠端登入在這個版本不支援。`{1}` 是完整的 agent CLI、沒有隔離的登入子指令 —— 登入等於跑整個 agent，違反瀏覧器終端「只跑登入指令、沒有 shell」的邊界。請暫時在主機上直接執行 `{1}` 登入；等上游提供專用 login 指令後再支援。",
+      "after": "⛔ {0} 的遠端登入在這個版本不支援。`{1}` 是完整的 agent CLI、沒有隔離的登入子指令 —— 登入等於跑整個 agent，違反瀏覽器終端「只跑登入指令、沒有 shell」的邊界。請暫時在主機上直接執行 `{1}` 登入；等上游提供專用 login 指令後再支援。",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "progress.trace_title",
+      "before": "🧾 工具歷程 (記錄至 {0})",
+      "after": "🧾 工具歷程（記錄至 {0}）",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "dashboard.port_in_use",
+      "before": "⚠️ 儀表板無法使用 — health port {0} 已被占用。請停止衝突的 process，或設定其他 health_port。",
+      "after": "⚠️ 儀表板無法使用 — health port {0} 已被佔用。請停止衝突的 process，或設定其他 health_port。",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/ui/fleet-cache.js",
+      "key": "share",
+      "before": "占其成本 {0}",
+      "after": "佔其成本 {0}",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/ui/settings-hub-setup-strings.js",
+      "key": "network",
+      "before": "監聽位址無法使用，或連接埠已被占用。請使用這台電腦上的位址及可用、不同的連接埠。",
+      "after": "監聽位址無法使用，或連接埠已被佔用。請使用這台電腦上的位址及可用、不同的連接埠。",
+      "status": "fixed-current-tip"
+    },
+    {
+      "file": "src/ui/hub-admin-overview.js",
+      "key": "fRate",
+      "before": "占全部提問的 {0}%",
+      "after": "佔全部提問的 {0}%",
+      "status": "fixed-current-tip"
+    }
+  ],
+  "staleOnCurrentAlpha": [],
+  "mainSnapshot": "22c1977842a45350a0937ee9d184083bd6f74796",
+  "mainPresence": [
+    {
+      "file": "src/locale.ts",
+      "key": "dashboard.progress.fail.origin-port-in-use",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.preparing",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.downloading",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.installed",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.stopping",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.starting",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.complete",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.already_current",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "update.progress.failed",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "login.remote_unsupported_agent_cli",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "progress.trace_title",
+      "status": "key-absent-on-main"
+    },
+    {
+      "file": "src/locale.ts",
+      "key": "dashboard.port_in_use",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/ui/fleet-cache.js",
+      "key": "share",
+      "status": "same-old-value-present"
+    },
+    {
+      "file": "src/ui/settings-hub-setup-strings.js",
+      "key": "network",
+      "status": "file-absent-on-main"
+    },
+    {
+      "file": "src/ui/hub-admin-overview.js",
+      "key": "fRate",
+      "status": "file-absent-on-main"
+    }
+  ]
+}

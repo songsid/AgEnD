@@ -43,7 +43,7 @@ describe("#2476 /update progress is honest about restart", () => {
 
     setLocale("zh-TW");
     const zh = formatUpdateProgress(installed, 60_000);
-    expect(zh).toBe("已安裝 v2.3.0-beta.26 — 正在重啟 fleet (60s)");
+    expect(zh).toBe("已安裝 v2.3.0-beta.26 — 正在重啟 fleet（60s）");
     expect(zh).not.toContain("✅");
     expect(zh).not.toContain("完成");
   });
@@ -56,9 +56,9 @@ describe("#2476 /update progress is honest about restart", () => {
       .toBe("✅ Already up to date — v2.3.0-beta.26 (5s)");
     setLocale("zh-TW");
     expect(formatUpdateProgress(marker("failed", { error: "npm timeout", failedStage: "downloading" }), 3_000))
-      .toBe("❌ 更新在「下載／安裝」階段失敗：npm timeout (3s)");
+      .toBe("❌ 更新在「下載／安裝」階段失敗：npm timeout（3s）");
     expect(formatUpdateProgress(marker("complete", { version: "2.3.0-beta.26" }), 5_000))
-      .toBe("✅ 已是最新版本 — v2.3.0-beta.26 (5s)");
+      .toBe("✅ 已是最新版本 — v2.3.0-beta.26（5s）");
   });
 
   it("the ✅ completion is only the new fleet's READY line — EN and zh-TW", () => {
@@ -72,7 +72,7 @@ describe("#2476 /update progress is honest about restart", () => {
 
     setLocale("zh-TW");
     const zh = formatRestartProgressCompletion("update", summary, 0, 180_000);
-    expect(zh).toBe("✅ 更新完成 — v2.3.0-beta.26 · 44/44 個 Agent 已就緒 (180s)");
+    expect(zh).toBe("✅ 更新完成 — v2.3.0-beta.26 · 44/44 個 Agent 已就緒（180s）");
     expect(zh.startsWith("✅")).toBe(true);
   });
 
@@ -87,13 +87,13 @@ describe("#2476 /update progress is honest about restart", () => {
     try {
       fleet.beginUpdateProgress(adapter, "guild", "topic", "progress-1");
       await vi.advanceTimersByTimeAsync(0);
-      expect(editMessage).toHaveBeenLastCalledWith("guild", "progress-1", "📦 正在更新 AgEnD... (0s)", "topic");
+      expect(editMessage).toHaveBeenLastCalledWith("guild", "progress-1", "📦 正在更新 AgEnD...（0s）", "topic");
 
       setUpdateProgressStage(dir, "installed", { version: "2.3.0-beta.26" });
       vi.setSystemTime(61_000);
       await vi.advanceTimersByTimeAsync(200);
       expect(editMessage).toHaveBeenLastCalledWith(
-        "guild", "progress-1", "已安裝 v2.3.0-beta.26 — 正在重啟 fleet (60s)", "topic",
+        "guild", "progress-1", "已安裝 v2.3.0-beta.26 — 正在重啟 fleet（60s）", "topic",
       );
       const afterInstalled = editMessage.mock.calls.length;
 
