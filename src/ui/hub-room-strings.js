@@ -9,7 +9,7 @@ register("hubRoom", {
   en: {
     // §1 vocabulary (on-screen terms)
     chat: "Chat", room: "Room", members: "Members", roomManager: "Room manager",
-    roomAssistant: "Room assistant", hubAssistant: "Hub assistant",
+    roomAssistant: "Room assistant", roomAssistantTag: "Assistant", hubAssistant: "Hub assistant",
     mentionAll: "@All agents", invitation: "Invitation", replyLater: "Reply later", team: "Team",
     // §2 layout
     search: "Search", roomsGroup: "Rooms", agentsGroup: "Agents",
@@ -65,7 +65,7 @@ register("hubRoom", {
     needsUpdate: "Needs an AgEnD update", stLater: "Answers when online",
     stAssistantDown: "Cannot answer right now",
     stStopped: "Stopped",
-    mentionHere: "@ it here", chatOneToOne: "Chat with it one-to-one", removeFromRoom: "Remove from room",
+    mentionHere: "@ it here", chatOneToOne: "Chat with it one-to-one", chatOneToOneShort: "Chat 1:1", removeFromRoom: "Remove from room",
     // §6 new room
     newRoomTitle: "New room", name: "Name", namePlaceholder: "For example: Weekly leads meeting",
     addPeople: "Add people, teams, or AD groups: type a name to search",
@@ -164,7 +164,7 @@ register("hubRoom", {
   },
   "zh-TW": {
     chat: "對話", room: "房間", members: "成員", roomManager: "房間管理",
-    roomAssistant: "房間助理", hubAssistant: "Hub 助理",
+    roomAssistant: "房間助理", roomAssistantTag: "助理", hubAssistant: "Hub 助理",
     mentionAll: "@所有 Agent", invitation: "邀請", replyLater: "稍後回覆", team: "團隊",
     search: "搜尋", roomsGroup: "房間", agentsGroup: "Agent",
     roomSub: "{0} 人 · {1} 個 Agent", providedByHub: "Hub 提供",
@@ -212,7 +212,7 @@ register("hubRoom", {
     needsUpdate: "需要更新 AgEnD", stLater: "上線時回答",
     stAssistantDown: "暫時無法回答",
     stStopped: "已停止",
-    mentionHere: "在這裡 @ 它", chatOneToOne: "和它一對一對話", removeFromRoom: "從房間移除",
+    mentionHere: "在這裡 @ 它", chatOneToOne: "和它一對一對話", chatOneToOneShort: "一對一對話", removeFromRoom: "從房間移除",
     newRoomTitle: "新房間", name: "名稱", namePlaceholder: "例如：每週主管會議",
     addPeople: "加入人、團隊或 AD 群組：輸入名稱搜尋",
     addAgents: "加入自己的 Agent，或邀請別人的",

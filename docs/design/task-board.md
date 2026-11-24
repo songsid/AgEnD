@@ -378,6 +378,17 @@ its creation or one it dispatches), its sub tasks following; `move_project` (`id
 each card moved or refused on its own with a line per card. Archived projects are refused; a project's lead, renaming
 and archiving stay the person's.
 
+Where a new main task goes when an agent's `create` names no project: counting the projects
+that are not archived — none: no project, as always; one: that project; several: the one the caller leads, when it leads
+exactly one of them, else `create` is refused with the projects listed and nothing is written, so the agent asks the person and
+creates again — or, when nobody can answer (a scheduled or automated run), creates it with `project: "none"`. A project named (id
+or name) is taken as given, `null` / `"none"` is a deliberate no project, and a blank string counts as nothing said. A sub task follows its main task and is never asked; a person's create (the dashboard) is never asked.
+The answer to a main task's create says where it went and why ("the board's only project, chosen for you", "you lead this
+project") and what to tell the person (`#M-n` opens the card in the chat, then the project's name). A card left in no project on a
+board that has projects also says: ask which project it belongs to, move it once they say, and keep the rule in `soul.md` — the
+agent's own memory — so the next such card goes there. A plain `create` that lands
+in a project this way stays unassigned, as a plain task is.
+
 The loop the person's confirmation needs closes through the tool: `done` on a held card answers that it waits for the
 person; `mine` lists "sent back to you" with the reason; `get` shows the comments new to the assignee and the latest
 few, a send-back marked "(sent back)"; and every claim, done or update returns the board's notes (the new comments
@@ -687,9 +698,19 @@ An instance's web chat can refer to a card, and the agent is handed it. Nothing 
   changes for nothing typed; hidden instances' cards left out over the public link) and offers the cards in the command palette's own
   list. Choosing puts `#M-3 ` in the draft. A guest has no board and is offered nothing. Where the list opens and what
   goes in are the same function as the comment box's `@` (`src/ui/trigger-complete.js`, the trigger `#`).
-- **The chip.** A person's message (never an agent's, never the Hub's) that names a card is drawn with a chip — number, title, status
+- **The chip.** A person's message or an agent's reply (never the Hub's) that names a card is drawn with a chip — number, title, status
   (the board's pill) — linking to `/ui/fleet?card=<number>`. The page asks `GET /ui/tasks/refs?codes=` once per number and again
-  after a `tasks` stream event; until the answer arrives, or when the number is no card, the text stays text.
+  after a `tasks` stream event; until the answer arrives, or when the number is no card, the text stays text. Who wrote the
+  message does not change what may be shown: the answer leaves out a hidden instance's card over the public link, so an
+  agent's `#M-3` for such a card stays the text it was (no title, status or owner reaches the viewer). Only `user` and `agent`
+  rows are read; a status line or the activity timeline is not.
+- **The agent writes the same number.** An agent points at a card with `#M-3` in its reply, never a URL it builds (a
+  `localhost` address does not open from another machine or a phone). It is one sentence, written once
+  (`TASK_CARD_REF_HINT`, `src/dashboard-permissions.ts`) and shown wherever the `task` tool is described: the tool's description
+  (MCP mode, every runtime), the end of the Task Board commands in `agent-cli-instructions.md` (CLI mode: a slot the prompt fills, dropped
+  with the commands when the board is off) and, once, the what's-new notice (an agent already running keeps the description it
+  loaded). An agent reads one of the first two, so the steady cost is one sentence; the task-board skill and the workflow
+  template do not repeat it (a test pins each surface).
 - **The agent.** `POST /ui/send` reads the numbers in the typed text, reads those cards from the board *now*, and puts a block under
   the person's words in the message it delivers (`[Task cards this message refers to]`, a line per card as `task get` writes it,
   and how to read one in full). The last line is in the form *this* instance can use, on every runtime — a native (Windows) agent

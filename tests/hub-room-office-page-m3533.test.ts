@@ -38,9 +38,13 @@ const STATE = (ids: string[]) => ({
 });
 
 /** The weekly room of the rooms fixture, its office on (or not), its state answered by `answer` (status, body). */
-async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; sameName?: boolean; answer?: () => { status: number; body: unknown } } = {}) {
+async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; sameName?: boolean; canAsk?: number[]; answer?: () => { status: number; body: unknown } } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch, room = fx.rooms.find((r: any) => r.id === "room-weekly")! as any;
   if (opts.on !== false) room.settings.office = { enabled: true, style: "studio" };
+  // M-3565: the viewer may ask the office's first agent (a who-may-ask grant), and has no one-to-one with it yet.
+  const asked: any[] = [];
+  const askable = (opts.canAsk || []).map((i) => room.members.filter((m: any) => m.kind === "agent")[i]);
+  for (const m of askable) m.canAsk = true;
   // Two agents of one name (of different owners), as the office's first two.
   if (opts.sameName) { const two = room.members.filter((m: any) => m.kind === "agent").slice(0, 2); two[1].name = two[0].name; }
   const reads: string[] = [], posts: any[] = [];
@@ -51,6 +55,14 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; s
       return { ok: a.status === 200, status: a.status, headers: { get: () => "application/json" }, json: async () => a.body, text: async () => JSON.stringify(a.body) };
     }
     if (/\/hub\/v1\/rooms\/room-weekly\/messages$/.test(String(url)) && String(init?.method).toUpperCase() === "POST") posts.push(JSON.parse(String(init.body)));
+    if (askable.length) {
+      const json = (body: unknown) => ({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => body, text: async () => JSON.stringify(body) });
+      if (/\/hub\/v1\/exposures$/.test(String(url)) && String(init?.method || "GET").toUpperCase() === "GET")
+        return json({ mine: [], askable: askable.map((m: any) => ({ exposure: { id: m.id, revision: 1, displayName: m.name }, grant: { id: `grant-${m.id}` }, ownerName: "Alex Sample" })) });
+      if (/\/hub\/v1\/rooms$/.test(String(url)) && String(init?.method).toUpperCase() === "POST") {
+        const body = JSON.parse(String(init.body)); if (body.exposureId) { asked.push(body); return json({ ok: true, room: { id: "room-direct-m3565" } }); }
+      }
+    }
     return fx.fetch(url, init);
   };
   g.EventSource = fx.EventSource;
@@ -60,7 +72,7 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; s
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
   await until(() => pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
-  return { pg, fx, room, reads, posts, restore: () => { g.fetch = realFetch; } };
+  return { pg, fx, room, reads, posts, asked, restore: () => { g.fetch = realFetch; } };
 }
 const q = (pg: AppPage, s: string) => pg.root.querySelector(s) as any;
 /** The message box shown (in the office it stays mounted, hidden, with its draft). */
@@ -77,6 +89,8 @@ describe("the drawing's input (pure)", () => {
     expect(JSON.stringify(d.instances.map((i: any) => [i.name, i.display_name]))).not.toMatch(/e1|e2/);
     i18n.setLang("en", { store: false });
     expect(office.named(STATE(["e1", "e2"]), members).instances.map((i: any) => i.name)).toEqual(["Notes (Alex Sample)", "Notes (Casey Sample)", "Room assistant"]);
+    // The owner part also rides beside the label, for the office's tag (#4379 review); a unique name has none.
+    expect(office.named(STATE(["e1", "e2"]), members).instances.map((i: any) => i.tag_fit ?? null)).toEqual([{ owner: [" (", "Alex Sample", ")"] }, { owner: [" (", "Casey Sample", ")"] }, { short: "Assistant" }]);
     // A unique name stays bare; too long with the owner: the owner's first word.
     const long = [{ kind: "agent", id: "e1", owner: { name: "Alexandra Samplesworth" } }, { kind: "agent", id: "e2", owner: { name: "Casey Sample" } }];
     expect(office.named(STATE(["e1", "e2"]), long).instances.map((i: any) => i.name).slice(0, 2)).toEqual(["Notes (Alexandra)", "Notes (Casey Sample)"]);
@@ -85,6 +99,42 @@ describe("the drawing's input (pure)", () => {
     expect(new Set(same.instances.map((i: any) => i.name)).size).toBe(3);
     expect(new Set(office.named(STATE(["e1", "e2"])).instances.map((i: any) => i.name)).size).toBe(3);
   });
+  // #4379 review: a tag too narrow for "Atlas（Alex Sample）" cut the owner ("Atlas（Al…"), the only thing telling the two
+  // Atlases apart. With its owner part, the tag keeps the owner and cuts the name; then the owner's first word, then its
+  // first character; never wider than its width (#4376's places hold). Without one (a Fleet name), cut at its end as before.
+  it("a tag keeps the owner and cuts the name; never wider than its width; a name with no owner part is cut at its end", async () => {
+    const { fitText, tagBox } = await import("/ui/js/fleet-office-skin.js");
+    const ctx = { save() {}, restore() {}, font: "", measureText: (t: string) => ({ width: [...t].length * 6 }) };   // 6 per character
+    const fit = (s: string, max: number, f: any = null) => { const t = fitText(ctx, s, max, f); expect(t.length * 6, `${t} within ${max}`).toBeLessThanOrEqual(max); return t; };
+    const zh = { owner: ["（", "Alex Sample", "）"] }, en = { owner: [" (", "Alex Sample", ")"] };
+    expect(fit("Atlas（Alex Sample）", 200, zh)).toBe("Atlas（Alex Sample）");     // fits: as it is
+    expect(fit("Atlas（Alex Sample）", 84, zh)).toBe("Atlas（Alex）");             // the whole name, the owner's first word
+    expect(fit("Atlas（Alex Sample）", 60, zh)).toBe("Atl…（Alex）");             // a cut name, the owner's word kept
+    expect(fit("Atlas（Alex Sample）", 48, zh)).toBe("A…（Alex）");               // the owner's word before the name's length
+    expect(fit("Atlas (Alex Sample)", 48, en)).toBe("Atl… (A)");                   // narrower than that: the owner's initial
+    expect(fit("Atlas（Alex Sample）", 84)).toBe("Atlas（Alex Sa…");                   // no owner part: cut at its end, as before
+    expect(fit("Build bot (staging area)", 60)).toBe("Build bot…");
+    expect(fit("Atlas（Alex Sample）", 84, { owner: ["（", "Casey", "）"] })).toBe("Atlas（Alex Sa…");
+    // #4379 review: two owners of one first word ("Alex A", "Alex B"): the whole owner with the name cut, never two
+    // identical "Longer (Alex)" tags where a cut name with each whole owner fits.
+    const pair = ["Alex A", "Alex B"].map((o) => fit(`Longer (${o})`, 84, { owner: [" (", o, ")"] }));
+    expect(pair).toEqual(["Long… (Alex A)", "Long… (Alex B)"]);
+    expect(new Set(pair).size).toBe(2);  // an owner that is not the label's end: ignored
+    // The whole name with the owner's word cut, before only its initial; the room assistant's shorter word.
+    expect(fit("Atlas (Morganstern Lee)", 90, { owner: [" (", "Morganstern Lee", ")"] })).toBe("Atlas (Morgan…)");
+    expect(fit("Room assistant", 60, { short: "Assistant" })).toBe("Assistant");
+    expect(fit("Room assistant", 40, { short: "Assistant" })).toBe("Room …");               // the short word too long: cut at its end, as before
+    // The tag's own box takes the same text, so the places measured from it (#4376) are the drawn tag's.
+    expect(tagBox(ctx, 100, 50, "Atlas（Alex Sample）", false, zh).text).toBe("Atlas（Alex）");
+    expect(tagBox(ctx, 100, 50, "Atlas（Alex Sample）", true, zh).text).toBe("A…（Alex）");
+    // And what the tag itself paints, from the look's owner part (fleet-office.js looksOf → look.tail).
+    const { pixelSkin, DEFAULT_PAL } = await import("/ui/js/fleet-office-skin.js");
+    const painted: string[] = [];
+    const g = new Proxy({ ...ctx, fillText: (t: string) => { painted.push(t); } } as any, { get(o, k) { return k in o ? o[k] : () => {}; }, set(o, k, v) { o[k] = v; return true; } });
+    pixelSkin.drawTag(g, 100, 50, { label: "Atlas（Alex Sample）", fit: zh }, { pal: { ...DEFAULT_PAL }, mode: "light" }, true);
+    expect(painted).toContain("A…（Alex）");
+  });
+
   it("words every state as the member list does; answering here is 處理中 doing what it does now", () => {
     i18n.setLang("zh-TW", { store: false });
     const w = (i: any, members: any[] = []) => office.officeWords({ i: { name: "Notes", member: "e1", ...i } }, members);
@@ -441,6 +491,43 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
     expect(composer.boundMentions("@Note hi", detail, bound)).toEqual([]);
     expect(composer.boundMentions("@Planner", detail, bound)).toEqual(["e3"]);
     expect(composer.boundMentions("@Notes", detail, []).sort()).toEqual(["e1", "e2"]);
+  });
+});
+
+// M-3565 (the user, 11-24): a room's agent card had no way into a one-to-one. The office card has the member card's
+// 「和它一對一對話」 when this viewer may ask the agent (canAsk); with no chat yet it starts one from their grant (as 新對話).
+describe("Chat with it one-to-one (M-3565)", () => {
+  // The office's figures are the room's first two agents, in member order (STATE); the fixture has a one-to-one with the
+  // first (room-helper) and none with the second.
+  const card = async (pg: AppPage, nth: number) => {
+    const desks = () => [...pg.root.querySelectorAll(".hub-room-office .oo-desk")] as any[];
+    fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => desks().length);
+    fire(desks()[nth], "click"); await until(() => q(pg, ".oo-card-action"));
+    return [...pg.root.querySelectorAll(".oo-card-action")] as any[];
+  };
+  it("an agent I may ask with no chat yet: @ it, then Chat with it one-to-one — the chat started from my grant and opened", async () => {
+    const { pg, room, asked, restore } = await roomPage({ canAsk: [0, 1] });
+    try {
+      const second = room.members.filter((m: any) => m.kind === "agent")[1];
+      const acts = await card(pg, 1);
+      expect(acts.map((b) => [b.textContent, b.classList.contains("btn-primary")])).toEqual([["@ it", true], ["Chat 1:1", false]]);
+      expect(acts[1].getAttribute("aria-label"), "the whole words its name").toBe("Chat with it one-to-one");
+      fire(acts[1], "click"); await until(() => pg.window.location.search.includes("room-direct-m3565"));
+      expect(asked).toEqual([{ exposureId: second.id, grantId: `grant-${second.id}` }]);
+      expect(pg.window.location.search).toBe("?room=room-direct-m3565");
+    } finally { restore(); }
+  });
+  it("an agent I may ask that I already chat with: its chat opens, none started", async () => {
+    const { pg, asked, restore } = await roomPage({ canAsk: [0] });
+    try {
+      const acts = await card(pg, 0);
+      fire(acts[1], "click"); await until(() => pg.window.location.search.includes("room-helper"));
+      expect([pg.window.location.search, asked]).toEqual(["?room=room-helper", []]);
+    } finally { restore(); }
+  });
+  it("an agent I may not ask: only @ it", async () => {
+    const { pg, restore } = await roomPage({ canAsk: [0] });
+    try { expect((await card(pg, 1)).map((b) => b.textContent)).toEqual(["@ it"]); } finally { restore(); }
   });
 });
 

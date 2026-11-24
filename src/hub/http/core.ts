@@ -97,16 +97,19 @@ export class HubCore {
     const selected = this.deps.grantDirectory;
     if (!selected) throw new HubProtocolError("unavailable");
     let policy: ReturnType<typeof selected.policy>, image: string, binding: string;
+    // M-3566: fence on the complete stored policy, whatever its kind. read() serves the group-kind policy only and refuses an
+    // active roles policy, which made every grant-subject search and group-grant check "unavailable" once roles were on.
+    const imageOf = (p: typeof policy) => p.canonical ? p.canonical().raw : JSON.stringify(p.read());
     try {
       if (selected.binding().kind !== "ready") throw new Error("binding unavailable");
-      policy = selected.policy(); image = JSON.stringify(policy.read()); binding = JSON.stringify(selected.binding());
+      policy = selected.policy(); image = imageOf(policy); binding = JSON.stringify(selected.binding());
     } catch { throw new HubProtocolError("unavailable"); }
     const assertCurrent = () => {
       this.check();
       if (!ctx.current()) throw new HubProtocolError("revoked");
       try {
         if (this.deps.grantDirectory !== selected || selected.policy() !== policy
-          || JSON.stringify(policy.read()) !== image || JSON.stringify(selected.binding()) !== binding) throw new Error("binding changed");
+          || imageOf(policy) !== image || JSON.stringify(selected.binding()) !== binding) throw new Error("binding changed");
       } catch { throw new HubProtocolError("unavailable"); }
     };
     assertCurrent();

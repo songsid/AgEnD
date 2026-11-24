@@ -68,7 +68,7 @@ describe("#3195: agents create projects and move main tasks between them", () =>
       const call = (args: Record<string, unknown>) => f[door]("dev-a", args);
       const b = f.db.board;
       // dev-a's own main task (M-2), a sub task, a dependency on M-1, a comment from the person.
-      expect(await f.http("dev-a", { action: "create", title: "Leaderboard", project: "Game", depends_on: ["M-1"] })).toBe("ok M-2 Leaderboard [to do] @dev-a (v1)");
+      expect(await f.http("dev-a", { action: "create", title: "Leaderboard", project: "Game", depends_on: ["M-1"] })).toBe("ok M-2 Leaderboard [to do] @dev-a (v1)\nIn project 1 Game.\nTell the person: #M-2 (opens the card) is in project Game.");
       expect(await f.http("dev-a", { action: "create", title: "API", parent: "M-2" })).toBe("ok S-1 API [to do] @dev-a (v1)");
       b.updateCard(ANN, "M-2", { comment: "weekly" });
       const before = { main: kept(b.getCard("M-2")), sub: kept(b.getCard("S-1")), comments: b.detail("M-2").comments.length };

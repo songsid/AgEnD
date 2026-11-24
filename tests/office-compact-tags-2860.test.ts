@@ -57,6 +57,38 @@ describe("#2860 a crowded area keeps compact tags", () => {
     for (const n of untagged) expect(crowded.has(n), n).toBe(true);           // only a crowd's can be left to hover
   });
 
+  // #4379 review: an open card covered a tag but for a piece of it past the card's edge. With the card's box on the part
+  // (`cover`, bitmap px), every tag (full or compact) touching it is left out whole; the others are as without a card.
+  it("an open card: no tag under it, not even a piece; the rest as without one", () => {
+    const s = scene(20);
+    const all = s.draw().map((t) => ({ ...t, box: K.tagBox(s.ctx, t.x, t.y, t.label, t.compact) }));
+    const pick = all.find((t) => !t.compact) ?? all[0];
+    // A card whose right edge cuts through the middle of one tag (as the room assistant's 「理」 showed past it).
+    const cover = { x: pick.box.x - 200, y: pick.box.y - 40, w: 200 + pick.box.w / 2, h: 80 };
+    s.part.cover = cover;
+    const under = s.draw().map((t) => ({ ...t, box: K.tagBox(s.ctx, t.x, t.y, t.label, t.compact) }));
+    s.part.cover = null;
+    expect(under.some((t) => t.label === pick.label && !t.compact), "the cut tag is left out").toBe(false);
+    for (const t of under) expect(touch(s.footprint(t), cover), `${t.label} (its level badge too) under the card`).toBe(false);
+    // A card edge that misses a full tag but cuts its level badge (on the tag's top-left corner): that tag is left out
+    // too. The hovered person's tag is a full one, with its badge.
+    const few = scene(4), hot = few.part.desks.find((d: any) => d.node).key;
+    const full = few.draw(hot).map((t) => ({ ...t, box: K.tagBox(few.ctx, t.x, t.y, t.label, t.compact) }));
+    const badged = full.find((t) => !t.compact && t.badge)!;
+    expect(badged, "a full tag with its level badge").toBeTruthy();
+    const foot = few.footprint(badged), edge = { x: foot.x - 300, y: foot.y - 40, w: 300 + (badged.box.x - foot.x) / 2 + 0.5, h: 80 };
+    expect([touch(edge, badged.box), touch(edge, foot)], "the edge cuts only the badge").toEqual([false, true]);
+    few.part.cover = edge;
+    // Not there: its badge would be under the card. Left out, or (M-3539's places) drawn at its next place, clear of the card.
+    const moved = few.draw(hot).filter((t) => t.label === badged.label);
+    for (const t of moved) expect(touch(few.footprint(t), edge), `${t.label} at ${t.x},${t.y}`).toBe(false);
+    expect(moved.some((t) => t.x === badged.x && t.y === badged.y && t.compact === badged.compact), "not at its covered place").toBe(false);
+    few.part.cover = null;
+    const outside = all.filter((t) => !touch(t.box, cover)).map((t) => `${t.label}@${t.x},${t.y}`);
+    expect(under.filter((t) => !t.compact).map((t) => `${t.label}@${t.x},${t.y}`)).toEqual(outside.filter((k) => all.find((t) => `${t.label}@${t.x},${t.y}` === k)!.compact === false));
+    expect(s.draw().length, "closed: every tag back").toBe(all.length);
+  });
+
   it("no two tags touch, their level badges included", () => {
     for (const n of [12, 16, 20]) {
       const s = scene(n);

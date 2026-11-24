@@ -198,7 +198,7 @@ describe("every action, through the real endpoint: the tool's rules", () => {
     const gameId = projects.split(" ")[0]!;
     const made = await task("lead", "create", "Leaderboard", "weekly top 100", "high", "dev-a", "--project", "Game", "--scope", "in: top 100; out: seasons", "--acceptance", "resets Monday", "--acceptance", "top 100 shown",
       "--context", "src/leaderboard.ts", "--needs-review", "--size", "M", "--dispatcher", "lead");
-    expect(made.out).toMatch(/^ok M-\d+ Leaderboard \[to do\] @dev-a \(v1\)$/);
+    expect(made.out).toMatch(/^ok M-\d+ Leaderboard \[to do\] @dev-a \(v1\)\nIn project \d+ Game\.\nTell the person: #M-\d+ \(opens the card\) is in project Game\.$/);
     const code = made.out.split(" ")[1]!;
     const card = db.board.getCard(code);
     expect(card).toMatchObject({ goal: "weekly top 100", scope: "in: top 100; out: seasons", context: "src/leaderboard.ts", priority: "high", size: "M", needsReview: true, assignee: "dev-a", dispatcher: { kind: "instance", name: "lead" } });

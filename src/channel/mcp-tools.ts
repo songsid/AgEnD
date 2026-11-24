@@ -8,6 +8,7 @@
 import { z, type ZodType } from "zod";
 import * as schemas from "../outbound-schemas.js";
 import { COMPOSITE_ACTIONS } from "../composite-tools.js";
+import { TASK_CARD_REF_HINT } from "../dashboard-permissions.js";
 
 /** Narrow JSON-schema fragment shape that MCP tool listings need. */
 type JsonSchemaObject = {
@@ -92,7 +93,7 @@ const DEFS: Array<[string, ZodType, string]> = [
     + "Finish a sub task with done; a main task goes to review unless nobody else confirms it; move to blocked/cancelled needs a reason. "
     + "list/get are compact (detail:true for full records; follow next_cursor with the same filters). A field an action does not take is refused, nothing changed. "
     + "A [Task board] notice is news on your cards. A comment on your card, or an @<instance> naming you, wakes you: answer only if it asks or needs something. "
-    + "Write @<instance> in your comment to wake one; watch / unwatch follows a card. The task-board skill has every action and rule."],
+    + "Write @<instance> in your comment to wake one; watch / unwatch follows a card. " + TASK_CARD_REF_HINT + " The task-board skill has every action and rule."],
   ["post_decision", schemas.PostDecisionArgs,
     "Record a decision. scope='team' is visible to every member of a team, wherever they work — use it for your team's workflow rules, review policies and conventions; it is the default when you are in a team (pass team to choose when you are in several). scope='project' is visible only to instances in this exact working directory (the default when you are in no team). scope='fleet' is visible to EVERY instance on the fleet — only for rules every team follows; on a fleet with several teams, ask whether the other teams need it before posting it there."],
   ["close_poll", schemas.ClosePollArgs,
@@ -157,6 +158,8 @@ const DEFS: Array<[string, ZodType, string]> = [
     "Read the last N lines of an instance's output log (default 50, max 200)."],
   ["get_fleet_config", schemas.GetFleetConfigArgs,
     "Read fleet configuration. scope='defaults' for fleet defaults, scope='instance' + name for a specific instance."],
+  ["propose_contact_change", schemas.ProposeContactChangeArgs,
+    "General asks; admin confirms. See web-dashboard."],
   ["update_instance_config", schemas.UpdateInstanceConfigArgs,
     "Update a specific instance's config (backend, model, auto_pause_after, display_name, description, backend_options). Saves to fleet.yaml. General alone may also set another portable/local agent’s tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile (classicBot.yaml); the answer names the profile it relaunched on."],
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,

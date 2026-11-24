@@ -100,3 +100,23 @@ it("PM batch: offline explanation appears once with normal row descriptions; an 
  const old = await mount(true, true, false, true);
  expect(old.p.root.textContent).toContain("1 shared"); expect(old.p.root.textContent).not.toContain("1 of 1 shared");
 });
+// M-3565 (the user, 11-24): the only way to who-may-ask was the agent's name, drawn as plain bold text. A shared row nobody
+// may ask yet has 「設定誰可以問」 straight to the picker (closing it closes it all, no "1 agent shared" step); the name
+// reads as a link.
+it("M-3565: nobody may ask yet → Choose who may ask opens the picker; closing it leaves the page; the name is a visible link", async () => {
+ const { p } = await mount();
+ const link = p.root.querySelector(`a[href="/ui/hub/exposures?agent=${exposureId}"]`) as any;
+ expect(link?.classList.contains("hub-agent-link"), "the name: a link").toBe(true);
+ const who = p.root.querySelector(`[data-set-who="${exposureId}"]`) as any;
+ expect(who?.textContent).toBe("Choose who may ask");
+ expect(who.closest(".hub-agent-choice").textContent, "its row: the button, not the line").not.toContain("nobody may ask yet");
+ who.click(); await until(() => p.root.querySelector(".dlg"));
+ const dlg = p.root.querySelector(".dlg") as any;
+ expect(dlg.textContent).toContain("Notes");
+ expect(dlg.textContent).not.toContain("1 agent shared");
+ (Array.from(dlg.querySelectorAll("button")).find((b: any) => b.textContent === "Cancel") as any).click(); await settle(10);
+ expect(p.root.querySelector(".dlg"), "closed: no 1-agent-shared step after it").toBeNull();
+ const css = (await import("node:fs")).readFileSync("src/ui/shared/hub-my-agents.css", "utf8");
+ expect(css).toMatch(/\.hub-agent-link\s*\{\s*color:\s*var\(--accent\);\s*\}/);
+ expect(css).toMatch(/\.hub-agent-link::after\s*\{\s*content:\s*"›"/);
+});
