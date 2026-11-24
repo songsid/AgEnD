@@ -140,7 +140,7 @@ describe("/ctx auto-pause line (#951)", () => {
   it("zh-TW locale shows localised auto-pause text", async () => {
     setLocale("zh-TW");
     const text = await commandsFor({ instanceAutoPause: 30 }).getCtxText(inst);
-    expect(text).toContain("Auto-pause：30m");
+    expect(text).toContain("自動暫停：30m");
   });
 });
 

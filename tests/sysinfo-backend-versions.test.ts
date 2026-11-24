@@ -238,7 +238,7 @@ describe("/sysinfo backend CLI cache", () => {
 
     const text = await commands.getSysInfoTextAsync();
 
-    expect(text).toContain("**Backend CLI 版本**");
+    expect(text).toContain("**後端 CLI 版本**");
     expect(text).toContain("Codex: 未知／未安裝");
     expect(workers).toHaveLength(0);
     expect(probeCLIEnv).not.toHaveBeenCalled();
