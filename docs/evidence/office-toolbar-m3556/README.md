@@ -16,7 +16,7 @@ All captures are of the real app, taken headless with Chromium and made-up data:
   - It holds 風格, 隱藏暫停與停止的成員, 拖曳與摸頭, 0–6 點就寢, (所有辦公室: 大廳格) 對話框 and 圖例.
   - A tick takes effect at once and the dropdown stays open. A click elsewhere or Esc closes it.
   - 圖例 is now a tick, like the rest. Every option label has one style; 隱藏暫停… was smaller and grey on a desk.
-  - With reduced motion, the M-3547 note sits on its own line under 拖曳與摸頭.
+  - With reduced motion, one line under 拖曳與摸頭 says why: 「已關閉：系統開了「減少動態效果」」 / "Off: your system asks for reduced motion". This replaces #4374 (M-3547): its note beside the box and its line on a person's card are gone (user 2026-11-24).
 - **Phone.** The ⋯ sheet lists the same groups in the same order:
   - scope;
   - a 顯示選項 heading, then the options;
@@ -33,9 +33,10 @@ All captures are of the real app, taken headless with Chromium and made-up data:
 |---|---|---|
 | Desk, zh-TW, light | `before-desk-light-zh-TW-1-office.png` | `after-desk-light-zh-TW-1-office.png`, open: `after-desk-light-zh-TW-2-options.png` |
 | Desk, en, dark | `before-desk-dark-en-1-office.png` | `after-desk-dark-en-1-office.png`, open: `after-desk-dark-en-2-options.png` |
-| Desk, reduced motion (open) | — | `after-desk-light-zh-TW-reduced-2-options.png`, `after-desk-dark-en-reduced-2-options.png` |
+| Desk, reduced motion (open; then a card: no Pat/Feed, no hint) | — | `after-desk-light-zh-TW-reduced-2-options.png`, `after-desk-light-zh-TW-reduced-3-card.png`, `after-desk-dark-en-reduced-2-options.png`, `after-desk-dark-en-reduced-3-card.png` |
 | Phone, zh-TW, light | `before-phone-light-zh-TW-1-office.png`, sheet: `before-phone-light-zh-TW-2-options.png` | `after-phone-light-zh-TW-1-office.png`, sheet: `after-phone-light-zh-TW-2-options.png` |
 | Phone, en, dark | `before-phone-dark-en-1-office.png`, sheet: `before-phone-dark-en-2-options.png` | `after-phone-dark-en-1-office.png`, sheet: `after-phone-dark-en-2-options.png` |
+| Phone, reduced motion (sheet; then a card) | — | `after-phone-light-zh-TW-reduced-2-options.png`, `after-phone-light-zh-TW-reduced-3-card.png`, `after-phone-dark-en-reduced-2-options.png`, `after-phone-dark-en-reduced-3-card.png` |
 | Hub room, desk (gear open, then closed with Esc) | a sheet opened from the gear (#4370) | `room-desk-zh-TW-light-2-options.png`, `room-desk-zh-TW-light-3-closed.png`, `room-desk-en-dark-2-options.png`, `room-desk-en-dark-3-closed.png` |
 | Hub room, desk, a 340 px stage (Prism P2) | the dropdown ran past the stage's foot | `room-desk-zh-TW-light-short-340-2-options.png` |
 | Fleet office, desk, a 520 px window | — | `after-desk-dark-en-short-2-options.png` |
@@ -43,7 +44,7 @@ All captures are of the real app, taken headless with Chromium and made-up data:
 
 ## Checks
 
-`scripts/manual/smoke/smoke-office-toolbar-m3556.mts` (ui-gate, HP 19756) passes 7 cases; its output is `result.json`.
+`scripts/manual/smoke/smoke-office-toolbar-m3556.mts` (ui-gate, HP 19756) passes 9 cases (desk and phone × light zh-TW and dark en × reduced motion off and on, plus a 520 px window); its output is `result.json`.
 
 - **Desk:**
   - the bar is one row, with scope on the left and ⚙ on the right;
@@ -51,7 +52,11 @@ All captures are of the real app, taken headless with Chromium and made-up data:
   - the dropdown holds the six items, isn't modal, and has one label style and no buttons;
   - a tick applies while it stays open;
   - a click elsewhere and Esc close it.
-- **Reduced motion:** the note is under Drag and pat.
+- **Reduced motion:**
+  - one line under Drag and pat (in the dropdown, and in the phone sheet), said nowhere else;
+  - the box is off and locked;
+  - a person's card has no Pat or Feed and no hint.
+- **Ordinary motion:** no note, and the box is on.
 - **A 520 px window:** the last option is on screen and takes a click.
 - **Phone:**
   - no desk row;

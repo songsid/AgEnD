@@ -53,6 +53,7 @@
      "height": 228
     }
    },
+   "no note": true,
    "tick applies, still open": {
     "pass": true,
     "detail": {
@@ -120,6 +121,7 @@
      "height": 228
     }
    },
+   "no note": true,
    "tick applies, still open": {
     "pass": true,
     "detail": {
@@ -187,13 +189,13 @@
      "height": 244
     }
    },
-   "reduced: note under Drag and pat": {
+   "reduced: one line under Drag and pat": {
     "pass": true,
     "detail": {
      "nb": {
       "x": 1019,
       "y": 243,
-      "width": 302,
+      "width": 314,
       "height": 24
      },
      "lb": {
@@ -201,9 +203,13 @@
       "y": 219,
       "width": 65,
       "height": 24
-     }
+     },
+     "lines": 1
     }
    },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,
@@ -263,13 +269,13 @@
      "height": 244
     }
    },
-   "reduced: note under Drag and pat": {
+   "reduced: one line under Drag and pat": {
     "pass": true,
     "detail": {
      "nb": {
       "x": 1019,
       "y": 285,
-      "width": 302,
+      "width": 314,
       "height": 24
      },
      "lb": {
@@ -277,9 +283,13 @@
       "y": 261,
       "width": 82,
       "height": 24
-     }
+     },
+     "lines": 1
     }
    },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,
@@ -325,6 +335,7 @@
      }
     }
    },
+   "no note": true,
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,
@@ -370,6 +381,139 @@
      }
     }
    },
+   "no note": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-light-zh-TW-reduced": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 20,
+      "y": 609.40625,
+      "width": 350,
+      "height": 24
+     },
+     "lb": {
+      "x": 48,
+      "y": 577.40625,
+      "width": 70,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en-reduced": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 20,
+      "y": 609.40625,
+      "width": 350,
+      "height": 24
+     },
+     "lb": {
+      "x": 48,
+      "y": 577.40625,
+      "width": 86,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
    "noOverflow": true,
    "noPageErrors": {
     "pass": true,

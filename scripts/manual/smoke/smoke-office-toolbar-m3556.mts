@@ -19,14 +19,30 @@ const CASES = [
   { device: "desk", theme: "light", lang: "zh-TW", rm: false }, { device: "desk", theme: "dark", lang: "en", rm: false },
   { device: "desk", theme: "light", lang: "zh-TW", rm: true }, { device: "desk", theme: "dark", lang: "en", rm: true },
   { device: "phone", theme: "light", lang: "zh-TW", rm: false }, { device: "phone", theme: "dark", lang: "en", rm: false },
+  { device: "phone", theme: "light", lang: "zh-TW", rm: true }, { device: "phone", theme: "dark", lang: "en", rm: true },
   { device: "desk", theme: "dark", lang: "en", rm: false, short: true },
 ] as const;
-const W = { en: { office: "Office", display: "Display options", note: "Off while reduced motion is on" }, "zh-TW": { office: "辦公室", display: "顯示選項", note: "開啟「減少動態效果」時關閉" } } as const;
+const W = { en: { office: "Office", display: "Display options", note: "Off: your system asks for reduced motion" }, "zh-TW": { office: "辦公室", display: "顯示選項", note: "已關閉：系統開了「減少動態效果」" } } as const;
 
 const fx = await bootFixture({ roster: publicRoster(8), port: 0, oldPort: Number(process.env.HP ?? 19756), instances: 8, classic: false });
 const r: any = { cases: {} };
 const ok = (c: any, k: string, v: boolean, detail?: unknown) => { c[k] = detail === undefined ? v : { pass: v, detail }; if (!v) c.failed = [...(c.failed ?? []), k]; };
 const box = (page: any, s: string) => page.locator(s).first().boundingBox();
+/** M-3547 in M-3556: the reason, one line under Drag and pat inside `scope` (the dropdown or the sheet), and nowhere else. */
+async function noteCheck(page: any, res: any, scope: string, w: any) {
+  const note = page.locator(`${scope} .oo-play .oo-play-still`), nb = await note.boundingBox(), lb = await box(page, `${scope} .oo-play > span:first-of-type`);
+  const lines = await note.evaluate((e: any) => Math.round(e.getBoundingClientRect().height / parseFloat(getComputedStyle(e).lineHeight || "16")));
+  ok(res, "reduced: one line under Drag and pat", (await note.innerText()).trim() === w.note && !!nb && !!lb && nb.y >= lb.y + lb.height - 2 && lines === 1, { nb, lb, lines });
+  ok(res, "reduced: said only there", (await page.locator(".oo-play-still").count()) === 1);
+  ok(res, "reduced: box off and locked", (await page.locator(`${scope} .oo-play input`).isDisabled()) && !(await page.locator(`${scope} .oo-play input`).isChecked()));
+}
+/** Reduced motion: a person's card has no Pat or Feed and no hint of its own (M-3547's card line is gone). */
+async function cardCheck(page: any, res: any, tag: string) {
+  const person = page.locator("button.oo-desk").first(); await person.focus(); await person.press("Enter");
+  await page.locator(".oo-card").waitFor(); await page.waitForTimeout(400);
+  ok(res, "reduced: card has no Pat/Feed, no hint", (await page.locator(".oo-card-pat, .oo-card-feed, .oo-card-play-off").count()) === 0);
+  await page.screenshot({ path: shotPath(SMOKE, tag, "3-card") });
+}
 
 for (const c of CASES) {
   const short = "short" in c && c.short;
@@ -76,10 +92,12 @@ for (const c of CASES) {
       const pb = await pop.boundingBox(), vw = await page.evaluate(() => innerWidth);
       ok(res, "dropdown on screen", !!pb && pb.x >= 0 && pb.x + pb.width <= vw, pb);
       if (c.rm) {
-        const note = page.locator(".oo-display-pop .oo-play-still"), nb = await note.boundingBox(), lb = await box(page, ".oo-display-pop .oo-play > span:first-of-type");
-        ok(res, "reduced: note under Drag and pat", (await note.innerText()).trim() === w.note && !!nb && !!lb && nb.y >= lb.y + lb.height - 2, { nb, lb });
+        await noteCheck(page, res, ".oo-display-pop", w);
         await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
+        await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+        await cardCheck(page, res, tag);
       } else {
+        ok(res, "no note", (await page.locator(".oo-play-still").count()) === 0 && !(await pop.locator(".oo-play input").isDisabled()));
         await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
         // A tick applies with the dropdown still open (the office stays in view).
         const before = await page.locator(".oo-dialogue-canvas").count();
@@ -103,7 +121,12 @@ for (const c of CASES) {
       ok(res, "heading", (await page.locator(".oo-sheet .oo-sheet-h").innerText()).trim() === w.display);
       const o = await box(page, ".oo-sheet .oo-office"), t = await box(page, ".oo-sheet .oo-team");
       ok(res, "pickers spaced", !!o && !!t && t.y - (o.y + o.height) >= 6, { o, t });
+      if (c.rm) {
+        await page.locator(".oo-sheet .oo-play").scrollIntoViewIfNeeded(); await page.waitForTimeout(200);
+        await noteCheck(page, res, ".oo-sheet", w);
+      } else ok(res, "no note", (await page.locator(".oo-play-still").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
+      if (c.rm) { await page.keyboard.press("Escape"); await page.waitForTimeout(300); await cardCheck(page, res, tag); }
     }
     ok(res, "noOverflow", !(await page.evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
     ok(res, "noPageErrors", p.errors.length === 0, p.errors);
