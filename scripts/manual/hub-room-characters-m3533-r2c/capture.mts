@@ -198,6 +198,18 @@ try {
       check(`${tag}: the room's style is Studio (large)`, patched.status === 200, patched.status);
       await page.reload(); await page.locator(".oo-stage canvas").first().waitFor(); await page.waitForTimeout(3500);
       await shot("3-office-studio-large");
+      // Echo's top-row seat, close (Lumen R2c b): its head may reach the area's name, which is written again over it (M-3539).
+      const echo = await page.evaluate(() => {
+        const cv = document.querySelector(".hub-room-office .oo-stage canvas") as HTMLCanvasElement | null; if (!cv) return null;
+        const d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data; let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+        for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]! - 84) <= 2 && Math.abs(d[i + 1]! - 176) <= 2 && Math.abs(d[i + 2]! - 112) <= 2) {
+          const p = i / 4, x = p % cv.width, y = Math.floor(p / cv.width); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+        if (x1 < 0) return null;
+        const r = cv.getBoundingClientRect(), k = r.width / cv.width;
+        return { x: r.x + x0 * k, y: r.y + y0 * k, w: (x1 - x0 + 1) * k, h: (y1 - y0 + 1) * k };
+      });
+      check(`${tag}: Echo is found on the Studio (large) scene`, !!echo, echo);
+      if (echo) { const pad = Math.max(40, echo.h * 1.5); await shot("3z-top-row-title-close", { x: Math.max(0, echo.x - pad * 1.6), y: Math.max(0, echo.y - pad), width: echo.w + pad * 3.2, height: echo.h + pad * 1.6 }); }
       await page.goto(`${origin}/ui/hub/exposures`); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(1500);
       const lines = await page.evaluate(() => [...document.querySelectorAll("[data-picture-large=character]")].map((e) => (e.textContent || "").trim()));
       check(`${tag}: My agents tells the owner Notes's character is too large`, lines.length === 1 && /512 KB/.test(lines[0]!), lines);

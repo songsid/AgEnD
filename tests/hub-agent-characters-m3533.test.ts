@@ -236,6 +236,16 @@ describe("M-3533 R2c: the page draws it", () => {
     expect(characterSet(null, src)).toBeNull();
   });
 
+  it("Lumen R2c (b): fitted to 48 × 66 a head may reach an area's name in Studio (large)'s top rows, never its top edge (Studio and Studio (large))", async () => {
+    const { CHARACTER_FIT } = await import("/ui/js/hub-room-office.js");
+    const { STUDIO_PACK, STUDIO_LARGE_PACK } = await import("/ui/js/fleet-office-skin.js");
+    const room = (pack: any) => Object.values(pack.areas).flatMap((a: any) => a.seats.map((st: any) => st.y - CHARACTER_FIT.h - a.rect.y));
+    expect(Math.min(...room(STUDIO_PACK), ...room(STUDIO_LARGE_PACK)), "head top below the area's top edge").toBeGreaterThanOrEqual(0);
+    // …while in Studio (large)'s top rows it reaches the name's box (areaTitleBox: 10 to 28 below the top), which the
+    // scene then writes again over it (M-3539: by the person's box, the strip's for an own character).
+    expect(Object.values(STUDIO_LARGE_PACK.areas).some((a: any) => a.seats.some((st: any) => st.y - CHARACTER_FIT.h < a.rect.y + 28))).toBe(true);
+  });
+
   it("withCharacters: only people with a set are drawn from it; an agent named \"default\" is nobody's fallback; the rest is the style's", async () => {
     const { withCharacters } = await import("/ui/js/fleet-office-skin.js");
     const base: any = { id: "studio", drawCharacter: vi.fn(), charBox: vi.fn(() => ({ x: 0, y: 0, w: 1, h: 1 })), drawRoom: () => "the style's" };
