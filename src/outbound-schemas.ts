@@ -1,3 +1,4 @@
+export { ProposeContactChangeArgs } from "./contact-change-proposals.js";
 import {roomMemberOptions} from "./hub/room-members-model.js";
 /**
  * zod schemas for outbound tool-call args.

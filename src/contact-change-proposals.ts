@@ -1,0 +1,112 @@
+/** Contact changes are proposals, never agent-held approval capabilities. */
+import { z } from "zod";
+import { ContactDecisionSchema } from "./contact-auth-policy.js";
+import type { ContactAuthService } from "./contact-auth-service.js";
+import type { ContactPermissionsWrite, ContactPerson, ContactTicketDecision } from "./contact-auth-types.js";
+import { t, getLocale } from "./locale.js";
+const name = z.string().min(1).max(160).regex(/^[^\x00-\x1f\x7f]+$/);
+const revision = z.number().int().nonnegative().optional();
+const ContactChangeSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("mode"), target: name, revision, mode: z.enum(["legacy", "restricted"]) }),
+  z.strictObject({ kind: z.literal("ticket-decision"), ticket_id: name, revision,
+    decision: z.enum(["approve-once", "decline"]), grant: ContactDecisionSchema.shape.grant }),
+  z.strictObject({ kind: z.literal("grant-adjust"), target: name, revision, grant_id: name,
+    expires_at: z.iso.datetime(), remaining_uses: z.number().int().min(1).max(10_000).nullable() }),
+  z.strictObject({ kind: z.literal("grant-revoke"), target: name, revision, grant_id: name }),
+]);
+export const ProposeContactChangeArgs = z.strictObject({ change: ContactChangeSchema });
+export interface ContactChangeHost {
+  service: ContactAuthService;
+  label?(target: string): string;
+  timeZone?(): string;
+  mode(target: string): "restricted" | "legacy" | undefined;
+  generation(target: string): string;
+  modeAdmin(target: string, person: ContactPerson): boolean;
+  write(target: string, input: ContactPermissionsWrite, person: ContactPerson): unknown;
+  decide(id: string, input: ContactTicketDecision, person: ContactPerson): unknown;
+}
+export interface PreparedContactChange {
+  target: string;
+  success: string;
+  summary: string[];
+  current(): boolean;
+  authorized(person: ContactPerson): boolean;
+  apply(person: ContactPerson): void;
+}
+/** Snapshots are daemon-owned and cloned; no identity or confirmation flag is accepted from the tool. */
+export function prepareContactChange(raw: unknown, host: ContactChangeHost): PreparedContactChange {
+  const input = ContactChangeSchema.parse(raw), store = host.service.host.store;
+  const ticket = input.kind === "ticket-decision" ? store.get(input.ticket_id) : undefined;
+  if (input.kind === "ticket-decision" && (!ticket || ticket.state !== "pending")) throw Error("contact-proposal-ticket-unavailable");
+  const target = input.kind === "ticket-decision" ? ticket!.target : input.target;
+  const targetGeneration = host.generation(target), policy = structuredClone(store.policy(target, targetGeneration));
+  const pins = new Map([[target, targetGeneration]]);
+  const mode = host.mode(target);
+  let payload: ContactPermissionsWrite | ContactTicketDecision;
+  const label = (name: string) => host.label?.(name) || name;
+  const shortId = (id: string) => id.slice(0, 9);
+  // A Latin-ending name gets a space before following Chinese prose; punctuation does not.
+  const beforeCjk = (value: string): string => getLocale() === "zh-TW" && /[\p{Script=Latin}\p{Number}]$/u.test(value) ? value + " " : value;
+  const timeZone = host.timeZone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const when = (iso: string): string => {
+    const parts = new Intl.DateTimeFormat(getLocale() === "zh-TW" ? "zh-TW" : "en-US", { timeZone, month: "numeric", day: "numeric", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso));
+    const part = (key: string) => parts.find(p => p.type === key)?.value || "";
+    const weekday = part("weekday").replace(/^(?:週|星期)/, "");
+    return getLocale() === "zh-TW" ? `${part("month")}/${part("day")}（${weekday}）${part("hour")}:${part("minute")}` : `${weekday} ${part("month")}/${part("day")} ${part("hour")}:${part("minute")}`;
+  };
+  const personName = (p: ContactPerson): string => `${p.label}${getLocale() === "zh-TW" ? "（" : " ("}${p.platform === "discord" ? "Discord" : p.platform === "telegram" ? "Telegram" : t("contactProposal.host")}${getLocale() === "zh-TW" ? "）" : ")"}`;
+  const typed = (source: string, verbs: string[]): string => `${label(source)}${getLocale() === "zh-TW" ? "（" : " ("}${verbs.map(v => t(`contactProposal.verb_${v}`)).join(getLocale() === "zh-TW" ? "、" : ", ")}${getLocale() === "zh-TW" ? "）" : ")"}`;
+  const summary = ticket ? [] : [t(mode ? "contactProposal.room" : "contactProposal.agent", label(target))];
+  if (input.kind === "ticket-decision") {
+    if (input.revision !== undefined && input.revision !== ticket!.revision) throw Error("conflict");
+    pins.set(ticket!.source, host.generation(ticket!.source));
+    if (ticket!.targetGeneration !== targetGeneration || ticket!.sourceGeneration !== pins.get(ticket!.source)) throw Error("stale-generation");
+    payload = ContactDecisionSchema.parse({ revision: ticket!.revision, decision: input.decision, ...(input.grant ? { grant: input.grant } : {}) });
+    const requestLine = t(input.grant ? "contactProposal.request" : input.decision === "decline" ? "contactProposal.declineRequest" : "contactProposal.approveRequest", shortId(ticket!.id), beforeCjk(label(ticket!.source)));
+    summary.push(`${requestLine}${getLocale() === "zh-TW" ? "（" : " ("}${t(`contactProposal.verb_${ticket!.verb}`)}${getLocale() === "zh-TW" ? "）" : ")"}`);
+    if (input.grant) {
+      const keys = input.grant.personKeys ?? (ticket!.origin.people.length === 1 ? [JSON.stringify([ticket!.origin.people[0]!.platform, ticket!.origin.people[0]!.adapterId, ticket!.origin.people[0]!.userId])] : []);
+      const people = ticket!.origin.people.filter(p => keys.includes(JSON.stringify([p.platform, p.adapterId, p.userId])));
+      if (ticket!.origin.kind === "unknown" || !keys.length || new Set(keys).size !== keys.length || people.length !== keys.length) throw Error("invalid-grant-origin");
+      const names = people.map(personName).join(getLocale() === "zh-TW" ? "、" : ", ");
+      summary.push(t("contactProposal.allowUntil", beforeCjk(names), label(ticket!.target), when(input.grant.expiresAt)),
+        ...(input.grant.remainingUses === null ? [] : [t("contactProposal.uses", input.grant.remainingUses)]), t("contactProposal.boundary"));
+    }
+  } else {
+    if (input.revision !== undefined && input.revision !== policy.revision) throw Error("conflict");
+    if (input.kind === "mode") {
+      if (!mode) throw Error("contact-proposal-not-room");
+      payload = { revision: policy.revision, mode: input.mode };
+      summary.push(t("contactProposal.mode", t(`contactProposal.${mode}`), t(`contactProposal.${input.mode}`)), t("contactProposal.modeWarning"), ...(input.mode === "restricted" && mode !== "restricted" ? [t("contactProposal.historyNote")] : []), t("contactProposal.guardNote"));
+    } else {
+      const row = policy.grants.find(g => g.id === input.grant_id);
+      if (!row) throw Error("not-found");
+      pins.set(row.source, host.generation(row.source));
+      if (row.sourceGeneration !== pins.get(row.source) || row.targetGeneration !== targetGeneration) throw Error("stale-generation");
+      payload = { revision: policy.revision, grants: policy.grants.filter(g => input.kind !== "grant-revoke" || g.id !== row.id)
+        .map(g => g.id === row.id && input.kind === "grant-adjust" ? { ...g, expiresAt: input.expires_at, remainingUses: input.remaining_uses } : g) };
+      summary.push(t("contactProposal.rule", beforeCjk(personName(row.person))), t("contactProposal.sourceType", typed(row.source, row.verbs)),
+        ...(input.kind === "grant-revoke" ? [t("contactProposal.revoke")] : [t("contactProposal.until", when(input.expires_at)), ...(input.remaining_uses === null ? [] : [t("contactProposal.uses", input.remaining_uses)])]), t("contactProposal.boundary"));
+    }
+  }
+  if (input.kind === "grant-adjust" && Date.parse(input.expires_at) <= Date.now()
+    || input.kind === "ticket-decision" && input.grant && Date.parse(input.grant.expiresAt) <= Date.now()) throw Error("invalid-grant");
+  const frozen = structuredClone(payload);
+  const current = (): boolean => {
+    try {
+      if ([...pins].some(([n, g]) => host.generation(n) !== g) || host.mode(target) !== mode || store.policy(target, targetGeneration).revision !== policy.revision) return false;
+      if (ticket) { const now = store.get(ticket.id); return !!now && now.state === "pending" && now.revision === ticket.revision && Date.parse(now.expiresAt) > Date.now(); }
+      return true;
+    } catch { return false; }
+  };
+  const authorized = (person: ContactPerson): boolean => input.kind === "mode" ? host.modeAdmin(target, person)
+    : ticket ? host.service.canDecide(target, person) : host.service.canManage(target, person);
+  const success = ticket ? t(input.kind === "ticket-decision" && input.decision === "decline" ? "contactProposal.requestDeclined" : "contactProposal.requestApproved", shortId(ticket.id))
+    : t(input.kind === "grant-adjust" ? "contactProposal.ruleAdjusted" : input.kind === "grant-revoke" ? "contactProposal.ruleRevoked" : "contactProposal.applied");
+  return { target, success, summary, current, authorized, apply(person) {
+    if (!current()) throw Error("conflict");
+    if (!authorized(person)) throw Error("forbidden");
+    if (ticket) host.decide(ticket.id, structuredClone(frozen) as ContactTicketDecision, person);
+    else host.write(target, structuredClone(frozen) as ContactPermissionsWrite, person);
+  } };
+}

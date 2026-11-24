@@ -1,0 +1,9 @@
+# General confirmation evidence
+
+The JSON files contain EN and zh-TW card text, button labels, structured proposals and outcomes from the actual `FleetManager` nonce posting, callback authorization/claim and expiry timer. The platform adapter is a synthetic fixture; no Discord/Telegram connection, live Fleet, vendor or model call was made. Ephemeral test nonces are replaced by a visible placeholder; fake ticket/rule/person IDs remain only in structured payloads, not user-facing text.
+
+Covered visible states: posted room mode, approve with standing rules, decline, adjust and revoke; confirmed contact/mode/adjust/revoke; cancelled proposal; confirmed decline; expired, stale, failed and unauthorized. Platform rendering and real delivery are not claimed. User-look review is intentionally of these native payloads, with no invented web confirmation screen.
+
+Thirteen production-method controls pin General-only raw admission, strict schemas, no pre-confirm writes, immutable snapshots, bot/outsider/wrong-adapter/message/web refusal, current target approver, canonical-delivery binding, one-use claim, stale policy/incarnation/route/lifetime/deadline, late-post cleanup, per-General cap, unknown-origin rules and Hub refusal. They use real SQLite ContactAuthStore/ContactAuthService for ticket and grant effects. Existing neighboring tool-profile/native-MCP/Classic-addressing/nonce/Windows-confirmation tests and the upstream manifest precheck also pass (320 tests across eight files before the wording-only updates; the final wording/control file passes 13).
+
+Source/test TypeScript checks and public hygiene checks accompany the PR. The implementation and rollback limits are in `docs/design/general-contact-proposals-m3544.md`. Permission changes reuse existing authority/mutation methods; this is a confirmation path, not an action broker or credential isolation layer.

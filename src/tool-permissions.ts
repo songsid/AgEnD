@@ -111,8 +111,8 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "reply", "react", "edit_message", "download_attachment", "close_poll",
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report", "get_usage_report",
     "get_instance_logs", "get_fleet_config", "validate_config", "list_deployments",
-    // Read-only: what each kiro instance runs on, for explaining a kiro incompatibility.
-    "kiro_engine_status",
+    // Read-only runtime status, plus General-only requests that require a separate human confirmation.
+    "kiro_engine_status", "propose_contact_change",
     "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     ...ORCHESTRATION,
