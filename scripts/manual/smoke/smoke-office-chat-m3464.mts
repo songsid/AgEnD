@@ -2,6 +2,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, matrix, caseName, mounted } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 const out = process.env.OUT ?? ".artifacts/m3464/captures"; mkdirSync(out, { recursive: true });
 const fx = await bootFixture({ port: Number(process.env.HP ?? 49120), classic: false, host: true, roster: [
   { name: "general", general: true, backend: "claude-code", displayName: "General", status: "running" },
@@ -19,7 +20,8 @@ try {
     if (!(await mounted(page, 30000))) throw new Error("Office did not mount");
     await page.locator(".oo-canvas").waitFor();
     if (c.device === "phone") await page.locator(".oo-more-btn").click();
-    await page.locator(".oo-dialogue input").check();
+    if (c.device === "phone") await page.locator(".oo-dialogue input").check();
+    else await withDisplay(page, () => page.locator(".oo-dialogue input").check());   // M-3556: in ⚙ Display options
     if (c.device === "phone") await page.locator(".oo-sheet .dlg-x").click();
     await page.locator(".oo-dialogue-live").waitFor({ state: "attached" });
     // Let Preact commit the newly enabled stream subscription before publishing the fixture event.

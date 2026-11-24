@@ -1,0 +1,360 @@
+{
+  "sourceHead": "6b950447434aa58ba3fbc3d31089335f5645f614",
+  "sourceHashes": {
+    "scripts/manual/test-office-play-contention-m3551.py": "6fc8e636a4f174f8c16c4c4e1ee627721cace1b81bb3ad8a893c9f99ea82323c",
+    "scripts/manual/test-office-play-contention-m3551_test.py": "6bf62e48209d59874be25ea39491d86744e74daf655aef37a699d3181937a603",
+    "scripts/manual/smoke/smoke-office-play-m3293.mts": "e297bc4d97b2161be738572c20cf5f9a092e03d0482e2f5cf90d9a23072ad18b",
+    "scripts/manual/smoke-fixture/office-smoke-card.ts": "6289d698562b931bf017a76fedb90e5e723cf70c1806fc44b4a8a5342bde69ec",
+    "scripts/manual/smoke-fixture/office-smoke-pointer.ts": "391b059a7e01437570dd742944f074766e133b4c5b074751e3dab297df4f3570",
+    "scripts/manual/smoke-fixture/index.mts": "4c55bcebb262c50ad462149552958c8c0d2eca6f3982c58cfedac602836d4a79",
+    "scripts/manual/smoke-fixture/from-defaults.mts": "c5c94e0ab434f5d75130850faecddc987d7aa9761e199cd7e727116d8c9af832",
+    "scripts/manual/smoke-fixture/sign-in.ts": "72e184b71081d94979b084cdaedd2aebb3b09dc58fde92299d60c2dddd19fe33",
+    "tests/smoke-signin-race-m3551.test.ts": "fce761ad3370199993543efcb687572476c63c7423a80fb21a25dc98cd189f79",
+    "scripts/manual/smoke-fixture/public-roster.mts": "5be1dd2c4c6d44ef76a0315e35f1b9cf874b1aa28e3c57ffa99ca02ab2657f34",
+    "scripts/manual/smoke-fixture/office-capture-cases.ts": "a2531fc224dcffea341c96551236f737bcd86e5c4336e253ed938ea093d6fe62",
+    "src/ui/fleet-office.js": "efaaf31027aef0fd747923c64ef570f26124b7d651f90bd91e27f134ab6265d4",
+    "src/ui/fleet-office-card.js": "fdfa72e189e02931d0913c132d98810313a243e30a2b1629ec6164bcb42a327e",
+    "src/ui/fleet-office-play.js": "3bc19204882b5040670615ef9df34ee28c543b150dccbd0e3ab05522691193f3",
+    "src/ui/fleet-office-zones.js": "e7f175769cfe4fca46a663b6125de3b42898808291a7fe7591b52be47514ff46",
+    "src/ui/fleet-canvas-view.js": "199c0c33490bf43eb320ac75494cdb9810ceec72859d99393410ce2a1dbd7569",
+    "src/ui/shared/signin.js": "88138a9b715043908981b7d5c1b74cf3d1191a079c71aaaf4ea144c81ad30272",
+    "src/ui/signin.html": "87763c7c9ff6124fde8e6df2bab4e41b4bf747b644a8c803dfed03be4f539008"
+  },
+  "cpu": 0,
+  "busyProcesses": 2,
+  "selector": "desk-light-en",
+  "captureOnly": false,
+  "wordsOnly": false,
+  "runs": [
+    {
+      "run": 1,
+      "exit": 0,
+      "seconds": 41.89,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 2,
+      "exit": 0,
+      "seconds": 42.08,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 3,
+      "exit": 0,
+      "seconds": 38.14,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 4,
+      "exit": 0,
+      "seconds": 39.325,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 5,
+      "exit": 0,
+      "seconds": 38.9,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 6,
+      "exit": 0,
+      "seconds": 39.071,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 7,
+      "exit": 0,
+      "seconds": 36.878,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 8,
+      "exit": 0,
+      "seconds": 35.697,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 9,
+      "exit": 0,
+      "seconds": 37.326,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 10,
+      "exit": 0,
+      "seconds": 38.541,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 11,
+      "exit": 0,
+      "seconds": 43.163,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 12,
+      "exit": 0,
+      "seconds": 39.018,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 13,
+      "exit": 0,
+      "seconds": 38.959,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 14,
+      "exit": 0,
+      "seconds": 38.735,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 15,
+      "exit": 0,
+      "seconds": 37.94,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 16,
+      "exit": 0,
+      "seconds": 40.228,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 17,
+      "exit": 0,
+      "seconds": 35.256,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 18,
+      "exit": 0,
+      "seconds": 37.843,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 19,
+      "exit": 0,
+      "seconds": 36.296,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 20,
+      "exit": 0,
+      "seconds": 38.85,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 21,
+      "exit": 0,
+      "seconds": 40.952,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 22,
+      "exit": 0,
+      "seconds": 39.214,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 23,
+      "exit": 0,
+      "seconds": 34.773,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 24,
+      "exit": 0,
+      "seconds": 36.697,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 25,
+      "exit": 0,
+      "seconds": 34.928,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 26,
+      "exit": 0,
+      "seconds": 33.966,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 27,
+      "exit": 0,
+      "seconds": 35.266,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 28,
+      "exit": 0,
+      "seconds": 36.078,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 29,
+      "exit": 0,
+      "seconds": 35.527,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    },
+    {
+      "run": 30,
+      "exit": 0,
+      "seconds": 32.835,
+      "result": {
+        "case": "desk-light-en",
+        "checks": 19,
+        "passed": true,
+        "sha256": "debb24a2c32806b9e1b999fbb02ef6c6361f9d77cc3278fae245e090838e03a2"
+      }
+    }
+  ]
+}

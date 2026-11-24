@@ -15,6 +15,7 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, caseName, labelOf, matrix, mounted, shotPath, type MatrixCase } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-2946-office-traffic";
 const STYLES = (process.env.STYLES ?? "cozy,guild,school").split(",");
@@ -92,8 +93,9 @@ async function openOffice(c: MatrixCase, style: string, reduced = false) {
   await page.waitForSelector(".oo-canvas", { timeout: 15000 });
   // The admin picks the style in the Office bar (the whole fleet's, kept on this scratch host: a browser's own pick
   // never overrides the host's).
-  const picker = page.locator(".oo-bar select").nth(1);
-  if ((await picker.inputValue()) !== style) await picker.selectOption(style);
+  // M-3556: Style and Key are in ⚙ Display options on a desk (Key a tick now).
+  const picker = page.locator("select.oo-style");
+  await withDisplay(page, async () => { if ((await picker.inputValue()) !== style) await picker.selectOption(style); });
   await page.waitForTimeout(2500);                                     // the picture style loads, everyone walks to their seat
   return { ctx, page, errors };
 }
@@ -104,7 +106,7 @@ const [A, B, C2, D] = [names[0], names[3], names[5], names[8]];
 for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) {
   for (const style of STYLES) {
     const { ctx, page, errors } = await openOffice(c, style);
-    const chosen = await page.locator(".oo-bar select").nth(1).inputValue().catch(() => "?");
+    const chosen = await withDisplay(page, () => page.locator("select.oo-style").inputValue()).catch(() => "?");
     // One of each kind, across the room.
     const t0 = await now(page);
     send(A, D, "task"); send(D, A, "send"); send(B, C2, "report"); send(C2, B, "broadcast");
@@ -143,7 +145,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       "no page errors": errors.length === 0,
     }, { most, lastMs: Math.round(lastAt) });
     // The Key.
-    await page.locator(".oo-key-btn").click();
+    await withDisplay(page, () => page.locator(".oo-key-tick input").check());
     await page.waitForSelector(".oo-key-row", { timeout: 5000 });
     const rows = await page.locator(".oo-key-row span").allTextContents();
     const kindsKey = await page.locator(".oo-key-row").evaluateAll((els: any[]) => els.map((e) => e.getAttribute("data-kind")));
@@ -152,7 +154,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       let on = 0; for (let i = 3; i < d.length; i += 4) if (d[i] > 0) on++;
       return on;
     }));
-    const btnLabel = await page.locator(".oo-key-btn").textContent();
+    const btnLabel = ((await withDisplay(page, () => page.locator(".oo-key-tick").textContent())) || "").trim();
     await page.screenshot({ path: shotPath(SMOKE, c, `${style}-key`) });
     record(`${caseName(c)} ${style} the Key`, {
       "the toggle in the case's language": btnLabel === labelOf(c, { en: "Key", zh: "圖例" }),
