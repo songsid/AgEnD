@@ -10,7 +10,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { carryClaudeConversation } from "../src/backend/claude-carry.js";
+import { carryBackupName, carryClaudeConversation, lastTurnAt } from "../src/backend/claude-carry.js";
 import { claudeProjectKey } from "../src/backend/claude-code.js";
 import { credentialSwitchCarriesConversation } from "../src/backend/credential-profile.js";
 import { outboundHandlers, type OutboundContext } from "../src/outbound-handlers.js";
@@ -97,8 +97,9 @@ describe("what cannot be carried leaves the target as it was, and says why", () 
       const r = await carry(w);
       out.push([r.carried ? "carried" : r.reason, readFileSync(join(w.toProj, `${SID}.jsonl`), "utf8") === theirs]);
     }
-    expect(out).toEqual([["the new profile already holds a different version of this conversation", true],
-      ["the new profile already holds a different version of this conversation", true]]);
+    // M-3629: these lines carry no timestamp, so which is newer can't be told: refused, as before.
+    const unknown = "the new profile already holds a different version of this conversation, and which is newer can't be told";
+    expect(out).toEqual([[unknown, true], [unknown, true]]);
   });
 
   it("a version that starts the same but ends differently (past the first 64 KiB): untouched", async () => {
@@ -375,4 +376,61 @@ describe("update_instance_config: a claude-code profile switch asks the restart 
     await update(backend.ctx, { backend: "claude-code", backend_options: { "claude-code": { credential_profile: "team" } } });
     expect([same.restartSingleInstance.mock.calls[0]?.[1], backend.restartSingleInstance.mock.calls[0]?.[1]]).toEqual([undefined, { freshStart: true }]);
   }, 15_000);
+});
+
+// M-3629: each profile went on with the same conversation (a switch A → B, then B → A after more turns in both), so
+// the target holds another history, not an older copy. Twice on 11-24 the switch then started fresh. Now the newer
+// history by its last turn wins: the target's own, when older, is kept beside it (never lost) and the source carried.
+describe("M-3629 another history in the new profile: the newer one by its last turn", () => {
+  const T0 = Date.parse("2026-11-24T08:00:00Z");
+  /** n lines, the i-th dated T0 + (from + i) minutes; `tag` makes the content differ between histories. */
+  const turns = (n: number, from = 0, tag = "a") => Array.from({ length: n }, (_, i) =>
+    JSON.stringify({ type: "user", sessionId: SID, uuid: `${tag}${from + i}`, timestamp: new Date(T0 + (from + i) * 60_000).toISOString(), message: tag.repeat(100) }) + "\n").join("");
+  const NOW = Date.parse("2026-11-24T10:35:35Z");
+  const setup = (ours: string, theirs: string) => {
+    const w = world({ transcript: ours });
+    mkdirSync(w.toProj, { recursive: true });
+    writeFileSync(join(w.toProj, `${SID}.jsonl`), theirs);
+    return w;
+  };
+
+  it("the source's last turn is later: the target's own history is kept beside it, byte for byte, and the source carried", async () => {
+    const ours = turns(3, 0, "a") + turns(4, 10, "b"), theirs = turns(3, 0, "a") + turns(2, 5, "c");   // ours ends at +13 min, theirs at +6
+    const w = setup(ours, theirs);
+    const r = await carry(w, { now: () => NOW });
+    expect(r).toMatchObject({ carried: true, replacedOlderCopy: true, backedUp: carryBackupName(`${SID}.jsonl`, NOW) });
+    expect(readFileSync(join(w.toProj, `${SID}.jsonl`), "utf8")).toBe(ours);
+    expect(readFileSync(join(w.toProj, carryBackupName(`${SID}.jsonl`, NOW)), "utf8")).toBe(theirs);
+    expect(readFileSync(join(w.fromProj, `${SID}.jsonl`), "utf8")).toBe(ours);                    // the original untouched
+    expect(carryBackupName(`${SID}.jsonl`, NOW).endsWith(".jsonl")).toBe(false);                    // never read as a transcript
+    expect(hidden(w.toProj)).toEqual([]);
+  });
+
+  it("the target's last turn is later, or the same: refused, the target untouched, nothing kept beside it", async () => {
+    for (const [ours, theirs, why] of [
+      [turns(3, 0, "a"), turns(3, 0, "a") + turns(2, 20, "c"), "the new profile already holds a version of this conversation at least as new"],
+      [turns(2, 0, "a") + turns(1, 9, "b"), turns(2, 0, "a") + turns(1, 9, "c"), "the new profile already holds a version of this conversation at least as new"],
+    ] as const) {
+      const w = setup(ours, theirs);
+      const r = await carry(w, { now: () => NOW });
+      expect(r).toEqual({ carried: false, reason: why });
+      expect(readFileSync(join(w.toProj, `${SID}.jsonl`), "utf8")).toBe(theirs);
+      expect(readdirSync(w.toProj).filter((n) => n.includes("agend-backup"))).toEqual([]);
+    }
+  });
+
+  it("a last turn that can't be read on either side: refused, as before", async () => {
+    const w = setup(turns(3, 0, "a") + turns(2, 10, "b"), lines(4));
+    expect(await carry(w, { now: () => NOW })).toEqual({ carried: false, reason: "the new profile already holds a different version of this conversation, and which is newer can't be told" });
+  });
+
+  it("lastTurnAt: the last line with a timestamp, past a partial last line, from the file's end", async () => {
+    const d = tempDir(), f = join(d, "t.jsonl");
+    writeFileSync(f, turns(2, 0, "a") + '{"type":"user","timestamp":"2026-11-24T09:00:00.000Z"}\n{"type":"assist');
+    expect(await lastTurnAt(f)).toBe(Date.parse("2026-11-24T09:00:00.000Z"));
+    writeFileSync(f, lines(3));
+    expect(await lastTurnAt(f)).toBeNull();
+    writeFileSync(f, "");
+    expect(await lastTurnAt(f)).toBeNull();
+  });
 });

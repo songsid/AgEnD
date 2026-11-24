@@ -19,7 +19,9 @@ import { join } from "node:path";
 import { claudeProjectKey } from "./claude-code.js";
 
 export type CarryResult =
-  | { carried: true; sessionId: string; bytes: number; ms: number; replacedOlderCopy: boolean }
+  | { carried: true; sessionId: string; bytes: number; ms: number; replacedOlderCopy: boolean;
+      /** M-3629: the target's own copy (a different history, older by its last turn), kept beside it under this name. */
+      backedUp?: string }
   | { carried: false; reason: string };
 
 export interface CarryRequest {
@@ -85,6 +87,30 @@ async function isOlderCopy(target: string, targetSize: number, source: string, s
   return th.equals(sh) && tt.equals(st);
 }
 
+/**
+ * M-3629: when a transcript's last turn was (ms), from its own lines — not the file's mtime, which a carry sets to "now"
+ * on purpose. The last line in its final PREFIX_PROBE bytes with a `timestamp` that parses; null if none.
+ */
+export async function lastTurnAt(path: string): Promise<number | null> {
+  const size = await sizeOf(path);
+  if (!size) return null;
+  const at = Math.max(0, size - PREFIX_PROBE);
+  const lines = (await readAt(path, at, size - at)).toString("utf8").split("\n");
+  if (at > 0) lines.shift();                                  // a line cut by the probe's start is not read
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i]!.trim();
+    if (!line) continue;
+    try {
+      const ts = (JSON.parse(line) as { timestamp?: unknown }).timestamp;
+      const n = typeof ts === "string" ? Date.parse(ts) : NaN;
+      if (Number.isFinite(n)) return n;
+    } catch { /* a partial or non-JSON line: look further back */ }
+  }
+  return null;
+}
+/** Where a target's own copy is kept when the source replaces it: beside it, under a name claude never reads as a transcript. */
+export const carryBackupName = (name: string, at: number) => `${name}.agend-backup-${new Date(at).toISOString().replace(/[:.]/g, "-")}`;
+
 /** The newest mtime (ms) among the other transcripts in the target's project folder. */
 async function newestOtherTranscript(dir: string, except: string): Promise<number> {
   let newest = 0;
@@ -113,10 +139,18 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
   if (sourceSize === null) return { carried: false, reason: "the session's transcript is not in the old profile" };
 
   const targetSize = await sizeOf(target);
-  let replacedOlderCopy = false;
+  let replacedOlderCopy = false, backup: string | null = null;
   if (targetSize !== null) {
     if (!await isOlderCopy(target, targetSize, source, sourceSize).catch(() => false)) {
-      return { carried: false, reason: "the new profile already holds a different version of this conversation" };
+      // M-3629: another history of this conversation (each profile went on with it). The source goes over it only when
+      // its last turn is later; the target's copy is then kept beside it, never lost. Newer, the same, or unknown: refused.
+      const [sourceAt, targetAt] = await Promise.all([lastTurnAt(source).catch(() => null), lastTurnAt(target).catch(() => null)]);
+      if (sourceAt === null || targetAt === null || !(sourceAt > targetAt)) {
+        return { carried: false, reason: sourceAt === null || targetAt === null
+          ? "the new profile already holds a different version of this conversation, and which is newer can't be told"
+          : "the new profile already holds a version of this conversation at least as new" };
+      }
+      backup = carryBackupName(name, (req.now ?? Date.now)());
     }
     replacedOlderCopy = true;
   }
@@ -147,8 +181,12 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
         await rm(tmpFolder, { recursive: true, force: true });
       }
     }
+    // M-3629: the target's own (older) history is kept, renamed, before the source takes its place.
+    if (backup) await rename(target, join(toDir, backup));
     await rename(tmpFile, target);
   } catch (err) {
+    // The target's own copy is put back if it was moved aside and the source never took its place: never lose either.
+    if (backup && await sizeOf(target) === null) await rename(join(toDir, backup), target).catch(() => undefined);
     await rm(tmpFile, { force: true }).catch(() => undefined);
     await rm(tmpFolder, { recursive: true, force: true }).catch(() => undefined);
     return { carried: false, reason: `copy failed: ${(err as Error).message}` };
@@ -165,5 +203,5 @@ export async function carryClaudeConversation(req: CarryRequest): Promise<CarryR
   await cp(join(req.fromConfigDir, "file-history", sid), join(req.toConfigDir, "file-history", sid), { recursive: true, errorOnExist: false, force: false })
     .catch(() => undefined);
 
-  return { carried: true, sessionId: sid, bytes: sourceSize + folderBytes, ms: Math.round(performance.now() - started), replacedOlderCopy };
+  return { carried: true, sessionId: sid, bytes: sourceSize + folderBytes, ms: Math.round(performance.now() - started), replacedOlderCopy, ...(backup ? { backedUp: backup } : {}) };
 }
