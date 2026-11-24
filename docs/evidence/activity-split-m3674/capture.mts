@@ -22,24 +22,32 @@ const turns: Record<string, string> = { "busy-agent": iso(2 * min), "relay-agent
 if (typeof fm.lastAgentTurnOf === "function") fm.lastAgentTurnOf = (n: string) => turns[n] ?? null;
 const report: any = { label: LABEL, cases: {} };
 // The desk's sidebar is one line a row by default (compact); "detailed" is two; a phone's drawer is detailed.
-const cases = [{ device: "desk", theme: "light", lang: "en", density: "compact" }, { device: "desk", theme: "dark", lang: "zh-TW", density: "compact" },
+const ALL = [{ device: "desk", theme: "light", lang: "en", density: "compact" }, { device: "desk", theme: "dark", lang: "zh-TW", density: "compact" },
   { device: "desk", theme: "light", lang: "en", density: "detailed" }, { device: "desk", theme: "dark", lang: "zh-TW", density: "detailed" },
   { device: "phone", theme: "dark", lang: "zh-TW", density: "detailed" }, { device: "phone", theme: "light", lang: "en", density: "detailed" }] as const;
+const cases = process.env.PHONE_ONLY ? ALL.filter((c) => c.device === "phone") : ALL;
 try {
   for (const c of cases) {
     const key = `${c.device}-${c.theme}-${c.lang}-${c.density}`, errors: string[] = [];
     const { ctx, page, csp } = await fx.page(c as any, { path: "/ui", storage: c.device === "desk" ? { agend_nav_density: c.density } : {} });
     page.on("pageerror", (e: Error) => errors.push(String(e)));
     await mounted(page, 30000);
-    if (c.device === "phone") { const b = page.locator(".mobile-nav-toggle, .nav-toggle, button[aria-label*='enu'], button[aria-label*='選單']").first(); if (await b.count()) { await b.click(); await page.waitForTimeout(600); } }
+    if (c.device === "phone") {
+      // Prism #4430: the drawer opened for real (its toggle must be there), the rows then visible on the screen.
+      const b = page.locator("#sbOpen");   // the phone's "Open the sidebar" (the drawer's own close button sits off screen)
+      if (!(await b.count())) throw new Error(`${key}: no sidebar toggle`);
+      await b.click(); await page.waitForTimeout(800);
+    }
     await page.waitForTimeout(1500);
     await page.screenshot({ path: join(OUT, `${key}.png`) });
     const rows = await page.evaluate(() => [...document.querySelectorAll("[data-agent-row]")].map((li) => {
       const w = li.querySelector(".inst-when") as HTMLElement | null, r = w ? w.getBoundingClientRect() : null, a = li.querySelector("a") as HTMLElement, ar = a.getBoundingClientRect();
       const nm = li.querySelector(".inst-name") as HTMLElement | null, nr = nm ? nm.getBoundingClientRect() : null;
       return { name: li.getAttribute("data-agent-row"), nameW: nr ? Math.round(nr.width) : null, nameCut: !!nm && nm.scrollWidth > nm.clientWidth + 1, text: w ? (w.textContent || "").trim() : null, title: w ? w.getAttribute("title") : null,
-        inRow: !!r && r.right <= ar.right + 0.5 && r.left >= ar.left - 0.5, timeWhole: !!w && w.scrollWidth <= w.clientWidth + 1 };
+        inRow: !!r && r.right <= ar.right + 0.5 && r.left >= ar.left - 0.5, timeWhole: !!w && w.scrollWidth <= w.clientWidth + 1,
+        visible: ar.width > 0 && ar.height > 0 && ar.left >= -0.5 && ar.right <= innerWidth + 0.5 && ar.top >= 0 && ar.bottom <= innerHeight && document.elementFromPoint(ar.left + ar.width / 2, ar.top + ar.height / 2)?.closest("[data-agent-row]") === li };
     }));
+    if (c.device === "phone" && !rows.filter((r: any) => r.name !== "general").every((r: any) => r.visible)) throw new Error(`${key}: rows not visible after opening the drawer: ${JSON.stringify(rows)}`);
     report.cases[key] = { errors, csp: await csp(), rows };
     await ctx.close();
   }
