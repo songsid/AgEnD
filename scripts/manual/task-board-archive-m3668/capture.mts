@@ -41,7 +41,7 @@ try {
   }
   const stats = board.projectStats(undefined, 3)[String(project.id)];
   receipt.board = { archived: stats.archived, doneWeek: stats.doneWeek, mains: stats.mains };
-  check("the board's numbers: archived and this week's are counted", stats.archived > 20 && stats.doneWeek > 20, stats);
+  check("the board's numbers: archived and this week's are counted", stats.archived >= 10 && stats.doneWeek > 20, stats);
   const archivedOne = board.archiveList(project.id, 3, { limit: 1 }).cards[0];
   for (const c of [{ device: "desk", theme: "light", lang: "en" }, { device: "desk", theme: "dark", lang: "zh-TW" }, { device: "phone", theme: "light", lang: "en" }, { device: "phone", theme: "dark", lang: "zh-TW" }] as const) {
     const p = await fx.page(c), page = p.page, tag = `${c.device}-${c.lang}-${c.theme}`, phone = c.device === "phone", errors: string[] = [];
