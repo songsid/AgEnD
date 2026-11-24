@@ -1,3 +1,4 @@
+import { ContactHeldError } from "../src/contact-auth-service.js";
 import Database from "better-sqlite3";
 import { afterEach, expect, it, vi } from "vitest";
 import { ContactAuthStore, contactPersonKey, normalizeContactPersonKey, mergeContactOrigins, type ContactRequest } from "../src/contact-auth-store.js";
@@ -69,7 +70,11 @@ it("recovery does not auto-approve or replay an existing held operation; new adm
  db.prepare("INSERT INTO contact_auth_origins VALUES (?,?)").run("leader",JSON.stringify(old));
  const request:ContactRequest={operationId:"held-operation",source:"leader",target:"worker",sourceGeneration:"demo-generation",targetGeneration:"demo-generation",verb:"send_to_instance",origin:old,message:"Question",correlationId:"correlation",resultRecipient:"leader",payload:{}};
  const ticket=store.hold(request),service=fm.contactService();
- expect(()=>service.requireApplication(request)).toThrow();expect(store.get(ticket.id)?.state).toBe("pending");
+ expect(()=>service.requireApplication(request)).toThrow(ContactHeldError);expect(store.get(ticket.id)?.state).toBe("pending");
+ const admit=vi.spyOn(service.host,"admit").mockReturnValue("unexpected-delivery");
+ store.writePolicy("worker",{revision:0,grants:[{id:"",person:admin,source:"leader",target:"worker",verbs:["send_to_instance"],expiresAt:new Date(10_000).toISOString(),remainingUses:2}]},admin,()=>"demo-generation");
+ expect(()=>service.requireApplication(request)).toThrow(ContactHeldError);expect(admit).not.toHaveBeenCalled();
+ expect(store.get(ticket.id)?.state).toBe("pending");expect(store.policy("worker","demo-generation").grants[0]?.remainingUses).toBe(2);
  expect(service.requireApplication({...request,operationId:"fresh-operation"})).toBeUndefined();
 });
 it("explicit mixed singleton and explicit unknown never gain authority by normalization",()=>{
@@ -101,4 +106,9 @@ it("the real authorization-list method accepts old and current person selectors 
  const {store,fm}=rig();const ticket=store.hold({operationId:"filter-operation",source:"leader",target:"worker",sourceGeneration:"demo-generation",targetGeneration:"demo-generation",verb:"send_to_instance",origin:personOrigin(alias),message:"Question",correlationId:"correlation",resultRecipient:"leader",payload:{}});
  for(const person of [contactPersonKey(admin),JSON.stringify([admin.platform,admin.adapterId,admin.userId])])expect(fm.contactAuthorizations(alias,{person}).items.map((row:any)=>row.id)).toEqual([ticket.id]);
  expect(fm.contactAuthorizations(alias,{person:JSON.stringify(["telegram",admin.userId])}).items).toEqual([]);
+});
+
+it("a removed sibling bot's stale runtime configuration cannot add a contact admin",()=>{
+ const {fm}=rig();fm.worlds.set("removed-bot",{adapter:{id:"removed-bot",type:"discord"},channelConfig:{id:"removed-bot",type:"discord",access:{allowed_users:["removed-admin"]}}});
+ expect(fm.contactAdminOf("leader",{...alias,userId:"removed-admin"})).toBe(false);
 });

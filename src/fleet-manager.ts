@@ -5722,8 +5722,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const adapter = this.contactAdapter(name);
     if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
     const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
-    const ids = new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type),
-      ...[...(this.worlds?.values() ?? [])].filter(world => world.adapter?.type === adapter.type).map(world => world.adapter.id)]);
+    const ids = new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)]);
     const people = [...ids].flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
       platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
     return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];

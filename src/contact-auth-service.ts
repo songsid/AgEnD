@@ -45,10 +45,13 @@ export class ContactAuthService {
   }
   requireApplication(input: Omit<ContactRequest, "origin" | "sourceGeneration" | "targetGeneration">): string | undefined {
     const previous = this.host.store.operationTicket(input.source, input.operationId, input.target, input.verb);
+    const required = this.needsApplication(input.source);
     // Recovery of the person identity does not replay or bypass a decision for this exact old operation.
-    if (!this.needsApplication(input.source) && !previous) return;
+    if (!required && !previous) return;
     // M-3160 always precedes even ticket persistence, including a standing grant.
     if (this.host.hubRestricted(input.source)) throw Error("hub-contact-restricted");
+    if (!required && previous?.state === "pending") throw new ContactHeldError({ sent: false, held: true,
+      authorization_id: previous.id, authorization_state: previous.state, message: t("contact.held") });
     const request: ContactRequest = { ...input, origin: this.origin(input.source) ?? unknown(),
       sourceGeneration: this.host.generation(input.source), targetGeneration: this.host.generation(input.target) };
     if (!previous && input.verb === "report_result" && this.host.store.approvedReturn(input.source, input.target, input.correlationId)
