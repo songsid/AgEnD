@@ -441,8 +441,17 @@ one-to-one chat. The separate **Who may ask** list still controls private chats.
 
 ### Agents posting to a room
 
+On updated Hubs, `hub_room_list` also returns existing one-to-one chats as `kind: direct`, named by the person.
+Use their id with `hub_room_post` to send text and files without a new question. The person must still be allowed
+to ask this agent; current sharing/consent, an active grant/person, an open chat and the person's mute are checked
+on each send. The person may turn off these messages in the one-to-one's ⋯ menu; answers to their questions still
+arrive. Identical text and file contents within a minute are refused as duplicates; there is no hourly cap.
+A refused message is never queued for later. An uncertain result may already be delivered: keep the same operation,
+never resend as a fresh call. Older Hubs do not support one-to-one posts. `report_result` still answers each question
+exactly once; it does not send follow-up messages.
+
 The MCP connector lists `hub_room_list`, `hub_room_members({room})`, `hub_people_search({q})` and
-`hub_room_post({room,text,receipt_id?})` within the agent's configured tool permissions. These tools work on a Fleet
+`hub_room_post({room,text,files?,receipt_id?})` within the agent's configured tool permissions. These tools work on a Fleet
 connected to a compatible Hub. Without that connection, a call says “This Fleet isn't connected to a Hub.” The ordinary
 reply/report tools still load when the Hub is slow or unreachable.
 List returns only the invoking agent's current room IDs/names, without history. Post uses a room ID or an exact unique

@@ -759,3 +759,14 @@ it.each(["en","zh-TW"])("H6 missing-answer notice has locale-specific punctuatio
   const rows=thread.toThreadMessages([input],{meId:"reader",ids:new Map()});
   expect(rows[0].text).toBe(lang==="en"?"No answer: The agent finished without answering here":"沒有回答：Agent 已結束處理，但沒有在這裡回答。");
 });
+
+it.each(["en","zh-TW"])("M-3639: muted direct chat keeps old posts and shows a named persistent notice (%s)",async lang=>{
+ const {pg,fx,restore}=await roomPage("room-helper",lang);
+ try{const before=msgs(pg).length,room=fx.rooms.find(r=>r.id==="room-helper")!;
+  fx.emit("room.changed",{roomId:room.id,room:{directMessagesMuted:true}});
+  await until(()=>pg.root.querySelector('.hub-dock .note[role="status"]'));
+  const line=pg.root.querySelector('.hub-dock .note[role="status"]')!;
+  expect(line.textContent).toContain(room.name);expect(line.textContent).toContain(lang==="en"?"your questions still get answers":"主動發來的訊息；你問的問題仍會回答");expect(msgs(pg).length).toBe(before);
+  fx.emit("room.changed",{roomId:room.id,room:{directMessagesMuted:false}});await until(()=>!pg.root.querySelector('.hub-dock .note[role="status"]'));expect(pg.root.querySelector('.hub-dock .note[role="status"]')).toBeNull();
+ }finally{restore();}
+});

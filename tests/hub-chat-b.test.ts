@@ -280,3 +280,7 @@ describe("the Hub's rooms for the chat (the real listener)", () => {
     expect((await rig.call(fresh, "GET", `/hub/v1/rooms/${R1}/messages?after=0`)).status).toBe(403);
   });
 });
+it("M-3639: raw standalone entry maps to one agent message without an invented user question",()=>{
+ const messages=S.hubEntryToMessages({ownPost:true,messageId:"direct-post",sequence:2,answer:"An update",receipt:{stage:"answered",at:1}}, {id:"room",exposureName:"Demo agent"},{me:"Demo reader"});
+ expect(messages).toEqual([{boot:"hub",id:5,role:"agent",sender:"Demo agent",ts:"1970-01-01T00:00:00.001Z",text:"An update"}]);
+});

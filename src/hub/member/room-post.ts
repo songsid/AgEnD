@@ -1,6 +1,9 @@
 import {HUB_ROOM_MEMBERS_CAPABILITY,type RoomMemberOptions} from "../room-members-model.js";
 import type Database from "better-sqlite3";
-import { HUB_ROOM_POST_CAPABILITY, roomPostSchema, roomPostResultSchema, roomListResultSchema,
+import {HUB_DIRECT_POST_CAPABILITY} from "../direct-posts-model.js";
+import type {HubMemberFiles,HubFilePut} from "./attachments.js";
+import type {HubAttachmentRef,HubRoomPost} from "../types.js";
+import { HUB_ROOM_POST_CAPABILITY, attachmentRefSchema, roomPostSchema, roomPostResultSchema, roomListResultSchema,
   roomMembersSchema, roomMembersResultSchema, peopleSearchSchema, peopleSearchResultSchema } from "../protocol.js";
 import type { HubRoomListResult, HubRoomPostResult, HubRoomMembersResult, HubPeopleSearchResult, HubRoomPostAnswer } from "../types.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,type HubRoomMentionFeedback} from "../room-mention-feedback-model.js";
@@ -34,17 +37,19 @@ export interface RoomPostLink {
   members?(exposureId: string, room: string,options?:RoomMemberOptions&{v2?:true}): Promise<HubRoomMembersResult>;
   people?(exposureId: string, q: string): Promise<HubPeopleSearchResult>;
   ack?(id: string): void | Promise<void>;
-  post(value: { exposureId: string; room: string; text: string; idempotencyKey: string; onBehalfOf?: {receiptId:string} }): Promise<HubRoomPostResult>;
+  putFile?:HubFilePut;
+  post(value: HubRoomPost): Promise<HubRoomPostResult>;
 }
 export interface AgentRoomPort {
   available(): boolean;
   rooms(caller: RoomCaller): Promise<RoomListResult>;
   members(caller: RoomCaller, room: string,options?:RoomMemberOptions): Promise<HubRoomMembersResult | ShareLapsed>;
   people(caller: RoomCaller, q: string): Promise<HubPeopleSearchResult | ShareLapsed>;
-  post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult>;
+  post(caller: RoomCaller, value: { room: string; text: string; operationId: string; receiptId?: string; files?:string[] }): Promise<RoomPostResult>;
 }
 export interface RoomPostOptions {
   db: Database.Database; binding: string; encryptionKey: Buffer;
+  files?:HubMemberFiles;directRoom?(room:string,local:RoomIdentity):boolean;rememberDirectRoom?(room:string,local:RoomIdentity):void;
   current(): boolean; local(agent: string): RoomIdentity | null;
   /** M-3543: the agent's published share whose consent no longer matches it (shareLapsed). */
   lapsed?(agent: string): boolean;
@@ -56,7 +61,7 @@ export interface RoomPostOptions {
 }
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
-interface Saved { agent: string; local: RoomIdentity; room: string; text: string; receiptId?: string;
+interface Saved { direct?:true; files?:string[]; attachments?:HubAttachmentRef[]; agent: string; local: RoomIdentity; room: string; text: string; receiptId?: string;
   accepted?: {postId:string;roomId:string}; result?: RoomPostResult }
 const aad = (binding: string, id: string) => Buffer.from(JSON.stringify(["agend-room-post-v1", binding, id]));
 type JournalOptions = Pick<RoomPostOptions, "db" | "binding" | "encryptionKey">;
@@ -69,6 +74,8 @@ function read(options: JournalOptions, id: string, value: string): Saved {
     || typeof saved.local.token !== "string" || typeof saved.local.consentId !== "string"
     || !Number.isSafeInteger(saved.local.revision) || typeof saved.room !== "string" || typeof saved.text !== "string"
     || saved.receiptId !== undefined && !ROOM_HUMAN_RECEIPT.test(saved.receiptId)) throw Error("Invalid room post journal");
+  if(saved.direct!==undefined&&saved.direct!==true||saved.files!==undefined&&(!saved.direct||!Array.isArray(saved.files)||saved.files.length>10||saved.files.some(f=>typeof f!=="string"||!f))
+    ||saved.attachments!==undefined&&(!saved.direct||!saved.files||saved.attachments.length!==saved.files.length||saved.attachments.some(f=>!attachmentRefSchema.safeParse(f).success)))throw Error("Invalid direct post journal");
   if (saved.result && (!saved.result.ok || !roomPostResultSchema.safeParse(saved.result).success)) throw Error("Invalid saved post result");
   if (saved.accepted && (!UUID.test(saved.accepted.postId) || !UUID.test(saved.accepted.roomId)
     || saved.result?.ok && (saved.result.messageId !== saved.accepted.postId || saved.result.roomId !== saved.accepted.roomId))) throw Error("Conflicting saved post acceptance");
@@ -87,6 +94,7 @@ export function verifyRoomPostJournal(options: JournalOptions): void {
 export class HubRoomPostAdapter implements AgentRoomPort {
   private link: RoomPostLink | null = null;
   private closed = false;
+  private directRooms = new Set<string>();
   private pending = new Map<string, Promise<RoomPostResult>>();
   private answers: HubRoomPostAnswers;
   private answerLink: RoomPostAnswerLink | null = null;
@@ -142,6 +150,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       const result = roomListResultSchema.parse(await link.list(local.exposureId));
       if (!this.current(caller, local, link)) return { ok: false, code: "stale" };
       if (result.exposureId !== local.exposureId) return { ok: false, code: "stale" };
+      if(result.ok){if(result.rooms.some(r=>r.kind)&&!link.features.has(HUB_DIRECT_POST_CAPABILITY))throw Error("Unnegotiated direct room");for(const r of result.rooms)if(r.kind==="direct"){this.options.rememberDirectRoom?.(r.id,local);this.directRooms.add(`${local.exposureId}:${local.token}:${r.id}`);while(this.directRooms.size>1024)this.directRooms.delete(this.directRooms.values().next().value!);}}
       return result;
     } catch { return { ok: false, code: "unavailable" }; }
   }
@@ -171,10 +180,14 @@ export class HubRoomPostAdapter implements AgentRoomPort {
     const value = Buffer.concat([iv, cipher.getAuthTag(), content]).toString("base64");
     this.options.db.prepare("INSERT INTO hub_room_posts VALUES(?,?,?) ON CONFLICT(operation_id) DO UPDATE SET value=excluded.value").run(id, this.options.binding, value);
   }
-  async post(caller: RoomCaller, input: { room: string; text: string; operationId: string; receiptId?: string }): Promise<RoomPostResult> {
+  async post(caller: RoomCaller, input: { room: string; text: string; operationId: string; receiptId?: string; files?:string[] }): Promise<RoomPostResult> {
     const lapsed = this.lapse(caller); if (lapsed) return lapsed;
     const link = this.link, local = this.local(caller.agent), id = input.operationId;
-    if (!UUID.test(id) || !roomPostSchema.safeParse({exposureId:local?.exposureId,room:input.room,text:input.text,idempotencyKey:id}).success
+    const direct=!!local&&(this.options.directRoom?.(input.room,local)||this.directRooms.has(`${local.exposureId}:${local.token}:${input.room}`));
+    if(direct&&input.receiptId)return {ok:false,code:"invalid",message:"receipt_id is for group-room posts; a one-to-one message is sent as this agent."};
+    if(direct&&!link?.features.has(HUB_DIRECT_POST_CAPABILITY))return {ok:false,code:"unavailable",message:"This Hub is too old for agent messages in one-to-one chats."};
+    if(input.files?.length&&(!direct||!this.options.files||!link?.putFile||!link.features.has("attachments-v1")))return {ok:false,code:"invalid",message:"Files require a one-to-one chat on a compatible Hub."};
+    if (!UUID.test(id) || !roomPostSchema.safeParse({exposureId:local?.exposureId,room:input.room,text:input.text,idempotencyKey:id,...(direct?{direct:true}:{}),...(input.files?.length?{attachments:[{id,sha256:"0".repeat(64),size:1,name:"file.txt",mime:"text/plain"}]}:{})}).success
       || input.receiptId !== undefined && !ROOM_HUMAN_RECEIPT.test(input.receiptId)) return { ok: false, code: "invalid" };
     if (!link || !local || !this.current(caller, local, link)) return { ok: false, code: "unavailable" };
     try {
@@ -183,8 +196,8 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       const authorized = () => this.current(caller, local, link) && (!proof || proof.current());
       const row = this.options.db.prepare("SELECT binding,value FROM hub_room_posts WHERE operation_id=?").get(id) as { binding:string; value: string } | undefined;
       if (row && row.binding !== this.options.binding) return {ok:false,code:"uncertain"};
-      const saved: Saved = row ? read(this.options, id, row.value) : { agent: caller.agent, local, room: input.room, text: input.text, ...(input.receiptId ? {receiptId:input.receiptId} : {}) };
-      if (saved.agent !== caller.agent || saved.room !== input.room || saved.text !== input.text || saved.receiptId !== input.receiptId) return { ok: false, code: "conflict" };
+      const saved: Saved = row ? read(this.options, id, row.value) : { agent: caller.agent, local, room: input.room, text: input.text,...(direct?{direct:true as const}:{}),...(input.files?.length?{files:input.files}:{}), ...(input.receiptId ? {receiptId:input.receiptId} : {}) };
+      if (saved.agent !== caller.agent || saved.room !== input.room || saved.text !== input.text || saved.receiptId !== input.receiptId || !same(saved.files??[],input.files??[]) || !!saved.direct!==direct) return { ok: false, code: "conflict" };
       if (!same(saved.local, local)) return { ok: false, code: "stale" };
       if (saved.result) {
         if(saved.result.ok&&saved.result.mentionRefusals&&(!this.options.feedback||!this.options.feedback(saved.result.mentionRefusals,{...saved.local,agent:saved.agent},`post:${id}:${saved.result.messageId}`)))return {ok:false,code:"uncertain"};
@@ -192,6 +205,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
       }
       const expired = (): RoomPostResult => ({ok:false,code:"denied",reason:"This instruction is over 24 hours old. Ask your owner again."});
       if (!row && proof && !proof.fresh()) return expired();
+
       if (!row) this.write(id, saved); // Intent is durable before any bytes can reach the Hub.
       let pending = this.pending.get(id);
       if (!pending) {
@@ -199,7 +213,14 @@ export class HubRoomPostAdapter implements AgentRoomPort {
           try {
             if (!authorized()) return { ok: false, code: "stale" };
             if (!row && proof && !proof.fresh()) return expired();
-            const result = roomPostResultSchema.parse(await link.post({ exposureId: local.exposureId, room: saved.room, text: saved.text, idempotencyKey: id,
+            if(!saved.attachments&&saved.files?.length){const prepared=await this.options.files!.prepare(caller.agent,saved.files);if(!authorized())return {ok:false,code:"stale"};saved.attachments=prepared.map(f=>f.ref);this.write(id,saved);}
+            if(saved.attachments?.length){
+              const prepared=await this.options.files!.prepare(caller.agent,saved.files!);
+              if(prepared.length!==saved.attachments.length||prepared.some((f,i)=>f.ref.sha256!==saved.attachments![i]!.sha256||f.ref.name!==saved.attachments![i]!.name||f.ref.size!==saved.attachments![i]!.size))return {ok:false,code:"conflict"};
+              for(const [i,file] of prepared.entries()){if(!authorized())return {ok:false,code:"stale"};await this.options.files!.send({ref:saved.attachments[i]!,bytes:file.bytes},c=>{if(!authorized())throw Error("Hub post source changed before file chunk");return link.putFile!(c);});}
+              if(!authorized())return {ok:false,code:"stale"};
+            }
+            const result = roomPostResultSchema.parse(await link.post({ exposureId: local.exposureId, room: saved.room, text: saved.text, idempotencyKey: id,...(saved.direct?{direct:true as const}:{}),...(saved.attachments?.length?{attachments:saved.attachments}:{}),
               ...(saved.receiptId ? {onBehalfOf:{receiptId:saved.receiptId}} : {}) }));
             if(result.ok&&result.mentionRefusals&&!link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))throw Error("Unnegotiated mention feedback");
             // A lost owner/link can hide a committed result; never claim that the post failed or retry with a new key.
@@ -208,7 +229,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
               const latest=this.options.db.prepare("SELECT value FROM hub_room_posts WHERE operation_id=?").get(id) as {value:string};
               const frozen=read(this.options,id,latest.value);
               if(frozen.accepted && (frozen.accepted.postId!==result.messageId || frozen.accepted.roomId!==result.roomId))return {ok:false,code:"uncertain"};
-              this.write(id, { ...frozen, result });
+              const {message:_display,...retained}=result;this.write(id, { ...frozen, result:retained });
               if(result.mentionRefusals&&(!this.options.feedback||!this.options.feedback(result.mentionRefusals,{...frozen.local,agent:frozen.agent},`post:${id}:${result.messageId}`)))return {ok:false,code:"uncertain"};
             }
             return result;

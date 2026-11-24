@@ -88,6 +88,7 @@ export interface HubRepresentativeOptions {
   now?: () => number;
   /** M-3594: the asker's display name the Hub sent with this question (asker-name-v1), if it is still in memory. */
   askerName?(messageId: string): string | undefined;
+  directRooms?:import("./member/direct-rooms.js").HubDirectRooms;
 }
 
 /** M-3594: the Hub's display names for 1:1 askers, by message id, in memory only (bounded; a restart forgets them and the
@@ -263,6 +264,7 @@ export class HubRepresentativeExecution {
     if (!this.setState(row, "dispatching", ["queued"], { cid })) return;
     const question = this.question(row);
     const e = question.identity;
+    this.options.directRooms?.remember(row.message_id,e.roomId,row.exposure_id,row.token);
     // A question's files come whole into the agent's inbox before the hand-off; a failure holds it (never a resend).
     let fileLines: string[] = [];
     if (question.attachments?.length) {
@@ -286,7 +288,8 @@ export class HubRepresentativeExecution {
       askerName
         ? `A question from the Hub. Asker ${JSON.stringify(askerName)}, id ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`
         : `A question from the Hub. Asker ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`,
-      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}, your whole answer in summary (the asker sees summary itself; it is not a title). It takes exactly one answer: put everything in it, since the asker sees more from you only after they write again. Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
+      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}, your whole answer in summary (the asker sees summary itself; it is not a title). ${this.options.link()?.features?.has("direct-posts-v1")?"It takes exactly one answer: put everything in it.":"It takes exactly one answer: put everything in it, since the asker sees more from you only after they write again."} Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
+      ...(this.options.link()?.features?.has("direct-posts-v1")?[`You may write to this person again later with hub_room_post(room=${e.roomId}); each report_result still takes exactly one complete answer.`]:[]),
       "",
       question.text,
       ...(fileLines.length ? ["", ...fileLines] : []),
@@ -336,6 +339,12 @@ export class HubRepresentativeExecution {
     }
   }
 
+  private directFollowUp(row:Row):string|undefined {
+    if(!this.currentFor(row)||!this.options.link()?.current()||!this.options.link()?.features?.has("direct-posts-v1"))return;
+    const room=this.options.directRooms?.room(row.message_id);
+    return room?`To send this person a new message, use hub_room_post(room=${room}).`:undefined;
+  }
+
   /**
    * The outbound hook: a report_result to HUB_REPORT_TARGET. Returns null when the correlation id is not a live Hub id
    * issued to this caller (the call then takes its ordinary route); otherwise consumes it once and releases the answer.
@@ -348,10 +357,8 @@ export class HubRepresentativeExecution {
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) {
-      // M-3637: this agent's own question, no longer taking an answer — say why (it used to fall through to "Instance or
-      // session not found: agend-hub").
-      const state = this.refresh(row);
-      return Promise.resolve({ ok: false, message: state === "answering" ? HUB_ANSWER_SENDING : state === "held" ? HUB_ANSWER_HELD : HUB_ANSWER_USED });
+      const state=this.refresh(row),hint=this.directFollowUp(row);
+      return Promise.resolve({ok:false,message:state==="answering"?HUB_ANSWER_SENDING:state==="held"?HUB_ANSWER_HELD:hint?`Not sent: this Hub question already has its one answer. ${hint}`:HUB_ANSWER_USED});
     }
     return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
   }

@@ -24,6 +24,7 @@ import { HUB_MCP_DOOR_MIGRATION } from "../mcp/door-schema.js";
  * secrets are kept only as SHA-256 digests.
  */
 import type Database from "better-sqlite3";
+import { HUB_DIRECT_POSTS_MIGRATION } from "../direct-posts.js";
 import { HUB_ADMIN_DASHBOARD_MIGRATION } from "../admin-dashboard.js";
 import { HUB_PERSON_PREFS_MIGRATION } from "../person-prefs.js";
 import { HUB_BUTTONS_MIGRATION } from "../buttons.js";
@@ -158,4 +159,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ROOM_OFFICE_STYLE_MIGRATION,
   HUB_SESSION_LIMITS_MIGRATION,
   HUB_AGENT_PICTURES_MIGRATION,
+  HUB_DIRECT_POSTS_MIGRATION,
 ]);

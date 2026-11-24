@@ -1,3 +1,5 @@
+import { HubDirectRooms } from "../member/direct-rooms.js";
+import { HUB_DIRECT_POST_CAPABILITY } from "../direct-posts-model.js";
 import {HubMemberAgentIntro} from "../member/agent-intro.js";
 import { HUB_MEMBER_SHARING_MIGRATION, HubMemberSharingJournal } from "../member/sharing-journal.js";
 import { HubMemberSharing } from "../member/sharing.js";
@@ -537,10 +539,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       // M-3125: one file handler for the 1:1 representative and the room asks (the inbox and the reply rule are the same).
       const memberFiles = options.representative.files ? new HubMemberFiles(options.representative.files) : undefined;
       const askerNames = new HubAskerNames();
+      const directRooms = new HubDirectRooms(db);
       const service = new HubRepresentativeExecution({
         db,
         journal,
-        askerName: (messageId) => askerNames.get(messageId),
+        askerName: (messageId) => askerNames.get(messageId),directRooms,
         binding,
         localExposure: (id) => exposures.localExposure(id),
         agentToken: (agent) => options.representative.agentToken(agent),
@@ -605,7 +608,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         } catch { return false; }
       };
       const lapsedAgents = (): string[] => exposures.list().flatMap(row => shareLapsed(row.agent) ? [row.agent] : []);
-      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,lapsed:shareLapsed,
+      const posts = new HubRoomPostAdapter({db,binding:roomBinding,encryptionKey:postKey,current:roomCurrent,lapsed:shareLapsed,files:memberFiles,directRoom:(room,local)=>directRooms.has(room,local.exposureId,local.token),rememberDirectRoom:(room,local)=>directRooms.remember(`listed:${local.exposureId}:${room}`,room,local.exposureId,local.token),
         receipt: options.roomReceipt,feedback:receiveFeedback,
         notify: options.roomNotify,
         held: id => options.log("warn", "Hub room reply delivery held", {notificationId:id}),
@@ -656,13 +659,14 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         if (!options.representative.readState || !l.features.has(HUB_ROOM_ASK_CAPABILITY) || !l.features.has("welcome-caps-v1")) return;
         const view = roomLink(l); room.connected(view); roomState.connected(view);
         if (options.attachAgentRooms && options.roomNotify) posts.connected(postLink={features:l.features,current:view.current,
+          putFile:async chunk=>{const ack=await l.exchange({v:1,type:"attachment.put",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:chunk},"attachment.ack");if(ack.type!=="attachment.ack"||ack.payload.id!==chunk.id)throw new HubProtocolError("invalid");},
           list: async exposureId => {
             const result = await l.exchange({v:1,type:"room.list",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{exposureId}},"room.list-result");
             if (result.type !== "room.list-result") throw new HubProtocolError("invalid");
             return result.payload;
           },
           post: async payload => {
-            const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{...payload,...(options.roomNotify&&l.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?{mentionFeedback:true as const}:{})}},"room.post-result");
+            const result = await l.exchange({v:1,type:"room.post",requestId:randomUUID(),linkEpoch:l.linkEpoch,payload:{...payload,...(!payload.direct&&options.roomNotify&&l.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY)?{mentionFeedback:true as const}:{})}},"room.post-result");
             if (result.type !== "room.post-result") throw new HubProtocolError("invalid");
             return result.payload;
           },
@@ -819,7 +823,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
         hubId,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY] : []),
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY,...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
           ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
         revocationFloor: () => journal.revocationVersion(),

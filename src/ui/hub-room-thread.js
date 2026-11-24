@@ -45,6 +45,8 @@ import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpe
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
+register("hubDirectPosts",{en:{mute:"Mute this agent’s own messages",muted:"{0}’s own messages are off.",mutedNotice:"{0}’s own messages are off; your questions still get answers.",unmuted:"This agent can send you messages again.",failed:"Could not change this preference. Please try again."},"zh-TW":{mute:"關閉這個 Agent 主動發來的訊息",muted:"已關閉 {0} 主動發來的訊息。",mutedNotice:"已關閉 {0} 主動發來的訊息；你問的問題仍會回答。",unmuted:"這個 Agent 現在可以再次主動發來訊息。",failed:"無法變更這項設定，請再試一次。"}});
+
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 /**
  * M-3311 (3): the Fleet chat's 「全寬」 for a Hub conversation — this device's choice (as the Fleet keeps its own), its own key:
@@ -601,7 +603,15 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // M-3311 (3): the header's menu — a group room's Room settings and Leave, and on a desk the Fleet chat's 「全寬」 for any room.
   const [fullWidth, setFullWidth] = useState(hubChatWide);
   const textSize = useStore(textSizeStore), notify = useStore(notifyStore), narrow = useNarrowScreen();
+  const [muteBusy,setMuteBusy]=useState(false);
+  async function toggleDirectMute(){
+    if(muteBusy)return;setMuteBusy(true);
+    try{const muted=!room.directMessagesMuted,r=await client.updateRoom(roomId,{directMessagesMuted:muted});
+      if(r.ok){await store.refresh();toast(t(`hubDirectPosts.${muted?"muted":"unmuted"}`,title));}else toast(t("hubDirectPosts.failed"),false);
+    }finally{setMuteBusy(false);}
+  }
   const menuItems = [
+    !group&&room.kind==="direct"&&room.state==="active"&&typeof room.directMessagesMuted==="boolean"?{key:"directMute",checkbox:true,checked:room.directMessagesMuted,disabled:muteBusy,label:t("hubDirectPosts.mute"),onSelect:()=>{void toggleDirectMute();}}:null,
     // M-3533 R1: a phone has no tab row — Office is the first item of ⋯ (in the office, its back returns to the chat).
     narrow && officeOn && !inOffice ? { key: "office", label: hroom("tabOffice"), icon: "org", onSelect: () => onView("office") } : null,
     // In the office a phone's options (hide paused, bedtime, dialogue, key, fit, fill) are one sheet, not rows over the scene.
@@ -689,6 +699,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       ${html`<div class="dock hub-dock" data-trust="composer" hidden=${inOffice}><div class="dock-col">
         ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} statusOf=${statusOf} />` : null)
           : working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
+        ${room.kind==="direct"&&room.directMessagesMuted?html`<p class="note" role="status">${t("hubDirectPosts.mutedNotice",title)}</p>`:null}
         <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} editRef=${editDraft}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
       </div></div>`}

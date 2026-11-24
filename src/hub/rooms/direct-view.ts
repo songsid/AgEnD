@@ -1,4 +1,5 @@
 /** Seam-1 projections keep the direct service's grant, execution and receipt machinery intact. */
+import { directPostsAvailable } from "../direct-posts.js";
 import type { HubRoomEntryView, HubRoomListItem } from "../rooms.js";
 import type { RoomMessage } from "./types.js";
 import { personKeyString } from "../identity.js";
@@ -13,6 +14,7 @@ export function directRoomView(room: HubRoomListItem, presence: "idle" | "workin
 export function directMessages(room: HubRoomListItem, entries: readonly HubRoomEntryView[], askerName: string): RoomMessage[] {
   return entries.flatMap(entry => {
     const base = { roomId: room.id, mentions: [] as string[] };
+    if(entry.ownPost)return [{...base,id:entry.messageId,at:entry.receipt.at,author:{kind:"agent" as const,id:room.exposureId,name:room.exposureName,owner:{name:room.ownerName}},text:entry.answer??"",...(entry.answerFiles?.length?{files:entry.answerFiles}:{})}];
     const question: RoomMessage = { ...base, id: entry.messageId, at: entry.askedAt ?? entry.receipt.at,
       author: { kind: "person", id: personKeyString(room.asker), name: askerName,...(entry.via?{via:{...entry.via,kind:"app" as const}}:{}) }, text: entry.question ?? "",
       stage: entry.receipt.stage === "answered" ? "answered" : ["queued", "delivered", "consumed"].includes(entry.receipt.stage) ? "working" : "not-answered",
@@ -34,16 +36,18 @@ export function directMessages(room: HubRoomListItem, entries: readonly HubRoomE
 /** A late answer is unread even when its question predates the last read action. */
 export function directUnread(core: HubCore, room: HubRoomListItem): number {
   if (room.state !== "active") return 0;
-  return core.atomic(db => (db.prepare(`SELECT COUNT(*) AS n FROM hub_messages m WHERE m.room_id=? AND m.answer_id IS NOT NULL AND NOT EXISTS
+  return core.atomic(db => (directPostsAvailable(db)?(db.prepare("SELECT COUNT(*) AS n FROM hub_direct_posts p WHERE room_id=? AND NOT EXISTS(SELECT 1 FROM hub_direct_post_reads r WHERE r.post_id=p.id)").get(room.id) as {n:number}).n:0)+(db.prepare(`SELECT COUNT(*) AS n FROM hub_messages m WHERE m.room_id=? AND m.answer_id IS NOT NULL AND NOT EXISTS
     (SELECT 1 FROM hub_direct_room_reads r WHERE r.room_id=m.room_id AND r.message_id=m.id AND r.answer_id=m.answer_id)`).get(room.id) as { n: number }).n);
 }
 export function markDirectRead(core: HubCore, roomId: string, upTo: string): void {
   core.atomic(db => {
     const answer = upTo.endsWith(":answer"), id = upTo.replace(/:answer$/, "");
-    const target = db.prepare("SELECT sequence,answer_id FROM hub_messages WHERE room_id=? AND id=?").get(roomId, id) as { sequence: number; answer_id: string | null } | undefined;
-    if (!target || answer && !target.answer_id) throw new HubProtocolError("not-found");
+    const own=directPostsAvailable(db)?db.prepare("SELECT sequence FROM hub_direct_posts WHERE room_id=? AND id=?").get(roomId,id) as {sequence:number}|undefined:undefined;
+    const target = own??db.prepare("SELECT sequence,answer_id FROM hub_messages WHERE room_id=? AND id=?").get(roomId, id) as { sequence: number; answer_id: string | null } | undefined;
+    if (!target || answer && !("answer_id" in target&&target.answer_id)) throw new HubProtocolError("not-found");
+    if(directPostsAvailable(db))db.prepare(`INSERT OR IGNORE INTO hub_direct_post_reads(post_id) SELECT id FROM hub_direct_posts WHERE room_id=? AND sequence${own||answer?"<=":"<"}?`).run(roomId,target.sequence);
     db.prepare(`INSERT INTO hub_direct_room_reads(room_id,message_id,answer_id)
-      SELECT room_id,id,answer_id FROM hub_messages WHERE room_id=? AND sequence${answer ? "<=" : "<"}? AND answer_id IS NOT NULL
+      SELECT room_id,id,answer_id FROM hub_messages WHERE room_id=? AND sequence${own || answer ? "<=" : "<"}? AND answer_id IS NOT NULL
       ON CONFLICT(room_id,message_id) DO UPDATE SET answer_id=excluded.answer_id`).run(roomId, target.sequence);
   });
 }

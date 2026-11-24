@@ -3308,7 +3308,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   hubPeopleSearch(caller: import("./hub/member/room-post.js").RoomCaller, q:string) {
     return this.hubAgentRooms?.people(caller,q)??Promise.resolve({ok:false as const,code:"unavailable" as const});
   }
-  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string;receiptId?:string}) {
+  hubRoomPost(caller: import("./hub/member/room-post.js").RoomCaller, value:{room:string;text:string;operationId:string;receiptId?:string;files?:string[]}) {
     return this.hubAgentRooms?.post(caller,value) ?? Promise.resolve({ok:false as const,code:"unavailable"});
   }
   private notifyHubRoomTools(): void {

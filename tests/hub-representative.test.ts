@@ -1,3 +1,4 @@
+import {HubDirectRooms} from "../src/hub/member/direct-rooms.js";
 /**
  * Hub P1 representative adapter (docs/design/hub-representative-agent.md, #3145) over the real S1 journal and admission:
  * the agent tuple, the consent/lifecycle binding, beforeInput's begin lease, the report_result correlation (exact,
@@ -90,7 +91,7 @@ function fixture(opts: { askerName?: (messageId: string) => string | undefined; 
     authorize,
     link: () => online,
     ...(opts.files ? { files: opts.files } : {}),
-    ...(opts.askerName ? { askerName: opts.askerName } : {}),
+    ...(opts.askerName ? { askerName: opts.askerName } : {}),directRooms:new HubDirectRooms(db),
     deliver: async (input) => {
       deliveries.push(input);
       onDeliver?.(); // e.g. something changes while the question waits for the agent's idle gate
@@ -592,4 +593,14 @@ it("private Classic output waits for handed-off work, not future queued question
  const f=fixture();f.publish();f.offline();const q=f.question();await f.admission.admit(q);expect(f.rep.hasOpenQuestion("rep")).toBe(false);f.online();f.rep.pump();
  await until(()=>f.state(q.identity.messageId)?.state==="delivered","handed-off Hub input");expect(f.rep.hasOpenQuestion("rep")).toBe(true);expect(f.rep.hasOpenQuestion("someone-else")).toBe(false);
  expect(await f.rep.report({correlationId:f.deliveries[0]!.correlationId,caller:"rep",text:"Final answer"})!).toMatchObject({ok:true});expect(f.rep.hasOpenQuestion("rep")).toBe(false);
+});
+
+it("M-3639: negotiated direct prompt and used-answer refusal keep the signed room id after journal release and registry recreation",async()=>{
+ const f=fixture({features:["direct-posts-v1"]});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"handed");const d=f.deliveries[0]!;
+ expect(d.text).toContain(`hub_room_post(room=${q.identity.roomId})`);expect(d.text).not.toContain("since the asker sees more from you only after they write again");
+ expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Complete answer"})).toMatchObject({ok:true});
+ expect(()=>f.journal.queuedQuestion(q.identity.messageId)).toThrow("uncertain");
+ const recovered=new HubDirectRooms(f.db);expect(recovered.room(q.identity.messageId)).toBe(q.identity.roomId);expect(recovered.has(q.identity.roomId,f.local.exposure.id,"replacement-token")).toBe(false);
+ expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"More"})).toMatchObject({ok:false,message:expect.stringContaining(`hub_room_post(room=${q.identity.roomId})`)});
+ f.link.features.delete("direct-posts-v1");expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Legacy"})).toEqual({ok:false,message:HUB_ANSWER_USED});
 });

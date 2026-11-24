@@ -110,7 +110,7 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     expect((await call("hub_people_search",{q:"Al"})).body).toEqual({ok:true,people:[{id:personKeyString(alexKey),name:"Alex",login:"alex"}],truncated:false});
     const ordinary=await call("hub_room_post",{room:roomId,text:"Plain proactive update"});expect(ordinary.body.ok).toBe(true);
     const count=()=>net.received.filter(f=>f.type==="room.post").length;
-    const before=count();expect((await call("hub_room_post",{room:roomId,text:"@all forged",receipt_id:`hmsg-${randomUUID()}`})).body).toEqual({ok:false,code:"denied",operation_id:expect.any(String)});expect(count()).toBe(before);
+    const before=count();expect((await call("hub_room_post",{room:roomId,text:"@all forged",receipt_id:`hmsg-${randomUUID()}`})).body).toEqual({ok:false,code:"denied",message:"This agent is not allowed to post in that chat.",operation_id:expect.any(String)});expect(count()).toBe(before);
     let postSettled=false;
     const pending=call("hub_room_post",{room:roomId,text:"@all Updates please",receipt_id:receipt.message_id}).then(result=>{postSettled=true;return result;});
     await vi.waitFor(()=>expect(heldResult).toMatchObject({type:"room.post-result",payload:{ok:true}}));
@@ -134,7 +134,7 @@ it("posts for an absent owner and returns an early answer once through lost ACK/
     expect((await call("hub_room_list")).body.ok).toBe(true);
     expect(web.db.prepare("SELECT COUNT(*) n FROM hub_room_post_returns WHERE post_id=?").get(postId.messageId)).toEqual({n:0});
     expect(notifications).toHaveLength(1);expect(returns.length).toBeGreaterThanOrEqual(2);
-    adminCurrent=false;const old=count();expect((await call("hub_room_post",{room:roomId,text:"Old admin",receipt_id:receipt.message_id})).body).toEqual({ok:false,code:"denied",operation_id:expect.any(String)});expect(count()).toBe(old);
+    adminCurrent=false;const old=count();expect((await call("hub_room_post",{room:roomId,text:"Old admin",receipt_id:receipt.message_id})).body).toEqual({ok:false,code:"denied",message:"This agent is not allowed to post in that chat.",operation_id:expect.any(String)});expect(count()).toBe(old);
     let finish!:(value:any)=>void;web.directory.searchGrantPeople=()=>new Promise(resolve=>{finish=resolve;});
     const heldRead=call("hub_people_search",{q:"Al"});await vi.waitFor(()=>expect(finish).toBeTypeOf("function"));callerCurrent=false;
     finish({ok:true,people:[{person:alexKey,login:"alex",displayName:"Held private name"}],truncated:false});
