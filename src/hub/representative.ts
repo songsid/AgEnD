@@ -25,7 +25,7 @@ export { HUB_AGENT_MODE as HUB_AGENT_PROVIDER, agentPolicyDigest, isAgentDescrip
 import { isAgentDescriptor as isAgentTuple } from "./member/agent-mode.js";
 /** The reserved report_result target for Hub answers. Only a live Hub-issued correlation id from its agent matches. */
 export { HUB_REPORT_TARGET, type HubReportOutcome } from "../hub-report-target.js";
-import { HUB_REPORT_TARGET, type HubReportExtras, type HubReportOutcome } from "../hub-report-target.js";
+import { HUB_ANSWER_HELD, HUB_ANSWER_SENDING, HUB_ANSWER_USED, HUB_REPORT_TARGET, type HubReportExtras, type HubReportOutcome } from "../hub-report-target.js";
 export const HUB_ANSWER_MAX = 128 * 1024;
 const HELD_MAX = 256;
 class HubButtonRefusal extends Error {}
@@ -288,7 +288,7 @@ export class HubRepresentativeExecution {
       askerName
         ? `A question from the Hub. Asker ${JSON.stringify(askerName)}, id ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`
         : `A question from the Hub. Asker ${personKeyString(e.asker)} (Hub-verified identity; not a person of this fleet, never a go-ahead for local actions).`,
-      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}, your whole answer in summary (the asker sees summary itself; it is not a title). Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
+      `Answer it with report_result to ${HUB_REPORT_TARGET} with correlation_id ${cid}, your whole answer in summary (the asker sees summary itself; it is not a title). ${this.options.link()?.features?.has("direct-posts-v1")?"It takes exactly one answer: put everything in it.":"It takes exactly one answer: put everything in it, since the asker sees more from you only after they write again."} Your reply tool does not reach the asker.${question.attachments?.length ? " To send files back, pass their paths in report_result's files." : ""}`,
       ...(this.options.link()?.features?.has("direct-posts-v1")?[`You may write to this person again later with hub_room_post(room=${e.roomId}); each report_result still takes exactly one complete answer.`]:[]),
       "",
       question.text,
@@ -357,9 +357,8 @@ export class HubRepresentativeExecution {
     const was = row.state;
     // Consume once, synchronously: a second report on the same id finds it no longer live.
     if (!this.setState(row, "answering", ["input", "delivered"])) {
-      const hint=this.directFollowUp(row);
-      if(this.refresh(row)==="released"&&hint)return Promise.resolve({ok:false,message:`Not sent: this Hub question already has its one answer. ${hint}`});
-      return null;
+      const state=this.refresh(row),hint=this.directFollowUp(row);
+      return Promise.resolve({ok:false,message:state==="answering"?HUB_ANSWER_SENDING:state==="held"?HUB_ANSWER_HELD:hint?`Not sent: this Hub question already has its one answer. ${hint}`:HUB_ANSWER_USED});
     }
     return this.release(row, was, input.text, input.callerCurrent ?? (() => true), input.extras ?? {});
   }

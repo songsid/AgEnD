@@ -13,6 +13,9 @@ export interface PackStrip {
   once?: boolean;
   /** M-3394 (#4231): intro plays `0 .. loopFrom - 1` once, then loops `loopFrom .. frames - 1`. */
   loopFrom?: number;
+  /** Sheet cells: the strip starts at this row / column of w×h cells (both present when either was given). */
+  row?: number;
+  col?: number;
 }
 export interface PackPoint { x: number; y: number }
 /** #2691: a seat reserved for `for` (lent while they are all elsewhere when `lend`); a plain seat has neither. */
@@ -69,10 +72,12 @@ export interface PackCardStyle {
   backgroundImage?: string; frame?: string; slice?: number; radius?: CardRadius;
 }
 export interface PackCardLayout {
-  avatarSize?: CardAvatarSize; avatarSource?: CardAvatarSource; headerAlign?: CardHeaderAlign; width?: number;
+  avatarSize?: CardAvatarSize; avatarSource?: CardAvatarSource; headerAlign?: CardHeaderAlign; width?: number; gap?: number;
   sections?: CardSection[]; rows?: CardRowKey[]; rowColumns?: 1 | 2; hide?: CardHideKey[];
 }
-export interface PackCard { preset?: CardPreset; style?: PackCardStyle; layout?: PackCardLayout }
+export type CardEnter = "none" | "fade" | "pop" | "rise" | "slide" | "bounce";
+export interface PackCardMotion { enter: CardEnter; ms: number }
+export interface PackCard { preset?: CardPreset; style?: PackCardStyle; layout?: PackCardLayout; motion?: PackCardMotion }
 /** #2861: a portrait's files by the state it is shown in (at least one). */
 export type PackPortrait = Partial<Record<"idle" | "working" | "needs", string>>;
 /** #2661: the Office levels' words (a pack's `levels`; #3679: the fleet-wide one too). */
@@ -105,6 +110,7 @@ export function matteOk(v: unknown): v is string;
 export function relativeLuminance(hex: string): number | null;
 export function contrastRatio(hexA: string, hexB: string): number;
 export const CARD_PRESETS: CardPreset[];
+export const CARD_ENTERS: CardEnter[];
 export const CARD_RADII: CardRadius[];
 export const CARD_AVATAR_SIZES: CardAvatarSize[];
 export const CARD_AVATAR_SOURCES: CardAvatarSource[];
@@ -113,12 +119,12 @@ export const CARD_SECTIONS: CardSection[];
 export const CARD_ROWS: CardRowKey[];
 export const CARD_HIDE: CardHideKey[];
 export const CARD_STYLE_COLORS: string[];
-export const CARD_LIMITS: { widthMin: number; widthMax: number; sliceMax: number; textContrast: number; uiContrast: number };
+export const CARD_LIMITS: { widthMin: number; widthMax: number; gapMax: number; motionMsMin: number; motionMsMax: number; sliceMax: number; textContrast: number; uiContrast: number };
 export function checkStrip(v: unknown, at?: string, scale?: number): PackStrip;
 export function stripSheets(st: PackStrip | null | undefined): PackStripSheet[];
 export function stripImages(st: PackStrip | null | undefined): string[];
 export function stripFrameAt(st: PackStrip | null | undefined, ms: number): number;
-export function stripCell(st: PackStrip | null | undefined, frame: number): { src: string; col: number };
+export function stripCell(st: PackStrip | null | undefined, frame: number): { src: string; col: number; row?: number };
 export function stripMaxFps(st: PackStrip | null | undefined): number;
 export function packMaxFps(pack: CheckedPack | null | undefined): number;
 export function createClipClocks(): { elapsed(key: string, strip: PackStrip | null | undefined, ms: number): number; prune(seen: ReadonlySet<string>): void; clear(): void };

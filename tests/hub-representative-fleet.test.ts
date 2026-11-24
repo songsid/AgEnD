@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FleetManager } from "../src/fleet-manager.js";
 import { outboundHandlers } from "../src/outbound-handlers.js";
-import { HUB_REPORT_TARGET } from "../src/hub-report-target.js";
+import { HUB_ANSWER_UNKNOWN, HUB_REPORT_TARGET } from "../src/hub-report-target.js";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -301,9 +301,9 @@ describe("report_result to the Hub", () => {
     expect(await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "The answer", artifacts: "a.txt" }))
       .toEqual({ result: { sent: true, target: HUB_REPORT_TARGET, correlation_id: "hub-live", message: "Delivered to the Hub asker." }, error: undefined });
     expect(hubReport).toHaveBeenLastCalledWith({ correlationId: "hub-live", caller: "rep", text: "The answer\n\nArtifacts: a.txt", callerCurrent: expect.any(Function) });
-    // Not claimed (another caller, an unknown id): the ordinary refusal.
-    expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "other" })).error).toMatch(/not found/);
-    expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "x" })).error).toMatch(/not found/);
+    // Not claimed (another caller, an unknown id): refused with the reason, never "not found" (M-3637).
+    expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-live", summary: "x" }, { instanceName: "other" })).error).toBe(HUB_ANSWER_UNKNOWN);
+    expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "x" })).error).toBe(HUB_ANSWER_UNKNOWN);
     // No correlation id, an external MCP session sending as the agent, or another target: never asked.
     hubReport.mockClear();
     expect((await call(ctx, { target_instance: HUB_REPORT_TARGET, summary: "x" })).error).toMatch(/not found/);

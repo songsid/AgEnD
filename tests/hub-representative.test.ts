@@ -20,6 +20,7 @@ import type { HubAttachmentRef, HubAuthorizationRequest, HubQuestion } from "../
 import type { HubMemberProfile } from "../src/hub/profile.js";
 import type { HubLocalExposure } from "../src/hub/execution/service.js";
 import { buttonsDigest } from "../src/hub/buttons-model.js";
+import { HUB_ANSWER_HELD, HUB_ANSWER_USED } from "../src/hub-report-target.js";
 
 const dbs: Database.Database[] = [];
 const reps: HubRepresentativeExecution[] = [];
@@ -144,6 +145,26 @@ describe("M-3594 the 1:1 header names the asker", () => {
   });
 });
 
+describe("M-3637 a second answer says why", () => {
+  it("an answered question: 'already has its answer'; a held one: 'on hold'; another agent's: not claimed (null)", async () => {
+    const f = fixture(); f.publish();
+    const q = f.question(); await f.admission.admit(q);
+    await until(() => f.deliveries.length === 1 && f.handed.length === 1, "delivered");
+    const cid = f.deliveries[0]!.correlationId;
+    expect((await f.rep.report({ correlationId: cid, caller: "rep", text: "First." })!).ok).toBe(true);
+    expect(f.deliveries[0]!.text).toContain("It takes exactly one answer: put everything in it");
+    const again = await f.rep.report({ correlationId: cid, caller: "rep", text: "Second." });
+    expect(again).toEqual({ ok: false, message: HUB_ANSWER_USED });
+    expect(again!.message).toMatch(/exactly one answer/);
+    expect(f.frames.filter(x => x.type === "answer")).toHaveLength(1);
+    expect(f.rep.report({ correlationId: cid, caller: "someone-else", text: "x" })).toBeNull();
+    const q2 = f.question("Second question"); await f.admission.admit(q2);
+    await until(() => f.deliveries.length === 2, "second delivered");
+    f.rep.fence(q2.identity.messageId, "revoked");
+    expect(await f.rep.report({ correlationId: f.deliveries[1]!.correlationId, caller: "rep", text: "x" })).toEqual({ ok: false, message: HUB_ANSWER_HELD });
+  });
+});
+
 describe("Hub representative adapter (#3145)", () => {
   it("#3878: adopts a legacy queued representative question and completes it once after the link returns", async () => {
     const f = fixture(); f.publish(); f.offline();
@@ -216,8 +237,8 @@ describe("Hub representative adapter (#3145)", () => {
 
     const outcome = await f.rep.report({ correlationId: d.correlationId, caller: "rep", text: "Three files." })!;
     expect(outcome).toEqual({ ok: true, message: expect.any(String) });
-    // Consumed once: the same id again is no longer a Hub answer.
-    expect(f.rep.report({ correlationId: d.correlationId, caller: "rep", text: "again" })).toBeNull();
+    // Consumed once: the same id again is refused with the reason (M-3637), never taken as a second answer.
+    expect(await f.rep.report({ correlationId: d.correlationId, caller: "rep", text: "again" })).toEqual({ ok: false, message: HUB_ANSWER_USED });
     const release = f.authorize.mock.calls.map(([r]) => r).find((r) => r.phase === "release-answer")!;
     const answer = f.frames.find((x) => x.type === "answer")!;
     expect(answer.payload).toMatchObject({ messageId: q.identity.messageId, text: "Three files.", contentDigest: sha256("Three files.") });
@@ -309,7 +330,7 @@ describe("Hub representative adapter (#3145)", () => {
     g.rep.deliveryFailed(g.deliveries[0]!.correlationId, "rep");
     expect(g.state(q2.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
     expect(g.stage(q2.identity.messageId)).toBe("uncertain");
-    expect(g.rep.report({ correlationId: g.deliveries[0]!.correlationId, caller: "rep", text: "late" })).toBeNull();
+    expect(await g.rep.report({ correlationId: g.deliveries[0]!.correlationId, caller: "rep", text: "late" })).toEqual({ ok: false, message: HUB_ANSWER_HELD }); // M-3637: refused with the reason
   });
 
   it("an empty report keeps the question open on the same id; the next one is released", async () => {
@@ -370,7 +391,7 @@ describe("Hub representative adapter (#3145)", () => {
     expect(f.state(q.identity.messageId)).toEqual({ state: "held", reason: "uncertain" });
     expect(f.rep.attentionItems()).toMatchObject([{ kind: "hold", messageId: q.identity.messageId }]);
     expect(f.frames.filter((x) => x.type === "answer")).toHaveLength(mode === "no link" ? 0 : 1);
-    expect(f.rep.report({ correlationId: cid, caller: "rep", text: "again" })).toBeNull(); // never a second release
+    expect(await f.rep.report({ correlationId: cid, caller: "rep", text: "again" })).toEqual({ ok: false, message: HUB_ANSWER_HELD }); // never a second release (M-3637: with the reason)
   });
 
   it("#3147 P2: the reporting daemon generation is asked again before every release step", async () => {
@@ -576,10 +597,10 @@ it("private Classic output waits for handed-off work, not future queued question
 
 it("M-3639: negotiated direct prompt and used-answer refusal keep the signed room id after journal release and registry recreation",async()=>{
  const f=fixture({features:["direct-posts-v1"]});f.publish();const q=f.question();await f.admission.admit(q);await until(()=>f.handed.length===1,"handed");const d=f.deliveries[0]!;
- expect(d.text).toContain(`hub_room_post(room=${q.identity.roomId})`);
+ expect(d.text).toContain(`hub_room_post(room=${q.identity.roomId})`);expect(d.text).not.toContain("since the asker sees more from you only after they write again");
  expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Complete answer"})).toMatchObject({ok:true});
  expect(()=>f.journal.queuedQuestion(q.identity.messageId)).toThrow("uncertain");
  const recovered=new HubDirectRooms(f.db);expect(recovered.room(q.identity.messageId)).toBe(q.identity.roomId);expect(recovered.has(q.identity.roomId,f.local.exposure.id,"replacement-token")).toBe(false);
  expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"More"})).toMatchObject({ok:false,message:expect.stringContaining(`hub_room_post(room=${q.identity.roomId})`)});
- f.link.features.delete("direct-posts-v1");expect(f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Legacy"})).toBeNull();
+ f.link.features.delete("direct-posts-v1");expect(await f.rep.report({correlationId:d.correlationId,caller:"rep",text:"Legacy"})).toEqual({ok:false,message:HUB_ANSWER_USED});
 });

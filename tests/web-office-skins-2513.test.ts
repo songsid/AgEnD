@@ -183,7 +183,7 @@ describe("checkSkinUpload: the manifest by the page's rules, then the pictures",
     expect(refused({ ...UPLOAD(), files: { ...UPLOAD().files, "fox_idle.png": big.toString("base64") } })?.slice(0, 2)).toEqual([413, "skin_file_too_large"]);
     const m = MANIFEST(), files: Record<string, string> = { "office_bg.png": b64("office_bg.png"), "fox_idle.png": b64("fox_idle.png") };
     // Furniture strips of just under 2 MiB each (padded with a private chunk), one more than the pack holds (#2632: 11 for
-    // 20 MiB): each passes alone, not all together.
+    // 42 MiB at 4 MiB a file): each passes alone, not all together.
     const n = Math.floor(SKIN_LIMITS.packBytes / SKIN_LIMITS.fileBytes) + 1;
     m.furniture = [...Array(n).keys()].map(i => ({ id: `f${i}`, sprite: { src: `f${i}.png`, frames: 1, w: 1, h: 1 }, x: 10, y: 10 }));
     const pad = (i: number) => { const p = png(1, 1); const len = Buffer.alloc(4); const body = Buffer.alloc(SKIN_LIMITS.fileBytes - p.length - 100, i);

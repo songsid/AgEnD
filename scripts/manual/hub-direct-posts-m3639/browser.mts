@@ -53,6 +53,7 @@ try {
   clock+=600_000;
   browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking", "--disable-component-update"] });
   for (const device of ["desk", "phone"]) for (const theme of ["light", "dark"]) for (const lang of ["en", "zh-TW"]) {
+    if(process.env.ONLY_TAG&&`${device}-${theme}-${lang}`!==process.env.ONLY_TAG)continue;
     if(process.env.ONE&&!(device==="desk"&&theme==="light"&&lang==="en"))continue;
     if (process.env.MATRIX === "phone" && device !== "phone") continue;
     const tag = `${device}-${theme}-${lang}`, ctx = await browser.newContext({ viewport: device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 900 }, locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: theme, ignoreHTTPSErrors: true });
@@ -88,8 +89,10 @@ try {
       check(`${tag} mute persisted`,(await r.call(a,"GET",`/hub/v1/rooms/${directId}`)).json.room.directMessagesMuted);
       await page.locator(".hub-dock .note[role=status]").waitFor();
       check(`${tag} previous post remains while muted`,await page.getByText("The notes are ready. Here is the summary.",{exact:true}).count()>0);
-      await page.keyboard.press("Escape");await page.locator(".toast").waitFor();await page.screenshot({path:join(out,`${tag}-muted-toast.png`)});
-      await page.locator(".toast").waitFor({state:"hidden"});await page.locator(".hub-room-menu button[aria-haspopup]").click();
+      if(await page.locator(".hub-room-menu button[aria-haspopup]").getAttribute("aria-expanded")==="true")await page.locator(".hub-room-menu button[aria-haspopup]").click();await page.locator(".toast").waitFor();
+      const toastStyle=await page.locator(".toast").evaluate((e:Element)=>{const s=getComputedStyle(e);return {color:s.color,background:s.backgroundColor,rootTheme:document.documentElement.dataset.theme,text:e.textContent,width:e.clientWidth,scrollWidth:e.scrollWidth};});writeFileSync(join(out,`${tag}-toast-style.json`),JSON.stringify(toastStyle));
+      await page.screenshot({path:join(out,`${tag}-muted-toast.png`)});
+      await page.locator(".toast").waitFor({state:"hidden"});if(await page.locator(".hub-room-menu button[aria-haspopup]").getAttribute("aria-expanded")!=="true")await page.locator(".hub-room-menu button[aria-haspopup]").click();
       await page.screenshot({path:join(out,`${tag}-muted.png`)});
       const refused=await r.http.receive(r.frame("room.post",{exposureId,room:directId,direct:true,text:"This must not arrive",idempotencyKey:randomUUID()},link) as never,link) as any;
       check(`${tag} subsequent send refused`,!refused.payload.ok&&refused.payload.message.includes("turned off"));

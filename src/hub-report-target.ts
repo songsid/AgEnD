@@ -7,6 +7,12 @@ import { parsePoll } from "./reply-polls.js";
 
 export const HUB_REPORT_TARGET = "agend-hub";
 export type HubReportOutcome = { ok: true; message: string } | { ok: false; message: string };
+/** M-3637: what an agent is told when it answers a Hub question that no longer takes an answer. */
+export const HUB_ANSWER_USED = "Not sent: this Hub question already has its answer. Each Hub question takes exactly one answer, and the asker sees more from you only after they write again. Put everything in your one answer.";
+export const HUB_ANSWER_SENDING = "Not sent: your answer to this Hub question is already being sent. Each Hub question takes exactly one answer.";
+export const HUB_ANSWER_HELD = "Not sent: this Hub question is on hold in this Fleet (its owner sees it under Needs you), so it takes no answer now. The asker can write again.";
+/** M-3637: a hub-… correlation id that is not a live Hub question for this agent (or no Hub connection runs here). */
+export const HUB_ANSWER_UNKNOWN = "Not sent: this correlation_id is not a live Hub question for you. Answer a Hub question with the correlation_id it gave you; each takes exactly one answer, and the asker sees more only after they write again.";
 
 /**
  * report_result's Hub-only fields (#3226 seams §3; D owns the schema, F fills buttons/poll). `files` are the agent's
