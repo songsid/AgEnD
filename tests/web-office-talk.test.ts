@@ -182,6 +182,20 @@ describe("the reply over a head (drawReply) and its look in a pack", () => {
     expect(kept.w).toBe(free.w);
     expect(T.drawReply(ctx(), 10, 200, "Atlas", say, 0, style, null, null, { l: 0, r: 1000 }).x).toBeGreaterThanOrEqual(0);   // and the left edge
   });
+  it("#4406: a short stage — no room over the head: below it (tail up), else clamped on screen; room: over it as before", () => {
+    const style = T.replyStyle(null, null), say = "word ".repeat(40);
+    const h = T.drawReply(ctx(), 500, 200, "Atlas", say, 0, style, null).h;
+    const over = T.drawReply(ctx(), 500, 200, "Atlas", say, 0, style, null, null, { l: 0, r: 1000, t: 0, b: 300 });
+    expect(over.y + over.h).toBeLessThan(200);                                       // the room is there: as before
+    const c = ctx(), under = T.drawReply(c, 500, 40, "Atlas", say, 0, style, null, null, { l: 0, r: 1000, t: 0, b: 300 });
+    expect(under.y).toBeGreaterThan(40);                                             // below the head
+    expect(under.y + under.h).toBeLessThanOrEqual(300);
+    const tail = c.calls.filter(([k]: any) => k === "lineTo").map(([, a]: any) => a);
+    expect(tail[0]).toEqual([500, 40]);                                              // the tail still points at the head
+    const tight = T.drawReply(ctx(), 500, 60, "Atlas", say, 0, style, null, null, { l: 0, r: 1000, t: 0, b: h + 20 });
+    expect(tight.y).toBeGreaterThanOrEqual(0);
+    expect(tight.y + tight.h).toBeLessThanOrEqual(h + 20);                           // neither side fits: clamped, whole
+  });
   it("a 9-slice frame is drawn instead of the box when it is loaded", () => {
     const c = ctx(), im = { naturalWidth: 24, naturalHeight: 24 };
     T.drawReply(c, 300, 200, "", "ok", 0, T.replyStyle(null, null), { im, slice: 6, k: 1 });

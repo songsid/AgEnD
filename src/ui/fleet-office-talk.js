@@ -372,8 +372,9 @@ export function replyStyle(b, env) {
  * A reply in a bubble over a head, its tail at (x, y) (logical units: the map's transform): the name, then a page of
  * REPLY.lines wrapped lines. `age`: ms since it arrived, for its entrance (pop / fade / none; 0: whole at once);
  * `frame` { im, slice, k }: a 9-slice picture instead of the drawn box; `read` { page, n }: that page, its first `n`
- * characters typed, and ▼ once it is whole (none: page 0, whole, no ▼). `fit` { l, r }: the box kept between them
- * (#4406: on screen), its tail still at x. Returns the box, the pages and the page's length.
+ * characters typed, and ▼ once it is whole (none: page 0, whole, no ▼). `fit` { l, r, t?, b? }: the box kept on screen
+ * (#4406): between l and r, its tail still at x; over the head when it fits under t, else below it (tail up) when it
+ * fits above b, else on the side with more room, clamped. Returns the box, the pages and the page's length.
  */
 export function drawReply(ctx, x, y, name, text, age, style, frame, read = null, fit = null) {
   ctx.save();
@@ -389,7 +390,13 @@ export function drawReply(ctx, x, y, name, text, age, style, frame, read = null,
   const w = Math.ceil(Math.max(nameW, textW) + REPLY.pad * 2), h = (name ? REPLY.line : 0) + lines.length * REPLY.line + REPLY.pad * 2 - 2;
   let bx0 = x - Math.min(24, w / 2);
   if (fit) bx0 = Math.max(fit.l, Math.min(bx0, fit.r - w));
-  const bx = Math.round(bx0), by = Math.round(y - h - 10);
+  let by0 = y - h - 10;
+  if (fit && Number.isFinite(fit.t) && Number.isFinite(fit.b) && by0 < fit.t) {
+    const under = y + 10;
+    by0 = under + h <= fit.b || fit.b - y > y - fit.t ? under : by0;
+    by0 = Math.max(fit.t, Math.min(by0, fit.b - h));
+  }
+  const bx = Math.round(bx0), by = Math.round(by0), below = by > y, over = by + h < y;
   const f = age > 0 ? Math.min(1, age / REPLY.enterMs) : 1, ease = 1 - (1 - f) ** 3;
   if (style.enter === "fade") ctx.globalAlpha *= ease;
   if (style.enter === "pop" && f < 1) {
@@ -397,12 +404,13 @@ export function drawReply(ctx, x, y, name, text, age, style, frame, read = null,
     ctx.translate(x, y); ctx.scale(k, k); ctx.translate(-x, -y); ctx.globalAlpha *= Math.min(1, f * 2);
   }
   ctx.fillStyle = style.background; ctx.strokeStyle = style.border; ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.moveTo(x - 5, by + h - 1); ctx.lineTo(x, y); ctx.lineTo(x + 6, by + h - 1); ctx.closePath(); ctx.fill(); ctx.stroke();
+  const edge = below ? by + 1 : by + h - 1;   // the tail from the box's edge nearest the head (none when the box is over it)
+  if (over || below) { ctx.beginPath(); ctx.moveTo(x - 5, edge); ctx.lineTo(x, y); ctx.lineTo(x + 6, edge); ctx.closePath(); ctx.fill(); ctx.stroke(); }
   if (!(frame && frame.im && nineSlice(ctx, frame.im, frame.slice, bx, by, w, h, frame.k))) {
     ctx.beginPath();
     if (typeof ctx.roundRect === "function") ctx.roundRect(bx, by, w, h, 7); else ctx.rect(bx, by, w, h);
     ctx.fill(); ctx.stroke();
-    ctx.fillRect(x - 4, by + h - 2, 9, 3);   // the tail joins the box without a seam
+    if (over || below) ctx.fillRect(x - 4, below ? by - 1 : by + h - 2, 9, 3);   // the tail joins the box without a seam
   }
   ctx.textBaseline = "top"; ctx.textAlign = "left";
   let ty = by + REPLY.pad - 1;

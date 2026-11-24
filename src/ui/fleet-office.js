@@ -812,7 +812,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const u = Math.max(1, (rp.ratio || 1) / a);
     // And kept on screen: the canvas's visible width in this part's units, into the bubble's own (scaled about its tail).
     const vl = -ox / a, vr = ((ctx.canvas && ctx.canvas.width) || Infinity) / a - ox / a, m = 6 / u;
-    const fit = Number.isFinite(vr) ? { l: sp.x + (vl - sp.x) / u + m, r: sp.x + (vr - sp.x) / u - m } : null;
+    const vt = -oy / a, vb = ((ctx.canvas && ctx.canvas.height) || Infinity) / a - oy / a;
+    const fit = Number.isFinite(vr) ? { l: sp.x + (vl - sp.x) / u + m, r: sp.x + (vr - sp.x) / u - m,
+      ...(Number.isFinite(vb) ? { t: sp.y + (vt - sp.y) / u + m, b: sp.y + (vb - sp.y) / u - m } : {}) } : null;
     ctx.save(); ctx.translate(sp.x, sp.y); ctx.scale(u, u); ctx.translate(-sp.x, -sp.y);
     const b0 = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null,
       { page: said.page, n }, fit);
