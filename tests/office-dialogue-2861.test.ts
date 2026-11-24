@@ -18,6 +18,7 @@ import * as PK from "../src/ui/fleet-office-pack.js";
 import { checkSkinUpload, PORTRAIT_MAX } from "../src/web-office-skins.js";
 import { OfficeTalk, TALK_MAX_AGE_MS } from "../src/office-talk.js";
 import { OfficeShareView } from "../src/office-share.js";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -298,6 +299,7 @@ describe("the box on the page", () => {
   const office = async () => {
     await p.mount(h(fleet.FleetPanel, { route: { panel: "fleet", tab: "org" }, navKey: `fleet:org|${Math.random()}|en` })); await settle(6);
     p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(6);
+    await openDisplay(p.root);                                              // M-3556: the Dialogue tick is in ⚙ Display options
   };
   const texts = () => (p.root.querySelector(".oo-dialogue-canvas")?._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
   const tick = async (n = 8) => { for (let i = 0; i < n; i++) await settle(2); };

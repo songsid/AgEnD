@@ -26,6 +26,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { openDisplay } from "./helpers/office-display.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
 
@@ -390,7 +391,7 @@ describe("the Office canvas on the page", () => {
     await p.unmount(); await office();
     near(shown(), cover);
     expect(fill().getAttribute("aria-pressed")).toBe("true");
-    const style = p.root.querySelectorAll(".oo-bar select")[1];
+    await openDisplay(p.root); const style = p.root.querySelector(".oo-style");
     style.value = "pixel"; fire(style, "change"); await settle(6);
     expect(fill().getAttribute("aria-pressed")).toBe("false");
     // Off again: contain.
@@ -533,7 +534,7 @@ describe("the Office canvas on the page", () => {
     await office();
     near(shown(), { k: 2, x: 480 - 640 * 2, y: 300 - 360 * 2 });
     // Desks: its own kept view; Studio's untouched.
-    const style = p.root.querySelectorAll(".oo-bar select")[1];
+    await openDisplay(p.root); const style = p.root.querySelector(".oo-style");
     style.value = "pixel"; fire(style, "change"); await settle(6);
     const d = shown();                                                   // centred on (10, 10): its corner would leave a gap
     expect([d.k, d.x]).toEqual([3, 0]);                                  // wider than the stage: no gap at the left

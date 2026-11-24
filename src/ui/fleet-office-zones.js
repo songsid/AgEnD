@@ -11,6 +11,14 @@ export function zoneOf(pack, state) {
   const z = pack.stateZones || {};
   return own(z, state) || own(z, "default") || Object.keys(pack.areas)[0];
 }
+/**
+ * M-3539: the areas the idle never stroll or visit to — where a pack sends the people calling for you (needs, crashed,
+ * stuck; by zoneOf, its fallbacks included): someone standing there reads as "needs you". Never the area the idle live in.
+ */
+export function callingAreas(pack) {
+  const idle = zoneOf(pack, "idle");                                 // as the layout sends them: own, else default, else the first area
+  return [...new Set(["needs", "crashed", "stuck"].map((st) => zoneOf(pack, st)).filter((a) => a && a !== idle && own(pack.areas, a)))];
+}
 
 /**
  * How far apart overflow spots are, and how far they stay from the area's seats (logical units); TITLE: the band at
@@ -148,7 +156,7 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false, seat
   });
   return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: LOGICAL.w, h: LOGICAL.h, desks }], areas: pack.areas,
     waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null,
-    idleVisits: pack.idleVisits || [], width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets
+    idleVisits: pack.idleVisits || [], idleAvoid: callingAreas(pack), width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets; M-3539: idleAvoid
 }
 
 // ── Walking ──
@@ -191,6 +199,11 @@ export const isNight = (d = new Date()) => { const h = d.getHours(); return NIGH
  * one no seat of the office is on (taken or free), picked anew each time — then walk back. Pure: the page asks every TICK ms and walks the change.
  */
 export const WANDER = { PERIOD: 40000, AWAY: 8000, REACH: 220, TICK: 1000 };
+/** M-3539: two people stand on each other when their feet are closer than a figure is wide (48) and tall (66), less a little. */
+const STACK = { dx: 44, dy: 60 };
+const stacks = (a, b) => Math.abs(a.x - b.x) < STACK.dx && Math.abs(a.y - b.y) < STACK.dy;
+/** M-3539: the room a name tag takes under the feet (its top 3, its height 14, a margin). */
+const STROLL_TAG = 18;
 /** Whether `p` is inside `rect` (edges included). */
 const inRect = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 /** Whether the segment p–q passes through the inside of `rect` (its edges not counted: areas may share one). */
@@ -240,6 +253,11 @@ export function routeStaysInArea(from, to, graph, home, returnTo = from) {
   const strictIn = (r, p) => p.x > r.x && p.x < r.x + r.w && p.y > r.y && p.y < r.y + r.h;
   return legs.every((pts) => pts.every((p, i) => !others.some((r) => strictIn(r, p) || (i > 0 && crosses(r, pts[i - 1], p)))));
 }
+/** M-3539: `points` outside the graph's `idleAvoid` areas (callingAreas): no idle stroll ends in the help desk. */
+function awayFromCalling(points, graph) {
+  const areas = graph.areas || {}, off = (graph.idleAvoid || []).map((a) => own(areas, a)?.rect).filter(Boolean);
+  return off.length ? points.filter((w) => !off.some((r) => inRect(r, w))) : points;
+}
 /**
  * Where `name`, seated at `seat`, should be at `t` (ms) while idle: a spot near the seat, or the seat. `area` (M-3286:
  * the office keeps idle people in their own area): the id of the area they are seated in — only spots inside it, and
@@ -249,6 +267,7 @@ export function wanderTarget(name, seat, graph, t, seats = [], area = null) {
   let near = (graph.waypoints || []).filter((w) => Math.hypot(w.x - seat.x, w.y - seat.y) <= WANDER.REACH
     && !seats.some((s) => Math.hypot(w.x - s.x, w.y - s.y) < 4));
   if (area !== null && near.length) near = withinArea(near, seat, graph, area);
+  near = awayFromCalling(near, graph);
   if (!near.length) return seat;
   const h = nameHash(name), k = t + (h % WANDER.PERIOD), turn = Math.floor(k / WANDER.PERIOD);
   if (k - turn * WANDER.PERIOD >= WANDER.AWAY) return seat;
@@ -297,7 +316,8 @@ const spotsOf = (area) => (area.seats && area.seats.length ? area.seats : [{ x: 
  * `from`; none: always null (strolls as before). Pure: which seat is free is walkTargets' to say.
  */
 export function visitAt(name, home, graph, t, from = null) {
-  const areas = graph.areas || {}, opts = (graph.idleVisits || []).filter((v) => v.area !== from && own(areas, v.area));
+  const avoid = graph.idleAvoid || [];
+  const areas = graph.areas || {}, opts = (graph.idleVisits || []).filter((v) => v.area !== from && own(areas, v.area) && !avoid.includes(v.area));
   if (!opts.length) return null;
   const sum = opts.reduce((n, v) => n + v.weight, 0), P = WANDER.PERIOD, phase = nameHash(name) % P;
   const turn = Math.floor((t + phase) / P), first = Math.floor(turn / VISIT.EPOCH) * VISIT.EPOCH, edge = (first + VISIT.EPOCH) * P;
@@ -342,10 +362,23 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   // M-3286: `ownArea` (the office's "Idle people stay in their own area"): a stroll stays in the area the person (or
   // NPC: the area its spot is in; none: as before) is in, and nobody goes on a visit.
   const areaAt = (p) => Object.keys(graph.areas || {}).find((k) => graph.areas[k].rect && inRect(graph.areas[k].rect, p)) ?? null;
-  const stroll = (name, home, area = null) => {
+  // M-3539: a stroll ends inside an area (the hall between areas is narrower than a name tag), where its figure stands
+  // clear of everyone else's (a seat in use, a visitor's, another stroll's end) and its name tag stays inside the
+  // area; else the person stays seated this turn. An aisle
+  // point is under a row's seats, so in a full room a stroll stood on the person seated there and its tag spilled
+  // past the area's edge.
+  const ends = [];
+  const clear = (name, p) => {
+    if (desks.some((d) => d.node.name !== name && stacks(d.seat, p)) || ends.some((q) => stacks(q, p)) || [...away.values()].some((q) => stacks(q, p))) return false;
+    // Inside an area, with room for the tag under the feet: the hall between areas is narrower than a name tag.
+    const rects = Object.values(graph.areas || {}).filter((a) => a.rect), homeArea = rects.find((a) => inRect(a.rect, p));
+    if (!rects.length) return true;                                 // a layout with no areas: anywhere, as before
+    return !!homeArea && p.y + STROLL_TAG <= homeArea.rect.y + homeArea.rect.h;
+  };
+  const stroll = (name, home, area = null, person = true) => {
     const p = wanderTarget(name, home, graph, t, seats, ownArea ? area ?? areaAt(home) : null), k = `${p.x},${p.y}`;
-    if (p === home || used.has(k)) return home;
-    used.add(k);
+    if (p === home || used.has(k) || (person && !clear(name, p))) return home;
+    used.add(k); ends.push(p);
     return p;
   };
   const idle = (d) => wander && d.node.state === "idle" && !d.night;
@@ -383,7 +416,7 @@ export function walkTargets(desks, graph, t, wander = true, furniture = [], nigh
   }
   if (memo) { memo.claims = claims; memo.idle = new Set(desks.filter(idle).map((d) => d.node.name)); }
   const out = new Map(desks.map((d) => [d.node.name, !idle(d) ? d.seat : away.get(d.node.name) || stroll(d.node.name, d.seat, d.area ?? null)]));
-  if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }));
+  if (wander) for (const f of furniture) if (f.walk && !(night && f.night)) out.set(npcKey(f), stroll(npcKey(f), { x: f.x, y: f.y }, null, false));   // an NPC's stroll: as before (#2596)
   return out;
 }
 
@@ -488,9 +521,10 @@ export function createMail({ max = MAIL.MAX } = {}) {
 }
 
 /**
- * Where each character is. `sync(targets, now, graph, still)`: targets name → { x, y }; someone new is already there;
+ * Where each character is. `sync(targets, now, graph, still, fresh)`: targets name → { x, y }; someone new is already there;
  * someone whose target moved walks from where they are now along the graph (routeVia; each diagonal leg an L when the
- * graph is `straight`, #2634) — or is there at once when `still` (reduced motion); someone gone is forgotten. `at(name, now)` → { x, y, walking } and, while walking, `heading`: the
+ * graph is `straight`, #2634) — or is there at once when `still` (reduced motion); with `fresh` (M-3539: a new office or
+ * style) everyone is at their target at once, a walk under way stopped even when it was going there; someone gone is forgotten. `at(name, now)` → { x, y, walking } and, while walking, `heading`: the
  * current step's { dx, dy }, which picks a pack's walkDown / walkUp / walkSide strip; `moving(now)`.
  */
 export function createWalkers() {
@@ -503,10 +537,11 @@ export function createWalkers() {
     return { x: p.x, y: p.y, walking: true, heading: headingAt(w.pts, Math.max(0, t)) };
   };
   return {
-    sync(targets, now, graph, still = false) {
+    sync(targets, now, graph, still = false, fresh = false) {
       for (const name of [...by.keys()]) if (!targets.has(name)) by.delete(name);
       for (const [name, to] of targets) {
         const w = by.get(name);
+        if (fresh) { by.set(name, { pts: null, to }); continue; }
         if (!w || still) { if (!w || w.to.x !== to.x || w.to.y !== to.y) by.set(name, { pts: null, to }); continue; }
         if (w.to.x === to.x && w.to.y === to.y) continue;
         const here = posAt(w, now), via = routeVia(graph, { x: here.x, y: here.y }, { x: to.x, y: to.y });

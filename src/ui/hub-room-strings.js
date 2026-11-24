@@ -84,6 +84,12 @@ register("hubRoom", {
     cardOwner: "Owner", cardIntro: "Introduction", answeringHere: "Answering a question in this room",
     mentionIt: "@ it", mentionItTitle: "Ask {0} in the chat", officeOptions: "Office options", officeStale: "The office may be out of date. Reconnecting…",
     officeSection: "Room office", officeSetting: "Show the room office",
+    // M-3533 R1b: the style, its seats from its layout, and the hint when the room's agents outnumber its rest seats.
+    officeStyle: "Style", officeStyleSave: "Save style", seatsN: "{0} seats",
+    "style_studio-large": "Studio (large)", style_studio: "Studio", style_cozy: "Cozy", style_guild: "Guild", style_school: "School",
+    officeFitHint: "This room has {0} agents. {1} has {2} seats to rest in; a larger style gives everyone a seat.",
+    officeFitHintAssistant: "This room has {0} agents and the room assistant. {1} has {2} seats to rest in; a larger style gives everyone a seat.",
+    officeStyleSys: "{0} changed the room office's style to “{1}”",
     sysAdminJoined: "{0} joined as a room manager", composerAssistant: "Ask the Hub assistant", composerDirect: "Ask {0}",
     invitedSys: "{0} agents invited; they join when the owner agrees.",
     nameRequired: "Enter a room name.",
@@ -223,6 +229,11 @@ register("hubRoom", {
     cardOwner: "擁有者", cardIntro: "介紹", answeringHere: "正在回答這個房間的問題",
     mentionIt: "@ 它", mentionItTitle: "在聊天裡問 {0}", officeOptions: "辦公室選項", officeStale: "畫面可能不是最新，正在重新連線…",
     officeSection: "房間辦公室", officeSetting: "顯示房間辦公室",
+    officeStyle: "風格", officeStyleSave: "儲存風格", seatsN: "{0} 個座位",
+    "style_studio-large": "工作室（大）", style_studio: "工作室", style_cozy: "溫馨", style_guild: "冒險者公會", style_school: "學校",
+    officeFitHint: "這個房間有 {0} 個 Agent。「{1}」的休息區有 {2} 個座位，換成較大的風格就能讓每個 Agent 都有位子。",
+    officeFitHintAssistant: "這個房間有 {0} 個 Agent 和房間助理。「{1}」的休息區有 {2} 個座位，換成較大的風格就能讓每一位都有位子。",
+    officeStyleSys: "{0} 把房間辦公室的風格換成「{1}」",
     sysAdminJoined: "{0} 以房間管理的身分加入", composerAssistant: "問 Hub 助理", composerDirect: "問 {0}",
     invitedSys: "已邀請 {0} 個 Agent，擁有者同意後會加入。",
     nameRequired: "請輸入房間名稱。",
@@ -288,3 +299,5 @@ register("hubRoom", {
 
 /** hubRoom.* words. */
 export const hroom = (key, ...values) => t(`hubRoom.${key}`, ...values);
+/** M-3533 R1b: a room office style's name in this viewer's words; one this page does not know, as its id. */
+export const styleName = (id) => { const k = `style_${id}`, w = hroom(k); return w !== `hubRoom.${k}` ? w : String(id); };

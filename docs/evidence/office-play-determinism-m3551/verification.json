@@ -1,0 +1,105 @@
+{
+  "implementationHead": "6b950447434aa58ba3fbc3d31089335f5645f614",
+  "base": "6faa4546cdce327a19ed7eea63e802c2625ed385",
+  "sourceHashes": {
+    "changes/3551-office-play-smoke.md": "55ae902f9dfad8c532592a81130468f4b104cc34918727f8dbf4f0fd62eb4226",
+    "changes/3551-office-play-smoke.zh-TW.md": "f59d5e8b065806817de7b946496b1dfdf16ade415d7cd3377ebd4a0033aa6aa5",
+    "scripts/manual/smoke-fixture/from-defaults.mts": "c5c94e0ab434f5d75130850faecddc987d7aa9761e199cd7e727116d8c9af832",
+    "scripts/manual/smoke-fixture/office-smoke-card.ts": "6289d698562b931bf017a76fedb90e5e723cf70c1806fc44b4a8a5342bde69ec",
+    "scripts/manual/smoke-fixture/office-smoke-pointer.ts": "391b059a7e01437570dd742944f074766e133b4c5b074751e3dab297df4f3570",
+    "scripts/manual/smoke-fixture/sign-in.ts": "72e184b71081d94979b084cdaedd2aebb3b09dc58fde92299d60c2dddd19fe33",
+    "scripts/manual/smoke/smoke-office-play-m3293.mts": "e297bc4d97b2161be738572c20cf5f9a092e03d0482e2f5cf90d9a23072ad18b",
+    "scripts/manual/test-office-play-contention-m3551.py": "6fc8e636a4f174f8c16c4c4e1ee627721cace1b81bb3ad8a893c9f99ea82323c",
+    "scripts/manual/test-office-play-contention-m3551_test.py": "6bf62e48209d59874be25ea39491d86744e74daf655aef37a699d3181937a603",
+    "tests/office-smoke-card-m3551.test.ts": "33b96d6589f518c81b074dd3216e5eb1943d2d335f6847596842a48735a490d8",
+    "tests/office-smoke-pointer-m3551.test.ts": "f619580a1460cd90fd3021b7f46ea32e832b39e220963ff811d1435be2f64eeb",
+    "tests/smoke-signin-race-m3551.test.ts": "fce761ad3370199993543efcb687572476c63c7423a80fb21a25dc98cd189f79"
+  },
+  "executedSourceHashes": {
+    "scripts/manual/test-office-play-contention-m3551.py": "6fc8e636a4f174f8c16c4c4e1ee627721cace1b81bb3ad8a893c9f99ea82323c",
+    "scripts/manual/test-office-play-contention-m3551_test.py": "6bf62e48209d59874be25ea39491d86744e74daf655aef37a699d3181937a603",
+    "scripts/manual/smoke/smoke-office-play-m3293.mts": "e297bc4d97b2161be738572c20cf5f9a092e03d0482e2f5cf90d9a23072ad18b",
+    "scripts/manual/smoke-fixture/office-smoke-card.ts": "6289d698562b931bf017a76fedb90e5e723cf70c1806fc44b4a8a5342bde69ec",
+    "scripts/manual/smoke-fixture/office-smoke-pointer.ts": "391b059a7e01437570dd742944f074766e133b4c5b074751e3dab297df4f3570",
+    "scripts/manual/smoke-fixture/index.mts": "4c55bcebb262c50ad462149552958c8c0d2eca6f3982c58cfedac602836d4a79",
+    "scripts/manual/smoke-fixture/from-defaults.mts": "c5c94e0ab434f5d75130850faecddc987d7aa9761e199cd7e727116d8c9af832",
+    "scripts/manual/smoke-fixture/sign-in.ts": "72e184b71081d94979b084cdaedd2aebb3b09dc58fde92299d60c2dddd19fe33",
+    "tests/smoke-signin-race-m3551.test.ts": "fce761ad3370199993543efcb687572476c63c7423a80fb21a25dc98cd189f79",
+    "scripts/manual/smoke-fixture/public-roster.mts": "5be1dd2c4c6d44ef76a0315e35f1b9cf874b1aa28e3c57ffa99ca02ab2657f34",
+    "scripts/manual/smoke-fixture/office-capture-cases.ts": "a2531fc224dcffea341c96551236f737bcd86e5c4336e253ed938ea093d6fe62",
+    "src/ui/fleet-office.js": "efaaf31027aef0fd747923c64ef570f26124b7d651f90bd91e27f134ab6265d4",
+    "src/ui/fleet-office-card.js": "fdfa72e189e02931d0913c132d98810313a243e30a2b1629ec6164bcb42a327e",
+    "src/ui/fleet-office-play.js": "3bc19204882b5040670615ef9df34ee28c543b150dccbd0e3ab05522691193f3",
+    "src/ui/fleet-office-zones.js": "e7f175769cfe4fca46a663b6125de3b42898808291a7fe7591b52be47514ff46",
+    "src/ui/fleet-canvas-view.js": "199c0c33490bf43eb320ac75494cdb9810ceec72859d99393410ce2a1dbd7569",
+    "src/ui/shared/signin.js": "88138a9b715043908981b7d5c1b74cf3d1191a079c71aaaf4ea144c81ad30272",
+    "src/ui/signin.html": "87763c7c9ff6124fde8e6df2bab4e41b4bf747b644a8c803dfed03be4f539008"
+  },
+  "retainedProofs": {
+    "helperControls": {
+      "sha256": "c8dfc639feada026c39b65d76b66e1618a6fa59420f26db392c629d7bbd8999a",
+      "claim": "9/9 PASS; Office helpers unchanged since this execution",
+      "raw": "private local artifact; hash only"
+    },
+    "signInBaseControl": {
+      "sha256": "573eebdf605387613f782926d053259b72effee525ff06e42b7d284586d18bc3",
+      "claim": "3/3 fail on old actual signIn body with only export added",
+      "raw": "private local artifact; hash only"
+    },
+    "signInAndCspControls": {
+      "sha256": "ed4f3eeb69c465e911888122bf5443961d18a51414a9a7e37a55786c7f16a7cd",
+      "claim": "5/5 PASS on final isolated helper",
+      "raw": "private local artifact; hash only"
+    },
+    "testTypes": {
+      "sha256": "21cc27fd5be2f91b90d3116616c151064f39e7b20e61f2334241585a2197a1d1",
+      "claim": "exit0 after final sign-in helper isolation",
+      "raw": "private local artifact; hash only"
+    },
+    "sourceTypes": {
+      "sha256": "8e97a13b81470ec94c82bfb0d9ef8a2244ac11bf6e0d8328b4c9d7ed4ca212c5",
+      "claim": "source/test typecheck exit0 at earlier Office source; later final test typecheck separate",
+      "raw": "private local artifact; hash only"
+    },
+    "parserControls": {
+      "sha256": "e73c3805f810fdcf3d0167ced7085c48306c9482a952ffb710551d230cdb3e51",
+      "claim": "4/4 PASS; parser decision block unchanged in final campaign",
+      "raw": "private local artifact; hash only"
+    },
+    "historicalFourCases": {
+      "sha256": "1b70a61f775d08a51e87f7e835f480ae340ffe389424e791f5c6a651068fda10",
+      "claim": "four browser cases PASS before shared sign-in correction; Office components unchanged",
+      "raw": "private local artifact; hash only"
+    },
+    "failedFirstSeries": {
+      "sha256": "48654851f62bbb26ae6e82dd4e82dc2c180438270dfe5db100d134ba00b70df9",
+      "claim": "23 PASS then sample24 sign-in failure; not a completed30 series",
+      "raw": "private local artifact; hash only"
+    },
+    "failedSample": {
+      "sha256": "a53565db0a25361a7b1332916f0c24c5e8299a20b6a24765cef3288e2e9526f0",
+      "claim": "freshPage failed before Office; removed #go locator timeout",
+      "raw": "private local artifact; hash only"
+    },
+    "originalAttempt1Report": {
+      "sha256": "ace35e06556b70844427e0d40e51c6d6fb272d7b7bca2a6a477bf5630e8c0d56",
+      "claim": "original CI attempt1 UI2 artifact; not rerun artifact",
+      "raw": "private local artifact; hash only"
+    }
+  },
+  "originalCi": {
+    "run": 45183620591,
+    "attempt": 1,
+    "job": 137723830117,
+    "artifact": 14823071175
+  },
+  "postRunValidation": "all30 reports re-parsed using strict production harness parser; source hashes and HEAD match; zero failed/missing/wrong/extra checks",
+  "limits": [
+    "fresh Node/browser processes with normal caches, not cold-cache guarantee",
+    "process wall time includes fixture startup/sign-in/screenshots/teardown; not case or hook timing",
+    "one Linux CPU with two owned busy processes; not WebKit/native Windows/macOS proof",
+    "four-case matrix predates sign-in correction; current30 series covers English desktop sign-in plus complete19 Office checks",
+    "exact original missed event and scheduler delay cannot be recovered from CI logs",
+    "raw screenshots/reports remain private; no new public capture claim"
+  ]
+}

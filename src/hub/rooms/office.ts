@@ -30,6 +30,18 @@ export const HUB_ROOM_OFFICE_MIGRATION = Object.freeze({ component: "s3-room-off
   db.exec("CREATE TABLE hub_room_office_events(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id) ON DELETE CASCADE,enabled INTEGER NOT NULL CHECK(enabled IN (0,1)))");
 } });
 
+/**
+ * M-3533 R1b: the styles a room's office may take — the page's ROOM_STYLES (fleet-office-skin.js), largest first: the
+ * studio for large rooms, the studio, and the picture styles. The Fleet's desks style is not one of them.
+ */
+export const ROOM_OFFICE_STYLES = ["studio-large", "studio", "cozy", "guild", "school"] as const;
+export type RoomOfficeStyle = (typeof ROOM_OFFICE_STYLES)[number];
+
+/** M-3533 R1b: a manager's style change, one line per save (the style by id; each reader's page words it). */
+export const HUB_ROOM_OFFICE_STYLE_MIGRATION = Object.freeze({ component: "s3-room-office-style", version: 1, up(db: Database.Database) {
+  db.exec("CREATE TABLE hub_room_office_style_events(post_id TEXT PRIMARY KEY REFERENCES hub_room_posts(id) ON DELETE CASCADE,style TEXT NOT NULL)");
+} });
+
 /** The capability a Hub offers once its room page draws the office (R1-page); until then nothing of it is reachable. */
 export const HUB_ROOM_OFFICE_FEATURE = "room-office-v1";
 
