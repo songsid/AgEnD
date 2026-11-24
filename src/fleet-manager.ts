@@ -1115,6 +1115,11 @@ const HUB_UPDATE_CALLBACK_PREFIX = "hub-update:";
 const HUB_SHARING_CALLBACK_PREFIX = "hub-share:";
 /** M-3680: a held contact request's card in General ("contact-ticket:" + 32 hex + ":approve" = 55 bytes, under Telegram's 64). */
 const CONTACT_TICKET_PREFIX = "contact-ticket:";
+/** How many requests' cards are remembered (one card per request; a decided one is forgotten at once). */
+const HELD_CARDS_KEPT = 512;
+/** A held request's card, retired after it was decided elsewhere (the dashboard, Needs you, another card) or closed. */
+const heldCardOutcome = (state: string): string => t(state === "approved" ? "contactHeld.approvedElsewhere"
+  : state === "declined" ? "contactHeld.declinedElsewhere" : state === "expired" ? "contactHeld.expired" : "contactHeld.closed");
 const HUB_FLEET_UPDATE_CALLBACK_PREFIX = "hub-fleet-update:";
 const KIRO_RECONCILE_CALLBACK_PREFIX = "kiro-reconcile:";
 /** #2692: a fleet admin's Approve / Reject on an agent's pending skin-pack change, in General. */
@@ -6004,22 +6009,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * (ContactAuthService.view(...).canDecide, read at the click); the decision is theirs, never the bot's. A request decided
    * anywhere else (the web, another card) retires its card. ClassicBot rooms keep their own flow.
    */
+  /** Requests whose card was posted or tried: forgotten when the request is decided, and at most HELD_CARDS_KEPT. */
   private heldTicketCards?: Set<string>;
   private syncHeldTicketCard(ticket: ContactTicket): void {
     const posted = (this.heldTicketCards ??= new Set<string>());
     if (ticket.state !== "pending") {
+      posted.delete(ticket.id);
       for (const [nonce, entry] of [...(this.pendingNonceButtons ?? [])]) {
         if (entry.prefix !== CONTACT_TICKET_PREFIX || entry.contactTicketId !== ticket.id) continue;
         this.pendingNonceButtons.delete(nonce);
         if (entry.timer) clearTimeout(entry.timer);
-        void this.retireNonceButtons(entry, entry.messageId ?? "", t(ticket.state === "approved" ? "contactHeld.approvedElsewhere"
-          : ticket.state === "declined" ? "contactHeld.declinedElsewhere" : "contactHeld.closed"));
+        // #4438 review: a card still being posted has no message yet; postHeldTicketCard retires it once it has one.
+        if (entry.messageId) void this.retireNonceButtons(entry, entry.messageId, heldCardOutcome(ticket.state));
       }
       return;
     }
     // A fleet agent's send only (a ClassicBot room is no fleet instance: its requests keep their own flow).
     if (posted.has(ticket.id) || !this.fleetConfig?.instances[ticket.source]) return;
     posted.add(ticket.id);
+    for (const old of posted) { if (posted.size <= HELD_CARDS_KEPT) break; posted.delete(old); }
     void this.postHeldTicketCard(ticket).catch((err: unknown) => this.logger?.warn?.({ err: (err as Error)?.message, ticket: ticket.id },
       "Could not post a held contact request to General"));
   }
@@ -6035,7 +6043,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const shortId = /^R[a-f0-9]{8}-/.test(ticket.id) ? ticket.id.slice(0, 9) : ticket.id;
     const left = Date.parse(ticket.expiresAt) - Date.now();
     const text = ticket.message.length > 300 ? `${ticket.message.slice(0, 299)}…` : ticket.message;
-    await this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
+    const posting = this.postNonceButtonPromptOrThrow({ prefix: CONTACT_TICKET_PREFIX, alertType: "clear_confirm", instanceName: route.name,
       adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
       message: [t("contactHeld.title", label(ticket.source), label(ticket.target)), `> ${text.replace(/\n+/g, " ")}`,
         t("contactHeld.meta", shortId, ticket.verb, left < 2 * 3_600_000 ? t("contactHeld.minutes", Math.max(1, Math.round(left / 60_000))) : t("contactHeld.hours", Math.round(left / 3_600_000))),
@@ -6043,6 +6051,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       choices: [{ action: "approve", label: t("contactHeld.approve") }, { action: "decline", label: t("contactHeld.decline") }],
       expiredText: t("contactHeld.expired"), timeoutMs: Math.max(60_000, Math.min(left, 24 * 3_600_000)),
       extra: { contactTicketId: ticket.id } });
+    // The entry is armed before the platform answers (postNonceButtonPromptOrThrow sets it synchronously).
+    const entry = [...this.pendingNonceButtons.values()].find(e => e.prefix === CONTACT_TICKET_PREFIX && e.contactTicketId === ticket.id);
+    const nonce = await posting;
+    // #4438 review: decided elsewhere, or expired, while the card was being posted — it had no message to retire then; it
+    // has one now. A card still armed for a request still waiting stays.
+    if (!entry?.messageId) return;
+    const fresh = this.contactService().host.store.get(ticket.id), armed = this.pendingNonceButtons.get(nonce) === entry;
+    if (armed && fresh?.state === "pending") return;
+    if (armed) { this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer); }
+    await this.retireNonceButtons(entry, entry.messageId, !fresh || fresh.state === "pending" ? t("contactHeld.expired") : heldCardOutcome(fresh.state));
   }
   private async handleContactTicketCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
     if (!data.callbackData.startsWith(CONTACT_TICKET_PREFIX)) return false;

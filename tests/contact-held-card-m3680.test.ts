@@ -191,3 +191,47 @@ it.runIf(!!process.env.M3680_CARD_EVIDENCE)("writes the card evidence", async ()
     } finally { setLocale("en"); }
   }
 });
+
+// #4438 review (Prism, 6043943197): the card's lifecycle while the platform is still posting it, and what it remembers.
+const deferredPost = (r: ReturnType<typeof rig>) => {
+  let resolve!: (v: unknown) => void;
+  r.adapter.notifyAlert.mockImplementationOnce(() => new Promise((ok) => { resolve = ok; }));
+  return () => resolve({ chatId: "channel", messageId: "late-card", threadId: "general-thread" });
+};
+it("decided on the dashboard while the card was still being posted: the card, once posted, is retired with that outcome", async () => {
+  const r = rig(), ticket = r.hold(), post = deferredPost(r);
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  expect(cards(r)).toHaveLength(1);
+  r.service.decide(ticket.id, { revision: ticket.revision, decision: "approve-once" }, admin);
+  r.fm.syncHeldTicketCard(r.store.get(ticket.id));
+  expect([cards(r).length, r.fm.retireNonceButtons.mock.calls.length]).toEqual([0, 0]);   // nothing to retire yet: no message
+  post(); await settle(); await settle();
+  expect(r.fm.retireNonceButtons.mock.calls.map((c: any[]) => [c[1], c[2]])).toEqual([["late-card", "Approved elsewhere (the dashboard or another card)."]]);
+  expect(cards(r)).toHaveLength(0);
+});
+it("expired while still being posted: the card, once posted, says it expired; a card posted in time stays armed", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  try {
+    const r = rig(), ticket = r.hold(), post = deferredPost(r);
+    r.fm.syncHeldTicketCard(ticket); await Promise.resolve(); await Promise.resolve();
+    vi.advanceTimersByTime(31 * 60_000);                               // the card's timer (the request's 30 minutes) fires first
+    expect(cards(r)).toHaveLength(0);
+    post(); for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect(r.fm.retireNonceButtons.mock.calls.map((c: any[]) => [c[1], c[2]])).toEqual([["late-card", "This card expired. The request may still wait in Fleet › Authorizations until its own expiry."]]);
+    const ok = rig(), waiting = ok.hold();
+    ok.fm.syncHeldTicketCard(waiting); for (let i = 0; i < 6; i++) await Promise.resolve();
+    expect([cards(ok).length, ok.fm.retireNonceButtons.mock.calls.length]).toEqual([1, 0]);
+  } finally { vi.useRealTimers(); }
+});
+it("remembers a request only while it waits (and at most 512): a decided one is forgotten", async () => {
+  const r = rig(), ticket = r.hold();
+  r.fm.syncHeldTicketCard(ticket); await settle();
+  expect(r.fm.heldTicketCards.has(ticket.id)).toBe(true);
+  r.service.decide(ticket.id, { revision: ticket.revision, decision: "decline" }, admin);
+  r.fm.syncHeldTicketCard(r.store.get(ticket.id));
+  expect(r.fm.heldTicketCards.has(ticket.id)).toBe(false);
+  const web = rig({ adapterType: "web" });                            // nothing is posted there; ids are still remembered
+  for (let i = 0; i < 600; i++) web.fm.syncHeldTicketCard({ id: `R${String(i).padStart(8, "0")}-0000-0000-0000-000000000000`, state: "pending", source: "lead", target: "worker" });
+  await settle();
+  expect([web.fm.heldTicketCards.size, web.fm.heldTicketCards.has("R00000599-0000-0000-0000-000000000000"), web.fm.heldTicketCards.has("R00000000-0000-0000-0000-000000000000")]).toEqual([512, true, false]);
+});
