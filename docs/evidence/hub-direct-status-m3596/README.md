@@ -13,6 +13,7 @@
 | Paused / offline | "Waiting: Notes is paused; it gets your question when it resumes" / "…is offline; it gets your question when it's back" |
 | Sent, not started | "Sent to Notes; waiting for it to start" / 「已送給 Notes，等它開始處理」 |
 | Working | "Notes is working on it" with the time since the latest hand-off / 「Notes 正在處理」 |
+| Handed, but the agent's fleet reports no state (an older member) | "Handed to Notes; waiting for its answer" / 「已交給 Notes，等它回答」: the Hub knows only that a hand-off was tried, never "working" (Prism #4400 R1) |
 | Working, but the agent paused or went offline | "Paused: Notes continues with your question when it resumes" / "Offline: …when it's back" (wins over the timer) |
 | Answered | the answer replaces the bar |
 

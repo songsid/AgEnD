@@ -139,10 +139,23 @@ describe("a hand-off that never reached the agent (Prism #4400 P2)", () => {
   });
 });
 
+describe("a hand-off with no reported agent state (an older member; Prism #4400 R1)", () => {
+  it("a begin lease and then nothing (a hold before input, no agent.state ever): the room has no reported state, and the line says only that it was handed — an hour on too", async () => {
+    const w = await world();
+    const q1 = await ask(w.a, w.ra, "Held, and nobody says");
+    const first = w.now(); expect((await begin(w.link, q1)).payload.ok).toBe(true);
+    w.advance(3_600_000);
+    const room = (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.ra}`)).json.room, row = pending(await page(w.a, w.ra), q1);
+    expect([room.agent.presence, room.agent.reported, row.stage, row.startedAt]).toEqual(["idle", undefined, "working", first]);
+    expect(directStatus([row], { name: "Notes", presence: room.agent.presence, reported: room.agent.reported === true }, w.now()))
+      .toEqual({ kind: "awaiting", text: "Handed to Notes; waiting for its answer" });
+  });
+});
+
 describe("directStatus: the 1:1 status line's words", () => {
   const row = (over: object = {}) => ({ id: "q:answer", answerTo: "q", text: "", author: { kind: "agent", name: "Notes" }, at: 1000, ...over });
   it("working (with when it started), or waiting and why; nothing open: none", () => {
-    expect(directStatus([row({ stage: "working", startedAt: 5000 })], { name: "Notes", presence: "working" })).toEqual({ kind: "working", text: "Notes is working on it", since: 5000 });
+    expect(directStatus([row({ stage: "working", startedAt: 5000 })], { name: "Notes", presence: "working", reported: true })).toEqual({ kind: "working", text: "Notes is working on it", since: 5000 });
     const why = (over: object, presence?: string) => directStatus([row({ stage: "queued", ...over })], { name: "Notes", presence })!.text;
     expect(why({ ahead: 1 }, "working")).toBe("Waiting: Notes is answering another question first");
     expect(why({ ahead: 3 }, "idle")).toBe("Waiting: Notes has 3 questions to answer first");
@@ -158,13 +171,16 @@ describe("directStatus: the 1:1 status line's words", () => {
     expect(directStatus([w], { name: "Notes", presence: "paused", reported: true }, 2000)).toEqual({ kind: "awaiting", text: "Paused: Notes continues with your question when it resumes" });
     expect(directStatus([w], { name: "Notes", presence: "offline" }, 2000)).toEqual({ kind: "awaiting", text: "Offline: Notes continues with your question when it's back" });
     expect(directStatus([w], { name: "Notes", presence: "working", reported: true }, 2000)).toEqual({ kind: "working", text: "Notes is working on it", since: 1000 });
-    // Idle long after the hand-off: only when the state was reported (an older member's agent always reads idle).
+    // Idle long after the hand-off (reported): not started. Long work while it reports working: still working, an hour on.
     expect(directStatus([w], { name: "Notes", presence: "idle", reported: true }, 1000 + HANDOFF_GRACE_MS + 1)!.kind).toBe("awaiting");
-    expect(directStatus([w], { name: "Notes", presence: "idle" }, 1000 + HANDOFF_GRACE_MS * 5)!.kind).toBe("working");
+    expect(directStatus([w], { name: "Notes", presence: "working", reported: true }, 1000 + 3_600_000)!.kind).toBe("working");
+    // No state reported (an older member): only that a hand-off was tried, at once and an hour on — never "working" (Prism R1).
+    for (const at of [1500, 1000 + 3_600_000]) expect(directStatus([w], { name: "Notes", presence: "idle" }, at)).toEqual({ kind: "awaiting", text: "Handed to Notes; waiting for its answer" });
   });
   it("zh-TW", () => {
     setLang("zh-TW", { store: false });
-    expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes" })!.text).toBe("Notes 正在處理");
+    expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes", presence: "working", reported: true }, 2)!.text).toBe("Notes 正在處理");
+    expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes" })!.text).toBe("已交給 Notes，等它回答");
     expect(directStatus([row({ stage: "queued", ahead: 1 })], { name: "Notes", presence: "working" })!.text).toBe("等待中：Notes 正在先回答另一個問題");
     expect(directStatus([row({ stage: "queued", ahead: 0 })], { name: "Notes", presence: "idle" })!.text).toBe("已送給 Notes，等它開始處理");
     expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes", presence: "paused" })!.text).toBe("已暫停：Notes 恢復後會繼續處理你的問題");

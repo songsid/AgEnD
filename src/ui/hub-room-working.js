@@ -36,8 +36,9 @@ export const HANDOFF_GRACE_MS = 60_000;
  * M-3596: a 1:1 room's status line, as the Fleet chat's work bar says it — from the open question's answer row (no text
  * yet: working once the agent was handed it, else queued with how many came first) and the agent's presence (`reported`:
  * its state came from its fleet; an older one never says). A paused or offline agent wins over working; a hand-off the
- * agent still reports idle after HANDOFF_GRACE_MS never reached it (held before input) and reads as not started. Words from
- * hroom, never copied. → { kind: "working", text, since } | { kind: "awaiting", text } | null (nothing open).
+ * agent still reports idle after HANDOFF_GRACE_MS never reached it (held before input) and reads as not started. With no
+ * reported state at all the Hub knows only that a hand-off was tried (a hold before input never reaches it): it says so,
+ * never "working" (Prism #4400). Words from hroom, never copied. → { kind: "working", text, since } | { kind: "awaiting", text } | null (nothing open).
  */
 export function directStatus(messages, agent, now = Date.now()) {
   const rows = Array.isArray(messages) ? messages.filter((m) => m && m.answerTo && !m.text && m.author && m.author.kind === "agent"
@@ -48,8 +49,10 @@ export function directStatus(messages, agent, now = Date.now()) {
   if (working) {
     if (presence === "paused") return { kind: "awaiting", text: hroom("workPaused", name) };
     if (presence === "offline" || presence === "later") return { kind: "awaiting", text: hroom("workOffline", name) };
+    // No state from its fleet: a hand-off was tried, nothing more is known (it may have been held before input).
+    if (!reported) return { kind: "awaiting", text: hroom("handedUnknown", name) };
     const since = typeof working.startedAt === "number" ? working.startedAt : working.at;
-    if (!(reported && presence === "idle" && now - since > HANDOFF_GRACE_MS)) return { kind: "working", text: hroom("workingOne", name), since };
+    if (!(presence === "idle" && now - since > HANDOFF_GRACE_MS)) return { kind: "working", text: hroom("workingOne", name), since };
     return { kind: "awaiting", text: hroom("waitStart", name) };
   }
   const queued = rows.find((m) => m.stage === "queued");

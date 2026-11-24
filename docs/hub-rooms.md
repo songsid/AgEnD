@@ -46,6 +46,7 @@ can't send messages."
 **A one-to-one chat** (M-3596) has the same bar for your own question, live:
 
 - **Working:** "Notes is working on it", with the time since the agent got it.
+- **Handed to an agent whose fleet doesn't report its state** (an older version): "Handed to Notes; waiting for its answer".
 - **Waiting, with the reason:**
   - "Waiting: Notes is answering another question first" (or "has 3 questions to answer first"). This is a count only; you never see whose questions they are.
   - "Waiting: Notes is busy with other work".
