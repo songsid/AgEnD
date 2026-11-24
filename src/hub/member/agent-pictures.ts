@@ -54,8 +54,10 @@ export class HubMemberAgentPictures {
     return this.running;
   }
 
-  private async prepare(key: string, slot: HubPictureSlot, source: MemberPictureSource): Promise<Made> {
-    const cacheKey = `${slot}\u0000${key}`;
+  /** A picture's cache entry is its agent's, its slot's and its source's (Prism #4393: two agents' sources may share a key). */
+  private static cacheKey(agent: string, slot: HubPictureSlot, key: string): string { return JSON.stringify([agent, slot, key]); }
+  private async prepare(agent: string, key: string, slot: HubPictureSlot, source: MemberPictureSource): Promise<Made> {
+    const cacheKey = HubMemberAgentPictures.cacheKey(agent, slot, key);
     if (this.made.has(cacheKey)) return this.made.get(cacheKey)!;
     let made: Made = null;
     const raw = source.load()?.bytes ?? null;
@@ -77,16 +79,16 @@ export class HubMemberAgentPictures {
     if (!link || !live()) return;
     const shares = this.options.exposures().slice().sort((a, b) => a.id.localeCompare(b.id));
     const keyed = shares.map(s => { const src = this.options.sources(s.agent); return { ...s, src, key: [src.disc?.key ?? null, src.portrait?.key ?? null] as const }; });
-    const signature = JSON.stringify(keyed.map(k => [k.id, ...k.key]));
+    const signature = JSON.stringify(keyed.map(k => [k.id, k.agent, ...k.key]));
     if (signature === this.sent) return;
     // Forget pictures no share uses now.
-    const inUse = new Set(keyed.flatMap(k => [k.key[0] !== null ? `disc\u0000${k.key[0]}` : "", k.key[1] !== null ? `portrait\u0000${k.key[1]}` : ""]));
+    const inUse = new Set(keyed.flatMap(k => [k.key[0] !== null ? HubMemberAgentPictures.cacheKey(k.agent, "disc", k.key[0]) : "", k.key[1] !== null ? HubMemberAgentPictures.cacheKey(k.agent, "portrait", k.key[1]) : ""]));
     for (const k of [...this.made.keys()]) if (!inUse.has(k)) this.made.delete(k);
     const rows: HubAgentPicturesRow[] = [], bytes = new Map<string, Prepared>();
     for (const k of keyed) {
-      const disc = k.src.disc ? await this.prepare(k.key[0]!, "disc", k.src.disc) : null;
+      const disc = k.src.disc ? await this.prepare(k.agent, k.key[0]!, "disc", k.src.disc) : null;
       const discRef = disc && disc !== "too-large" ? disc : null;
-      const portrait = k.src.portrait ? await this.prepare(k.key[1]!, "portrait", k.src.portrait) : null;
+      const portrait = k.src.portrait ? await this.prepare(k.agent, k.key[1]!, "portrait", k.src.portrait) : null;
       // The portrait has what the disc leaves of the agent's 512 KB: the disc is never the one dropped (the design's order).
       const portraitRef = portrait && portrait !== "too-large" && portrait.ref.size <= HUB_PICTURE_AGENT_MAX - (discRef?.ref.size ?? 0) ? portrait : null;
       const tooLarge: HubPictureSlot[] = [...(disc === "too-large" ? ["disc" as const] : []), ...(portrait && !portraitRef ? ["portrait" as const] : [])];

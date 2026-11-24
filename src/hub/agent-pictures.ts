@@ -17,11 +17,21 @@ import {
 
 export const HUB_AGENT_PICTURES_MIGRATION = Object.freeze({ component: "s3-agent-pictures", version: 1, up(db: Database.Database) {
   db.exec(`CREATE TABLE hub_agent_picture_files(sha256 TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL, stored_at INTEGER NOT NULL)`);
+  // Each picture's declared type and size are kept with its hash: a file is stored, and shown, only when it is exactly that (Prism #4393).
   db.exec(`CREATE TABLE hub_agent_pictures(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id) ON DELETE CASCADE,
-    fleet_id TEXT NOT NULL, generation INTEGER NOT NULL, disc TEXT, portrait TEXT, too_large TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)`);
+    fleet_id TEXT NOT NULL, generation INTEGER NOT NULL, disc TEXT, disc_mime TEXT, disc_size INTEGER, portrait TEXT, portrait_mime TEXT, portrait_size INTEGER,
+    too_large TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)`);
 } });
 
-interface Row { exposure_id: string; fleet_id: string; generation: number; disc: string | null; portrait: string | null; too_large: string }
+interface Row { exposure_id: string; fleet_id: string; generation: number; disc: string | null; disc_mime: string | null; disc_size: number | null;
+  portrait: string | null; portrait_mime: string | null; portrait_size: number | null; too_large: string }
+/** The row's picture in `slot` is held as declared: the stored file has that hash, type and size. */
+const heldAs = (db: Database.Database, r: Row, slot: HubPictureSlot): boolean => {
+  const [h, mime, size] = slot === "disc" ? [r.disc, r.disc_mime, r.disc_size] : [r.portrait, r.portrait_mime, r.portrait_size];
+  return !!h && !!db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=? AND mime=? AND length(bytes)=?").get(h, mime, size);
+};
+/** How long a retired row or file may outlive a revocation that sent no report (withdrawals sweep at once). */
+export const HUB_PICTURES_SWEEP_MS = 60_000;
 /** An agent's pictures as a room may show them: only pictures the Hub holds; `tooLarge` is for its owner alone. */
 export interface HubAgentPictureLook { disc?: string; portrait?: string; tooLarge?: HubPictureSlot[] }
 interface Assembly { sha256: string; mime: HubPictureMime; size: number; count: number; next: number; parts: Buffer[] }
@@ -45,8 +55,7 @@ export class HubAgentPictures {
     return fleet;
   }
   private shown(db: Database.Database, rows: Row[]): Map<string, string> {
-    const has = (h: string | null) => !!h && !!db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h);
-    return new Map(rows.map(r => [r.exposure_id, JSON.stringify([has(r.disc) ? r.disc : null, has(r.portrait) ? r.portrait : null, r.too_large])]));
+    return new Map(rows.map(r => [r.exposure_id, JSON.stringify([heldAs(db, r, "disc") ? r.disc : null, heldAs(db, r, "portrait") ? r.portrait : null, r.too_large])]));
   }
   /** Drop rows whose agent is no longer a published share of a current Fleet, then files no row names. */
   private sweep(db: Database.Database): void {
@@ -74,14 +83,17 @@ export class HubAgentPictures {
         const e = readExposure(db, a.exposureId);
         // A row for an agent that is not this Fleet's published share is not an error (the report may cross a withdrawal): skipped.
         if (!e || e.fleet_id !== fleet.id || e.state !== "published" || e.owner !== personKeyString(fleet.owner)) continue;
-        db.prepare("INSERT INTO hub_agent_pictures VALUES(?,?,?,?,?,?,?)").run(a.exposureId, fleet.id, fleet.generation,
-          a.disc?.sha256 ?? null, a.portrait?.sha256 ?? null, (a.tooLarge ?? []).join(","), this.core.now());
+        db.prepare("INSERT INTO hub_agent_pictures VALUES(?,?,?,?,?,?,?,?,?,?,?)").run(a.exposureId, fleet.id, fleet.generation,
+          a.disc?.sha256 ?? null, a.disc?.mime ?? null, a.disc?.size ?? null, a.portrait?.sha256 ?? null, a.portrait?.mime ?? null, a.portrait?.size ?? null,
+          (a.tooLarge ?? []).join(","), this.core.now());
       }
       this.sweep(db);
       const after = db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=?").all(fleet.id) as Row[];
       const shownAfter = this.shown(db, after);
       changed = [...new Set([...shownBefore.keys(), ...shownAfter.keys()])].filter(id => shownBefore.get(id) !== shownAfter.get(id));
       this.links.set(fleet.id, link);
+      // A hash held already is not asked for again: its bytes are fixed, so a held file either is what a row declares or is
+      // never shown for it.
       const want = new Set<string>();
       for (const r of after) for (const h of [r.disc, r.portrait]) if (h && !db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h)) want.add(h);
       return [...want];
@@ -99,7 +111,9 @@ export class HubAgentPictures {
     const wanted = this.core.atomic(db => {
       const fleet = this.fleetOf(link);
       if (db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(c.sha256)) return "held" as const;
-      return db.prepare("SELECT 1 FROM hub_agent_pictures WHERE fleet_id=? AND (disc=? OR portrait=?)").get(fleet.id, c.sha256, c.sha256) ? "wanted" as const : "no" as const;
+      // Only a picture a row of this Fleet declares with exactly this type and size (the caps were checked on that row).
+      return db.prepare(`SELECT 1 FROM hub_agent_pictures WHERE fleet_id=? AND ((disc=? AND disc_mime=? AND disc_size=?) OR (portrait=? AND portrait_mime=? AND portrait_size=?))`)
+        .get(fleet.id, c.sha256, c.mime, c.size, c.sha256, c.mime, c.size) ? "wanted" as const : "no" as const;
     });
     if (wanted === "held") { this.assembling.delete(link); return { ok: true, stored: true }; }
     if (wanted === "no") { this.assembling.delete(link); return { ok: false, code: "not-wanted" }; }
@@ -113,7 +127,8 @@ export class HubAgentPictures {
     if (bytes.length !== a.size || createHash("sha256").update(bytes).digest("hex") !== a.sha256 || sniffPicture(bytes) !== a.mime) return { ok: false, code: "invalid" };
     const exposures = this.core.atomic(db => {
       const fleet = this.fleetOf(link);
-      const rows = db.prepare("SELECT exposure_id FROM hub_agent_pictures WHERE fleet_id=? AND (disc=? OR portrait=?)").all(fleet.id, a!.sha256, a!.sha256) as { exposure_id: string }[];
+      const rows = db.prepare(`SELECT exposure_id FROM hub_agent_pictures WHERE fleet_id=? AND ((disc=? AND disc_mime=? AND disc_size=?) OR (portrait=? AND portrait_mime=? AND portrait_size=?))`)
+        .all(fleet.id, a!.sha256, a!.mime, a!.size, a!.sha256, a!.mime, a!.size) as { exposure_id: string }[];
       if (!rows.length) return null;
       db.prepare("INSERT OR IGNORE INTO hub_agent_picture_files VALUES(?,?,?,?)").run(a!.sha256, a!.mime, bytes, this.core.now());
       // Every agent showing it now (another Fleet's agent may share the same picture).
@@ -132,12 +147,11 @@ export class HubAgentPictures {
       const fleet = this.core.deps.store.read().fleets.find(f => f.id === fleetId);
       const out = new Map<string, HubAgentPictureLook>();
       if (!fleet || fleet.status !== "active") return out;
-      const has = (h: string | null) => !!h && !!db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h);
       for (const r of db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=? AND generation=?").all(fleetId, fleet.generation) as Row[]) {
         const e = readExposure(db, r.exposure_id);
         if (!e || e.fleet_id !== fleetId || e.state !== "published") continue;
         const tooLarge = slotsOf(r.too_large);
-        out.set(r.exposure_id, { ...(has(r.disc) ? { disc: r.disc! } : {}), ...(has(r.portrait) ? { portrait: r.portrait! } : {}), ...(tooLarge.length ? { tooLarge } : {}) });
+        out.set(r.exposure_id, { ...(heldAs(db, r, "disc") ? { disc: r.disc! } : {}), ...(heldAs(db, r, "portrait") ? { portrait: r.portrait! } : {}), ...(tooLarge.length ? { tooLarge } : {}) });
       }
       return out;
     });
@@ -150,5 +164,12 @@ export class HubAgentPictures {
     });
   }
   disconnected(fleetId: string): void { this.links.delete(fleetId); }
-  close(): void { this.links.clear(); }
+  private timer: ReturnType<typeof setInterval> | null = null;
+  /** Sweep retired rows and unnamed files every HUB_PICTURES_SWEEP_MS (a revoked Fleet sends no report); reads hide them at once. */
+  start(): void {
+    if (this.timer) return;
+    this.timer = setInterval(() => { try { this.prune(); } catch { /* the next sweep */ } }, HUB_PICTURES_SWEEP_MS);
+    this.timer.unref?.();
+  }
+  close(): void { this.links.clear(); if (this.timer) clearInterval(this.timer); this.timer = null; }
 }

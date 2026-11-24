@@ -26,10 +26,10 @@ The capability is offered in the welcome only: it takes no hello slot, and only 
 3. The member sends each needed picture as `agent.picture` chunks of 180 KiB (`{ sha256, mime, size, index, count, data }`). Each chunk is answered with `agent.picture-result`. The Hub stores a picture only when:
    - the hash matches;
    - the bytes are the type named;
-   - a row of this Fleet names it.
+   - a row of this Fleet names it with exactly that type and size (the caps were checked on that row).
    A refusal leaves the report unsent, so the next tick tries again.
 
-The Hub keeps one copy per hash (`hub_agent_picture_files`). A room shows a picture only once the Hub holds it, so a changed picture never shows the old one meanwhile. A picture that lands, changes or goes emits `member.changed` to every room holding the agent: its open pages read the members again. Unsharing hides the pictures at once, and the next report or sweep removes them.
+The Hub keeps one copy per hash (`hub_agent_picture_files`). A row shows a held file only if it is the type and size the row declares, so naming another agent's larger picture by its hash shows nothing. A room shows a picture only once the Hub holds it, so a changed picture never shows the old one meanwhile. A picture that lands, changes or goes emits `member.changed` to every room holding the agent: its open pages read the members again. Unsharing or revoking hides the pictures at once. A withdrawal is swept as its snapshot arrives; anything else retired (a revoked Fleet sends no report) is swept within a minute. A file another agent still shows is kept.
 
 ## Who can see them
 

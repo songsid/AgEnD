@@ -231,6 +231,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   };
   groupRooms.pictureFile = (sha256) => agentPictures.file(sha256);
   agentPictures.changed = (ids) => { if (live()) groupRooms.lookChanged(ids); };
+  agentPictures.start();
   /** The owner's own view: which of a Fleet's agents have a picture too large to show (My agents says so; nobody else sees it). */
   const picturesTooLarge = (fleetId: string) => {
     const out: Record<string, string[]> = Object.create(null);
@@ -1219,7 +1220,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         try { return { ...reply, type: "room.react-result", payload: await groupRooms.agentReact(frame.payload, link) }; }
         catch (error) { if (!(error instanceof HubProtocolError) || !["invalid", "denied", "not-found", "revoked"].includes(error.code)) throw error;
           return { ...reply, type: "room.react-result", payload: { messageId: frame.payload.messageId, ok: false, code: error.code as "invalid" | "denied" | "not-found" | "revoked" } }; }
-      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId);
+      case "exposure.snapshot": await catalog.receiveSnapshot(frame.payload, link, frame.requestId); try { agentPictures.prune(); } catch { /* the periodic sweep */ }
         await sharingRequests.snapshot(link); quota.prune(); groupRooms.agents.publicationChanged(link.fleetId); return;
       case "exposure.quota": quota.receive(frame.payload, link); return;
       case "pairing.notice-ack":
@@ -1274,6 +1275,6 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     } satisfies HubDirectoryBrowserSessions),
     handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentIntroV1: true, agentCatalogV1: true, agentPicturesV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-purpose-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, HUB_ROOM_BRIEF_CAPABILITY, HUB_ROOM_MEMBERS_CAPABILITY, HUB_ROOM_ANSWER_STATUS_CAPABILITY, "person-prefs-v1", ...(roomAgentRequests ? ["room-owner-requests-v1"] : []), ...(roomDiscovery ? ["room-agent-discovery-v1"] : []), ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
-    async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
+    async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); agentPictures.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };
 }

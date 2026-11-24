@@ -2860,7 +2860,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try { theme = this.themeStore.get(name).theme; } catch { /* unreadable themes: none */ }
       let themesShown = true;
       try { themesShown = (this.webPrefs.read(OPERATOR).values as Record<string, unknown>)["fx.show"] !== false; } catch { /* the default: shown */ }
-      if (profileVersion) disc = { key: `profile:${profileVersion}`, load: () => this.webImage("avatar", name) };
+      // The key names the file and its version (Prism #4393: two agents' uploads may share an mtime).
+      if (profileVersion) disc = { key: `profile:${basename(profileFile!)}:${profileVersion}`, load: () => this.webImage("avatar", name) };
       else if (themesShown && theme.avatar) { const id = theme.avatar; disc = { key: `theme:${id}`, load: () => this.themeStore.asset(name, id) }; }
       else {
         const bots = this.webBots(), connection = bots.own.get(name) ?? bots.speaking.get(name);
