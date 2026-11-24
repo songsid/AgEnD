@@ -501,7 +501,7 @@ To use the same titles in every office without editing each pack, set them once 
 |---|---|---|---|---|---|
 | See the Office | ✅ | ✅ | ✅ | ❌ | ✅ one office or all, read-only |
 | Edit offices, Edit layout | ✅ | ✅ | ❌ | ❌ | ❌ |
-| Upload or delete skin packs | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Upload or delete skin packs | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Level titles for every office | ✅ | ✅ | ❌ | ❌ | ❌ |
 | Approve agents' pack changes | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Share… and Revoke | ✅ | ✅ | ❌ | ❌ | ❌ |
