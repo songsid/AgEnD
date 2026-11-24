@@ -99,7 +99,7 @@ const CARD_CSS_PROPS = [
   "--oo-card-bg", "--oo-card-border", "--oo-card-text", "--oo-card-muted", "--oo-card-accent",
   "--oo-card-bar-track", "--oo-card-bar-fill", "--oo-card-tile-bg", "--oo-card-btn-bg", "--oo-card-btn-text",
   "--oo-card-btn-primary-bg", "--oo-card-btn-primary-text", "--oo-card-radius", "--oo-card-w",
-  "--oo-card-avatar", "--oo-card-frame-pad",
+  "--oo-card-avatar", "--oo-card-frame-pad", "--oo-card-enter-ms",
 ];
 
 function fgFor(bgHex, minRatio = 4.5, light = "#f6f4f0", dark = "#18181b") {
@@ -255,7 +255,9 @@ export function resolveCardSpec(packCard) {
     scrim: s.backgroundImage && bgRef ? scrimRgba(bgRef, dark ? 0.56 : 0.72) : null,
   } : null;
 
-  return { preset, layout, avatarPx, hideSet: new Set(layout.hide), cssVars, backdrop };
+  const motion = packCard.motion && packCard.motion.enter !== "none" ? packCard.motion : null;
+  if (motion) cssVars["--oo-card-enter-ms"] = `${motion.ms}ms`;
+  return { preset, layout, avatarPx, hideSet: new Set(layout.hide), cssVars, backdrop, motion };
 }
 
 /** Ordered visible rows for `model` under `spec`; never restores fields stripped by `cardModel` on share links. */
@@ -481,7 +483,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     return null;
   };
 
-  return html`<div ref=${box} class=${classes} data-preset=${spec.preset} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
+  return html`<div ref=${box} class=${classes} data-preset=${spec.preset} data-enter=${spec.motion ? spec.motion.enter : undefined} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
       onPointerDown=${down} onPointerUp=${up} onPointerCancel=${() => { swipe.current = null; }}>
     ${spec.backdrop ? html`<canvas ref=${bgCanvas} class="oo-card-bg" aria-hidden="true"></canvas>` : null}
     <div class="oo-card-body">

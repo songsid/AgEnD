@@ -148,7 +148,7 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 
 - **逐格清單與個別停留時間：** 省略 `src`，改在 `frames` 列出 `{ "src", "ms"? }`（最多 600 步，每張圖為 `w × h` 像素，`ms` 為 33–60000 毫秒）；同一張圖可在多步重複使用，只會上傳與解碼一次。單張或多張影格條也可以用 `durations` 陣列（每格的毫秒數）取代 `fps`。
 - **播放方式：** 預設從第 0 格播完後循環。加上 `"once": true` 會只播一次並停在最後一格；加上 `"loopFrom": <格數索引>` 則先播一次進入段（`0 .. loopFrom - 1`），接著持續循環剩餘影格。若裝置開啟「減少動態效果」（`prefers-reduced-motion: reduce`），所有影格條一律停在第 0 格。
-- **切圖建議：** 單張圖維持在 32 格與寬度 4096 px 以內（例如 64×96 的角色拆成 10 張、每張 30 格 = 300 格，30 FPS 可播 10 秒）。整包維持在 160 個檔案、20 MiB 與總解碼像素 64 Mpx 以內，手機播放就能保持流暢。
+- **切圖建議：** 單張圖維持在 32 格與寬度 4096 px 以內（例如 64×96 的角色拆成 10 張、每張 30 格 = 300 格，30 FPS 可播 10 秒）。整包維持在 220 個檔案、42 MiB 與總解碼像素 96 Mpx 以內，手機播放就能保持流暢。想省檔案數，可以把好幾個姿勢放在同一張圖，再用 `row`／`col` 切出各影格條（見[影格條](#strips)）。
 
 **區域、座位與狀態。** 區域是一個矩形 `[x, y, w, h]` 加上它的座位，依填滿的順序排列。座位是 `[x, y]`，也就是人的腳站的位置，必須在區域的矩形內。`stateZones` 把每個狀態（`needs`、`crashed`、`stuck`、`working`、`idle`、`paused`、`stopped`、`missing`）送到某個區域；沒列出的狀態去 `"default"`，沒有就去第一個區域。就寢時，閒著的人會去 `paused` 用的那個區域。
 
@@ -223,6 +223,8 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 
 **被拖曳動畫（#4267）。** 角色組可以選填 `dragged` 影格條（`characters.<組別>.dragged`，找不到時退回 `characters.default.dragged`；支援單張、多張與逐格影格條）。未設定時，被拖曳的小人會以內建的懸空晃動效果搭配地面陰影顯示，放開後自動回到原本姿勢。
 
+**摸頭動畫。** 角色組可以選填 `pat` 影格條（找不到時退回 `characters.default.pat`）。被摸頭時會完整播一輪（至少和愛心一樣久，1.8 秒），播完回到原本姿勢；沒有的話，跟以前一樣只顯示愛心和台詞。角色組也可以選填 `walkLeft`（往左走時用它，不再翻轉 `walkSide`）和 `stand`（一張靜止站姿，當作卡片頭像，取代待機影格條的第一格）。
+
 **Agent 個人名片（`card`）。** 外觀包可以選填 `card` 來客製化 Agent 個人名片（桌機旁浮卡或手機底部抽屜）的預設版型、配色、底圖／九宮格邊框與欄位排列：
 
 ```json
@@ -260,7 +262,8 @@ fleet 管理員在直接連線的 dashboard 上（不是透過公開連結）使
 
 - `preset` 選擇內建版型：`default`、`rpg`、`compact` 或 `dossier`；明確填寫的 `style` 與 `layout` 欄位會覆寫預設值。不含 `card` 的外觀包維持原本的名片樣式不變。
 - `style` 顏色嚴格限定 `#rrggbb`（不接受任意 CSS）。上傳時會檢查成對色彩的 WCAG 對比度：`text`/`background`、`muted`/`background`、`accent`/`background`、`buttonText`/`buttonBg` 與 `buttonPrimaryText`/`buttonPrimaryBg` 至少 4.5:1；`border`/`background` 與 `barFill`/`barTrack` 至少 3.0:1。`backgroundImage` 為最大 1024×1024 px 的 PNG（會疊加可讀性遮罩）；`frame` 為最大 512×512 px 的九宮格 PNG，`slice` 1–128（預設 8，須符合 `slice * 2 < min(w, h)`）。兩者都在首次打開名片時才延遲載入。`radius` 為 `none`、`sm`、`md` 或 `lg`。
-- `layout` 可調整 `avatarSize`（`sm` 44 px、`md` 56 px、`lg` 84 px）、`avatarSource`（`sprite` 或使用 `portraits` 的 `portrait`，缺少時回退待機小人）、`headerAlign`（`left` 或 `center`）、桌機寬度 `width`（280–400 px；手機底部抽屜會忽略）、`sections`（從 `header`、`level`、`rows`、`now`、`tell`、`actions` 挑選不重複順序，若有指定則必須保留 `header` 與 `actions`）、`rows`（`office`、`model`、`backend`、`today`、`firstSeen` 的不重複順序）、`rowColumns`（`1` 或 `2`）與 `hide`（`instance`、`title`、`badge`、`level`、`xpBar`、`office`、`model`、`backend`、`today`、`firstSeen`、`now`）。
+- `layout` 可調整 `avatarSize`（`sm` 44 px、`md` 56 px、`lg` 84 px）、`avatarSource`（`sprite` 或使用 `portraits` 的 `portrait`，缺少時回退待機小人）、`headerAlign`（`left` 或 `center`）、桌機寬度 `width`（280–400 px；手機底部抽屜會忽略）、`sections`（從 `header`、`level`、`rows`、`now`、`tell`、`actions` 挑選不重複順序，若有指定則必須保留 `header` 與 `actions`）、`rows`（`office`、`model`、`backend`、`today`、`firstSeen` 的不重複順序）、`rowColumns`（`1` 或 `2`）、`hide`（`instance`、`title`、`badge`、`level`、`xpBar`、`office`、`model`、`backend`、`today`、`firstSeen`、`now`）與 `gap`（卡片和人物之間的距離 0–240 px，另加人物半寬；預設 12）。
+- `motion` 設定卡片彈出的動畫：`enter` 可選 `none`、`fade`、`pop`、`rise`、`slide`、`bounce`，`ms` 為 80–1200（預設 220）。浮動卡片和手機底部抽屜都會播放；開啟減少動態效果時不播。
 - 分享連結仍會先濾除 `model`、`backend`、`today`、`firstSeen`、`tell` 與互動按鈕，才套用 `card.layout`——外觀包無法在分享連結上露出被隱藏的欄位。
 
 **檢查外觀包。** 檢查很嚴格：未知的欄位、超出範圍的值，或指向不存在的名稱，都會讓整個外觀包被拒絕，並指出在哪裡。有外觀包權限的 agent 可以對資料夾跑 `office_pack_check`，什麼都不會存（見[下方](#讓-agent-管理外觀包)）。頁面與主機用的是同一套規則。
@@ -487,7 +490,7 @@ fleet 管理員也可以在 General 的通知上按 **核准**，核准等待中
 | `straight` | ❌ | `true`：每次走動都先橫走再上下走 |
 | `idleVisits` | ❌ | 需搭配 `stateZones`：`[{ "area", "weight", "minSeconds", "maxSeconds" }, …]`，最多 8 項，同一區域只能出現一次：閒著的人偶爾會去坐一陣子的區域（見[辦公室裡的日常](#辦公室裡的日常)）。`weight` 1–100，與散步的 100 一起抽；`minSeconds` 5–600；`maxSeconds` `minSeconds`–600 |
 | `furniture` | ❌ | 家具，最多 128 件（見[家具](#家具)） |
-| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`prop`，以及 `bubbles`（這組自己的句子，格式同外觀包的 `bubbles`） |
+| `characters` | ✅ | `{ 角色組: { 姿勢: STRIP, … } }`，最多 64 組；必須有含 `idle` 的 `default`。欄位：`working`、`idle`、`paused`、`needs`、`walk`、`walkDown`、`walkUp`、`walkSide`、`walkLeft`、`eat`、`dragged`、`pat`、`stand`、`prop`，以及 `bubbles`（這組自己的句子，格式同外觀包的 `bubbles`） |
 | `byInstance` | ❌ | instance 名稱 → 角色組，最多 500 個 |
 | `props` | ❌ | `task`、`send`、`report`、`broadcast`：飛行物的 STRIP |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { 狀態: [句子, …] } }`，最多 12 句，每句 1–40 字。除了狀態之外，也可以用 `pat` 與 `feed`（#4119）：在辦公室被摸頭或餵食時說的話（沒設定就用頁面自己的話）。角色組與個別 instance 的 `bubbles` 也可以用 |
@@ -501,7 +504,7 @@ fleet 管理員也可以在 General 的通知上按 **核准**，核准等待中
 
 ### 影格條
 
-STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom" }`：
+STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom", "row", "col" }`：
 
 | 欄位 | 範圍 | 預設 |
 |---|---|---|
@@ -514,6 +517,7 @@ STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "d
 | `dw`、`dh` | 顯示大小，單位是邏輯單位（1–1280、1–720） | `w·scale`、`h·scale` |
 | `once` | `true`：從第 0 格播一次後停在最後一格 | `false` |
 | `loopFrom` | `0` 到 `總格數 − 1`：先播一次進入段 `0 .. loopFrom − 1`，之後從 `loopFrom` 起循環（不可與 `once: true` 並用） | `0` |
+| `row`、`col` | 0–4095：從一張大圖切出影格——第 *i* 格是第 `row` 列、第 `col + i` 欄的 `w × h` 格子，一張圖可以放好幾個姿勢、給好幾條影格條共用。圖片至少要 `(col + frames)·w × (row + 1)·h`（沒寫這兩個的影格條仍須剛好 `frames·w × h`）。不可用在逐格清單 | — |
 
 ### 家具
 
@@ -553,12 +557,12 @@ STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "d
 | | 上限 |
 |---|---|
 | 保留的外觀包 | 16 個（另外每個保留一份上一版，供 agent 還原） |
-| 每個外觀包的檔案數 | 160 個 |
-| 單一檔案 | 2 MiB、4096 × 4096 px（16 Mpx），只接受 PNG（檢查簽章、讀完每個 chunk、移除中繼資料） |
-| 整個外觀包 | 20 MiB，總解碼像素 64 Mpx |
+| 每個外觀包的檔案數 | 220 個 |
+| 單一檔案 | 4 MiB、4096 × 4096 px（16 Mpx），只接受 PNG（檢查簽章、讀完每個 chunk、移除中繼資料） |
+| 整個外觀包 | 42 MiB，總解碼像素 96 Mpx |
 | 單一影格條 | 每張圖最多 32 格、最多 32 張圖、總格數最多 600 格，單格停留 33–60000 毫秒 |
 | manifest | 64 KiB |
-| 磁碟上所有外觀包 | 640 MiB，含上一版 |
+| 磁碟上所有外觀包 | 1344 MiB，含上一版 |
 | 辦公室 | 20 間；每人每分鐘儲存 20 次 |
 | 辦公室分享連結 | 同時 10 個；15 分鐘到 24 小時；每個每分鐘 120 個請求 |
 | `office_set` | 每個 agent 每分鐘 6 次、每小時 60 次 |

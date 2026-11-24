@@ -464,9 +464,9 @@ someone onto another valid seat in their area (#4266) to seat them there immedia
 **Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
 its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words; (#4255) packs with optional `snacks` (1–12 items, `sprite`, optional `eat` overlay, `radius`) and `characters.<set>.eat` show a floating snack tray (bottom-left; above zone pills on phone) for drag-to-feed, tap-to-arm, and placed snacks (up to 6 on floor, 30 s TTL, up to 4 nearest idle racers honoring `stayInArea`, first eats and others scatter; packs without `snacks` stay unchanged), and upload or delete **skin packs** (an
 artist's pictures: `manifest.json` plus PNGs, format v1, kept in `web-office-skins/` in the AgEnD home; the host
-checks every rule — PNG only, each strip sheet exactly frames·w × h, a 16:9 background, size and 64 Mpx decoded-pixel caps — and never changes a
+checks every rule — PNG only, each strip sheet exactly frames·w × h (or, cut with `row`/`col`, at least (col+frames)·w × (row+1)·h), a 16:9 background, 220 files, 42 MiB and 96 Mpx decoded-pixel caps — and never changes a
 pack; a strip may give its displayed size, `dw`/`dh`, apart from its pictures' size, a character may walk four
-ways with `walkDown`, `walkUp` and `walkSide` (the side one mirrored for left), and (#4231) any strip may chain
+ways with `walkDown`, `walkUp` and `walkSide` (the side one mirrored for left unless the set gives `walkLeft`), a set may give `pat` (played in full when patted) and `stand` (the card's still avatar), and (#4231) any strip may chain
 multiple sheets (`src: [...]`, up to 32 sheets / 600 frames) or list individual frames with per-frame `ms`
 (`frames: [{ src, ms? }]`) or `durations`, plus `once: true` or `loopFrom` (intro then loop), holding frame 0 under
 reduced motion). #2692: an agent with **Office skin

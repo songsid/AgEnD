@@ -1,9 +1,9 @@
 /**
- * #2632: a skin pack can hold a whole fleet — SKIN_LIMITS (src/web-office-skins.ts) 160 files and 20 MiB a pack (was 64,
- * 6 MiB); 2 MiB a file, the side and pixel caps unchanged.
- * - Files: a pack of 160 named files passes checkSkinUpload; 161 is skin_too_many_files.
- * - Bytes: kept pictures of exactly 20 MiB in all pass; one byte more is skin_too_large (each file still within 2 MiB).
- * - The wire: SKIN_WIRE_BYTES (the POST /ui/office-skins body cap, web-api.ts) admits a full 20 MiB pack's base64 plus a
+ * #2632: a skin pack can hold a whole fleet — SKIN_LIMITS (src/web-office-skins.ts) 220 files and 42 MiB a pack (was 64, then 160;
+ * 6, then 20 MiB); 4 MiB a file (was 2), the side cap unchanged.
+ * - Files: a pack of 220 named files passes checkSkinUpload; 221 is skin_too_many_files.
+ * - Bytes: kept pictures of exactly 42 MiB in all pass; one byte more is skin_too_large (each file still within 4 MiB).
+ * - The wire: SKIN_WIRE_BYTES (the POST /ui/office-skins body cap, web-api.ts) admits a full 42 MiB pack's base64 plus a
  *   manifest at its cap, and both packs above are kept end to end through the route.
  * Pictures are tiny synthetic PNGs (a 1×1 padded with a private chunk for the byte case), never decoded by the host.
  */
@@ -49,13 +49,17 @@ function sized(bytes: number, fill: number): Buffer {
 }
 const FURNITURE = (i: number) => ({ id: `f${i}`, sprite: { src: `f${i}.png`, frames: 1, w: 1, h: 1 }, x: 10, y: 10 });
 
-/** The clinic pack grown to `n` files: furniture strips (at most 128) first, then more character sets. */
+const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"];
+/** The clinic pack grown to `n` files: furniture strips (at most 128) first, then character sets of up to 8 poses each. */
 function manyFiles(n: number) {
   const m = MANIFEST(), files: Record<string, string> = { "office_bg.png": fixture("office_bg.png").toString("base64"), "fox_idle.png": fixture("fox_idle.png").toString("base64") };
   const dot = png(1, 1).toString("base64"), strip = png(128, 48).toString("base64"), furniture = Math.min(n - 2, 128);
   m.furniture = [...Array(furniture).keys()].map(FURNITURE);
   for (let i = 0; i < furniture; i++) files[`f${i}.png`] = dot;
-  for (let i = 0; i < n - 2 - furniture; i++) { m.characters[`set${i}`] = { idle: { ...m.characters.fox.idle, src: `set${i}.png` } }; files[`set${i}.png`] = strip; }
+  for (let i = 0; i < n - 2 - furniture; i++) {
+    const set = `set${Math.floor(i / POSES.length)}`, pose = POSES[i % POSES.length]!;
+    (m.characters[set] ??= {})[pose] = { ...m.characters.fox.idle, src: `${set}_${pose}.png` }; files[`${set}_${pose}.png`] = strip;
+  }
   expect(Object.keys(files)).toHaveLength(n);
   return { manifest: m, files };
 }
@@ -77,20 +81,20 @@ const dirs: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true }); });
 
 describe("SKIN_LIMITS: a pack for a whole fleet (#2632)", () => {
-  it("the limits: 160 files and 20 MiB a pack; 2 MiB a file, 4096 px a side, 16 Mpx unchanged", () => {
-    expect(SKIN_LIMITS).toMatchObject({ files: 160, packBytes: 20 * MiB, fileBytes: 2 * MiB, side: 4096, pixels: 16 * MiB });
+  it("the limits: 220 files and 42 MiB a pack; 4 MiB a file, 4096 px a side, 16 Mpx a picture, 96 Mpx a pack", () => {
+    expect(SKIN_LIMITS).toMatchObject({ files: 220, packBytes: 42 * MiB, fileBytes: 4 * MiB, side: 4096, pixels: 16 * MiB, packPixels: 96 * MiB });
   });
-  it("files: 160 pass; 161 are skin_too_many_files", () => {
+  it("files: 220 pass; 221 are skin_too_many_files", () => {
     const r = checkSkinUpload(manyFiles(SKIN_LIMITS.files), "me", 1);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(Object.keys(r.record.files)).toHaveLength(160);
-    expect(checkSkinUpload(manyFiles(SKIN_LIMITS.files + 1), "me", 1)).toMatchObject({ ok: false, status: 400, error: "skin_too_many_files", detail: "at most 160" });
+    if (r.ok) expect(Object.keys(r.record.files)).toHaveLength(220);
+    expect(checkSkinUpload(manyFiles(SKIN_LIMITS.files + 1), "me", 1)).toMatchObject({ ok: false, status: 400, error: "skin_too_many_files", detail: "at most 220" });
   });
-  it("bytes: exactly 20 MiB kept passes; one byte more is skin_too_large", () => {
+  it("bytes: exactly 42 MiB kept passes; one byte more is skin_too_large", () => {
     const r = checkSkinUpload(manyBytes(SKIN_LIMITS.packBytes), "me", 1);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(Object.values(r.record.files).reduce((sum, f) => sum + f.bytes, 0)).toBe(20 * MiB);
-    expect(checkSkinUpload(manyBytes(SKIN_LIMITS.packBytes + 1), "me", 1)).toMatchObject({ ok: false, status: 413, error: "skin_too_large", detail: "at most 20 MiB in all" });
+    if (r.ok) expect(Object.values(r.record.files).reduce((sum, f) => sum + f.bytes, 0)).toBe(42 * MiB);
+    expect(checkSkinUpload(manyBytes(SKIN_LIMITS.packBytes + 1), "me", 1)).toMatchObject({ ok: false, status: 413, error: "skin_too_large", detail: "at most 42 MiB in all" });
   });
   it("the wire cap admits a full pack's base64 and a manifest at its cap", () => {
     expect(SKIN_WIRE_BYTES).toBeGreaterThanOrEqual(Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes);
@@ -126,7 +130,7 @@ async function fleet() {
 }
 
 describe("POST /ui/office-skins: the route keeps a full pack (#2632)", () => {
-  it("a 20 MiB pack and a 160-file pack, each kept whole through the body cap", async () => {
+  it("a 42 MiB pack and a 220-file pack, each kept whole through the body cap", async () => {
     const f = await fleet();
     try {
       const big = manyBytes(SKIN_LIMITS.packBytes);
@@ -138,8 +142,8 @@ describe("POST /ui/office-skins: the route keeps a full pack (#2632)", () => {
       const many = manyFiles(SKIN_LIMITS.files);
       many.manifest.id = "full-files";
       const b = await raw(f.port, "POST", "/ui/office-skins", f.admin, JSON.stringify(many));
-      expect([b.status, JSON.parse(b.body.toString("utf8")).pack?.files]).toEqual([200, 160]);
-      expect(f.fm.officeSkins.list().packs.map((p: any) => [p.id, p.bytes]).sort()).toEqual([["full-bytes", 20 * MiB], ["full-files", expect.any(Number)]]);
+      expect([b.status, JSON.parse(b.body.toString("utf8")).pack?.files]).toEqual([200, 220]);
+      expect(f.fm.officeSkins.list().packs.map((p: any) => [p.id, p.bytes]).sort()).toEqual([["full-bytes", 42 * MiB], ["full-files", expect.any(Number)]]);
     } finally { await f.stop(); }
   }, 60_000);
 });

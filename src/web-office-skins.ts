@@ -30,9 +30,14 @@ import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
 import { checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
-/** #2632: 160 files and 20 MiB a pack (was 64, 6 MiB) — room for a whole fleet's character sets. M-3394: packPixels caps total decoded pixels per pack (64 Mpx ≈ 256 MiB RGBA) to protect phones. */
+/**
+ * #2632: a pack for a whole fleet. Sized for 30 characters, each one sheet of every pose (row/col cells, ~1600×1920,
+ * ~1.3 MB, ~3 Mpx): 42 MiB a pack (was 6, then 20) — about 20 s on 4G, the share page shows when its pictures are in;
+ * 96 Mi px decoded (was 64; ≈ 384 MiB RGBA, within a phone tab's budget); 4 MiB a file (was 2) for a sheet; 220 files
+ * (was 64, then 160) so the one-picture-per-pose layout still fits 30 × 7.
+ */
 export const SKIN_LIMITS = {
-  packs: 16, files: 160, fileBytes: 2 * MiB, packBytes: 20 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
+  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 96 * MiB, name: 60, src: 200,
 } as const;
 /** The most an upload's body may be: every picture's base64 (4/3) plus the manifest and the envelope. */
 export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes + 64 * 1024;
@@ -92,12 +97,19 @@ export function checkSkinPicture(name: string, bytes: Uint8Array): { ok: true; k
   return { ok: true, kept: Buffer.from(kept), width: size.width, height: size.height };
 }
 
-/** The sizes the checked manifest asks of its pictures: each STRIP sheet exactly frames·w × h; the background and foreground 16:9. */
+/** The sizes the checked manifest asks of its pictures: each STRIP sheet exactly frames·w × h (or, cut with row/col, at least (col+frames)·w × (row+1)·h); the background and foreground 16:9. */
 function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; height: number }>): SkinRefusal | null {
   for (const { at, strip } of packStrips(pack)) {
     for (const sheet of stripSheets(strip)) {
       const s = sizes.get(sheet.src);
-      if (s && (s.width !== sheet.frames * strip.w || s.height !== strip.h)) {
+      if (!s) continue;
+      if (strip.row !== undefined || strip.col !== undefined) {
+        // Cut from a sheet: the picture must hold every cell the strip reads.
+        const needW = ((strip.col ?? 0) + sheet.frames) * strip.w, needH = ((strip.row ?? 0) + 1) * strip.h;
+        if (s.width < needW || s.height < needH) {
+          return refuse(400, "skin_strip_dimensions", `${at}: ${sheet.src} is ${s.width}×${s.height} px; its strip reads up to ${needW}×${needH} ((col+frames)·w × (row+1)·h)`);
+        }
+      } else if (s.width !== sheet.frames * strip.w || s.height !== strip.h) {
         return refuse(400, "skin_strip_dimensions", `${at}: ${sheet.src} is ${s.width}×${s.height} px; its strip needs ${sheet.frames * strip.w}×${strip.h} (frames·w × h)`);
       }
     }

@@ -569,8 +569,8 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     const b = stripBox(st, x, y, mirror);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, 0, 0, b.w, b.h); }
-    else ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, b.x, b.y, b.w, b.h);
+    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, 0, 0, b.w, b.h); }
+    else ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, b.x, b.y, b.w, b.h);
     ctx.restore();
     return true;
   };
@@ -585,6 +585,11 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     const st = own(setOf({ name }) || {}, "dragged") || own(own(pack.characters, "default") || {}, "dragged") || null;
     return st && ready(st) ? st : null;
   };
+  /** Pat strip for `name` (their set's `pat`, else `default.pat`, else null): shown while a pat's hearts show. */
+  const patStripOf = (name) => {
+    const st = own(setOf({ name }) || {}, "pat") || own(own(pack.characters, "default") || {}, "pat") || null;
+    return st && ready(st) ? st : null;
+  };
   /** The strip a look shows (its pose; walking, by its heading), when all its pictures are loaded. */
   const shown = (look, walking = look.pose === "walk") => {
     if (!walking && look.pose === "dragged") {
@@ -592,6 +597,12 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       if (dragSt) return { strip: dragSt, mirror: false, customDragged: true };
       const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
       return fallback && ready(fallback.strip) ? { ...fallback, customDragged: false } : null;
+    }
+    if (!walking && look.pose === "pat") {
+      const patSt = patStripOf(look.name);
+      if (patSt) return { strip: patSt, mirror: false };
+      const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
+      return fallback && ready(fallback.strip) ? fallback : null;
     }
     if (!walking && look.pose === "eat") {
       const eatSt = eatStripOf(look.name);
@@ -679,12 +690,14 @@ export function spriteSkin(pack, images, base = pixelSkin) {
         done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
       }
       ctx.restore();
-      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
+      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" || look.pose === "pat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
     },
     /** M-3432 (#4255): character's eating strip (set.eat → default.eat → null) when loaded. */
     eatStrip: eatStripOf,
     /** M-3445 (#4267): character's dragged strip (set.dragged → default.dragged → null) when loaded. */
     draggedStrip: draggedStripOf,
+    /** Character's pat strip (set.pat → default.pat → null) when loaded. */
+    patStrip: patStripOf,
     /** M-3432 (#4255): draw a snack strip (placed on floor or eat overlay) at logical (x, y). */
     drawSnack(ctx, st, ms, x, y, env, clipKey = null) {
       if (!st || !ready(st)) return false;
@@ -702,7 +715,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const dx = Math.round((size - dw) / 2), dy = Math.round((size - dh) / 2);
       ctx.save();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, dx, dy, dw, dh);
+      ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, dx, dy, dw, dh);
       ctx.restore();
       return true;
     },

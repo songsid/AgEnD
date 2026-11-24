@@ -2619,6 +2619,19 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 /* M-3253: the sheet sits on the window's foot (M-3166 took the phone's tab bar away: the old 56 px lift left a gap), its
    close and its two actions a fingertip's 44 px. */
 .oo-card.sheet { padding: var(--s-2) var(--s-4) max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
+/* A pack's card.motion: how the card pops up (opacity and the individual scale/translate, so its placement transform stays). */
+.oo-card[data-enter] { animation: var(--oo-card-enter-ms, 220ms) both; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+.oo-card[data-enter="fade"] { animation-name: oo-card-fade; }
+.oo-card[data-enter="pop"] { animation-name: oo-card-pop; }
+.oo-card[data-enter="rise"] { animation-name: oo-card-rise; }
+.oo-card[data-enter="slide"] { animation-name: oo-card-slide; }
+.oo-card[data-enter="bounce"] { animation-name: oo-card-bounce; animation-timing-function: linear; }
+@keyframes oo-card-fade { from { opacity: 0; } }
+@keyframes oo-card-pop { from { opacity: 0; scale: .86; } }
+@keyframes oo-card-rise { from { opacity: 0; translate: 0 14px; } }
+@keyframes oo-card-slide { from { opacity: 0; translate: -18px 0; } }
+@keyframes oo-card-bounce { 0% { opacity: 0; scale: .7; } 55% { opacity: 1; scale: 1.06; } 75% { scale: .97; } 100% { scale: 1; } }
+@media (prefers-reduced-motion: reduce) { .oo-card[data-enter] { animation: none; } }
 .oo-card.sheet .oo-card-close { width: var(--tap); height: var(--tap); margin: -6px -8px 0 0; }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
