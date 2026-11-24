@@ -206,7 +206,7 @@ try {
       for (let round = 0; round < 3; round++) { const inv = await r.call(casey, "GET", "/hub/v1/invitations"); for (const i of inv.json?.invitations ?? []) await r.call(casey, "POST", `/hub/v1/invitations/${i.id}/accept`, {}); await new Promise((res) => setTimeout(res, 150)); }
       await r.call(manager, "PATCH", `/hub/v1/rooms/${soloId}`, { office: { style: "studio-large" } });
       await page.goto(`${origin}/ui/hub?room=${soloId}&view=office`); await page.locator(".oo-stage canvas").first().waitFor(); await page.waitForTimeout(3000);
-      for (let z = 0; z < (phone ? 5 : 2); z++) { await page.locator(".hub-room-office .oo-zoom-in").first().click().catch(() => {}); await page.waitForTimeout(400); }
+      for (let z = 0; z < (phone ? 4 : 2); z++) { await page.locator(".hub-room-office .oo-zoom-in").first().click().catch(() => {}); await page.waitForTimeout(400); }
       await page.waitForTimeout(1200);
       const echo = await page.evaluate(() => {
         const cv = document.querySelector(".hub-room-office .oo-stage canvas") as HTMLCanvasElement | null; if (!cv) return null;
