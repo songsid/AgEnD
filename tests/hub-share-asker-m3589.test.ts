@@ -118,3 +118,13 @@ it("backend switch: real incarnation rotation exposes the owner notice, room-too
     expect(lapsed()).toBe(true); // A→B→A is a third incarnation; an old consent never revives.
   } finally { db.close(); fm.stormWindow.shutdown(); rmSync(home, { recursive: true, force: true }); }
 });
+it("a late member receipt cannot reopen a question cancelled for lapsed consent", async () => {
+  const w = await world();
+  const question = await w.ask(w.directId); expect(question.status).toBe(200);
+  await w.catalog(true);
+  const at = Date.now();
+  const receipt = { messageId: question.json.id, contentDigest: question.json.receipt.contentDigest, stage: "delivered", sequence: 1, at };
+  expect(await w.r.http.receive(w.r.frame("receipt", receipt, w.link) as never, w.link)).toMatchObject({ type: "receipt" });
+  const row = w.r.db.prepare("SELECT stage,reason_code FROM hub_messages WHERE id=?").get(question.json.id);
+  expect(row).toEqual({ stage: "cancelled", reason_code: "share-needs-reshare" });
+});

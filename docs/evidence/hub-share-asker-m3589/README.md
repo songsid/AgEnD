@@ -24,9 +24,11 @@ old terminal work. Wrong catalog owner, Fleet generation or exposure revision ca
 
 - Focused tests: 150/150 in 10 files (asker API/UI, #4361 neighbors, representative incarnation, room agents,
   thread, direct reload and rooms).
+- Final asker suite: 9/9, including a late member receipt that cannot reopen the terminal question.
 - Source and test TypeScript: both exit 0.
 - Mutant ignoring all catalog lapses: 5 new failures, 3 positive/binding controls pass.
 - Mutant omitting owner/generation/revision binding: the 3 stale-catalog controls fail, 5 others pass.
+- Mutant allowing a late receipt to reopen the question: the new late-receipt regression fails.
 - Full suite remains CI's responsibility.
 
 ## Real-app captures
