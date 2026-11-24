@@ -227,6 +227,12 @@ const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
 const figureBox = (sk, q) => (sk.charBox ? sk.charBox(q.look, q.at) : { x: q.at.x - 24, y: q.at.y - 52, w: 48, h: 66 });
 /** #2554: in All offices a tile's name tags show (always) from this many CSS px a unit up; below it on hover only. */
 export const TAG_MIN_K = 0.75;
+/**
+ * M-3665: one office below this zoom (a phone's whole office, about 30 %: a 10 px tag is 3 px on the page) draws no
+ * name tags but the hovered, focused or found one: the names are read in the people row over the stage's foot and on
+ * a person's card. A desk's fit keeps them (the Fleet's 70 % and up; a Hub room's 60 %).
+ */
+export const TAG_READ_K = 0.5;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
 /** Typing: no single-key shortcut (the `f` of fullscreen) there. */
 const typing = (el) => !!el && (el.tagName === "INPUT" || el.tagName === "SELECT" || el.tagName === "TEXTAREA" || el.isContentEditable === true);
@@ -412,6 +418,30 @@ export function speakerAt(sk, look, at) {
 const GHOST_POSE = [["paused", "paused"], ["stopped", "paused"], ["working", "working"], ["needs", "needs"], ["crashed", "needs"], ["stuck", "needs"], ["idle", "idle"]];
 /** How faint Edit layout's figures are: seen through, yet readable over a busy picture (a dimmed person is 0.35). */
 const GHOST_ALPHA = 0.6;
+/**
+ * M-3665: stopped — or, in a Hub room, an agent whose computer is offline — is not the same as paused, though both
+ * doze in the nap corner. A paused person is drawn as ever (its Zzz); a stopped one faded (OFF_ALPHA) with a small
+ * power-off mark beside it, on every style and every pack (the pack's own paused strip draws both).
+ */
+const OFF_ALPHA = 0.45;
+export const offLook = (look) => !!look && look.state === "stopped" && look.pose !== "away";
+export function drawOffMark(ctx, x, y, env) {
+  const pal = (env && env.pal) || {}, r = 6;
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = pal.surface || "#2f2f2f"; ctx.strokeStyle = pal.text3 || "#bbbbbb"; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = pal.text2 || "#cfcfcf"; ctx.lineWidth = 1.6; ctx.lineCap = "round";
+  ctx.beginPath(); ctx.arc(x, y + 0.5, r - 2, -Math.PI / 2 + 0.75, Math.PI * 1.5 - 0.75); ctx.stroke();    // the power symbol's ring…
+  ctx.beginPath(); ctx.moveTo(x, y - r + 1); ctx.lineTo(x, y - 0.5); ctx.stroke();                         // …and its bar
+  ctx.restore();
+}
+/** A person drawn by the skin; stopped (offline): faded, with the power-off mark at (mx, my). */
+function drawPerson(ctx, sk, box, look, ms, env, mx, my) {
+  if (!offLook(look)) { sk.drawCharacter(ctx, box, look, ms, env); return; }
+  ctx.save(); ctx.globalAlpha *= OFF_ALPHA; sk.drawCharacter(ctx, box, look, ms, env); ctx.restore();
+  drawOffMark(ctx, mx, my, env);
+}
 /** Edit layout's faint figures: one on each seat no one is on, { x, y, look } (the pack's default set; drawn at GHOST_ALPHA). */
 export function ghostsOf(pack, people = []) {
   const taken = (s) => people.some((q) => Math.abs(q.at.x - s.x) < 2 && Math.abs(q.at.y - s.y) < 2);
@@ -626,7 +656,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
         : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
         : patted || posed;
-      sk.drawCharacter(ctx, box, look, ms, env);
+      drawPerson(ctx, sk, box, look, ms, env, q.at.x + 20, q.at.y - 34);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
         if (sdef && sdef.eat) sk.drawSnack(ctx, sdef.eat, Math.max(0, t - eating.t0), q.at.x, q.at.y, env);
@@ -734,7 +764,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       place(q.at.x, q.at.y, q.look, [[0, true], [COMPACT_ROW, true]]);
     }
   } else {
-    for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
+    for (const d of p.desks) { const look = p.looks.get(d.key); drawPerson(ctx, sk, d, actPosed(p, look), ms, env, d.x + d.w - 14, d.y + 14); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
     blit(p.layers.front);
     // Tags left out of the layer: the hovered desk's front again, with its tag.
     const hd = tagsOff && hot ? p.desks.find((d) => d.key === hot) : null;
@@ -1571,6 +1601,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * the whole view on its data-k/x/y), the zoom's percentage, the overlay, the tooltip.
    */
   const mark = () => {
+    // M-3665: too far out to read the name tags (TAG_READ_K) in one office, the stage says so: the people's names then
+    // show as a row of chips over its foot (the CSS: a phone's whole office, or a desk zoomed out), each opening their card.
+    if (ooRef.current && typeof ooRef.current.toggleAttribute === "function") ooRef.current.toggleAttribute("data-tags-off", !overview && view0().k < TAG_READ_K);
     const v = view0(), m = miniViewRef.current;
     if (m) {
       const f = miniFrame(v, size, L.width, L.height);
@@ -1824,7 +1857,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         s.part.cover = r.width > 0 && r.height > 0 ? { x: (r.left - c.left) * s.ratio, y: (r.top - c.top) * s.ratio, w: r.width * s.ratio, h: r.height * s.ratio } : null;
       } else s.part.cover = null;
       const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, false, null, s.bubbleHits);
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, v.k < TAG_READ_K, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -2709,7 +2742,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
-        return html`<li key=${d.key}>${d.node.i
+        return html`<li key=${d.key} data-call=${CALLING.has(d.node.state) ? "" : undefined}>${d.node.i
           ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} data-slot=${Number.isInteger(d.box?.slot) ? d.box.slot : undefined} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
