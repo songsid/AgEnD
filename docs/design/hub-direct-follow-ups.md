@@ -36,7 +36,7 @@ opt-in prompt. The person can stop these messages in the one-to-one's "…" menu
 
 - **Mute this agent's own messages.** While on, the agent can still answer the person's questions, but a message
   it sends on its own is refused, and the agent is told the person turned them off. The person turns it back on
-  in the same place. Refusing is chosen over delivering silently, so nothing piles up unseen.
+  in the same place. While muted, a short line by the composer names the agent and explains that questions still get answers. Earlier messages remain visible. Refusing is chosen over delivering silently, so nothing piles up unseen.
 Grant withdrawal or expiry can close the chat. There is no person-triggered Close action in phase 1.
 
 Each message is checked at the moment it is sent, for exactly its text and files, like an answer. All must hold:

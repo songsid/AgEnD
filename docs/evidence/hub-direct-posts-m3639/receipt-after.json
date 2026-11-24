@@ -1,5 +1,11 @@
 {
+  "captureHead": "76480a9293c477ac13b41cc8d5ed8b07327526fd",
   "stage": "after",
+  "fontProbe": {
+    "paperclip": "U+1F4CE",
+    "cjkHasGlyph": false,
+    "emojiHasGlyph": true
+  },
   "checks": [
     {
       "name": "grant created",
@@ -14,7 +20,31 @@
       "ok": true
     },
     {
+      "name": "earlier answer authorized",
+      "ok": true
+    },
+    {
       "name": "desk-light-en actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en initially unchecked",
       "ok": true
     },
     {
@@ -23,6 +53,10 @@
     },
     {
       "name": "desk-light-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en previous post remains while muted",
       "ok": true
     },
     {
@@ -38,11 +72,35 @@
       "ok": true
     },
     {
+      "name": "desk-light-zh-TW no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW initially unchecked",
+      "ok": true
+    },
+    {
       "name": "desk-light-zh-TW muted check",
       "ok": true
     },
     {
       "name": "desk-light-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW previous post remains while muted",
       "ok": true
     },
     {
@@ -58,11 +116,35 @@
       "ok": true
     },
     {
+      "name": "desk-dark-en no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en initially unchecked",
+      "ok": true
+    },
+    {
       "name": "desk-dark-en muted check",
       "ok": true
     },
     {
       "name": "desk-dark-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en previous post remains while muted",
       "ok": true
     },
     {
@@ -78,11 +160,35 @@
       "ok": true
     },
     {
+      "name": "desk-dark-zh-TW no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW initially unchecked",
+      "ok": true
+    },
+    {
       "name": "desk-dark-zh-TW muted check",
       "ok": true
     },
     {
       "name": "desk-dark-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW previous post remains while muted",
       "ok": true
     },
     {
@@ -98,11 +204,35 @@
       "ok": true
     },
     {
+      "name": "phone-light-en no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en initially unchecked",
+      "ok": true
+    },
+    {
       "name": "phone-light-en muted check",
       "ok": true
     },
     {
       "name": "phone-light-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en previous post remains while muted",
       "ok": true
     },
     {
@@ -118,11 +248,35 @@
       "ok": true
     },
     {
+      "name": "phone-light-zh-TW no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW initially unchecked",
+      "ok": true
+    },
+    {
       "name": "phone-light-zh-TW muted check",
       "ok": true
     },
     {
       "name": "phone-light-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW previous post remains while muted",
       "ok": true
     },
     {
@@ -138,11 +292,35 @@
       "ok": true
     },
     {
+      "name": "phone-dark-en no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en initially unchecked",
+      "ok": true
+    },
+    {
       "name": "phone-dark-en muted check",
       "ok": true
     },
     {
       "name": "phone-dark-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en previous post remains while muted",
       "ok": true
     },
     {
@@ -158,11 +336,35 @@
       "ok": true
     },
     {
+      "name": "phone-dark-zh-TW no new question or answer relation",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW earlier question already answered",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no stale pending status",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW paperclip has real emoji fallback",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW initially unchecked",
+      "ok": true
+    },
+    {
       "name": "phone-dark-zh-TW muted check",
       "ok": true
     },
     {
       "name": "phone-dark-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW previous post remains while muted",
       "ok": true
     },
     {
