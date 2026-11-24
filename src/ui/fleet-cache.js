@@ -46,7 +46,7 @@ register("cache", {
     scanning: "仍在讀取對話紀錄——還剩 {0}。重新整理可看到更多。", scanningFirst: "第一次讀取對話紀錄中——重新整理可看到更多。", refresh: "重新整理",
     keepWarm: "建議保溫", leaveOff: "不需保溫", estimate: "估算", notPriced: "未定價",
     requests: "請求數", pastTtl: "超過 TTL（{0}）", expired: "已過期（重寫）", rewritten: "重寫的 token",
-    expiryCost: "過期成本", share: "占其成本 {0}", pings: "保溫 ping 次數", pingsAfter: "其中 {0} 次在最後一次請求之後",
+    expiryCost: "過期成本", share: "佔其成本 {0}", pings: "保溫 ping 次數", pingsAfter: "其中 {0} 次在最後一次請求之後",
     pingCost: "ping 成本", net: "保溫後淨額", gaps: "請求間隔", ttlLine: "TTL {0}",
     quiet: "這段期間活動太少，無法判斷。",
     neverExpired: "沒有任何間隔超過 {0} 的快取時效。", survived: "有 {0} 個間隔超過 {1} TTL，但快取仍在。",
