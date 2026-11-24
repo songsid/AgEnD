@@ -157,11 +157,28 @@ export function allBar(detail) {
 }
 
 const REFUSALS = { "all-mention-off": "errAllMention", "not-member": "errNotMember", archived: "errArchived" };
-/** A refusal in words (spec §4); the network's own failure as the Fleet chat says it. */
+/**
+ * A refusal in words (spec §4); the network's own failure as the Fleet chat says it. M-3604: only a send that never got an
+ * answer says "check the connection"; a Hub refusal says why (before, every refusal read as a network problem).
+ */
 export function refusalText(r) {
   if (!r || r.ok) return "";
   if (REFUSALS[r.code]) return hroom(REFUSALS[r.code]);
-  return hroom("notSentBecause", hroom("sendNoConnection"));
+  const status = Number(r.status) || 0, code = typeof r.code === "string" ? r.code : "";
+  const why = !status || code === "unreachable" ? "sendNoConnection"
+    : status === 401 ? "sendSignedOut"
+    : code === "csrf" || code === "cross-site" ? "sendSession"
+    : status === 429 || code === "backpressure" ? "sendBusy"
+    : code === "denied" || code === "revoked" || code === "forbidden" ? "sendDenied"
+    : code === "invalid" ? "sendInvalid"
+    : status >= 500 || code === "unavailable" ? "sendUnavailable" : "";
+  return hroom("notSentBecause", why ? hroom(why) : hroom("sendRefused", code || String(status)));
+}
+/** M-3604: 「重試傳送」 only where sending the same thing again can work (no answer, busy, unavailable). */
+export function retryable(r) {
+  if (!r || r.ok || REFUSALS[r.code]) return false;
+  const status = Number(r.status) || 0;
+  return !status || r.code === "unreachable" || status === 429 || r.code === "backpressure" || status >= 500;
 }
 
 /**
@@ -226,7 +243,7 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     setBusy(true); setMsg(null);
     const r = await store.send(text, { mentions: boundMentions(value, detail, bindings.current), ...(reply ? { replyTo: reply.roomMessage } : {}) });
     setBusy(false);
-    if (r.ok) { setValue(""); bindings.current = []; onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
+    if (r.ok) { setValue(""); bindings.current = []; onReply(null); } else setMsg({ text: refusalText(r), retry: retryable(r) });
   };
   const onKeyDown = (e) => {
     if (palette && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPick((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length); return; }
