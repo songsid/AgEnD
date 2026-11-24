@@ -43,6 +43,18 @@ where it was typed — e.g. "Only a room manager can @All agents in this
 room.", "You are no longer in this room.", "This room is archived; you
 can't send messages."
 
+**A one-to-one chat** (M-3596) has the same bar for your own question, live:
+
+- **Working:** "Notes is working on it", with the time since the agent got it.
+- **Waiting, with the reason:**
+  - "Waiting: Notes is answering another question first" (or "has 3 questions to answer first"). This is a count only; you never see whose questions they are.
+  - "Waiting: Notes is busy with other work".
+  - "Waiting: Notes is paused; it gets your question when it resumes".
+  - "Waiting: Notes is offline; it gets your question when it's back".
+  - "Sent to Notes; waiting for it to start".
+
+The answer replaces the bar. It never shows tool steps or anyone else's question.
+
 ## Who sees what
 
 Every message shows its author; your own sit on the right with no name. An

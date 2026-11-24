@@ -310,6 +310,27 @@ describe("a room's committed order (Ridge's `sequence`)", () => {
     expect(st.workers()).toEqual([{ kind: "assistant", name: "房間助理" }]);
     st.stop();
   });
+  it("M-3596: a 1:1 chat's status line — waiting and why, then working (from its answer row), gone with the answer", async () => {
+    const { pg, fx, restore } = await roomPage("room-report");
+    try {
+      const room = fx.rooms.find((r: any) => r.id === "room-report")!, q = room.messages.find((m: any) => m.author.kind === "person")!;
+      const name = pg.root.querySelector(".hub-room-page .hub-chat-head strong")!.textContent;
+      const bar = () => pg.root.querySelector(".hub-room-page .work-bar") as any;
+      const row = { id: `${q.id}:answer`, roomId: "room-report", at: q.at + 1, author: { kind: "agent", id: "exp-x", name }, text: "", mentions: [], answerTo: q.id };
+      fx.emit("message.added", { roomId: "room-report", message: { ...row, stage: "queued", ahead: 1 } });
+      await until(() => bar()?.classList.contains("awaiting"));
+      // The fixture's agent is offline: that is the reason given (it outranks a question ahead).
+      expect(bar().querySelector(".lbl").textContent).toBe(`Waiting: ${name} is offline; it gets your question when it's back`);
+      fx.emit("message.updated", { roomId: "room-report", message: { ...row, stage: "working", startedAt: Date.now() - 65_000 } });
+      await until(() => bar()?.classList.contains("working"));
+      expect(bar().querySelector(".lbl").textContent).toBe(`${name} is working on it`);
+      expect(bar().querySelector(".elapsed").textContent).not.toBe("");
+      fx.emit("message.updated", { roomId: "room-report", message: { ...row, replyTo: q.id, answerTo: undefined, text: "It's in the shared folder." } });
+      await until(() => !bar());
+      expect(bar()).toBeNull();
+    } finally { restore(); }
+  });
+
   it("without a sequence (a direct chat, an older Hub) the arrival order stays", async () => {
     const { client, h } = fake([msg("a", undefined), msg("b", undefined)]);
     const st = thread.createRoomStore("g1", { client });

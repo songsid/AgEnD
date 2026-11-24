@@ -370,6 +370,9 @@ agent's avatar, its name and its owner below it; a question still waiting shows 
 answer**, and a closed chat says **Closed**. Ctrl K (⌘K on a Mac) filters it by an agent's name or its owner. On a Hub
 that has rooms, the list has two groups: **Rooms** (房間: a square avatar, "3 people · 12 agents", unread count, an @
 mark when someone mentioned you) and **Agents** (one-to-one chats, the agent's status dot, **Hub assistant** last).
+In a one-to-one chat, the bar above the box says what your own question is doing (M-3596): "Notes is working on it" with
+the elapsed time, or "Waiting: …" and why (another question first, busy, paused, offline, or just sent). The waiting count
+never says whose questions they are, and the answer replaces the bar.
 Unread chats come first, then the most recent.
 
 Favorites work as in AgEnD's own sidebar: a row's **⋯** menu has **Add to favorites** (加入最愛) and **Remove from

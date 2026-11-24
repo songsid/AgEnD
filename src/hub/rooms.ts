@@ -25,7 +25,7 @@ import type { HubAnswer, HubExposure, HubReceipt, HubReconcile, HubReconcileRepl
 import type { HubLinkContext } from "./server.js";
 import { exposureOf, grantApplies, grantSubjectApplies, grantOf, readExposure, readGrant } from "./catalog.js";
 import type { HubGrantSubjectProof } from "./grant-access.js";
-import { POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
+import { LEASE_MS, POSITIVE, QUESTION_LIFETIME_MS, TERMINAL, messageFacts, readMessage, type HubPolicyService, type MessageRow } from "./policy.js";
 import { personFromString, type HubCore, type HubOperationPermit } from "./http/core.js";
 import { RoomReadPacer, ROOM_READ_BURST } from "./room-read-pacer.js";
 import { HubSharingPaused } from "./sharing.js";
@@ -68,7 +68,9 @@ const receiptOf = (m: MessageRow): HubReceipt => ({ messageId: m.id, contentDige
 /** A file as the asker's browser sees it: always fetched through the room's own route. */
 export interface HubFileView { id: string; name: string; size: number; mime: string; url: string }
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
-export interface HubRoomEntryView extends HubRoomEntry { idempotencyKey?: string; via?:{id:string;name:string}; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
+export interface HubRoomEntryView extends HubRoomEntry {
+  /** M-3596: an open question's progress — when it was handed to the agent, else how many open questions to it came first. */
+  startedAt?: number; ahead?: number; idempotencyKey?: string; via?:{id:string;name:string}; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -413,6 +415,18 @@ export class HubRoomsService {
     const appOrigins=this.appOrigins&&rows.length?this.core.atomic(db=>new Map((db.prepare(`SELECT message_id,app_id,app_name FROM hub_mcp_direct_questions
       WHERE message_id IN (${rows.map(()=>"?").join(",")})`).all(...rows.map(m=>m.id)) as {message_id:string;app_id:string;app_name:string}[])
       .map(a=>[a.message_id,{id:a.app_id,name:a.app_name}]))):new Map<string,{id:string;name:string}>();
+    // M-3596: an open question's progress, for its asker's status line: when it was handed to the agent (the Hub's own begin
+    // lease, issued right before the hand-off; never a member's say-so), else how many open questions to the same agent
+    // came first — a count only, never whose or what.
+    const open = rows.filter(m => !m.answer_id && (m.stage === "queued" || m.stage === "delivered" || m.stage === "consumed"));
+    const progress = open.length ? this.core.atomic(db => {
+      const begun = new Map((db.prepare(`SELECT message_id, MIN(expires_at) AS at FROM hub_leases WHERE phase='begin' AND message_id IN (${open.map(() => "?").join(",")})
+        GROUP BY message_id`).all(...open.map(m => m.id)) as { message_id: string; at: number }[]).map(r => [r.message_id, r.at - LEASE_MS]));
+      const ahead = db.prepare(`SELECT COUNT(*) AS n FROM hub_messages WHERE exposure_id=? AND id<>? AND created_at<? AND answer_id IS NULL
+        AND stage IN ('queued','delivered','consumed')`);
+      return new Map(open.map(m => [m.id, begun.has(m.id) ? { startedAt: begun.get(m.id)! }
+        : { ahead: (ahead.get(m.exposure_id, m.id, m.created_at) as { n: number }).n }]));
+    }) : new Map<string, { startedAt: number } | { ahead: number }>();
     const entries = rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
@@ -422,7 +436,7 @@ export class HubRoomsService {
         // Explicit blank also replaces the old prompt in a cached tab's merged entry; old renderers show no text.
         ...(pollResults.has(m.id) ? { pollResult: true as const, question: "" } : q?.question !== undefined ? { question: q.question } : {}),
         ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
-        ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}) };
+        ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}), ...(progress.get(m.id) ?? {}) };
     });
     const view = await this.view(ctx, roomId);
     // Content and the awaited room projection can cross a grant deadline. Check only after both settle.

@@ -21,6 +21,8 @@ export interface RoomMessage {
   askedBy?: string;
   reasonCode?: "finished-without-answer" | "owner-stopped-sharing";
   stage?: "queued" | "working" | "answered" | "not-answered";
+  /** M-3596, a 1:1 room's open question (its answer row, no text yet): when the agent got it; else how many came first. */
+  startedAt?: number; ahead?: number;
   /** M-3127: who reacted with what, oldest emoji first; `members` are room member ids (the viewer finds its own). */
   reactions?: { emoji: string; count: number; members: string[] }[];
   /** M-3127 B: an agent answer's buttons (its asker only) or poll (everyone in the room). */

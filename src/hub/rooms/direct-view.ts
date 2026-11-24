@@ -17,8 +17,15 @@ export function directMessages(room: HubRoomListItem, entries: readonly HubRoomE
       author: { kind: "person", id: personKeyString(room.asker), name: askerName,...(entry.via?{via:{...entry.via,kind:"app" as const}}:{}) }, text: entry.question ?? "",
       stage: entry.receipt.stage === "answered" ? "answered" : ["queued", "delivered", "consumed"].includes(entry.receipt.stage) ? "working" : "not-answered",
       ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}), ...(entry.questionFiles?.length ? { files: entry.questionFiles } : {}) };
-    return [question, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,
-      author: { kind: "agent" as const, id: room.exposureId, name: room.exposureName, owner: { name: room.ownerName } }, text: entry.answer,
+    const agent = { kind: "agent" as const, id: room.exposureId, name: room.exposureName, owner: { name: room.ownerName } };
+    // M-3596: an open question's answer row before it has text, as a group room's (the thread's work bar reads it): working
+    // once the agent was handed it, else queued (with how many open questions to it came first). The answer replaces it.
+    const pending: RoomMessage[] = entry.answer === undefined && question.stage === "working" && (entry.startedAt !== undefined || entry.ahead !== undefined)
+      ? [{ ...base, id: `${entry.messageId}:answer`, at: entry.startedAt ?? question.at, author: agent, text: "", answerTo: entry.messageId,
+        stage: entry.startedAt !== undefined ? "working" : "queued", ...(entry.startedAt !== undefined ? { startedAt: entry.startedAt } : { ahead: entry.ahead }) }]
+      : [];
+    return [question, ...pending, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,
+      author: agent, text: entry.answer,
       replyTo: entry.messageId, ...(entry.answerFiles?.length ? { files: entry.answerFiles } : {}) }])];
   });
 }
