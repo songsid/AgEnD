@@ -314,9 +314,11 @@ function HubSignIn() {
     }
     setBusy(false);
     setForm((f) => ({ ...f, password: "" }));
-    // M-3563: a browser fills its saved email address into 帳號; the directory's account has no "@" (an AD sAMAccountName
-    // cannot), so say what to type instead.
-    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw(form.login.includes("@") ? "errSignInAt" : "errSignIn"));
+    // M-3563: a browser fills its saved email address into 帳號. Where this Hub signs in by an account that can hold no "@"
+    // (AD's sAMAccountName: the shell's data-hub-login="no-at"), say what to type instead; elsewhere ("@" may be right:
+    // userPrincipalName, mail…) the plain line.
+    const noAt = typeof document !== "undefined" && document.body?.dataset?.hubLogin === "no-at";
+    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw(noAt && form.login.includes("@") ? "errSignInAt" : "errSignIn"));
   };
   return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
     <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>

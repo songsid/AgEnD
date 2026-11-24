@@ -11,6 +11,8 @@ import type { HubPollBallot } from "../types.js";
 
 /** The `hub` section the sealed manifest covers — frozen, validated, never re-read from a request. */
 export interface HubHttpConfig {
+  /** M-3563: sign-in is by sAMAccountName (no "@" possible): the sign-in page may say to drop an "@…" part. */
+  readonly loginWithoutAt?: boolean;
   readonly hubId: string;
   readonly name: string;
   readonly memberOrigin: string;

@@ -17,7 +17,7 @@ register("hub", {
     adminTitle: "Administration",
     // The Hub workspace (S3b): sign-in, Ask, My agents, Administration
     signedOutHub: "Not signed in", signOut: "Sign out", signInTitle: "Sign in to the Hub",
-    signInLead: "Use your company account. Your password goes to the directory only and is never kept.",
+    signInLead: "Use your company account. The Hub checks your password with the directory and never keeps it; your browser may offer to save it for you.",
     signInPreview: "This Hub is a preview. Its screens and features may still change.",
     login: "Account", password: "Password", signIn: "Sign in",
     errSignIn: "That account and password didn't work.", errSignInAt: "That account and password didn't work. Type only your account name, the part before the @ (for example alex), not your email address.", errDirectory: "The directory can't be reached right now. Try again later.",
@@ -96,7 +96,7 @@ register("hub", {
     exposuresHint: "請在自己的 Fleet 分享 Agent：設定 → Hub。",
     adminTitle: "管理",
     signedOutHub: "尚未登入", signOut: "登出", signInTitle: "登入 Hub",
-    signInLead: "請使用公司帳號登入。密碼只送給目錄服務驗證，不會被保存。",
+    signInLead: "請使用公司帳號登入。Hub 只把密碼送給目錄服務驗證，不會保存；你的瀏覽器可能會詢問是否幫你記住。",
     signInPreview: "這個 Hub 是預覽版，畫面與功能可能還會變動。",
     login: "帳號", password: "密碼", signIn: "登入",
     errSignIn: "帳號或密碼不正確。", errSignInAt: "帳號或密碼不正確。帳號只要填 @ 前面的部分（例如 alex），不是電子郵件地址。", errDirectory: "目前無法連到目錄服務，請稍後再試。",

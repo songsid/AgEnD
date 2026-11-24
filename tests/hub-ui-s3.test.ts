@@ -318,6 +318,8 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
       const [login, pw] = ["#hubLogin", "#hubPassword"].map((sel) => pg.root.querySelector(sel) as any);
       expect([login.getAttribute("name"), login.getAttribute("autocomplete"), pw.getAttribute("name"), pw.getAttribute("autocomplete")])
         .toEqual(["username", "username", "password", "current-password"]);
+      // This Hub signs in by sAMAccountName (the shell's mark): an account typed with "@" is told what to type.
+      pg.document.body.setAttribute("data-hub-login", "no-at");
       input(pg, "#hubLogin", "alex@example.com"); input(pg, "#hubPassword", "pw"); await settle(5);
       fire(pg.root.querySelector(".hub-signin form")!, "submit");
       await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
@@ -331,6 +333,22 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
       if (oldCred === undefined) delete nav.credentials; else Object.defineProperty(nav, "credentials", { configurable: true, value: oldCred });
       if (hadPC) g.PasswordCredential = oldPC; else delete g.PasswordCredential;
     }
+  });
+  // #4386 review: a Hub may sign in by an account that holds an "@" (userPrincipalName, mail): no mark, no such advice.
+  it("M-3563: a Hub whose account may hold an \"@\" (no mark): a refused 'user@domain' gets the plain line only", async () => {
+    hubApi({
+      "GET /hub/v1/session": () => [200, { signedIn: false, hub: { name: "Team Hub" } }],
+      "POST /hub/v1/session": () => [403, { code: "denied" }],
+    });
+    const pg = await mountTab("ask");
+    await until(() => pg.root.querySelector(".hub-signin"));
+    expect(pg.document.body.getAttribute("data-hub-login")).toBeNull();
+    input(pg, "#hubLogin", "alex@example.com"); input(pg, "#hubPassword", "pw"); await settle(5);
+    fire(pg.root.querySelector(".hub-signin form")!, "submit");
+    await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
+    expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work.");
+    // The lead says what is true now: the Hub keeps nothing; the browser may offer to save.
+    expect(pg.root.querySelector(".hub-signin-lead")!.textContent).toBe("Use your company account. The Hub checks your password with the directory and never keeps it; your browser may offer to save it for you.");
   });
   it("M-3563: no Credential Management API (Firefox, Safari): signing in works as before, nothing thrown", async () => {
     expect(() => hubPanel.rememberLogin("alex", "pw")).not.toThrow();
