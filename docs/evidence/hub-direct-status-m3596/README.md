@@ -1,0 +1,49 @@
+# Hub 1:1 chat: the status line while the agent works (M-3596)
+
+**The problem (the user, 2026-11-24).** A Hub one-to-one chat stayed silent from the moment you asked until the answer arrived. You couldn't tell whether your question was waiting or being worked on.
+
+**Why.** The member fleet records the `delivered` and `consumed` receipts only when the agent answers. That's by design: queue acceptance isn't delivery evidence. The thread's work bar only read group-room answer rows. So a 1:1 question had nothing to show.
+
+**What it shows now.** A 1:1 chat has the Fleet chat's work bar for your own question, live:
+
+| State | Words (en / zh-TW) |
+|---|---|
+| Waiting behind another question | "Waiting: Notes is answering another question first" (or "has N questions to answer first") / 「等待中：Notes 正在先回答另一個問題」 |
+| Busy | "Waiting: Notes is busy with other work" / 「等待中：Notes 正在處理其他工作」 |
+| Paused / offline | "Waiting: Notes is paused; it gets your question when it resumes" / "…is offline; it gets your question when it's back" |
+| Sent, not started | "Sent to Notes; waiting for it to start" / 「已送給 Notes，等它開始處理」 |
+| Working | "Notes is working on it" with the time since the latest hand-off / 「Notes 正在處理」 |
+| Handed, but the agent's fleet reports no state (an older member) | "Handed to Notes; waiting for its answer" / 「已交給 Notes，等它回答」: the Hub knows only that a hand-off was tried, never "working" (Prism #4400 R1) |
+| Working, but the agent paused or went offline | "Paused: Notes continues with your question when it resumes" / "Offline: …when it's back" (wins over the timer) |
+| Answered | the answer replaces the bar |
+
+**Where it comes from.** Everything is Hub-side; there is no member or protocol change, and receipts stay evidence-only.
+
+- **Working:** the Hub's own `begin` lease. The member asks for it right before handing the question to the agent. The time is the latest lease's issue time (`MAX(expires_at) − LEASE_MS`), so a retry after a hold restarts it.
+  - A member can still hold the question after the lease and before any input. Then nothing reaches the Hub, and the agent stays idle. If the agent's reported state is still idle more than 60 s after the hand-off, the line reads "Sent to Notes; waiting for it to start" (Prism #4400 P2).
+  - That rule applies only when the agent's state was reported (`agent.reported`). An older member never reports, so its agent always reads idle.
+- **Ahead:** a count of earlier open questions to the same agent. It's a count only, never whose or what.
+- **Busy / paused:** the agent's reported `agent.state`, which members already send for every shared agent.
+- **Live:** a begin lease pushes the question's answer row to its asker, and a state change pushes `room.changed`.
+
+## Captures
+
+These come from the real Hub (HTTPS and SQLite from `tests/helpers/hub-s3b-rig.ts`) and its real UI, headless Chromium, with made-up people: Hub Admin asks, Bea Sample asked first, and the agent is Notes. The capture harness is scratch and not in the repo.
+
+They were taken at 5f6f7dfb, before the P2 fixes. Those fixes change the line only when the agent is paused or offline while working, or reported idle after the grace. Neither happens in these steps: in step 3 the agent reports working. The elapsed time in step 3 (0:02) is the time at capture.
+
+| View | 1 behind | 2 busy | 3 working | 4 answered | before (same moment as 3) |
+|---|---|---|---|---|---|
+| Desk, zh-TW, light | `desk-zh-TW-light-after-1-behind.png` | `…-2-busy.png` | `…-3-working.png` | `…-4-answered.png` | `desk-zh-TW-light-before-3-working.png` (no bar) |
+| Phone, zh-TW, dark | `phone-zh-TW-dark-after-1-behind.png` | `…-2-busy.png` | `…-3-working.png` | `…-4-answered.png` | `phone-zh-TW-dark-before-3-working.png` |
+| Desk, en, dark | `desk-en-dark-after-1-behind.png` | `…-2-busy.png` | `…-3-working.png` | `…-4-answered.png` | `desk-en-dark-before-3-working.png` |
+| Phone, en, light | `phone-en-light-after-1-behind.png` | `…-2-busy.png` | `…-3-working.png` | `…-4-answered.png` | `phone-en-light-before-3-working.png` |
+
+Step 3 arrives live: the begin lease is sent while the page is open, and the bar turns to working without a reload.
+
+**Checks recorded by the rig (all four views):**
+- **Behind:** the waiting bar with "another question first".
+- **Busy:** the waiting bar with "busy".
+- **Working:** the working bar with elapsed time (0:02).
+- **Answered:** no bar.
+- **Before (the base branch):** no bar at any step.

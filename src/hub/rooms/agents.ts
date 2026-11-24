@@ -101,6 +101,11 @@ export class HubRoomAgents {
     const rooms = this.core.atomic(db => db.prepare("SELECT room_id FROM hub_room_members WHERE kind='agent' AND subject=?").all(exposureId) as { room_id: string }[]);
     for (const { room_id: roomId } of rooms) this.emit({ type: "presence.changed", roomId, data: { roomId, memberId: exposureId, ...projection } });
   }
+  /** M-3596: whether this agent's state was reported on its fleet's current link (an older member never reports it). */
+  reported(exposureId: string): boolean {
+    const s = this.states.get(exposureId);
+    return !!s && s.link.current() && this.links.get(s.link.fleetId) === s.link;
+  }
   state(input: HubAgentState, link: HubLinkContext): void {
     const body = validated(agentStateSchema, input);
     if (!this.supports(link)) throw new HubProtocolError("incompatible");

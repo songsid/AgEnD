@@ -12,7 +12,7 @@ import type { HubGroupAuthorization, HubGroupPermit } from "../group-policy/auth
 import { HubCodeScopeRefusal, HubGroupAuthorizationError } from "../group-policy/authorization.js";
 import { HubGroupEnrollmentRefusal } from "../group-policy/resources.js";
 import { HubGroupPolicyError, HubGroupReadOverload } from "../group-policy/store.js";
-import { HUB_SESSION_IDLE } from "../sessions.js";
+import { hubSessionLimits, withinHubSessionLimits } from "../session-limits.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
 import { automaticFleetSlots, enrollmentThrottled, spendEnrollmentBudget } from "../enrollment-budget.js";
 import { CompanyJoinRecords, companyInvitationRecord as invitationRecord, type JoinRecord } from "./store.js";
@@ -335,11 +335,15 @@ export class HubCompanyJoin {
   }
   private session(r: JoinRecord): boolean {
     if (!r.owner || !r.sessionId) return false;
-    const row = this.options.db.prepare("SELECT s.person,s.state,s.expires_at,s.seen_at,s.directory_epoch,p.status FROM hub_sessions s JOIN hub_people p ON p.person=s.person WHERE s.id=?")
-      .get(r.sessionId) as { person: string; state: string; expires_at: number; seen_at: number; directory_epoch: number; status: string } | undefined;
+    const row = this.options.db.prepare("SELECT s.person,s.state,s.created_at,s.expires_at,s.seen_at,s.directory_epoch,p.status FROM hub_sessions s JOIN hub_people p ON p.person=s.person WHERE s.id=?")
+      .get(r.sessionId) as { person: string; state: string; created_at: number; expires_at: number; seen_at: number; directory_epoch: number; status: string } | undefined;
     return !!row && row.directory_epoch === this.directoryEpoch && readHubSessionEpoch(this.options.db) === this.directoryEpoch
       && row.person === personKeyString(r.owner) && row.state === "active" && row.expires_at > this.now()
-      && this.now() - row.seen_at <= HUB_SESSION_IDLE && row.status === "active";
+      && this.sessionWithinLimits(row) && row.status === "active";
+  }
+  /** M-3592: the administrator's sign-in limits, as HubSessions applies them (a lower absolute limit counts from sign-in). */
+  private sessionWithinLimits(row: { created_at: number; seen_at: number }): boolean {
+    return withinHubSessionLimits(row, hubSessionLimits(this.options.db), this.now());
   }
   private live(r: JoinRecord): boolean {
     return this.options.current() && this.control().enabled && this.records.current(r) && this.session(r) && this.now() < r.outerDeadline;
