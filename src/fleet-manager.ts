@@ -2715,6 +2715,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
             attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
+            attachQuestionSettled: read => { this.hubQuestionSettled = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentIntro: port => { this.hubAgentIntro=port; },
@@ -3118,7 +3119,59 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private contactWindows(): HubContactWindows {
     return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
   }
-  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
+  /**
+   * M-3660: each agent's running Hub answer turn as its daemon tells it (re-told on every connect): a correlation id, or
+   * null for "confirmed none". An agent missing here is unknown (this fleet has not heard from its daemon since it
+   * started): nothing settled lifts its windows then — they hold until the daemon says (Prism #4420 P2-1).
+   */
+  private readonly hubAnswerTurns = new Map<string, string | null>();
+  /**
+   * M-3660: the agent's daemon is about to write a Hub question into its idle pane: the answer turn's window opens (none for
+   * a share that opted out). A window that cannot be saved still holds in memory: fail closed.
+   */
+  private hubQuestionInput(agent: string, correlationId: string, contactLimit = true): void {
+    this.hubAnswerTurns.set(agent, correlationId);
+    if (!contactLimit) return;
+    try { this.contactWindows().begin(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be saved; it holds until this fleet restarts or it expires"); }
+  }
+  /** M-3660: that answer turn is over (its idle edge, or the next turn's write): the window closes, whatever came of it. */
+  private hubQuestionTurnEnded(agent: string, correlationId: string): void {
+    if (this.hubAnswerTurns.get(agent) === correlationId) this.hubAnswerTurns.set(agent, null);
+    try { this.contactWindows().answered(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be closed; it will expire"); }
+  }
+  /**
+   * M-3660: what the daemon says on (re)connect — the turn it is answering now, or none. A lost hub_question_input or
+   * hub_question_turn_ended (a stale connection, a fleet or daemon restart) is made good here: with no turn running every
+   * window of the agent ends; with one, that one holds and the rest end.
+   */
+  private hubQuestionTurnState(agent: string, correlationId: string | null, contactLimit = true): void {
+    try { this.contactWindows().closeAgent(agent, correlationId ?? undefined); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact windows could not be reconciled; they will expire"); }
+    if (correlationId) this.hubQuestionInput(agent, correlationId, contactLimit);
+    else this.hubAnswerTurns.set(agent, null);
+  }
+  /** M-3660: a daemon's Hub turn signal (from its current connection). "unknown" (an unreadable turn record) changes nothing. */
+  private hubTurnSignal(agent: string, msg: Record<string, unknown>): void {
+    const cid = typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId) ? msg.correlationId : null;
+    if (msg.type === "hub_question_turn_state") { if (msg.unknown !== true && (cid || msg.correlationId === null)) this.hubQuestionTurnState(agent, cid, msg.contactLimit !== false); }
+    else if (cid && msg.type === "hub_question_input") this.hubQuestionInput(agent, cid, msg.contactLimit !== false);
+    else if (cid && msg.type === "hub_question_turn_ended") this.hubQuestionTurnEnded(agent, cid);
+  }
+  /** M-3660: the agent's daemon has told this fleet its current turn, and it is not this question (unknown is never "none"). */
+  private hubAnswerTurnKnownNone(agent: string, correlationId: string): boolean {
+    return this.hubAnswerTurns.has(agent) && this.hubAnswerTurns.get(agent) !== correlationId;
+  }
+  /** M-3660: a settled question lifts its window only outside its own running answer turn; inside it, the turn's end does. */
+  private hubSettledOutsideTurn(): ((agent: string, correlationId: string) => boolean) | undefined {
+    const settled = this.hubQuestionSettled;
+    return settled ? (agent, correlationId) => this.hubAnswerTurnKnownNone(agent, correlationId) && settled(agent, correlationId) : undefined;
+  }
+  /** M-3660: the member side's "this question is no longer being answered" reader (null: no member service attached). */
+  private hubQuestionSettled: ((agent: string, correlationId: string) => boolean) | null = null;
+  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent, this.hubSettledOutsideTurn()); }
+  hubContactQuestion(agent: string): string | null { return this.contactWindows().restrictingQuestion(agent, this.hubSettledOutsideTurn()); }
   /**
    * M-3313 (#4145 for the Hub): what a Hub question or room notification hands the agent, with this fleet's sign-in
    * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
@@ -3171,6 +3224,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       task_summary: "A question from the Hub",
     };
     if (input.roomContextGeneration) ipcMeta.hub_room_context_generation = input.roomContextGeneration;
+    // M-3660: the share's opt-out travels with the question; its daemon's hub_question_input then opens no window.
+    if (input.contactLimit === false) ipcMeta.hub_contact_limit = "off";
     const result = await this.deliverToInstance(input.agent, { type: "fleet_inbound", targetSession: input.agent, content: this.screenHubText(input.text), meta: ipcMeta },
       { isCrossInstance: true, stillCurrent: input.stillCurrent, beforeInput: async () => {
         const classic=this.isClassicInstance(input.agent);
@@ -3180,8 +3235,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
-        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
-        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        // M-3660: the window covers only the turn that answers the question. The agent's daemon (Classic rooms' too)
+        // writes it only into an idle pane, as a turn of its own, and says so just before the write (hub_question_input),
+        // so a question waiting behind another turn — or never written — opens nothing.
         return input.stillCurrent();
       } });
     return result !== false;
@@ -3289,7 +3345,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const result = this.hubReports?.(input) ?? null;
     if (!result) return null;
     return result.then(outcome => {
-      if (outcome.ok) {
+      // M-3660: an accepted answer inside its own running answer turn does not lift it: the turn's end does.
+      if (outcome.ok && this.hubAnswerTurnKnownNone(input.caller, input.correlationId)) {
         try { this.contactWindows().answered(input.caller, input.correlationId); }
         catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
       }
@@ -13862,6 +13919,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
         } else if(msg.type==="hub_room_turn_ended"){
           if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
+        } else if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended" || msg.type === "hub_question_turn_state") {
+          // M-3660: only the instance's current daemon speaks for its pane's turns.
+          if (this.instanceIpcClients.get(name) === ipc) this.hubTurnSignal(name, msg);
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);

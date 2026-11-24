@@ -156,6 +156,17 @@ export class HubRoomAskAdapter {
       }
     }).immediate();
   }
+  /**
+   * M-3660: whether this agent's room question on `correlationId` is no longer being answered (answered, acked). A held
+   * room ask still takes the agent's late answer, so it is not settled: its window runs to its deadline. null: not one here.
+   */
+  questionSettled(correlationId: string, agent: string): boolean | null {
+    if (this.closed) return null;
+    const row = this.options.db.prepare("SELECT * FROM hub_room_asks WHERE cid=?").get(correlationId) as Row | undefined;
+    if (!row) return null;
+    try { if (this.read(row).local.agent !== agent) return null; } catch { return null; }
+    return row.state === "answered" || row.state === "acked";
+  }
   hasOpenQuestion(agent:string):boolean {
     return !this.closed&&this.rows().some(row=>["input","delivered"].includes(row.state)&&this.read(row).local.agent===agent);
   }
