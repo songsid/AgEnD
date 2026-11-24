@@ -1098,10 +1098,9 @@ function taskBoardDefaults(d, f) {
     if (w[field] === false || hasOwn(tb, key)) out[key] = w[field]; else delete out[key];
   }
   if (w.wakeLeader !== saved.wakeLeader) { if (w.wakeLeader) out.leader = w.wakeLeader; else delete out.leader; }
-  // M-3668: the archive age as the wake switches — kept as saved unless changed; changed back to the default with no key
-  // saved, the key stays absent.
+  // M-3668: the archive age is kept as saved unless changed (nothing saved stays absent: the form shows the default).
   const days = f ? f.archiveDays : archiveForm(d).archiveDays;
-  if (Number(days) !== Number(archiveForm(d).archiveDays)) { if (Number(days) !== ARCHIVE_DAYS_DEFAULT || hasOwn(tb, "archive_after_days")) out.archive_after_days = Number(days); else delete out.archive_after_days; }
+  if (Number(days) !== Number(archiveForm(d).archiveDays)) out.archive_after_days = Number(days);
   return out;
 }
 /**
