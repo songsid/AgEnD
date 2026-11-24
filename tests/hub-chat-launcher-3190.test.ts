@@ -173,3 +173,41 @@ describe("M-3190: the launcher's catalog read", () => {
     } finally { restore(); }
   });
 });
+
+// Prism (review of #4392): a return reads again while the first read can still be on its way. The page's Hub client happens
+// to queue its reads in order and to share one in flight, but useRead must not depend on that: the newest read answers, and
+// an older one landing after it — success, refusal or a failed fetch — cannot take the fresh list back or put an error over it.
+describe("M-3567: useRead — the newest read wins", () => {
+  type Pending = { resolve: (v: any) => void; reject: (e: unknown) => void };
+  async function probe() {
+    const pending: Pending[] = [], seen: { data: any; reload: () => Promise<unknown> } = { data: undefined, reload: async () => {} };
+    const pg = page({ url: "http://127.0.0.1:19280/ui/hub" }); mounted.push(pg);
+    const Probe = () => { const [data, reload] = hubPanel.useRead(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+      seen.data = data; seen.reload = reload; return h("p", null, data ? "loaded" : "loading"); };
+    await pg.mount(h(Probe, null)); await settle();
+    return { pending, seen };
+  }
+  const fresh = { ok: true, askable: [{ exposure: { id: "exp-90", displayName: "team-agent" } }] };
+  const lateEndings: Array<[string, (p: Pending) => void]> = [
+    ["an older list", (p) => p.resolve({ ok: true, askable: [] })],
+    ["an older refusal", (p) => p.resolve({ ok: false, status: 503, code: "unreachable" })],
+    ["an older failed fetch", (p) => p.reject(new Error("network"))],
+  ];
+  it.each(lateEndings)("%s landing after the return's answer changes nothing", async (_name, end) => {
+    const { pending, seen } = await probe();
+    expect(pending.length, "the first read is on its way").toBe(1);
+    void seen.reload(); await settle();
+    pending[1].resolve(fresh); await settle();
+    expect(seen.data).toEqual(fresh);
+    end(pending[0]); await settle();
+    expect(seen.data, "still the return's answer, with no error").toEqual(fresh);
+  });
+  it("the newest read's own failure still shows, over the list it had", async () => {
+    const { pending, seen } = await probe();
+    pending[0].resolve(fresh); await settle();
+    void seen.reload(); await settle();
+    pending[1].resolve({ ok: false, status: 503, code: "unreachable" }); await settle();
+    expect(seen.data.askable).toEqual(fresh.askable);
+    expect(typeof seen.data.error).toBe("string");
+  });
+});

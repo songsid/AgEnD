@@ -354,11 +354,16 @@ export function rememberLogin(login, password) {
 }
 
 /** Load a list from the client; `reload` reads it again. null while loading, { error } on failure. */
-function useRead(read) {
+export function useRead(read) {
   const [data, setData] = useState(null);
-  const live = useRef(true);
-  const failed = (error) => { if (live.current) setData((old) => ({ ...old, error })); };
-  const reload = () => read().then((r) => { if (live.current) { if (r.ok) setData(r); else failed(errText(r)); } }, () => failed(hw("errFailed")));
+  const live = useRef(true), latest = useRef(0);
+  // M-3567 (Prism): only the newest read may answer. A return reads again while the first read can still be on its way; that
+  // older answer, success or failure, landing last must not undo the fresh one (a grant given while away would vanish).
+  const reload = () => {
+    const n = ++latest.current, current = () => live.current && n === latest.current;
+    const failed = (error) => { if (current()) setData((old) => ({ ...old, error })); };
+    return read().then((r) => { if (current()) { if (r.ok) setData(r); else failed(errText(r)); } }, () => failed(hw("errFailed")));
+  };
   useEffect(() => { live.current = true; reload(); return () => { live.current = false; }; }, []);
   return [data, reload];
 }
