@@ -151,7 +151,8 @@ describe("the page: the Done column, the Archive", () => {
     expect(doneTiles()).toEqual(DONE.slice(0, 20).map((c) => c.id));
     const head = q('.tb-col[aria-label="Done"] .tb-col-head');
     // #4428 capture check: the week's count says how many of them are archived (the column shows the rest).
-    expect(head.querySelector(".tb-done-week").textContent).toBe("355 done this week · 310 archived");
+    // Under the column's head, not in it (the head keeps its title and count on one line).
+    expect([head.querySelector(".tb-done-week"), q('.tb-col[aria-label="Done"] > .tb-done-week').textContent]).toEqual([null, "355 done this week · 310 archived"]);
     expect(head.querySelector(".tb-count").textContent).toBe("45");
     fire(q(".tb-done-more"), "click"); await settle(4);
     expect(doneTiles()).toHaveLength(40);

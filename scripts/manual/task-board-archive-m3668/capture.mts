@@ -78,6 +78,7 @@ try {
     check(`${tag}: the board's header has "Archived · ${stats.archived}"`, new RegExp(String(stats.archived)).test(link), link);
     // A desk's five columns scroll sideways: the Done column brought into view (its head says this week's count).
     if (!phone) { await page.evaluate(() => { const s = document.querySelector(".tb-scroll") as HTMLElement | null; if (s) s.scrollLeft = s.scrollWidth; }); await page.waitForTimeout(400); }
+    check(`${tag}: this week's count stands over the Done cards, outside the column's head`, (await page.locator(".tb-col-head .tb-done-week").count()) === 0) ;
     if (phone) check(`${tag}: on a phone this week's count stands over the Done cards`, new RegExp(String(stats.doneWeek)).test(await page.locator(".tb-done-week-line").first().innerText().catch(() => "")));
     // The project's name is not squeezed by the header's links (it stays on one line).
     const nameLines = await page.evaluate(() => { const h = document.querySelector(".tb-name h2") as HTMLElement | null; if (!h) return 0; const lh = parseFloat(getComputedStyle(h).lineHeight) || 24; return Math.round(h.getBoundingClientRect().height / lh); });

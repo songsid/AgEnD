@@ -664,10 +664,9 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
         return html`<section key=${status} class=${`tb-col st-${status}${status === current ? " is-current" : ""}${drag ? " can-drop" : ""}${line >= 0 ? " over" : ""}`} aria-label=${t(`tasks.${status}`)}
           onDragOver=${(e) => over(e, status)} onDrop=${(e) => dropOn(e, status, list)}>
           <h3 class="tb-col-head"><span class="tb-dot"></span>${t(`tasks.${status}`)}
-            ${status === "done" && archiveDays > 0 ? html`<span class="muted tb-done-week" title=${t("tasksArchive.weekTip")}>${weekLabel(stats)}</span>`
-              : status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
+            ${status === "done" && archiveDays === 0 ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
             <span class="tb-count">${status === "done" ? doneAll.length : list.length}</span></h3>
-          ${status === "done" && archiveDays > 0 ? html`<p class="muted tb-done-week-line">${weekLabel(stats)}</p>` : null}
+          ${status === "done" && archiveDays > 0 ? html`<p class="muted tb-done-week tb-done-week-line" title=${t("tasksArchive.weekTip")}>${weekLabel(stats)}</p>` : null}
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
             return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} writable=${writable} cards=${cards} lead=${lead}
