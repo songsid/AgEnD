@@ -10,16 +10,19 @@ configured contact-admin eligibility on the target platform. Routing and human
 receipt proof fields retain their actual bot context.
 
 The initial six regression cases fail on base `c0cb46de3` and pass with the fix.
-The final 14 affected suites pass 271 tests at `1fbbe66f4`; source and test
+`base-repro.test.ts.fixture` retains those controls: copy it into `tests/` with a
+`.test.ts` suffix in an owned checkout of that base and run it with Vitest.
+The final 16 affected suites pass 344 tests at `7984d8fbc`; source and test
 TypeScript checks pass. `verification.json` lists the exact files and reversals.
 For the suite command, run `npx vitest run` with each listed name prefixed by
 `tests/` and suffixed by `.test.ts`, with `--maxWorkers=1`. Type checks:
 `npm run typecheck` and `npm run typecheck:tests`.
 
-Six reversals each cause semantic test failures: adapter-based identity keys,
+Seven reversals each cause semantic test failures: adapter-based identity keys,
 raw historical-origin reads, adapter-based admin matching, losing the platform
-boundary for admin roles, clearing unknown origins, and bypassing an old pending
-operation after recovery. All mutations were restored before the final run.
+boundary for admin roles, clearing unknown origins, bypassing an old pending
+operation after recovery, and allowing a newly matching grant to release that
+old pending operation. All mutations were restored before the final run.
 
 Controls retain different-user/platform separation, the distinct-person cap,
 explicit unknown and mixed singleton restrictions, target configured approvers,
@@ -28,8 +31,8 @@ and pending-ticket decisions. The real inbound and outbound methods prove that
 reply, edit and reaction still use the topic's configured bot when a sibling bot
 observed the incoming message first. Human receipts keep that observing bot.
 
-A normal merge onto `a12b8fe32` preserves all 15 owned ordered added/removed-line
-sequences exactly, with no extra product paths. Integration verification is
-recorded separately after that merge. There is no migration or manual state-file
+A normal merge onto `2698b1302` (including the Hub answer-turn fix) preserves all
+18 owned ordered added/removed-line sequences exactly, with no extra paths. The
+merged integration check passes 90 tests in six suites plus source TypeScript. There is no migration or manual state-file
 edit. Reverting restores adapter-specific interpretation and may restore those
 contact restrictions; old pending tickets are never automatically dispatched.

@@ -1,10 +1,10 @@
 {
   "base": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
-  "testedSource": "1fbbe66f460d2b19dbdf801ce58a96c614bb02d0",
+  "testedSource": "7984d8fbca8453d5fd06ae58eff7cabd5ce403fd",
   "baseRegressionCases": 6,
   "baseFailed": 6,
-  "finalSuites": 14,
-  "finalTests": 271,
+  "finalSuites": 16,
+  "finalTests": 344,
   "sourceTypecheck": 0,
   "testTypecheck": 0,
   "mutations": [
@@ -43,6 +43,11 @@
       "caught": true,
       "returncode": 1,
       "failedTests": 1
+    },
+    {
+      "name": "pending-grant",
+      "caught": true,
+      "failedTests": 1
     }
   ],
   "testFiles": [
@@ -59,6 +64,17 @@
     "hub-contact-limit-3160",
     "hub-representative-fleet",
     "contact-origin-clear-3366",
-    "web-contact-origin-clear-3366"
-  ]
+    "web-contact-origin-clear-3366",
+    "delivery-forwards-1756",
+    "fleet-windows-runtime"
+  ],
+  "integration": {
+    "incoming": "2698b1302b3439ecd31612b7e18c883dff644b0f",
+    "mergedHead": "46ae269565e03a580569c0714f312bf900763f02",
+    "ownedPaths": 18,
+    "orderedAddedRemovedLinesIdentical": true,
+    "suites": 6,
+    "tests": 90,
+    "sourceTypecheck": 0
+  }
 }
