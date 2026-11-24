@@ -15,5 +15,6 @@ Checked against each capture's DOM:
 - the two notes are present;
 - after saving, the status line reads 「已儲存。」 / "Saved.";
 - the card is 860 px wide on the desktop and 358 px on the phone.
+- on the phone, the two lists and **Save** are each 44 CSS px tall: a full tap target (`min-height: var(--tap)` on narrow screens). They measured about 40 px before. The phone captures were re-taken with this fix.
 
 The server side (bounds, administrator only, revision, audit, what a new limit does to sessions already signed in) is tested in `tests/hub-session-limits-m3592.test.ts`, through the real Hub HTTP server with a fake clock.
