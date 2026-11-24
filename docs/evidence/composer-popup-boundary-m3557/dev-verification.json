@@ -1,0 +1,61 @@
+{
+  "implementationHead": "081fdc3bc59650a08ff67ec6051885e57d879758",
+  "devBase": "e6c36b782b9a39687991b75e2606755e9ebda50c",
+  "actualMainMerge": "0f0128f6f6ebaf14e3d86dfcf6900efd106623b3",
+  "mainAncestryAnd9BlobsVerified": true,
+  "mainEqualPaths": [
+    "src/ui/shared/composer-focus.js",
+    "scripts/manual/smoke/smoke-composer-popup-m3557.mts",
+    "changes/3557-composer-popup-mouse.md",
+    "changes/3557-composer-popup-mouse.zh-TW.md",
+    "docs/evidence/composer-popup-boundary-m3557/README.md",
+    "docs/evidence/composer-popup-boundary-m3557/browser-result.json",
+    "docs/evidence/composer-popup-boundary-m3557/verification.json"
+  ],
+  "sourceHashes": {
+    "changes/3557-composer-popup-mouse.md": "200f4f45fed00ee698961efa4b6be8d036a90b7c646171cdfd153ae788fbeb7e",
+    "changes/3557-composer-popup-mouse.zh-TW.md": "7c30eabebe46e841c63adc3d89b353adbe20db37af1e0432610abda9f9a4443d",
+    "scripts/manual/smoke/smoke-composer-popup-dev-m3557.mts": "8931f5ff1bc6faee547ef47e0e652534290da443a423b2641aee084b98768656",
+    "scripts/manual/smoke/smoke-composer-popup-m3557.mts": "8adf28b30a77f659f71584aafceb17a9b439993747fe24e4a98b989708598636",
+    "src/ui/panel-chat.js": "2fd0c47ede03c9c73173e9adf887d5a5f340b75b03de2c5bd05165869fca80fa",
+    "src/ui/shared/chat-composer.js": "d41717a4e2182b18ca6b64041151d063a7bb53e162e0c989d71c8eaa9606f4f3",
+    "src/ui/shared/composer-focus.js": "74fb04bab137645d1c7f5ea690b56a8027b0485c8e36110c6dc184747b994684",
+    "tests/web-composer-2478.test.ts": "85658f9e4106a7806dcb334b68b57b3633893acace6908d839b4ece70496c814",
+    "tests/web-composer-popup-mention-m3557.test.ts": "cb7845c44a23437602e5244e36c6e562340727b99df4805def912231ff0c8190"
+  },
+  "productionPreservation": "Removing only data-composer-focus attributes and the explanatory task-row comment exactly reconstructs both complete dev production components; helper byte-identical approved main",
+  "proofs": {
+    "composerAndTaskRefs": {
+      "sha256": "a6dadede4050a6f15330b333dfa632e36cdbc145aee9a158c8669e26a5d211a4",
+      "claim": "34/34 PASS"
+    },
+    "hubMention": {
+      "sha256": "3022690791f6bf27b75225101ce989c19869574b38230ad5315ac4c516dfa2a9",
+      "claim": "1/1 PASS; actual RoomComposer under stronger hypothetical outer strip"
+    },
+    "browser": {
+      "sha256": "e90a002b1bc92dfa2665ad930ddfd03c6197bb87cdba286318ca419ba57bbf58",
+      "claim": "desktop/phone real mouse and emulated phone touch: slash, hash, edge and unknown popup PASS"
+    },
+    "types": {
+      "sha256": "21cc27fd5be2f91b90d3116616c151064f39e7b20e61f2334241585a2197a1d1",
+      "claim": "exit0"
+    },
+    "changelog": {
+      "sha256": "e0533f8c6ced3155bfc52e3ffd17f0fc89cba016424a4dc9b690e0f20a9e33bc",
+      "claim": "772 fragments PASS"
+    }
+  },
+  "audit": {
+    "slash": "unmarked role-option; native mousedown completion unchanged",
+    "hash": "unmarked role-option with existing tabindex; chooseRef unchanged",
+    "hubAt": "palette is sibling of shared ComposerInput and outside Fleet strip; no production Hub markup changed; actual component mounted inside an explicit strip also selects via mousedown",
+    "menus": "model-menu-pop/scrim and menu descendants unmarked; no eligibility inherited from composer-box/strip; generic listbox/menu/dialog/tooltip controls in carried regression"
+  },
+  "limits": [
+    "Chromium actual mouse down/up and emulated touch; no native OS/WebKit claim",
+    "Hub @ check is mounted actual component, not a real-Hub browser campaign",
+    "Main historical packet retained unchanged; dev browser records are fresh",
+    "initial mention test module-reset setup error corrected before PASS; no failing runtime claim"
+  ]
+}
