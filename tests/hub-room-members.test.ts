@@ -80,6 +80,34 @@ describe("Hub room members panel (section 5)", () => {
     expect(heads(pg)[1]).toBe("Agents · 11 (online 6)");
   });
 
+  // M-3565 (the user, 11-24): an agent's name in a message opens its card here (focus): its owner's group unfolded in a
+  // compact list, the card open (its "@ it here" and, when I may ask it, "Chat with it one-to-one").
+  it("focus (a message's agent name): that agent's card opens, its owner's group unfolded", async () => {
+    const { pg, client } = await fixture("en");
+    const detail = await detailOf(client, "room-weekly", ["exp-01"]);
+    const mount = (focus: any) => h(panel.RoomMembersPanel, { compact: true, client, roomId: "room-weekly", detail, onMention() {}, onOpenChat() {}, focus });
+    await pg.mount(mount(null)); await settle(20);
+    expect(pg.root.querySelector(".hub-member-card")).toBeNull();
+    const owners = () => [...pg.root.querySelectorAll(".hub-members-owner")] as any[];
+    expect(owners().some((d) => d.open), "folded at first").toBe(false);
+    await pg.mount(mount({ id: "exp-01", n: 1 })); await settle(20);
+    const card = pg.root.querySelector(".hub-member-card") as any;
+    expect(card?.closest("[data-member]")?.getAttribute("data-member")).toBe("exp-01");
+    expect(card.closest(".hub-members-owner")?.open, "its owner's group unfolded").toBe(true);
+    expect(button(pg, "Chat with it one-to-one")).toBeTruthy();
+  });
+  it("a message's agent name: opens its card where the page can (else, as before, its source as a toast)", async () => {
+    const { mountSourceAuthor } = await import("/ui/js/hub-room-source.js");
+    const { pg } = await fixture("en");
+    const host = pg.document.createElement("span"); pg.document.body.appendChild(host);
+    const msg = { sender: "project-helper", authorMember: "exp-01", sourceBadge: { kind: "fleet", label: "From Alex's Fleet" } };
+    const opened: string[] = [];
+    mountSourceAuthor(host, msg, (id: string) => { opened.push(id); return true; }); await settle(2);
+    fire(host.querySelector(".hub-source-trigger")!, "click"); await settle(2);
+    expect(opened).toEqual(["exp-01"]);
+    expect(pg.root.ownerDocument.querySelector(".toast")).toBeNull();
+  });
+
   it("a plain member: no Room settings, no remove", async () => {
     const { pg, client } = await fixture("en");
     await pg.mount(h(panel.RoomMembersPanel, { compact: false,  client, roomId: "room-rd", detail: await detailOf(client, "room-rd") })); await settle(20);

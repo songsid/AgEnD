@@ -38,9 +38,13 @@ const STATE = (ids: string[]) => ({
 });
 
 /** The weekly room of the rooms fixture, its office on (or not), its state answered by `answer` (status, body). */
-async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; sameName?: boolean; answer?: () => { status: number; body: unknown } } = {}) {
+async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; sameName?: boolean; canAsk?: number[]; answer?: () => { status: number; body: unknown } } = {}) {
   const fx = createHubRoomsFixture(), realFetch = g.fetch, room = fx.rooms.find((r: any) => r.id === "room-weekly")! as any;
   if (opts.on !== false) room.settings.office = { enabled: true, style: "studio" };
+  // M-3565: the viewer may ask the office's first agent (a who-may-ask grant), and has no one-to-one with it yet.
+  const asked: any[] = [];
+  const askable = (opts.canAsk || []).map((i) => room.members.filter((m: any) => m.kind === "agent")[i]);
+  for (const m of askable) m.canAsk = true;
   // Two agents of one name (of different owners), as the office's first two.
   if (opts.sameName) { const two = room.members.filter((m: any) => m.kind === "agent").slice(0, 2); two[1].name = two[0].name; }
   const reads: string[] = [], posts: any[] = [];
@@ -51,6 +55,14 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; s
       return { ok: a.status === 200, status: a.status, headers: { get: () => "application/json" }, json: async () => a.body, text: async () => JSON.stringify(a.body) };
     }
     if (/\/hub\/v1\/rooms\/room-weekly\/messages$/.test(String(url)) && String(init?.method).toUpperCase() === "POST") posts.push(JSON.parse(String(init.body)));
+    if (askable.length) {
+      const json = (body: unknown) => ({ ok: true, status: 200, headers: { get: () => "application/json" }, json: async () => body, text: async () => JSON.stringify(body) });
+      if (/\/hub\/v1\/exposures$/.test(String(url)) && String(init?.method || "GET").toUpperCase() === "GET")
+        return json({ mine: [], askable: askable.map((m: any) => ({ exposure: { id: m.id, revision: 1, displayName: m.name }, grant: { id: `grant-${m.id}` }, ownerName: "Alex Sample" })) });
+      if (/\/hub\/v1\/rooms$/.test(String(url)) && String(init?.method).toUpperCase() === "POST") {
+        const body = JSON.parse(String(init.body)); if (body.exposureId) { asked.push(body); return json({ ok: true, room: { id: "room-direct-m3565" } }); }
+      }
+    }
     return fx.fetch(url, init);
   };
   g.EventSource = fx.EventSource;
@@ -60,7 +72,7 @@ async function roomPage(opts: { on?: boolean; narrow?: boolean; lang?: string; s
   client.setHubClient(client.createHubWebClient()); hubPanel.resetHubSession(); router.startRouter(pg.window); store.applyStatus({ instances: [] });
   await pg.mount(h(shell.Shell, { panels: new Map([["hub", { Component: hubPanel.HubPanel || (() => null) }]]), onNewInstance() {} }));
   await until(() => pg.root.querySelectorAll(".hub-room-page .thread .msg").length > 5);
-  return { pg, fx, room, reads, posts, restore: () => { g.fetch = realFetch; } };
+  return { pg, fx, room, reads, posts, asked, restore: () => { g.fetch = realFetch; } };
 }
 const q = (pg: AppPage, s: string) => pg.root.querySelector(s) as any;
 /** The message box shown (in the office it stays mounted, hidden, with its draft). */
@@ -441,6 +453,42 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
     expect(composer.boundMentions("@Note hi", detail, bound)).toEqual([]);
     expect(composer.boundMentions("@Planner", detail, bound)).toEqual(["e3"]);
     expect(composer.boundMentions("@Notes", detail, []).sort()).toEqual(["e1", "e2"]);
+  });
+});
+
+// M-3565 (the user, 11-24): a room's agent card had no way into a one-to-one. The office card has the member card's
+// 「和它一對一對話」 when this viewer may ask the agent (canAsk); with no chat yet it starts one from their grant (as 新對話).
+describe("Chat with it one-to-one (M-3565)", () => {
+  // The office's figures are the room's first two agents, in member order (STATE); the fixture has a one-to-one with the
+  // first (room-helper) and none with the second.
+  const card = async (pg: AppPage, nth: number) => {
+    const desks = () => [...pg.root.querySelectorAll(".hub-room-office .oo-desk")] as any[];
+    fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => desks().length);
+    fire(desks()[nth], "click"); await until(() => q(pg, ".oo-card-action"));
+    return [...pg.root.querySelectorAll(".oo-card-action")] as any[];
+  };
+  it("an agent I may ask with no chat yet: @ it, then Chat with it one-to-one — the chat started from my grant and opened", async () => {
+    const { pg, room, asked, restore } = await roomPage({ canAsk: [0, 1] });
+    try {
+      const second = room.members.filter((m: any) => m.kind === "agent")[1];
+      const acts = await card(pg, 1);
+      expect(acts.map((b) => [b.textContent, b.classList.contains("btn-primary")])).toEqual([["@ it", true], ["Chat with it one-to-one", false]]);
+      fire(acts[1], "click"); await until(() => pg.window.location.search.includes("room-direct-m3565"));
+      expect(asked).toEqual([{ exposureId: second.id, grantId: `grant-${second.id}` }]);
+      expect(pg.window.location.search).toBe("?room=room-direct-m3565");
+    } finally { restore(); }
+  });
+  it("an agent I may ask that I already chat with: its chat opens, none started", async () => {
+    const { pg, asked, restore } = await roomPage({ canAsk: [0] });
+    try {
+      const acts = await card(pg, 0);
+      fire(acts[1], "click"); await until(() => pg.window.location.search.includes("room-helper"));
+      expect([pg.window.location.search, asked]).toEqual(["?room=room-helper", []]);
+    } finally { restore(); }
+  });
+  it("an agent I may not ask: only @ it", async () => {
+    const { pg, restore } = await roomPage({ canAsk: [0] });
+    try { expect((await card(pg, 1)).map((b) => b.textContent)).toEqual(["@ it"]); } finally { restore(); }
   });
 });
 

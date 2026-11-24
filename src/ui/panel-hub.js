@@ -334,6 +334,24 @@ function HubSignIn() {
   </section></main>`;
 }
 
+/**
+ * M-3565: a room's 「和它一對一對話」 — the viewer's own chat with that agent: the one they have, else one started as 新對話
+ * starts it (their grant for that agent, from the catalog). Resolves to whether it opened; says why not when it did not.
+ */
+export async function openDirectChat(member, rooms = []) {
+  const id = member && member.id;
+  if (!id) return false;
+  const have = rooms.find((r) => r && r.kind === "direct" && !r.archived && (r.agent || r.legacy || {}).exposureId === id);
+  if (have) { navigate(roomPath(have.id)); return true; }
+  const cat = await hubClient().catalog().catch(() => null);
+  const it = cat && Array.isArray(cat.askable) ? cat.askable.find((x) => x && x.exposure && x.exposure.id === id && x.grant) : null;
+  if (!it) { toast(hw("errNotFound"), false); return false; }
+  const r = await hubClient().openRoom(it.exposure.id, it.grant.id);
+  if (!r.ok) { toast(errText(r), false); return false; }
+  await refreshRooms(); navigate(roomPath(r.room.id));
+  return true;
+}
+
 /** Load a list from the client; `reload` reads it again. null while loading, { error } on failure. */
 function useRead(read) {
   const [data, setData] = useState(null);
@@ -592,7 +610,7 @@ function HubChats() {
   const room = id ? (listed ? listed.legacy || listed : rs.loaded ? { id, exposureName: "", ownerName: "", features: [] } : null) : null;
   // A room of a Hub with rooms: the shared thread with the room's store, composer and members panel (hub-room-thread.js).
   if (id && listed && !listed.legacy) return html`<${HubRoomPage} key=${id} roomId=${id} listed=${listed} Thread=${HubThread} client=${hubClient()}
-    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} goList=${() => navigate("/ui/hub")}
+    rooms=${rs.rooms} openRoom=${(rid) => navigate(roomPath(rid))} openDirect=${(m) => openDirectChat(m, rs.rooms)} goList=${() => navigate("/ui/hub")}
     onLeft=${() => { void refreshRooms(); navigate("/ui/hub"); }} onMe=${noteHubMeId} pinsOn=${roomPinsLive()}
     view=${viewParam() === "office" ? "office" : "chat"} officeHref=${(v) => roomViewPath(id, v)} onView=${(v) => navigate(roomViewPath(id, v))} />`;
   if (id && room) return html`<${HubRoomView} key=${id} room=${room} />`;
