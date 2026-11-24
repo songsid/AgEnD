@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import * as PK from "../src/ui/fleet-office-pack.js";
+// @ts-expect-error — a JS module of the app, with no types
 import { zonesLayout } from "../src/ui/fleet-office-zones.js";
+// @ts-expect-error — a JS module of the app, with no types
 import { addWaypoint, moveHandle } from "../src/ui/fleet-office-layout.js";
 import { checkSkinUpload } from "../src/web-office-skins.js";
 import { checkOffices } from "../src/web-office-store.js";
