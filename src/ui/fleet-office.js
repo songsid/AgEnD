@@ -102,7 +102,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime (0–6): idle agents sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
