@@ -840,6 +840,12 @@ Say plainly that these are not in the product yet:
 
 - **Does a disconnected Hub hold up the Fleet?** Fleet startup and ordinary local message delivery do not wait for the Hub connection. Tool discovery stays local within configured permissions, including native agents; an unavailable Hub tool explains the refusal when called. Hub Settings can temporarily say unavailable while a mount changes—retry afterward. Individual Hub network operations have deadlines; this does not promise zero background CPU/I/O overhead.
 
+- **Needs you shows "Hub work held: review locally" (「Hub 工作已暫停：請在本機檢視」).** A shared agent's question was
+  stopped before it reached the agent. When the Hub only could not answer for a moment, the Fleet asks it again by itself
+  (after 2 s, 10 s and 30 s) before holding the question. A held question that never reached the agent shows
+  **Try again** (再試一次): it goes back through the Hub's checks and is delivered only when the Hub allows it. A question the Hub
+  refused, or one that may already have reached the agent, has no Try again; the person who asked can send it again.
+
 - **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join
   code. **"A Hub address must use https."** Drop `http://`.
 - **"*host* cannot be reached."** Check the address, and that this computer is on the company network.

@@ -132,7 +132,8 @@ export interface HubMemberFactoryOptions {
    */
   sawText?(text: string): void;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
-  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null): void;
+  /** M-3632: `retry` sends one held question back through the Hub's checks (Needs you → "Try again"). */
+  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable"): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
   attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;
@@ -158,6 +159,8 @@ export interface HubRepresentativeHost {
   deliver(input: HubRepresentativeDelivery): Promise<boolean>;
   /** The agent's current lifecycle token (null: not a deliverable agent now). */
   agentToken(agent: string): string | null;
+  /** M-3632: the waits before asking the Hub again after it could not answer before input (default HUB_BEGIN_RETRY_MS). */
+  beginRetryMs?: readonly number[];
   /** attachments-v1: the agent's inbox for a question's files and its own paths for an answer's (absent: no files). */
   files?: import("../member/attachments.js").HubMemberFilesOptions;
   /** The report_result hook for HUB_REPORT_TARGET and the pane-failure hook for its correlation ids (null: detached). */
@@ -550,6 +553,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         authorize: (request) => (client ? client.authorize(request) : Promise.reject(new HubStateError("service-unavailable", "not connected"))),
         link: () => (online && online.current() && links.link() === online ? online : null),
         deliver: (input) => options.representative.deliver(input),
+        ...(options.representative.beginRetryMs ? { beginRetryMs: options.representative.beginRetryMs } : {}),
         ...(memberFiles ? { files: memberFiles } : {}),
         audit: (event, database) =>
           audit.appendInTransaction(
@@ -931,7 +935,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
-          options.attachAttention(() => service.attentionItems());
+          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id));
           options.attachExposures(api);
           options.attachSharing?.(sharingController);
           options.attachAgentRooms?.(posts);

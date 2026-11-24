@@ -658,6 +658,8 @@ export interface WebApiContext extends ClaudeCredentialApi {
   setWebPersonName?(owner: WebAccount | undefined, raw: unknown): { ok: true; person: WebPerson } | { ok: false; status: number; error: string };
   /** #1386: the web's Acknowledge of a delivery item; `principal` is "web:<session handle>" or "cli". */
   acknowledgeNeedsItem?(id: string, principal: string): { status: number; message: string };
+  /** M-3632: Needs you → "Try again" on held Hub work. */
+  retryHubHeld?(id: string): { status: number; code: string };
   /** alpha.2 (M-2300): agents' requests waiting for a web-only fleet's verified owner; null: not that owner. */
   webAgentProposals?(req: IncomingMessage): import("./settings-confirmation.js").SettingsPendingView[] | null;
   webDecideAgentProposal?(req: IncomingMessage, id: string, decision: "confirm" | "reject"): Promise<{ status: number; body: Record<string, unknown> }>;
@@ -3589,6 +3591,21 @@ export function handleWebRequest(
     return true;
   }
 
+  // M-3632: Needs you → "Try again" on held Hub work: back through the Hub's checks, never a blind delivery.
+  if (method === "POST" && path === "/ui/needs/hub-retry") {
+    if (!ctx.retryHubHeld) { json(res, 404, { error: "not-found", code: "not-found" }); return true; }
+    const retry = ctx.retryHubHeld.bind(ctx);
+    (async () => {
+      let body: Record<string, unknown>;
+      try { body = await parseBody(req); } catch { json(res, 400, { error: "Invalid JSON" }); return; }
+      if (!permitWebContinuation(req, res, ctx)) return;
+      const id = body && typeof body === "object" ? body.id : undefined;
+      if (typeof id !== "string" || id.length > 200) { json(res, 400, { error: "id required" }); return; }
+      const out = retry(id);
+      json(res, out.status, out.status === 200 ? { ok: true, code: out.code } : { error: out.code, code: out.code });
+    })().catch(() => { if (!res.headersSent) json(res, 500, { error: "failed" }); });
+    return true;
+  }
   if (method === "POST" && path === "/ui/needs/ack") {
     if (!ctx.acknowledgeNeedsItem) { json(res, 404, { error: "Nothing to acknowledge here" }); return true; }
     const acknowledge = ctx.acknowledgeNeedsItem.bind(ctx);
