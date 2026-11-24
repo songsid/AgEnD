@@ -3,7 +3,7 @@
 These are captures of the real Office UI, taken in headless Chromium with the smoke fixture. The pack is the synthetic one from #4383's evidence, with no real names: one shared sheet, Work and Lounge painted into its background, and an `rpg` card with the `lg` avatar. That large card is what used to cover the scene. `capture.mts` is the capture script. Copy it to `scripts/manual/smoke/` and run it with `REPO=<checkout> OUT=<dir> LABEL=after`, using the same Playwright image the ui-gate smokes use.
 
 - **Before:** the release tip `82e95256`.
-- **After:** `3a1a6b30`, the source commit; `after-report.json` names it too.
+- **After:** `bbb70b70`, the source commit; `after-report.json` names it too.
 
 | Case | Before | After |
 |---|---|---|
@@ -19,6 +19,19 @@ The script measures every figure above (`before-report.json`, `after-report.json
 
 No run had page errors or CSP violations.
 
+## A card that scrolls says so (Leader's capture check)
+
+While a card's content is not scrolled to its end (`data-more`), the content fades into the pinned actions. This is the cue that the card goes on. It applies to the phone sheet and to a desk card held shorter alike.
+
+The `…-card-end.png` captures are scrolled to the end. There the fade is gone, and the Tell row sits whole and clear above the buttons (`after-report.json` → `atRest`, `atEnd`):
+
+| Case | At rest | Scrolled to its end |
+|---|---|---|
+| Desk, en | `data-more`: the Tell row runs under the actions (841–860 px; the actions start at 851) and fades into them. 21 px more to scroll. | Tell row 820–839 px, the actions at 851: clear. |
+| Desk, zh-TW | Fits: no scroll, no fade. Tell row 818–837 px, the actions at 849. | (same) |
+| Phone, zh-TW | `data-more`: Today, Now and Tell are below; the fade sits over the last tiles. 158 px more. | Tell row 745–765 px, the actions at 777: clear. |
+| Phone, en | `data-more`, 178 px more. | Tell row 745–765 px, the actions at 777: clear. |
+
 ## Real touches on the phone (Prism #4414)
 
 The capture script sends Chromium real touch events (CDP `Input.dispatchTouchEvent`, an 8-step drag) on the long `rpg`/`lg` card, which scrolls inside the sheet. Both phone runs give the same results (`after-report.json` → `touch`):
@@ -26,7 +39,7 @@ The capture script sends Chromium real touch events (CDP `Input.dispatchTouchEve
 | Drag | Result |
 |---|---|
 | Up on the content | It scrolls: `scrollTop` goes from 0 to 158 (zh-TW) and 145 (en). The sheet stays open. |
-| Down on the content, scrolled in | It scrolls back to 17 (zh-TW) and 40 (en). The sheet stays open. |
+| Down on the content, scrolled in | It scrolls back to 18 (zh-TW) and 4 (en). The sheet stays open. |
 | Down from the grip, at the top | The sheet closes. The grip is a 44 × 356 px handle around its 4 px bar; `elementFromPoint` 2 px inside its top edge, at its middle and 2 px inside its bottom edge all land on it. |
 
 A sheet whose content fits is unchanged: a swipe down anywhere on it closes it.

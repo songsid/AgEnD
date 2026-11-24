@@ -108,6 +108,22 @@ try {
         labelOverlapPx: over.map(Math.round), peopleAboveSheet: sheet ? people.filter((p) => p.bottom !== null && p.bottom <= r.top).map((p) => p.n) : null, people,
         actionsInView: ar ? ar.top >= r.top - 1 && ar.bottom <= Math.min(vh, r.bottom) + 1 : null, scrolls: card.scrollHeight > card.clientHeight + 1 || ((card.querySelector(".oo-card-body") as HTMLElement | null)?.scrollHeight ?? 0) > ((card.querySelector(".oo-card-body") as HTMLElement | null)?.clientHeight ?? 0) + 1 };
     }, LABELS);
+    // Leader #4414: at rest, a card that scrolls says so (data-more, the fade); scrolled to its end, the Tell row is
+    // whole and clear of the pinned actions.
+    const rows = () => page.evaluate(() => {
+      const el = document.querySelector(".oo-card") as HTMLElement, sc = (el.querySelector(".oo-card-body") as HTMLElement | null) || el;
+      const t = el.querySelector(".oo-card-tell") as HTMLElement | null, a = el.querySelector(".oo-card-actions") as HTMLElement, tr = t ? t.getBoundingClientRect() : null, ar = a.getBoundingClientRect(), sr = sc.getBoundingClientRect();
+      return { more: el.hasAttribute("data-more"), scrollTop: Math.round(sc.scrollTop), max: Math.round(sc.scrollHeight - sc.clientHeight),
+        tell: tr ? { top: Math.round(tr.top), bottom: Math.round(tr.bottom) } : null, actionsTop: Math.round(ar.top), boxBottom: Math.round(sr.bottom),
+        tellClear: tr ? tr.bottom <= ar.top + 0.5 && tr.top >= sr.top - 0.5 : null };
+    });
+    const atRest = await rows();
+    await page.evaluate(() => { const el = document.querySelector(".oo-card") as HTMLElement; const sc = (el.querySelector(".oo-card-body") as HTMLElement | null) || el; sc.scrollTop = sc.scrollHeight; });
+    await page.waitForTimeout(400);
+    const atEnd = await rows();
+    await page.screenshot({ path: join(OUT, `${key}-card-end.png`) });
+    await page.evaluate(() => { const el = document.querySelector(".oo-card") as HTMLElement; const sc = (el.querySelector(".oo-card-body") as HTMLElement | null) || el; sc.scrollTop = 0; });
+    await page.waitForTimeout(300);
     let touch: any = null;
     if (c.device === "phone") {
       // Real touches (CDP Input.dispatchTouchEvent, as a finger): Prism #4414's pointercancel case.
@@ -134,7 +150,7 @@ try {
       const s4 = await st();
       touch = { start: s0, afterUpOnContent: { open: s1.open, scrollTop: s1.scrollTop }, afterDownOnContentScrolled: { open: s2.open, scrollTop: s2.scrollTop }, grip: { h: s3.grip.h, w: s3.grip.w, hit: s3.grip.hit }, afterGripDown: { open: s4.open } };
     }
-    report.cases[key] = { errors, csp: await csp(), ...m, touch };
+    report.cases[key] = { errors, csp: await csp(), ...m, atRest, atEnd, touch };
     await ctx.close();
   }
 } finally { await fx.close(); }
