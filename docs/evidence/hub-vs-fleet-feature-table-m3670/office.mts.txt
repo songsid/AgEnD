@@ -1,0 +1,151 @@
+/**
+ * M-3309 re-walk: the Fleet web chat and a Hub room, both real, headless. Verifies the six "not verified" rows and
+ * retakes one picture per gap. Scratch data only; no fleet, CLI or tmux is started.
+ *   cd <dev checkout> && REPO=$PWD PW_DIR=<dir with playwright-core> CHROME=<chrome> OUT=<dir> tsx walk.mts
+ */
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { createServer } from "node:https";
+import { join, resolve } from "node:path";
+import { randomUUID, randomBytes } from "node:crypto";
+import { execFileSync } from "node:child_process";
+
+const REPO = resolve(process.env.REPO ?? "."), OUT = resolve(process.env.OUT!);
+mkdirSync(OUT, { recursive: true });
+const { bootFixture } = await import(REPO + "/scripts/manual/smoke-fixture/index.mts");
+const { publicAttachment } = await import(REPO + "/src/web-upload.ts");
+const ONLY = (process.env.ONLY ?? "").split(",").filter(Boolean);
+const want = (k: string) => !ONLY.length || ONLY.includes(k);
+const R: any = { head: execFileSync("git", ["-C", REPO, "rev-parse", "HEAD"], { encoding: "utf8" }).trim(), fleet: {}, hub: {}, errors: [] };
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const hex32 = () => randomBytes(16).toString("hex");
+
+const HTML_DOC = `<!doctype html><meta charset="utf-8"><title>Weekly report</title><body style="font:16px sans-serif;padding:24px"><h1>Weekly report</h1><p>Three items shipped.</p><button onclick="this.textContent='clicked'">Press</button></body>`;
+const LINK_TEXT = "The write-up is at https://example.com/reports/weekly and the docs are at https://www.iana.org/help/example-domains .";
+
+// ── Fleet ─────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const fx = await bootFixture({ port: 0, instances: 3, classic: false });
+const fm: any = fx.fm;
+const A: string = fx.instances.filter((i: any) => !i.general)[0].name;
+try { fm.getInstanceStatus = () => "running"; fm.startSearchIndex(fm.fleetConfig);
+  for (let i = 0; i < 200 && fm.searchIndex?.status() !== "ready"; i++) await sleep(50);
+  R.fleet.searchIndex = fm.searchIndex?.status(); } catch (e) { R.fleet.searchIndex = "error: " + String(e).slice(0, 200); }
+const at = (minAgo: number) => new Date(Date.now() - minAgo * 60_000).toISOString();
+const say = (role: "user" | "agent", text: string, minAgo: number, extra: any = {}) =>
+  fm.emitSseEvent("message", { instance: A, sender: role === "user" ? "Alex" : A, role, text, ts: at(minAgo), ...extra });
+for (let i = 0; i < 30; i++) say(i % 2 ? "agent" : "user", i % 2 ? `Build ${i} is green.` : `Run build ${i}, please.`, 600 - i * 5);
+say("user", "Please move the nginx reverse proxy on staging to TLS 1.3 and reload it.", 300);
+say("agent", "Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded.\n\nSecond paragraph for quoting: the certificate is valid until next spring and the old ciphers are gone.", 296);
+const photo = join(fx.dir, "walk-photo.jpg"); writeFileSync(photo, await fx.picture({ w: 1280, h: 960, hue: 200, label: "photo", mime: "image/jpeg", seed: 7 }));
+const servedPhoto = fm.webFiles.registerServed({ path: photo, instance: A, name: "site-photo.jpg", mime: "image/jpeg", kind: "photo" });
+const htmlPath = join(fx.dir, "weekly-report.html"); writeFileSync(htmlPath, HTML_DOC);
+const servedHtml = fm.webFiles.registerServed({ path: htmlPath, instance: A, name: "weekly-report.html", mime: "text/html", kind: "document" });
+say("agent", "IMAGE-MARK Here is the photo from the site.", 200, { attachments: [publicAttachment(servedPhoto)] });
+say("agent", "HTML-MARK The weekly report as a page.", 190, { attachments: [publicAttachment(servedHtml)] });
+say("agent", "LINK-MARK " + LINK_TEXT, 180);
+say("user", "HTMLUSER-MARK My own page, sent by me.", 170, { attachments: [publicAttachment(servedHtml)] });
+// Buttons and a poll through the real reply path (an agent's reply tool), with the instance's IPC stubbed.
+R.fleet.buttonsPath = "reply tool";
+try {
+  fm.instanceIpcClients.set(A, { send: () => true });
+  fm.getInstanceIdle = () => true; fm.clearCancelButton = () => {}; fm.reactDone = () => {}; fm.deliverToInstance = async () => true;
+  await fm.handleOutboundFromInstance(A, { tool: "reply", args: { text: "BUTTONS-MARK Which city for the offsite?", buttons: [{ label: "Paris" }, { label: "London" }, { label: "Rome" }] }, fleetRequestId: "walk-b1" });
+  await sleep(500);
+  await fm.handleOutboundFromInstance(A, { tool: "reply", args: { text: "POLL-MARK Which day works best?", buttons: [{ label: "Saturday" }, { label: "Sunday" }], poll: { seconds: 3600 } }, fleetRequestId: "walk-p1" });
+  await sleep(500);
+} catch (e) { R.fleet.buttonsPath = "reply tool failed: " + String(e).slice(0, 300); }
+const hist = fm.webChatHistory.list(A);
+if (!hist.some((m: any) => m.buttons && !m.buttons.poll)) { R.fleet.buttonsPath += " | buttons seeded for display only";
+  fm.webChatHistory.record({ instance: A, sender: A, role: "agent", text: "BUTTONS-MARK Which city for the offsite?", ts: at(5), buttons: { id: hex32(), labels: ["Paris", "London", "Rome"], state: "open" } }); }
+if (!fm.webChatHistory.list(A).some((m: any) => m.buttons?.poll)) { R.fleet.buttonsPath += " | poll seeded for display only";
+  fm.webChatHistory.record({ instance: A, sender: A, role: "agent", text: "POLL-MARK Which day works best?", ts: at(4), buttons: { id: hex32(), labels: ["Saturday", "Sunday"], state: "open", poll: { deadline: Date.now() + 3600_000, answered: 0, multi: false, reveal: "close", rev: 1 } } }); }
+await sleep(800);
+
+// ── Hub ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
+const { s3bRig } = await import(REPO + "/tests/helpers/hub-s3b-rig.ts");
+const { provisionHubIdentity } = await import(REPO + "/src/hub/tls.ts");
+const { personKeyString } = await import(REPO + "/src/hub/identity.ts");
+const preview = await import(REPO + "/src/hub/preview.ts");
+const keys = mkdtempSync(join(OUT, ".keys-")), hport = 47100 + Math.floor(Math.random() * 300), pport = hport + 400;
+const origin = `https://127.0.0.1:${hport}`, boot = randomUUID().replace(/-/g, "");
+const psettings = { host: "127.0.0.1", port: pport, origin: `https://127.0.0.1:${pport}` };
+const rig = await s3bRig({ webOrigin: origin, attachments: true, roomOffice: true, preview: preview.hubPreviewView(origin, psettings, boot) });
+await provisionHubIdentity({ home: keys, memberOrigin: origin });
+const tls = { key: readFileSync(join(keys, "hub/keys/tls-key.pem")), cert: readFileSync(join(keys, "hub/keys/tls-cert.pem")) };
+const server = createServer(tls, (req, res) => { if (!rig.http.handle(req, res)) { res.writeHead(404); res.end(); } });
+await new Promise<void>(y => server.listen(hport, "127.0.0.1", y));
+const pserver = createServer(tls, preview.createHubPreviewHandler(psettings, origin, boot, () => true));
+await new Promise<void>(y => pserver.listen(pport, "127.0.0.1", y));
+const alexKey = rig.addPerson("alex", "Alex"), admin = await rig.signIn("admin"), alex = await rig.signIn("alex");
+const CAPS = ["welcome-caps-v1", "room-ask-v1", "room-post-v1", "room-answer-buttons-v1", "attachments-v1"];
+const fleetId = randomUUID(), link = rig.link(fleetId, rig.admin, 1, CAPS);
+const exposure = { id: randomUUID(), fleetId, owner: rig.admin, displayName: "Notes", revision: 1, state: "published", dataViewId: "agent", allowedTools: [], policyDigest: "b".repeat(64) };
+await rig.http.receive(rig.frame("exposure.snapshot", { revision: 1, exposures: [exposure] }, link) as never, link);
+const made = await rig.call(admin, "POST", "/hub/v1/rooms", { name: "Weekly", people: [personKeyString(alexKey)] });
+const roomId = made.json.room.id as string;
+R.hub.addAgent = (await rig.call(admin, "POST", `/hub/v1/rooms/${roomId}/members`, { kind: "agent", id: exposure.id })).status;
+const post = (who: any, text: string, extra: any = {}) => rig.call(who, "POST", `/hub/v1/rooms/${roomId}/messages`, { idempotencyKey: randomUUID(), text, ...extra });
+const upload = async (who: any, name: string, body: Buffer) => {
+  const res = await fetch(`${rig.base}/hub/v1/rooms/${roomId}/files`, { method: "POST", body, headers: { Origin: origin, Cookie: who.cookie, "X-AgEnD-Hub-CSRF": who.csrf, "X-File-Name": name } });
+  const j: any = await res.json(); if (!j.file) throw Error("upload " + name + " " + res.status + " " + JSON.stringify(j).slice(0, 200)); return j.file.id as string; };
+for (let i = 0; i < 30; i++) await post(i % 2 ? admin : alex, i % 2 ? `Build ${i} is green.` : `Run build ${i}, please.`);
+await post(alex, "Please move the nginx reverse proxy on staging to TLS 1.3 and reload it.");
+await post(admin, "Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded.\n\nSecond paragraph for quoting: the certificate is valid until next spring and the old ciphers are gone.");
+try { await post(admin, "IMAGE-MARK Here is the photo from the site.", { files: [await upload(admin, "site-photo.jpg", readFileSync(photo))] }); } catch (e) { R.errors.push("hub image: " + String(e).slice(0, 300)); }
+try { await post(alex, "HTMLUSER-MARK My own page, sent by me.", { files: [await upload(alex, "weekly-report.html", Buffer.from(HTML_DOC))] }); } catch (e) { R.errors.push("hub html: " + String(e).slice(0, 300)); }
+await post(admin, "LINK-MARK " + LINK_TEXT);
+const asks = () => rig.sent.filter((s: any) => s.frame.type === "room.ask").map((s: any) => s.frame.payload);
+const agentAnswer = async (question: string, text: string, buttons: any, attachments?: any[]) => {
+  const before = asks().length; const q = await post(alex, question, { mentions: [exposure.id] });
+  for (let i = 0; i < 100 && asks().length === before; i++) await sleep(50);
+  const ask = asks().at(-1); if (!ask || asks().length === before) throw Error("no room.ask for " + question + " status " + q.status);
+  const ack: any = await rig.http.receive(rig.frame("room.answer", { messageId: ask.messageId, roomId, exposureId: exposure.id, answerId: randomUUID(), text, ...(buttons ? { buttons } : {}), ...(attachments ? { attachments } : {}) }, link) as never, link);
+  return ack?.type; };
+try { const { createHash } = await import("node:crypto"); const body = Buffer.from(HTML_DOC);
+  const ref = { id: randomUUID(), name: "weekly-report.html", size: body.length, mime: "text/html", sha256: createHash("sha256").update(body).digest("hex") };
+  const put: any = await rig.http.receive(rig.frame("attachment.put", { id: ref.id, offset: 0, total: ref.size, sha256: ref.sha256, data: body.toString("base64") }, link) as never, link);
+  R.hub.htmlPut = put?.type ?? null; R.hub.htmlAck = await agentAnswer("@Notes send the weekly report", "HTML-MARK The weekly report as a page.", undefined, [ref]); } catch (e) { R.errors.push("hub agent html: " + String(e).slice(0, 400)); }
+try { R.hub.buttonsAck = await agentAnswer("@Notes where should the offsite be?", "BUTTONS-MARK Which city for the offsite?", { id: hex32(), labels: ["Paris", "London", "Rome"] }); } catch (e) { R.errors.push("hub buttons: " + String(e).slice(0, 300)); }
+try { R.hub.pollAck = await agentAnswer("@Notes ask everyone which day", "POLL-MARK Which day works best?", { id: hex32(), labels: ["Saturday", "Sunday"], poll: { seconds: 3600, multi: false, reveal: "close", showVoters: false, question: "Which day works best?" } }); } catch (e) { R.errors.push("hub poll: " + String(e).slice(0, 300)); }
+
+// ── Office inventory ──────────────────────────────────────────────────────────────────────────────────────────────────
+R.office = { fleet: {}, hub: {} };
+const INV = () => { const vis = (e: Element) => { const r = (e as HTMLElement).getBoundingClientRect(), s = getComputedStyle(e as HTMLElement); return r.width > 2 && r.height > 2 && s.visibility !== "hidden" && s.display !== "none"; };
+  const inOffice = (e: Element) => { for (let n: Element | null = e; n; n = n.parentElement) { const c = typeof n.className === "string" ? n.className : ""; if (/(^|\s)(oo-|oc-|hub-room-office|org-|fleet-office)/.test(c) || /(^|\s)oo(\s|$)/.test(c)) return true; } return false; };
+  const lab = (e: Element) => ((e.getAttribute("aria-label") || e.getAttribute("title") || (e as HTMLElement).innerText || (e as HTMLInputElement).value || "").replace(/\s+/g, " ").trim().slice(0, 70));
+  const all = [...document.querySelectorAll("button, a[href], select, input, textarea, [role=button], [role=tab], [role=menuitem], [role=menuitemcheckbox], [role=menuitemradio], [role=switch], option")].filter(e => (e.tagName === "OPTION" || vis(e)) && inOffice(e));
+  const seen = new Set<string>(); const out: string[] = [];
+  for (const e of all) { const cls = (typeof e.className === "string" ? e.className : "").split(/\s+/).filter(c => /^(oo-|oc-|hub-)/.test(c)).slice(0, 2).join("."); const k = `${e.tagName.toLowerCase()}${cls ? "." + cls : ""} | ${lab(e)}${e.getAttribute("aria-pressed") ? " [pressed=" + e.getAttribute("aria-pressed") + "]" : ""}`; if (cls.includes("oo-desk") && !cls.includes("oo-desks")) { if (seen.has("desk")) continue; seen.add("desk"); } if (!seen.has(k)) { seen.add(k); out.push(k); } }
+  return { controls: out, desks: document.querySelectorAll(".oo-desk").length, canvas: !!document.querySelector("canvas.oo-canvas"), text: [...document.querySelectorAll(".oo-key, .oo-zone-pills, .hub-room-office .note, .oo-empty")].map(e => (e as HTMLElement).innerText.replace(/\s+/g, " ").slice(0, 200)) }; };
+const CARD = () => { const c = [...document.querySelectorAll("[class*=oo-card], [class*=office-card], .id-card, [role=dialog], .oo-tip, [class*=oo-sheet]")].filter(e => { const r = (e as HTMLElement).getBoundingClientRect(); return r.width > 40 && r.height > 40; });
+  return c.map(e => ({ cls: (e.className as any).toString().slice(0, 80), text: (e as HTMLElement).innerText.replace(/\s+/g, " ").slice(0, 500), buttons: [...e.querySelectorAll("button, a[href]")].map(b => ((b.getAttribute("aria-label") || (b as HTMLElement).innerText || b.getAttribute("title") || "").replace(/\s+/g, " ").trim().slice(0, 50))).filter(Boolean).slice(0, 30) })).slice(0, 4); };
+async function office(side: "fleet" | "hub", device: "desk" | "phone", lang: "en" | "zh-TW", theme: "light" | "dark") {
+  const tag = `${side}-${device}`, o: any = (R.office[side][device] = {});
+  let ctx: any, page: any;
+  try {
+    if (side === "fleet") { ({ ctx, page } = await fx.page({ device, lang, theme } as any, { path: "/ui/fleet/org" })); await page.evaluate(() => { localStorage.setItem("agend_org_mode", "office"); }); await page.goto(`${fx.base}/ui/fleet/org`); }
+    else { ctx = await fx.browser.newContext({ viewport: device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 900 }, isMobile: device === "phone", hasTouch: device === "phone", locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: theme, ignoreHTTPSErrors: true });
+      const i = alex.cookie.indexOf("="); await ctx.addCookies([{ name: alex.cookie.slice(0, i), value: alex.cookie.slice(i + 1), url: origin, httpOnly: true, secure: true, sameSite: "Strict" }]);
+      await ctx.addInitScript(({ lang, theme }: any) => { localStorage.setItem("agend_lang", lang); localStorage.setItem("agend_theme", theme); localStorage.setItem("agend_tour_done", "1"); localStorage.setItem("agend_firstrun_dismissed", "1"); }, { lang, theme });
+      page = await ctx.newPage(); await page.goto(`${origin}/ui/hub?room=${roomId}&view=office`); }
+    page.setDefaultTimeout(8000); page.on("pageerror", (e: any) => R.errors.push(`${tag} pageerror: ${String(e).slice(0, 200)}`));
+    await page.evaluate("globalThis.__name = globalThis.__name || ((f) => f)");
+    await page.waitForSelector("canvas.oo-canvas", { timeout: 25000 }).catch(() => { o.noCanvas = true; }); await page.waitForTimeout(2500);
+    o.url = page.url().replace(/\d{4,5}/, "PORT"); o.tabs = await page.evaluate(() => [...document.querySelectorAll(".inst-switch a, .inst-switch button, .seg-item")].map(e => (e as HTMLElement).innerText.trim()).filter(Boolean).slice(0, 12));
+    o.body = await page.evaluate(() => document.body.innerText.replace(/\s+/g, " ").slice(0, 400)); o.mode = await page.evaluate(() => localStorage.getItem("agend_org_mode"));
+    o.inventory = await page.evaluate(INV); await page.screenshot({ path: join(OUT, `office-${tag}-1.png`) });
+    // every pop-up the toolbar offers
+    o.pops = {};
+    for (const sel of [".oo-options", ".oo-display", "[aria-haspopup]", ".oo-people", ".oo-car", ".oo-key-toggle", ".oo-more"]) { try { const els = page.locator(sel).filter({ visible: true }); const n = Math.min(await els.count(), 6);
+        for (let k = 0; k < n; k++) { const el = els.nth(k); const name = (await el.getAttribute("aria-label")) || (await el.innerText().catch(() => "")) || sel; const cls = (await el.getAttribute("class")) || ""; if (!/(oo-|oc-|hub-room-office|org)/.test(cls) && !(await el.evaluate((e: Element) => !!e.closest(".hub-room-office, [class*=oo-], [class*=oc-]")))) continue;
+          const before = await page.evaluate(INV); await el.click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(500); const after = await page.evaluate(INV); const added = after.controls.filter((c: string) => !before.controls.includes(c));
+          if (added.length) { o.pops[`${sel} :: ${name.slice(0, 40)}`] = added.slice(0, 60); await page.screenshot({ path: join(OUT, `office-${tag}-pop-${Object.keys(o.pops).length}.png`) }); } await page.keyboard.press("Escape").catch(() => {}); await page.waitForTimeout(250); } } catch (e) { o.pops[sel] = "ERR " + String(e).slice(0, 120); } }
+    // an agent's card
+    try { const desk = page.locator(".oo-desk").first(); o.deskCount = await page.locator(".oo-desk").count(); await desk.focus(); await page.keyboard.press("Enter"); await page.waitForTimeout(900); o.card = await page.evaluate(CARD); await page.screenshot({ path: join(OUT, `office-${tag}-card.png`) }); } catch (e) { o.card = "ERR " + String(e).slice(0, 200); }
+  } catch (e) { o.error = String((e as any)?.stack || e).slice(0, 500); } finally { await ctx?.close().catch(() => {}); }
+  console.log("office", tag, JSON.stringify(o).slice(0, 1500));
+}
+try { for (const side of (process.env.SIDES ? process.env.SIDES.split(",") : ["fleet", "hub"]) as ("fleet"|"hub")[]) { await office(side, "desk", "en", "light"); await office(side, "phone", "zh-TW", "dark"); } }
+catch (e) { R.errors.push("office: " + String((e as any)?.stack || e).slice(0, 600)); }
+finally { writeFileSync(join(OUT, "office-observations.json"), JSON.stringify(R, null, 2)); server.close(); pserver.close(); await rig.close().catch(() => {}); await fx.close().catch(() => {}); }
+console.log("errors", JSON.stringify(R.errors).slice(0, 1500));
+process.exit(0);
