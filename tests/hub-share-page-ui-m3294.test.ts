@@ -7,7 +7,7 @@ const mounted: AppPage[] = [], exposureId = "aaaaaaaa-1111-4222-8333-44444444444
 beforeAll(async () => { const p = page(); clients = await import("/ui/js/hub-client.js"); panels = await import("/ui/js/panel-hub.js"); words = await import("/assets/app-i18n.js"); p.restore(); });
 afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } clients.setHubClient(null); panels.resetHubSession(); words.setLang("en", { store: false }); });
 const until = async (f: () => unknown) => { for (let i = 0; i < 100 && !f(); i++) await settle(5); };
-async function mount(mark = true, connected = true, policy = false, old = false) {
+async function mount(mark = true, connected = true, policy = false, old = false, fleetExtra: Record<string, unknown> = {}) {
  const calls: any[] = [], owner = { realm: "corp", objectId: fleetId };
  const shared = { id: exposureId, fleetId, owner, revision: 1, state: "published", displayName: "Notes", grants: [], sharingEpoch: 0 };
  const agents = [{ instance: "notes", displayName: "Notes", description: "Keeps notes", general: false, kind: "agent", shareable: true, exposure: { id: exposureId, revision: 1, state: "published" } },
@@ -17,7 +17,7 @@ async function mount(mark = true, connected = true, policy = false, old = false)
  const c = clients.createHubWebClient({ fetchImpl: async (path: string, opts: any) => {
   const body = opts.body ? JSON.parse(opts.body) : undefined; calls.push({ path, method: opts.method, body });
   const data = path === "/hub/v1/session" ? { signedIn: true, admin: false, csrf: "fixture-owner", displayName: "Owner", hub: { name: "Example Hub" }, features: mark ? ["agent-sharing-v1", "sharing-pause-v1", "grant-subjects-v1", ...(policy ? ["group-policy-v1"] : [])] : [] }
-   : path === "/hub/v1/me/agents" ? { fleets: [{ id: fleetId, label: "Work laptop", connected, catalogSupported: !old, catalog: old ? null : { enabled: true, requests: true, at: Date.now(), revision: "a".repeat(64), agents } }] }
+   : path === "/hub/v1/me/agents" ? { fleets: [{ id: fleetId, label: "Work laptop", connected, catalogSupported: !old, catalog: old ? null : { enabled: true, requests: true, at: Date.now(), revision: "a".repeat(64), agents }, ...fleetExtra }] }
    : path === "/hub/v1/me/welcome" ? { ok: true, v: 1, mode: "enabled", chat: { state: "allow" }, publish: { state: "allow" }, connect: { state: "allow", maxFleets: 8, fleets: [{ id: fleetId, label: "Work laptop", status: "active" }] } }
    : path === "/hub/v1/exposures" ? { mine: [shared, { ...shared, id: "eeeeeeee-1111-4222-8333-444444444444", fleetId: null, kind: "personal", personalAgentId: "ffffffff-1111-4222-8333-444444444444", displayName: "Personal notes" }], askable: [] }
    : path === "/hub/v1/me/agent-sharing" ? { id: body.idempotencyKey, fleetId, state: "queued", result: null, expiresAt: Date.now() + 600_000 }
@@ -119,4 +119,17 @@ it("M-3565: nobody may ask yet → Choose who may ask opens the picker; closing 
  const css = (await import("node:fs")).readFileSync("src/ui/shared/hub-my-agents.css", "utf8");
  expect(css).toMatch(/\.hub-agent-link\s*\{\s*color:\s*var\(--accent\);\s*\}/);
  expect(css).toMatch(/\.hub-agent-link::after\s*\{\s*content:\s*"›"/);
+});
+// M-3533 R2b (Lumen): a picture the Fleet shows but the Hub cannot take (over its cap) says so on its owner's row, and only there.
+it("M-3533 R2b: a picture too large for the Hub says so on the owner's row, each picture its own line; none otherwise", async () => {
+ const { p } = await mount(true, true, false, false, { picturesTooLarge: { [exposureId]: ["disc", "portrait"] } });
+ const lines = [...p.root.querySelectorAll("[data-picture-large]")] as any[];
+ expect(lines.map(l => [l.getAttribute("data-picture-large"), l.textContent])).toEqual([
+  ["disc", "Its avatar is too large for the Hub (limit 64 KB). On your Fleet, pick a smaller picture, or a PNG that AgEnD can shrink, in this agent's View → Edit profile → Avatar."],
+  ["portrait", "Its identity-card portrait is too large for the Hub (limit 512 KB, including its avatar). On your Fleet, pick a smaller picture, or a PNG that AgEnD can shrink, in this agent's View → Edit profile → Identity card → Portrait."]]);
+ expect(lines[0].closest(".hub-agent-choice").textContent).toContain("Notes");
+});
+it("M-3533 R2b: every picture fits: no such line", async () => {
+ const { p } = await mount();
+ expect(p.root.querySelector("[data-picture-large]")).toBe(null);
 });
