@@ -112,9 +112,10 @@ function fitOwned(ctx, str, [open, owner, close], max) {
     return c.length >= least && w(`${c.join("")}…${tail}`) <= max ? `${c.join("")}…${tail}` : null;
   };
   const [full, first = full, initial = first] = parts, tail = (p) => `${open}${p}${close}`;
-  // The owner's word is what tells them apart: kept before the name's length, its initial only when nothing else fits.
-  const tries = [() => (w(`${base}${tail(full)}`) <= max ? `${base}${tail(full)}` : null), () => (w(`${base}${tail(first)}`) <= max ? `${base}${tail(first)}` : null),
-    () => cut(tail(full), 2), () => cut(tail(first), 2), () => cut(tail(first), 1),
+  // The owner is what tells them apart: the whole owner with the name cut comes before the owner's first word (two
+  // owners may share it: "Alex A", "Alex B"), the first word before its initial, which comes only when nothing else fits.
+  const tries = [() => (w(`${base}${tail(full)}`) <= max ? `${base}${tail(full)}` : null), () => cut(tail(full), 2),
+    () => (w(`${base}${tail(first)}`) <= max ? `${base}${tail(first)}` : null), () => cut(tail(first), 2), () => cut(tail(first), 1),
     () => { const o = Array.from(first);                                                        // the whole name, the owner's word cut
       for (let n = o.length - 1; n >= 3; n--) { const t = `${base}${tail(`${o.slice(0, n).join("")}…`)}`; if (w(t) <= max) return t; }
       return null; },

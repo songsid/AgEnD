@@ -628,7 +628,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const covered = (b) => !!cv && b.x < cv.x + cv.w && cv.x < b.x + b.w && b.y < cv.y + cv.h && cv.y < b.y + b.h;
     for (const q of people) {
       if ((live.hidden.has(q.look.name) && q.look.name !== heldName) || !tagged(q)) continue;
-      if (covered(tagBox(ctx, q.at.x, q.at.y, q.look.label, false, q.look.fit))) continue;
+      if (covered(tagFootprint(ctx, tagBox(ctx, q.at.x, q.at.y, q.look.label, false, q.look.fit), q.look.badge))) continue;   // its level badge too
       sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
       const box = tagBox(ctx, q.at.x, q.at.y, q.look.label, false, q.look.fit);
       tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
@@ -643,7 +643,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       if (!on.length) {
         if (!tagsOff && f.label) {
           const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
-          if (!covered(box)) { sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge)); }
+          if (!covered(tagFootprint(ctx, box, nl.badge))) { sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge)); }
         }
         continue;
       }
@@ -655,7 +655,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         const q = f.label ? on[i - 1] : on[i];
         if (q) speakers.push({ look: q.look, x: r.x + 10, y: top, area: q.d.area });
         if (q ? !tagged(q) : tagsOff) continue;
-        if (covered(tagBox(ctx, r.x, f.y, r.look.label, false, r.look.fit))) continue;
+        if (covered(tagFootprint(ctx, tagBox(ctx, r.x, f.y, r.look.label, false, r.look.fit), r.look.badge))) continue;
         sk.drawTag(ctx, r.x, f.y, r.look, env);
         const box = tagBox(ctx, r.x, f.y, r.look.label, false, r.look.fit);
         tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));

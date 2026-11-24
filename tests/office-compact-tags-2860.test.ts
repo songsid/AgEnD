@@ -69,7 +69,18 @@ describe("#2860 a crowded area keeps compact tags", () => {
     const under = s.draw().map((t) => ({ ...t, box: K.tagBox(s.ctx, t.x, t.y, t.label, t.compact) }));
     s.part.cover = null;
     expect(under.some((t) => t.label === pick.label && !t.compact), "the cut tag is left out").toBe(false);
-    for (const t of under) expect(touch(t.box, cover), `${t.label} under the card`).toBe(false);
+    for (const t of under) expect(touch(s.footprint(t), cover), `${t.label} (its level badge too) under the card`).toBe(false);
+    // A card edge that misses a full tag but cuts its level badge (on the tag's top-left corner): that tag is left out
+    // too. The hovered person's tag is a full one, with its badge.
+    const few = scene(4), hot = few.part.desks.find((d: any) => d.node).key;
+    const full = few.draw(hot).map((t) => ({ ...t, box: K.tagBox(few.ctx, t.x, t.y, t.label, t.compact) }));
+    const badged = full.find((t) => !t.compact && t.badge)!;
+    expect(badged, "a full tag with its level badge").toBeTruthy();
+    const foot = few.footprint(badged), edge = { x: foot.x - 300, y: foot.y - 40, w: 300 + (badged.box.x - foot.x) / 2 + 0.5, h: 80 };
+    expect([touch(edge, badged.box), touch(edge, foot)], "the edge cuts only the badge").toEqual([false, true]);
+    few.part.cover = edge;
+    expect(few.draw(hot).some((t) => t.label === badged.label), "its badge under the card: left out").toBe(false);
+    few.part.cover = null;
     const outside = all.filter((t) => !touch(t.box, cover)).map((t) => `${t.label}@${t.x},${t.y}`);
     expect(under.filter((t) => !t.compact).map((t) => `${t.label}@${t.x},${t.y}`)).toEqual(outside.filter((k) => all.find((t) => `${t.label}@${t.x},${t.y}` === k)!.compact === false));
     expect(s.draw().length, "closed: every tag back").toBe(all.length);

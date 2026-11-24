@@ -102,7 +102,12 @@ describe("the drawing's input (pure)", () => {
     expect(fit("Atlas (Alex Sample)", 48, en)).toBe("Atl… (A)");                   // narrower than that: the owner's initial
     expect(fit("Atlas（Alex Sample）", 84)).toBe("Atlas（Alex Sa…");                   // no owner part: cut at its end, as before
     expect(fit("Build bot (staging area)", 60)).toBe("Build bot…");
-    expect(fit("Atlas（Alex Sample）", 84, { owner: ["（", "Casey", "）"] })).toBe("Atlas（Alex Sa…");  // an owner that is not the label's end: ignored
+    expect(fit("Atlas（Alex Sample）", 84, { owner: ["（", "Casey", "）"] })).toBe("Atlas（Alex Sa…");
+    // #4379 review: two owners of one first word ("Alex A", "Alex B"): the whole owner with the name cut, never two
+    // identical "Longer (Alex)" tags where a cut name with each whole owner fits.
+    const pair = ["Alex A", "Alex B"].map((o) => fit(`Longer (${o})`, 84, { owner: [" (", o, ")"] }));
+    expect(pair).toEqual(["Long… (Alex A)", "Long… (Alex B)"]);
+    expect(new Set(pair).size).toBe(2);  // an owner that is not the label's end: ignored
     // The whole name with the owner's word cut, before only its initial; the room assistant's shorter word.
     expect(fit("Atlas (Morganstern Lee)", 90, { owner: [" (", "Morganstern Lee", ")"] })).toBe("Atlas (Morgan…)");
     expect(fit("Room assistant", 60, { short: "Assistant" })).toBe("Assistant");
