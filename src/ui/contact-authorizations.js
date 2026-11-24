@@ -8,11 +8,13 @@
 // - ?ticket=<id> opens that request at the top (from a chat badge, Needs you or a Permissions history row).
 // It reads again on the stream's contact-auth frame and when the page is shown again (no timer).
 import { html, useEffect, useState } from "/assets/app-html.js";
-import { register } from "/assets/app-i18n.js";
+import { register, lang } from "/assets/app-i18n.js";
 import { appStore, useStore } from "/assets/app-store.js";
 import { toast } from "/assets/ui-toast.js";
 import { Skeleton, ErrorState, Empty } from "/assets/ui-states.js";
+import { detailsPath } from "/assets/app-route.js";
 import { labelOf } from "/assets/instance-nav.js";
+import { ContactGrantEditor } from "./contact-grant-editor.js";
 import { InfoTip } from "/assets/info-tip.js";
 import { ca } from "./contact-auth-strings.js";
 import { decideTicket, getTicket, listTickets, personKey, shortTicketId } from "./contact-auth-client.js";
@@ -26,39 +28,33 @@ export const REASONS = new Set(["earlier-non-admin", "unknown-origin"]);
 const TONE = { pending: "warn", approved: "ok", delivered: "ok", declined: "bad", expired: "muted", unknown: "bad" };
 const stateOf = (s) => (Object.prototype.hasOwnProperty.call(TONE, s) ? s : "unknown");
 const label = (p) => (p && (p.label || p.userId)) || "";
-/** datetime-local's value for a time `days` from now (the browser's own zone). */
-/** M-3385: how long a request waits for a decision (its expiry from when it was asked), in whole minutes; 0 if unknown. */
+/** How long an application waits for a decision, from its server timestamps. */
 const waitMinutes = (tk) => { const ms = Date.parse(tk.expiresAt) - Date.parse(tk.createdAt); return Number.isFinite(ms) && ms > 0 ? Math.round(ms / 60_000) : 0; };
-const localIn = (days) => { const d = new Date(Date.now() + days * 864e5); d.setSeconds(0, 0); return new Date(d.getTime() - d.getTimezoneOffset() * 6e4).toISOString().slice(0, 16); };
 
 /** One request: what it is, who asked, and — for its approver, while it waits — the decision. */
 export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
   const [busy, setBusy] = useState(false);
-  const [allow, setAllow] = useState(false);
-  const [until, setUntil] = useState(() => localIn(7));
-  const [uses, setUses] = useState("");
+  const [grantOpen, setGrantOpen] = useState(false);
   const { instances } = useStore(appStore);
   const agentLabel = (name) => labelOf((instances || []).find((i) => i.name === name) || { name });
   const personLabel = label;
   const tk = ticket, st = stateOf(tk.state);
-  const decide = async (decision) => {
-    if (busy) return;
-    const n = uses.trim() === "" ? null : Math.max(1, Math.floor(Number(uses)));
-    const grant = decision === "approve-once" && allow && until && tk.origin?.kind === "human" && (tk.origin?.people || []).length === 1 ? { expiresAt: new Date(until).toISOString(), remainingUses: Number.isFinite(n) ? n : null } : undefined;
+  const decide = async (decision, grant) => {
+    if (busy) return false;
     setBusy(true);
     const r = await decideTicket(tk.id, { revision: tk.revision, decision, ...(grant ? { grant } : {}) });
     setBusy(false);
-    if (r.ok) { onChange?.(r.data); return; }
+    if (r.ok) { if (grant) toast(ca("grantSaved"), true); onChange?.(r.data); return true; }
     if (r.code === "already-decided" || r.code === "expired" || r.code === "conflict") {
       toast(ca("alreadyDecided"), false);
       const again = await getTicket(tk.id);
       if (again.ok) onChange?.(again.data);
-      return;
+      return false;
     }
     toast(ca(r.code === "forbidden" ? "forbidden" : r.code === "unavailable" ? "unavailable" : "decideFailed"), false);
   };
   const people = tk.origin?.people || [];
-  const grantable = tk.origin?.kind === "human" && people.length === 1;
+  const grantable = ["human", "mixed"].includes(tk.origin?.kind) && people.length > 0 && people.length <= 16;
   // M-3385: when it was decided; or, while it waits, how long it waits and that nothing is forwarded after that.
   const endsText = tk.decidedAt ? ca("decided", when(tk.decidedAt), personLabel(tk.decidedBy))
     : st === "pending" && waitMinutes(tk) ? ca("expiresPending", when(tk.expiresAt), waitMinutes(tk)) : ca("expires", when(tk.expiresAt));
@@ -78,21 +74,18 @@ export function TicketCard({ ticket, onChange, onPerson, focus = false }) {
       <div class="contact-ticket-times"><span class="contact-time-item" title=${ca("created", when(tk.createdAt))}>${ca("created", when(tk.createdAt))}</span>
         <span class=${`contact-time-item${!tk.decidedAt && st === "pending" && waitMinutes(tk) ? " contact-time-wait" : ""}`} title=${endsText}>${endsText}</span></div>
       ${st === "delivered" ? html`<p class="note">${ca("deliveryNote")}</p>` : null}
-      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html` ${ca("resetNote")}` : null}</p>` : null}
+      ${REASONS.has(tk.reason) ? html`<p class="note contact-reason" data-reason=${tk.reason}>${ca(`reason_${tk.reason}`)}${st === "pending" ? html`${lang() === "zh-TW" ? "" : " "}${ca("resetNote")}` : null}</p>` : null}
     </div>
+    ${tk.grantIds?.length ? html`<p><a class="st-link" href=${`${detailsPath(tk.target)}?cat=permissions`}>${ca("grantView")}</a></p>` : null}
     ${tk.canDecide && st === "pending" ? html`<div class="contact-decide">
       ${/* M-3385 (the user, 11-20: easy to read but too long): one short visible line; what an approval means onward is in its ⓘ. */ ""}
       <p class="note contact-decided-note">${ca("decidedNote")} <${InfoTip} text=${ca("decidedNoteMore")} label=${ca("decidedNoteAbout")} /></p>
-      ${allow && grantable ? html`<div class="field-row contact-allow">
-        <label class="field"><span>${ca("alsoAllowUntil")}</span><input class="input" type="datetime-local" value=${until} disabled=${busy} onInput=${(e) => setUntil(e.currentTarget.value)} /></label>
-        <label class="field"><span>${ca("alsoAllowUses")}</span><input class="input" type="number" min="1" inputmode="numeric" value=${uses} disabled=${busy} onInput=${(e) => setUses(e.currentTarget.value)} /></label></div>` : null}
       <div class="contact-decide-controls"><button type="button" class="btn btn-sm btn-primary" disabled=${busy} onClick=${() => void decide("approve-once")}>${ca("approveOnce")}</button>
-        <button type="button" class="btn btn-sm danger" disabled=${busy} onClick=${() => void decide("decline")}>${ca("decline")}</button>
-        ${/* M-3385: a standing grant is one person's — offered only for a request from exactly one person (the server refuses
-            any other: invalid-grant-origin), and said in full: who, what kind, from where to where; where it lives under the row. */ ""}
-        ${grantable ? html`<span class="contact-toggle-pair"><label class="check contact-toggle"><input type="checkbox" checked=${allow} disabled=${busy} onChange=${(e) => setAllow(e.currentTarget.checked)} />
-          <span>${ca("alsoAllow")}</span></label><${InfoTip} cls="contact-allow-info" text=${ca("alsoAllowMore", personLabel(people[0]), ca(`verb_${tk.verb}`), agentLabel(tk.source), agentLabel(tk.target))}
-          label=${ca("alsoAllowAbout")} /></span>` : null}</div>
+        <button type="button" class="btn btn-sm" disabled=${busy || !grantable} onClick=${() => setGrantOpen(true)}>${ca(people.length > 1 ? "allowPeople" : "allowPerson")}</button>
+        <button type="button" class="btn btn-sm danger" disabled=${busy} onClick=${() => void decide("decline")}>${ca("decline")}</button></div>
+      ${!grantable ? html`<p class="note">${ca("grantUnknown")}</p>` : null}
+      ${grantOpen && grantable ? html`<${ContactGrantEditor} key=${`${tk.id}:${tk.revision}`} people=${people} source=${agentLabel(tk.source)} target=${agentLabel(tk.target)} verb=${tk.verb}
+        onClose=${() => setGrantOpen(false)} onSave=${choice => decide("approve-once", { expiresAt: choice.expiresAt, remainingUses: choice.remainingUses, personKeys: choice.personKeys })} />` : null}
     </div>` : null}
   </article>`;
 }

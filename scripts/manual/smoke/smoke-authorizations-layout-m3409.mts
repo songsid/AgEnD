@@ -15,7 +15,7 @@ const roster = [
 const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP || 19809), roster, classic: false });
 const person = { platform: "host", adapterId: "host", userId: "operator", label: "Example owner" };
 const pending = { id: "R11111111-2222-4333-8444-555555555555", revision: 1, scope: "peer.dispatch", state: "pending", source: "example-room", target: "release-helper", sourceGeneration: "one", targetGeneration: "two", verb: "request_information",
-  // One person: a standing grant ("also allow") is one person's; the server refuses one for any other origin (M-3385).
+  // One known person opens the explicit scoped grant dialog; multi-person selection has its own controls.
   origin: { kind: "human", people: [person], receiptIds: [], chain: ["example-room", "report-helper"] },
   message: "Please summarize the release checklist and explain which checks are still pending.\n請整理發佈檢查清單，並說明還有哪些項目需要確認。",
   createdAt: "2026-11-19T08:00:00Z", expiresAt: "2026-11-26T08:00:00Z", canDecide: true };
@@ -55,12 +55,15 @@ try {
     });
     await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(250);
     if (!BEFORE && !c.empty) {
-      await page.locator('.contact-toggle input').check();
-      const fields = await page.locator('.contact-allow input').evaluateAll((els: Element[]) => els.map(e => ({ font: parseFloat(getComputedStyle(e).fontSize), h: e.getBoundingClientRect().height })));
-      if (c.device === "phone" && fields.some((f: any) => f.font < 16 || f.h < 44)) throw Error("Phone grant fields are too small");
+      await page.locator('[data-state="pending"]').first().getByRole("button", { name: c.lang === "en" ? "Allow this person to contact this agent…" : "允許這個人聯絡此 Agent…", exact: true }).click();
+      const grant = page.locator("dialog.contact-grant-dialog[open]"); await grant.waitFor();
+      const fields = await grant.locator('input:not([type=checkbox]), select, .check').evaluateAll((els: Element[]) => els.map(e => ({ field: e.matches("input, select"), font: parseFloat(getComputedStyle(e).fontSize), h: e.getBoundingClientRect().height, w: e.getBoundingClientRect().width })));
+      if (c.device === "phone" && fields.some((f: any) => f.field && f.font < 16 || f.h < 44 || f.w < 44)) throw Error("Phone grant fields are too small: " + JSON.stringify(fields));
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-      if (overflow) throw Error("Grant disclosure overflows");
-      await page.locator('.contact-toggle input').uncheck();
+      const grantOverflow = await grant.evaluate((el: Element) => el.scrollWidth > el.clientWidth);
+      if (overflow || grantOverflow) throw Error("Grant dialog overflows");
+      await grant.getByRole("button", { name: c.lang === "en" ? "Cancel" : "取消", exact: true }).click();
+      await grant.waitFor({ state: "detached" });
       await page.locator('.contact-ticket-origin .link-btn').first().click();
       const clear = page.locator('.contact-person-filter .chip-x'); await clear.waitFor();
       const chip = await clear.boundingBox();
@@ -84,7 +87,7 @@ try {
         hierarchy: !msg || parseFloat(cs(foot).fontSize) < parseFloat(cs(msg).fontSize),
         cards: root.querySelectorAll(".contact-ticket").length, hiddenIds: !root.textContent.includes("example-room") && !root.textContent.includes("release-helper"),
         noPrivateIds: !/-t\d{6,}/.test(document.body.innerText), emptyHint: !!root.querySelector(".empty-hint"),
-        tap: innerWidth >= 900 || [...root.querySelectorAll("button:not(:disabled), select, .contact-toggle")].every(b => { const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; }),
+        tap: innerWidth >= 900 || [...root.querySelectorAll("button:not(:disabled), select")].every(b => { const r = b.getBoundingClientRect(); return r.height >= 44 && r.width >= 44; }),
         inputSize: innerWidth >= 900 || parseFloat(cs(root.querySelector("select")).fontSize) >= 16,
         sharedCard: !card || cs(card).borderTopStyle === "none",
         sharedStatus: !card || !!card.querySelector(".tag.contact-ticket-state"),

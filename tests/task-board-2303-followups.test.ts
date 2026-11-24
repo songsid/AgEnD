@@ -6,7 +6,7 @@
  *   1. Checked again as it goes out: ready, start, answered, sent back (with unchanged controls).
  *   2. A dispatcher answers a blocked card of a busy assignee: the answer is kept, the card waits.
  *   3. The `task` tool's own tasks: no "assigned" notice (board cards keep theirs).
- *   4. A comment is not sent (#2801: only a status or assignee change is news); the card keeps it for its assignee.
+ *   4. A comment is sent to its assignee unless it has read it by then (#2801 made it news for nobody; comments wake since).
  *   5. Cards an instance opened for itself do not count; `board_cards_at_once` raises the limit.
  *
  * Isolation: temp databases; a simulated clock for the waker's 10 s window (its timers seam); nothing else runs.
@@ -193,8 +193,8 @@ describe("3. the `task` tool's own tasks are not announced", () => {
   });
 });
 
-describe("4. a comment is not sent (#2801)", () => {
-  it("read with its own write or not: no notice; the card lists it until its assignee reads it", () => {
+describe("4. a comment is told to its assignee, unless its own write has read it by then (#2801; comments wake since)", () => {
+  it("read with its own write first: not sent again; one it has not read: sent; the card lists it until its assignee writes", () => {
     const { board, take } = rig();
     const a = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     board.moveCard(DEV, a.code, "claimed");
@@ -205,7 +205,7 @@ describe("4. a comment is not sent (#2801)", () => {
     // Not the comment again; the lead, who handed it out, hears it waits for its confirmation (taskhall 78ad9eb; #2434).
     expect(take()).toEqual([{ to: "lead", text: expect.stringContaining("you handed it out and it is ready for your confirmation (@dev-a)") }]);
     board.updateCard(LEAD, a.code, { comment: "one more thing" });
-    expect(take()).toEqual([]);
+    expect(take()).toEqual([{ to: "dev-a", text: expect.stringContaining('new comment from lead: "one more thing"') }]);
     expect(board.myWork("dev-a").newComments.map((n) => n.card.code)).toEqual([a.code]);
   });
 });

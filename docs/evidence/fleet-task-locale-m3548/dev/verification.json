@@ -1,0 +1,91 @@
+{
+  "actualMainMerge": "152c4f9c1182e464501840944f240d5ced65c09e",
+  "mainMergedAt": "2026-11-23T13:12:33Z",
+  "mainApprovedHead": "630dd1bb3b943312b8eafc7f90484091a8717be5",
+  "mainApprovedBlobsEqual": 15,
+  "mainAllFivePostWorkflows": "success",
+  "freshDevParent": "94546a9c55d9ebebea768c1b56f13eea72d2c1bb",
+  "copiedMainPaths": [
+    "changes/3548-fleet-task-copy.md",
+    "changes/3548-fleet-task-copy.zh-TW.md",
+    "docs/evidence/fleet-task-locale-m3548/README.md",
+    "docs/evidence/fleet-task-locale-m3548/capture.json",
+    "docs/evidence/fleet-task-locale-m3548/desk-dark-zh-TW-footer.png",
+    "docs/evidence/fleet-task-locale-m3548/desk-dark-zh-TW-nav.png",
+    "docs/evidence/fleet-task-locale-m3548/desk-light-en-footer.png",
+    "docs/evidence/fleet-task-locale-m3548/desk-light-en-nav.png",
+    "docs/evidence/fleet-task-locale-m3548/phone-dark-zh-TW-footer.png",
+    "docs/evidence/fleet-task-locale-m3548/phone-dark-zh-TW-nav.png",
+    "docs/evidence/fleet-task-locale-m3548/verification.json",
+    "scripts/manual/smoke/smoke-fleet-task-locale-m3548.mts",
+    "tests/fleet-task-locale-m3548.test.ts"
+  ],
+  "devProductionReversePatchEqualsBase": true,
+  "captureSource": "6c3d333e841402cfc953d1ee9f5edbb04504959d",
+  "currentDevSources": [
+    {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "15f86821a66a9f2f9ebd90c5453d1d881bcedcc223a2ab488a1fc894035d2ed9",
+      "gitBlob": "be80db3732a92a1bf5b69215aeb5637891be7b67"
+    },
+    {
+      "path": "src/ui/fleet-task-card.js",
+      "sha256": "7aa3466048813160b383cbbe5171bd5fac6c9415d1ad3bfbfedcbc0406b6e6d6",
+      "gitBlob": "5b1bf458a38cd4a9a83d018b1b0f5a0462c8f12a"
+    },
+    {
+      "path": "tests/fleet-task-locale-m3548.test.ts",
+      "sha256": "46866a6cc87449902848e4164cd5a5d9acfb55dddbfd0e0fd9cd8e3ab77c45ab",
+      "gitBlob": "1ff7e70edf38c07f43a99e023c83014b8ca4e0dd"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-fleet-task-locale-m3548.mts",
+      "sha256": "0c38c1d82e2aa4472baf68ee72f23b7629a67905a2801e3d1e55b8450c237531",
+      "gitBlob": "ce34eb916db2e867f1a58a5472edb83ad64a1bcd"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-fleet-task-locale-dev-m3548.mts",
+      "sha256": "eedd0936260ae066ab23f9d81a7ea4a1e5212917eec9b029cb8cbf9113599a09",
+      "gitBlob": "8d2d7b444a0a7e1814f50f3293ce86471d4cde8f"
+    }
+  ],
+  "freshDevImages": [
+    {
+      "path": "desk-dark-zh-TW-footer.png",
+      "sha256": "38f306631370cd512eecd8a9f6c3ed27ec9d82450c0356dc23e133cfcd7717fb"
+    },
+    {
+      "path": "desk-dark-zh-TW-nav.png",
+      "sha256": "8f1bf40ffd6fa455b342ff697788714a915133d51d050ef059e0c676f69c8fcf"
+    },
+    {
+      "path": "desk-light-en-footer.png",
+      "sha256": "511d0971ea1eadaa3f2a810a3ed47d01af7fab4cf34c1a0605f0f8b97c13804d"
+    },
+    {
+      "path": "desk-light-en-nav.png",
+      "sha256": "48ebafb40270a766ed9f2c3ba62434712d23954fa2f38731020980cebfabad58"
+    },
+    {
+      "path": "phone-dark-zh-TW-footer.png",
+      "sha256": "6357105cfd7fa24dd29679e8ec77db708d8cc90d8fd7ae1dae8958a010073d31"
+    },
+    {
+      "path": "phone-dark-zh-TW-nav.png",
+      "sha256": "1a6d72aa9aa23f831e61b2bd62456e7deeadc67f5f72f2c177e623e5e0514023"
+    }
+  ],
+  "proof": {
+    "freshDevTestsPassed": 4,
+    "sourceTestTypesExit": 0,
+    "changelogFragments": 768,
+    "captureCases": 3,
+    "fixtureErrors": 0
+  },
+  "limits": "Parent evidence is historical main. New dev captures use the existing #4367 page and version suffix; no native-device/all-interaction claim.",
+  "visualInspection": {
+    "originals": 6,
+    "result": "readability/privacy clear within captured views",
+    "phoneLimit": "Inactive tabs icon-only; metadata shot is scrolled, no whole-page reachability claim."
+  }
+}

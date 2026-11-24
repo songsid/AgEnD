@@ -1,0 +1,422 @@
+[
+  {
+    "run": 1,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.184,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 579.7188439999991
+      }
+    ]
+  },
+  {
+    "run": 2,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.927,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 550.6642849999989
+      }
+    ]
+  },
+  {
+    "run": 3,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.912,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 566.9761990000006
+      }
+    ]
+  },
+  {
+    "run": 4,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.921,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 615.2585849999996
+      }
+    ]
+  },
+  {
+    "run": 5,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.16,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 399.13048100000015
+      }
+    ]
+  },
+  {
+    "run": 6,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.624,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 535.4622759999984
+      }
+    ]
+  },
+  {
+    "run": 7,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.625,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 515.6981809999997
+      }
+    ]
+  },
+  {
+    "run": 8,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 21.414,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 417.58754399999816
+      }
+    ]
+  },
+  {
+    "run": 9,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.031,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 516.3904260000018
+      }
+    ]
+  },
+  {
+    "run": 10,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.804,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 560.0684650000003
+      }
+    ]
+  },
+  {
+    "run": 11,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 20.507,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 526.0346759999993
+      }
+    ]
+  },
+  {
+    "run": 12,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.747,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 421.02477
+      }
+    ]
+  },
+  {
+    "run": 13,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.775,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 560.0974779999997
+      }
+    ]
+  },
+  {
+    "run": 14,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.787,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 422.94403800000146
+      }
+    ]
+  },
+  {
+    "run": 15,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.938,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 625.843159
+      }
+    ]
+  },
+  {
+    "run": 16,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.213,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 440.77028399999836
+      }
+    ]
+  },
+  {
+    "run": 17,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.802,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 983.9081770000012
+      }
+    ]
+  },
+  {
+    "run": 18,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.198,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 576.7057430000023
+      }
+    ]
+  },
+  {
+    "run": 19,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.472,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 462.56602199999907
+      }
+    ]
+  },
+  {
+    "run": 20,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.027,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 439.0980039999995
+      }
+    ]
+  },
+  {
+    "run": 21,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.963,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 603.6993269999984
+      }
+    ]
+  },
+  {
+    "run": 22,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.13,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 463.0453149999994
+      }
+    ]
+  },
+  {
+    "run": 23,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.937,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 491.1214690000015
+      }
+    ]
+  },
+  {
+    "run": 24,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 19.132,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 554.649257000001
+      }
+    ]
+  },
+  {
+    "run": 25,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.879,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 454.98211699999956
+      }
+    ]
+  },
+  {
+    "run": 26,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.682,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 476.85357499999736
+      }
+    ]
+  },
+  {
+    "run": 27,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.629,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 476.4286289999982
+      }
+    ]
+  },
+  {
+    "run": 28,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 21.161,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 421.3258229999992
+      }
+    ]
+  },
+  {
+    "run": 29,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.952,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 431.88217000000077
+      }
+    ]
+  },
+  {
+    "run": 30,
+    "cpu": 0,
+    "busyProcesses": 2,
+    "seconds": 18.564,
+    "exit": 0,
+    "cases": [
+      {
+        "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+        "status": "passed",
+        "milliseconds": 543.4917559999994
+      }
+    ]
+  }
+]

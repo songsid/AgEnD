@@ -195,10 +195,10 @@ import { createLogger, rotateLogIfNeeded, type Logger } from "./logger.js";
 import { processAttachments } from "./channel/attachment-handler.js";
 import { routeToolCall } from "./channel/tool-router.js";
 import { Scheduler } from "./scheduler/index.js";
-import { boardActivity, boardCardLimit, boardToolAction } from "./task-board-tool.js";
-import { TaskBoardWaker, namesCard } from "./task-board-waker.js";
+import { boardActivity, boardCardLimit, boardCommentWakesOn, boardLeader, boardProgressWakesOn, boardToolAction } from "./task-board-tool.js";
+import { TaskBoardWaker } from "./task-board-waker.js";
 import { DispatcherLiveness, LIVENESS_STARTUP_GRACE_MS, livenessSettings, questionNotices, turnQuestion, type AssigneeFacts, type LivenessCard } from "./dispatcher-liveness.js";
-import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor } from "./scheduler/task-board.js";
+import { TaskBoardError, waitsForPerson, wrapUpGap, type Actor, type Wake } from "./scheduler/task-board.js";
 import type { SchedulerDb } from "./scheduler/db.js";
 import type { Schedule, ScheduleRetry, ScheduleRetryDrop, SchedulerConfig } from "./scheduler/index.js";
 import { escapeTelegramHtml, scheduleClock, scheduleRetryLabel } from "./scheduler/retry-label.js";
@@ -5750,8 +5750,17 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if ((input.approvers || input.grants) && !before.canManage) throw Error("forbidden");
     if (input.approvers?.some(person => !before.eligibleApprovers.some(allowed => sameContactPerson(person, allowed)))) throw Error("invalid-approver");
     if ((input.mode || input.roomTools) && !before.canSetMode) throw Error("forbidden");
-    if (input.grants?.some(grant => grant.target !== name || !this.webChatOwner(grant.source)
-      || Date.parse(grant.expiresAt) <= Date.now())) throw Error("invalid-grant");
+    // Replacing the table may retain expired historical rows unchanged while editing/revoking another row.
+    // Only an exact retained image is exempt; new or changed permissions still need a live source and future expiry.
+    const grantImage = (grant: NonNullable<ContactPermissionsWrite["grants"]>[number]) =>
+      JSON.stringify([grant.person.platform, grant.person.adapterId, grant.person.userId, grant.person.label,
+        grant.source, grant.target, grant.verbs, grant.expiresAt, grant.remainingUses]);
+    if (input.grants?.some(grant => {
+      if (grant.target !== name) return true;
+      const previous = before.grants.find(row => row.id === grant.id);
+      if (previous && grantImage(previous) === grantImage(grant)) return false;
+      return !this.webChatOwner(grant.source) || Date.parse(grant.expiresAt) <= Date.now();
+    })) throw Error("invalid-grant");
     // Configuration does not prove an external MCP's account independence. Preserve a conservative warning.
     if (input.roomTools) input.roomTools.allowedMcpTools = input.roomTools.allowedMcpTools.map(tool => ({ ...tool,
       usesOwnerAccount: true, accountWarning: t("contact.mcpAccountWarning") }));
@@ -25069,16 +25078,24 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     db.board.setCardLimit((name) => boardCardLimit(this.fleetConfig, name));
     // An instance with the task board switched off is handed no cards and sent no notices (read at each write and wake).
     db.board.setBoardOff((name) => taskBoardOffIn(this.fleetConfig, name));
+    // Comments and @mentions wake (docs/design/task-board.md): the fleet's instance names, and its switch, read at each comment.
+    db.board.setCommentRouting({
+      instances: () => Object.keys(this.fleetConfig?.instances ?? {}),
+      enabled: () => boardCommentWakesOn(this.fleetConfig),
+    });
+    // Following a card (docs/design/task-board.md): the switch and the board's leader, read at each write.
+    db.board.setProgressRouting({
+      enabled: () => boardProgressWakesOn(this.fleetConfig),
+      leader: () => boardLeader(this.fleetConfig),
+    });
+    // An agent's words reach another instance by the board (a comment, an @mention, a follower's progress) only as its
+    // contact rules allow, as a peer message does (M-3160 / M-3384): asked as it writes and again as the notice goes out.
+    db.board.setContactGate((source, target) => this.taskBoardMayReach(source, target));
     const waker = this.taskBoardWaker = new TaskBoardWaker({
-      deliver: (instance, message, key) => this.admitTaskBoardNotice(instance, message, key),
+      deliver: (instance, message, key, origins) => this.admitTaskBoardNotice(instance, message, key, origins),
+      mayReach: (source, target) => this.taskBoardMayReach(source, target),
       isInstance: (name) => this.fleetConfig?.instances?.[name] != null,
       boardOff: (name) => taskBoardOffIn(this.fleetConfig, name),
-      // #2785 (c), #2801: the maker's own message already told it; the board's line would repeat it.
-      messagedAbout: (from, to, codes, sinceMs) => {
-        const outbox = this.deliveryOutbox;
-        if (!outbox?.isOpen) return false;
-        return outbox.recentTextsFrom(to, from, new Date(sinceMs).toISOString()).some((text) => codes.some((code) => namesCard(text, code)));
-      },
       // #2801: a notice still waiting whose cards have all changed again is not delivered.
       withdraw: (prefix, stale, reason) => {
         const outbox = this.deliveryOutbox;
@@ -25104,19 +25121,52 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       if (ids.length) for (const name of this.daemons.keys()) this.observeWorkingState(name, "tasks");
       this.emitSseEvent("tasks", { rev, ids, projects });
       waker.changed(changed);
-      waker.note(wakes);
+      waker.note(this.withWriterOrigins(wakes));
       // step 3: cards waiting for the person are Needs you items; #2355 review: a project's lead routes them too.
       if (ids.length || projects) this.needsYou?.poke();
     });
   }
 
-  /** A task board notice, as AgEnD's own (not a person's words): through the delivery outbox, held until delivered. */
-  private admitTaskBoardNotice(instance: string, message: string, key: string): boolean {
+  /**
+   * A task board notice, as AgEnD's own: through the delivery outbox, held until delivered. `origins`: the writers whose
+   * own words it carries (a comment, a mention, a follower's progress) with their contact origin as they wrote; the
+   * instance inherits each, as admitDurableDelivery does for a peer's message, so the words do not shed the origin.
+   */
+  private admitTaskBoardNotice(instance: string, message: string, key: string, origins: Record<string, unknown[]> = {}): boolean {
     this.ensureDeliveryOutbox();
     const outbox = this.deliveryOutbox;
     if (!outbox) return false;
+    const inherited = Object.values(origins).flat().filter((o): o is ContactOrigin => !!o && typeof o === "object" && Array.isArray((o as ContactOrigin).chain));
+    if (inherited.length) {
+      const store = this.contactService().host.store;
+      for (const origin of inherited) store.inheritOrigin(instance, { ...origin, chain: [...origin.chain, instance] });
+    }
     outbox.admitSystemNotice(instance, key, message, new Date());
     return true;
+  }
+
+  /**
+   * Whether `source`'s words may reach `target` by the task board on their own: the rules a peer message meets before it
+   * is admitted — no active Hub contact restriction (M-3160: send_to_instance and broadcast refuse it, whatever the
+   * origin; #4367 review) and no retained origin that needs a contact application (M-3384, ContactAuthService.
+   * needsApplication). A board notice is never an application, so what needs one is not sent and its writer is told to
+   * use send_to_instance. A standing grant is not read here: it is honoured there. Fails closed.
+   */
+  private taskBoardMayReach(source: string, _target: string): boolean {
+    try { return !this.hubContactRestricted(source) && !this.contactService().needsApplication(source); } catch { return false; }
+  }
+
+  /** The board's wakes as the write commits, each writer whose words they carry stamped with its contact origin now. */
+  private withWriterOrigins(wakes: readonly Wake[]): Wake[] {
+    if (!wakes.some((w) => w.principals?.length)) return [...wakes];
+    let service: ContactAuthService;
+    try { service = this.contactService(); } catch { return [...wakes]; }
+    return wakes.map((w) => {
+      if (!w.principals?.length) return w;
+      const origins: Record<string, unknown[]> = {};
+      for (const p of w.principals) { const o = service.host.legacyClassic?.(p) ? undefined : service.origin(p); origins[p] = o ? [o] : []; }
+      return { ...w, origins };
+    });
   }
 
   listClaimedTasks(assignee: string): Array<{ id: string; title: string }> {

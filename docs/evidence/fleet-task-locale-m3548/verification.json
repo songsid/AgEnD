@@ -1,0 +1,65 @@
+{
+  "captureSource": "7fdce31a5b30ea37c7d0ff3553c1d496e06de1e5",
+  "sourceBindings": [
+    {
+      "path": "src/ui/panel-fleet.js",
+      "sha256": "f9b36025504b872547c8af80233c4a2ad1da67ec0b234d6af7bc77e7e1425624",
+      "gitBlob": "d130cbc2f29b5b7c97141dd380f876d23dfabeae"
+    },
+    {
+      "path": "src/ui/fleet-task-card.js",
+      "sha256": "2b06b5dea2d4420679b95191dfee8b303d8bdd3ff349a646d1ddf41be5f73416",
+      "gitBlob": "49d46ad06046bdaa333353652cf6db85894ebe4d"
+    },
+    {
+      "path": "tests/fleet-task-locale-m3548.test.ts",
+      "sha256": "46866a6cc87449902848e4164cd5a5d9acfb55dddbfd0e0fd9cd8e3ab77c45ab",
+      "gitBlob": "1ff7e70edf38c07f43a99e023c83014b8ca4e0dd"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-fleet-task-locale-m3548.mts",
+      "sha256": "0c38c1d82e2aa4472baf68ee72f23b7629a67905a2801e3d1e55b8450c237531",
+      "gitBlob": "ce34eb916db2e867f1a58a5472edb83ad64a1bcd"
+    }
+  ],
+  "images": [
+    {
+      "path": "desk-dark-zh-TW-footer.png",
+      "sha256": "a65506e2d3801d1dbcd2dac2855a583027050158dc3dd273a192766573da7c55"
+    },
+    {
+      "path": "desk-dark-zh-TW-nav.png",
+      "sha256": "9d1cd10bda28d3293254ab761b71a8050a4e4121682637bfdd6292eb4a6ea6bb"
+    },
+    {
+      "path": "desk-light-en-footer.png",
+      "sha256": "8fd9f1af3706c46ceb412ea5310f17064c6d4b12518b0eb4255629a370cf4463"
+    },
+    {
+      "path": "desk-light-en-nav.png",
+      "sha256": "f588023f19d3240be04d7a39cbca463faa9d6f147cc11523dbac6dc2b6999538"
+    },
+    {
+      "path": "phone-dark-zh-TW-footer.png",
+      "sha256": "10249fd8bb9cee04c983a569c23f5b41e72ebc9a6d4ff305a857f4cb770d26ad"
+    },
+    {
+      "path": "phone-dark-zh-TW-nav.png",
+      "sha256": "01637913b7a6f3a606dafbd58b9c033e1ed3a180d7f49ca7b481638f134ba09c"
+    }
+  ],
+  "proof": {
+    "baseAssertionFailures": 2,
+    "baseEnglishPasses": 2,
+    "finalPasses": 4,
+    "testTypesExit": 0,
+    "changelogFragments": 206,
+    "capturedCases": 3
+  },
+  "scope": "Static fixture images; phone footer is already scrolled; no native-device or full-dialog coverage claim.",
+  "visualInspection": {
+    "originals": 6,
+    "result": "readable/privacy clear within captured views",
+    "phoneNavigationLimit": "Selected Tasks label visible; inactive tabs retain existing icon-only presentation. Teams label is asserted in DOM and visible in desktop capture."
+  }
+}

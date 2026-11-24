@@ -215,6 +215,8 @@ import { contactBadgeHtml, installBadgeRefresh } from "./contact-ticket-badge.js
 import { createEmojiIndex } from "./chat-emojis.js";
 import { pollPublicPreview } from "./preview-status.js";
 import { createMentionIndex } from "./chat-mentions.js";
+import "./chat-task-ref-strings.js";
+import { createTaskRefIndex, insertTaskRef, taskRefAt } from "./chat-task-refs.js";
 import { setPanelFeedback } from "./preview-panel-actions.js";
 import { PreviewPanel, claimPanel, openMarkdown, openPanel, openWorkspace, panelClaims, panelStore, panelVersion, shownKey } from "./preview-panel.js";
 import { isUpdateLine, needsArgument, paletteFor, parseCommandLine, UPDATE_COMMAND } from "./chat-commands.js";
@@ -373,6 +375,15 @@ let announceTimer = null;
 /** #1630: which Discord server emoji this page may draw (created with the store, in boot). */
 let emojiIndex = null;
 let mentionIndex = null;   // #1682: the names of the mentions shown
+let taskRefIndex = null;   // The task cards the person's messages name (chips) and the ones offered while `#` is typed
+/** What a chip draws for a card the page knows — its words, its status in the page's language, and a tip with who has it. */
+function taskChipInfo(code) {
+  const v = taskRefIndex ? taskRefIndex.get(code) : null;
+  if (!v) return null;
+  const status = t(`taskref.s.${v.status}`);
+  const tip = [`${v.code} · ${v.title}`, status, v.assignee ? `@${v.assignee}` : null].filter(Boolean).join(" · ");
+  return { title: v.title, status: v.status, statusLabel: status, tip };
+}
 function announce(text) {
   let el = document.getElementById("announcer");
   if (!el) { el = document.createElement("div"); el.id = "announcer"; el.className = "sr-only"; el.setAttribute("role", "status"); el.setAttribute("aria-live", "polite"); el.setAttribute("aria-atomic", "true"); document.body.appendChild(el); }
@@ -405,6 +416,8 @@ export function boot({ stream, boot: bootData, deps = {} }) {
   });
   emojiIndex = createEmojiIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   mentionIndex = createMentionIndex((url) => guestPage() ? null : (deps.fetch || fetch)(url, { credentials: "same-origin" }));
+  // A guest has no task board (the server refuses it too); everyone else reads the cards a message names.
+  taskRefIndex = guestPage() ? null : createTaskRefIndex((url) => (deps.fetch || fetch)(url, { credentials: "same-origin" }));
   store.attach(stream);
   // #1306: what the server said about previews for this load. The page-wide message and storage listeners this adds
   // belong to the app, once (they are never per mount).
@@ -803,6 +816,7 @@ function threadEntry(name, doc) {
     openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
+    taskRefs: taskRefIndex ? taskChipInfo : undefined,                          // A person's task numbers as chips
     activity: { mount: (node, group) => mountActivity(node, group, activityCtx(name)) },   // AGEND-181: the timeline's blocks
   });
   e.thread = thread;
@@ -812,10 +826,20 @@ function threadEntry(name, doc) {
 function follow(name, thread) {
   // #1630: the server-emoji list is read once a message shows a tag; when it arrives, those messages are drawn again.
   // #1682: the same for mention names — asked for the ids the messages carry; when names arrive, drawn again.
-  const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); };
+  const wantEmojis = (msgs) => { if (emojiIndex && emojiIndex.wants(msgs)) emojiIndex.ensure(); if (mentionIndex) mentionIndex.ensure(msgs); if (taskRefIndex) taskRefIndex.ensure(msgs); };
   const offs = [];
   if (emojiIndex) offs.push(emojiIndex.subscribe(() => thread.render(rowsOf(name))));
   if (mentionIndex) offs.push(mentionIndex.subscribe(() => thread.render(rowsOf(name))));
+  // The cards the messages name — drawn again when their answer arrives, and read again when the board changed.
+  if (taskRefIndex) {
+    offs.push(taskRefIndex.subscribe(() => thread.render(rowsOf(name))));
+    const sub = appStore.get().streamOn;
+    if (typeof sub === "function") {
+      let timer = null;
+      const off = sub("tasks", () => { if (timer) clearTimeout(timer); timer = setTimeout(() => { timer = null; taskRefIndex.refresh(); }, 400); });
+      offs.push(() => { if (timer) clearTimeout(timer); if (typeof off === "function") off(); });
+    }
+  }
   wantEmojis(store.state.msgs[name]);
   // AGEND-181/197: the activity feed — this instance's steps while the chat is shown (the Log's own read, live by steps_tick,
   // or by a poll when the stream has fallen back to polling); switched by this browser's Show activity / Show thinking.
@@ -1005,15 +1029,15 @@ function Dock({ name, inst, lease, exec, awaiting, workingLabel, bindings, ids, 
   return html`<div data-trust="composer" class="dock"><div class="dock-col">
     <${Prompts} name=${name} />
     <${SubagentProgress} name=${name} />
-    <div class="composer-hit" onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
+    <div class="composer-hit" data-composer-focus onPointerDown=${focusComposerStrip} onClick=${focusComposerStrip}>
     ${metaLine ? html`<${ChatMetaLine} ids=${ids} name=${name} inst=${inst} lease=${lease} exec=${exec} awaiting=${awaiting} />`
       : html`<${WorkBar} ids=${ids} name=${name} lease=${lease} exec=${exec} awaiting=${awaiting} workingLabel=${workingLabel} />`}
     <${CommandCard} name=${name} lease=${lease} />
     <${QuickActions} name=${name} inst=${inst} lease=${lease} />
     ${s.waking[name] ? html`<p class="send-waking" role="status">${t("chat.waking", name)}</p>` : null}
     <${Composer} name=${name} inst=${inst} bindings=${bindings} ids=${ids} focused=${focused} label=${composerLabel(inst, name)} lease=${lease} busy=${R().isBusy(exec)} />
-    ${metaLine ? null : html`<div class="composer-row">${guestPage() ? html`<span class="guest-note" title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
-      class="hint" title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
+    ${metaLine ? null : html`<div class="composer-row" data-composer-focus>${guestPage() ? html`<span class="guest-note" data-composer-focus title=${t("chat.guestNote")}>${t("chat.guestNote")}</span>` : html`<${ComposerAuth} />`}<span
+      class="hint" data-composer-focus title=${t(guestPage() || !supportsInstanceFeature(inst,"commands") ? "chat.guestMore" : "chat.composerMore")}>${t(supportsInstanceFeature(inst,"commands") ? touchScreen() ? "chat.composerHintTouch" : "chat.composerHint" : touchScreen() ? "chat.nativeComposerHintTouch" : "chat.nativeComposerHint")}</span></div>`}
   </div></div></div>`;
 }
 
@@ -1303,12 +1327,12 @@ function ChatMetaLine({ name, inst, lease, exec, awaiting, ids = {} }) {
     kind !== "awaiting" && since != null ? ` ${R().formatElapsed(performance.now() - since)}` : ""}` : "";
   const run = (command) => store.runCommand(name, command, "", { alive: () => lease.current() });
   const label = `${model}${effort ? ` · ${effort}` : ""}`;
-  return html`<div class=${`chat-meta${kind ? ` busy ${kind}` : ""}`} data-trust="status" role="status">
-    ${kind ? html`<span class="chat-meta-left"><span class="chat-meta-dot" aria-hidden="true"></span><span>${doing}${tail}</span></span>`
+  return html`<div class=${`chat-meta${kind ? ` busy ${kind}` : ""}`} data-trust="status" role="status" data-composer-focus>
+    ${kind ? html`<span class="chat-meta-left" data-composer-focus><span class="chat-meta-dot" data-composer-focus aria-hidden="true"></span><span data-composer-focus>${doing}${tail}</span></span>`
       : commands ? html`<button type="button" class="chat-meta-left chat-meta-model" title=${t("chat.chipModel", label)} aria-label=${t("chat.chipModel", label)}
           onClick=${() => (inst?.runtime === "windows" ? navigate(sectionPath("agents")) : run("model"))}><span>${label}${tail}</span><span class="chev" aria-hidden="true">⌄</span></button>`
-      : html`<span class="chat-meta-left"><span>${label}${tail}</span></span>`}
-    <span class="chat-meta-right">${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
+      : html`<span class="chat-meta-left" data-composer-focus><span data-composer-focus>${label}${tail}</span></span>`}
+    <span class="chat-meta-right" data-composer-focus>${busy ? html`<button type="button" id=${ids.stopBtn || "stopBtn"} class="chat-meta-stop btn-stop" disabled=${!!s.cancelling[name]} title=${t("chat.stopReplyTitle")}
       onClick=${() => store.cancelReply(name)}>${t("chat.stopReply")}</button>` : null}<${ComposerAuth} /></span>
   </div>`;
 }
@@ -1322,7 +1346,7 @@ function WorkBar({ name, lease, exec, awaiting, workingLabel, ids }) {
     const h = lease.interval(() => tick(n => n + 1), 1000);      // ticks only while it shows, cleared with the lease
     return () => lease.clear(h);
   }, [kind, lease]);
-  if (!kind) return html`<div class="work-bar idle" aria-hidden="true"></div>`;
+  if (!kind) return html`<div class="work-bar idle" data-composer-focus aria-hidden="true"></div>`;
   // #1629: the agent's own working label (its theme), shown as text — only for "working", never for the other states.
   const label = kind === "working" && workingLabel ? workingLabel
     : t(kind === "stuck" ? "chat.stuck" : kind === "stopping" ? "chat.stopping" : kind === "awaiting" ? "chat.awaiting" : "chat.working", name);
@@ -1372,6 +1396,48 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   useEffect(() => { if (focused && input.current) input.current.focus(); }, [name]);
   useEffect(() => { refreshTourSpot(); });
   const setValue = (v) => { store.setDraft(name, v); setSel(0); tick(n => n + 1); };
+  // A `#` at the caret offers the task cards (what the board has: its number, title, status); Enter or Tab put the
+  // number in, Esc closes the list, the arrow keys choose. The caret is read from the box as the page draws (a key that only
+  // moves it redraws: the box's keyup and click, below). Not for a guest (no board), a command line, or an IME still composing.
+  const [refSel, setRefSel] = useState(0);
+  const [refItems, setRefItems] = useState([]);
+  const [refClosed, setRefClosed] = useState(null);    // the draft the list was closed on (Esc); it opens again on change
+  const refCaret = useRef(null);                       // where the caret goes once a chosen number is in the box
+  const box = input.current;
+  // While a chosen number is on its way into the box the caret is where it will be (the box still has the old text's caret until the page has drawn it).
+  const caret = refCaret.current !== null ? refCaret.current : box && typeof box.selectionStart === "number" ? box.selectionStart : value.length;
+  const refAt = taskRefIndex && !guest && !bindings.composing ? taskRefAt(value, caret) : null;
+  const refKey = refAt ? `${refAt.start}:${refAt.query}` : "";
+  const refOpen = !!refAt && refClosed !== value && refItems.length > 0;
+  const refPick = Math.min(refSel, Math.max(refItems.length - 1, 0));
+  useEffect(() => {
+    if (!refAt) { setRefItems((x) => (x.length ? [] : x)); return undefined; }
+    let live = true;
+    const timer = setTimeout(() => { taskRefIndex.suggest(refAt.query).then((items) => { if (live) { setRefItems(items); setRefSel(0); } }); }, refAt.query ? 120 : 0);
+    return () => { live = false; clearTimeout(timer); };
+  }, [refKey]);
+  useEffect(() => {
+    const el = input.current;
+    if (!el || !taskRefIndex || guest || typeof el.addEventListener !== "function") return undefined;
+    const moved = (e) => { if (e.type === "click" || /^(Arrow(Left|Right)|Home|End)$/.test(String(e.key || ""))) tick((n) => n + 1); };
+    el.addEventListener("keyup", moved); el.addEventListener("click", moved);
+    return () => { el.removeEventListener("keyup", moved); el.removeEventListener("click", moved); };
+  }, [input.current]);
+  useEffect(() => {    // after a chosen number is in the box, the caret goes behind it
+    const c = refCaret.current;
+    if (c === null) return;
+    refCaret.current = null;
+    const el = input.current;
+    if (el) try { el.focus(); el.setSelectionRange(c, c); } catch { /* no selection API */ }
+  });
+  // Task rows keep their own interaction; only exact marked background surfaces opt into strip focus.
+  const chooseRef = (v) => {
+    if (!v || !refAt) return;
+    recordEdit(input.current);                         // #2342: a step Ctrl+Z goes back from
+    const r = insertTaskRef(value, refAt, caret, v.code);
+    refCaret.current = r.caret;
+    setValue(r.text);
+  };
   // #1269: a command line runs the command (POST /ui/command); anything else — "/" included — is sent as before.
   // The draft is consumed only by a command that starts: one still out keeps the new line in the composer (#1476 review).
   const runLine = (cmd) => {
@@ -1403,6 +1469,12 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
     store.send(name);
   };
   const onKeyDown = (e) => {
+    if (refOpen) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") { e.preventDefault(); setRefSel((n) => (Math.min(n, refItems.length - 1) + (e.key === "ArrowDown" ? 1 : refItems.length - 1)) % refItems.length); return; }
+      // On a touch screen Enter is a new line (the list is tapped); anywhere else it, and Tab, put the highlighted card in.
+      if (((e.key === "Enter" && !touchScreen()) || e.key === "Tab") && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing) { e.preventDefault(); chooseRef(refItems[refPick]); return; }
+      if (e.key === "Escape" && !e.isComposing) { e.preventDefault(); setRefClosed(value); return; }
+    }
     if (palette && palette.length && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       e.preventDefault();
       setSel((n) => (Math.min(n, palette.length - 1) + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length);
@@ -1422,7 +1494,8 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
   };
   const paletteId = ids.cmdPalette || "cmdPalette";
   const optId = (c) => ids.cmdPalette ? `${ids.cmdPalette}-${c.name}` : `cmd-${c.name}`;
-  return html`<div class="composer-box" ref=${bindings.box}>
+  const refListId = `${paletteId}-tasks`, refOptId = (v) => `${refListId}-${v.code}`;
+  return html`<div class="composer-box" data-composer-focus ref=${bindings.box}>
     ${machineUnavailable ? html`<p class="note runtime-machine-unavailable" role="status">${t(inst.machine_status === "revoked" ? "chat.machineRevokedHint" : "chat.machineUnavailable",machineName(inst.machine_id,inst.machine_name))}</p>` : null}
     ${inst?.native_busy && !busy && !inst?.native_blocked ? html`<p class="note" role="status">${t("chat.nativeBusy")}</p>` : null}
     ${palette ? html`<ul data-trust="palette" class="cmd-palette" id=${paletteId} role="listbox" aria-label=${t("chat.cmdCommands")}>
@@ -1431,6 +1504,12 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
           <span class="cmd-name mono">/${c.name}${c.arg ? html` <span class="cmd-arg">${c.arg}</span>` : null}</span><span class="cmd-desc">${t(`chat.cmd_${c.name}`)}</span></li>`)
         : html`<li class="cmd-none" role="option" aria-selected="false">${t(guest ? "chat.cmdNotGuests" : "chat.cmdNotCommand")}</li>`}
     </ul>` : null}
+    ${refOpen ? html`<ul data-trust="palette" class="cmd-palette task-ref-list" id=${refListId} role="listbox" aria-label=${t("taskref.pickHint")}>
+      ${refItems.map((v, i) => html`<li key=${v.code} id=${refOptId(v)} role="option" tabindex="-1" aria-selected=${i === refPick ? "true" : "false"}
+          class=${i === refPick ? "on" : ""} onMouseDown=${(e) => { e.preventDefault(); chooseRef(v); }}>
+          <span class="cmd-name mono">${v.code}</span><span class="cmd-desc">${v.title}</span>
+          <span class=${`tb-pill st-${v.status}`}>${t(`taskref.s.${v.status}`)}</span></li>`)}
+    </ul>` : null}
     ${reply ? html`<div class="reply-bar" data-trust="composer" role="status">
       <span class="reply-mark" aria-hidden="true"><svg class="icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></span><span class="reply-label">${t("chat.replyingTo", reply.sender)}</span>
       <span class="reply-text">${replySnippet(reply)}</span>
@@ -1438,7 +1517,8 @@ function Composer({ name, inst, label = name, lease, busy, bindings, ids = {}, f
     </div>` : null}
     ${files.length ? html`<div class="pending-files">${files.map((f, i) => html`<${FileChip} bindings=${bindings} key=${`${f.name}-${i}`} f=${f} i=${i} name=${name} />`)}</div>` : null}
     <${ComposerInput} inputRef=${input} ids=${ids} value=${value} placeholder=${t("chat.composerPlaceholder", label)} onValue=${setValue}
-      onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : undefined} expanded=${!!palette} activeDescendant=${pick ? optId(pick) : undefined}
+      onKeyDown=${onKeyDown} onPaste=${onPaste} controls=${palette ? paletteId : refOpen ? refListId : undefined} expanded=${!!palette || refOpen}
+      activeDescendant=${pick ? optId(pick) : refOpen ? refOptId(refItems[refPick]) : undefined}
       attach=${attachmentsSupported ? { title: t("chat.attachTitle"), onFiles: (list) => store.addFiles(name, list) } : null}
       stop=${HIDDEN_STOP}
       tools=${toolsHere && !narrow && !guestPage() ? html`<${ComposerTools} name=${name} inst=${inst} lease=${lease} short=${true} />` : null}

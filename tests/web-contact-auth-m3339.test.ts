@@ -185,7 +185,7 @@ describe("Permissions: a worker", () => {
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "web-dev" });
     expect([!!pg.root.querySelector(".contact-mode"), !!pg.root.querySelector(".contact-tools")]).toEqual([false, false]);
     expect(text(pg.root.querySelector(".contact-approvers"))).toContain("Inherited from the agent's channel admins.");
-    expect(text(pg.root.querySelector(".contact-grants li"))).toContain("Alex classic-ops → web-dev");
+    expect(text(pg.root.querySelector(".contact-grants li"))).toContain("Alex From classic-ops to web-dev");
     expect(text(pg.root.querySelector(".contact-grants li"))).toContain("For: message, question");
     expect(text(pg.root.querySelector(".contact-grants li"))).toContain("3 uses left");
     expect(pg.root.querySelector(".contact-history a")?.getAttribute("href")).toBe("/ui/fleet/authorizations?ticket=R12");
@@ -272,19 +272,22 @@ describe("Fleet → Authorizations", () => {
     expect(calls.at(-1)?.url).toBe("/ui/api/contact-authorizations");
     expect(button(pg.root, "View all records")).toBeUndefined();
   });
-  it("“also allow this contact” is a separate, explicit grant: off by default; on, it sends its expiry and uses", async () => {
+  it("the explicit allow-contact choice confirms expiry, selected person and uses separately from approve-once", async () => {
     const calls = api({ "GET /ui/api/contact-authorizations": () => ({ body: { items: [ticket()], nextCursor: null } }),
       "POST /ui/api/contact-authorizations/R12/decision": () => ({ body: ticket({ state: "delivered", canDecide: false }) }) });
     const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
     const { pg } = await mountWith(ContactAuthorizations, {});
     const card = pg.root.querySelector(".contact-ticket") as any;
-    const box = card.querySelector('input[type="checkbox"]') as any;
-    box.checked = true; fire(box, "change"); await settle(3);
-    const [until, uses] = [...card.querySelectorAll(".contact-allow input")] as any[];
+    expect(card.querySelector('input[type="checkbox"]')).toBeNull();
+    fire(button(card, "Allow this person to contact this agent…"), "click"); await settle(3);
+    const dialog = pg.document.querySelector("dialog") as any;
+    const until = dialog.querySelector('input[type="datetime-local"]') as any;
+    const uses = dialog.querySelector('input[type="number"]') as any;
     until.value = "2026-12-01T10:00"; fire(until, "input"); uses.value = "5"; fire(uses, "input"); await settle(2);
-    fire(button(card, "Approve once"), "click"); await settle(6);
+    expect(calls.some(c => c.method === "POST")).toBe(false);
+    fire(button(dialog, "Approve once and save rules"), "click"); await settle(6);
     const body = calls.find((c) => c.method === "POST")!.body;
-    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt]).toEqual(["approve-once", 5, new Date("2026-12-01T10:00").toISOString()]);
+    expect([body.decision, body.grant.remainingUses, body.grant.expiresAt, body.grant.personKeys]).toEqual(["approve-once", 5, new Date("2026-12-01T10:00").toISOString(), [JSON.stringify([ALEX.platform, ALEX.adapterId, ALEX.userId])]]);
   });
   it("decided elsewhere (409 already-decided): said, and the request read again", async () => {
     let reads = 0;
@@ -364,7 +367,7 @@ describe("why a request needs approval (Sentinel's A1 copy: no reset is offered)
     try {
       const { ContactAuthorizations } = await import("/ui/js/contact-authorizations.js") as any;
       const { pg } = await mountWith(ContactAuthorizations, {});
-      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。 核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。");
+      expect(text(pg.root.querySelector('[data-ticket="R12"] .contact-reason'))).toBe("這個 Agent 保留的歷史含有非管理員輸入，因此這次聯絡需要核准。核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。");
       expect([pg.root.querySelector('[data-ticket="R13"] .contact-reason'), text(pg.root.querySelector('[data-ticket="R13"]')).includes("something-else")]).toEqual([null, false]);
     } finally { i18n.setLang("en", { store: false }); }
   });
@@ -472,4 +475,23 @@ describe("Needs you: contact items (references only; the details from the scoped
     const src = readFileSync(join(process.cwd(), "src/ui/panel-needs.js"), "utf8");
     expect(src).toMatch(/item\.type === "contact"\s*\n\s*\/\/[^\n]*\n\s*\? html`<\$\{ContactNeedsItem\} key=\$\{item\.id\} item=\$\{item\} \/>`/);
   });
+});
+
+it("adjusting a displayed rule saves through the Permissions revision and preserves the other scoped rows", async () => {
+  const original = workerPerm(), other = { ...original.grants[0], id: "g2", person: { ...ALEX, userId: "fake-other" } };
+  let perm = workerPerm({ grants: [...original.grants, other] });
+  const calls = api({ "GET /ui/api/instances/web-dev/contact-permissions": () => ({ body: perm }),
+    "PUT /ui/api/instances/web-dev/contact-permissions": body => { perm = workerPerm({ revision: 10, grants: body.grants }); return { body: perm }; } });
+  const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
+  const { pg } = await mountWith(ContactPermissionsPanel, { name: "web-dev" });
+  fire(button(pg.root, "Adjust / extend"), "click"); await settle();
+  const select = pg.root.querySelector("dialog select") as any;
+  select.value = "30"; fire(select, "change"); await settle();
+  fire(button(pg.root, "Save rule"), "click"); await settle(6);
+  const body = calls.find(c => c.method === "PUT")!.body;
+  expect(body.revision).toBe(9);
+  expect(body.grants[0]).toMatchObject({ id: "g1", person: ALEX, source: "classic-ops", target: "web-dev", verbs: original.grants[0].verbs, remainingUses: 3 });
+  expect(new Date(body.grants[0].expiresAt).getTime() - Date.now()).toBeGreaterThan(29 * 86400000);
+  expect(body.grants[1]).toMatchObject({ id: "g2", person: other.person, expiresAt: other.expiresAt });
+  expect(pg.root.querySelector("dialog")).toBeNull();
 });

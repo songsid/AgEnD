@@ -75,7 +75,7 @@ register("fleet", {
     hostMemory_elevated: "主機記憶體壓力偏高：新的 agent 一次啟動一個，至少間隔 5 秒",
     hostMemory_critical: "主機記憶體壓力嚴重：新的 agent 會等記憶體恢復再啟動",
     hostMemory_top: "最大：{0}", hostMemory_ownerFleet: "fleet 本身", hostMemory_ownerTmux: "tmux", hostMemory_ownerOther: "不屬於任何 Agent",
-    title: "Fleet", tasks: "Tasks", schedules: "排程", teams: "Teams", org: "組織圖", cache: "快取", usage: "用量", "host-health": "主機狀態",
+    title: "Fleet", tasks: "任務", schedules: "排程", teams: "團隊", org: "組織圖", cache: "快取", usage: "用量", "host-health": "主機狀態",
     docs: "文件", docsNewTab: "文件（在新分頁開啟）",
     newSchedule: "新增排程", newTeam: "新增 team",
     noSchedules: "還沒有排程", noSchedulesHint: "用 cron 自動執行例行工作。",

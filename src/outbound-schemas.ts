@@ -136,7 +136,7 @@ export const TaskBoardArgs = z.object({
   limit: z.number().int().min(1).max(100).optional().describe("Page size, default20; maximum100"),
   cursor: z.string().min(1).max(128).optional().describe("next_cursor from the previous page; keep the same filters"),
 
-  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project"])
+  action: z.enum(["create", "list", "claim", "done", "update", "get", "mine", "move", "projects", "create_project", "move_project", "watch", "unwatch"])
     .describe("Operation to perform"),
   title: z.string().optional().describe("Task title (create/update)"),
   description: z.string().optional().describe("Task details; a board card's goal (create/update)"),
@@ -161,6 +161,7 @@ export const TaskBoardArgs = z.object({
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
   project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id (create, list filter); by id for update/move_project, null or \"none\" takes a main task out"),
   name: z.string().optional().describe("A new project's name (create_project)"),
+  watcher: z.string().optional().describe("watch / unwatch: the instance (default: yourself; another only on a card you may edit)"),
   ids: z.array(z.string()).optional().describe("move_project: main tasks to move, e.g. [\"M-3\"]"),
   parent: z.string().optional().describe("Main task number like M-3: a new sub task's (create), its sub tasks (list)"),
   scope: z.string().optional().describe("Main task: in / out of scope (create/update)"),

@@ -89,6 +89,7 @@ export class ContactAuthService {
       admit: (request, ticketId) => this.host.admit(request, ticketId),
     });
     this.host.changed(ticket.source, ticket.id);
+    if (decision.grant) this.host.changed(ticket.target);
     return this.view(ticket, actor);
   }
 }
