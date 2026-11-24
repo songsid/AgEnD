@@ -60,16 +60,46 @@ Ranked by how often a person would hit it.
 - Text size control in the header.
 - Search with Ctrl K opens in both; in the room it found the six matching messages.
 
-## 4. Not verified
+## 4. The six rows that were not verified, now checked by use (2026-11-24)
 
-| Item | Why | What would settle it |
-|---|---|---|
-| Fleet search results | Search stayed "off" in the scratch Fleet | A scratch Fleet with search working, or a look on a running one |
-| A sent image or HTML file on the Fleet side (inline picture, viewer, HTML preview) | The scratch Fleet cannot deliver a message | The same |
-| The same on the Hub side | Checked: a picture shows inline and opens a viewer (zoom, fit, Annotate, Open original); an HTML file shows as a card and opening it showed no preview | Compare once the Fleet side is seen |
-| Buttons and polls | I could not stage an agent's buttons in either product | The repo has its own browser walks for each; I did not rerun them |
-| Link previews | Neither product drew a preview card for the link in my answer; I do not know when the Fleet draws one | Ask the builder |
-| Real clipboard, real drag, real input method | Sent as browser events | One manual pass on a real browser |
+Second walk, on development tip `b4fdcac36`, same method: the real Fleet dashboard from the scratch fixture and a
+real Hub server on scratch data, in a headless browser. This time the scratch Fleet's search index was started,
+agent messages were put into the Fleet chat through the Fleet's own message and reply paths, and a shared agent
+("Notes") answered in the Hub room over a real member link. Pictures are side by side, Fleet on the left, in
+`docs/evidence/hub-room-vs-fleet-chat-m3309/`.
+
+| Item | Fleet chat | Hub room | Result | Picture |
+|---|---|---|---|---|
+| Search results (Ctrl K, "nginx") | "2 results", each with a "Chat" badge and a two-line excerpt; a "Filters" button | "2 results" under the room's name, a one-line excerpt; no Filters | Works in both; opening a result jumps to the message and outlines it in both. Difference: no Filters and a shorter excerpt in the room | `row-search-results.png`, `row-search-opened.png` |
+| A picture in a message | Drawn inline; pressing it opens the viewer (zoom, fit, Annotate, Open original) | The same, inside a bubble | Same | `row-image-inline.png`, `row-image-viewer.png` |
+| An HTML file from an agent | A card "HTML · weekly-report.html" with Preview and Open in panel; Preview ran the page in a frame | The same card with Open in panel only, and the note "Previews are not available here."; no frame | **Differs in my walk.** Whether that is the room page or my scratch Hub's preview setup is asked of the builder; not counted as a gap until answered | `row-html-file-from-agent.png` |
+| An HTML file sent by a person | A file chip only, no card | A file chip only, no card | Same | `row-html-file-from-person.png` |
+| Buttons | Pressing "London" marks it, switches the others off, shows "Chosen by …" and adds my answer | The same; my answer quotes the question | Same | `row-buttons-pressed.png` |
+| Poll | Pressing "Sunday" marks it and shows "1 answered" and the time left; the choice can still be changed | The same | Same | `row-poll-voted.png` |
+| Link previews | A web address is a plain link that opens in a new tab; no preview card | The same | Same. Neither product draws link preview cards (confirmed in the code as well: there is no such feature) | `row-link.png` |
+| Real clipboard | Ctrl+V of a picture put on the browser's clipboard: a chip "image.png" | The same | Same. A real clipboard paste this time, not a made-up event | `gap-1-paste-screenshot.png` |
+| Real input method | While composing (browser composition, Enter sent with key code 229) nothing is sent; after committing, Shift+Enter adds a line and Enter sends both lines | The same | Same | `row-ime-composing.png`, `row-ime-sent.png` |
+| Real drag | A file dropped on the conversation: the "Drop files to attach them" card, then a chip | The same | Same, but **still a browser event**: a drag from the operating system cannot be made in a headless browser (I tried the browser's own drag input; it delivered nothing in either product). One manual drag in a real browser remains | `gap-2-drop-file.png` |
+
+### The nine gaps of section 1, retaken on `b4fdcac36`
+
+One picture per gap. Most are closed since the first walk.
+
+| # | Gap | Now | Picture |
+|---|---|---|---|
+| 1 | Paste a screenshot | Closed: a chip in both | `gap-1-paste-screenshot.png` |
+| 2 | Drag a file onto the conversation | Closed: a chip in both | `gap-2-drop-file.png` |
+| 3 | Paste a very long text | Closed: the text-file chip and the notice in both | `gap-3-long-paste.png` |
+| 4 | Quote part of a message | Closed: "Quote" on a selection in both; it puts the quoted line in the box | `gap-4-quote-selection.png`, `gap-4-quote-bar.png` |
+| 5 | Pin a message | Closed: "Pin" in the menu and "Pinned messages: 1" in both | `gap-5-pin.png` |
+| 6 | Copy a link to a message | Closed: "Copy link" in both menus | `gap-6-copy-link-menu.png` |
+| 7 | "Enter to send" hint | Closed: the room shows the hint and its own "@agent" line | `gap-7-enter-hint.png` |
+| 8 | Phone header | Improved: two rows (name; people and agents), nothing cut. The Fleet's is one row | `gap-8-phone-header.png` |
+| 9 | Full width | Closed: in the room's menu | `gap-9-full-width-menu.png` |
+
+Two small differences seen on this walk and not listed before: a picture waiting in the box shows its thumbnail in
+the Fleet chat and a plain file icon in the room (`gap-1-paste-screenshot.png`); and the room's search has no
+Filters (above).
 
 ## 5. Proposed cards
 

@@ -1,0 +1,640 @@
+{
+ "head": "b4fdcac364dd6d5944b2d19991367254a3c5d667",
+ "fleet": {
+  "searchIndex": "ready",
+  "buttonsPath": "reply tool",
+  "01-image": {
+   "seen": {
+    "text": "fleet-lead 07:22 AM IMAGE-MARK Here is the photo from the site.",
+    "imgs": 1,
+    "htmlCard": false,
+    "links": [
+     {
+      "href": "http://127.0.0.1:PORT/ui/file/9a79bee33eaa67ff7c96a8878825977a",
+      "target": "_blank"
+     }
+    ],
+    "buttons": [],
+    "cards": []
+   },
+   "viewer": {
+    "cls": "lb",
+    "buttons": [
+     "Zoom out (−)",
+     "86% — click for fit or actual size (0 / 1)",
+     "Zoom in (+)",
+     "Fit width (W)",
+     "Annotate",
+     "Open original",
+     "Close"
+    ]
+   }
+  },
+  "02-html": {
+   "seen": {
+    "text": "fleet-lead 07:37 AM HTML-MARK The weekly report as a page. 📎 weekly-report.html 228 B HTML · weekly-report.html Preview Open in panel ⋯",
+    "imgs": 0,
+    "htmlCard": true,
+    "links": [
+     {
+      "href": "http://127.0.0.1:PORT/ui/file/dd43ed0c12b518f61b67fcb2b53ad73d",
+      "target": null
+     }
+    ],
+    "buttons": [
+     "Preview",
+     "Preview anyway",
+     "Stop",
+     "Open in panel",
+     "I understand"
+    ],
+    "cards": []
+   },
+   "after": {
+    "frames": [
+     {
+      "src": "http://127.0.0.1:PORT/frame",
+      "h": 177,
+      "sandbox": "allow-scripts"
+     }
+    ],
+    "panelText": null,
+    "cardButtons": [
+     "Preview",
+     "Open in panel"
+    ],
+    "cardText": "HTML · weekly-report.html Preview Open in panel ⋯",
+    "bodyNotes": [
+     "AgEnD Fleet Needs you Notices Search Ctrl K New agent Instances Custom Edit GENERAL General 總管 Backend: Claude Code TEAM: EXAMPLE INFRASTRUCTURE AND LONG RELEASE ENGINEERING TEAM 1 示範發佈與長名稱版面測試助理（主要） 0 just now Backend: Claude Code TEAM: 示範"
+    ]
+   }
+  },
+  "03-link": {
+   "text": "fleet-lead 07:42 AM LINK-MARK The write-up is at https://example.com/reports/weekly and the docs are at https://www.iana.org/help/example-domains .",
+   "imgs": 0,
+   "htmlCard": false,
+   "links": [
+    {
+     "href": "https://example.com/reports/weekly",
+     "target": "_blank"
+    },
+    {
+     "href": "https://www.iana.org/help/example-domains",
+     "target": "_blank"
+    }
+   ],
+   "buttons": [],
+   "cards": []
+  },
+  "04-buttons": {
+   "seen": {
+    "text": "fleet-lead 10:42 AM BUTTONS-MARK Which city for the offsite? Paris London Rome",
+    "imgs": 0,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Paris",
+     "London",
+     "Rome"
+    ],
+    "cards": []
+   },
+   "after": {
+    "text": "fleet-lead 10:42 AM BUTTONS-MARK Which city for the offsite? Paris ✓ London Rome Chosen by web-user",
+    "imgs": 0,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Paris",
+     "✓ London",
+     "Rome"
+    ],
+    "cards": [],
+    "rowState": [
+     {
+      "t": "",
+      "disabled": false,
+      "cls": "chip-btn icon-only"
+     },
+     {
+      "t": "Paris",
+      "disabled": true,
+      "cls": "btn btn-sm rb-btn"
+     },
+     {
+      "t": "✓ London",
+      "disabled": true,
+      "cls": "btn btn-sm rb-btn chosen"
+     },
+     {
+      "t": "Rome",
+      "disabled": true,
+      "cls": "btn btn-sm rb-btn"
+     },
+     {
+      "t": "",
+      "disabled": false,
+      "cls": "chip-btn icon-only"
+     }
+    ],
+    "lastMsgs": [
+     "fleet-lead 10:42 AM POLL-MARK Which day works best? Saturday Sunday 🗳 0 answered · ⏳ 59:46",
+     "web-user 10:42 AM 🔘 Clicked: London"
+    ]
+   }
+  },
+  "05-poll": {
+   "seen": {
+    "text": "fleet-lead 10:42 AM POLL-MARK Which day works best? Saturday Sunday 🗳 0 answered · ⏳ 59:44",
+    "imgs": 0,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Saturday",
+     "Sunday"
+    ],
+    "cards": []
+   },
+   "after": {
+    "text": "fleet-lead 10:42 AM POLL-MARK Which day works best? Saturday ✓ Sunday 🗳 1 answered · ⏳ 59:42",
+    "imgs": 0,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Saturday",
+     "✓ Sunday"
+    ],
+    "cards": [],
+    "rowState": {
+     "text": "fleet-lead 10:42 AM POLL-MARK Which day works best? Saturday ✓ Sunday 🗳 1 answered · ⏳ 59:42",
+     "buttons": [
+      {
+       "t": "",
+       "disabled": false,
+       "pressed": null,
+       "cls": "chip-btn icon-only"
+      },
+      {
+       "t": "Saturday",
+       "disabled": false,
+       "pressed": "false",
+       "cls": "btn btn-sm rb-btn"
+      },
+      {
+       "t": "✓ Sunday",
+       "disabled": false,
+       "pressed": "true",
+       "cls": "btn btn-sm rb-btn chosen"
+      },
+      {
+       "t": "",
+       "disabled": false,
+       "pressed": null,
+       "cls": "chip-btn icon-only"
+      }
+     ]
+    }
+   }
+  },
+  "06-search": {
+   "opened": 1,
+   "res": {
+    "cls": "dlg search-dlg",
+    "text": "Filters 示範發佈與長名稱版面測試助理（主要） 0 2 results Chat fleet-lead 05:46 Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded. Second paragraph for quoting: the certificate is valid until next spring and the old ciphers are gone… Chat Alex 05:42 Please move the nginx reverse proxy on staging to TLS 1.3 and reload it. ↑↓ move · Enter open · Esc close",
+    "rows": 2,
+    "filters": []
+   },
+   "openedHit": {
+    "url": "http://127.0.0.1:PORT/ui/chat/fleet-lead#m=022890b9ec6f-32",
+    "highlighted": "fleet-lead 05:46 AM Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded. Second paragraph for quoting: the certificate is valid u"
+   }
+  },
+  "07-paste-image": {
+   "clipboardWrite": "ok",
+   "chips": [
+    "image.png 4.9 KB"
+   ],
+   "notices": []
+  },
+  "08-paste-long": {
+   "clipboardWrite": "ok",
+   "chips": [
+    "pasted-20261124024236.txt 31 KB As text"
+   ],
+   "notices": [
+    "A long paste (32,000 characters) was attached as a text file",
+    "A long paste (32,000 characters) was attached as a text file"
+   ],
+   "boxChars": 0
+  },
+  "09-drop": {
+   "method": "DragEvent with a DataTransfer file (a browser event, not an OS drag)",
+   "overPrevented": true,
+   "dropPrevented": true,
+   "over": {
+    "text": "Drop files to attach them",
+    "shown": true
+   },
+   "chips": [
+    "capture.png 2.1 KB"
+   ],
+   "notices": []
+  },
+  "10-ime": {
+   "before": 38,
+   "during": {
+    "msgs": 38,
+    "box": "ㄋㄧˇㄏㄠˇ"
+   },
+   "committed": "你好",
+   "afterShift": {
+    "msgs": 38,
+    "box": "你好\nsecond line"
+   },
+   "after": {
+    "msgs": 39,
+    "box": ""
+   },
+   "mine": 18
+  },
+  "11-quote": {
+   "selected": "Second paragraph for quoting: the c",
+   "floating": [
+    {
+     "t": "Quote",
+     "cls": "menu-item quote-pick"
+    }
+   ],
+   "bar": null
+  },
+  "12-msg-menu": {
+   "items": [
+    "Reply",
+    "Pin",
+    "Copy text",
+    "Copy link"
+   ],
+   "pinned": "Pinned messages: 1"
+  },
+  "13-header-menu": {
+   "used": "header button[aria-haspopup]",
+   "items": [
+    "Agent details",
+    "Split chat",
+    "Restart agent",
+    "Stop agent",
+    "Files & changes",
+    "Pinned messages · 1",
+    "Colour…",
+    "Lock theme",
+    "Reset theme…",
+    "Full width",
+    "Delete agent…"
+   ]
+  },
+  "14-hint": {
+   "row": "Not verified Enter to send · Shift+Enter for a new line",
+   "composer": "Message 示範發佈與長名稱版面測試助理（主要） 0… default ⌄",
+   "placeholder": " "
+  },
+  "15-phone": {
+   "top": [
+    {
+     "cls": "panel-head",
+     "h": 48,
+     "text": "示範發佈與長名稱版面測試助理（主要） 0 閒置"
+    }
+   ],
+   "threadTop": -3673
+  }
+ },
+ "hub": {
+  "addAgent": 200,
+  "buttonsAck": "room.answer-ack",
+  "pollAck": "room.answer-ack",
+  "01-image": {
+   "seen": {
+    "text": "Hub Admin 10:42 AM IMAGE-MARK Here is the photo from the site.",
+    "imgs": 1,
+    "htmlCard": false,
+    "links": [
+     {
+      "href": "https://127.0.0.1:PORT/hub/v1/rooms/0ffb7f11-2535-4ecb-ab43-43e534519dab/files/182e04a4-86ef-4abd-98e9-816dc449c9ea/inline",
+      "target": "_blank"
+     }
+    ],
+    "buttons": [],
+    "cards": []
+   },
+   "viewer": {
+    "cls": "lb",
+    "buttons": [
+     "Zoom out (−)",
+     "86% — click for fit or actual size (0 / 1)",
+     "Zoom in (+)",
+     "Fit width (W)",
+     "Annotate",
+     "Open original",
+     "Close"
+    ]
+   }
+  },
+  "02-html": {
+   "seen": {
+    "text": "Notes · Hub Admin's agent 10:47 AM @Notes send the weekly report HTML-MARK The weekly report as a page. 📎 weekly-report.html 228 B HTML · weekly-report.html Open in panel ⋯ Previews are not available here.",
+    "imgs": 1,
+    "htmlCard": true,
+    "links": [
+     {
+      "href": "https://127.0.0.1:PORT/hub/v1/rooms/a8197953-0bfc-4174-8d42-cb897b26916f/files/3450f935-15f9-4d07-b2ba-c55a39e81810",
+      "target": null
+     }
+    ],
+    "buttons": [
+     "Notes · Hub Admin's agent",
+     "@Notes send the weekly report",
+     "Preview",
+     "Preview anyway",
+     "Stop",
+     "Open in panel",
+     "I understand"
+    ],
+    "cards": []
+   },
+   "after": {
+    "frames": [],
+    "panelText": null,
+    "cardButtons": [
+     "Open in panel"
+    ],
+    "cardText": "HTML · weekly-report.html Open in panel ⋯ Previews are not available here.",
+    "bodyNotes": [
+     "AgEnD Hub Preview Team Hub Chats My agents Notices Search Ctrl K New chat Rooms 1 W Weekly 10:47 AM 2 people · 1 agent Filter: name or owner Settings Signed in",
+     "Shown in the panel.",
+     "Members Members · 2 (online 2) Alex You Online Hub Admin Manager Online Agents · 1 (online 1) Notes Idle · Hub Admin's agent Who can see this Everyone in the room sees every message and answer. An @agent reads the recent conversation.",
+     "Members · 2 (online 2) Alex You Online Hub Admin Manager Online Agents · 1 (online 1) Notes Idle · Hub Admin's agent Who can see this Everyone in the room sees every message and answer. An @agent reads the recent conversation."
+    ]
+   }
+  },
+  "03-link": {
+   "text": "Hub Admin 10:42 AM LINK-MARK The write-up is at https://example.com/reports/weekly and the docs are at https://www.iana.org/help/example-domains .",
+   "imgs": 0,
+   "htmlCard": false,
+   "links": [
+    {
+     "href": "https://example.com/reports/weekly",
+     "target": "_blank"
+    },
+    {
+     "href": "https://www.iana.org/help/example-domains",
+     "target": "_blank"
+    }
+   ],
+   "buttons": [],
+   "cards": []
+  },
+  "04-buttons": {
+   "seen": {
+    "text": "Notes · Hub Admin's agent 10:42 AM @Notes where should the offsite be? BUTTONS-MARK Which city for the offsite? Paris London Rome",
+    "imgs": 1,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Notes · Hub Admin's agent",
+     "@Notes where should the offsite be?",
+     "Paris",
+     "London",
+     "Rome"
+    ],
+    "cards": []
+   },
+   "after": {
+    "text": "10:43 AM ✓ Notes · Hub Admin's agent BUTTONS-MARK Which city for the offsite? London",
+    "imgs": 0,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Notes · Hub Admin's agent\nBUTTONS-MARK Which city for the offsite?"
+    ],
+    "cards": [],
+    "rowState": [
+     {
+      "t": "",
+      "disabled": false,
+      "cls": "chip-btn icon-only"
+     },
+     {
+      "t": "",
+      "disabled": false,
+      "cls": "chip-btn icon-only"
+     },
+     {
+      "t": "Notes · Hub Admin's agent\nBUTTONS-MARK Which city for the offsite?",
+      "disabled": false,
+      "cls": "msg-quote"
+     }
+    ],
+    "lastMsgs": [
+     "Notes · Hub Admin's agent 10:42 AM @Notes ask everyone which day POLL-MARK Which day works best? Saturday Sunday 🗳 0 answered · ⏳ 58:26",
+     "10:43 AM ✓ Notes · Hub Admin's agent BUTTONS-MARK Which city for the offsite? London"
+    ]
+   }
+  },
+  "05-poll": {
+   "seen": {
+    "text": "Notes · Hub Admin's agent 10:42 AM @Notes ask everyone which day POLL-MARK Which day works best? Saturday Sunday 🗳 0 answered · ⏳ 58:24",
+    "imgs": 1,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Notes · Hub Admin's agent",
+     "@Notes ask everyone which day",
+     "Saturday",
+     "Sunday"
+    ],
+    "cards": []
+   },
+   "after": {
+    "text": "Notes · Hub Admin's agent 10:42 AM @Notes ask everyone which day POLL-MARK Which day works best? Saturday ✓ Sunday 🗳 1 answered · ⏳ 58:22",
+    "imgs": 1,
+    "htmlCard": false,
+    "links": [],
+    "buttons": [
+     "Notes · Hub Admin's agent",
+     "@Notes ask everyone which day",
+     "Saturday",
+     "✓ Sunday"
+    ],
+    "cards": [],
+    "rowState": {
+     "text": "Notes · Hub Admin's agent 10:42 AM @Notes ask everyone which day POLL-MARK Which day works best? Saturday ✓ Sunday 🗳 1 answered · ⏳ 58:22",
+     "buttons": [
+      {
+       "t": "",
+       "disabled": false,
+       "pressed": null,
+       "cls": "chip-btn icon-only"
+      },
+      {
+       "t": "",
+       "disabled": false,
+       "pressed": null,
+       "cls": "chip-btn icon-only"
+      },
+      {
+       "t": "Notes · Hub Admin's agent",
+       "disabled": false,
+       "pressed": null,
+       "cls": "hub-source-trigger"
+      },
+      {
+       "t": "@Notes ask everyone which day",
+       "disabled": false,
+       "pressed": null,
+       "cls": "msg-quote"
+      },
+      {
+       "t": "Saturday",
+       "disabled": false,
+       "pressed": "false",
+       "cls": "btn btn-sm rb-btn"
+      },
+      {
+       "t": "✓ Sunday",
+       "disabled": false,
+       "pressed": "true",
+       "cls": "btn btn-sm rb-btn chosen"
+      },
+      {
+       "t": "",
+       "disabled": false,
+       "pressed": null,
+       "cls": "chip-btn icon-only"
+      }
+     ]
+    }
+   }
+  },
+  "06-search": {
+   "opened": 1,
+   "res": {
+    "cls": "dlg search-dlg hub-search-dlg",
+    "text": "Weekly 2 results Hub Admin 10:42 Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded. Second paragraph for quoting: the c… Alex 10:42 Please move the nginx reverse proxy on staging to TLS 1.3 and reload it. ↑↓ move · Enter open · Esc close",
+    "rows": 2,
+    "filters": []
+   },
+   "openedHit": {
+    "url": "https://127.0.0.1:PORT/ui/hub?room=…",
+    "highlighted": "Hub Admin 10:42 AM Done. nginx on staging now only offers TLS 1.3; the config was tested and reloaded. Second paragraph for quoting: the certificate is valid un"
+   }
+  },
+  "07-paste-image": {
+   "clipboardWrite": "ok",
+   "chips": [
+    "image.png 4.9 KB"
+   ],
+   "notices": []
+  },
+  "08-paste-long": {
+   "clipboardWrite": "ok",
+   "chips": [
+    "pasted-20261124024358.txt 31 KB As text"
+   ],
+   "notices": [
+    "A long paste (32,000 characters) was attached as a text file",
+    "A long paste (32,000 characters) was attached as a text file"
+   ],
+   "boxChars": 0
+  },
+  "09-drop": {
+   "method": "DragEvent with a DataTransfer file (a browser event, not an OS drag)",
+   "overPrevented": true,
+   "dropPrevented": true,
+   "over": {
+    "text": "Drop files to attach them",
+    "shown": true
+   },
+   "chips": [
+    "capture.png 2.1 KB"
+   ],
+   "notices": []
+  },
+  "10-ime": {
+   "before": 42,
+   "during": {
+    "msgs": 42,
+    "box": "ㄋㄧˇㄏㄠˇ"
+   },
+   "committed": "你好",
+   "afterShift": {
+    "msgs": 42,
+    "box": "你好\nsecond line"
+   },
+   "after": {
+    "msgs": 43,
+    "box": ""
+   },
+   "mine": 20
+  },
+  "11-quote": {
+   "selected": "old ciphers are gone.",
+   "floating": [
+    {
+     "t": "Quote",
+     "cls": "menu-item quote-pick"
+    }
+   ],
+   "bar": null
+  },
+  "12-msg-menu": {
+   "items": [
+    "Reply",
+    "Pin",
+    "Add reaction",
+    "Copy text",
+    "Copy link"
+   ],
+   "pinned": "Pinned messages: 1"
+  },
+  "13-header-menu": {
+   "used": "header button[aria-haspopup]",
+   "items": [
+    "Signed in",
+    "Leave room",
+    "Pinned messages · 1",
+    "Full width"
+   ]
+  },
+  "14-hint": {
+   "row": "Enter to send · Shift+Enter for a new line Messages with no @agent are seen only by people in the room; agents will not answer.",
+   "composer": "Speak in “Weekly”; @ an agent to have it answer",
+   "placeholder": " "
+  },
+  "15-phone": {
+   "top": [
+    {
+     "cls": "hub-chat-head",
+     "h": 57,
+     "text": "Weekly 2 人 · 1 個 Agent"
+    }
+   ],
+   "threadTop": -4507
+  },
+  "htmlPut": "attachment.ack",
+  "htmlAck": "room.answer-ack",
+  "02b-html-user": {
+   "text": "10:47 AM HTMLUSER-MARK My own page, sent by me. 📎 weekly-report.html 228 B",
+   "imgs": 0,
+   "htmlCard": false,
+   "links": [
+    {
+     "href": "https://127.0.0.1:PORT/hub/v1/rooms/b2b591b3-f3a8-4e09-837e-de2d69a29927/files/298f07ab-cd13-487d-846a-f4a05bfab57a",
+     "target": null
+    }
+   ],
+   "buttons": [],
+   "cards": []
+  }
+ },
+ "errors": []
+}
