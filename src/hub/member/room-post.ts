@@ -217,7 +217,7 @@ export class HubRoomPostAdapter implements AgentRoomPort {
             if(saved.attachments?.length){
               const prepared=await this.options.files!.prepare(caller.agent,saved.files!);
               if(prepared.length!==saved.attachments.length||prepared.some((f,i)=>f.ref.sha256!==saved.attachments![i]!.sha256||f.ref.name!==saved.attachments![i]!.name||f.ref.size!==saved.attachments![i]!.size))return {ok:false,code:"conflict"};
-              for(const [i,file] of prepared.entries()){if(!authorized())return {ok:false,code:"stale"};await this.options.files!.send({ref:saved.attachments[i]!,bytes:file.bytes},c=>link.putFile!(c));}
+              for(const [i,file] of prepared.entries()){if(!authorized())return {ok:false,code:"stale"};await this.options.files!.send({ref:saved.attachments[i]!,bytes:file.bytes},c=>{if(!authorized())throw Error("Hub post source changed before file chunk");return link.putFile!(c);});}
               if(!authorized())return {ok:false,code:"stale"};
             }
             const result = roomPostResultSchema.parse(await link.post({ exposureId: local.exposureId, room: saved.room, text: saved.text, idempotencyKey: id,...(saved.direct?{direct:true as const}:{}),...(saved.attachments?.length?{attachments:saved.attachments}:{}),

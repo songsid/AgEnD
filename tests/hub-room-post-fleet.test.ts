@@ -218,3 +218,14 @@ it("M-3639: changing files or retiring consent during file staging never posts",
  expect(await a.post(h.caller,input)).toMatchObject({ok:false,code:"conflict"});expect(link.post).toHaveBeenCalledTimes(1);
  stop=true;expect(await a.post(h.caller,{...input,operationId:randomUUID()})).toMatchObject({ok:false,code:"uncertain"});expect(link.post).toHaveBeenCalledTimes(1);a.close();
 });
+it.each(["caller","consent"])("M-3639 R1: a retired %s cannot send another chunk after an outstanding acknowledgement",async kind=>{
+ const h=fixture(),bytes=Buffer.alloc(180*1024+1,65),ref={id:randomUUID(),name:"demo.txt",size:bytes.length,mime:"text/plain",sha256:"a".repeat(64)};
+ const {HubMemberFiles}=await import("../src/hub/member/attachments.js");
+ const files={prepare:async()=>[{ref,bytes}],send:HubMemberFiles.prototype.send};
+ let entered!:()=>void,release!:()=>void;const first=new Promise<void>(yes=>{entered=yes;}),held=new Promise<void>(yes=>{release=yes;});
+ const putFile=vi.fn(async()=>{entered();await held;});
+ const a=new HubRoomPostAdapter({...h.options,directRoom:()=>true,files:files as never});const link={...h.link,features:new Set([...h.link.features,"direct-posts-v1","attachments-v1"]),putFile};a.connected(link);
+ const result=a.post(h.caller,{room:h.roomId,text:"File",files:["demo.txt"],operationId:randomUUID()});await first;
+ if(kind==="caller")h.retireCaller();else h.replace();release();
+ expect(await result).toMatchObject({ok:false});expect(putFile).toHaveBeenCalledTimes(1);expect(link.post).not.toHaveBeenCalled();a.close();
+});

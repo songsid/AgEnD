@@ -41,7 +41,7 @@ import { RoomOffice } from "./hub-room-office.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
-register("hubDirectPosts",{en:{mute:"Mute this agent’s own messages",muted:"This agent’s own messages are muted. Answers to your questions still arrive.",unmuted:"This agent can send you messages again.",failed:"Could not change this preference. Please try again."},"zh-TW":{mute:"關閉這個 Agent 主動傳來的訊息",muted:"已關閉這個 Agent 主動傳來的訊息，仍會收到對問題的回答。",unmuted:"這個 Agent 現在可以再次主動傳來訊息。",failed:"無法變更這項設定，請再試一次。"}});
+register("hubDirectPosts",{en:{mute:"Mute this agent’s own messages",muted:"{0}’s own messages are off; your questions still get answers.",unmuted:"This agent can send you messages again.",failed:"Could not change this preference. Please try again."},"zh-TW":{mute:"關閉這個 Agent 主動發來的訊息",muted:"已關閉 {0} 主動發來的訊息；你問的問題仍會回答。",unmuted:"這個 Agent 現在可以再次主動發來訊息。",failed:"無法變更這項設定，請再試一次。"}});
 
 linkRoomsU2Css();   // M-3127: the reaction chips and picker are drawn from hub-rooms-u2.css (a room opened before any U2 panel)
 /**
@@ -581,7 +581,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   async function toggleDirectMute(){
     if(muteBusy)return;setMuteBusy(true);
     try{const muted=!room.directMessagesMuted,r=await client.updateRoom(roomId,{directMessagesMuted:muted});
-      if(r.ok){await store.refresh();toast(t(`hubDirectPosts.${muted?"muted":"unmuted"}`));}else toast(t("hubDirectPosts.failed"),false);
+      if(r.ok){await store.refresh();toast(t(`hubDirectPosts.${muted?"muted":"unmuted"}`,title));}else toast(t("hubDirectPosts.failed"),false);
     }finally{setMuteBusy(false);}
   }
   const menuItems = [
@@ -670,6 +670,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       ${html`<div class="dock hub-dock" data-trust="composer" hidden=${inOffice}><div class="dock-col">
         ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} statusOf=${statusOf} />` : null)
           : working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
+        ${room.kind==="direct"&&room.directMessagesMuted?html`<p class="note" role="status">${t("hubDirectPosts.muted",title)}</p>`:null}
         <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
       </div></div>`}
