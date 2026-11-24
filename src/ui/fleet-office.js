@@ -408,6 +408,8 @@ export function speakerAt(sk, look, at) {
 }
 /** The pose an area's seats are for: the first state (asleep, working, calling, idle) the pack sends there. */
 const GHOST_POSE = [["paused", "paused"], ["stopped", "paused"], ["working", "working"], ["needs", "needs"], ["crashed", "needs"], ["stuck", "needs"], ["idle", "idle"]];
+/** M-3533 R2c: how far inside its area's top edge a room character's speech bubble stays (scene units). */
+const BUBBLE_IN_AREA = 8;
 /** How faint Edit layout's figures are: seen through, yet readable over a busy picture (a dimmed person is 0.35). */
 const GHOST_ALPHA = 0.6;
 /** Edit layout's faint figures: one on each seat no one is on, { x, y, look } (the pack's default set; drawn at GHOST_ALPHA). */
@@ -791,7 +793,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // M-3533 R2c (Lumen): a room's own characters stand taller than the style's figures; their bubble stays inside the
     // area's box, as a figure's does (the Fleet's own office is unchanged).
     const ar = b && sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
-    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + 2; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
+    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + BUBBLE_IN_AREA; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }
@@ -803,7 +805,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const inArea = (sp, text, dy) => {
     const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
     if (!ar || !ar.rect || !dy) return dy;
-    const over = ar.rect.y + 2 - bubbleBox(ctx, sp.x, sp.y, text, -dy).y;
+    const over = ar.rect.y + BUBBLE_IN_AREA - bubbleBox(ctx, sp.x, sp.y, text, -dy).y;
     return over > 0 ? Math.max(0, dy - over) : dy;
   };
   const say = () => { T(); for (const { sp, b, dy: lifted } of placed) {
