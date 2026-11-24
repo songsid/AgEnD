@@ -51,24 +51,36 @@ describe("report_result Hub-only fields", () => {
 });
 
 describe("M-3637 a Hub answer nobody can take says why", () => {
-  it("a hub-… correlation that is not live (used, another agent's, unknown) is refused with the reason, never 'Instance or session not found'", async () => {
-    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "One more thing." });
-    expect(r.error).toBe(HUB_ANSWER_UNKNOWN);
-    expect(r.error).not.toMatch(/not found/i);
+  /** report_result with an explicit context: `hook` absent means no Hub connection here at all (no hubReport property). */
+  const send = async (args: Record<string, unknown>, o: { hook?: any; configured?: boolean; session?: boolean } = {}) => {
+    let error: string | undefined;
+    const ctx: any = { logger: { info: vi.fn(), warn: vi.fn(), debug: vi.fn(), error: vi.fn() }, instanceIpcClients: new Map(),
+      sessionRegistry: new Map(o.session ? [[HUB_REPORT_TARGET, "host-agent"]] : []),
+      // A registered session is a real target when its host agent is configured (as the ordinary route resolves it).
+      fleetConfig: { instances: { ...(o.configured ? { [HUB_REPORT_TARGET]: {} } : {}), ...(o.session ? { "host-agent": {} } : {}) } }, ...(o.hook ? { hubReport: o.hook } : {}) };
+    try {
+      await outboundHandlers.get("report_result")!(ctx, args, (_r, e) => { error = e ?? undefined; }, { instanceName: "rep", requestId: 1, fleetRequestId: undefined, senderSessionName: undefined } as any);
+    } catch { error = "reached the ordinary route"; }   // this bare ctx cannot finish an ordinary send; reaching it is the point
+    return error;
+  };
+  const report = (cid: string) => ({ target_instance: HUB_REPORT_TARGET, correlation_id: cid, summary: "One more thing." });
+  it("a hub-… correlation nobody claims, with no real agend-hub, is refused with the reason, never 'not found'", async () => {
+    const error = await send(report("hub-gone"), { hook: vi.fn(() => null) });
+    expect(error).toBe(HUB_ANSWER_UNKNOWN);
+    expect(error).not.toMatch(/not found/i);
   });
-  it("with no Hub connection here at all (no hook), the same reason", async () => {
-    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "x" }, undefined as any);
-    expect(r.error).toBe(HUB_ANSWER_UNKNOWN);
+  it("with no Hub connection here at all (the context has no hook), the same reason", async () => {
+    expect(await send(report("hub-gone"))).toBe(HUB_ANSWER_UNKNOWN);
+  });
+  it("a configured agend-hub with no live IPC, or a registered agend-hub session, keeps the ordinary route (Prism #4411)", async () => {
+    for (const o of [{ configured: true }, { session: true }]) expect(await send(report("hub-gone"), { hook: vi.fn(() => null), ...o }), JSON.stringify(o)).not.toBe(HUB_ANSWER_UNKNOWN);
   });
   it("the representative's own refusal (an answered question) reaches the agent as is", async () => {
-    const hubReport = vi.fn(() => Promise.resolve({ ok: false, message: HUB_ANSWER_USED }));
-    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-used", summary: "x" }, hubReport);
-    expect(r.error).toBe(HUB_ANSWER_USED);
-    expect(r.error).toMatch(/exactly one answer/);
+    const error = await send(report("hub-used"), { hook: vi.fn(() => Promise.resolve({ ok: false, message: HUB_ANSWER_USED })) });
+    expect(error).toBe(HUB_ANSWER_USED);
+    expect(error).toMatch(/exactly one answer/);
   });
-  it("a correlation that is not a Hub one keeps the ordinary route", async () => {
-    // This bare ctx cannot finish an ordinary send; reaching it (and not the Hub refusal) is the point.
-    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "cid-1", summary: "x" }).catch(() => ({ error: "ordinary route" }));
-    expect(r.error).not.toBe(HUB_ANSWER_UNKNOWN);
+  it("a correlation that is not a Hub one keeps the ordinary 'not found'", async () => {
+    expect(await send(report("cid-1"), { hook: vi.fn(() => null) })).toBe(`Instance or session not found: ${HUB_REPORT_TARGET}`);
   });
 });

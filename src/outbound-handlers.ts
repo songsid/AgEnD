@@ -485,13 +485,6 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
     return;
   }
-  // M-3637: a Hub correlation id nobody claimed (used, another agent's, unknown, or no Hub connection here) is refused with
-  // the reason — never the instance lookup's "Instance or session not found: agend-hub". A real instance of that name keeps
-  // the ordinary route.
-  if (targetName === HUB_REPORT_TARGET && parsedCorrelationId?.startsWith("hub-") && !isExternalSender && !ctx.instanceIpcClients.has(targetName)) {
-    respond(null, HUB_ANSWER_UNKNOWN);
-    return;
-  }
 
   let targetIpc = ctx.instanceIpcClients.get(targetName);
   let targetSession: string = targetName;
@@ -509,6 +502,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const existsInConfig = targetName in (ctx.fleetConfig?.instances ?? {})
     || targetInstanceName in (ctx.fleetConfig?.instances ?? {});
   if (!existsInConfig && !targetIpc) {
+    // M-3637: no real target of that name after the ordinary resolution (config, live IPC, registered session): a Hub
+    // correlation id nobody claimed (used, another agent's, unknown, or no Hub connection here) gets the reason, never
+    // "Instance or session not found: agend-hub". A configured or registered agend-hub keeps its ordinary route above.
+    if (targetName === HUB_REPORT_TARGET && parsedCorrelationId?.startsWith("hub-") && !isExternalSender) { respond(null, HUB_ANSWER_UNKNOWN); return; }
     respond(null, `Instance or session not found: ${targetName}`);
     return;
   }
