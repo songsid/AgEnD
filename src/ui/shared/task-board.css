@@ -596,5 +596,5 @@ button.tb-owner-btn:hover { border-color: var(--border); background: var(--surfa
 .tb-done-more { display: block; margin: var(--s-2) auto; }
 .tb-col-head .tb-done-week { font-size: var(--fs-xs); }
 .tb-done-week-line { display: none; }
-.tb-archive .tb-row-time { width: auto; }
+.tb-archive .tb-row-time { width: 11em; }
 .tb-archive-who { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); font-size: var(--fs-sm); color: var(--text-2); }
