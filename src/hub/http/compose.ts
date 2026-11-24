@@ -212,6 +212,16 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core, deps.roomOffice === true);
+  /**
+   * M-3596: a 1:1 room's agent as its asker sees it. The room's own presence (offline, paused, held) wins; on a current link
+   * the agent's reported state (agent.state: working, or paused with a reason) says whether it is busy right now.
+   */
+  const directPresence = (exposureId: string): ReturnType<typeof rooms.presence> => {
+    const own = rooms.presence(exposureId);
+    if (own !== "idle") return own;
+    const reported = groupRooms.agents.presence(exposureId).presence;
+    return reported === "working" || reported === "paused" ? reported : own;
+  };
   const mcp = new HubMcpDoor(core,sessions,{groups:groupRooms,direct:rooms,catalog});
   const invitations = deps.roomInvitations?.(core, groupRooms.invitationHost());
   const roomAgentRequests = deps.roomAgentRequests?.(core, groupRooms.invitationHost());
@@ -768,7 +778,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
                 } else {
                   const view = await rooms.view(ctx, event.roomId);
                   if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, rooms.presence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId)) };
+                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, directPresence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId), groupRooms.agents.reported(view.exposureId)) };
                   else {
                     const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
                     const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
@@ -813,7 +823,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const groups = await guard(() => groupRooms.list(ctx));
         const pending = invitations ? await guard(() => invitations.pending(ctx)) : null;
         const ownerRequests = roomAgentRequests && query.get("ownerRequests") === "1" ? await guard(() => roomAgentRequests.pendingCount(ctx)) : 0;
-        return send(res, 200, { ...groups, invitations: (pending?.invitations.length ?? 0) + ownerRequests, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
+        return send(res, 200, { ...groups, invitations: (pending?.invitations.length ?? 0) + ownerRequests, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId), groupRooms.agents.reported(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
         if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
@@ -837,9 +847,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
       } else if (method === "GET") {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
-        return send(res, 200, { room: directRoomView(room, rooms.presence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), me: { id: person, role: "member" },
+        return send(res, 200, { room: directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId), groupRooms.agents.reported(room.exposureId)), me: { id: person, role: "member" },
           members: [{ id: person, kind: "person", name, role: "member", presence: "online" }, { id: room.exposureId, kind: "agent", name: room.exposureName,
-            ...(room.answerOnly?{answerOnly:true}:{}), owner: { name: room.ownerName }, role: "member", presence: rooms.presence(room.exposureId), canAsk: room.state === "active" }],
+            ...(room.answerOnly?{answerOnly:true}:{}), owner: { name: room.ownerName }, role: "member", presence: directPresence(room.exposureId), canAsk: room.state === "active" }],
           settings: { allMention: false, historyForNew: "all" }, invited: [] });
       }
       throw new HttpError(405, "method");
@@ -1191,7 +1201,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           if (error instanceof HubProtocolError && ["unavailable", "backpressure", "revoked", "not-found", "stale"].includes(error.code)) return;
           throw error;
         }
-      case "agent.state": groupRooms.agents.state(frame.payload, link); return;
+      case "agent.state": groupRooms.agents.state(frame.payload, link); directAgentChanged(frame.payload.exposureId); return;
       // M-3127 (agent reactions, on room-answer-buttons-v1): an agent's reaction to the room question it was asked; the result says why not.
       case "room.react":
         try { return { ...reply, type: "room.react-result", payload: await groupRooms.agentReact(frame.payload, link) }; }
@@ -1205,7 +1215,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
       case "receipt": { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
       case "answer": { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
-      case "authorize.request": return { ...reply, type: "authorize.result", payload: await policy.authorize(frame.payload, link) };
+      case "authorize.request": {
+        const payload = await policy.authorize(frame.payload, link);
+        // M-3596: a begin lease is the hand-off to the agent: the asker's question now reads "working on it".
+        if (payload.ok && frame.payload.phase === "begin") directStarted(frame.payload.messageId);
+        return { ...reply, type: "authorize.result", payload };
+      }
       case "reconcile": {
         const page = rooms.reconcile(frame.payload, link);
         // The link becomes ready once S1 has sent this last page; questions follow it (retrying briefly until it is).
@@ -1224,6 +1239,16 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (message) groupRooms.publish({ type: "room.changed", roomId: message.room_id, data: { roomId: message.room_id }, audiencePerson: message.asker });
     }
     groupRooms.agents.publicationSettled(settlement.group);
+  }
+  /** M-3596: the agent of these 1:1 rooms changed state (working, idle, paused): each asker's room view is read again. */
+  function directAgentChanged(exposureId: string): void {
+    const rows = core.atomic(db => db.prepare("SELECT id,asker FROM hub_rooms WHERE exposure_id=? AND state='active'").all(exposureId) as { id: string; asker: string }[]);
+    for (const r of rows) groupRooms.publish({ type: "room.changed", roomId: r.id, data: { roomId: r.id }, audiencePerson: r.asker });
+  }
+  /** M-3596: the question was handed to its agent — its pending answer row reads "working" now (the asker only). */
+  function directStarted(messageId: string): void {
+    const row = core.atomic(db => db.prepare("SELECT room_id,asker FROM hub_messages WHERE id=?").get(messageId) as { room_id: string; asker: string } | undefined);
+    if (row) groupRooms.publish({ type: "message.updated", roomId: row.room_id, data: { roomId: row.room_id, messageId: `${messageId}:answer` }, audiencePerson: row.asker });
   }
   function directChanged(messageId: string, answer: boolean): void {
     const row = core.atomic(db => db.prepare("SELECT room_id,asker FROM hub_messages WHERE id=?").get(messageId) as { room_id: string; asker: string } | undefined);
