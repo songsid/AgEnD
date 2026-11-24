@@ -3,7 +3,7 @@
   "source": [
     {
       "path": "docs/design/hub-room-asker-identity.md",
-      "sha256": "48fcc606dfe793603192d46fc917c27a68d0b167eba010beb5c801e3b956ab71"
+      "sha256": "869dd8e59fbcab79ced57e601946e5db45ff9bcafa83403dab61d65ab0652db5"
     },
     {
       "path": "src/hub/client.ts",
@@ -51,7 +51,7 @@
     },
     {
       "path": "src/hub/rooms/agents.ts",
-      "sha256": "0b92d0b71923f7d2572762638beb533754495bbc2c799d7dbd7786f4885d9956"
+      "sha256": "9b993e44945c07763c5c94bd409019d152b93fbe03ccdedc405889b31716ae67"
     },
     {
       "path": "src/hub/rooms/asker-identity.ts",
@@ -79,7 +79,7 @@
     },
     {
       "path": "tests/hub-room-asker-source-m3664.test.ts",
-      "sha256": "4392d88b4ff6d1dfc5ac8f04387a98861e7e5ea8fe2fc2498b54ba5a308bfe47"
+      "sha256": "1863151d755cf09f4f408bd7d22574da25ed4f1d5f045546b19bf7526f45652e"
     },
     {
       "path": "tests/hub-room-asker-store-m3664.test.ts",
@@ -109,7 +109,7 @@
   "evidence": [
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/README.md",
-      "sha256": "c034ffb18470863c3725183931d8b1dfd4def778539dcd1523f95d18c6f351df"
+      "sha256": "b0258a1996dd2b83226c42c984dd0fa317085377f730f1839ffd8ce649d5d3bf"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/actor-kind-mutant.log",
@@ -248,6 +248,30 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before-input.patch",
+      "sha256": "541829488c0a7ba4634956c4159cb8cfbdfd85e22a0be733077c800556270a18"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before-inputs.json",
+      "sha256": "16e7165fa587e9e218510d941d179528965f2bb350e060d1007f6872df938f85"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before.log",
+      "sha256": "50fd8d2fd16729e9a0f4325e26ae90d251e154af4a8bf46f73dc10873170ef37"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-final.log",
+      "sha256": "ff6a4279c15a41c15473e8600f8d9bfe6f4247a44030520c409d86f89f7ac745"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "path": "docs/evidence/hub-room-asker-identity-m3664/restored-answer-final.log",
       "sha256": "3309132f6c5431142c99825608344386e5645a15ac78966fdc94f794191921a8"
     },
@@ -257,11 +281,15 @@
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/review-r1.md",
-      "sha256": "b2c09aea54ac030f918e1e0887a213323b144537389b5addfed17226a26f8f62"
+      "sha256": "0683ba21af003e3057dfe62c634d09a889873e97dac5b65133ec86ece76246aa"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/review-r2.md",
       "sha256": "fa743354fbf26bdc8d5032f89f65f6c0fa407bbba029efa57d5ecf5032b33447"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/review-r3.md",
+      "sha256": "a98ed73746300999afa41cf0b2c54d70bbc913f43bb717379068287ceaf6636c"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/signature-mutant.log",

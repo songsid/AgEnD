@@ -1,3 +1,5 @@
+import {mkdtempSync,rmSync} from "node:fs";import {tmpdir} from "node:os";import {join} from "node:path";
+import {HubRoomAskerStore} from "../src/hub/member/room-asker-store.js";
 import {HubCore} from "../src/hub/http/core.js";
 import {HubGroupRooms} from "../src/hub/rooms/service.js";
 import {afterEach,describe,it,expect,vi} from 'vitest';import Database from 'better-sqlite3';import {randomUUID} from 'node:crypto';import {roomPostAsker} from '../src/hub/rooms/asker-identity.js';import type {RoomPostRow} from '../src/hub/rooms/agents.js';import {s3bRig} from './helpers/hub-s3b-rig.js';import {personKeyString} from '../src/hub/identity.js';import {signRoomAsker,verifyRoomAsker} from '../src/hub/room-asker-identity.js';import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY as cap} from '../src/hub/room-asker-identity-model.js';
@@ -24,10 +26,15 @@ it('actual Hub HTTP room routing signs only a negotiated projected payload, pres
  link.alive=false;const old=r.link(fleetId,r.admin,2,['welcome-caps-v1','room-ask-v1']);await r.http.receive(r.frame('reconcile',{afterReceiptSequence:0,messages:[]},old)as never,old);await vi.waitFor(()=>expect(r.sent.filter(x=>x.frame.type==='room.ask').length).toBeGreaterThan(1));expect((r.sent.filter(x=>x.frame.type==='room.ask').at(-1)!.frame as any).payload).toEqual(legacy);
  // A persisted deadline beyond the normal24h policy is clamped by the signer, even after reconnect.
  r.db.prepare('UPDATE hub_room_deliveries SET expires_at=? WHERE id=?').run(at+48*60*60*1000,ask.messageId);old.alive=false;const modern=r.link(fleetId,r.admin,3,caps);await r.http.receive(r.frame('reconcile',{afterReceiptSequence:0,messages:[]},modern)as never,modern);await vi.waitFor(()=>expect(r.sent.filter(x=>x.frame.type==='room.ask')).toHaveLength(3));const capped=(r.sent.filter(x=>x.frame.type==='room.ask').at(-1)!.frame as any).payload.askerIdentity;expect(capped.retainedUntil-capped.issuedAt).toBe(24*60*60*1000);
+ // Persist the first bounded proof, advance an hour and require a later transport signature to preserve it.
+ const home=mkdtempSync(join(tmpdir(),'room-retention-'));close.push(()=>{rmSync(home,{recursive:true,force:true});});const companion=new HubRoomAskerStore({home,binding:'example-retention',encryptionKey:Buffer.alloc(32,4),identity:{hubId:r.hubId,fleetId,issuerKeyId:r.issuer.keyId,issuerPublicKey:r.keys.publicKey},now:()=>at});close.push(()=>companion.close());
+ const accepted={ask:legacy,destination:{agent:'example-agent',exposureId:e.id,incarnation:randomUUID()},journalDigest:'e'.repeat(64)};companion.prepare(capped,accepted,{linkEpoch:3,exposureRevision:1});companion.commit(ask.messageId,accepted);
+ at+=60*60*1000;modern.alive=false;const later=r.link(fleetId,r.admin,4,caps);await r.http.receive(r.frame('reconcile',{afterReceiptSequence:0,messages:[]},later)as never,later);await vi.waitFor(()=>expect(r.sent.filter(x=>x.frame.type==='room.ask')).toHaveLength(4));const {askerIdentity:reissued,...samePayload}=(r.sent.filter(x=>x.frame.type==='room.ask').at(-1)!.frame as any).payload;expect(samePayload).toEqual(legacy);
+ expect(()=>companion.prepare(reissued,accepted,{linkEpoch:4,exposureRevision:1})).not.toThrow();expect(reissued.retainedUntil).toBe(capped.retainedUntil);expect(companion.get(ask.messageId,accepted)?.id).toBe(personKeyString(who));
  // Without the app companion table, the app's person-looking insert is rolled back in the same actual transaction.
  r.db.exec('CREATE TABLE IF NOT EXISTS hub_mcp_room_policy(room_id TEXT PRIMARY KEY,enabled INTEGER);DROP TABLE IF EXISTS hub_mcp_room_posts');
  const isolated=new HubGroupRooms(new HubCore(r.httpDeps,r.sql));close.push(()=>isolated.close());const before=(r.db.prepare('SELECT count(*) n FROM hub_room_posts').get()as{n:number}).n;
  const appCtx={requestId:randomUUID(),isCurrent:()=>true,application:{id:randomUUID(),name:'Example application'},current:async()=>({kind:'directory' as const,person:who,sessionId:'fixture-session'}),requirePerson:async()=>who,requireAdmin:async()=>{throw Error('not admin');}};
- await expect(isolated.post(appCtx,room,{text:'Application without its ledger',mentions:[],idempotencyKey:randomUUID()})).rejects.toThrow();expect((r.db.prepare('SELECT count(*) n FROM hub_room_posts').get()as{n:number}).n).toBe(before);
+ await expect(isolated.post(appCtx,room,{text:'Application without its ledger',mentions:[],idempotencyKey:randomUUID()})).rejects.toThrow(/no such table: hub_mcp_room_posts/);expect((r.db.prepare('SELECT count(*) n FROM hub_room_posts').get()as{n:number}).n).toBe(before);
 
 });

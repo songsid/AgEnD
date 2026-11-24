@@ -2,7 +2,7 @@
 
 Base: `3ed153b1541f020aa027781f905a615b2d3e63df`, release/2.3.5-alpha. Design: [hub-room-asker-identity.md](../../design/hub-room-asker-identity.md). All fixtures use synthetic identities, owned temporary state and inert delivery callbacks. No live Hub, directory, Fleet, account, model or browser campaign.
 
-Current review refinements and scoped validation are in [review-r1.md](review-r1.md). Original-run logs/mutations are retained historical evidence at the initial head.
+Review refinements and staged validation are in [R1](review-r1.md), [clock-warning refinements](review-r2.md) and the final [stable retention bound](review-r3.md). Original-run logs/mutations are retained historical evidence at the initial head.
 
 ## Change and consumer boundary
 

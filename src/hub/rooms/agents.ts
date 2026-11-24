@@ -393,7 +393,8 @@ export class HubRoomAgents {
             const parent=db.prepare("SELECT * FROM hub_room_posts WHERE id=? AND room_id=?").get(d.parent_id,d.room_id)as RoomPostRow|undefined;
             const subject=parent?roomDeliveryAsker(db,parent,d):null;
             // Unknown authors retain the ordinary legacy ask; there is no verified/name fallback.
-            if(subject&&signer){const now=this.core.now(),retainedUntil=Math.min(d.expires_at,now+ROOM_ASKER_RETENTION_MS);ask.askerIdentity=signer({v:1,issuer:this.core.deps.config.hubId,issuerKeyId:this.core.deps.issuer.keyId,
+            // Immutable delivery creation bounds retention: a reconnect must never slide the accepted deadline.
+            if(subject&&signer){const now=this.core.now(),retainedUntil=Math.min(d.expires_at,d.created_at+ROOM_ASKER_RETENTION_MS);ask.askerIdentity=signer({v:1,issuer:this.core.deps.config.hubId,issuerKeyId:this.core.deps.issuer.keyId,
               destinationFleetId:fleetId,messageId:ask.messageId,roomId:ask.roomId,exposureId:ask.exposureId,exposureRevision:d.exposure_revision,linkEpoch:link.linkEpoch,
               subject,contentDigest:roomAskIdentityDigest(ask),issuedAt:now,expiresAt:Math.min(now+ROOM_ASKER_FRESH_MS,retainedUntil),retainedUntil,nonce:randomUUID().replaceAll("-","")+randomUUID().replaceAll("-","")});}
           }
