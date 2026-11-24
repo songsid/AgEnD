@@ -1968,14 +1968,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!name) return null;
     const who = d ? d.who.get(name) : null, node = who ? who.node : (people.find((x) => x.node && x.node.name === name) || {}).node;
     if (!node) return null;
-    const sk = (who && who.skin) || skin, pack = sk && sk.pack, person = conv ? conv.person : null, act = actsHere && actsHere.get(name);
+    const sk = (who && who.skin) || skin, pack = sk && sk.pack, act = actsHere && actsHere.get(name);
     const pic = (src) => { const im = src && sk && typeof sk.picture === "function" ? sk.picture(src, () => {}) : null; return im && im.src ? im.src : null; };
     return {
       name, label: nodeText(node).primary, conv, more: pf.more,
-      person: person ? person.name || to("dlgSomeone") : null, mine: !!(conv && chat.mine(name, conv.full ?? conv.text)),
       status: node.state === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null,
       portrait: pack ? pic(portraitSrc(pack, { agent: name, state: node.state })) : null,
-      face: person && pack ? pic(portraitSrc(pack, { account: person.account })) : null, faceText: person ? firstCharacter(person.name || "?") : "",
       colours: (pack && pack.dialogBox) || null,
     };
   };

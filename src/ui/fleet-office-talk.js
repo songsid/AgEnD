@@ -16,7 +16,7 @@ register("otalk", {
     full: "Open full chat", reply: "Full reply", close: "Close", loading: "Loading…", failed: "Not sent — try again",
     empty: "No messages yet. Say hello.", sending: "Sending…", talkTo: "Talking to {0}", file: "[a file]",
     next: "Click: the rest, the next page, or close",
-    you: "You",
+    you: "You", history: "History",
     play: "Reading", read_click: "Click", read_auto: "Auto", read_fast: "Fast", skip: "Skip",
     readTitle: "Click: each line waits for a click. Auto: it goes on by itself. Fast: quickly. Skip: close every reply now.",
   },
@@ -27,7 +27,7 @@ register("otalk", {
     full: "開啟完整聊天", reply: "完整回覆", close: "關閉", loading: "載入中…", failed: "沒送出去，請再試一次",
     empty: "還沒有訊息，打個招呼吧。", sending: "傳送中…", talkTo: "正在和 {0} 對話", file: "［檔案］",
     next: "點一下：顯示全部、下一頁或關閉",
-    you: "你",
+    you: "你", history: "歷史紀錄",
     play: "播放", read_click: "點擊", read_auto: "自動", read_fast: "快速", skip: "跳過",
     readTitle: "點擊：每句等你點一下。自動：自己往下播。快速：很快地往下播。跳過：現在就關掉所有回覆。",
   },
@@ -65,7 +65,7 @@ export function talkTextOf(m) {
 export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` } = {}) {
   // said: name → its last live reply over the head, { text, at, page, pageAt, pages, whole, wholeAt } (the drawing
   // fills pages / whole / wholeAt; advance() turns the page or lets it go).
-  const threads = new Map(), subs = new Set(), said = new Map(), sent = new Set();   // sent: "name|text" said from here
+  const threads = new Map(), subs = new Set(), said = new Map();
   const changed = (name) => { for (const fn of [...subs]) fn(name); };
   const thread = (name) => { if (!threads.has(name)) threads.set(name, { msgs: [], loaded: false, loading: false, error: false }); return threads.get(name); };
   const row = (m) => {
@@ -77,8 +77,6 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
     thread: (name) => thread(name),
     /** The live reply over `name`'s head, until it is read (advance) or skipped; else null. */
     recent(name) { return said.get(name) || null; },
-    /** Whether `text` to `name` was sent from this page (the box names its speaker "You"). */
-    mine(name, text) { return sent.has(`${name}|${String(text || "").trim()}`); },
     /** A click on it (or its turn to go on): the page whole while it types, else the next page, else it goes. */
     advance(name) {
       const r = said.get(name);
@@ -110,7 +108,6 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
       const words = String(text || "").trim();
       if (!words) return false;
       const th = thread(name), clientId = rid(), mine = { key: `c-${clientId}`, role: "user", text: words, pending: true, clientId };
-      sent.add(`${name}|${words}`); if (sent.size > 200) sent.delete(sent.values().next().value);
       th.msgs.push(mine); keep(th); changed(name);
       try {
         const r = await f("/ui/send", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: name, message: words, clientId }) });
@@ -216,8 +213,8 @@ export function TalkBar({ talk, name, label, onFull, read = null, onRead = null,
 
 // ── Variant B, on the scene: the dialogue box laid over the foot of the Office, a visual novel's ──
 // The Office keeps its size and place: the box, the portrait and the line to type in are an overlay on the stage.
-// `peek()` (the Office's) is what it shows now: { name, label, conv, person, mine, status, portrait, face, faceText,
-// more } or null; `ops` { now, drop(instance), skip(), target(name) }. Each conversation keeps its page and typing
+// Only the agent's side: what was said to it is in History (TalkLog). `peek()` (the Office's) is what it shows now:
+// { name, label, conv, status, portrait, colours, more } or null; `ops` { now, drop(instance), skip(), target(name) }. Each conversation keeps its page and typing
 // (page, pageAt, wholeAt, shownAt, replyShownAt) as the canvas box did.
 const PAGE_LINES = { desk: 2, phone: 3 };
 let measureCtx = null;
@@ -228,7 +225,7 @@ const measurer = (font) => {
   return (s) => measureCtx.measureText(s).width;
 };
 export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClose }) {
-  const [, tick] = useState(0), reply = useRef(null), root = useRef(null), fig = useRef(null);
+  const [, tick] = useState(0), [log, setLog] = useState(false), reply = useRef(null), root = useRef(null), fig = useRef(null);
   const v = peek();
   const live = !!(v && v.conv);
   useEffect(() => {
@@ -289,7 +286,8 @@ export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClos
   const keep = (e) => e.stopPropagation();   // the stage's pan, zoom keys and clicks stay off the box
   return html`<div class=${`ot-stage${phone ? " phone" : ""}`} ref=${root} onPointerDown=${keep} onKeyDown=${keep} onWheel=${keep} onClick=${keep}>
     ${v.portrait ? html`<img class="ot-figure" ref=${fig} src=${v.portrait} alt="" draggable="false" />` : null}
-    <div class="ot-box" role="group" aria-label=${tt("talkTo", v.label)}>
+    <div class=${`ot-box${live ? " live" : ""}`} role="group" aria-label=${tt("talkTo", v.label)}>
+      ${log ? html`<${TalkLog} talk=${talk} name=${v.name} label=${v.label} onFull=${onFull} onClose=${() => setLog(false)} />` : null}
       <div class="ot-tools">
         ${READ_MODES.map((m) => html`<button key=${m} type="button" class=${`ot-tool${read === m ? " on" : ""}`} aria-pressed=${read === m ? "true" : "false"} onClick=${() => onRead(m)}>${tt(`read_${m}`)}</button>`)}
         <button type="button" class="ot-tool" onClick=${ops.skip}>${tt("skip")}</button>
@@ -297,12 +295,6 @@ export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClos
       </div>
       <div class="ot-read" role="button" tabindex="0" aria-label=${tt("next")} onClick=${() => step()}
         onKeyDown=${(e) => { if ((e.key === "Enter" || e.key === " ") && !e.repeat) { e.preventDefault(); step(); } }}>
-        ${c && c.person ? html`<div class="ot-heard">
-          <span class="ot-face">${v.face ? html`<img src=${v.face} alt="" />` : v.faceText}</span>
-          <span class="ot-plate">${v.mine ? tt("you") : v.person}</span>
-          <span class="ot-said">${c.full ?? c.text ?? ""}</span>
-        </div>
-        <div class="ot-rule"></div>` : null}
         <div class="ot-answer">
           <div class="ot-words" ref=${reply} aria-live="polite">${answered ? shown : html`<span class="ot-status">${live ? v.status || "" : ""}</span>`}${answered && whole ? html`<span class="ot-cue" aria-hidden="true">▼</span>` : null}</div>
           <span class="ot-plate ot-agent">${v.label}</span>
@@ -312,10 +304,32 @@ export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClos
       <div class="ot-line">
         <${Composer} talk=${talk} name=${v.name} label=${v.label} autoFocus=${!live} />
         <span class="ot-sep" aria-hidden="true">|</span>
-        <button type="button" class="ot-link" onClick=${onFull}>${tt("full")}</button>
+        <button type="button" class="ot-link" aria-expanded=${log ? "true" : "false"} onClick=${() => setLog(!log)}>${tt("history")}</button>
       </div>
     </div>
   </div>`;
+}
+
+/** The box's history (a visual novel's backlog): both sides of the conversation, over the box; the full chat from it. */
+function TalkLog({ talk, name, label, onFull, onClose }) {
+  const th = useThread(talk, name), list = useRef(null);
+  useLayoutEffect(() => { const el = list.current; if (el) el.scrollTop = el.scrollHeight; }, [th && th.msgs.length]);
+  return html`<section class="ot-log" role="dialog" aria-label=${tt("history")}>
+    <header class="ot-log-head">
+      <strong>${tt("history")} · ${label}</strong>
+      <button type="button" class="ot-link" onClick=${onFull}>${tt("full")}</button>
+      <button type="button" class="ot-tool ot-x" aria-label=${tt("close")} title=${tt("close")} onClick=${onClose}>×</button>
+    </header>
+    <ol class="ot-log-list" ref=${list}>
+      ${th && th.loading && !th.msgs.length ? html`<li class="ot-note">${tt("loading")}</li>` : null}
+      ${th && th.loaded && !th.msgs.length ? html`<li class="ot-note">${tt("empty")}</li>` : null}
+      ${(th ? th.msgs : []).map((m) => html`<li key=${m.key} class=${`ot-log-msg ${m.role === "user" ? "me" : "agent"}`}>
+        <span class="ot-log-who">${m.role === "user" ? tt("you") : label}</span>
+        ${m.role === "agent" ? html`<div class="ot-md" dangerouslySetInnerHTML=${{ __html: md(m.text) }}></div>` : html`<div class="ot-plain">${m.text}</div>`}
+        ${m.failed ? html`<small class="ot-meta ot-bad">${tt("failed")}</small>` : null}
+      </li>`)}
+    </ol>
+  </section>`;
 }
 
 // ── Variant C: the reply over the agent's head ──

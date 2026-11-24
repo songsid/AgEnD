@@ -215,7 +215,7 @@ describe("talking on the page", () => {
     expect(p.root.querySelector(".ot-panel")).toBeNull();
     expect(p.root.querySelector(".ot-stage")).toBeNull();
   });
-  it("dialogue box: laid over the scene (no row under it); who spoke, the line to type in, the full chat a click away", async () => {
+  it("dialogue box: laid over the scene (no row under it); only the agent's side; History holds both, the full chat in it", async () => {
     const opened = vi.fn(() => ({ opener: null })), prior = (p.window as any).open; (p.window as any).open = opened;
     p.document.body.dataset.chatWorkspace = "1"; p.document.body.dataset.chatLayoutScope = "example-scope";
     const priorAuth = (globalThis as any).AgendAuth; (globalThis as any).AgendAuth = { sessionEnded: () => false };
@@ -230,22 +230,29 @@ describe("talking on the page", () => {
       expect(p.root.querySelector(".oo-stage .ot-stage")).not.toBeNull();            // on the scene...
       expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();                // ...not a row under it
       expect(p.root.querySelector(".ot-bar")).toBeNull();
-      expect([...p.root.querySelectorAll(".ot-stage .ot-plate")].map((e: any) => e.textContent)).toEqual(["Alex", "atlas"]);
-      expect(p.root.querySelector(".ot-said").textContent).toBe("hi");
+      expect([...p.root.querySelectorAll(".ot-stage .ot-plate")].map((e: any) => e.textContent)).toEqual(["atlas"]);
+      expect(p.root.querySelector(".ot-stage").textContent).not.toContain("hi");     // what was said to it: not in the box
       const input = () => p.root.querySelector(".ot-stage .ot-input");
       await type(input(), "status please");
       expect(sends).toEqual([expect.objectContaining({ instance: "atlas", message: "status please" })]);
       expect(input().value).toBe("");
-      // What was said from here is said by "You".
-      emit("message", { instance: "atlas", role: "user", sender: "Example person", text: "status please", ts: new Date().toISOString() });
-      await tick(10);
-      expect(p.root.querySelector(".ot-heard .ot-plate").textContent).toBe("You");
-      p.root.querySelector(".ot-stage .ot-link").click(); await settle(4);
+      // History: both sides (what was sent from here as "You"); the full chat from it.
+      const link = p.root.querySelector(".ot-line .ot-link");
+      expect(link.textContent).toBe("History");
+      link.click(); await tick(4);
+      const log = p.root.querySelector(".ot-stage .ot-log");
+      expect([...log.querySelectorAll(".ot-log-msg")].map((m: any) => [m.className.includes("me") ? "me" : "agent", m.querySelector(".ot-log-who").textContent]))
+        .toEqual([["agent", "atlas"], ["me", "You"]]);
+      expect(log.textContent).toContain("Earlier reply");
+      expect(log.textContent).toContain("status please");
+      log.querySelector(".ot-log-head .ot-link").click(); await settle(4);
       expect(opened).toHaveBeenCalledTimes(1);
       expect((opened.mock.calls[0] as any)[0]).toBe("/ui/chat/atlas?presentation=popout");
+      p.root.querySelector(".ot-log .ot-x").click(); await tick(4);
+      expect(p.root.querySelector(".ot-log")).toBeNull();
       // x: a reply still awaited stays; once answered, x closes it and the scene is as it was.
       p.root.querySelector(".ot-stage .ot-x").click(); await tick(6);
-      expect(p.root.querySelector(".ot-heard")).not.toBeNull();
+      expect(p.root.querySelector(".ot-box.live")).not.toBeNull();
       emit("message", { instance: "atlas", role: "agent", text: "ok", ts: new Date().toISOString() });
       await tick(6);
       p.root.querySelector(".ot-stage .ot-x").click(); await tick(6);
@@ -267,12 +274,12 @@ describe("talking on the page", () => {
     await tick(4);
     expect(p.root.querySelector(".ot-read").getAttribute("aria-label")).toBe("Click: the rest, the next page, or close");
     let seen = "", clicks = 0, cue = false;
-    while (p.root.querySelector(".ot-heard") && clicks < 200) {
+    while (p.root.querySelector(".ot-box.live") && clicks < 200) {
       seen += words().textContent; cue = cue || words().textContent.includes("▼");
       p.root.querySelector(".ot-read").click(); await tick(2);
       clicks++;
     }
-    expect(p.root.querySelector(".ot-heard")).toBeNull();                            // the last page clicked: closed
+    expect(p.root.querySelector(".ot-box.live")).toBeNull();                            // the last page clicked: closed
     expect(seen).toContain("開頭");
     expect(seen).toContain("結尾在這裡");                                            // the whole reply, not its first 120 characters
     expect(cue).toBe(true);
@@ -287,14 +294,14 @@ describe("talking on the page", () => {
     const tools = () => [...p.root.querySelectorAll(".ot-stage .ot-tool")];
     expect(tools().slice(0, 3).map((b: any) => [b.textContent, b.getAttribute("aria-pressed")])).toEqual([["Click", "true"], ["Auto", "false"], ["Fast", "false"]]);
     tools()[3].click(); await tick(6);                                                // Skip
-    expect(p.root.querySelector(".ot-heard")).toBeNull();
+    expect(p.root.querySelector(".ot-box.live")).toBeNull();
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "q2", ts: new Date().toISOString() });
     emit("message", { instance: "atlas", role: "agent", text: "ok", ts: new Date().toISOString() });
     await tick(6);
     tools()[2].click(); await settle(2);                                              // Fast
     expect(localStorage.getItem("agend_org_office_talk_read")).toBe("fast");
-    for (let i = 0; i < 40 && p.root.querySelector(".ot-heard"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));
-    expect(p.root.querySelector(".ot-heard")).toBeNull();                            // played and closed by itself
+    for (let i = 0; i < 40 && p.root.querySelector(".ot-box.live"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));
+    expect(p.root.querySelector(".ot-box.live")).toBeNull();                            // played and closed by itself
   });
   it("the store keeps the whole line and holds an answer until it is clicked away", () => {
     const d = D.createDialogue();
