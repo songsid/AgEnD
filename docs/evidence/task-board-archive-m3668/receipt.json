@@ -1,5 +1,5 @@
 {
-  "sourceHead": "ad9ce99ae81976c1d54f32505550fb4246fe12ee",
+  "sourceHead": "7bac4673b3002e51ebfbbe89bdd738e738576fae",
   "dirty": [],
   "checks": [
     {
@@ -39,6 +39,18 @@
       "ok": true
     },
     {
+      "name": "desk-en-light: the board read leaves out an archived main task's late sub task",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: Settings has the archive age, 3 unless set",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: Settings refuses a fraction of a day",
+      "ok": true
+    },
+    {
       "name": "desk-en-light: no page errors",
       "ok": true
     },
@@ -72,6 +84,18 @@
     },
     {
       "name": "desk-zh-TW-dark: its page says Archived",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the board read leaves out an archived main task's late sub task",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: Settings has the archive age, 3 unless set",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: Settings refuses a fraction of a day",
       "ok": true
     },
     {
@@ -115,6 +139,18 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the board read leaves out an archived main task's late sub task",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Settings has the archive age, 3 unless set",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Settings refuses a fraction of a day",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: no page errors",
       "ok": true
     },
@@ -155,6 +191,18 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the board read leaves out an archived main task's late sub task",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Settings has the archive age, 3 unless set",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Settings refuses a fraction of a day",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: no page errors",
       "ok": true
     }
@@ -162,7 +210,7 @@
   "pictures": [
     {
       "path": "m3668-desk-en-light-1-home.png",
-      "sha256": "26d978e17148c4689426ec09e11d3a1f8945b585e8b6f0ddfb6f23f3dc1df62b"
+      "sha256": "c8f945d65111b8658e5012cfe416f42867239744c672862faa21269a36dd5aa7"
     },
     {
       "path": "m3668-desk-en-light-2-board.png",
@@ -182,11 +230,19 @@
     },
     {
       "path": "m3668-desk-en-light-5-card.png",
-      "sha256": "4b96f4b3d741c7fc13239cae64adeee5ec95d62b473b2a20354c4ff7f98792de"
+      "sha256": "7ad4a62a1db6d87b99ea0a3bbc82001334ef3367c31e66bf49b310acc744dcec"
+    },
+    {
+      "path": "m3668-desk-en-light-6-settings.png",
+      "sha256": "6eda15a22fe494cdfe0d5427e78554be9d132c07aaf1e8f1a2fe379dff5649a6"
+    },
+    {
+      "path": "m3668-desk-en-light-6b-settings-refused.png",
+      "sha256": "ec7c9d031dd8cc8db459dd78988b5c3306a2f707af0892d88217836bfc4fa89d"
     },
     {
       "path": "m3668-desk-zh-TW-dark-1-home.png",
-      "sha256": "77fe90bc54568bca28e93aaabfa77c3a77ce1b9cbaae88e363540273494b6a71"
+      "sha256": "9d3d0a05471bdcbcfe527e877804a566fc329322a9ba91ac58a012c3c89e25bd"
     },
     {
       "path": "m3668-desk-zh-TW-dark-2-board.png",
@@ -202,11 +258,19 @@
     },
     {
       "path": "m3668-desk-zh-TW-dark-4-search.png",
-      "sha256": "cdf996de0a5b63ce8830ac144f8f0bc6569ece30ab8137ad59df24d34cb38fd7"
+      "sha256": "5ed22ac5ef17d32858596e7d36f1554e16dd8dc93d262d0cc7d8f36bad8ca465"
     },
     {
       "path": "m3668-desk-zh-TW-dark-5-card.png",
-      "sha256": "ee060536954ccebf5677eed4ec97e954ce3f5b709f574217a34ea9cfe642f888"
+      "sha256": "4df05df1d710d8dac9cde778c7f4d48c08296aebca4d9ab4c89c6a0ef76423cf"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-6-settings.png",
+      "sha256": "ecfeba0145d5a5b9054ea1e8f7ed526182a3484f634147b171704b7438c93fa9"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-6b-settings-refused.png",
+      "sha256": "fe508f74f7c3775731bcd6beaa74180a20536187cb1ed18758b1a5d971139b53"
     },
     {
       "path": "m3668-phone-en-light-1-home.png",
@@ -226,15 +290,23 @@
     },
     {
       "path": "m3668-phone-en-light-4-search.png",
-      "sha256": "964338ce9af2d4ffd4df70176912abb90c938d1e69041ca789de01acc7de70f2"
+      "sha256": "e6de88555fac942325bb45a9c445eaa3bde265268e0a50d7bd65c4b53533448d"
     },
     {
       "path": "m3668-phone-en-light-5-card.png",
-      "sha256": "7f93207765e04d9bedfa7686b572c8c51880e5c27729393d49a06e3473dc6c25"
+      "sha256": "6e62b7c8ac3f13602315a9b1f0f3c54100e0218e6201453a74a902bfe0ef6036"
+    },
+    {
+      "path": "m3668-phone-en-light-6-settings.png",
+      "sha256": "dce46f97e2f66a446d4308f322f03e54d40ef9d92bae724b5cebdc1cd45f39d6"
+    },
+    {
+      "path": "m3668-phone-en-light-6b-settings-refused.png",
+      "sha256": "64f36a78b1409ed677a41fb101c94e7d75d6bf10bee3711a386f0a551ff32730"
     },
     {
       "path": "m3668-phone-zh-TW-dark-1-home.png",
-      "sha256": "a555af737bbe86708ca9c94c0c64399bdc3714871cfc53a501d4c8b71120db62"
+      "sha256": "bfc054dfc5a5364aec13ccd5efb34928548ba46bb3912634c4f6fa2328835183"
     },
     {
       "path": "m3668-phone-zh-TW-dark-2-board.png",
@@ -250,11 +322,19 @@
     },
     {
       "path": "m3668-phone-zh-TW-dark-4-search.png",
-      "sha256": "8a60436d5723ba789ddcd659fbd21ac071d6f5ccd9fcd0ed08630b2bf92b318b"
+      "sha256": "dd033292e8f0aed41200dd00adda28a1d4fcba6aa2bef26cff262f17e2113cf4"
     },
     {
       "path": "m3668-phone-zh-TW-dark-5-card.png",
-      "sha256": "29a84c17b4e5adbbb7ae83adad38a66f0b5ca91e11908a790961b9e97d1d624e"
+      "sha256": "dc0036ac4cf1083edcec31a82414d2d22dec5184fad29bd0fa7684a5d85a8dec"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-6-settings.png",
+      "sha256": "344f529dcb32417b6eba5a9a41c0fc042cce3d65630129bd8ee91d9f631f1be8"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-6b-settings-refused.png",
+      "sha256": "bc84435cec4b7dc066276c65ddf9aa3f0b4b4da98a0a8e8f4d8f3b172020bde4"
     }
   ],
   "board": {
@@ -268,5 +348,5 @@
     "phone-en-light-nameLines": 3,
     "phone-zh-TW-dark-nameLines": 2
   },
-  "summary": "39/39"
+  "summary": "51/51"
 }
