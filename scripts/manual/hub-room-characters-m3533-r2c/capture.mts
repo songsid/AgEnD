@@ -5,7 +5,8 @@
  * Hub's own receive, and the real room page from this checkout. Headless Chromium, motion reduced. No fleet, CLI or account.
  * Characters: robots drawn here for the capture (one sheet a robot: idle, working, paused, stand and three walks), and the
  * office-skin-clinic test pack's fox (idle only: every room pose is drawn with it). Everything is made up.
- *   REPO=<checkout> PW_DIR=<playwright-core root> CJK_FONT=<a CJK .otf> OUT=<dir> npx tsx scripts/manual/hub-room-characters-m3533-r2c/capture.mts
+ * FIT=<w>x<h> draws the page with another CHARACTER_FIT (route.fulfill of hub-room-office.js; nothing on disk changes), for comparing sizes.
+ *   REPO=<checkout> PW_DIR=<playwright-core root> CJK_FONT=<a CJK .otf> OUT=<dir> [FIT=48x66] npx tsx scripts/manual/hub-room-characters-m3533-r2c/capture.mts
  */
 import { createServer as createHttps } from "node:https";
 import { createRequire } from "node:module";
@@ -140,12 +141,17 @@ try {
     const context = await browser.newContext({ viewport: phone ? { width: 390, height: 844 } : { width: 1366, height: 900 }, isMobile: phone, hasTouch: phone, deviceScaleFactor: 2,
       locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: theme, ignoreHTTPSErrors: true, reducedMotion: "reduce" });
     await context.addInitScript({ content: `window.__name=fn=>fn;localStorage.setItem('agend_lang',${JSON.stringify(lang)});localStorage.setItem('agend_theme',${JSON.stringify(theme)});localStorage.setItem('agend_tour_done','1');` });
+    const fit = /^(\d+)x(\d+)$/.exec(process.env.FIT ?? "");
+    if (fit) await context.route("**/ui/js/hub-room-office.js", async (route: any) => {
+      const body = readFileSync(join(REPO, "src/ui/hub-room-office.js"), "utf8").replace("export const CHARACTER_FIT = { w: 88, h: 96 };", `export const CHARACTER_FIT = { w: ${fit[1]}, h: ${fit[2]} };`);
+      await route.fulfill({ contentType: "text/javascript", body });
+    });
     const page = await context.newPage(); page.setDefaultTimeout(20_000); page.on("pageerror", (e: Error) => errors.push(tag + ": " + e.message));
     const fetched = new Set<string>();
     page.on("response", (res: any) => { const m = /\/agents\/([^/]+)\/character\/([A-Za-z]+)/.exec(res.url()); if (m && res.status() === 200) fetched.add(`${m[1]}:${m[2]}`); });
     const shot = async (name: string, clip?: any) => {
       if (!phone) await page.mouse.move(2, 2); await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(500);
-      const path = `m3533-r2c-${tag}-${name}.png`; await page.screenshot({ path: join(OUT, path), ...(clip ? { clip } : {}) });
+      const path = `m3533-r2c-${tag}-${fit ? `fit${fit[1]}x${fit[2]}-` : ""}${name}.png`; await page.screenshot({ path: join(OUT, path), ...(clip ? { clip } : {}) });
       receipt.pictures.push({ path, sha256: createHash("sha256").update(readFileSync(join(OUT, path))).digest("hex") });
     };
     try {

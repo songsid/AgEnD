@@ -1,0 +1,255 @@
+{
+  "sourceHead": "3f0d0ac258360a96d864281260437fc7aa58a900",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "the Hub offers agents' characters with their pictures",
+      "ok": true
+    },
+    {
+      "name": "Atlas, Nova and Echo: the robot's seven room poses and the filled paused (a robot has its own)",
+      "ok": true
+    },
+    {
+      "name": "Quill: the fox has only idle — every room pose is drawn with it (one picture)",
+      "ok": true
+    },
+    {
+      "name": "Notes: its set is far over 512 KB — none is sent; Sage and Reports have none",
+      "ok": true
+    },
+    {
+      "name": "Notes's owner is told its character is too large",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-light: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the room office names Atlas, Echo, Nova and Quill's own characters, nobody else's",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the states shown are the member list's (Atlas idle, Quill working, Nova paused, Echo offline)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: My agents tells the owner Notes's character is too large",
+      "ok": true
+    },
+    {
+      "name": "no page or rig errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1-office.png",
+      "sha256": "6e81fc416967913fa92f4b387a846b85dc5b28b22be3210c85e6bb317fda09cd"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1z-office-close.png",
+      "sha256": "889a4a4176c0341cb177a7c45732e4adb79740a90d1582f96e56da7fadc06177"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-2-card-atlas.png",
+      "sha256": "771ba266e04e24e7eda118d452fad90f022e42280e86b7f5c6e8fab287d0e071"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-3-office-studio-large.png",
+      "sha256": "6e3aac3d4e5b8e9b07bbf6755da5ccc20f2779d710d0513c1b0b4b6fa20dd097"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-4-my-agents-too-large.png",
+      "sha256": "63204ff9758d0b8f1b57802c8903a1e7a9d6c850ad1f1b3eabb709959ae69b74"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1-office.png",
+      "sha256": "9ad333250883d8a9addd1a26a5411d495a942580aaa38b514f299fa453c90d6a"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1z-office-close.png",
+      "sha256": "7318ea5418d31fa3f36349be83ec2dd2b64a2005b60546e1968648aad654e718"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-2-card-atlas.png",
+      "sha256": "c80f97076294798a81b64dc1801af429beb99427a9e7f1f2f9b8c4a1f8f0f7d7"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-3-office-studio-large.png",
+      "sha256": "d390fb56b99a9f9eb9491ec19e2736a29e87ea2b4875ee12a0c733e5d193d930"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-4-my-agents-too-large.png",
+      "sha256": "f30d498d959a10ae2078759738b620ef7c1be46365167bcdc503f4fd82803216"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1-office.png",
+      "sha256": "4fc9e9a27755cf1b59b75ff6752fdce1a2e195c87f7eeca2f0d49f97b5942ef9"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1z-office-close.png",
+      "sha256": "15724a4e0346d77cf162cf0a4abf0ea72c226566fdc970483197dc9b46fee811"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-2-card-atlas.png",
+      "sha256": "49025ae002ff24e3fde286bd4f055eca1dc215202879548b60eaaafb5bd1f734"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-3-office-studio-large.png",
+      "sha256": "c9adbe5f0ab50b71f502d9b0ccbfa4fb1bd19f33072640069da8455ede4836d9"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-4-my-agents-too-large.png",
+      "sha256": "8cdb0a90c546081a98884c62b3bfcec30d13c610824ca5019508e1d2e027c4b7"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1-office.png",
+      "sha256": "3c5c264c3baccab3991199d9b34a50e2bbcb35c75a95ff92ab28448d8735891d"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1z-office-close.png",
+      "sha256": "6bd34718d53afc24d2de2961b95d39a6e50681379c0843636492d92d8cbf1f3d"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-2-card-atlas.png",
+      "sha256": "ada5a96ec4e16484ba465e47b48fd8354883069460e7870c6e1ad72062b361af"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-3-office-studio-large.png",
+      "sha256": "d13f363812495dde74d89938787aff0e66ea2baab81831a752462a43813cb636"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-4-my-agents-too-large.png",
+      "sha256": "98e6133d15718cf905ec852cb1b7a01c8cc2a589bd4554659865428714df4f6f"
+    }
+  ],
+  "measured": {
+    "stripsPerAgent": {
+      "Atlas": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Quill": [
+        "idle",
+        "paused",
+        "stand",
+        "working"
+      ],
+      "Nova": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Echo": [
+        "idle",
+        "paused",
+        "stand",
+        "walkDown",
+        "walkSide",
+        "walkUp",
+        "working"
+      ],
+      "Notes": [],
+      "Sage": [],
+      "Reports": []
+    },
+    "bytesPerAgent": {
+      "Atlas": 2211,
+      "Quill": 1796,
+      "Nova": 2214,
+      "Echo": 2214
+    }
+  },
+  "summary": "30/30"
+}
