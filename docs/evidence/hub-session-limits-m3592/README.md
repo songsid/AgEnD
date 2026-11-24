@@ -1,6 +1,6 @@
 # M-3592: Administration → Sign-in (real app)
 
-These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real Administration page from this branch at `faa4e026`, taken with headless Chromium. That commit has the reworded first note: a longer sign-in time applies to new sign-ins only, and the time without use applies to everyone at once. The administrator is signed in and on **Manage**.
+These are captures of the real Hub (HTTPS and SQLite, through the Hub test rig) and its real Administration page from this branch at `faa4e026`, taken with headless Chromium. That commit has the reworded first note: a longer sign-in time applies to new sign-ins only, and the time without use applies to everyone at once. The two desktop default shots (`desk-zh-TW-light-1-default.png`, `desk-en-dark-1-default.png`) were re-taken at `58244316`, where the note quotes its fields: 「登入多久後要重新登入」 … 「多久沒使用 Hub 就登出」, and "The without-use limit". The other four keep the earlier wording of that one line. The administrator is signed in and on **Manage**.
 
 | What | Captures |
 |---|---|
