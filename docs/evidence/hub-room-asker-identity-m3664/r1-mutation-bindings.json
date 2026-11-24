@@ -14,17 +14,17 @@
     "exit": 1
   },
   {
-    "name": "clock-auth",
-    "path": "src/hub/member/room-ask.ts",
-    "baselineDigest": "441ff82adcd028820f9679623068696511f06cb580cfa9eb2adea3401190480d",
-    "mutantDigest": "82f0e35e9e561ebf4febfdfc4b8c28acea30dea7fcca3349324462308f2df130",
-    "exit": 1
-  },
-  {
     "name": "orphan-retry",
     "path": "src/hub/member/room-asker-store.ts",
     "baselineDigest": "40c3702060f2506f1f1172a08093c5c9e1b5e3d5c3642819a59e197ecab950ad",
     "mutantDigest": "3befb9fe26e8af0c0ec9453f0ceca9449a7d67ad9c1f000bea7ba3bf4e388bfa",
+    "exit": 1
+  },
+  {
+    "name": "clock-auth",
+    "path": "src/hub/member/room-ask.ts",
+    "baselineDigest": "42ca90bc0e0be133a0de7eecce1990e44467439b566ee2e6b454337441ae6304",
+    "mutantDigest": "e309c4745c82610c963c384331c18c0b59f4e8ec868ff7b7e82753f613df5443",
     "exit": 1
   }
 ]

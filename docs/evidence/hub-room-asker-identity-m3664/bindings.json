@@ -27,7 +27,7 @@
     },
     {
       "path": "src/hub/member/room-ask.ts",
-      "sha256": "441ff82adcd028820f9679623068696511f06cb580cfa9eb2adea3401190480d"
+      "sha256": "42ca90bc0e0be133a0de7eecce1990e44467439b566ee2e6b454337441ae6304"
     },
     {
       "path": "src/hub/member/room-asker-store.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "tests/hub-room-asker-adapter-m3664.test.ts",
-      "sha256": "e41a7c6c6656e14c0f9488635d9c6e9fe657a024b35689673dd9dc4d378d781c"
+      "sha256": "bafb6ddbc688ece3a90e377fda0fca0b0f44d6028db98b4dbd49b77ed066110e"
     },
     {
       "path": "tests/hub-room-asker-identity-m3664.test.ts",
@@ -149,11 +149,23 @@
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-auth-mutant.log",
-      "sha256": "66b73cecfa102df90906f81ef2741d2f3f543847a151d1adc2d6a71f5e0459c3"
+      "sha256": "6b08b79e8a58f4bfc76aa768316425eeea0934b05a35cace2c2b8cd3e751a6fe"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-auth.patch",
-      "sha256": "f092fbd1a4ae20c55b7c77af86720b0ff24d47d8ad160ca8e45bed022a61afd4"
+      "sha256": "d6a32574ae9a52fea4952f0a68735d56acb6e56ba63cde9e231e381aa319b1aa"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-collection.log",
+      "sha256": "f689587f4cfbd89293b0481f9f71879c8cee75cff86982b6865b23b466912ff6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-final.log",
+      "sha256": "16af8dc77f26679e8a1b736e2d0721a48d5392e495d8f82eeff8ecd75a8fb63d"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-restored.log",
+      "sha256": "99bfe83bab89ef5dd4c421a882a8c8ce2c4956b41b92cfef7baca04423af13c5"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/r1-delivery-principal-mutant.log",
@@ -185,7 +197,7 @@
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/r1-mutation-bindings.json",
-      "sha256": "3490e6bed12feac8ee02a2ca8707e9b605bc65577167b2ab3901dd2bc777f3c8"
+      "sha256": "65c3aa1a7eb0230f39483302e7f7e43bdf2a64e6f812cfa555ba3c09406cddc9"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/r1-orphan-retry-mutant.log",
@@ -213,7 +225,7 @@
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/review-r1.md",
-      "sha256": "8b8e85a214378b8ebfb4b2253e06f31b76e7e3d836d860c3341ca19036b7f14f"
+      "sha256": "b2c09aea54ac030f918e1e0887a213323b144537389b5addfed17226a26f8f62"
     },
     {
       "path": "docs/evidence/hub-room-asker-identity-m3664/signature-mutant.log",
