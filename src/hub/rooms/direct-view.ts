@@ -16,6 +16,7 @@ export function directMessages(room: HubRoomListItem, entries: readonly HubRoomE
     const question: RoomMessage = { ...base, id: entry.messageId, at: entry.askedAt ?? entry.receipt.at,
       author: { kind: "person", id: personKeyString(room.asker), name: askerName,...(entry.via?{via:{...entry.via,kind:"app" as const}}:{}) }, text: entry.question ?? "",
       stage: entry.receipt.stage === "answered" ? "answered" : ["queued", "delivered", "consumed"].includes(entry.receipt.stage) ? "working" : "not-answered",
+      ...(entry.receipt.reasonCode === "share-needs-reshare" ? { reasonCode: "share-needs-reshare" as const } : {}),
       ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}), ...(entry.questionFiles?.length ? { files: entry.questionFiles } : {}) };
     return [question, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,
       author: { kind: "agent" as const, id: room.exposureId, name: room.exposureName, owner: { name: room.ownerName } }, text: entry.answer,

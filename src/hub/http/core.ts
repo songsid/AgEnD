@@ -13,6 +13,7 @@ import { HubGroupPolicyError, HubGroupReadOverload, type GroupCheckContext } fro
 import { prepareGrantAccess, type HubGrantSubjectProof } from "../grant-access.js";
 import type { HubHttpDeps, HubTxDatabase } from "./deps.js";
 import { readHubSessionEpoch } from "../session-epoch.js";
+import { lapsedRevision } from "../lapse-carry.js";
 import type { HubManagementPermission } from "../roles/authority.js";
 import { createHubDirectoryAdmission, type HubDirectoryReads } from "../directory/admission.js";
 export { DIRECTORY_PER_PERSON, DIRECTORY_TOTAL } from "../directory/admission.js";
@@ -31,6 +32,16 @@ export class HubCore {
     this.directoryReads = deps.directoryReads ?? createHubDirectoryAdmission(() => this.live());
   }
   now(): number { return this.deps.now?.() ?? Date.now(); }
+  /** A member's lapse report can refuse work, never authorize it or carry consent. */
+  shareLapsed(db: Database.Database, exposureId: string): boolean {
+    const e = readExposure(db, exposureId);
+    if (!e?.fleet_id || e.state !== "published") return false;
+    const fleet = this.deps.store.read().fleets.find(f => f.id === e.fleet_id && f.status === "active");
+    if (!fleet || personKeyString(fleet.owner) !== e.owner) return false;
+    const catalog = db.prepare("SELECT owner,generation,body FROM hub_agent_catalogs WHERE fleet_id=?").get(e.fleet_id) as
+      { owner: string; generation: number; body: string } | undefined;
+    return catalog?.owner === e.owner && catalog.generation === fleet.generation && lapsedRevision(catalog.body, e.id) === e.revision;
+  }
   /** Refuses once the server is fenced (and before every write: a stale continuation never commits). */
   live(): boolean { try { return this.lifetime() === true && this.deps.current().serverEnabled() === true; } catch { return false; } }
   check(): void { if (!this.live()) throw new HubProtocolError("unavailable"); }

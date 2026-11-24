@@ -1148,7 +1148,11 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     switch (frame.type) {
       case "agent.intro": return {...reply,type:"agent.intro-result",payload:introTool.receive(frame.payload,link,frame.requestId)};
       case "fleet.recommendation-ack": recommendations.acknowledge(frame.payload, link); return;
-      case "agent.catalog": agentCatalogs.report(frame.payload, link); sharingRequests.wake(); return;
+      case "agent.catalog":
+        agentCatalogs.report(frame.payload, link);
+        rooms.shareLapsesChanged(link.fleetId);
+        groupRooms.agents.publicationChanged(link.fleetId);
+        sharingRequests.wake(); return;
       case "exposure.request-result": sharingRequests.result(frame.requestId, frame.payload, link); return { ...reply, type: "exposure.request-ack", payload: { ok: true } };
       case "exposure.undo": sharingRequests.undo(frame.requestId, frame.payload, link); return { ...reply, type: "exposure.undo-result", payload: { ok: true } };
       case "fleet.info": fleetVersions.report(frame.payload, link); fleetUpdates.report(frame.payload, link); return;

@@ -762,7 +762,7 @@ function HubRoomLoading({ error } = {}) {
 }
 /** The thread's words are the fleet chat's; its delivery marks say the Hub's stages. */
 const threadT = (key, ...a) => (key.startsWith("chat.tick_") ? hc(key.slice(5), ...a) : t(key, ...a));
-const REASONS = { expired: "reason_expired", revoked: "reason_revoked", frozen: "reason_frozen", withdrawn: "reason_withdrawn" };
+const REASONS = { "share-needs-reshare": "reason_reshare", expired: "reason_expired", revoked: "reason_revoked", frozen: "reason_frozen", withdrawn: "reason_withdrawn" };
 const reasonText = (code, stage) => (stage === "uncertain" ? hc("uncertain") : hc("notAnswered", hc(REASONS[code] || "reason_unknown")));
 async function copyText(text) { try { await navigator.clipboard.writeText(text); return true; } catch { return false; } }
 

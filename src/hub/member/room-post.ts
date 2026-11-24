@@ -15,7 +15,7 @@ export interface RoomIdentity { exposureId: string; revision: number; consentId:
  * never carries over). Said instead of a bare "unavailable", so the agent can tell the person what to do.
  */
 export interface ShareLapsed { ok: false; code: "share_needs_reshare"; message: string }
-export const SHARE_LAPSED_MESSAGE = "Your Hub share lapsed when your backend or working folder changed. Ask the person to share you again on the Hub (My shared agents → Share again).";
+export const SHARE_LAPSED_MESSAGE = "Your Hub share lapsed when your backend, working folder or runtime changed. Ask the person to share you again on the Hub (My shared agents → Share again).";
 export const shareLapsed = (): ShareLapsed => ({ ok: false, code: "share_needs_reshare", message: SHARE_LAPSED_MESSAGE });
 /**
  * M-3543: lapsed = a published share whose consent names this agent, while the agent's current token (non-null) is another.
