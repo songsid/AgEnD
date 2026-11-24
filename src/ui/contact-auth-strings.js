@@ -3,7 +3,7 @@
  * agent page's Permissions, Fleet → Authorizations, the chat badges, Needs you and the restricted-mode suggestion. en and
  * zh-TW (admin is 管理員). A module of its own (namespace contactAuth); imports only app-i18n.
  */
-import { register, t } from "/assets/app-i18n.js";
+import { register, t, lang } from "/assets/app-i18n.js";
 
 register("contactAuth", {
   en: {
@@ -66,7 +66,7 @@ register("contactAuth", {
     // Allowed contacts (grants)
     grantsTitle: "Allowed contacts", grantsNone: "No allowed contacts. Each request asks the approver.",
     grantsNote: "For a known origin, every originating person needs a matching allowed contact. Unknown origins cannot match these grants and need separate approval.",
-    grantRow: "{0} → {1}", grantVerbs: "For: {0}", grantExpires: "Until {0}", grantUses: "{0} uses left", grantUnlimited: "Until it expires",
+    grantRow: "From {0} to {1}", grantVerbs: "For: {0}", grantExpires: "Until {0}", grantUses: "{0} uses left", grantUnlimited: "Until it expires",
     grantRemove: "Remove", grantRemoveConfirm: "Remove this allowed contact? Later requests will ask again.",
     originTitle: "Retained origin", originClear: "Clear retained origin", originCleared: "Retained origin cleared.",
     originKind_none: "No retained origin", originKind_human: "One known person", originKind_mixed: "Multiple known people", originKind_unknown: "Unknown origin",
@@ -88,6 +88,19 @@ register("contactAuth", {
     // M-3385: under the reason — what an approval leaves as it is, and the one way this agent stops needing approval.
     resetNote: "Approving forwards only this request and leaves the receiving agent's origin unchanged. For this agent's contacts to stop needing approval, a managing administrator can clear its retained origin in its Permissions; it never resets on its own.",
     created: "Asked {0}", expires: "Expires {0}", decided: "{0} by {1}",
+
+    grantFutureExpiry: "Choose an expiry in the future.", grantValidUses: "Set a use limit from 1 to 10,000, or leave it empty for unlimited uses.",
+    grantSaved: "Request approved and contact rules saved.", grantView: "View rules in Permissions",
+    cancel: "Cancel", saving: "Saving…", grantNoMatches: "No matching people.",
+    allowPersonTitle: "Allow this person to contact this agent", allowPeopleTitle: "Set allowed contacts for these people", operator: "Administrator",
+    allowPerson: "Allow this person to contact this agent…", allowPeople: "Set allowed contacts for these people…", allowAndApprove: "Approve once and save rules",
+    grantEdit: "Adjust allowed contact", grantSave: "Save rule", grantSaveFailed: "The rule was not saved. Review the current permissions and try again.",
+    grantPeople: "People", grantRoute: "From {0} to {1}", grantType: "Request type: {0}", grantTypes: "Request types",
+    grantOneDay: "1 day", grantDuration: "Duration", grantDays: "{0} days", grantCustom: "Custom expiry", grantZone: "Time zone: {0}", grantAdvanced: "Advanced: limit uses",
+    grantAllOrigins: "This conversation retains several people's input. Select each person explicitly. Future requests skip approval only when every retained person has a matching rule.",
+    grantUnknown: "The complete origin is unknown. You can approve once, but cannot create an allowed contact from this request.",
+    grantBoundary: "Until expiry, requests matching these people, this source, this agent and request type will be forwarded without asking again. This does not limit the receiving agent's actions. Revoke the rule in its Permissions.",
+    grantEditScope: "This changes the displayed rule only. Previously admitted or delivered requests are not recalled.", grantFilter: "Filter by person", grantAdjust: "Adjust / extend", grantCreated: "Added by {0} · {1}",
     approveOnce: "Approve once", decline: "Decline", alsoAllowUntil: "Until", alsoAllowUses: "Uses (empty: no limit)",
     // M-3385: what the card's parts do, said where they are.
     // M-3385 (the user, 11-20): short visible words; the detail in an ⓘ (ui-style-guide rule 14).
@@ -174,7 +187,7 @@ register("contactAuth", {
     offByDefault: "Shell、房間暫存資料夾以外的檔案與擁有者的憑證都維持關閉。",
     grantsTitle: "常用轉交", grantsNone: "沒有常用轉交，每個請求都會詢問核准人。",
     grantsNote: "來源已知時，每位最初提問者都須有相符的允許聯絡授權。來源不明無法配對這些授權，須另外核准。",
-    grantRow: "{0} → {1}", grantVerbs: "用途：{0}", grantExpires: "到 {0} 為止", grantUses: "剩下 {0} 次", grantUnlimited: "到期前不限次數",
+    grantRow: "從 {0} 給 {1}", grantVerbs: "用途：{0}", grantExpires: "到 {0} 為止", grantUses: "剩下 {0} 次", grantUnlimited: "到期前不限次數",
     grantRemove: "移除", grantRemoveConfirm: "要移除這個常用轉交嗎？之後的請求會再次詢問。",
     originTitle: "保留的來源", originClear: "清除保留的來源", originCleared: "已清除保留的來源。",
     originKind_none: "沒有保留的來源", originKind_human: "一位已知提問者", originKind_mixed: "多位已知提問者", originKind_unknown: "來源不明",
@@ -193,6 +206,19 @@ register("contactAuth", {
     "reason_unknown-origin": "這個 Agent 保留的歷史來源不明，因此這次聯絡需要核准。",
     resetNote: "核准只會轉交這一筆，接收 Agent 的來源維持原狀。若要讓這個 Agent 之後的聯絡不再需要核准，具管理權限的管理員可以在它的「權限」頁清除保留的來源；來源不會自動重設。",
     created: "{0} 提出", expires: "{0} 到期", decided: "{1} 於 {0} 處理",
+
+    grantFutureExpiry: "請選擇未來的到期時間。", grantValidUses: "請設定 1 至 10,000 次，或留空表示不限次數。",
+    grantSaved: "已核准轉交並儲存常用轉交規則。", grantView: "在「權限」查看規則",
+    cancel: "取消", saving: "儲存中…", grantNoMatches: "沒有符合的人員。",
+    allowPersonTitle: "允許這個人聯絡此 Agent", allowPeopleTitle: "設定這些人的常用轉交", operator: "管理員",
+    allowPerson: "允許這個人聯絡此 Agent…", allowPeople: "設定這些人的常用轉交…", allowAndApprove: "核准這一次並儲存規則",
+    grantEdit: "調整常用轉交", grantSave: "儲存規則", grantSaveFailed: "規則未儲存，請確認目前的權限後再試。",
+    grantPeople: "人員", grantRoute: "從 {0} 給 {1}", grantType: "請求類型：{0}", grantTypes: "請求類型",
+    grantOneDay: "1 天", grantDuration: "期限", grantDays: "{0} 天", grantCustom: "自訂到期時間", grantZone: "時區：{0}", grantAdvanced: "進階：限制次數",
+    grantAllOrigins: "這個對話保留了多人的輸入，請逐人明確選擇。所有保留來源都有符合規則時，之後才會直接轉交。",
+    grantUnknown: "無法確認完整來源，只能核准這一次，不會從這筆申請建立常用轉交。",
+    grantBoundary: "到期前，符合這些人員、來源、目標 Agent 與請求類型的訊息會直接轉交，不再逐筆核准。這不限制接收 Agent 採取的操作，可到它的「權限」撤銷規則。",
+    grantEditScope: "只變更目前這筆規則，已准入或已送出的請求不會收回。", grantFilter: "依人員篩選", grantAdjust: "調整／延長", grantCreated: "{0} 於 {1} 建立",
     approveOnce: "核准這一次", decline: "拒絕", alsoAllowUntil: "到期時間", alsoAllowUses: "次數（留空表示不限）",
     alsoAllow: "之後同樣的請求也直接轉交",
     alsoAllowMore: "之後 {0} 從 {2} 發給 {3} 的{1}請求會直接轉交，不必再核准。這會在 {3} 的權限頁新增一筆常用轉交，到你設定的到期時間或次數用完為止；隨時可以在那裡移除。",
@@ -224,3 +250,7 @@ register("contactAuth", {
 });
 
 export const ca = (k, ...a) => t(`contactAuth.${k}`, ...a);
+
+export const contactPlatformLabel = platform => ({ discord: "Discord", telegram: "Telegram" }[platform] || platform);
+export const contactPersonLabel = person => person?.platform === "host" && person?.userId === "operator" ? ca("operator") : person?.label || person?.userId || "";
+export const contactWhen = value => { const d = new Date(value); return Number.isFinite(d.getTime()) ? d.toLocaleString(lang() === "zh-TW" ? "zh-TW" : "en", { dateStyle: "long", timeStyle: "short" }) : ""; };

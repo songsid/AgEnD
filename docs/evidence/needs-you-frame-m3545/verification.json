@@ -1,0 +1,85 @@
+{
+  "before_source": "63f390413f6dd35fac770eddd375695f09f9e2e6",
+  "after_source": "7fef4755b4eda653013d43239232d6d4f26ebcee",
+  "before_bindings": [
+    {
+      "path": "src/ui/shared/app.css",
+      "git_blob": "abdbe5610334be65e3524d32829aa6226992e911"
+    },
+    {
+      "path": "src/ui/panel-needs.js",
+      "git_blob": "7d4bdeb6f1b6e92d3ebd064e759791923a8aba01"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-needs-frame-m3545.mts",
+      "git_blob": "f83fafb699cdf858ded1fc38585637c8e31b7181"
+    }
+  ],
+  "after_bindings": [
+    {
+      "path": "src/ui/shared/app.css",
+      "git_blob": "a284ff9d527bff0280145e68bd1103c3d152798d"
+    },
+    {
+      "path": "src/ui/panel-needs.js",
+      "git_blob": "7d4bdeb6f1b6e92d3ebd064e759791923a8aba01"
+    },
+    {
+      "path": "scripts/manual/smoke/smoke-needs-frame-m3545.mts",
+      "git_blob": "f83fafb699cdf858ded1fc38585637c8e31b7181"
+    }
+  ],
+  "pngs": [
+    {
+      "path": "before-1920-settings-dark-zh-TW.png",
+      "sha256": "0c02929b00075a1355060a563058188ce398beb6acdc2b321575b03c503304e8"
+    },
+    {
+      "path": "before-1366-needs-dark-zh-TW.png",
+      "sha256": "975fc8b1e6989b11f0e42a593b071cb8d4f475756cfb381abef30d1413663e71"
+    },
+    {
+      "path": "before-1366-settings-dark-zh-TW.png",
+      "sha256": "c433967f424c5b177b45ed3adfc0f4ee5624428f9351ddb177a8419290c8144c"
+    },
+    {
+      "path": "before-390-needs-dark-zh-TW.png",
+      "sha256": "3fee6fb93f6fa9b585e3ce3dd1f5ad1d3fe4fb6fa943a234b9abddf17e7a0bf9"
+    },
+    {
+      "path": "after-1920-needs-dark-zh-TW.png",
+      "sha256": "3ace88a516797fa5918a120a302e284e56abe3bdc58691ed7c1bc310f5e5ddcb"
+    },
+    {
+      "path": "before-1920-fleet-dark-zh-TW.png",
+      "sha256": "855be94b54cb629b8eaaed013be79482d3432dd212eac88e6c9c66ea521671e2"
+    },
+    {
+      "path": "after-390-needs-dark-zh-TW.png",
+      "sha256": "3fee6fb93f6fa9b585e3ce3dd1f5ad1d3fe4fb6fa943a234b9abddf17e7a0bf9"
+    },
+    {
+      "path": "before-1920-needs-dark-zh-TW.png",
+      "sha256": "43eb863f9366c3f5e9504cc4adb3f3fc6bca23b91a62730831897f6e3906efe9"
+    },
+    {
+      "path": "before-1366-fleet-dark-zh-TW.png",
+      "sha256": "fa7442e7a9ce80d13d6b2434b8673d0635bfc1ada9be67a2ab434b9e46ddf480"
+    },
+    {
+      "path": "after-1366-needs-dark-zh-TW.png",
+      "sha256": "383816ac618439e53f7c35a17df9fe8bbb9e61e7f32c5286de701a7305664fe2"
+    }
+  ],
+  "png_paths": 10,
+  "unique_png_hashes": 9,
+  "phone_png_byte_equal": true,
+  "main_parity": {
+    "sha": "e6e4e324c92edafcbdee3205841cf3139e302d61",
+    "shared_col_rule": ".col { max-width: var(--col); margin: 0 auto; padding: var(--s-4) var(--s-5) var(--s-8); }",
+    "needs_specific_margin_override": false,
+    "result": "Main already centers Needs you using the shared col; Dev-only."
+  },
+  "focused_tests": "web-needs-1408 + web-needs-contact-suggestions-m3381:34PASS",
+  "capture_scope": "Real scratch app/taskboard, synthetic roster; Chromium desktop1366/1920 and touch-emulatedphone390, darkzh-TW; no interactions/provider/native-device claim."
+}

@@ -14,7 +14,15 @@ const bindingSchema = z.strictObject({ home:z.string().max(4096).refine(isAbsolu
 const specSchema = z.strictObject({ binding:bindingSchema, cwd:z.string().max(4096).refine(isAbsolute), configDir:z.string().max(4096).refine(isAbsolute),
  helperCommand:z.string().max(16384), settingsPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(140), policyPaths:z.array(z.string().max(4096).refine(isAbsolute)).max(8), ready:z.boolean(), binary:z.string().max(4096), args:z.array(z.string().max(16384)).max(256), env:z.record(z.string(),z.string().max(8192)) });
 export type ManagedClaudeSpec = z.infer<typeof specSchema>;
-const unavailable = () => new UnsupportedCliError("Managed Claude credential is unavailable or its source changed. Open Accounts on the local dashboard.");
+const unavailable = (why?: string) => new UnsupportedCliError(`Managed Claude credential is unavailable or its source changed.${why ? ` ${why}` : ""} Open Accounts on the local dashboard.`);
+/**
+ * M-3558: keys an organization's remote-settings.json may hold that cannot change how Claude signs in (an org that
+ * pushes `{ channelsEnabled }` refused every start after the first). Any other key still refuses the launch; the
+ * file is fingerprinted either way, so it changing during a start refuses that start.
+ */
+export const AUTH_NEUTRAL_REMOTE_KEYS: ReadonlyMap<string, (value: unknown) => boolean> = new Map([["channelsEnabled", (value: unknown) => typeof value === "boolean"]]);
+/** The keys named in a refusal: a few, each a short plain word (the file is the organization's, not ours). */
+const keyNames = (keys: string[]) => keys.slice(0, 3).map((k) => `"${k.replace(/[^\w.-]/g, "?").slice(0, 40)}"`).join(", ") + (keys.length > 3 ? ` and ${keys.length - 3} more` : "");
 export function readClaudeCredentialSelection(home: string, profile: string | null): ClaudeCredentialMetadata | null {
  // Only proven absence of all managed state permits the legacy credential path.
  // existsSync hides access errors and dangling links, which must never select ambient auth.
@@ -79,8 +87,13 @@ export function managedClaudeAuthInputs(spec:ManagedClaudeSpec):string {
  const remoteCache=join(spec.configDir,"remote-settings.json");
  if(existsSync(remoteCache)){
   let cache:unknown;try{cache=JSON.parse(boundedFile(remoteCache,1_048_576).toString("utf8"));}catch{throw unavailable();}
-  // A dynamically supplied policy cannot be proven from auth status's source-class field.
-  if(!cache||typeof cache!=="object"||Array.isArray(cache)||Object.keys(cache).length)throw unavailable();paths.add(remoteCache);
+  // A dynamically supplied policy cannot be proven from auth status's source-class field: only keys that cannot
+  // change how Claude signs in are allowed (AUTH_NEUTRAL_REMOTE_KEYS); the refusal names the others.
+  if(!cache||typeof cache!=="object"||Array.isArray(cache))throw unavailable();
+  // An allowed key must hold its own type too (channelsEnabled a boolean): anything else may not mean what it says.
+  const blocking=Object.entries(cache).filter(([key,v])=>!AUTH_NEUTRAL_REMOTE_KEYS.get(key)?.(v)).map(([key])=>key);
+  if(blocking.length)throw unavailable(`Claude's remote-settings.json (from your organization) has ${keyNames(blocking)}, which may change how Claude signs in.`);
+  paths.add(remoteCache);
  }
  if(spec.env.CLAUDE_CODE_MANAGED_SETTINGS_PATH)throw unavailable();
  const settingsIndex=spec.args.indexOf("--settings"),settingsPath=spec.args[settingsIndex+1];

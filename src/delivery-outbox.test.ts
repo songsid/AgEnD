@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
-import { spawn } from "node:child_process";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { FleetManager } from "./fleet-manager.js";
+import { Daemon } from "./daemon.js";
+import pino from "pino";
 import { createInterface } from "node:readline";
 import { once } from "node:events";
 import { pathToFileURL } from "node:url";
@@ -50,116 +53,147 @@ describe("DeliveryOutbox", () => {
     outbox.close();
   });
 
-  it("recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly", async () => {
-    const dbPath = tempDb();
-    const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
-    const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
-    const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
-    const script = [
-      `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
-      `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
-      `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
-      `import { mkdirSync, writeFileSync } from "node:fs";`,
-      `import pino from "pino";`,
-      `const manager = new FleetManager(${JSON.stringify(dirname(dbPath))});`,
-      `const outbox = new DeliveryOutbox(${JSON.stringify(dbPath)}, manager.managerBootId);`,
-      `manager.deliveryOutbox = outbox;`,
-      `manager.shuttingDown = true;`,
-      `const logger = pino({ level: "silent" });`,
-      `const makeDaemon = name => new Daemon(name, { working_directory: "/tmp", log_level: "error" }, ${JSON.stringify(dirname(dbPath))} + "/instances/" + name, false, undefined, undefined, logger);`,
-      `const source = makeDaemon("source");`,
-      `const target = makeDaemon("worker");`,
-      `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
-      `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
-      `const accepted = manager.admitDurableDelivery({ operationId: "op-1", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "same-correlation", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
-      `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
-      `const targetDaemon = manager.lifecycle.daemons.get("worker");`,
-      `const instanceDir = ${JSON.stringify(dirname(dbPath))} + "/instances/worker";`,
-      `mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
-      `targetDaemon.tmux = { capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
-      `targetDaemon.controlClient = {};`,
-      `targetDaemon.paneReadinessForDelivery = async () => "busy";`,
-      `targetDaemon.probeBlockingDialog = async () => ({ state: "clear" });`,
-      `targetDaemon.hasPositiveDeliveryInput = async () => false;`,
-      `targetDaemon.waitForPaneReadyForDelivery = async () => { process.stdout.write("dispatch-waiting\\n"); return new Promise(() => {}); };`,
-      `targetDaemon.pushChannelMessage("hello", { delivery_id: accepted.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "same-correlation", user: "instance:source", user_id: "instance:source", message_id: "message-crash-before-begin", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
-      `setInterval(() => {}, 1000);`,
-    ].join("\n");
-    const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
-      cwd: process.cwd(),
-      stdio: ["ignore", "pipe", "pipe"],
-    });
+  describe("pre-begin crash fixture", () => {
+    let dbPath: string;
+    let child: ChildProcessWithoutNullStreams;
+    let lines: ReturnType<typeof createInterface>;
     let childStderr = "";
-    child.stderr.setEncoding("utf8").on("data", chunk => { childStderr += chunk; });
-    const lines = createInterface({ input: child.stdout });
-    const committed = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        child.kill("SIGKILL");
-        reject(new Error(`writer child did not reach the pre-begin wait: ${childStderr}`));
-      }, 8_000);
-      lines.once("line", line => {
-        clearTimeout(timer);
-        if (line === "dispatch-waiting") resolve();
-        else reject(new Error(`unexpected child output: ${line}`));
+    // Cold parent imports are module setup; cold child imports finish before
+    // this case spends its unchanged 10s budget on dispatch, kill and recovery.
+    // The explicit gate prevents setup from admitting a row before the test.
+    beforeAll(async () => {
+      dbPath = tempDb();
+      const storeUrl = pathToFileURL(join(process.cwd(), "src/delivery-outbox.ts")).href;
+      const managerUrl = pathToFileURL(join(process.cwd(), "src/fleet-manager.ts")).href;
+      const daemonUrl = pathToFileURL(join(process.cwd(), "src/daemon.ts")).href;
+      const script = [
+        `import { FleetManager } from ${JSON.stringify(managerUrl)};`,
+        `import { DeliveryOutbox } from ${JSON.stringify(storeUrl)};`,
+        `import { Daemon } from ${JSON.stringify(daemonUrl)};`,
+        `import { mkdirSync, writeFileSync } from "node:fs";`,
+        `import pino from "pino";`,
+        `process.stdout.write("fixture-ready\\n");`,
+        `await new Promise(resolve => process.stdin.once("data", resolve));`,
+        `const manager = new FleetManager(${JSON.stringify(dirname(dbPath))});`,
+        `const outbox = new DeliveryOutbox(${JSON.stringify(dbPath)}, manager.managerBootId);`,
+        `manager.deliveryOutbox = outbox;`,
+        `manager.shuttingDown = true;`,
+        `const logger = pino({ level: "silent" });`,
+        `const makeDaemon = name => new Daemon(name, { working_directory: "/tmp", log_level: "error" }, ${JSON.stringify(dirname(dbPath))} + "/instances/" + name, false, undefined, undefined, logger);`,
+        `const source = makeDaemon("source");`,
+        `const target = makeDaemon("worker");`,
+        `source.setDeliveryOutboxPort(outbox); target.setDeliveryOutboxPort(outbox);`,
+        `manager.lifecycle.daemons.set("source", source); manager.lifecycle.daemons.set("worker", target);`,
+        `const accepted = manager.admitDurableDelivery({ operationId: "op-1", sourceDaemonBootId: source.bootId, sourceInstance: "source", targetInstance: "worker", kind: "fleet_inbound", correlationId: "same-correlation", payload: { type: "fleet_inbound", content: "hello", meta: {} } });`,
+        `const claimed = outbox.claimNext(manager.managerBootId, name => manager.lifecycle.daemons.get(name)?.bootId ?? null, new Set());`,
+        `const targetDaemon = manager.lifecycle.daemons.get("worker");`,
+        `const instanceDir = ${JSON.stringify(dirname(dbPath))} + "/instances/worker";`,
+        `mkdirSync(instanceDir, { recursive: true }); writeFileSync(instanceDir + "/window-id", "@worker");`,
+        `targetDaemon.tmux = { capturePane: async () => "❯", pasteBuffer: async () => true, sendSpecialKey: async () => true, getLastPasteError: () => undefined, isLastPasteFailureRecoverable: () => true };`,
+        `targetDaemon.controlClient = {};`,
+        `targetDaemon.paneReadinessForDelivery = async () => "busy";`,
+        `targetDaemon.probeBlockingDialog = async () => ({ state: "clear" });`,
+        `targetDaemon.hasPositiveDeliveryInput = async () => false;`,
+        `targetDaemon.waitForPaneReadyForDelivery = async () => { process.stdout.write("dispatch-waiting\\n"); return new Promise(() => {}); };`,
+        `targetDaemon.pushChannelMessage("hello", { delivery_id: accepted.deliveryId, delivery_attempt: String(claimed.attemptNo), from_instance: "source", correlation_id: "same-correlation", user: "instance:source", user_id: "instance:source", message_id: "message-crash-before-begin", chat_id: "", thread_id: "", ts: new Date().toISOString() });`,
+        `setInterval(() => {}, 1000);`,
+      ].join("\n");
+      child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", script], {
+        cwd: process.cwd(),
+        stdio: ["pipe", "pipe", "pipe"],
       });
-      child.once("error", err => {
-        clearTimeout(timer);
-        reject(err);
+      child.stderr.setEncoding("utf8").on("data", chunk => { childStderr += chunk; });
+      lines = createInterface({ input: child.stdout });
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`writer child did not load fixture: ${childStderr}`)), 8_000);
+        lines.once("line", line => {
+          clearTimeout(timer);
+          if (line === "fixture-ready") resolve();
+          else reject(new Error(`unexpected fixture output: ${line}`));
+        });
+        child.once("error", error => { clearTimeout(timer); reject(error); });
+        child.once("exit", code => { clearTimeout(timer); reject(new Error(`fixture exited before dispatch: ${code} ${childStderr}`)); });
       });
     });
-    await committed;
-    child.kill("SIGKILL");
-    await once(child, "exit");
-    lines.close();
+    afterAll(async () => {
+      if (child && child.exitCode === null && child.signalCode === null) {
+        const exited = once(child, "exit");
+        child.kill("SIGKILL");
+        await exited;
+      }
+      lines?.close();
+    });
+    it("recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly", async () => {
+      expect(existsSync(dbPath)).toBe(false);
+      const committed = new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          child.kill("SIGKILL");
+          reject(new Error(`writer child did not reach the pre-begin wait: ${childStderr}`));
+        }, 8_000);
+        lines.once("line", line => {
+          clearTimeout(timer);
+          if (line === "dispatch-waiting") resolve();
+          else reject(new Error(`unexpected child output: ${line}`));
+        });
+        child.once("error", err => {
+          clearTimeout(timer);
+          reject(err);
+        });
+      });
+      child.stdin.end("dispatch\n");
+      await committed;
+      const exited = once(child, "exit");
+      child.kill("SIGKILL");
+      await exited;
+      lines.close();
 
-    const replacementManager = new (await import("./fleet-manager.js")).FleetManager(dirname(dbPath));
-    (replacementManager as any).shuttingDown = true;
-    // Exercise FleetManager's production startup wiring: it opens the durable
-    // store and runs recoverForBoot itself before any target Daemon is started.
-    (replacementManager as any).ensureDeliveryOutbox();
-    const restarted = replacementManager.deliveryOutbox!;
-    const { Daemon } = await import("./daemon.js");
-    const pinoModule = await import("pino");
-    const logger = pinoModule.default({ level: "silent" });
-    const makeDaemon = (name: string) => new Daemon(
-      name,
-      { working_directory: "/tmp", log_level: "error", restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 }, context_guardian: { max_age_hours: 4, grace_period_ms: 600000 } },
-      join(dirname(dbPath), "instances", name),
-      false,
-      undefined,
-      undefined,
-      logger as any,
-    );
-    const sourceDaemon = makeDaemon("source");
-    sourceDaemon.setDeliveryOutboxPort(restarted);
-    replacementManager.lifecycle.daemons.set("source", sourceDaemon);
-    replacementManager.onDaemonReady("source", sourceDaemon.bootId);
-    const statusAfterCrash = replacementManager.queryDurableDeliveryStatus("source", { operationId: "op-1" });
-    expect(statusAfterCrash.items).toMatchObject([
-      { operation_id: "op-1", target_instance: "worker", state: "queued", safe_to_retry: true },
-    ]);
-    expect(statusAfterCrash.items[0]).not.toHaveProperty("payload");
-    const pendingAfterRecovery = restarted.listPending();
-    // #2802: the restarted sender gets no "accepted before the restart" notice; the row is still delivered or failed.
-    expect(pendingAfterRecovery).toMatchObject([
-      { operationId: "op-1", targetInstance: "worker", state: "queued", payload: { content: "hello" } },
-    ]);
-    expect(pendingAfterRecovery).toHaveLength(1);
-    expect(replacementManager.lifecycle.daemons.has("worker")).toBe(false);
+      const replacementManager = new FleetManager(dirname(dbPath));
+      (replacementManager as any).shuttingDown = true;
+      // Exercise FleetManager's production startup wiring: it opens the durable
+      // store and runs recoverForBoot itself before any target Daemon is started.
+      (replacementManager as any).ensureDeliveryOutbox();
+      const restarted = replacementManager.deliveryOutbox!;
+      const logger = pino({ level: "silent" });
+      const makeDaemon = (name: string) => new Daemon(
+        name,
+        { working_directory: "/tmp", log_level: "error", restart_policy: { max_retries: 10, backoff: "exponential", reset_after: 300 }, context_guardian: { max_age_hours: 4, grace_period_ms: 600000 } },
+        join(dirname(dbPath), "instances", name),
+        false,
+        undefined,
+        undefined,
+        logger as any,
+      );
+      const sourceDaemon = makeDaemon("source");
+      sourceDaemon.setDeliveryOutboxPort(restarted);
+      replacementManager.lifecycle.daemons.set("source", sourceDaemon);
+      replacementManager.onDaemonReady("source", sourceDaemon.bootId);
+      const statusAfterCrash = replacementManager.queryDurableDeliveryStatus("source", { operationId: "op-1" });
+      expect(statusAfterCrash.items).toMatchObject([
+        { operation_id: "op-1", target_instance: "worker", state: "queued", safe_to_retry: true },
+      ]);
+      expect(statusAfterCrash.items[0]).not.toHaveProperty("payload");
+      const pendingAfterRecovery = restarted.listPending();
+      // #2802: the restarted sender gets no "accepted before the restart" notice; the row is still delivered or failed.
+      expect(pendingAfterRecovery).toMatchObject([
+        { operationId: "op-1", targetInstance: "worker", state: "queued", payload: { content: "hello" } },
+      ]);
+      expect(pendingAfterRecovery).toHaveLength(1);
+      expect(replacementManager.lifecycle.daemons.has("worker")).toBe(false);
 
-    const queuedDelivery = pendingAfterRecovery.find(row => row.operationId === "op-1")!;
-    const createdAt = (restarted as any).db.prepare(
-      "SELECT created_at FROM deliveries WHERE delivery_id=?",
-    ).get(queuedDelivery.deliveryId).created_at as string;
-    expect(restarted.expireStale(Date.parse(createdAt) + DURABLE_DELIVERY_MAX_AGE_MS + 1)).toBe(1);
-    expect(restarted.get(queuedDelivery.deliveryId)).toMatchObject({ state: "failed" });
-    const failureNotice = (restarted as any).db.prepare(
-      "SELECT state,target_instance,payload_json FROM deliveries WHERE kind='delivery_outcome_notice' AND operation_id=?",
-    ).get(`notice:op-1:${queuedDelivery.deliveryId}`) as { state: string; target_instance: string; payload_json: string } | undefined;
-    expect(failureNotice?.state).toBe("queued");
-    expect(failureNotice?.target_instance).toBe("source");
-    expect(JSON.parse(failureNotice!.payload_json).content).toContain("state=failed");
-    restarted.close();
+      const queuedDelivery = pendingAfterRecovery.find(row => row.operationId === "op-1")!;
+      const createdAt = (restarted as any).db.prepare(
+        "SELECT created_at FROM deliveries WHERE delivery_id=?",
+      ).get(queuedDelivery.deliveryId).created_at as string;
+      expect(restarted.expireStale(Date.parse(createdAt) + DURABLE_DELIVERY_MAX_AGE_MS + 1)).toBe(1);
+      expect(restarted.get(queuedDelivery.deliveryId)).toMatchObject({ state: "failed" });
+      const failureNotice = (restarted as any).db.prepare(
+        "SELECT state,target_instance,payload_json FROM deliveries WHERE kind='delivery_outcome_notice' AND operation_id=?",
+      ).get(`notice:op-1:${queuedDelivery.deliveryId}`) as { state: string; target_instance: string; payload_json: string } | undefined;
+      expect(failureNotice?.state).toBe("queued");
+      expect(failureNotice?.target_instance).toBe("source");
+      expect(JSON.parse(failureNotice!.payload_json).content).toContain("state=failed");
+      restarted.close();
+    });
   });
 
   it("replays a whole-process SIGKILL after raw paste but before Enter", async () => {

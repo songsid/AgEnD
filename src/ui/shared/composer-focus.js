@@ -7,6 +7,9 @@ export function focusComposerPadding(event, field) {
   const control = event.target?.closest?.("textarea, input, button, select, a, label, summary, [contenteditable], [role='button'], [role='link'], [tabindex], .cmd-card, .pending-files, .reply-bar");
   // The shell's focusable main ancestor is outside this strip, not a control in it.
   if (control && (!event.currentTarget || event.currentTarget.contains(control))) return;
+  // Eligibility belongs to this exact painted background, never to its descendants. Popups may be
+  // inside the strip without being native controls or having any ARIA role; leave all of them alone.
+  if (!event.target?.matches?.("[data-composer-focus]")) return;
   event.preventDefault();
   field.ownerDocument?.getSelection?.()?.removeAllRanges();
   field.focus();

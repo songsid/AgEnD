@@ -18,7 +18,7 @@ import { Empty, ErrorState, Skeleton } from "/assets/ui-states.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
 import { toast } from "/assets/ui-toast.js";
-import { AskHost, COLUMNS, NO_PROJECT, boardReadOnly, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, scrollBox, tileStatus, waitsForYou, waitsList, waitsOn, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
+import { AskHost, BoardOffNote, COLUMNS, NO_PROJECT, boardReadOnly, ProgressBar, StatusPill, Who, answerBlocked, askText, boardApi, currentWork, dropNeighbours, errorText, followsSubs, moveCard, notesForPeople, onPublicLink, projectKey, projectStats, readStored, relTime, scrollBox, tileStatus, waitsForYou, waitsList, waitsOn, workersOf, wrapUpText, writeStored } from "./fleet-task-common.js";
 import { CardPage, assigneeItems } from "./fleet-task-card.js";
 import { CardMenu, cardAt, cardMenuItems, pageOrder, stepsOf } from "./fleet-task-menu.js";
 import { ListView, NO_REACH, SubList, TaskToolbar, doneShown, formatFilters, keepFilters, listRows, mainMatches, readDisplay, scrollReach, startFilters, writeDisplay } from "./fleet-task-view.js";
@@ -288,6 +288,7 @@ export function TaskBoardTab({ lease }) {
 
   return html`<div class="tb" onContextMenu=${onMenu}>
     ${writable ? null : html`<p class="tb-readonly" role="note"><${Icon} name="eye" size=${16} />${t("tasks.readOnly")}</p>`}
+    ${writable && !openId ? html`<${BoardOffNote} names=${boardOff} />` : null}
     ${openId ? html`<${CardPage} key=${openId} id=${openId} tick=${tick} projects=${projects} cards=${cards} boardOff=${boardOff} doing=${inProgressBy(cards)} writable=${writable} place=${writable ? placeOf(cards, openId, reload) : null}
       steps=${stepsOf(trail, openId, cards)} where=${where} back=${t(display.view === "list" ? "taskcard.backList" : "taskcard.backBoard")}
       onBack=${closeCard} onOpen=${openCard} onStep=${stepToCard} reloadBoard=${reload} />` : body}

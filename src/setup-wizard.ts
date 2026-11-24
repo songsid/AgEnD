@@ -11,7 +11,6 @@ import { getAgendHome } from "./paths.js";
 import { setupGuideUrl } from "./setup-guide.js";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
-import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 import { DEFAULT_DAILY_SUMMARY } from "./config.js";
 
 const DATA_DIR = getAgendHome();
@@ -201,7 +200,6 @@ export function buildFleetConfig(answers: WizardAnswers): Record<string, unknown
     ...(answers.backend !== "claude-code" ? { backend: answers.backend } : {}),
     // #2598: a new kiro fleet runs kiro's TUI engine (an entry without kiro_ui would be classic).
     ...(answers.backend === "kiro-cli" ? { kiro_ui: "tui" } : {}),
-    dashboard: { ...NEW_FLEET_DASHBOARD },                      // a new fleet: the task board is off until switched on
     restart_policy: {
       max_retries: 10,
       backoff: "exponential",

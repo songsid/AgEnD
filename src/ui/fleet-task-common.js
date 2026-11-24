@@ -8,6 +8,8 @@ import { identityOf, paintIdentity, useIdentityColors } from "/assets/identity-c
 import { dotState } from "/assets/instance-nav.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { toast } from "/assets/ui-toast.js";
+import { Icon } from "/assets/ui-icons.js";
+import { sectionPath } from "/assets/app-route.js";
 
 register("tasks", {
   en: {
@@ -43,6 +45,9 @@ register("tasks", {
     definitionHint: "One per line: conditions anyone can check", acceptanceHint: "One per line",
     context: "Context", contextHint: "Paths, related cards, decisions already made (pointers only)",
     assignee: "Assignee", assigneeHint: "Which instance", project: "Project", size: "Size", priority: "Priority",
+    boardOffNote: "The task board is switched off for {0}: cards cannot be handed to them, comments and @mentions do not wake them, and they get no [Task board] notices.",
+    boardOffCommentNote: "The task board is switched off for {0}, so this comment will not wake them.",
+    boardOffWhere: "Turn it on in {0} (every agent), or in the agent's own Settings → Advanced → Dashboard access.", boardOffWhereLink: "Settings → Shared agent settings",
     boardOff: "{0} (task board off)", boardOffHint: "Instances with the task board switched off cannot be handed cards: they have no task tool to read them with.",
     reviewBox: "Stop at review for my confirmation", created: "Opened {0}", titleRequired: "A title is required",
     search: "Search cards", searchHint: "Search titles, fields, checklists and comments", searchEmpty: "No cards match", inField: "in {0}",
@@ -74,6 +79,9 @@ register("tasks", {
     "err.dep_cycle": "These dependencies would wait on each other forever: {0}", "err.conflict": "{0} was changed meanwhile (last by {1})",
     "err.signed_in_only": "The task board takes changes from a signed-in dashboard", "err.unavailable": "The task board is not available right now", "err.not_over_public_link": "The public link can only read the board",
     "err.assignee_board_off": "{0} has the task board switched off: it cannot read or move cards. Switch it on for {0} (Settings → the agent → Dashboard access), or hand it the work in the chat",
+    // The watchers a card's page sets (fleet-task-follow.js)
+    "err.watcher_unknown": "“{0}” is not one of the fleet's instances", "err.watcher_board_off": "{0} has the task board switched off: it cannot read or move cards, so a notice would reach nothing it can act on",
+    "err.watchers_max": "{0} can have at most {1} watchers", "err.watch_not_board": "{0} is not a card on the board: only cards can be watched",
     "note.review_waiting": "{0} “{1}”: every sub task is done — it waits for your confirmation",
     "note.back_to": "{0} has unfinished sub tasks again: it is back to {1}", "note.deps_done": "{0}'s dependencies are all done: it can start",
     "note.deps_unmet": "Note: {0} not done yet",
@@ -120,6 +128,9 @@ register("tasks", {
     definitionHint: "一行一項：能客觀判斷是否達成的條件", acceptanceHint: "一行一項",
     context: "背景", contextHint: "檔案路徑、相關卡號、已經做的決定（只放指引）",
     assignee: "負責人", assigneeHint: "交給哪個 Agent", project: "專案", size: "大小", priority: "優先度",
+    boardOffNote: "{0} 的任務板是關閉的：不能指派卡片給它，留言和 @ 也叫不醒它，它也收不到 [Task board] 通知。",
+    boardOffCommentNote: "{0} 的任務板是關閉的，這則留言不會叫醒它。",
+    boardOffWhere: "要打開：{0}（所有 Agent），或這個 Agent 自己的設定 → 進階 → 網頁儀表板權限。", boardOffWhereLink: "設定 → Agent 共用設定",
     boardOff: "{0}（看板已關閉）", boardOffHint: "關閉任務看板的 Agent 不能被派卡：它沒有 task 工具，讀不到卡片。",
     reviewBox: "做完要停在待確認，等我確認", created: "已開 {0}", titleRequired: "標題必填",
     search: "搜尋卡片", searchHint: "搜尋標題、各欄位、驗收條件和留言", searchEmpty: "沒有符合的卡片", inField: "在{0}",
@@ -151,6 +162,8 @@ register("tasks", {
     "err.dep_cycle": "相依會形成循環，大家會互相等待：{0}", "err.conflict": "{0} 已經被改過（最後由 {1} 修改）",
     "err.signed_in_only": "看板只接受已登入網頁的修改", "err.unavailable": "看板目前無法使用", "err.not_over_public_link": "公開連結只能看看板，不能修改",
     "err.assignee_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片。請先替 {0} 開啟（Settings → 該 agent → Dashboard access），或改在聊天中交辦",
+    "err.watcher_unknown": "「{0}」不是 fleet 裡的 Agent", "err.watcher_board_off": "{0} 關閉了任務看板，讀不到也動不了卡片，通知送過去它也沒辦法處理",
+    "err.watchers_max": "{0} 最多只能有 {1} 個關注者", "err.watch_not_board": "{0} 不是任務板上的卡片，只有任務板上的卡片可以關注",
     "note.review_waiting": "{0}「{1}」的子任務都完成了，等你確認",
     "note.back_to": "{0} 又有沒完成的子任務，已回到{1}", "note.deps_done": "{0} 的相依都完成了，可以開始",
     "note.deps_unmet": "提醒：{0} 還沒完成",
@@ -365,6 +378,28 @@ export function AssigneeOption({ name, boardOff = [] }) {
   return html`<option value=${name} disabled=${off} title=${off ? t("tasks.boardOffHint") : undefined}>${off ? t("tasks.boardOff", name) : name}</option>`;
 }
 
+/** The names a hint lists: the first few, then how many more. */
+export const boardOffList = (names) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} +${names.length - 5}` : names.join(", "));
+/**
+ * Which of the instances this comment would reach have the task board switched off — the card's assignee (a
+ * comment on it wakes it) and any `@name` in the text (code spans and blocks are never read as a mention, as on the server).
+ * `names`: [{ name, off }]. Pure: tests import it.
+ */
+export function boardOffTargets(names, assignee, text) {
+  const prose = String(text || "").replace(/```[\s\S]*?(```|$)/g, " ").replace(/`[^`\n]*`/g, " ");
+  const escaped = (n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return (names || []).filter((n) => n.off && (n.name === assignee || new RegExp(`(^|[^\\w@./-])@${escaped(n.name)}(?![\\w-])`, "i").test(prose))).map((n) => n.name);
+}
+/**
+ * A quiet note, in the page's own style (`.tb-readonly`): which instances have the task board switched off, what
+ * that means for the thing the person is doing, and where to turn it on. Nothing when none does.
+ */
+export function BoardOffNote({ names, textKey = "tasks.boardOffNote" }) {
+  if (!names || !names.length) return null;
+  const [before, after] = t("tasks.boardOffWhere", "\u0000").split("\u0000");
+  return html`<p class="tb-readonly tb-boardoff" role="note"><${Icon} name="alert" size=${16} /><span>${t(textKey, boardOffList(names))} ${before}<a href=${sectionPath("agent-defaults")}>${t("tasks.boardOffWhereLink")}</a>${after}</span></p>`;
+}
+
 /** A refusal in the page's language when the board named it (tasks.err.<key>), else the board's own sentence. */
 export function errorText(err) {
   if (err && err.key) {
@@ -381,6 +416,8 @@ export const boardApi = {
   create: (spec) => boardCall("POST", "/ui/tasks/cards", spec),
   update: (id, patch) => boardCall("POST", `/ui/tasks/cards/${enc(id)}`, patch),
   move: (id, to, input = {}) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/move`, { to, ...input }),
+  /** Starts and stops instances watching a card (`add`, `remove`: names); a watch is not an edit, so it carries no version. */
+  watchers: (id, change) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/watchers`, change),
   reorder: (id, after, before) => boardCall("POST", `/ui/tasks/cards/${enc(id)}/reorder`, { after, before }),
   search: (q) => boardCall("GET", `/ui/tasks/search?q=${enc(q)}`),
   /** #2246 step 3: each instance's work (its `task mine`), or one instance's. */

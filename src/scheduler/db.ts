@@ -414,6 +414,7 @@ export class SchedulerDb {
       this.db.prepare(`DELETE FROM tasks WHERE id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_entries WHERE task_id IN (${marks})`).run(...ids);
       this.db.prepare(`DELETE FROM task_events WHERE task_id IN (${marks})`).run(...ids);
+      this.db.prepare(`DELETE FROM task_watchers WHERE task_id IN (${marks})`).run(...ids);
     };
     let total = 0;
     for (const family of [false, true]) {
@@ -433,6 +434,7 @@ export class SchedulerDb {
     this.db.transaction(() => {
       this.db.exec("DELETE FROM task_entries WHERE task_id NOT IN (SELECT id FROM tasks)");
       this.db.exec("DELETE FROM task_events WHERE task_id NOT IN (SELECT id FROM tasks)");
+      this.db.exec("DELETE FROM task_watchers WHERE task_id NOT IN (SELECT id FROM tasks)");
     }).immediate();
     return total;
   }

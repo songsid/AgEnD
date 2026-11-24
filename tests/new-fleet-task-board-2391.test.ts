@@ -1,9 +1,10 @@
 import { loginNoticeMode } from "../src/notice-delivery.js";
 /**
- * The user's decision (2026-10-22, on #2391): the task board is off by default for a NEW fleet. Every path that creates
- * a fleet.yaml writes `defaults.dashboard.task_board: false`, visibly — `agend init` (setup-wizard), `agend quickstart`
- * (a new fleet, or a fresh start), and the setup page (`agend setup` / the web quickstart before there is a fleet).
- * An existing fleet.yaml is never rewritten: there, unset still allows.
+ * The user's decision (2026-10-22, on #2391): the task board was off by default for a NEW fleet — every path that creates a
+ * fleet.yaml wrote `defaults.dashboard.task_board: false`. Now a new file says nothing about the
+ * board, which is on, as for every older file. The paths: `agend init` (setup-wizard), `agend quickstart` (a new fleet,
+ * or a fresh start), and the setup page (`agend setup` / the web quickstart before there is a fleet). An existing fleet.yaml is
+ * never rewritten: there, unset allows and an explicit `false` stays.
  *
  * The setup page through the real SetupHost on a scratch directory (no fleet started: spawnFleet is a spy).
  */
@@ -15,7 +16,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { buildFleetConfig, type WizardAnswers } from "../src/setup-wizard.js";
 import { newQuickstartFleet } from "../src/quickstart.js";
 import { SetupHost } from "../src/setup-host.js";
-import { dashboardFeaturesOffIn, NEW_FLEET_DASHBOARD } from "../src/dashboard-permissions.js";
+import * as dashboardPermissions from "../src/dashboard-permissions.js";
+import { dashboardFeaturesOffIn } from "../src/dashboard-permissions.js";
 import { validateFleetConfig } from "../src/config-validator.js";
 import { setupHttp, decideSetup } from "./helpers/setup-confirmation-1423.js";
 
@@ -24,15 +26,15 @@ afterEach(async () => { for (const { host, dir } of fixtures.splice(0)) { await 
 /** What a fleet.yaml, as written, says the task board is for an agent of it: off, or allowed. */
 const board = (fleet: unknown, agent = "agent-1") => (dashboardFeaturesOffIn(fleet, agent).includes("task_board") ? "off" : "allowed");
 
-describe("a new fleet.yaml says the task board is off", () => {
-  it("the one value every path writes: task_board false, and nothing else switched", () => {
-    expect([NEW_FLEET_DASHBOARD, Object.isFrozen(NEW_FLEET_DASHBOARD)]).toEqual([{ task_board: false }, true]);
+describe("a new fleet.yaml leaves the task board on", () => {
+  it("no path has a value to write for it any more", () => {
+    expect(Object.keys(dashboardPermissions)).not.toContain("NEW_FLEET_DASHBOARD");
   });
   it("agend init (setup-wizard's buildFleetConfig): in defaults, valid, and in effect for its agents", () => {
     const answers: WizardAnswers = { channelType: "telegram", backend: "claude-code", botTokenEnv: "AGEND_BOT_TOKEN", groupId: -1001234567890,
       channelMode: "topic", accessMode: "locked", allowedUsers: [], projectRoots: [], instances: [], costGuard: { enabled: false }, dailySummary: { enabled: false } };
     const written = yaml.load(yaml.dump(buildFleetConfig(answers))) as Record<string, any>;
-    expect([written.defaults.dashboard, validateFleetConfig(written as never).valid, board(written)]).toEqual([{ task_board: false }, true, "off"]);
+    expect([written.defaults.dashboard, validateFleetConfig(written as never).valid, board(written)]).toEqual([undefined, true, "allowed"]);
     expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
   });
   it("agend quickstart (a new fleet, or a fresh start): in defaults beside the backend, one connection or several", () => {
@@ -40,7 +42,7 @@ describe("a new fleet.yaml says the task board is off", () => {
     const discord = { type: "discord", token: "d", tokenEnvName: "DC", botUsername: "c", groupId: "200", userId: "123456789012345678" };
     for (const platforms of [[telegram], [telegram, discord]]) {
       const written = yaml.load(yaml.dump(newQuickstartFleet(platforms as never, [], "codex"))) as Record<string, any>;
-      expect([written.defaults, board(written)]).toEqual([{ backend: "codex", dashboard: { task_board: false } }, "off"]);
+      expect([written.defaults, board(written)]).toEqual([{ backend: "codex" }, "allowed"]);
       expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
     }
   });
@@ -64,11 +66,11 @@ describe("the setup page (agend setup, the web quickstart before a fleet)", () =
     };
     return { dir, commit };
   }
-  it("no fleet.yaml yet: the file it writes has the board off, in defaults, for the new agent", async () => {
+  it("no fleet.yaml yet: the file it writes says nothing of the board, which is on for the new agent", async () => {
     const h = await harness();
     expect(existsSync(join(h.dir, "fleet.yaml"))).toBe(false);
     const written = await h.commit();
-    expect([written.defaults?.dashboard, board(written), validateFleetConfig(written as never).valid]).toEqual([{ task_board: false }, "off", true]);
+    expect([written.defaults?.dashboard, board(written), validateFleetConfig(written as never).valid]).toEqual([undefined, "allowed", true]);
     expect([loginNoticeMode(written.web), written.web?.notice_delivery, written.defaults.tips ?? true]).toEqual([true, undefined, true]);   // no DM opt-in (hmsg-3b8ac2af)
   });
   it("control — a fleet.yaml already there is never given the switch: its board stays allowed", async () => {
@@ -76,5 +78,10 @@ describe("the setup page (agend setup, the web quickstart before a fleet)", () =
     const written = await h.commit();
     expect([written.defaults?.dashboard, board(written)]).toEqual([undefined, "allowed"]);
     expect([written.web?.notify_login, written.defaults.tips]).toEqual([undefined, undefined]);
+  });
+  it("control — an existing fleet.yaml that says task_board: false keeps it: the board stays off for its agents", async () => {
+    const h = await harness("defaults:\n  backend: claude-code\n  dashboard:\n    task_board: false\ninstances: {}\n");
+    const written = await h.commit();
+    expect([written.defaults?.dashboard, board(written)]).toEqual([{ task_board: false }, "off"]);
   });
 });

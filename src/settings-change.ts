@@ -34,7 +34,9 @@ const publicKeys = new Set(["id", "type", "group_id", "general_channel_id", "bot
   "working_directory", "project_roots", "adapter_id", "adapterId", "channelId", "instanceName", "createdBy", "createdAt",
   "hostname", "tunnel_token_env", "origin_port", "allowed_hosts", "protocol", "name", "directory", "topic_name", "topic_id", "channel_id", "systemPrompt", "operations", "workflow", "primary", "pre_task_command", "instructions", "tool_permissions", "mcp_tools", "skip_permissions",
   // #2346: which tools an agent gets (full: the fleet's own) — shown and confirmed, never applied quietly.
-  "tool_set"]);
+  "tool_set",
+  // Defaults.task_board.leader is an instance's name (the board's leader). Shown in the confirmation as it is, not hidden or refused.
+  "leader"]);
 const idLists = new Set(["allowed_users", "admin_users", "allowed_groups", "allowed_guilds"]);
 /** Literal text, never an ANSI/control sequence or a clickable mention. */
 export function settingsDisplay(value: unknown): string {
