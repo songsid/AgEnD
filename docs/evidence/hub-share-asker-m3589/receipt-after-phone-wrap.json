@@ -1,0 +1,98 @@
+{
+  "stage": "after",
+  "checks": [
+    {
+      "name": "group created",
+      "ok": true
+    },
+    {
+      "name": "agent joined",
+      "ok": true
+    },
+    {
+      "name": "grant created",
+      "ok": true
+    },
+    {
+      "name": "direct created",
+      "ok": true
+    },
+    {
+      "name": "group question accepted",
+      "ok": true
+    },
+    {
+      "name": "direct question accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en/group lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-light-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en/direct lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-light-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW/group lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-light-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW/direct lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-light-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en/group lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-dark-en/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en/direct lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-dark-en/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW/group lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-dark-zh-TW/group no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW/direct lapse notice wraps without More",
+      "ok": true
+    },
+    {
+      "name": "after/phone-dark-zh-TW/direct no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "no page errors",
+      "ok": true
+    }
+  ],
+  "errors": []
+}

@@ -67,3 +67,15 @@ proof do not claim a live daemon, backend CLI or actual model response.
 
 Rollback: revert this PR; no migration or changes to consent, grants or incarnations. #4361's existing Share again
 remains available.
+
+## Phone notice wrapping correction
+
+The initial phone direct status used the thread's default folded line, hiding the re-share action behind More.
+The existing `wrap: true` presentation flag now applies only to the lapsed-share direct notice and group progress
+notice. Copy, CSS and the queue/consent code are unchanged. Both locale regressions fail before these flags and
+pass after; the UI/thread neighbors pass 51/51.
+
+All eight after-phone originals were re-captured (both colors/languages, group/direct). The separate
+`receipt-after-phone-wrap.json` records 23 checks, including all eight notices fully wrapping without a folded
+class or More control, plus horizontal-overflow checks. The original desktop captures and initial matrix
+receipts remain as recorded; no desktop or backend campaign was repeated.

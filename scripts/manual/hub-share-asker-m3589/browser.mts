@@ -50,6 +50,7 @@ try {
   })).status === 200);
   browser = await pw.chromium.launch({ executablePath: process.env.CHROME, headless: true, env, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-background-networking", "--disable-component-update"] });
   for (const device of ["desk", "phone"]) for (const theme of ["light", "dark"]) for (const lang of ["en", "zh-TW"]) {
+    if (process.env.MATRIX === "phone" && device !== "phone") continue;
     const tag = `${device}-${theme}-${lang}`, ctx = await browser.newContext({ viewport: device === "phone" ? { width: 390, height: 844 } : { width: 1366, height: 900 }, locale: lang === "en" ? "en-US" : "zh-TW", colorScheme: theme, ignoreHTTPSErrors: true });
     await ctx.addInitScript({ content: `window.__name=fn=>fn;localStorage.setItem('agend_lang',${JSON.stringify(lang)});localStorage.setItem('agend_theme',${JSON.stringify(theme)});localStorage.setItem('agend_tour_done','1');` });
     await ctx.route("**/*", (route: any) => new URL(route.request().url()).origin === origin ? route.continue() : route.abort());
@@ -64,12 +65,17 @@ try {
         });
         if (stage === "after") await page.getByText(lang === "en" ? /owner.*shares? it again/ : /擁有者需要重新分享/).first().waitFor();
         await page.evaluate(() => document.fonts.ready);
+        if (stage === "after") check(`${tag}/${kind} lapse notice wraps without More`, await page.evaluate(() => {
+          const rows = [...document.querySelectorAll(".msg.status-line")].filter(el => /share it again|重新分享/.test(el.textContent || ""));
+          return rows.length === 1 && rows.every(el => !el.classList.contains("folded") && !el.querySelector(".st-more")
+            && [...el.querySelectorAll(".st-ln")].every(line => line.scrollWidth <= line.clientWidth));
+        }));
         await page.screenshot({ path: join(out, `${stage}-${tag}-${kind}.png`) });
         check(`${stage}/${tag}/${kind} no horizontal overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       }
     } finally { await ctx.close(); }
   }
   check("no page errors", errors.length === 0);
-  writeFileSync(join(out, `receipt-${stage}.json`), JSON.stringify({ stage, checks, errors }, null, 2));
+  writeFileSync(join(out, `receipt-${stage}${process.env.MATRIX === "phone" ? "-phone-wrap" : ""}.json`), JSON.stringify({ stage, checks, errors }, null, 2));
   console.log(JSON.stringify({ stage, checks: checks.length }));
 } finally { await browser?.close(); server.closeAllConnections(); await new Promise<void>(yes => server.close(() => yes())); await r?.close(); rmSync(scratch, { recursive: true, force: true }); }

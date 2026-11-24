@@ -15,6 +15,10 @@ it.each(["en", "zh-TW"])("the room's terminal lapse is said in the viewer's lang
   const direct = toThreadMessages([{ id: "question", at: 1, roomId: "direct", author: { kind: "person", id: "asker", name: "Asker" },
     text: "My question", mentions: [], stage: "not-answered", reasonCode: "share-needs-reshare" }], { meId: "asker", ids: new Map(), direct: true });
   expect(direct.find((m: any) => m.role === "user")?.text).toBe("My question");
+  expect(direct.find((m: any) => m.role === "status")?.wrap).toBe(true);
+  const group = toThreadMessages([{ id: "group-question", at: 1, roomId: "planning", author: { kind: "person", id: "asker", name: "Asker" }, text: "My question", mentions: ["notes"],
+    ask: { total: 1, answered: 0, working: 0, later: 0, blocked: 1, reason: "share-needs-reshare" } }], { meId: "asker", ids: new Map() });
+  expect(group.find((m: any) => m.role === "status")?.wrap).toBe(true);
   expect(direct.find((m: any) => m.role === "status")?.text).toBe(messages.find((m: any) => m.role === "agent")?.text);
   setLang("en", { store: false });
 });

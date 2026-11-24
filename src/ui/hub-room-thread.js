@@ -207,7 +207,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
       ...(quotedId ? { replyTo: { boot: BOOT, id: num(quotedId), sender: quoted ? authorLine(quoted.author, quoted.author?.id === meId, direct) : "", text: quoted ? String(quoted.text || "").slice(0, 120) : "" } } : {}),
       ...(m.stage === "not-answered" && !(kind === "person" && m.reasonCode === "share-needs-reshare") ? { text: m.reasonCode === "share-needs-reshare" ? hroom("noAnswerReshare") : m.reasonCode === "owner-stopped-sharing" ? hroom("noAnswerStopped", author.owner?.name || "") : m.reasonCode==="finished-without-answer"?hroom("noAnswerUnanswered"):hroom("noAnswer") } : {}) });
     if (kind === "person" && m.stage === "not-answered" && m.reasonCode === "share-needs-reshare")
-      out.push({ boot: BOOT, id: num(`unavailable:${m.id}`), role: "status", sender: "", text: hroom("noAnswerReshare"), bare: true });
+      out.push({ boot: BOOT, id: num(`unavailable:${m.id}`), role: "status", sender: "", text: hroom("noAnswerReshare"), bare: true, wrap: true });
     if (foldAfter) out.push({ boot: BOOT, id: num(`expand:${foldAfter.arg}`), role: "status", sender: "", text: "", bare: true, fold: true, action: foldAfter });
     // Spec §10: once an @所有 Agent has answers, under the last one shown, 「請房間助理整理」 (it sends 「@房間助理 整理上面的回答」).
     if (summarise && lastShown && byId.get(m.answerTo)?.mentions?.includes("all"))
@@ -215,7 +215,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     const line = state?.line, why = !line && mine ? askReason(state?.reason) : "";
     // Its status, not an event: under it, without a time of its own.
     if (line) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: line, progressOf: m.id, bare: true });
-    else if (why) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: why, progressOf: m.id, bare: true });
+    else if (why) out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", text: why, progressOf: m.id, bare: true, wrap: state?.reason === "share-needs-reshare" });
     if (mine && m.warning === "assistant-unavailable") out.push({ boot: BOOT, id: id + 1, role: "status", sender: "", ts: iso(m.at), text: hroom("errAssistant"), bare: true });
   }
   return out;
