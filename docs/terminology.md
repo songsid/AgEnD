@@ -69,7 +69,7 @@ The zh-TW UI uses these words. Keep config keys, slash commands, paths, CLI butt
 | snapshot | 快照 | transaction | 交易 |
 | turn | 這一輪 | CPU profile | CPU 效能剖析 |
 
-Kept in English: emoji, Issue (GitHub), `workspaces` (in backticks), proxy (decision 815bfe4a forbids 代理), and brand or protocol names such as Cloudflare's connector token and Published application.
+Kept in English: emoji, Issue (GitHub), `workspaces` (in backticks), proxy (kept in English in the UI; 「代理」 is reserved for a reverse proxy, 反向代理, as above), and brand or protocol names such as Cloudflare's connector token and Published application.
 
 ## Important distinctions
 
