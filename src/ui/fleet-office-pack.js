@@ -136,7 +136,9 @@
 // walk, 1 for still furniture); played at `fps` (0: the first frame only — as reduced motion shows everything); (ax, ay)
 // the image point put on the position (a character's seat is where its feet are). Suggested sizes at scale 2: a
 // character 32×48, a prop 12×12, furniture as drawn. `src` is a file name in the pack: letters, digits, . _ - and /, no
-// "..". The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
+// "..". Optional "row" and "col" (0–4095) cut the frames from a bigger sheet: frame i is the w×h cell at column col+i
+// of row `row` (so several poses can share one picture, which must then be at least (col+frames)·w × (row+1)·h).
+// The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
 // with where it broke.
 //
 // Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1–1280 and
@@ -181,11 +183,12 @@ export const CHAR_DEPTH = 1000;
 export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
 /** M-3293 (#4119): what a bubbles table may name — the states, and the Office's two reactions (a pat, a feed). */
 export const BUBBLE_KEYS = [...PACK_STATES, "pat", "feed"];
-const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"], PROPS = ["task", "send", "report", "broadcast"];
-/** A character set's strips: its poses, optional eat (M-3432 #4255) and dragged (M-3445 #4267) poses, and what its people send (#2562). */
-const SET_STRIPS = [...POSES, "eat", "dragged", "prop"];
+const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide", "walkLeft"], PROPS = ["task", "send", "report", "broadcast"];
+/** A character set's strips: its poses, optional eat (M-3432 #4255), dragged (M-3445 #4267) and pat poses, a still `stand` (its card
+ * avatar), and what its people send (#2562). */
+const SET_STRIPS = [...POSES, "eat", "dragged", "pat", "stand", "prop"];
 /** A furniture item's walking strips (#2596): a character set's walking poses. */
-const WALKS = ["walk", "walkDown", "walkUp", "walkSide"];
+const WALKS = ["walk", "walkDown", "walkUp", "walkSide", "walkLeft"];
 const BUILT_IN = new Set(["pixel", "studio"]);
 /**
  * Ids built in after packs could be uploaded under them (#2631: "cozy"; #2947: "guild", "school"): a new upload is
@@ -212,9 +215,11 @@ export const CARD_AVATAR_SOURCES = ["sprite", "portrait"];
 export const CARD_HEADER_ALIGNS = ["left", "center"];
 export const CARD_SECTIONS = ["header", "level", "rows", "now", "tell", "actions"];
 export const CARD_ROWS = ["office", "model", "backend", "today", "firstSeen"];
+/** How a pack's card pops up (card.motion.enter); "none" keeps it still. */
+export const CARD_ENTERS = ["none", "fade", "pop", "rise", "slide", "bounce"];
 export const CARD_HIDE = ["instance", "title", "badge", "level", "xpBar", "office", "model", "backend", "today", "firstSeen", "now"];
 export const CARD_STYLE_COLORS = ["background", "border", "text", "muted", "accent", "barTrack", "barFill", "buttonBg", "buttonText", "buttonPrimaryBg", "buttonPrimaryText"];
-export const CARD_LIMITS = { widthMin: 280, widthMax: 400, sliceMax: 128, textContrast: 4.5, uiContrast: 3.0 };
+export const CARD_LIMITS = { widthMin: 280, widthMax: 400, gapMax: 240, motionMsMin: 80, motionMsMax: 1200, sliceMax: 128, textContrast: 4.5, uiContrast: 3.0 };
 /** #2861: a person's account as the chat records it (`adapter:id`, web-chat-history.ts FROM). */
 const ACCOUNT = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
 
@@ -270,17 +275,22 @@ export function contrastRatio(hexA, hexB) {
  */
 export function checkStrip(v, at = "strip", scale = 2) {
   obj(v, at);
-  keys(v, ["src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom"], at);
+  keys(v, ["src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom", "row", "col"], at);
   const w = int(v.w, 1, 512, `${at}.w`), h = int(v.h, 1, 512, `${at}.h`);
   const dw0 = v.dw === undefined ? null : num(v.dw, 1, LOGICAL.w, `${at}.dw`), dh0 = v.dh === undefined ? null : num(v.dh, 1, LOGICAL.h, `${at}.dh`);
   const dw = dw0 ?? (dh0 !== null ? (dh0 * w) / h : w * scale), dh = dh0 ?? (dw0 !== null ? (dw0 * h) / w : h * scale);
   const ax = v.ax === undefined ? w / 2 : num(v.ax, 0, w, `${at}.ax`), ay = v.ay === undefined ? h : num(v.ay, 0, h, `${at}.ay`);
   if (v.once !== undefined && typeof v.once !== "boolean") throw new Refused(`${at}.once`, "true or false");
   const once = v.once === true;
+  // Sheet cells: frames start at column `col` of row `row` (w×h cells), so one picture can hold several poses. Either
+  // given marks the strip as cut from a larger sheet (its picture is then at least (col+frames)·w × (row+1)·h).
+  const row = v.row === undefined ? undefined : int(v.row, 0, 4095, `${at}.row`);
+  const col = v.col === undefined ? undefined : int(v.col, 0, 4095, `${at}.col`);
   let firstSrc, totalFrames, sheets = null, durations = null, fps = 4;
 
   if (v.src === undefined && Array.isArray(v.frames)) {
     // Form 3: explicit frame list [{ src, ms? }, …], each image 1 frame (w × h).
+    if (row !== undefined || col !== undefined) throw new Refused(`${at}.row`, "row and col need src (a sheet); a frame list has one picture per frame");
     if (v.durations !== undefined) throw new Refused(`${at}.durations`, "use ms on each entry in frames");
     const items = list(v.frames, STRIP_LIMITS.frames, `${at}.frames`);
     if (!items.length) throw new Refused(`${at}.frames`, "at least 1 frame");
@@ -348,6 +358,7 @@ export function checkStrip(v, at = "strip", scale = 2) {
 
   return {
     src: firstSrc, frames: totalFrames, w, h, fps, ax, ay, dw, dh,
+    ...(row !== undefined || col !== undefined ? { row: row ?? 0, col: col ?? 0 } : {}),
     ...(sheets ? { sheets } : {}),
     ...(durations ? { durations } : {}),
     ...(once ? { once: true } : {}),
@@ -536,7 +547,7 @@ function uniqueEnumList(v, allowed, at) {
 function cardOf(v) {
   if (v === undefined) return null;
   obj(v, "card");
-  keys(v, ["preset", "style", "layout"], "card");
+  keys(v, ["preset", "style", "layout", "motion"], "card");
   const out = {};
   if (v.preset !== undefined) {
     if (typeof v.preset !== "string" || !CARD_PRESETS.includes(v.preset)) throw new Refused("card.preset", `one of ${CARD_PRESETS.join(", ")}`);
@@ -580,7 +591,7 @@ function cardOf(v) {
   }
   if (v.layout !== undefined) {
     const l = obj(v.layout, "card.layout");
-    keys(l, ["avatarSize", "avatarSource", "headerAlign", "width", "sections", "rows", "rowColumns", "hide"], "card.layout");
+    keys(l, ["avatarSize", "avatarSource", "headerAlign", "width", "gap", "sections", "rows", "rowColumns", "hide"], "card.layout");
     const ly = {};
     if (l.avatarSize !== undefined) {
       if (typeof l.avatarSize !== "string" || !CARD_AVATAR_SIZES.includes(l.avatarSize)) throw new Refused("card.layout.avatarSize", `one of ${CARD_AVATAR_SIZES.join(", ")}`);
@@ -595,6 +606,8 @@ function cardOf(v) {
       ly.headerAlign = l.headerAlign;
     }
     if (l.width !== undefined) ly.width = int(l.width, CARD_LIMITS.widthMin, CARD_LIMITS.widthMax, "card.layout.width");
+    // How far (CSS px) the floating card opens from its person, beside the person's own half-width; the page's is 12.
+    if (l.gap !== undefined) ly.gap = int(l.gap, 0, CARD_LIMITS.gapMax, "card.layout.gap");
     if (l.sections !== undefined) {
       const secs = uniqueEnumList(l.sections, CARD_SECTIONS, "card.layout.sections");
       if (!secs.includes("header") || !secs.includes("actions")) throw new Refused("card.layout.sections", 'must include "header" and "actions"');
@@ -607,6 +620,12 @@ function cardOf(v) {
     }
     if (l.hide !== undefined) ly.hide = uniqueEnumList(l.hide, CARD_HIDE, "card.layout.hide");
     out.layout = ly;
+  }
+  if (v.motion !== undefined) {
+    const mo = obj(v.motion, "card.motion");
+    keys(mo, ["enter", "ms"], "card.motion");
+    if (typeof mo.enter !== "string" || !CARD_ENTERS.includes(mo.enter)) throw new Refused("card.motion.enter", `one of ${CARD_ENTERS.join(", ")}`);
+    out.motion = { enter: mo.enter, ms: mo.ms === undefined ? 220 : int(mo.ms, CARD_LIMITS.motionMsMin, CARD_LIMITS.motionMsMax, "card.motion.ms") };
   }
   return out;
 }
@@ -1068,8 +1087,8 @@ export function overridesBetween(pack, edited) {
 
 /**
  * The strip a character set shows for `pose` (heading: the current step { dx, dy }, while walking): { strip, mirror }, or
- * null (no set). Walking: |dy| > |dx| → walkDown (dy > 0) or walkUp, else walkSide (mirror: moving left); a missing one
- * → "walk" (never mirrored) → idle. Any other pose: its own strip, else idle.
+ * null (no set). Walking: |dy| > |dx| → walkDown (dy > 0) or walkUp, else walkSide (moving left: the set's own walkLeft,
+ * else walkSide mirrored); a missing one → "walk" (never mirrored) → idle. Any other pose: its own strip, else idle.
  */
 export function poseStrip(set, pose, heading = null) {
   if (!set || typeof set !== "object") return null;
@@ -1077,6 +1096,8 @@ export function poseStrip(set, pose, heading = null) {
     const dx = Number(heading.dx) || 0, dy = Number(heading.dy) || 0;
     if (dx || dy) {
       const dir = Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? "walkDown" : "walkUp") : "walkSide";
+      const left = dir === "walkSide" && dx < 0 ? own(set, "walkLeft") : null;
+      if (left) return { strip: left, mirror: false };
       const st = own(set, dir);
       if (st) return { strip: st, mirror: dir === "walkSide" && dx < 0 };
     }
@@ -1161,10 +1182,12 @@ export function stripFrameAt(st, ms) {
 /** Which image (`src`) and horizontal frame column (`col`) hold global frame index `frame` of `st`. */
 export function stripCell(st, frame) {
   const f = Math.max(0, Math.min((st && st.frames ? st.frames : 1) - 1, Math.floor(Number(frame) || 0)));
-  if (!st || !Array.isArray(st.sheets)) return { src: st ? st.src : "", col: f };
+  // A strip cut from a sheet (row/col) also says its row; a classic strip's cell keeps its { src, col } shape.
+  const cut = !!st && (st.row !== undefined || st.col !== undefined), c0 = cut ? st.col || 0 : 0, at = cut ? { row: st.row || 0 } : {};
+  if (!st || !Array.isArray(st.sheets)) return { src: st ? st.src : "", col: c0 + f, ...at };
   const { sheets, starts, ends } = sheetIndex(st);
   const i = upperBound(ends, f);
-  return { src: sheets[i].src, col: f - starts[i] };
+  return { src: sheets[i].src, col: c0 + f - starts[i], ...at };
 }
 
 /** The highest frame rate (frames/s) a strip needs for smooth playback; 0 when static. */
