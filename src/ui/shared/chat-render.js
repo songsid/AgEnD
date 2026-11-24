@@ -85,6 +85,35 @@
     return '<span class="mention" data-mention="' + kind + ":" + id + '" title="' + id + '">' + label + "</span>";
   }
 
+  // A task card's number in a person's message — `#M-3` or `#s3` (a bare M-3 is the word it is) — drawn as a chip (number, title,
+  // status) that opens the card (Fleet › Tasks, ?card=). Only for a card the page knows (store.taskRefs(code) → { title, status,
+  // statusLabel, tip }), and only on a page that asks for it (the person's own words, in the Fleet chat); any other number
+  // stays the text it was. The rule is the server's (src/chat-task-refs.ts) and the page's (chat-task-refs.js): a test holds the
+  // three to one list of cases. The href is built from the matched digits, the class from a fixed list; the card's own words
+  // (title, labels) are inserted escaped.
+  var TASK_REF_RE = /(?<![A-Za-z0-9_\/&#@-])#([MmSs])-?(\d{1,9})(?![A-Za-z0-9_-]|\.\d)/g;
+  var TASK_STATUS = { open: 1, claimed: 1, blocked: 1, review: 1, done: 1, cancelled: 1 };
+  function taskChip(code, info) {
+    var status = Object.prototype.hasOwnProperty.call(TASK_STATUS, info.status) ? info.status : "open";
+    var label = typeof info.statusLabel === "string" ? info.statusLabel : "";
+    var tip = typeof info.tip === "string" && info.tip ? info.tip : code + " " + (info.title || "");
+    return '<a class="task-ref" href="/ui/fleet?card=' + code + '" data-task-ref="' + code + '" title="' + escapeHtml(tip) + '">'
+      + '<span class="task-ref-code">' + code + "</span>"
+      + '<span class="task-ref-title">' + escapeHtml(String(info.title || "")) + "</span>"
+      + (label ? '<span class="tb-pill st-' + status + '">' + escapeHtml(label) + "</span>" : "") + "</a>";
+  }
+
+  /** The card numbers a (raw) text names, normalised, each once — what the thread asks the page about (chat-thread.js). */
+  function taskRefCodes(text) {
+    var out = [], re = new RegExp(TASK_REF_RE.source, "g"), m;
+    var src = String(text == null ? "" : text).replace(/\u0000/g, "");
+    while ((m = re.exec(src)) && out.length < 10) {
+      var code = m[1].toUpperCase() + "-" + Number(m[2]);
+      if (out.indexOf(code) === -1) out.push(code);
+    }
+    return out;
+  }
+
   /** Inline Markdown over ALREADY-ESCAPED text. */
   function inline(escaped, store) {
     var s = escaped;
@@ -110,6 +139,13 @@
     s = s.replace(BARE_URL_RE, function (m, pre, url) {
       var href = safeHref(url);
       return href ? pre + stash(store, link(href, url)) : m;
+    });
+    // A card's number, after the links (a link is stashed by now: a URL's "#M-3" is never touched).
+    var cardOf = store.taskRefs;
+    if (cardOf) s = s.replace(TASK_REF_RE, function (m, letter, digits) {
+      var code = letter.toUpperCase() + "-" + Number(digits);
+      var info = cardOf(code);
+      return info && typeof info === "object" ? stash(store, taskChip(code, info)) : m;
     });
     // M-3092: a Hub room's own mention labels (「@所有 Agent」, "@project-helper"), exact, longest first, before the
     // @username rule (which cannot take a space, a hyphen or CJK). Only a page that passes them gets any: the fleet passes none.
@@ -344,6 +380,8 @@
     store.emojis = opts && typeof opts.emojis === "function" ? opts.emojis : null;
     // #1682: the names the page knows for mentions (a function (kind "u" | "r" | "c", id) → name or null).
     store.mentions = opts && typeof opts.mentions === "function" ? opts.mentions : null;
+    // The cards the page knows for a task number (a function "M-3" → { title, status, … } or null); none elsewhere.
+    store.taskRefs = opts && typeof opts.taskRefs === "function" ? opts.taskRefs : null;
     // M-3092: exact mention labels a Hub room accents (none elsewhere); longest first so a name never splits a longer one.
     store.labels = opts && Array.isArray(opts.mentionLabels) ? opts.mentionLabels.filter(function (x) { return typeof x === "string" && x.length > 1; })
       .sort(function (a, b) { return b.length - a.length; }) : null;
@@ -716,7 +754,7 @@
 
   return {
     renderMarkdown: renderMarkdown, escapeHtml: escapeHtml, attachmentUrl: attachmentUrl, mergeMessages: mergeMessages, applyReplyButtons: applyReplyButtons, composerKey: composerKey,
-    pollRemaining: pollRemaining,
+    pollRemaining: pollRemaining, taskRefCodes: taskRefCodes,
     
     FILE_LIMITS: FILE_LIMITS, fileLimits: fileLimits, fileRejection: fileRejection, formatSize: formatSize, checkFiles: checkFiles, attachmentsHtml: attachmentsHtml, isHtmlAttachment: isHtmlAttachment,
     nextDeliveryState: nextDeliveryState, applyDelivery: applyDelivery, deliveryHtml: deliveryHtml, isBusy: isBusy,

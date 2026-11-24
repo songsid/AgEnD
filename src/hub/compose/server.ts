@@ -2,7 +2,7 @@ import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js"
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "../room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "../agent-intro-model.js";
-import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "../agent-catalog-model.js";
+import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "../agent-catalog-model.js";
 import {HubPersonalRuntimeHost} from "../personal/runtime-host.js";
 import {HubPersonalOwnerHost} from "../personal/owner-host.js";
 import {HubPersonalTurns} from "../personal/turns.js";
@@ -106,6 +106,8 @@ export interface HubHttpDeps {
   roomInvitations?: import("../http/deps.js").HubHttpDeps["roomInvitations"];
   roomAgentRequests?: import("../http/deps.js").HubHttpDeps["roomAgentRequests"];
   roomAssistant?: import("../assistant/types.js").RoomAssistant;
+  /** M-3533 R1: offer rooms' offices (room-office-v1). */
+  roomOffice?: boolean;
   assistantAdmin?: import("../assistant/admin-types.js").RoomAssistantAdmin;
   /** Host-lifetime control; acquired only after the request proves configured-admin authority. */
   directorySettings?: () => Promise<import("../settings-directory-control.js").HubDirectorySettingsControl>;
@@ -541,6 +543,8 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
       const roomAssistant = options.roomAssistant?.();
       if (roomAssistant) teardown.add("the room assistant", () => roomAssistant.close());
       const http = httpEntry.createHubHttp({
+        // M-3533 R1: rooms' offices (the room page draws them; room-office-v1).
+        roomOffice: true,
         ...(personalHost?{personalAgents:(core:import("../http/core.js").HubCore)=>{
           const owner=new HubPersonalOwnerHost(core,personalHost.runtime);personalOwner=owner;
           return {owner,turns:new HubPersonalTurns(core,personalHost.runtime,owner)};
@@ -764,5 +768,5 @@ export type { HubPerson };
 
 /** The member-link features this Hub offers (exported so M-3125's negotiation test uses the real list, Fable #3925). */
 export function hubLinkCapabilities(http: { memberConnected?: unknown; memberReady?: unknown; agentCatalogV1?: true; exposureRequestsV1?: true; agentIntroV1?:true; features?: readonly string[] }): string[] {
-  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentIntroV1 ? [HUB_AGENT_INTRO_CAPABILITY] : []), ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY,...(http.features.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY)?[HUB_ROOM_ANSWER_STATUS_CAPABILITY]:[]), ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY,...(http.features.includes(HUB_ROOM_BRIEF_CAPABILITY)?[HUB_ROOM_BRIEF_CAPABILITY]:[])] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY,...(http.features.includes(HUB_ROOM_MEMBERS_CAPABILITY)?[HUB_ROOM_MEMBERS_CAPABILITY]:[])] : [])] : [])];
+  return [...HUB_OPTIONAL_CAPABILITIES, ...(http.agentIntroV1 ? [HUB_AGENT_INTRO_CAPABILITY] : []), ...(http.agentCatalogV1 ? [HUB_AGENT_CATALOG_CAPABILITY, ...(http.exposureRequestsV1 ? [HUB_EXPOSURE_REQUEST_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY] : [])] : []), ...(http.features?.includes("personal-agents-v1") ? [HUB_ROOM_MENTION_FEEDBACK_CAPABILITY] : []), ...(http.features?.includes(HUB_FLEET_UPDATE_CAPABILITY) ? [HUB_FLEET_UPDATE_CAPABILITY] : []), ...(http.memberConnected ? [HUB_FLEET_INFO_CAPABILITY] : []), ...(http.memberReady ? [HUB_RECOMMENDATION_CAPABILITY] : []), ...(http.features?.includes(HUB_ROOM_ASK_CAPABILITY) ? [HUB_ROOM_ASK_CAPABILITY,...(http.features.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY)?[HUB_ROOM_ANSWER_STATUS_CAPABILITY]:[]), ...(http.features.includes(HUB_ROOM_CONTEXT_CAPABILITY) ? [HUB_ROOM_CONTEXT_CAPABILITY,...(http.features.includes(HUB_ROOM_BRIEF_CAPABILITY)?[HUB_ROOM_BRIEF_CAPABILITY]:[])] : []), ...(http.features.includes(HUB_ROOM_POST_CAPABILITY) ? [HUB_ROOM_POST_CAPABILITY,...(http.features.includes(HUB_ROOM_MEMBERS_CAPABILITY)?[HUB_ROOM_MEMBERS_CAPABILITY]:[])] : [])] : [])];
 }

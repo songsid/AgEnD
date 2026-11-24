@@ -59,7 +59,6 @@ import yaml from "js-yaml";
 import { writeFileSync, renameSync, unlinkSync } from "node:fs";
 import { canonicalCliEntry } from "./cli-entry.js";
 import { dashboardLines, dashboardPort, webOnlyConfigFile } from "./next-steps.js";
-import { NEW_FLEET_DASHBOARD } from "./dashboard-permissions.js";
 import { BrowserBackendSignIns, type BrowserBackendSignInDeps } from "./browser-backend-signins.js";
 import { createStructuredSignInTransport } from "./structured-signin-transport.js";
 import { LOGIN_FLOWS, checkAuthStatus } from "./login-flows.js";
@@ -306,12 +305,11 @@ export class SetupHost {
   private log(message: string): void { (this.opts.log ?? console.log)(message); }
 
   /**
-   * The config the wizard edits: a file if there is one, otherwise a blank. A blank where there is no file yet is a new
-   * fleet, and says so (NEW_FLEET_DASHBOARD: the task board off until switched on); a file that does not load stays the
-   * plain blank it always was.
+   * The config the wizard edits: a file if there is one, otherwise a blank (a new fleet: nothing is written about the task
+   * board, which is on); a file that does not load stays the plain blank it always was.
    */
   private readConfig() {
-    if (!existsSync(this.opts.configPath)) return { defaults: { dashboard: { ...NEW_FLEET_DASHBOARD } }, instances: {} };
+    if (!existsSync(this.opts.configPath)) return { defaults: {}, instances: {} };
     try { return loadFleetConfig(this.opts.configPath); }
     catch { return { defaults: {}, instances: {} }; }
   }

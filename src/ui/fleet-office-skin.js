@@ -30,6 +30,8 @@
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
 // @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
+// @property {(ctx, area, env) => {x,y,w,h}} [areaTitleBox] zones (M-3539): where an area's name is written; name tags keep clear of it
+// @property {(ctx, area, env) => void} [drawAreaTitle]  zones (M-3539): the name written again over the people standing on it
 // @property {(ctx, desk, look, ms, env) => void} drawCharacter   the occupant in its pose at time `ms` (0: still); in
 //   zones `desk` is the character's box at its current position (its feet at desk.seat); walking, `look.heading` is
 //   the current step's { dx, dy }
@@ -498,10 +500,43 @@ function drawBackground(ctx, L, env) {
     for (let y = r.y; y < r.y + r.h; y += T) for (let x = r.x + (((y - r.y) / T) % 2) * T; x < r.x + r.w; x += 2 * T) px(ctx, x, y, Math.min(T, r.x + r.w - x), Math.min(T, r.y + r.h - y), c2);
     ctx.save();
     ctx.strokeStyle = pal.border; ctx.lineWidth = 2; ctx.strokeRect(r.x + 1, r.y + 1, r.w - 2, r.h - 2);
-    ctx.fillStyle = pal.text; ctx.font = "600 16px system-ui, sans-serif"; ctx.textBaseline = "top"; ctx.textAlign = "left";
-    ctx.fillText(fitText(ctx, env.labels.areas[a.name] || a.name, r.w - 60), r.x + 12, r.y + 10);
     ctx.restore();
+    writeAreaTitle(ctx, a, env);
   }
+}
+/** The studio's area name font: written at the top left of its area, under the people (drawBackground). */
+const AREA_TITLE_FONT = "600 16px system-ui, sans-serif";
+/**
+ * M-3539: the box an area's name takes, in logical units: { x, y, w, h, text } — what drawBackground writes, the space
+ * the name tags keep clear of, and where drawAreaTitle writes it again over the people when one stands on it.
+ */
+export function areaTitleBox(ctx, area, env) {
+  const r = area.rect;
+  ctx.save();
+  ctx.font = AREA_TITLE_FONT;
+  const text = fitText(ctx, env.labels.areas[area.name] || area.name, r.w - 60);
+  const w = Math.ceil(ctx.measureText ? ctx.measureText(text).width : text.length * 9);
+  ctx.restore();
+  return { x: r.x + 12, y: r.y + 10, w, h: 18, text };
+}
+function writeAreaTitle(ctx, area, env) {
+  const b = areaTitleBox(ctx, area, env);
+  ctx.save();
+  ctx.fillStyle = env.pal.text; ctx.font = AREA_TITLE_FONT; ctx.textBaseline = "top"; ctx.textAlign = "left";
+  ctx.fillText(b.text, b.x, b.y);
+  ctx.restore();
+}
+/**
+ * M-3539: an area's name written again over the people, on a plate of the page's surface (a person standing at the top
+ * of a crowded area covered 休息區): called by the scene only for a name a figure stands on.
+ */
+function drawAreaTitle(ctx, area, env) {
+  const b = areaTitleBox(ctx, area, env);
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  ctx.fillStyle = env.pal.surface; ctx.fillRect(b.x - 4, b.y - 2, b.w + 8, b.h + 2);
+  ctx.restore();
+  writeAreaTitle(ctx, area, env);
 }
 function drawFurniture(ctx, f, active, ms, env) {
   const x = f.x, y = f.y;
@@ -550,7 +585,39 @@ function drawFurniture(ctx, f, active, ms, env) {
 /** @type {OfficeSkin} */
 /** #2540: the studio's matte is its hall floor (the scene's edge), so the panel around the scene reads as more of it. */
 const studioMatte = (env) => (ZONE_FLOOR[env.mode] || ZONE_FLOOR.dark).hall;
-export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, matte: studioMatte };
+export const studioSkin = { ...pixelSkin, id: "studio", pack: STUDIO_PACK, drawBackground, drawFurniture, areaTitleBox, drawAreaTitle, matte: studioMatte };
+
+// ── M-3533 R1b: the studio for a large Hub room — the same canvas, desks and spacing; a big room runs out of seats to
+// rest in, not desks (most agents are idle most of the time), so its lounge is as large as the work area beside it, a
+// 6×5 grid a full name tag apart (TAG_TEXT_W + its padding: 94), and help and nap a strip below both. Drawn
+// procedurally like the studio; the lounge keeps no furniture of its own, so nothing sits against its seats. ──
+const STUDIO_LARGE_AREAS = {
+  desks: { name: "desks", rect: { x: 24, y: 64, w: 632, h: 448 }, seats: grid([104, 248, 392, 536], [190, 320, 450]) },
+  lounge: { name: "lounge", rect: { x: 696, y: 64, w: 560, h: 448 }, seats: grid([739, 833, 927, 1021, 1115, 1209], [146, 232, 318, 404, 490]) },
+  alert: { name: "alert", rect: { x: 24, y: 532, w: 632, h: 172 }, seats: grid([96, 216, 336, 456, 576], [606, 680]).slice(0, 9) },
+  nap: { name: "nap", rect: { x: 696, y: 532, w: 560, h: 172 }, seats: grid([800, 976, 1152], [606, 680]) },
+};
+const STUDIO_LARGE_FURNITURE = [
+  { id: "board", shape: "board", x: 340, y: 100, depth: 5 },
+  { id: "rack-work", shape: "rack", tone: "ok", x: 610, y: 160, depth: 6, activeWhen: ["working"] },
+  ...STUDIO_LARGE_AREAS.desks.seats.map((s, i) => ({ id: `desk-${i}`, shape: "desk", x: s.x, y: s.y, depth: 1100 })),
+  { id: "rack-alert", shape: "rack", tone: "danger", x: 630, y: 620, depth: 900, activeWhen: ["needs", "stuck", "crashed"] },
+  ...STUDIO_LARGE_AREAS.nap.seats.map((s, i) => ({ id: `bag-${i}`, shape: "beanbag", x: s.x, y: s.y + 4, depth: 990 })),
+].sort((a, b) => a.depth - b.depth);
+export const STUDIO_LARGE_PACK = {
+  ...STUDIO_PACK, id: "studio-large", areas: STUDIO_LARGE_AREAS, furniture: STUDIO_LARGE_FURNITURE, ...studioGraph(STUDIO_LARGE_AREAS),
+};
+export const studioLargeSkin = { ...studioSkin, id: "studio-large", pack: STUDIO_LARGE_PACK };
+/**
+ * A built-in style's seats, from its layout (never typed): `total` every seat, `rest` the seats of the area its idle
+ * people go to (its pack's stateZones.idle) — what a large room runs out of. null for a style that has no areas.
+ */
+export function styleSeats(id) {
+  const pack = SKINS.get(id)?.pack;
+  if (!pack || !pack.areas) return null;
+  const areas = Object.values(pack.areas), idle = pack.stateZones?.idle;
+  return { total: areas.reduce((n, a) => n + a.seats.length, 0), rest: (pack.areas[idle]?.seats || []).length };
+}
 
 // ── Skin packs ──
 
@@ -860,8 +927,11 @@ const PICTURES = new Map([COZY_PACK, GUILD_PACK, SCHOOL_PACK].map((pack) => [pac
 export const PICTURE_SKINS = [...PICTURES.keys()];
 
 /** The skins built into this page; an uploaded pack is loaded by loadPackSkin. */
-export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+export const SKINS = new Map([["pixel", pixelSkin], ["studio", studioSkin], ["studio-large", studioLargeSkin], ...[...PICTURES].map(([id, p]) => [id, p.bare])]);
+/** The styles the Fleet's own office offers (M-3533: "studio-large" is a Hub room's, drawable here, not offered there). */
 export const BUILT_IN_SKINS = ["pixel", "studio", ...PICTURE_SKINS];
+/** M-3533 R1b: the styles a Hub room's office offers, largest first (the zones styles: no desks-per-team layout). */
+export const ROOM_STYLES = ["studio-large", "studio", ...PICTURE_SKINS];
 /**
  * #2631/#2947: a picture-backed built-in's picture, loaded once; the skin drawn from it then takes the bare one's place
  * in SKINS (skinFor). The skin, or null while it cannot load (the bare one stays; tried again next time); null for an id

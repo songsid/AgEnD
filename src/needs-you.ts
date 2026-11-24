@@ -78,7 +78,7 @@ export type NeedsYouReason =
   | "delivery_uncertain" | "delivery_failed"                        // delivery
   | "missed_offline"                                                // missed while the fleet was down
   | "task_review" | "task_blocked" | "task_stalled" | "backend_signin" | "config_invalid" | "config_fallback"
-  | "hub_proposal" | "hub_execution_hold" | "hub_unavailable"
+  | "hub_proposal" | "hub_execution_hold" | "hub_unavailable" | "hub_share_lapsed"
   | "tmux_hold";                                                    // M-2457: the bundled tmux's server/window held
 
 /** S-51: the Hub (or this fleet's Hub membership) is held: why, as the composition's reason code and localized text. */
@@ -90,6 +90,11 @@ export interface RuntimeUpdateAttentionInput { key: string; detail: string; sinc
 /** M-2457 §6: a tmux server (instance null: the whole fleet) or an old window (that instance) held, with why. */
 export interface TmuxHoldInput { instance: string | null; key: string; detail: string; since: number }
 
+/**
+ * M-3543: a shared agent whose Hub share lapsed — its backend or folder changed since it was shared (#3147). `key` is the
+ * agent's incarnation: one item per change; it goes once the person shares the agent again.
+ */
+export interface HubShareLapseInput { agent: string; key: string; since: number }
 export interface HubExecutionAttentionInput {
   id: string; kind: "proposal" | "hold"; agent: string; messageId: string; exposureId: string; since: number;
   proposal?: NonNullable<NeedsYouItem["hubProposal"]>;
@@ -196,6 +201,7 @@ export interface NeedsYouInputs {
   configIssues?: Array<ConfigIssue & { detail: string; owner?: string }>;
   hubExecution?: HubExecutionAttentionInput[];
   hubHolds?: HubHoldInput[];
+  hubShareLapses?: HubShareLapseInput[];
   runtimeUpdates?: RuntimeUpdateAttentionInput[];
   tmuxHolds?: TmuxHoldInput[];
   missedOffline?: MissedOfflineInput[];
@@ -353,6 +359,11 @@ export function deriveNeedsYou(inputs: NeedsYouInputs): NeedsYouItem[] {
     id: `hub:${attention.id}`, type: "hub", instance: attention.agent,
     reason: attention.kind === "proposal" ? "hub_proposal" : "hub_execution_hold", detail: "", since: attention.since,
     ...(attention.proposal ? { hubProposal: attention.proposal } : {}),
+  });
+
+  // M-3543: a shared agent's Hub share lapsed with its backend/folder change; under that agent, until it is shared again.
+  for (const lapse of inputs.hubShareLapses ?? []) items.push({
+    id: `hub-share-lapsed:${lapse.agent}:${lapse.key}`, type: "hub", instance: lapse.agent, reason: "hub_share_lapsed", detail: "", since: lapse.since,
   });
 
   // Task board cards waiting for the person (#2246 step 3), under their assignee.

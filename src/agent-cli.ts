@@ -85,6 +85,111 @@ function die(msg: string): never {
   process.exit(1);
 }
 
+/**
+ * `agend-agent task …`: the `task` tool's actions and fields, as commands — the same arguments, so the fleet judges
+ * them by the same rules as a tool call (who may edit a card, `version` conflicts, one card in progress, unsupported fields refused
+ * by name: task-board-tool.ts). Every field the tool has is a flag here, from ONE table, so a field cannot be left out for want of
+ * a switch case; what an action may take is the fleet's to say (ACTION_FIELDS), not repeated here.
+ *
+ * A flag takes its value as the next word or as `--flag=value`; `--` ends the flags (a title or comment that starts with `--name`).
+ * Words that are not flags keep the positions they always had (`create "title" [description] [priority] [assignee]`, …).
+ */
+const TASK_TEXT_FLAGS: Readonly<Record<string, string>> = {
+  "--title": "title", "--description": "description", "--priority": "priority", "--assignee": "assignee", "--project": "project",
+  "--parent": "parent", "--scope": "scope", "--context": "context", "--size": "size", "--dispatcher": "dispatcher", "--status": "status",
+  "--result": "result", "--state": "state", "--log": "log", "--comment": "comment", "--reason": "reason", "--watcher": "watcher",
+  "--name": "name", "--filter-assignee": "filter_assignee", "--cursor": "cursor",
+};
+/** Repeatable: every occurrence is one more entry (`--acceptance` one checklist item each; `--depends-on` also takes a comma list). */
+const TASK_LIST_FLAGS: Readonly<Record<string, string>> = { "--acceptance": "acceptance", "--depends-on": "depends_on" };
+const TASK_INT_FLAGS: Readonly<Record<string, string>> = { "--version": "version", "--limit": "limit" };
+/** Repeatable whole numbers, comma lists too (`--check 1,3 --check 4`). */
+const TASK_INTS_FLAGS: Readonly<Record<string, string>> = { "--check": "check", "--uncheck": "uncheck" };
+const TASK_BOOL_FLAGS: Readonly<Record<string, [string, boolean]>> = {
+  "--detail": ["detail", true], "--verbose": ["verbose", true], "--stale": ["stale", true],
+  "--needs-review": ["needs_review", true], "--no-needs-review": ["needs_review", false],
+};
+const TASK_PRIORITIES = ["low", "normal", "high", "urgent"];
+
+function taskWords(words: string[]): { positional: string[]; flags: Record<string, unknown> } {
+  const positional: string[] = [], flags: Record<string, unknown> = {};
+  const whole = (flag: string, text: string): number => { if (!/^-?\d+$/.test(text.trim())) die(`${flag} takes a whole number, got "${text}"`); return Number(text); };
+  for (let i = 0; i < words.length; i++) {
+    const word = words[i]!;
+    if (word === "--") { positional.push(...words.slice(i + 1)); break; }
+    // Only a word shaped like an option is one (`--name`, `--name=value`): a text that has always been a positional (`---`, `-- note`,
+    // `--Draft v2`) stays one. A word of that shape that is no option is a mistake, said at once, before any request.
+    if (!/^--[a-z][a-z0-9-]*(=|$)/.test(word)) { positional.push(word); continue; }
+    const eq = word.indexOf("="), flag = eq > 0 ? word.slice(0, eq) : word;
+    if (Object.hasOwn(TASK_BOOL_FLAGS, flag)) {
+      if (eq > 0) die(`${flag} takes no value`);
+      const [key, value] = TASK_BOOL_FLAGS[flag]!; flags[key] = value; continue;
+    }
+    const text = Object.hasOwn(TASK_TEXT_FLAGS, flag), list = Object.hasOwn(TASK_LIST_FLAGS, flag), int = Object.hasOwn(TASK_INT_FLAGS, flag), ints = Object.hasOwn(TASK_INTS_FLAGS, flag);
+    if (!text && !list && !int && !ints) die(`Unknown task option: ${flag} (a text that starts with -- goes after a lone --)`);
+    let value: string | undefined;
+    if (eq > 0) value = word.slice(eq + 1);
+    else { value = words[++i]; if (value === undefined) die(`Missing value for ${flag}`); }
+    if (text) flags[TASK_TEXT_FLAGS[flag]!] = value;
+    else if (list) {
+      const key = TASK_LIST_FLAGS[flag]!;
+      ((flags[key] ??= []) as string[]).push(...(flag === "--depends-on" ? value.split(",").map(x => x.trim()).filter(Boolean) : [value]));
+    } else if (int) flags[TASK_INT_FLAGS[flag]!] = whole(flag, value);
+    else {
+      const key = TASK_INTS_FLAGS[flag]!;
+      ((flags[key] ??= []) as number[]).push(...value.split(",").map(x => whole(flag, x)));
+    }
+  }
+  if (typeof flags.priority === "string" && !TASK_PRIORITIES.includes(flags.priority)) die(`--priority is one of ${TASK_PRIORITIES.join(", ")}`);
+  if (typeof flags.size === "string") {
+    flags.size = flags.size.toUpperCase();
+    if (!["S", "M", "L"].includes(flags.size as string)) die("--size is S, M or L");
+  }
+  return { positional, flags };
+}
+
+function taskArgs(words: string[]): Record<string, unknown> {
+  const { positional: rest, flags } = taskWords(words);
+  // `create-project` / `move-project` are the tool's create_project / move_project.
+  const action = rest[0]?.replaceAll("-", "_");
+  let args: Record<string, unknown>;
+  switch (action) {
+    case "create": args = { action, title: rest[1] ?? "", description: rest[2], priority: rest[3], assignee: rest[4] }; break;
+    case "list": {
+      // list [filter_assignee] [filter_status[,filter_status…]] [verbose]; --project, --parent, --stale, --detail, --limit, --cursor
+      // e.g. `task list "" "done,cancelled"` or `task list "" "" true`
+      const rawStatus = rest[2];
+      const statusArg = rawStatus
+        ? rawStatus.includes(",") ? rawStatus.split(",").map(s => s.trim()).filter(Boolean)
+          : rawStatus.trim() || undefined
+        : undefined;
+      args = { action, filter_assignee: rest[1] || undefined, filter_status: statusArg, verbose: rest[3] === "true" || undefined };
+      break;
+    }
+    case "get": case "claim": args = { action, id: rest[1] ?? "" }; break;
+    case "done": args = { action, id: rest[1] ?? "", result: rest[2] }; break;
+    // update ID [STATUS [priority]] plus any field as a flag (--title, --log, --comment, --check 1, --version 4, …).
+    case "update": args = { action, id: rest[1] ?? "", status: rest[2], priority: rest[3] }; break;
+    // The task board (step 2): your work, a move with its reason or result, a comment, the projects.
+    case "mine": case "projects": args = { action }; break;
+    // move ID STATUS ["text"]: the text is the result for review/done, the reason otherwise (blocked, cancelled…).
+    case "move": {
+      const finishing = rest[2] === "review" || rest[2] === "done";
+      args = { action, id: rest[1] ?? "", to: rest[2], ...(finishing ? { result: rest[3] } : { reason: rest[3] }) };
+      break;
+    }
+    case "comment": args = { action: "update", id: rest[1] ?? "", comment: rest[2] }; break;
+    case "create_project": args = { action, name: rest[1], description: rest[2] }; break;
+    // move-project PROJECT ID [ID…]: PROJECT is a project's id (what `projects` lists) or `none`.
+    case "move_project": args = { action, project: rest[1], ids: rest.slice(2) }; break;
+    // watch ID [WATCHER]: you by default; another instance only on a card you may edit.
+    case "watch": case "unwatch": args = { action, id: rest[1] ?? "", watcher: rest[2] }; break;
+    default: args = { action: rest[0] ?? "" }; break;
+  }
+  // A flag is the field named: it wins over the word in that position, and anything the action does not take is refused by the fleet by name.
+  return Object.assign(args, flags);
+}
+
 async function main(): Promise<void> {
   const [,, first, ...given] = process.argv;
   if (!first) die("Usage: agend-agent <op> [args...]");
@@ -109,7 +214,7 @@ async function main(): Promise<void> {
   }
   if (!INSTANCE) die("AGEND_INSTANCE_NAME not set");
 
-  const listRead = ["schedule-list", "decision-list", "decision-get"].includes(op) || op === "task" && ["list", "get"].includes(rest[0] ?? "");
+  const listRead = ["schedule-list", "decision-list", "decision-get"].includes(op);   // `task` has its own flags (taskArgs)
   const listFlags: Record<string, unknown> = {};
   if (listRead) {
     for (let i = 0; i < rest.length; i++) {
@@ -366,38 +471,7 @@ async function main(): Promise<void> {
     }
 
     // Task board
-    case "task": {
-      const action = rest[0];
-      switch (action) {
-        case "create": args = { action, title: rest[1] ?? "", description: rest[2], priority: rest[3], assignee: rest[4] }; break;
-        case "list": {
-          // list [filter_assignee] [filter_status[,filter_status…]] [verbose]
-          // e.g. `task list "" "done,cancelled"` or `task list "" "" true`
-          const rawStatus = rest[2];
-          const statusArg = rawStatus
-            ? rawStatus.includes(",") ? rawStatus.split(",").map(s => s.trim()).filter(Boolean)
-              : rawStatus.trim() || undefined
-            : undefined;
-          args = { action, filter_assignee: rest[1] || undefined, filter_status: statusArg, verbose: rest[3] === "true" || undefined };
-          break;
-        }
-        case "get": args = { action, id: rest[1] ?? "" }; break;
-        case "claim": args = { action, id: rest[1] ?? "" }; break;
-        case "done": args = { action, id: rest[1] ?? "", result: rest[2] }; break;
-        case "update": args = { action, id: rest[1] ?? "", status: rest[2], priority: rest[3] }; break;
-        // The task board (step 2): your work, a move with its reason or result, a comment, the projects.
-        case "mine": case "projects": args = { action }; break;
-        // move ID STATUS ["text"]: the text is the result for review/done, the reason otherwise (blocked, cancelled…).
-        case "move": {
-          const finishing = rest[2] === "review" || rest[2] === "done";
-          args = { action, id: rest[1] ?? "", to: rest[2], ...(finishing ? { result: rest[3] } : { reason: rest[3] }) };
-          break;
-        }
-        case "comment": args = { action: "update", id: rest[1] ?? "", comment: rest[2] }; break;
-        default: args = { action: action ?? "" }; break;
-      }
-      break;
-    }
+    case "task": args = taskArgs(rest); break;
 
     // Decisions
     // scope: project | team | team:<name> | fleet (omitted: your team when you are in one, else project).

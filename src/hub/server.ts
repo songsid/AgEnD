@@ -2,7 +2,7 @@ import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
-import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
+import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Dedicated TLS machine listener. No Hub browser routes or ordinary fleet authority lives here. */
@@ -36,13 +36,15 @@ export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: 
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 /** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
 export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
-  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
 }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   introOffered?: boolean;
   briefOffered?:boolean;
   catalogOffered?: boolean;
   requestsOffered?: boolean;
+  /** M-3543: agent-catalog-lapse-v1 offered to this member (its catalog rows may say `lapsed`). */
+  lapseOffered?: boolean;
   /** The credential binding the link authenticated with (#3429 B: what a relocation ack's proof is rechecked against). */
   binding: { generation: number; revocationVersion: number } }
 export interface HubServerOptions {
@@ -177,6 +179,7 @@ export class HubServer {
       connection.introOffered = features.has("welcome-caps-v1") && offered.includes(HUB_AGENT_INTRO_CAPABILITY);
       connection.catalogOffered = features.has("welcome-caps-v1") && offered.includes(HUB_AGENT_CATALOG_CAPABILITY);
       connection.requestsOffered = connection.catalogOffered && offered.includes(HUB_EXPOSURE_REQUEST_CAPABILITY);
+      connection.lapseOffered = connection.requestsOffered && offered.includes(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);
       if (features.has("welcome-caps-v1") && offered.includes(HUB_FLEET_INFO_CAPABILITY)) features.add(HUB_FLEET_INFO_CAPABILITY);
       if (features.has("welcome-caps-v1") && features.has(HUB_ROOM_ASK_CAPABILITY) && offered.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
       if(features.has(HUB_ROOM_ASK_CAPABILITY)&&features.has("welcome-caps-v1")&&offered.includes(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))features.add(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY);
@@ -200,6 +203,11 @@ export class HubServer {
         if (!connection.requestsOffered) throw new HubProtocolError("incompatible");
         (context.features as Set<string>).add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       } else (context.features as Set<string>).delete(HUB_EXPOSURE_REQUEST_CAPABILITY);
+      // M-3543: a lapsed row only from a member this Hub offered the lapse to; that report is its opt-in.
+      if (frame.payload.agents.some(row => row.exposure?.lapsed)) {
+        if (!connection.lapseOffered || !frame.payload.requests) throw new HubProtocolError("incompatible");
+        (context.features as Set<string>).add(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);
+      }
     }
     if(frame.type==="room.answer"&&frame.payload.notAnswered&&!context.features.has(HUB_ROOM_ANSWER_STATUS_CAPABILITY))throw new HubProtocolError("incompatible");
     if(frame.type==="room.members"&&frame.payload.v2&&!context.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");

@@ -74,6 +74,18 @@ export function HubMyAgents({ client, scope, shared = [], policy = false, person
     const response = r.ok ? r : definite ? { state: "complete", result: { results: op.rows.map(row => ({ ...(row.instance ? { instance: row.instance } : { exposureId: row.id }), ok: false, code: r.code === "conflict" ? "stale-list" : r.code === "denied" ? "not-allowed" : "unavailable" })) } } : op.response;
     persist(currentOps.current.map(x => x.input.idempotencyKey === op.input.idempotencyKey ? { ...x, response } : x));
   };
+  // M-3543: Share again of a lapsed agent (shared, but its backend/folder changed since): one share request for it, which
+  // the Fleet answers with a republish at the next revision; the Hub keeps the people who may ask it.
+  const shareAgain = async (row, fleet) => {
+    if (writing.current) return; writing.current = true; setBusy(true); const generation = life.current;
+    try {
+      const op = { input: { idempotencyKey: crypto.randomUUID(), fleetId: fleet.id, catalogRevision: fleet.catalog.revision, share: [row.instance], stop: [] }, at: Date.now(),
+        rows: [{ instance: row.instance, name: row.displayName, before: { id: row.current.id, revision: row.current.revision } }], response: null };
+      persist([...currentOps.current.slice(-24), op]);
+      await send(op, generation);
+      await load(generation);
+    } finally { if (live(generation)) { writing.current = false; setBusy(false); } }
+  };
   const refresh = async () => {
     if (writing.current) return; writing.current = true; setBusy(true); const generation = life.current;
     try {
@@ -119,7 +131,11 @@ export function HubMyAgents({ client, scope, shared = [], policy = false, person
             <span class="hub-row-text">${row.current ? html`<a href=${`/ui/hub/exposures?agent=${encodeURIComponent(row.current.id)}`} aria-label=${ms("details", row.displayName)}><strong>${row.displayName}</strong></a>` : html`<strong>${row.displayName}</strong>`}
               ${row.kind === "classic-room" ? html`<small class="tag">${ms("classic")}</small>` : null}<small class="note">${reason && reason !== "offline" ? ms(reason) : row.general ? ms("general") : row.description}</small>
               ${row.current?.intro ? html`<small class="note">${row.current.intro}</small>` : null}
-              ${row.shared ? html`<small class="note">${ms(row.current.state !== "published" ? "paused" : "shared")} · ${summary(row.current)}</small>` : null}
+              ${row.shared ? (row.exposure?.lapsed === true && row.instance
+                ? html`<small class="note hub-agent-lapsed-status">${ms("needsReshare")} · ${summary(row.current)}${lang() === "zh-TW" ? "" : " "}${ms("kept")}</small>`
+                : html`<small class="note">${ms(row.current.state !== "published" ? "paused" : "shared")} · ${summary(row.current)}</small>`) : null}
+              ${row.shared && row.exposure?.lapsed === true && row.instance ? html`<small class="note hub-agent-lapsed" role="status">${ms("lapsed")}</small>
+                <button type="button" class="btn btn-sm hub-agent-share-again" data-share-again=${row.instance} disabled=${busy || !!waiting.length} onClick=${() => shareAgain(row, fleet)}>${ms("shareAgain")}</button>` : null}
               ${status ? html`<small class=${status.state === "refused" ? "err" : "note"} role="status">${status.state === "uncertain" ? ms("uncertain") : status.state === "refused" ? status.code === "stale-list" ? ms("changed") : ms("refused", ms(({ "not-allowed": "denied", "switched-off": "off", "limit": "limit", "not-shareable": "unavailable" })[status.code] || "unavailable")) : ms(status.instance ? "sharing" : "stopping")}</small>` : null}</span>
               ${pausable && row.shared && row.current.state === "published" && typeof client.ownerSharing === "function" ? html`<button type="button" class="btn btn-sm hub-agent-pause" disabled=${busy} onClick=${() => pause([{ ...row, fleet }])}>${ms("pauseOne")}</button>` : null}</div>
             ${row.kind === "classic-room" && tick && !row.shared ? html`<p class="note hub-classic-disclosure">${ms("classicHint")}</p>` : null}</div>`; })}</div></details>`;

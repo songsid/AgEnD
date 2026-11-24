@@ -79,6 +79,74 @@ export function mentionsIn(text, detail) {
   return [...new Set(out)];
 }
 
+/**
+ * M-3533 (#4355 review): who a mention put in the box stands for — the office card's "@ it" and the members panel's — is
+ * that member, not every member of its name. A binding is one mention where it was put: { name, id, start } (its `@name`
+ * at `start`). Edits move or retire it (shiftBindings); only one still whole at its place binds (intactBindings).
+ */
+const tokenAt = (s, b) => s.startsWith(`@${b.name}`, b.start) && !/[\w-]/.test(s.charAt(b.start + 1 + b.name.length));
+/**
+ * The edit that turned `prev` into `next`, from the box's selection when it began ({ start, end }) and its caret after
+ * (`caret`): prev[a, b) became next[a, caret) — typing, a paste, a cut, Backspace or Delete, an IME's composed text — or
+ * null when those do not account for the change (the change is then not the box's own: see shiftBindings).
+ */
+export function editRange(prev, next, sel, caret) {
+  const a0 = String(prev || ""), b0 = String(next || "");
+  if (!sel || !Number.isInteger(sel.start) || !Number.isInteger(sel.end) || !Number.isInteger(caret)) return null;
+  const a = Math.min(sel.start, caret), b = caret - (b0.length - a0.length);
+  if (a < 0 || b < a || b > a0.length || caret > b0.length) return null;
+  return a0.slice(0, a) === b0.slice(0, a) && a0.slice(b) === b0.slice(caret) ? { a, b, c: caret } : null;
+}
+/**
+ * The bindings after the text changed from `prev` to `next` by `range` (editRange: prev[a, b) became next[a, c)): a
+ * mention wholly before the edit stays, one wholly after it moves by the change in length, one the edit touches is gone
+ * (deleted or edited: a later pick or a name retyped by hand cannot revive it). With no range, the edit could be anywhere
+ * the two texts allow (two identical mentions: either one) — every binding it could have touched is gone, none is moved
+ * onto another member's mention.
+ */
+export function shiftBindings(prev, next, bindings = [], range = null) {
+  const a0 = String(prev || ""), b0 = String(next || ""), list = Array.isArray(bindings) ? bindings : [];
+  if (a0 === b0) return list;
+  const d = b0.length - a0.length;
+  let lo, hi;
+  if (range) { lo = range.a; hi = range.b; } else {
+    // The earliest and the latest the edit can be: the longest common start first, and the longest common end first.
+    let p = 0; while (p < a0.length && p < b0.length && a0[p] === b0[p]) p++;
+    let q = 0; while (q < a0.length - p && q < b0.length - p && a0[a0.length - 1 - q] === b0[b0.length - 1 - q]) q++;
+    let q2 = 0; while (q2 < a0.length && q2 < b0.length && a0[a0.length - 1 - q2] === b0[b0.length - 1 - q2]) q2++;
+    let p2 = 0; while (p2 < a0.length - q2 && p2 < b0.length - q2 && a0[p2] === b0[p2]) p2++;
+    lo = Math.min(p, p2); hi = Math.max(a0.length - q, a0.length - q2);
+  }
+  return list.flatMap((x) => {
+    const end = x.start + 1 + x.name.length;
+    if (end <= lo) return [x];
+    if (x.start >= hi) return [{ ...x, start: x.start + d }];
+    return [];
+  });
+}
+/** The bindings still whole where they were put in `text`. */
+export const intactBindings = (text, bindings = []) => (Array.isArray(bindings) ? bindings : [])
+  .filter((b) => b && typeof b.name === "string" && typeof b.id === "string" && Number.isInteger(b.start) && tokenAt(String(text || ""), b));
+/**
+ * The mentions `text` sends: as read (mentionsIn), except that a name whose every `@name` is a bound mention sends the
+ * members bound — two agents called Notes, picked one each, send those two; one picked and one typed by hand reads as
+ * typed (both).
+ */
+export function boundMentions(text, detail, bindings = []) {
+  const s = String(text || ""), out = mentionsIn(s, detail), live = intactBindings(s, bindings);
+  if (!live.length) return out;
+  const byName = new Map();
+  for (const b of live) { const k = b.name.toLocaleLowerCase("en-US"); byName.set(k, [...(byName.get(k) || []), b]); }
+  let result = out;
+  for (const [k, list] of byName) {
+    const name = list[0].name, said = (s.match(atName(name, "g")) || []).length;
+    if (list.length < said) continue;
+    const same = new Set(agentsOf(detail).filter((a) => String(a.name).toLocaleLowerCase("en-US") === k).map((a) => a.id));
+    result = [...result.filter((id) => !same.has(id)), ...list.map((b) => b.id)];
+  }
+  return [...new Set(result)];
+}
+
 // M-3308: the paste helpers live with the Hub's files (hub-attachments.js), shared with the 1:1 question's composer (M-3311).
 export { LONG_PASTE_CHARS, pastedFile } from "./hub-attachments.js";
 
@@ -105,6 +173,9 @@ export function refusalText(r) {
  */
 export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
+  // M-3533: the mentions put in the box for a member, where they were put; each edit moves or retires them by its own
+  // range (editRange: the selection when it began, the caret after), never by guessing from the text.
+  const bindings = useRef([]), edit = useRef({ input: null, key: null, ime: null, composing: false });
   const own = useRef(null), input = inputRef || own;
   const [caret, setCaret] = useState(0);
   const at = mentionAt(value, caret), options = at ? mentionOptions(detail, at.query) : [];
@@ -113,10 +184,36 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
   const short = useShortPlaceholder();
   // M-3117: the Fleet chat's box takes the focus when its conversation opens (panel-chat.js Composer): a room's too.
   useEffect(() => { if (!closed) input.current?.focus(); }, [room.id || "", closed]);
-  // 「在這裡 @ 它」 from the members panel: the mention goes into the box, after what is there.
-  if (insertRef) insertRef.current = (text) => { setValue((v) => `${v && !/\s$/.test(v) ? `${v} ` : v}${text} `); setTimeout(() => input.current?.focus(), 0); };
+  // 「在這裡 @ 它」 from the members panel or the office card: the mention goes into the box, after what is there, bound to
+  // the member it was picked for (`bind`: { name, id }; see boundMentions).
+  if (insertRef) insertRef.current = (text, bind = null) => {
+    setValue((v) => {
+      const base = v && !/\s$/.test(v) ? `${v} ` : v;
+      // Appended after everything: no mention already in the box moves; this one is bound where it is put.
+      if (bind) bindings.current = [...bindings.current, { ...bind, start: base.length + text.indexOf(`@${bind.name}`) }];
+      return `${base}${text} `;
+    });
+    setTimeout(() => input.current?.focus(), 0);
+  };
+  // Where the box's selection was when this edit began: the edit's own beforeinput (each one, so a caret moved since is
+  // never stale); an IME's, where its composition started (kept to its end: the text arrives once, at compositionend);
+  // the latest key's (each keydown, an arrow too, replaces it) only where no beforeinput came. Spent by each edit.
+  useEffect(() => {
+    const el = input.current;
+    if (!el?.addEventListener) return undefined;
+    const at = () => ({ start: el.selectionStart, end: el.selectionEnd });
+    const on = {
+      beforeinput: () => { if (!edit.current.composing) edit.current.input = at(); },
+      keydown: () => { edit.current.key = at(); },
+      compositionstart: () => { edit.current.composing = true; edit.current.ime = at(); },
+      compositionend: () => { edit.current.composing = false; },
+    };
+    for (const [k, fn] of Object.entries(on)) el.addEventListener(k, fn);
+    return () => { for (const [k, fn] of Object.entries(on)) el.removeEventListener(k, fn); };
+  }, [input.current]);
   const complete = (o) => {
     const next = `${value.slice(0, at.start)}${o.label} ${value.slice(caret)}`;
+    bindings.current = shiftBindings(value, next, bindings.current, { a: at.start, b: caret, c: at.start + o.label.length + 1 });
     setValue(next); setPick(0);
     setTimeout(() => { const el = input.current; if (el) { const n = at.start + o.label.length + 1; el.focus(); try { el.setSelectionRange(n, n); } catch { /* not a text field */ } setCaret(n); } }, 0);
   };
@@ -124,9 +221,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     // M-3125: `canSendEmpty` — files are ready to go, so a post may be the files alone (the server takes it).
     const text = value.trim(); if ((!text && !canSendEmpty) || busy || closed) return;
     setBusy(true); setMsg(null);
-    const r = await store.send(text, { mentions: mentionsIn(text, detail), ...(reply ? { replyTo: reply.roomMessage } : {}) });
+    const r = await store.send(text, { mentions: boundMentions(value, detail, bindings.current), ...(reply ? { replyTo: reply.roomMessage } : {}) });
     setBusy(false);
-    if (r.ok) { setValue(""); onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
+    if (r.ok) { setValue(""); bindings.current = []; onReply(null); } else setMsg({ text: refusalText(r), retry: !REFUSALS[r.code] });
   };
   const onKeyDown = (e) => {
     if (palette && (e.key === "ArrowDown" || e.key === "ArrowUp")) { e.preventDefault(); setPick((i) => (i + (e.key === "ArrowDown" ? 1 : palette.length - 1)) % palette.length); return; }
@@ -135,7 +232,13 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     // Enter sends, Shift+Enter is a new line — the Fleet chat's own rule (and a phone's).
     if (globalThis.AgendChatRender?.composerKey(e, { touch: touchScreen() }) === "send") { e.preventDefault(); void send(); }
   };
-  const track = (v) => { setValue(v); setMsg(null); setCaret(input.current ? input.current.selectionStart ?? v.length : v.length); };
+  const track = (v) => {
+    const c = input.current ? input.current.selectionStart ?? v.length : v.length;
+    const e = edit.current, began = e.ime || e.input || e.key;
+    bindings.current = shiftBindings(value, v, bindings.current, editRange(value, v, began, c));
+    edit.current = { input: null, key: null, ime: null, composing: e.composing };
+    setValue(v); setMsg(null); setCaret(c);
+  };
   // M-3308 (the user: a screenshot pasted with Ctrl+V did nothing in a room): the Fleet chat's paste, through the room's own
   // Attach and its file rules (hub-attachments.js pasteToAttach). A room that takes no files keeps the text (as before).
   const onPaste = (e) => { if (!closed) pasteToAttach(e, attach); };

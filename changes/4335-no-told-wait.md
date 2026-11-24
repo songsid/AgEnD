@@ -1,0 +1,4 @@
+---
+section: Changed
+---
+- **An agent's change to a card is told as quickly as a person's.** When an agent finished a card, sent it for confirmation, sent it back, was blocked or handed it over, the dispatcher, watchers and leader were told up to two minutes later — and not at all if that agent had also sent them a message naming the card (#2785, #2801). A message and the board's notice are two different things, so that rule is gone: the `[Task board]` notice goes out about 10 seconds after the change, as it does for a person's change, whether or not the agent also messaged anyone. The same holds for assignments, send-backs, answers, comments and mentions. An agent that wants to tell someone something @mentions them in a comment. What stays: changes within 10 seconds are one notice, a notice still waiting is withdrawn when its card changed again, the loop guards, and nobody is told about what they did themselves.

@@ -18,6 +18,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { bootFixture, caseName, labelOf, matrix, mounted, shotPath, type MatrixCase } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-2861-office-dialogue";
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48961), classic: false, instances: 6 });
@@ -90,12 +91,13 @@ async function openOffice(c: MatrixCase, style: string, opts: { reduced?: boolea
   await page.goto(`${fx.base}/ui/fleet/org`);
   if (!(await mounted(page, 30000))) throw new Error("the app did not mount");
   await page.waitForSelector(".oo-canvas", { timeout: 15000 });
-  const picker = page.locator(".oo-bar select").nth(1);
-  if ((await picker.inputValue()) !== style) await picker.selectOption(style);
+  // M-3556: Style and Dialogue are in ⚙ Display options on a desk.
+  const picker = page.locator("select.oo-style");
+  await withDisplay(page, async () => { if ((await picker.inputValue()) !== style) await picker.selectOption(style); });
   await page.waitForTimeout(2500);
   return { ctx, page, errors };
 }
-const tick = (page: any) => page.locator(".oo-dialogue input").check();
+const tick = (page: any) => withDisplay(page, () => page.locator(".oo-dialogue input").check());
 const setWorking = (page: any, on: boolean) => page.evaluate(async ([n, w]: [string, boolean]) => {
   const m = await import("/assets/app-store.js"); m.appStore.set((s: any) => ({ ...s, exec: { ...s.exec, [n]: w ? "working" : "idle" } }));
 }, [AGENT, on]);
@@ -106,8 +108,7 @@ const REPLY = { en: "Checked — two typos fixed, the rest reads well.", "zh-TW"
 for (const c of matrix(process.env.MATRIX ?? "desk-light-en,desk-dark-zh-TW,phone-dark-zh-TW,phone-light-en")) {
   for (const style of ["dialogue-demo", "cozy"]) {
     const { ctx, page, errors } = await openOffice(c, style);
-    const label = await page.locator(".oo-dialogue").textContent();
-    const off = !(await page.locator(".oo-dialogue input").isChecked());
+    const [label, off] = await withDisplay(page, async () => [await page.locator(".oo-dialogue").textContent(), !(await page.locator(".oo-dialogue input").isChecked())]);
     msg("user", `${WORDS[c.lang]} (off)`);
     await wait(1500);
     const offDrawn = (await drawn(page)).some((x: any) => x.s.includes("(off)") || (x.s.length > 4 && WORDS[c.lang].startsWith(x.s)));

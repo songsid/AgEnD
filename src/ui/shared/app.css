@@ -844,6 +844,10 @@ html:has(.shell), html:has(.shell) body { overflow: hidden; }
   .p-settings #g-liveness input { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch { min-height: var(--tap); }
   .p-settings #g-liveness .s-switch input[type="checkbox"] { width: var(--tap); }
+  /* The same for "When the task board wakes an agent" (its switches and the leader menu). */
+  .p-settings #g-wakes select { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch { min-height: var(--tap); }
+  .p-settings #g-wakes .s-switch input[type="checkbox"] { width: var(--tap); }
   /* Settings' dialogs are full-screen sheets (§7): an agent's or a connection's fields get the whole screen, the title on
      top and the actions at the bottom, inside it. The app's own questions (ask()) stay bottom sheets. */
   .p-settings .dlg { width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0; border-radius: 0; }
@@ -2326,15 +2330,13 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .n-notify .n-notify-icon { color: var(--text-2); }
 /* M-3503: no word left alone on the note's last line (a phone's zh line ended with 「知。」 by itself). */
 .n-notify-note { text-wrap: balance; }
-/* M-3503: one left edge and one rhythm. The column starts at the header's leading edge (its title on a desk with the
-   sidebar open; its ☰/‹ button otherwise, as on a phone), not centred away from it; the first section label sits one
-   step under the header, a label one small step above its cards, sections one step apart. */
-.p-needs > .panel-body > .col { margin-inline: 0; padding-top: var(--s-3); padding-inline: max(var(--s-3), env(safe-area-inset-left)) max(var(--s-3), env(safe-area-inset-right)); }
+/* M-3545: use the shared centered desktop column; retain M-3503's section rhythm and phone leading edge. */
+.p-needs > .panel-body > .col { margin-inline: auto; padding-top: var(--s-3); padding-inline: max(var(--s-3), env(safe-area-inset-left)) max(var(--s-3), env(safe-area-inset-right)); }
 /* A plain heading only: the suggestions group's head is its <summary>, a control that keeps its own padding (and a
    phone's tap height, below). */
 .p-needs :is(h2.n-group-head, .n-settings-head) { padding: 0 0 var(--s-2); }
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
-  .p-needs > .panel-body > .col { padding-inline: max(var(--s-4), env(safe-area-inset-left)) max(var(--s-4), env(safe-area-inset-right)); }
+  .p-needs > .panel-body > .col { margin-inline: 0; padding-inline: max(var(--s-4), env(safe-area-inset-left)) max(var(--s-4), env(safe-area-inset-right)); }
   .p-needs .n-suggestions > summary { min-height: var(--tap); }
 }
 /* #2910 D2: Notices (a web-only fleet's General) — the Needs you rows; a new one has an accent edge and a "New" tag. */
@@ -2535,6 +2537,31 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; width: 100%; }
 .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-5); margin-right: var(--s-5); }   /* not the editors' dialogs: they centre themselves (#2585) */
 .oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+/* M-3556: one row on a desk — scope on the left; actions and ⚙ Display options (a dropdown, like Members) on the right.
+   A Hub room's office opens the same dropdown from the gear in its zoom stack (to the gear's left). */
+.oo-bar-row { flex-wrap: nowrap; justify-content: space-between; }
+.oo-bar-scope, .oo-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; }
+.oo-bar-actions { margin-inline-start: auto; justify-content: flex-end; }
+.oo-display-btn { display: inline-flex; align-items: center; gap: var(--s-1); }
+.oo-display { position: relative; }
+.oo-display-btn.on { border-color: var(--accent); }
+.oo-display-pop { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(340px, calc(100vw - 32px)); max-height: min(70vh, 480px); overflow-y: auto;
+  padding: var(--s-2) var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.oo-display-list { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--s-1); }
+.oo-display-list .oo-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.oo-display-list .check { min-height: 32px; }
+.oo-display-list :is(.check, .oo-pick) { font-size: var(--fs-sm); color: var(--text); }   /* one style for every option, as in the sheet */
+/* The Fleet office's dropdown opens left of the stage's zoom stack (right: --s-3, 38 px wide), never over it. */
+.oo-bar-row .oo-display-pop { right: calc(var(--s-3) + 38px + var(--s-2)); }
+.oo-display-h { margin: 0 0 var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.oo-display-zoom { position: static; border-top: 1px solid var(--border); }   /* the dropdown hangs from the stack's top, not the gear's */
+.oo-display-zoom .oo-display-pop { top: 0; right: calc(100% + 6px); }
+.oo-zoom:has(.oo-display-pop) { overflow: visible; }
+/* In the dropdown the reduced-motion note goes on its own line under the label (the panel is narrow). */
+.oo-display-list .oo-play { flex-wrap: wrap; row-gap: 0; }
+.oo-sheet .oo-sheet-bar > .oo-pick + .oo-pick { margin-top: var(--s-2); }
+.oo-sheet .oo-sheet-bar > .oo-sheet-rule { min-height: 0; width: 100%; margin: var(--s-3) 0 var(--s-1); border: 0; border-top: 1px solid var(--border); }
+.oo-sheet .oo-sheet-bar > .oo-sheet-h { min-height: 0; margin: var(--s-3) 0 0; padding-top: var(--s-2); border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: var(--fw-semibold, 600); color: var(--text-2); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
 .oo-people { position: relative; }
@@ -2566,6 +2593,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-people-list { list-style: none; margin: 0; padding: 0; }
 .oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
 .oo-note { font-size: var(--fs-xs); }
+/* M-3547 / M-3556: why "Drag and pat" is locked — one line under it, inside its label (read with its name), in Display options
+   and the phone sheet alike. */
+.oo-play:has(.oo-play-still) { flex-wrap: wrap; row-gap: 0; }
+.oo-play .oo-play-still { flex-basis: 100%; min-width: 0; padding-inline-start: calc(13px + var(--s-2)); }
+.oo-play:has(input:disabled) > span:not(.oo-play-still) { opacity: 0.45; }   /* disabled, as .btn:disabled */
 .oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* #2554: clip, not a scroll container — nothing past the edge (a tile's label) can scroll the stage and its controls. */
 .oo-stage { overflow: clip; }
@@ -2579,9 +2611,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-key-rows { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: 0; padding: 0; list-style: none; }
 .oo-key-row { display: inline-flex; align-items: center; gap: 6px; }
 .oo-key-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
-.oo-key-btn.on { border-color: var(--accent); }
 .oo-zoom { z-index: 6; }
 .oo-zoom .icon-btn { color: var(--text); }
+.oo-zoom .icon-btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }   /* the stack clips an outline */
 /* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */
 .oo-mini { z-index: 6; right: auto; bottom: auto; overflow: hidden; }
 .oo-zoom-pct { display: block; padding: 3px 0; font-size: var(--fs-2xs); line-height: 14px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums;
@@ -2825,6 +2857,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 1 96px; min-width: 88px; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
+  @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
@@ -2837,6 +2870,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
     max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
   .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
+  /* M-3539: chips that do not fit scroll sideways; the side with more fades out. */
+  .oo-zone-pills[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
+  .oo-zone-pills[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
+  .oo-zone-pills[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
   .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
   .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
@@ -2852,6 +2889,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet .oo-pick { justify-content: space-between; }
 .oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
+/* M-3556: more below the fold fades out at the sheet's foot, over the rows (data-more: set while not at the end). */
+.oo-sheet .dlg-body[data-more]::after { content: ""; position: sticky; bottom: calc(-1 * var(--s-4)); flex: none; display: block; height: 48px;
+  margin-top: calc(-48px - var(--s-3)); pointer-events: none; background: linear-gradient(transparent, var(--bg) 85%); }
 .oo-sheet .oo-sheet-bar :is(.btn, .oo-people > .btn) { min-height: var(--tap); }
 .oo-sheet .oo-sheet-bar > .btn, .oo-sheet .oo-people > .btn { width: 100%; justify-content: flex-start; }
 .oo-sheet .oo-sheet-bar > :is(.btn, .oo-people, .oo-carousel, .oo-note) { margin-top: var(--s-1); }
@@ -3042,6 +3082,18 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* #1682: a mention, as Discord draws one — accent text on a tint of it; the id (or the Telegram handle) on hover. */
 .md .mention { display: inline; padding: 0 0.2em; border-radius: var(--r-sm); color: var(--accent); background: var(--accent-dim);
   font-weight: var(--fw-medium); white-space: nowrap; }
+/* A task card in a person's message — number, title, status; a link to the card (Fleet › Tasks). The status is the
+   board's own pill (.tb-pill, below); the colours are the page's tokens. */
+.msg .md a.task-ref, .md a.task-ref { display: inline-flex; align-items: center; gap: var(--s-2); max-width: 100%; padding: 0 var(--s-2); border: 1px solid var(--border);
+  border-radius: var(--r-sm); background: var(--surface-2); color: var(--text); text-decoration: none; vertical-align: baseline; line-height: 1.6; }
+.md a.task-ref:hover { border-color: var(--accent); }
+.md a.task-ref:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.md .task-ref-code { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--accent); flex-shrink: 0; }
+.md .task-ref-title { min-width: 0; max-width: 28ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md a.task-ref .tb-pill { flex-shrink: 0; }
+/* …and the list the composer opens while `#` is typed: the command palette's own look, the title taking the row's room. */
+.task-ref-list .cmd-desc { flex: 1; }
+.task-ref-list .tb-pill { flex-shrink: 0; }
 
 /* #1629 r4 §1 / r4.1 Q3 (a): the identity card (identity-card.js). The size is a class token; its heights are here
    (S 160 / M 240 / L 360 px, on a phone 120 / 180 / 240). Never a style attribute.
@@ -3184,6 +3236,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* ── #2293: global search — the sidebar row's shortcut, the header's button (collapsed sidebar, phone), the dialog ── */
 /* #2478: a touch screen has no Ctrl/⌘ K — the shortcut's hint is not shown there (the row is). */
 @media (pointer: coarse) { .side-search .kbd-hint { display: none; } }
+/* M-3559: the search row's label never gives way to its shortcut hint. Where the row is too narrow for both — two nav rows
+   to a line in a short window (122 px), a sidebar narrowed further — the hint goes first; the row's title still names the
+   shortcut. Inside the row's padding, the icon, "Search", the gaps and "Ctrl K" take about 140 px. */
+.side-search { container-type: inline-size; }
+@container (max-width: 144px) { .side-search .kbd-hint { display: none; } }
 .kbd-hint { font: inherit; font-size: var(--fs-xs); color: var(--text-3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 var(--s-1); line-height: 18px; white-space: nowrap; }
 .panel-head .sb-search { display: none; }
 .sb-collapsed .panel-head .sb-search { display: inline-flex; }
@@ -5056,7 +5113,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .contact-approver-add select, .contact-mcp-add .input { flex: 1; min-width: 0; }
 .contact-owner-warning { display: flex; align-items: center; gap: var(--s-1); margin: 0; }
 .card.contact-ticket { margin: 0; min-width: 0; }
-.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > * { margin: 0; }
+.contact-ticket > *, .contact-ticket-foot > *, .contact-decide > :not(.dlg) { margin: 0; }
 .contact-ticket[data-state="pending"] { --lbar-color: var(--warn); }
 .contact-ticket.focus { outline: 2px solid var(--focus); outline-offset: 2px; }
 .contact-ticket-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-size: var(--fs-md); line-height: var(--lh-md); }
@@ -5241,3 +5298,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .p-settings .s-page-lead { text-wrap: pretty; }
 
 .p-settings .s-default-lead-tail { white-space: nowrap; }
+
+/* Scoped grant metadata wraps as whole phrases; disabled decisions stay readable. */
+.contact-grant-meta { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-3); }
+.contact-grant-dialog .btn-primary:disabled { opacity: 1; background: var(--surface-2); color: var(--text-2); border-color: var(--border); }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
+  .contact-grant-dialog :is(input:not([type=checkbox]), select, .check) { min-height: var(--tap); }
+}

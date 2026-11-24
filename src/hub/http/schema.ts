@@ -1,6 +1,7 @@
 import { HUB_ROOM_AGENT_DISCOVERY_MIGRATION } from "../room-agent-discovery-model.js";
+import { HUB_LAPSE_EVIDENCE_MIGRATION } from "../lapse-carry.js";
 import {HUB_ROOM_PURPOSE_MIGRATION} from "../rooms/purpose.js";
-import { HUB_ROOM_OFFICE_MIGRATION } from "../rooms/office.js";
+import { HUB_ROOM_OFFICE_MIGRATION, HUB_ROOM_OFFICE_STYLE_MIGRATION } from "../rooms/office.js";
 import { HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../room-agent-requests.js";
 import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
 import { HUB_AGENT_INTROS_MIGRATION } from "../agent-intro.js";
@@ -151,4 +152,6 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ROOM_AGENT_REQUESTS_MIGRATION,
   HUB_ROOM_AGENT_DISCOVERY_MIGRATION,
   HUB_ROOM_OFFICE_MIGRATION,
+  HUB_LAPSE_EVIDENCE_MIGRATION,
+  HUB_ROOM_OFFICE_STYLE_MIGRATION,
 ]);

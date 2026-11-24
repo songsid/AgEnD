@@ -221,3 +221,13 @@ a.hub-launch-pill { border: 1px solid var(--border); background: transparent; co
   /* …and its members and ⋯ are full tap targets, as its back is (S-150). */
   .hub-room-page .hub-chat-head .hub-room-menu > .icon-btn, .hub-room-page .hub-chat-head .hub-room-rail-toggle { min-width: var(--tap); min-height: var(--tap); }
 }
+
+/* M-3533 R1 (design §2.1): a room's office fills the content area as an agent's View does — no card, no border, no
+   inner title bar, no message box under it; the tabs sit in the header just before its tools. */
+.hub-chat-head .hub-room-tabs { margin-left: auto; }
+.hub-chat-head .hub-room-tabs + .hub-head-tools { margin-left: var(--s-2); }
+.hub-room-office { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: var(--s-2) var(--s-3); overflow: auto; }
+.hub-room-office > .oo { flex: 1 1 auto; min-height: 0; }
+.hub-room-office-note, .hub-room-office-loading { padding: var(--s-4); }
+/* The message box stays mounted under the office (its draft and picked mentions kept), not shown. */
+.hub-room-page .hub-dock[hidden] { display: none !important; }

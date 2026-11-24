@@ -89,17 +89,17 @@ export const INSTALLABLE_CLIS = Object.freeze({
     native: { path: "node_modules/@openai/codex-win32-x64/vendor/x86_64-pc-windows-msvc/bin/codex.exe", signer: { cn: "OpenAI OpCo, LLC", o: "OpenAI OpCo, LLC" } },
   },
   // M-3176: Claude 2.1.325 (now 2.1.330, M-3501; 2.1.329 in M-3477, 2.1.327 in M-3336: the same two packages, no dependencies, claude.exe at the same path) and Codex 0.171.0 (M-3476, was 0.170.0 in M-3337: the same two packages, codex.exe at the same path; their newest audited releases): each integrity is the registry's (npm view … dist.integrity), checked against a
-  // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.14 (M-3500, was 1.5.13):
-  // the windows_amd64 manifest read 2026-11-21 (version 1.5.14, this url, this sha512); the file downloaded is 238615704 bytes with that sha512. OpenCode 1.19.6 (M-3477):
+  // downloaded tarball's own sha512, and the native path above is in that tarball; the signer is still verified at install. Antigravity 1.5.15 (M-3550, was 1.5.14 in M-3500):
+  // the windows_amd64 manifest read 2026-11-23 (version 1.5.15, this url, this sha512); the file downloaded is 239256728 bytes with that sha512, and Get-AuthenticodeSignature says Valid, CN=Google LLC, O=Google LLC. OpenCode 1.19.6 (M-3477):
   // the same three packages, each integrity the registry's and checked against its downloaded tarball, opencode.exe at the same path in the baseline one.
   // AGEND-135 (#3521): Antigravity — no npm package (`agy` / `antigravity-cli` on npm are not Google's), so a pinned download: the vendor's own versioned file, named by its manifest
   // (https://antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/windows_amd64.json; first read 2026-11-09 for 1.5.3, now 1.5.9: M-3176 above). Measured on 1.5.3: the file is 225159320
   // bytes, its sha512 equals the manifest's, `Get-AuthenticodeSignature` says Valid with the subject CN=Google LLC, O=Google LLC, and `agy.exe --version` prints 1.5.3 without the vendor's
   // `install` step (which only edits PATH and shell aliases, and so is not run). Windows x64 only: no arm64 pin has been measured. The CLI updates itself afterwards; the pin governs the first install.
   antigravity: {
-    id: "antigravity", kind: "download", version: "1.5.14",
-    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.14-5302690847260672/windows-x64/cli_windows_x64.exe", bytes: 238615704,
-    sha512: "785548b23242ec9112759bb4b525d94a3d4d2e9868e5cedb9ea34e5ce01dbb00abf5de66c41d8f4903e8a4379445f685483f999ece91867bfbd9d4812760d835",
+    id: "antigravity", kind: "download", version: "1.5.15",
+    url: "https://storage.googleapis.com/antigravity-public/antigravity-cli/1.5.15-5514532022517760/windows-x64/cli_windows_x64.exe", bytes: 239256728,
+    sha512: "f9b9d4ffe050c9b909df2afffc5dcca834cd97ed18c1a4cc1b686244c24cf53fd44b45c34c99c25b9892cb8057cbf35a27a376db0a62a5222e1cbf9e8e0bb47e",
     native: { path: "agy.exe", signer: { cn: "Google LLC", o: "Google LLC" } },
   },
   // AGEND-133 (#3521): OpenCode — npm `opencode-ai` (published from GitHub Actions by npm trusted publishing) and its per-platform packages. npm installs BOTH Windows x64

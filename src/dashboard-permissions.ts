@@ -29,13 +29,10 @@ export const dashboardFeatureDefault = (feature: string): boolean => !OFF_UNLESS
 /** As written in fleet.yaml: each feature true (allowed), false (switched off) or absent (allowed; off for OFF_UNLESS_ON). */
 export type DashboardAccess = Partial<Record<DashboardFeature, boolean>>;
 
-/**
- * What a NEW fleet.yaml says about the features (the user's decision, 2026-10-22): the task board is off until the
- * person switches it on (Settings → defaults, or per agent). Written, visibly, by every path that creates the file —
- * `agend init`, `agend quickstart`, and the setup page (`agend setup`, the web quickstart before there is a fleet).
- * An existing fleet.yaml is never rewritten: there, unset still allows.
- */
-export const NEW_FLEET_DASHBOARD: Readonly<DashboardAccess> = Object.freeze({ task_board: false });
+// A NEW fleet.yaml says nothing about the features, so the task board is on, as it is for every older file. Until now every path
+// that created the file (`agend init`, `agend quickstart`, the setup page) wrote `defaults.dashboard.task_board: false`, and a
+// new user who opened the board found that comments and `#` references did nothing, with no word of why. An existing file is
+// never rewritten, and an explicit `false` in it stays.
 
 /** Each feature's tools. Every appearance tool is the caller's own (no target); tests pin the lists to the profiles'. */
 export const DASHBOARD_FEATURE_TOOLS: Readonly<Record<DashboardFeature, readonly string[]>> = {

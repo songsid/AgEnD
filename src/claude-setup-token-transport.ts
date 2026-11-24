@@ -8,6 +8,19 @@ import type { StructuredSignInTransport } from "./structured-signin.js";
 import { structuredSignInPrompt } from "./structured-signin.js";
 import { TmuxTerminalBackend, shellQuote, segmentInput, type TerminalBackend } from "./web-terminal.js";
 export interface SetupTokenTransport extends StructuredSignInTransport { takeToken(): string | null }
+/** Node's VT stripper leaves APC (including Kitty graphics probes) and its ST behind.
+ * Remove only complete opaque APC strings before stripping display controls; keep
+ * an incomplete/unknown sequence for the shared unsupported-screen grace. */
+function setupTokenText(value: string): string {
+ let result="",offset=0;
+ for(;;){
+  const start=value.indexOf("\x1b_",offset);if(start<0)break;
+  const end=value.indexOf("\x1b\\",start+2);if(end<0)break;
+  result+=value.slice(offset,start);offset=end+2;
+ }
+ return stripVTControlCharacters(result+value.slice(offset));
+}
+
 export function createClaudeSetupTokenTransport(options: { native?: TerminalBackend; env?: NodeJS.ProcessEnv } = {}): SetupTokenTransport {
  const native=options.native??new TmuxTerminalBackend(),socket="agend-term-token-"+randomBytes(16).toString("hex"),marker="agend-end-"+randomBytes(16).toString("hex");
  let directory:string|null=null,raw="",token:string|null=null,code:number|undefined,closed=false,started=false,touched=false,failed=false;
@@ -28,7 +41,7 @@ export function createClaudeSetupTokenTransport(options: { native?: TerminalBack
     if(closed||failed||code!==undefined)return;
     if(Buffer.byteLength(raw)+chunk.length>64*1024){failed=true;erase();return;}
     raw+=chunk.toString("utf8");
-    const plain=stripVTControlCharacters(raw).replace(/\r/g,"");
+    const plain=setupTokenText(raw).replace(/\r/g,"");
     const end=new RegExp("(?:^|\\n)"+marker+":([0-9]{1,3})\\n").exec(plain);if(!end)return;
     code=Number(end[1]);
     if(code===0){const values=[...new Set([...plain.slice(0,end.index).matchAll(/\bsk-ant-oat01-[A-Za-z0-9_-]{32,4096}(?=[\s"'`]|$)/g)].map(m=>m[0]))];if(values.length===1)token=values[0]!;}
@@ -38,10 +51,14 @@ export function createClaudeSetupTokenTransport(options: { native?: TerminalBack
   },
   async capture(){
    if(closed||failed)throw Error("signin_transport_unavailable");if(code!==undefined)return "";
-   const prompt=structuredSignInPrompt("claude-code",stripVTControlCharacters(raw));
+   const plain=setupTokenText(raw);
+   const prompt=structuredSignInPrompt("claude-code",plain);
    const url=prompt.phase==="authorization"||prompt.phase==="code"?prompt.url:null;
    if(url?.includes("sk-ant-"))throw Error("signin_unsupported_prompt");
-   return [url??"",prompt.phase==="code"?"Paste code here if prompted >":""].filter(Boolean).join("\n");
+   if(url)return [url,prompt.phase==="code"?"Paste code here if prompted >":""].filter(Boolean).join("\n");
+   // Retain the presence of an unknown screen, never its private text. Otherwise
+   // the shared five-second unsupported-prompt grace sees an empty idle screen.
+   return plain.trim()?"Unrecognized setup-token screen":"";
   },
   async status(){if(closed||!started||failed)throw Error("signin_status_unknown");const state=await native.paneStatus(socket);if(!state)throw Error("signin_status_unknown");return {alive:state.alive||code===undefined,...(code!==undefined?{exitCode:code}:{})};},
   async write(input,signal){for(const run of segmentInput(Buffer.from(input,"utf8"))){if(closed||signal.aborted||code!==undefined)throw Error("signin_cancelled");await native.sendInput(socket,run.bytes);}},

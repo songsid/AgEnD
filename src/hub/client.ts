@@ -2,7 +2,7 @@ import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
-import { HUB_AGENT_CATALOG_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
+import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
@@ -192,6 +192,8 @@ export class HubMemberClient implements HubMemberTransport {
       if(this.options.agentIntro && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_INTRO_CAPABILITY))features.add(HUB_AGENT_INTRO_CAPABILITY);
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
+      // M-3543: the Hub takes a lapsed row and a Share again of a published agent (only with exposure requests).
+      if (features.has(HUB_EXPOSURE_REQUEST_CAPABILITY) && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_LAPSE_CAPABILITY)) features.add(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);
       if (this.options.roomContext && features.has(HUB_ROOM_ASK_CAPABILITY) && frame.payload.capabilities?.includes(HUB_ROOM_CONTEXT_CAPABILITY)) features.add(HUB_ROOM_CONTEXT_CAPABILITY);
       if(features.has(HUB_ROOM_ASK_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_ANSWER_STATUS_CAPABILITY))features.add(HUB_ROOM_ANSWER_STATUS_CAPABILITY);
       if(features.has(HUB_ROOM_POST_CAPABILITY)&&frame.payload.capabilities?.includes(HUB_ROOM_MEMBERS_CAPABILITY))features.add(HUB_ROOM_MEMBERS_CAPABILITY);

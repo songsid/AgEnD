@@ -1,7 +1,7 @@
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
-import { newRoomOffice, officeAgent, officeOn, roomOfficeView, type RoomPresence } from "./office.js";
+import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -86,7 +86,7 @@ export function validRoomEmoji(s: unknown): s is string {
   return [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(s)].length === 1;
 }
 const patchSchema = z.strictObject({ name: label.optional(), purpose:purpose.optional(), allMention: z.boolean().optional(), historyForNew: z.enum(["since-join", "all"]).optional(), archived: z.boolean().optional(), assistant: z.boolean().optional(),
-  office: z.strictObject({ enabled: z.boolean() }).optional() });
+  office: z.strictObject({ enabled: z.boolean().optional(), style: z.enum(ROOM_OFFICE_STYLES).optional() }).optional() });
 
 export class HubRoomRefusal extends Error {
   constructor(readonly status: number, readonly code: string, readonly details: Record<string, string | number> = {}) { super(`Room: ${code}`); }
@@ -191,6 +191,10 @@ export class HubGroupRooms {
     if(row.author_kind==="system"&&row.author_id==="purpose-changed"){
       const event=this.core.atomic(db=>db.prepare("SELECT purpose FROM hub_room_purpose_events WHERE post_id=?").get(row.id)) as {purpose:string}|undefined;
       if(event)system={kind:"purpose-changed",name:row.author_name,purpose:event.purpose};
+    }
+    if (row.author_kind === "system" && row.author_id === "office-style-changed") {
+      const event = this.core.atomic(db => db.prepare("SELECT style FROM hub_room_office_style_events WHERE post_id=?").get(row.id)) as { style: string } | undefined;
+      if (event) system = { kind: "office-style-changed", name: row.author_name, style: event.style };
     }
     if (row.author_kind === "system" && row.author_id === "office-changed") {
       const event = this.core.atomic(db => db.prepare("SELECT enabled FROM hub_room_office_events WHERE post_id=?").get(row.id)) as { enabled: number } | undefined;
@@ -450,6 +454,14 @@ export class HubGroupRooms {
     this.core.audit(tx, { requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.office-changed", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
     return post;
   }
+  /** M-3533 R1b: a manager changed the office's style — one line per save (§2.1b), the style by id. */
+  private recordOfficeStyle(db: DB, tx: HubTx, id: string, me: string, style: string, requestId: string): PostRow {
+    const name = this.name(db, me), text = `${name} changed the room office's style to "${style}"`;
+    const post = this.insert(db, tx, id, { kind: "system", id: "office-style-changed", subject: me, name }, text);
+    db.prepare("INSERT INTO hub_room_office_style_events VALUES(?,?)").run(post.id, style);
+    this.core.audit(tx, { requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.office-style-changed", result: "completed", roomId: id, messageId: post.id, contentRef: post.content_ref });
+    return post;
+  }
   private summary(db: DB, room: RoomRow, member: MemberRow) {
     const counts = db.prepare("SELECT kind,COUNT(*) AS n FROM hub_room_members WHERE room_id=? GROUP BY kind").all(room.id) as { kind: string; n: number }[];
     const floor = member.joined_sequence;
@@ -593,7 +605,7 @@ export class HubGroupRooms {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
-          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
+          ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
           signedIn: !!db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(m.subject),
           presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
@@ -614,12 +626,14 @@ export class HubGroupRooms {
       if (row.assistant_for) throw new HubRoomRefusal(403, "denied");
       if (body.assistant === true) this.addAssistant(db, id);
       else if (body.assistant === false) db.prepare("DELETE FROM hub_room_members WHERE room_id=? AND kind='assistant'").run(id);
-      const was = officeOn(row.office_enabled), office = body.office === undefined ? row.office_enabled : Number(body.office.enabled);
-      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=?,office_enabled=? WHERE id=?")
-        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), office, id);
+      const was = officeOn(row.office_enabled), office = body.office?.enabled === undefined ? row.office_enabled : Number(body.office.enabled);
+      const style = body.office?.style ?? row.office_style;
+      db.prepare("UPDATE hub_group_rooms SET name=?,purpose=?,all_mention=?,history_for_new=?,archived=?,office_enabled=?,office_style=? WHERE id=?")
+        .run(body.name ?? row.name, body.purpose??row.purpose, body.allMention === undefined ? row.all_mention : Number(body.allMention), body.historyForNew ?? row.history_for_new, body.archived === undefined ? row.archived : Number(body.archived), office, style, id);
       const changed:PostRow[]=[];
       if(body.purpose!==undefined&&body.purpose!==row.purpose)changed.push(this.recordPurpose(db,tx,id,me,body.purpose,ctx.requestId));
-      if(body.office&&body.office.enabled!==was)changed.push(this.recordOffice(db,tx,id,me,body.office.enabled,ctx.requestId));
+      if(body.office?.enabled!==undefined&&body.office.enabled!==was)changed.push(this.recordOffice(db,tx,id,me,body.office.enabled,ctx.requestId));
+      if(body.office?.style!==undefined&&body.office.style!==row.office_style)changed.push(this.recordOfficeStyle(db,tx,id,me,body.office.style,ctx.requestId));
       this.core.audit(tx, { requestId: ctx.requestId, actor: { kind: "person", person: personFromString(me) }, action: "room.updated", result: "completed", roomId: id });
       return changed;
     }, this.fence(ctx));

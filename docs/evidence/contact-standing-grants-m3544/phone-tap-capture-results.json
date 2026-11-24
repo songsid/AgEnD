@@ -1,0 +1,38 @@
+[
+  {
+    "device": "phone",
+    "theme": "light",
+    "lang": "en",
+    "overflow": false,
+    "errors": [],
+    "violations": [],
+    "grantCount": 1
+  },
+  {
+    "device": "phone",
+    "theme": "light",
+    "lang": "zh-TW",
+    "overflow": false,
+    "errors": [],
+    "violations": [],
+    "grantCount": 1
+  },
+  {
+    "device": "phone",
+    "theme": "dark",
+    "lang": "en",
+    "overflow": false,
+    "errors": [],
+    "violations": [],
+    "grantCount": 1
+  },
+  {
+    "device": "phone",
+    "theme": "dark",
+    "lang": "zh-TW",
+    "overflow": false,
+    "errors": [],
+    "violations": [],
+    "grantCount": 1
+  }
+]

@@ -76,7 +76,7 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, applySeatDrop, patLook, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, patLook, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -92,6 +92,7 @@ import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, laye
 
 register("orgo", {
   en: {
+    display: "Display options", playMotionOff: "Off: your system asks for reduced motion",
     label: "Office: each team is a room and each instance a desk; General and the instances in no team are in the lobby. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen.",
     office: "Office", allOffice: "Whole fleet", show: "Show", allTeams: "All teams", lobby: "Lobby (General, no team)", lobbyRoom: "Lobby",
     people: "People", peopleN: "People ({0})", findPerson: "Find a person", everyone: "Show everyone", nobody: "No one here matches this filter.",
@@ -101,7 +102,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
@@ -123,6 +124,7 @@ register("orgo", {
     snackArm: "{0}: drag onto someone to feed, or onto the floor to place; click to select",
   },
   "zh-TW": {
+    display: "顯示選項", playMotionOff: "已關閉：系統開了「減少動態效果」",
     label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
     office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
@@ -132,7 +134,7 @@ register("orgo", {
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
-    hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
+    options: "辦公室選項", hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
     styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
@@ -190,6 +192,8 @@ const CAPTION_OF_STATE = { starting: "capStarting", queued: "capQueued" };
 /** What a pose says in words (the tooltip, the desk list); `state`, when its words differ from its pose's. */
 export const caption = (pose, state) => to(CAPTION_OF_STATE[state] || CAPTION[pose] || "capIdle");
 
+/** M-3556: the most a dropdown starting at `top` may be tall to end `margin` px above `bottom` (never under `min`). */
+export const popMaxHeight = (bottom, top, margin = 8, min = 96) => Math.max(min, Math.floor(bottom - top - margin));
 const reducedMotion = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 /** The device's ratio (CSS px → device px), kept sane. */
 const deviceRatio = () => Math.max(0.5, Math.min(4, Number(globalThis.devicePixelRatio) || 1));
@@ -199,6 +203,26 @@ const SIZE0 = { w: 960, h: 600 };
 const FIT_PAD = 60;
 /** #2860: how far below its place a crowded area's compact tag drops when a neighbour's is in the way (a tag's height + 1). */
 const COMPACT_ROW = 12;
+/** M-3539: how far below its place a full name tag drops when another tag or an area's name is in the way (a tag's height + 2). */
+const TAG_ROW = 16;
+/** M-3539: the controls drawn over the scene that name tags keep clear of: the zoom stack, the minimap, and the phone's zone chips where they float over it. */
+const KEEP_CLEAR = ".oo-zoom, .oo-mini, .oo-stage > .oo-zone-pills";
+/** M-3539: those controls' boxes in the scene's logical units at the view `v` ({ k, x, y }: CSS px a unit, the origin), 4 CSS px round each. */
+export function keepClearOf(cv, v) {
+  const root = cv && typeof cv.closest === "function" ? cv.closest(".oo") : null;
+  if (!root || typeof cv.getBoundingClientRect !== "function" || !(v.k > 0)) return [];
+  const c = cv.getBoundingClientRect(), out = [];
+  for (const el of root.querySelectorAll(KEEP_CLEAR)) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || r.right <= c.left || r.left >= c.right || r.bottom <= c.top || r.top >= c.bottom) continue;
+    out.push({ x: (r.left - c.left - 4 - v.x) / v.k, y: (r.top - c.top - 4 - v.y) / v.k, w: (r.width + 8) / v.k, h: (r.height + 8) / v.k });
+  }
+  return out;
+}
+/** Whether two boxes ({ x, y, w, h }) overlap. */
+const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+/** M-3539: the box a person's figure covers where they are now (the skin's own, else the built-in figure's). */
+const figureBox = (sk, q) => (sk.charBox ? sk.charBox(q.look, q.at) : { x: q.at.x - 24, y: q.at.y - 52, w: 48, h: 66 });
 /** #2554: in All offices a tile's name tags show (always) from this many CSS px a unit up; below it on hover only. */
 export const TAG_MIN_K = 0.75;
 const PAN_KEYS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
@@ -485,7 +509,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const blit = (c) => { if (!c) return; ctx.setTransform(a / ls, 0, 0, a / ls, ox, oy); ctx.drawImage(c, 0, 0); T(); };
   blit(p.layers.back);
   T();
-  const speakers = [], tags = [];
+  const speakers = [], tags = [], titleBoxes = [];             // M-3539: the area names bubbles keep off too
   const up = still ? [] : p.flights.frame(ms, p.L);
   // Mail from another office (#2564): flying in at the door, or on the floor until its person picks it up.
   const post = still || !p.mail || !p.zones ? [] : p.mail.frame(ms > 0 ? ms : now(), p.L, p.walkers);
@@ -619,20 +643,55 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     if (sk.drawForeground) sk.drawForeground(ctx, p.L, env);
     // Who found no spot in an area: a count in its corner (never over its name).
     for (const [ar, n] of p.L.crowd || []) if (p.L.areas[ar] && sk.drawCrowd) sk.drawCrowd(ctx, p.L.areas[ar], n, env);
-    // In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps a compact tag (#2860:
-    // in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels); one that would touch
-    // a tag already drawn, its badge included, is left to hover or focus. The full tags go first.
-    const over = p.L.over || new Set();
-    const crowded = (q) => over.has(q.d.area) && q.d.key !== hot && !q.look.match;
-    const tagged = (q) => !((tagsOff || over.has(q.d.area)) && q.d.key !== hot && !q.look.match);
-    const taken = [];
-    const touches = (b) => taken.some((o) => b.x < o.x + o.w && o.x < b.x + b.w && b.y < o.y + o.h && o.y < b.y + b.h);
-    for (const q of people) {
-      if ((live.hidden.has(q.look.name) && q.look.name !== heldName) || !tagged(q)) continue;
-      sk.drawTag(ctx, q.at.x, q.at.y, q.look, env);
-      const box = tagBox(ctx, q.at.x, q.at.y, q.look.label);
-      tags.push(box); taken.push(tagFootprint(ctx, box, q.look.badge));
+    // M-3539: an area's name a figure stands on is written again over the people (休息區 under a crowd's heads).
+    const titles = sk.areaTitleBox ? Object.values(p.L.areas || {}).map((ar) => ({ ar, box: sk.areaTitleBox(ctx, ar, env) })) : [];
+    if (sk.drawAreaTitle) for (const { ar, box } of titles) {
+      if (people.some((q) => !live.hidden.has(q.look.name) && overlaps(figureBox(sk, q), box))) sk.drawAreaTitle(ctx, ar, env);
     }
+    // Name tags never cover each other, an area's name or what the page keeps clear over the scene (`env.keepClear`:
+    // the zoom control, M-3539). In an area over capacity (#2513: a crowd's full tags covered each other) everyone keeps
+    // a compact tag (#2860: in Cozy, the default, most of a fleet is in a crowd, and hover-only hid names and levels).
+    // The full tags go first: the one hovered or found, then the people at their place, then those walking (a stroll
+    // passes others' tags, M-3539); each where it is, else a row lower, else compact (there, then a row lower); one
+    // that fits nowhere is left to hover or focus. Then an item's own name and the row it carries; then the crowd's.
+    const over = p.L.over || new Set();
+    const pinned = (q) => q.d.key === hot || !!q.look.match;
+    const crowded = (q) => over.has(q.d.area) && !pinned(q);
+    const tagged = (q) => pinned(q) || !(tagsOff || over.has(q.d.area));
+    const keep = [...titles.map((x) => x.box), ...(env.keepClear || [])];
+    titleBoxes.push(...titles.map((x) => x.box));
+    const taken = [];
+    const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
+    /**
+     * Draws `look`'s tag at (x, y) at the first of `tries` ([dy, compact]) clear of the others; `force`: at the first.
+     * None clear: slid sideways just past what it would touch of `keep` (an area's name, the minimap: never another
+     * tag), at most its own width, at its place — so a name beside the minimap reads instead of going (leader's check).
+     */
+    const place = (x0, y, look, tries, force = false) => {
+      // M-3539: a tag stays within the sides of the area its person stands in (a wide name at a lounge's first column
+      // poked past its edge): moved in by what it would stick out.
+      const ar = Object.values(p.L.areas || {}).find((a) => a.rect && x0 >= a.rect.x && x0 <= a.rect.x + a.rect.w && y >= a.rect.y && y <= a.rect.y + a.rect.h);
+      const w0 = tagBox(ctx, x0, y, look.label, false).w, x = !ar ? x0 : Math.min(Math.max(x0, ar.rect.x + 2 + w0 / 2), ar.rect.x + ar.rect.w - 2 - w0 / 2);
+      const at = (dx, dy, compact) => {
+        const box = tagBox(ctx, x + dx, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
+        if (!force && touches(foot)) return null;
+        // Every place tried keeps within the area's sides, a slide's too (#4376 review): none there, hover or focus.
+        if (!force && ar && (box.x < ar.rect.x || box.x + box.w > ar.rect.x + ar.rect.w)) return null;
+        sk.drawTag(ctx, x + dx, y + dy, look, env, compact);
+        tags.push(box); taken.push(foot);
+        return box;
+      };
+      for (const [dy, compact] of tries) { const b = at(0, dy, compact); if (b) return b; }
+      const [dy0, c0] = tries[0], b0 = tagFootprint(ctx, tagBox(ctx, x, y + dy0, look.label, c0), look.badge, c0);
+      for (const o of keep.filter((k) => overlaps(b0, k))) {
+        for (const dx of [o.x - (b0.x + b0.w) - 2, o.x + o.w - b0.x + 2]) if (Math.abs(dx) <= b0.w) { const b = at(dx, dy0, c0); if (b) return b; }
+      }
+      return null;
+    };
+    const FULL_TRIES = [[0, false], [TAG_ROW, false], [0, true], [COMPACT_ROW, true]];
+    const tagOrder = people.filter((q) => !(live.hidden.has(q.look.name) && q.look.name !== heldName) && tagged(q))
+      .map((q, i) => ({ q, i, rank: pinned(q) ? 0 : q.at.walking ? 2 : 1 })).sort((x, y) => x.rank - y.rank || x.i - y.i);
+    for (const { q, rank } of tagOrder) place(q.at.x, q.at.y, q.look, FULL_TRIES, rank === 0);
     // A furniture item's own name (#2574: an NPC drawn as furniture), tagged like a person; none on a tile too small to read.
     // #2698: an item hiding its people carries their tags too, in one row at its tag point (its own first; each keeps
     // its place in the row while another's tag is left out), and their bubbles, over its picture. The tags drawn are
@@ -641,10 +700,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     for (const f of furniture) {
       const on = people.filter((q) => live.hidden.get(q.look.name) === f.id && q.look.name !== heldName);
       if (!on.length) {
-        if (!tagsOff && f.label) {
-          const nl = npcLook(p, f), box = tagBox(ctx, f.x, f.y, nl.label);
-          sk.drawTag(ctx, f.x, f.y, nl, env); tags.push(box); taken.push(tagFootprint(ctx, box, nl.badge));
-        }
+        if (!tagsOff && f.label) place(f.x, f.y, npcLook(p, f), [[0, false], [TAG_ROW, false]]);
         continue;
       }
       const order = new Map((f.activeFor || []).map((n, i) => [n, i]));
@@ -655,10 +711,9 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         const q = f.label ? on[i - 1] : on[i];
         if (q) speakers.push({ look: q.look, x: r.x + 10, y: top, area: q.d.area });
         if (q ? !tagged(q) : tagsOff) continue;
-        sk.drawTag(ctx, r.x, f.y, r.look, env);
-        const box = tagBox(ctx, r.x, f.y, r.look.label);
-        tags.push(box); taken.push(tagFootprint(ctx, box, r.look.badge));
-        if (q) held.push({ name: q.look.name, id: f.id, box });
+        // The row stays one row (each keeps its place): drawn there, covering nothing else's, or left to hover.
+        const box = place(r.x, f.y, r.look, [[0, false]], !!q && pinned(q));
+        if (q && box) held.push({ name: q.look.name, id: f.id, box });
       }
     }
     p.heldTags = held;
@@ -667,13 +722,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     // neighbour's tag goes a row lower (COMPACT_ROW) rather than out, so a row of people reads as two staggered rows.
     if (!tagsOff) for (const q of people) {
       if (live.hidden.has(q.look.name) || !crowded(q)) continue;
-      for (const dy of [0, COMPACT_ROW]) {
-        const box = tagBox(ctx, q.at.x, q.at.y + dy, q.look.label, true), foot = tagFootprint(ctx, box, q.look.badge, true);
-        if (touches(foot)) continue;
-        sk.drawTag(ctx, q.at.x, q.at.y + dy, q.look, env, true);
-        tags.push(box); taken.push(foot);
-        break;
-      }
+      place(q.at.x, q.at.y, q.look, [[0, true], [COMPACT_ROW, true]]);
     }
   } else {
     for (const d of p.desks) { const look = p.looks.get(d.key); sk.drawCharacter(ctx, d, actPosed(p, look), ms, env); speakers.push({ look, x: d.x + 58, y: d.y + 12, area: p.roomOf.get(d.key) ?? null }); }
@@ -734,7 +783,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
-  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags);
+  const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, titleBoxes.length ? [...tags, ...titleBoxes] : tags);
   const say = () => { T(); for (const { sp, b, dy } of placed) {
     const text = [...b.text].slice(0, b.shown).join("");
     sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
@@ -841,6 +890,16 @@ export function OfficeKey({ pal }) {
  * `assetImage(url)` how (the share's, which waits out a 429, #2662; none: the loader's own);
  * `opening` the office it opens on (the share's), instead of the one this browser chose last; #2861: `talk` the share's
  * conversations (its /state's: who heard or answered a person, when — never what was said), instead of the stream's.
+ * M-3533 R1, a Hub room's office (hub-room-office.js), on the Fleet dashboard's own origin too: `oneOffice` its one office
+ * (no office picker or carousel); `readOnly` no editing or sharing whatever the session; `stream` false: never this
+ * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
+ * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
+ * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
+ * `foldBar` (with `onMore`): no options row over the scene on a desk either — the options open in the sheet from a button
+ * in the zoom stack (a Hub room's office: the scene right under the room's header, M-3533 #4370);
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `cardName(name)` a card's
+ * title instead of the person's name (the room's: the agent's own, without the owner its scene label carries); `officesKey` read the offices
+ * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -849,12 +908,16 @@ function ensureDialogueStyle() {
   link.href = assetUrl("/assets/office-dialogue.css");
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null }) {
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
-  const phone = useOfficePhone(), compact = phone && typeof onMore === "function";
-  const store = useMemo(() => createOfficeStore(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), [lease]);
+  const phone = useOfficePhone(), compact = phone && typeof onMore === "function", folded = compact || (foldBar && typeof onMore === "function");
+  const store = useMemo(() => createOfficeStore({ ...(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), ...(storage ? { storage } : {}) }), [lease, storage]);
+  const streamOn = () => (stream === false ? null : appStore.get().streamOn);
+  const stateOf = (node) => (words ? words(node).state : stateWords(node));
+  const nowOf = (node) => (words ? words(node).now : caption(officePose(node.state), node.state));
   const [stored, setStored] = useState([]);
   const [storedRev, setStoredRev] = useState(null);                  // the rev the list was read at (a save sends it)
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
@@ -936,6 +999,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const walkers = useMemo(() => createWalkers(), []);
   const seatsRef = useRef(new Map());                                 // the zones layout's last seats: kept where they can be
   const seatPrefsRef = useRef({}), seatKeyRef = useRef(""), seatDropRef = useRef(null);
+  const placedRef = useRef(null);                                    // M-3539: the office and style the walkers were last placed for
+  // M-3539: the phone's zone chips scroll sideways when they do not fit (English); a fade at the side there is more
+  // (data-more-left / data-more-right) says so.
+  const pillsRef = useRef(null);
+  const pillsCue = () => {
+    const e = pillsRef.current;
+    if (!e || typeof e.toggleAttribute !== "function") return;
+    const more = e.scrollWidth - e.clientWidth;
+    e.toggleAttribute("data-more-left", more > 1 && e.scrollLeft > 1);
+    e.toggleAttribute("data-more-right", more > 1 && e.scrollLeft < more - 1);
+  };
+  useLayoutEffect(pillsCue);
   const [seatRev, setSeatRev] = useState(0);
   // #2554: All offices' tiles keep their own: seats (by tile and style), walkers and flights (by tile); and the items
   // flying between tiles.
@@ -982,10 +1057,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!lease) return undefined;
     const read = async () => { const at = ask(); const d = await store.offices(); if (lease.current()) adopt(d, at); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const off = sub ? lease.hold(sub("offices", () => { void read(); })) : null;
     return () => { if (off) off(); };
-  }, [lease, store]);
+  }, [lease, store, officesKey]);
   // #2578: what agents do here by their own hand (office_set) — on opening, then as the stream brings it.
   // A read a newer one or the stream overtook is dropped (it is older: review — an opening read answered after the one
   // the stream's return began brought a cleared act back); read again when the stream comes back, and — with no live
@@ -1018,7 +1093,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     let heard = 0;                                                   // reads begun and events heard: the newest wins
     const read = async () => { const at = ++heard, d = await store.acts(); if (lease.current() && d && at === heard) setActs(d); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const polled = () => globalThis.document?.body?.dataset?.webTransport === "poll" || appStore.get().connection === "polling";
     const offs = sub ? [lease.hold(sub("office_acts", (d) => { heard++; if (d && Array.isArray(d.acts)) setActs(actsOk(d.acts, d.now)); else void read(); })),
       lease.hold(sub("connection", (c) => { if (c === "live") void read(); }))] : [];
@@ -1040,7 +1115,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   useEffect(() => {
     if (!dialogueOn || talk !== undefined) return undefined;
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     if (!sub) return undefined;
     let skew = 0;
     const seen = new Set();
@@ -1092,7 +1167,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!lease) return undefined;
     const read = async () => { const d = await store.skins(); if (lease.current() && d) setPacks(d.packs); };
     void read();
-    const sub = appStore.get().streamOn;
+    const sub = streamOn();
     const off = sub ? lease.hold(sub("office_skins", () => { void read(); })) : null;
     return () => { if (off) off(); };
   }, [lease, store]);
@@ -1101,7 +1176,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // session's here or over the public link (the host asks again too); never a guest's or a read-only one's.
   useEffect(() => {
     const body = globalThis.document?.body;
-    if (!body || body.dataset.tier === "guest") return undefined;
+    if (readOnly || !body || body.dataset.tier === "guest") return undefined;
     let live = true;
     const auth = globalThis.AgendAuth;
     if (auth && typeof auth.canWrite === "function") Promise.resolve(auth.canWrite()).then((v) => { if (live) { setCanEdit(v === true); setCanShare(v === true); } }, () => {});
@@ -1214,8 +1289,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const nodes = all.filter(keep);
     if (zones) {
       const skKey = shared ? "" : officeKey;
-      if (seatKeyRef.current !== skKey) {
-        seatKeyRef.current = skKey;
+      // M-3533 (#4370): the seats given restart when the office or its style changes — on a shared page too (a room's
+      // office, a share link), whose per-device seat choices are not kept (skKey ""), so a style with more seats is not
+      // drawn with the old one's overflow spots.
+      if (seatKeyRef.current !== officeKey) {
+        seatKeyRef.current = officeKey;
         seatsRef.current = new Map();
         seatPrefsRef.current = skKey ? store.seats(skKey) : {};
       }
@@ -1277,6 +1355,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // offices, the carousel or Edit layout. `hold`: the person picked up (carried where the pointer is, walked back from
   // where they are dropped, or seated on another seat in their area: M-3445 #4266/#4267); `reacts`: pats and feeds showing.
   const play = playAllowed({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
+  // M-3547 / M-3556: off only for reduced motion — one line under Drag and pat in Display options says so (no override).
+  const playStillOff = playOffForMotion({ on: playOn, still, zones, overview, layout: !!layout, shared }) && !carouselPick;
   const hold = useMemo(() => createHold(), []), reacts = useRef(new Map()), walkNow = useRef(null), holdTimer = useRef(null);
   // M-3432 (#4255): custom snacks from the active skin pack (client-local, only when play is enabled).
   const snacks = useMemo(() => createSnacks(), []);
@@ -1306,7 +1386,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       for (const [name, at] of snacks.targets(t)) to.set(name, at);
       const held = hold.held();                                     // M-3293: carried: where the pointer is, no walk
       if (held) to.set(held.name, held.at);
-      walkers.sync(to, t, L, still);
+      // M-3539: a new office or style (a room's office reads its style after it opens) puts everyone at their place at
+      // once: walking there from the old one's seats drew the asleep standing in the help desk for seconds.
+      const placed = `${officeKey}\n${skin.id}`, fresh = placedRef.current !== placed;
+      placedRef.current = placed;
+      walkers.sync(to, t, L, still, fresh);
       // Reduced motion has no loop: drawn again here, or an act's walk (set after the scene was drawn) never shows.
       if (still) { if (scene.current && !globalThis.document?.hidden) draw(0); } else loop.current?.wake();
     };
@@ -1620,7 +1704,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
-      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, clocked(""), false, null, s.bubbleHits);
+      const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
+      const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
       return drawDialogue(ctx, s, ms) || moved;
     }
@@ -2283,30 +2368,54 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     n: people.filter((d) => d.area === areaName(key)).length })).filter((z) => z.rect && z.n > 0) : [];
   const toZone = (z) => { const v = view0(); raw.current = ZONE_K; setView(centreOn({ ...v, k: ZONE_K }, size, z.rect.x + z.rect.w / 2, z.rect.y + z.rect.h / 2)); };
   const closeMore = () => onMore && onMore(false);
+  // M-3556: Display options (style, the toggles, the key) in a dropdown on a desk — non-modal, like Members: the office
+  // stays in view, so a tick shows at once; a click elsewhere or Esc closes it. The Fleet office opens it from ⚙ in its
+  // bar (open here); a Hub room's office (foldBar) from the gear in the zoom stack, open as its page says (`more`).
+  const roomGear = folded && !compact;
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const dispOpen = roomGear ? !!more : displayOpen;
+  const setDisp = (v) => (roomGear ? onMore(v) : setDisplayOpen(v));
+  const displayRef = useRef(null);
+  useEffect(() => {
+    if (!dispOpen) return undefined;
+    const away = (e) => { if (displayRef.current && !displayRef.current.contains(e.target)) setDisp(false); };
+    // Esc from inside it hands focus back to its button (as the sheet did), so the keyboard is not left on nothing.
+    const esc = (e) => {
+      if (e.key !== "Escape") return;
+      const box = displayRef.current, back = !!box && typeof box.contains === "function" && box.contains(globalThis.document?.activeElement);
+      setDisp(false);
+      if (back) box.querySelector("button")?.focus?.();
+    };
+    document.addEventListener("pointerdown", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [dispOpen]);
+  // M-3556: the phone sheet is taller than a phone: while more is below its fold, its foot fades (data-more on the body).
+  useEffect(() => {
+    if (!compact || !more) return undefined;
+    const el = globalThis.document?.querySelector?.(".oo-sheet .dlg-body");
+    if (!el || typeof el.addEventListener !== "function") return undefined;
+    const upd = () => { const below = el.scrollTop + el.clientHeight < el.scrollHeight - 2; if (below) el.setAttribute("data-more", ""); else el.removeAttribute("data-more"); };
+    const raf = globalThis.requestAnimationFrame ? globalThis.requestAnimationFrame(upd) : (upd(), 0);
+    el.addEventListener("scroll", upd, { passive: true }); globalThis.addEventListener?.("resize", upd);
+    // Its content can change while it is open (another office, All offices' lobby tile, a note): re-measure then too
+    // (Prism #3556 r3 P3).
+    const RO = globalThis.ResizeObserver, ro = typeof RO === "function" ? new RO(upd) : null;
+    if (ro) { ro.observe(el); for (const c of el.children || []) ro.observe(c); }
+    return () => { globalThis.cancelAnimationFrame?.(raf); el.removeEventListener("scroll", upd); globalThis.removeEventListener?.("resize", upd); ro?.disconnect(); };
+  }, [compact, more]);
   // In the sheet: Edit offices and Edit layout open their own editors (outside it): the sheet closes after their click.
   const sheetClick = (e) => { if (typeof e.target?.closest === "function" && e.target.closest(".oo-edit, .oo-layout")) closeMore(); };
   const tile = (icon, label, fn, cls, pressed) => html`<button type="button" class=${`oo-sheet-tile ${cls}`} aria-pressed=${pressed === undefined ? undefined : pressed ? "true" : "false"}
     onClick=${fn}><${Icon} name=${icon} size=${20} /><span>${label}</span></button>`;
-  const barItems = html`
-      <label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>
-      ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
-        <select class="tb-select" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
-          ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
-          ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
-        </select></label>` : null}
+  // M-3556: the bar in three groups — scope (which office, whom: left of the desk's one row), the display options (behind
+  // ⚙) and the actions (right). A phone's ⋯ sheet lists all three in that order.
+  const scopeItems = html`
+      ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("show")}</span>
-        <select class="tb-select" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
+        <select class="tb-select oo-team" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
           ${opts.map((o) => html`<option key=${o.value} value=${o.value}>${o.label}</option>`)}
         </select></label>
         <${People} nodes=${everyone} pinned=${f.pinned} onChange=${(pinned) => setF({ ...f, pinned })} />` : null}
-      <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
-      ${zones && !overview && !shared ? html`<label class="check oo-play" title=${still ? to("playStill") : null}><input type="checkbox" checked=${playOn && !still} disabled=${still}
-        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span></label>` : null}
-      ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
-      <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
-      ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
-        disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
-        ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
       ${carouselPick ? html`<div class="oo-carousel">
         <${CarouselOffices} stored=${stored} carIds=${carIds} open=${carMenu} onOpen=${setCarMenu} onToggle=${toggleCarId}
           onAll=${() => setCarIds(stored.map((o) => o.id))} onNone=${() => setCarIds([])} />
@@ -2318,23 +2427,61 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       </div>` : null}
       ${custom && baseSkin.id !== custom.skin && !loading ? html`<span class="muted oo-note">${to("skinUnknown", styleName(custom.skin))}</span>` : null}
       ${placed.ignored ? html`<span class="muted oo-note">${to("layoutIgnored")}</span>` : null}
-      ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
-      ${traffic ? html`<button type="button" class=${`btn btn-sm oo-key-btn${keyOpen ? " on" : ""}`} aria-expanded=${keyOpen ? "true" : "false"} title=${to("keyTitle")}
-        onClick=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }}>${to("key")}</button>` : null}
       ${L.unseated ? html`<span class="muted oo-note">${to("unseated", L.unseated)}</span>` : null}
+`;
+  const optionItems = html`
+      ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("styleLabel")}</span>
+        <select class="tb-select oo-style" value=${STYLES.includes(style) || packs.some((pk) => pk.id === style) ? style : skin.id} title=${to(canEdit ? "styleForAll" : "styleHere")} onChange=${(e) => pickStyle(e.target.value)}>
+          ${styles.map((id) => html`<option key=${id} value=${id}>${to(`style_${id}`)}</option>`)}
+          ${packs.map((pk) => html`<option key=${`pack:${pk.id}`} value=${pk.id}>${pk.name}</option>`)}
+        </select></label>` : null}
+      <label class="check oo-hide-asleep"><input type="checkbox" checked=${hideAsleep} onChange=${() => { const v = !hideAsleep; store.saveHideAsleep(v); setHideAsleep(v); setTip(null); }} /><span>${to("hideAsleep")}</span></label>
+      ${zones && !overview && !shared ? html`<label class="check oo-play"><input type="checkbox" checked=${playOn && !still} disabled=${still}
+        onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playMotionOff")}</span>` : null}</label>` : null}
+      ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
+      <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
+      ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
+        disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
+        ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
+      ${traffic ? html`<label class="check oo-key-tick" title=${to("keyTitle")}><input type="checkbox" checked=${keyOpen}
+        onChange=${() => { const v = !keyOpen; store.saveKeyOpen(v); setKeyOpen(v); }} /><span>${to("key")}</span></label>` : null}
+      ${styleErr && auto ? html`<span class="note oo-note oo-style-err" role="status">${styleErr}</span>` : null}
+`;
+  const actionItems = html`
       ${canEdit && storedRev !== null ? html`<button type="button" class="btn btn-sm oo-edit" onClick=${() => { if (!overview && !carouselPick) setEditing(true); }} disabled=${!!layout || overview || carouselPick}
         title=${overview || carouselPick ? to(carouselPick ? "carouselNoEdit" : "overviewNoEdit") : undefined}>${t("orge.edit")}</button>` : null}
       ${canLayout ? html`<button type="button" class="btn btn-sm oo-layout" onClick=${openLayout}>${t("orgl.edit")}</button>` : null}
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
-        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}`;
+        get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
+`;
+  // The sheet: a "Display options" heading over the options (a Hub room's too), a rule before the actions (a room has none).
+  const hasActions = (canEdit && storedRev !== null) || canLayout || canShare;
+  const barItems = html`${scopeItems}<h3 class="oo-sheet-h">${to("display")}</h3>${optionItems}
+    ${hasActions ? html`<hr class="oo-sheet-rule" />` : null}${actionItems}`;
+  // A room's dropdown hangs from the zoom stack's top, inside the stage (which clips): it is never taller than the
+  // stage's room below its top (Prism #3556 P2: a 340 px stage); a longer list scrolls.
+  const fitPop = (el) => {
+    if (!el || !roomGear || !stageRef.current || typeof el.getBoundingClientRect !== "function") return;
+    const st = stageRef.current.getBoundingClientRect(), top = el.getBoundingClientRect().top;
+    if (st && st.height > 0) el.style.maxHeight = `${popMaxHeight(st.bottom, top)}px`;
+  };
+  const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
+    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><h3 class="oo-display-h">${to("display")}</h3>
+      <div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
-    ${compact ? null : html`<div class="oo-bar">${barItems}</div>`}
+    ${folded ? null : html`<div class="oo-bar oo-bar-row">
+      <div class="oo-bar-scope">${scopeItems}</div>
+      <div class="oo-bar-actions">${actionItems}
+        ${displayMenu(html`<button type="button" class=${`btn btn-sm oo-display-btn${dispOpen ? " on" : ""}`} aria-expanded=${dispOpen ? "true" : "false"}
+          onClick=${() => setDisp(!dispOpen)}><${Icon} name="settings" size=${14} /><span>${to("display")}</span></button>`)}
+      </div>
+    </div>`}
     ${compact && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
-      <div class="oo-sheet-tiles">
+      ${compact ? html`<div class="oo-sheet-tiles">
         ${tile("fitwidth", to("fit"), () => { closeMore(); fit(); }, "oo-sheet-fit")}
         ${tile("fitwidth", to("fill"), toggleFill, "oo-sheet-fill", fitMode === "cover")}
         ${tile("fullscreen", to("fullscreen"), () => { closeMore(); enterFs(); }, "oo-sheet-fs")}
-      </div>
+      </div>` : null}
       ${typeof onLive === "function" ? html`<label class="check oo-sheet-live"><input type="checkbox" checked=${!!live} onChange=${() => onLive(!live)} /><span>${t("orgc.live")}</span></label>` : null}
       <div class="oo-bar oo-sheet-bar" onClick=${sheetClick}>${barItems}</div>
     </${Dialog}>` : null}
@@ -2357,12 +2504,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}
       ${tipText && tip !== card ? html`<div ref=${tipRef} class="oo-tip" role="tooltip">
         <strong>${tipText.primary}</strong>${tipText.secondary ? html` <span class="muted mono">${tipText.secondary}</span>` : null}
-        <div>${tipText.sub}</div><div class="muted">${caption(officePose(tipDesk.node.state), tipDesk.node.state)}</div>
+        <div>${words ? stateOf(tipDesk.node) : tipText.sub}</div>${nowOf(tipDesk.node) ? html`<div class="muted">${nowOf(tipDesk.node)}</div>` : null}
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
       </div>` : null}
       ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
-        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen,
-          state: stateWords(cardOf.node), now: caption(officePose(cardOf.node.state), cardOf.node.state),
+        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
+          state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
@@ -2385,13 +2532,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
-        const nt = nodeText(d.node), cap = caption(officePose(d.node.state), d.node.state), where = d.office ? ` · ${d.office}` : "";
+        const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
+        const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${nt.full}${where} · ${cap}.`} aria-haspopup="dialog"
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} data-slot=${Number.isInteger(d.box?.slot) ? d.box.slot : undefined} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
-          : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${nt.full}</span>`}</li>`;
+          : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
       })}</ul>
       <div class="oc-zoom oo-zoom" role="group" aria-label=${t("orgc.view")}>
         <output ref=${pctRef} class="oo-zoom-pct"></output>
@@ -2401,6 +2549,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <button type="button" class=${`icon-btn oo-fill${fitMode === "cover" ? " on" : ""}`} aria-pressed=${fitMode === "cover" ? "true" : "false"} aria-label=${to("fillTitle")}
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
+        ${roomGear ? displayMenu(html`<button type="button" class=${`icon-btn oo-options${dispOpen ? " on" : ""}`} aria-expanded=${dispOpen ? "true" : "false"} aria-label=${to("display")} title=${to("display")} onClick=${() => setDisp(!dispOpen)}><${Icon} name="settings" size=${16} /></button>`) : null}
       </div>
       ${showSnacks ? html`<div ref=${snackTrayRef} class="oo-snacks" role="toolbar" aria-label=${to("snacks")}>
         ${packSnacks.map((sn) => {
@@ -2421,7 +2570,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${snackDrag.kind === "feed" ? html`<span class="oo-snack-hint">${to("snackFeed", snackDrag.label)}</span>`
           : snackDrag.kind === "place" ? html`<span class="oo-snack-hint">${to("snackPlace")}</span>` : null}
       </div>` : null}
-      ${fs ? html`<div class="oo-fs-bar">${officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
+      ${fs ? html`<div class="oo-fs-bar">${oneOffice ? null : officeSelect("oo-fs-office")}${carChrome()}</div>` : null}
       <svg ref=${miniRef} class="oc-mini oo-mini" viewBox=${`0 0 ${Math.max(1, L.width)} ${Math.max(1, L.height)}`} aria-hidden="true" onClick=${onMini}>
         <title>${to("overview")}</title>
         <rect class="oo-mini-matte" x=${-L.width} y=${-L.height} width=${L.width * 3} height=${L.height * 3} fill=${matte} />
@@ -2431,7 +2580,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <rect ref=${miniViewRef} class="oc-mini-view oo-mini-view" />
       </svg>
     </div>
-    ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")}>
+    ${zoneList.length ? html`<div class="oo-zone-pills" role="group" aria-label=${to("zones")} ref=${pillsRef} onScroll=${pillsCue}>
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
         ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
       </div>` : null}

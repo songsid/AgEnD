@@ -19,6 +19,7 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import { bootFixture, freshPage, mounted, shotPath, type MatrixCase } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-2715-office-look";
 const REPO = process.env.REPO!;
@@ -83,8 +84,9 @@ async function openOffice(page: any, base: string) {
   await page.waitForSelector(".oo-canvas", { timeout: 15000 });
   await page.waitForTimeout(800);
 }
-const picker = (page: any) => page.locator(".oo-bar select[title]");
-const styleOf = (page: any) => picker(page).inputValue() as Promise<string>;
+// M-3556: Style is in ⚙ Display options on a desk — each look opens it, then closes it.
+const picker = (page: any) => page.locator("select.oo-style");
+const styleOf = (page: any) => withDisplay(page, () => picker(page).inputValue()) as Promise<string>;
 const csp = (page: any) => page.evaluate("window.__smokeCsp || []") as Promise<string[]>;
 const watchCsp = (ctx: any) => ctx.addInitScript({ content: `window.__smokeCsp = []; document.addEventListener("securitypolicyviolation", e => window.__smokeCsp.push(e.violatedDirective + " " + (e.blockedURI || "")));` });
 /** Requests a page sends to /ui/office-style (its network log). */
@@ -100,9 +102,9 @@ const admin = await freshPage(fx, C, { beforeNavigate: watchCsp });
 const adminWrites = styleWrites(admin.page);
 await openOffice(admin.page, admin.base);
 const firstStyle = await styleOf(admin.page);
-const title = await picker(admin.page).getAttribute("title");
+const title = await withDisplay(admin.page, () => picker(admin.page).getAttribute("title"));
 const saved = admin.page.waitForResponse((r: any) => new URL(r.url()).pathname === "/ui/office-style", { timeout: 10000 });
-await picker(admin.page).selectOption(PACK);
+await withDisplay(admin.page, () => picker(admin.page).selectOption(PACK));
 const savedStatus = (await saved).status();
 await admin.page.waitForTimeout(2500);
 await admin.page.screenshot({ path: shotPath(SMOKE, C, "1-admin-picked") });
@@ -136,7 +138,7 @@ const roStorage = await ro.evaluate("localStorage.getItem('agend_org_office_skin
 record("1b a second fresh profile shows it", {
   "shows the pack, never picked here": (await styleOf(ro)) === PACK,
   "nothing of its own in storage": roStorage === null,
-  "the picker says it is this browser's": (await picker(ro).getAttribute("title")) === "The whole fleet's style in this browser",
+  "the picker says it is this browser's": (await withDisplay(ro, () => picker(ro).getAttribute("title"))) === "The whole fleet's style in this browser",
   "no style write": roWrites.length === 0,
   "no page error": roErrors.length === 0,
 }, { roStorage });
@@ -169,7 +171,7 @@ async function viewShare(url: string, scheme: "light" | "dark", shot: string) {
   await page.waitForSelector(".oo-canvas", { timeout: 15000 });
   await page.waitForTimeout(3000);
   const opened = await page.locator("select.oo-office").inputValue();
-  const style = await page.locator(".oo-bar select[title]").inputValue().catch(() => "");
+  const style = await withDisplay(page, () => page.locator("select.oo-style").inputValue()).catch(() => "");
   await page.screenshot({ path: shotPath(SMOKE, C, shot) });
   await ctx.close();
   return { html, firstBg, attr, opened, style, pictures, errors };
@@ -201,7 +203,7 @@ record("2b Look Light from a dark dashboard, opened in a dark-mode browser", {
 // ── 3. Blocked: the admin's saves exhausted (the offices' real limiter, for this person) ──
 for (let i = 0; i < 25; i++) fm.officeWrites.record(admin.personKey);
 const refused = admin.page.waitForResponse((r: any) => new URL(r.url()).pathname === "/ui/office-style", { timeout: 10000 });
-await picker(admin.page).selectOption("pixel");
+await withDisplay(admin.page, () => picker(admin.page).selectOption("pixel"));
 const refusedStatus = (await refused).status();
 await admin.page.waitForSelector(".oo-style-err", { timeout: 5000 });
 await admin.page.waitForTimeout(500);
@@ -215,7 +217,7 @@ record("3 a refused save says so and goes back", {
 }, { refusedStatus, note });
 
 // ── 4. The read-only person's own pick: kept in their browser, never sent ──
-await picker(ro).selectOption("studio");
+await withDisplay(ro, () => picker(ro).selectOption("studio"));
 await ro.waitForTimeout(1500);
 await ro.reload();
 await openOffice(ro, fx.base);

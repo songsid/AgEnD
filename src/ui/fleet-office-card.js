@@ -28,13 +28,13 @@ import { nineSlice } from "./fleet-office-dialogue.js";
 register("ocard", {
   en: {
     card: "{0}'s card", level: "Lv {0}", work: "{0} work tokens", estimated: "estimated", toNext: "{0} to Lv {1}", office: "Office", model: "Model", backend: "Backend",
-    today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
+    today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", nowLabel: "Now: ", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
     chatWindow: "Open {0}’s chat in a new window",
     close: "Close", xp: "Progress to Lv {0}",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
-    today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", find: "在辦公室找他", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
+    today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", nowLabel: "現在：", find: "在辦公室找它", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
     chatWindow: "在新視窗開啟 {0} 的聊天",
     close: "關閉", xp: "升到 Lv {0} 的進度",
   },
@@ -52,9 +52,11 @@ export function dayOf(first, nowMs = Date.now()) {
 /**
  * What the card says (pure, for the component and the tests): `node` the org chart's node; `lv` levelsOk's answer (or
  * null); `levels` the style's pack `levels` (or null); `share` a share link's page; `state` the state's words; `now`
- * the tooltip's activity line; `where` the office (and area) in words.
+ * the tooltip's activity line; `where` the office (and area) in words. M-3533: `rows` ({ key, label, value }[]) the
+ * card's rows instead of the office's own (a Hub room's office: the agent's owner and introduction); `display` the card's
+ * name instead of the person's (a room's: the agent's own name, where the scene's label adds its owner).
  */
-export function cardModel({ node, lv, levels, share = false, state, now, where }) {
+export function cardModel({ node, lv, levels, share = false, state, now, where, rows: given = null, display = "" }) {
   const it = node.i || {};
   const names = node.i ? namesOf(node.i) : { primary: node.name, secondary: "" };
   const fx = fixedOf(node.name, levels);
@@ -64,18 +66,18 @@ export function cardModel({ node, lv, levels, share = false, state, now, where }
   const title = on && fx ? fx.title : e ? titleOf(e.level, levels && levels.titles) : null;
   const detail = !share && !!e && e.workTokens !== undefined;
   const xp = showLevel && detail ? xpOf(e.level, e.workTokens, lv.unit) : null;
-  const rowItems = [{ key: "office", label: tc("office"), value: where }];
-  if (!share && it.model) rowItems.push({
+  const rowItems = Array.isArray(given) ? given.filter((r) => r && r.value) : [{ key: "office", label: tc("office"), value: where }];
+  if (!given && !share && it.model) rowItems.push({
     key: "model",
     label: it.model_observation ? observationLabel("selection") : tc("model"),
     value: it.model_observation ? (modelName(it.model_observation.session) || observationLabel("unresolved")) : modelText(it),
   });
-  if (!share && it.backend) rowItems.push({ key: "backend", label: tc("backend"), value: backendLabel(it.backend) });
+  if (!given && !share && it.backend) rowItems.push({ key: "backend", label: tc("backend"), value: backendLabel(it.backend) });
   if (detail) rowItems.push({ key: "today", label: tc("today"), value: tc("todayN", tokens(e.today.workTokens), e.today.requests) });
   if (detail && e.firstSeen) rowItems.push({ key: "firstSeen", label: tc("firstSeen"), value: tc("day", dayOf(e.firstSeen)) });
   const rows = rowItems.map((r) => [r.label, r.value]);
   return {
-    name: names.primary, instance: node.name, state, title,
+    name: display || names.primary, instance: given ? "" : node.name, state, title,
     stateLine: title ? `${state} · ${title}` : state,
     badge: on && fx && fx.hideLevel ? { mark: true, tier: 0 } : e ? { text: badgeText(e.level), tier: tierOf(e.level) } : null,
     level: showLevel ? { line1: detail ? `${tc("level", e.level)} · ${tc("work", tokens(e.workTokens))}` : tc("level", e.level), estimated: detail && e.estimated,
@@ -327,9 +329,10 @@ function drawPortraitAvatar(cv, im, W) {
  * The card. `model`: cardModel's; `avatar(canvas, sizePx)`: draws the person's idle frame on it; `sheet`: a bottom
  * sheet (a phone); `place(el)`: the page positions the popover (beside the person, following them); `onChat` (none on
  * a share link), `onFind`, `onClose`; M-3293: `onReact(kind)` — Pat and Feed (only where play is on; none on a share
- * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`.
+ * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`; M-3533: `action`
+ * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat).
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2 }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null }) {
   const box = useRef(null), canvas = useRef(null), bgCanvas = useRef(null), swipe = useRef(null);
   const [picRev, setPicRev] = useState(0);
   const spec = useMemo(() => resolveCardSpec(packCard), [packCard]);
@@ -402,7 +405,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           ${m.badge ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
           <strong class="oo-card-name">${m.name}</strong>
-          <div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>
+          ${m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${m.stateLine}</div>
         </div>
         <button type="button" class="icon-btn oo-card-close" aria-label=${tc("close")} title=${tc("close")} onClick=${onClose}>×</button>
@@ -413,7 +416,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
         ${m.level.pct !== null ? html`<progress class="oo-card-bar" max="100" value=${Math.round(m.level.pct * 100)} aria-label=${tc("xp", m.level.next)}></progress>` : null}
       </div>` : null}
       <dl class="oo-card-rows">${(m.rowItems || m.rows.map(([label, value]) => ({ key: "", label, value }))).map((r) => html`<div data-row=${r.key || undefined}><dt>${r.label}</dt><dd>${r.value}</dd></div>`)}</dl>
-      ${m.now ? html`<div class="oo-card-now"><span class="muted">${tc("now")}:</span> ${m.now}</div>` : null}
+      ${m.now ? html`<div class="oo-card-now"><span class="muted">${tc("nowLabel")}</span>${m.now}</div>` : null}
       ${tell ? html`<label class="check oo-card-tell" title=${tc("tellNote")}><input type="checkbox" checked=${tell.on} onChange=${(e) => tell.set(e.target.checked)} />
         <span>${tc("tell", m.name)}</span></label>` : null}
       <div class="oo-card-actions">
@@ -421,6 +424,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
+        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
       </div>
     </div>`;
   }
@@ -445,7 +449,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           ${m.badge && !hide.has("badge") ? html`<span class=${`oo-badge tier-${m.badge.tier}${m.badge.mark ? " mark" : ""}`} aria-hidden="true">${m.badge.mark ? "" : m.badge.text}</span>` : null}</div>
         <div class="oo-card-names">
           <strong class="oo-card-name">${m.name}</strong>
-          ${!hide.has("instance") ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
+          ${!hide.has("instance") && m.instance ? html`<div class="oo-card-instance mono" title=${m.instance}>${m.instance}</div>` : null}
           <div class="oo-card-state">${stateLine}</div>
         </div>
         <button type="button" class="icon-btn oo-card-close" aria-label=${tc("close")} title=${tc("close")} onClick=${onClose}>×</button>
@@ -465,7 +469,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     }
     if (sec === "now") {
       if (!m.now || hide.has("now")) return null;
-      return html`<div key="now" class="oo-card-now"><span class="muted">${tc("now")}:</span> ${m.now}</div>`;
+      return html`<div key="now" class="oo-card-now"><span class="muted">${tc("nowLabel")}</span>${m.now}</div>`;
     }
     if (sec === "tell") {
       if (!tell) return null;
@@ -478,6 +482,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
+        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
       </div>`;
     }
     return null;

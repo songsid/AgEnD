@@ -332,6 +332,24 @@ export interface FleetDefaults extends Partial<InstanceConfig> {
      * on, quiet 60, prompt 10, crash grace 5.
      */
     liveness?: { enabled?: boolean; quiet_minutes?: number; prompt_minutes?: number; crash_grace_minutes?: number };
+    /**
+     * Comments and `@<instance>` mentions wake (docs/design/task-board.md, "Comments and mentions"): a comment on a card
+     * wakes its assignee, an `@name` in it wakes that instance. Default true; `false` brings back #2801's rule that a
+     * comment notifies nobody.
+     */
+    comment_wakes?: boolean;
+    /**
+     * Following a card (docs/design/task-board.md, "Following a card"): the instance that handed a card out, the
+     * instances that watch it and the leader of its project hear when it is finished, waits for confirmation, is sent
+     * back, is blocked or changes hands. Default true; `false` switches all of it off (comments and mentions, and the
+     * assignee's own news, are unchanged).
+     */
+    progress_wakes?: boolean;
+    /**
+     * The board's leader: an instance that follows every card whose project has no lead of its own (and the cards in no
+     * project), as a project's lead follows its project's. Absent: none.
+     */
+    leader?: string;
   };
   webhooks?: WebhookConfig[];
 }

@@ -396,11 +396,12 @@ The sidebar's **Fleet** (zh "Fleet 概覽", at the top) and the phone's Fleet ta
   the board or list): its text on the left (goal, scope, definition of done, context — an empty one is a small "+ Add"
   button, opened in place; then the agent's block: state, result and activity, one line while there is nothing to show; then
   the sub tasks, a bordered list with done / total) and its activity — comments, progress log and history as one timeline,
-  the comment box last — and its properties on the right in three groups (status, assignee,
-  priority, size / project, dispatched by / a "needs my confirmation" switch, dependencies; "Mark blocked"
+  the comment box last, `@` completes instance names — and its properties on the right in three groups (status, assignee,
+  priority, size / project, leader, dispatched by, watchers / a "needs my confirmation" switch, dependencies; "Mark blocked"
   is in the toolbar at the top; on a phone one column: title, spec, agent line, sub tasks, properties, activity). A property is a chip: pick from its menu and it is saved; text saves when
   you leave the box or press Ctrl+Enter (Esc drops it); after a conflict the edit stays open and asks before it
-  overwrites. **Main task** (new) needs only a title; project, assignee and priority are optional chips, the rest is
+  overwrites. A comment wakes the card's assignee, and `@<instance name>` in it wakes that instance (not the
+  writer; `defaults.task_board.comment_wakes: false` turns this off). **Main task** (new) needs only a title; project, assignee and priority are optional chips, the rest is
   under More options. On a phone the board shows one status at a time and each card has a ⋯ menu (Move to…). Only a signed-in person confirms the work they handed out
   (an instance's `done` on such a card is review); a card an agent handed out, that agent confirms (#2434). No
   delete: cancel. Alt+arrows on a card's title move it (no drag needed; the card's Status chip and Position row on a
@@ -441,7 +442,10 @@ Telegram topic, and **Open chat**.
 skin-pack manifest format and its limits, Edit layout and seat reservations, bedtime, share links, agents' office and
 pack tools, and rolling back. Point people there for more than the summary below; it lists the version each feature came in.
 
-**Office** (the third view, remembered per device) draws the same fleet as a pixel office: a room per team, a desk
+**Office** (the third view, remembered per device; M-3556: its bar is one row — Office, Show, People on the left; Edit
+offices, Share… and **⚙ Display options** on the right, a dropdown holding Style, Hide paused and stopped, Drag and pat,
+Bedtime, Lobby tile, Dialogue and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
+dropdown) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
 blinking light (needs you, crashed, looks stuck). With **Live** on, each message, delegation and report is carried
@@ -459,7 +463,7 @@ the rest. **Show** picks a team or the Lobby and **People** pins chosen instance
 (over the public link too, M-3278; never a read-only one or a guest) gets **Edit offices**: add, rename and delete offices, pick who is
 in each (Everyone, Picked: whole teams or single instances, or #2752 Nobody: its style's NPCs only; none picked = everyone) and its style,
 #4104 **Idle people stay in their own area** (per office, off by default: idle strolls stay in the seat's area, no visits),
-#4119 **Drag and pat** in the Office bar (per device, on by default, off with reduced motion; never on a share link): drag
+#4119 **Drag and pat** in ⚙ Display options (per device, on by default, off with reduced motion — M-3547/M-3556: one line under it in Display options says why, with no override; never on a share link): drag
 someone onto another valid seat in their area (#4266) to seat them there immediately (persisted per device/office/style, swapping cleanly and respecting reserved seats and `stayInArea`) or drop on empty floor to walk back; while held they play a `dragged` pose (#4267: optional `characters.<set>.dragged` / `default.dragged` strip or built-in lifted dangle, returning to their prior pose on drop); their card's Pat/Feed show hearts and words; nothing reaches the agent unless that card's
 **Tell <agent> (with their next message)** is ticked (per agent, off) — then one `[Office] … patted your head ×N` line rides
 its next real message's `[Recent reactions: …]` (never a wake; capped); a pack's `bubbles.<lang>.pat` / `.feed` give the words; (#4255) packs with optional `snacks` (1–12 items, `sprite`, optional `eat` overlay, `radius`) and `characters.<set>.eat` show a floating snack tray (bottom-left; above zone pills on phone) for drag-to-feed, tap-to-arm, and placed snacks (up to 6 on floor, 30 s TTL, up to 4 nearest idle racers honoring `stayInArea`, first eats and others scatter; packs without `snacks` stay unchanged), and upload or delete **skin packs** (an

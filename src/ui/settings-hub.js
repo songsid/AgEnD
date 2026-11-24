@@ -327,7 +327,7 @@ function HubExposures({ client, pairing }) {
         : !row.enforceable && row.state !== "published" ? html`<small class="hub-exposure-why">${hw(row.reason === "delivery_unavailable" ? "agentDeliveryUnavailable" : "agentNotShareable")}</small>`
         : row.reason === "hub_refused" ? html`<small class="hub-exposure-why hub-exposure-refused">${hr("note")}
             <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${() => toggle(row, false)}>${hr("withdraw")}</button></small>`
-        : row.reason === "republish_required" ? html`<small class="hub-exposure-why hub-exposure-republish">${hw("republishRequired")}
+        : row.reason === "republish_required" || row.reason === "share_lapsed" ? html`<small class="hub-exposure-why hub-exposure-republish">${hw(row.reason === "share_lapsed" ? "shareLapsed" : "republishRequired")}
             <button type="button" class="btn btn-sm" disabled=${busy !== null} onClick=${() => toggle(row, true)}>${hw("shareAgain")}</button></small>`
         : row.policy && row.policy.dataView === AGENT_CHOICE.dataViewId ? html`<small class="hub-exposure-why">${hw("agentShared")}</small>`
         : row.policy ? html`<small class="hub-exposure-why">${hw("policy", row.policy.dataView, row.policy.tools.join(", ") || "—")}</small>` : null}

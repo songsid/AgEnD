@@ -51,8 +51,8 @@ describe("the ledger", () => {
   });
   it("the newest audited release is the one an update goes to, compared by number (not as text)", () => {
     expect(Object.fromEntries(CLI_IDS.map(id => [id, auditedVersion(id)]))).toEqual({
-      // Current audited targets; Muse 1.4.24-R9131.1 was added with M-3396.
-      "claude-code": "2.1.330", "codex": "0.171.0", "kiro-cli": "3.5.0", "antigravity": "1.5.14", "grok": "1.0.92", "muse": "1.4.24-R9131.1", "opencode": "1.19.6",
+      // Current audited targets; Muse 1.4.24-R9131.1 was added with M-3396, 1.4.25-R9361.1 with M-3550.
+      "claude-code": "2.1.330", "codex": "0.171.0", "kiro-cli": "3.5.0", "antigravity": "1.5.15", "grok": "1.0.92", "muse": "1.4.25-R9361.1", "opencode": "1.19.6",
     });
     expect(compareVersions("2.1.99", "2.1.316")).toBe(-1);
     expect(compareVersions("1.4.14", "1.4.4")).toBe(1);
@@ -104,24 +104,27 @@ describe("where an installed CLI stands", () => {
     expect(cliUpdateView("claude-code", "2.1.316 (Claude Code)", true)).toMatchObject({ state: "behind", audited: "2.1.330", button: true });
   });
   it("behind, but the CLI updates itself (no update in the registry): the versions only, no button", () => {
-    expect(cliUpdateView("muse", "1.4.12-R6909.1", false)).toEqual({ state: "behind", audited: "1.4.24-R9131.1", installed: "1.4.12-R6909.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "1.4.12-R6909.1", false)).toEqual({ state: "behind", audited: "1.4.25-R9361.1", installed: "1.4.12-R6909.1", button: false, latest: false });
     // M-3290: the release audited before (1.4.20, kept as its number) is behind the newest too
-    expect(cliUpdateView("muse", "1.4.20-R8619.1", false)).toMatchObject({ state: "behind", audited: "1.4.24-R9131.1", button: false });
+    expect(cliUpdateView("muse", "1.4.20-R8619.1", false)).toMatchObject({ state: "behind", audited: "1.4.25-R9361.1", button: false });
     // Muse: the same x.y.z but another build is not the audited release — and it says which, faithfully
-    expect(cliUpdateView("muse", "Muse Code 1.4.24-R9000.1", false)).toEqual({ state: "behind", audited: "1.4.24-R9131.1", installed: "1.4.24-R9000.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "Muse Code 1.4.25-R9000.1", false)).toEqual({ state: "behind", audited: "1.4.25-R9361.1", installed: "1.4.25-R9000.1", button: false, latest: false });
   });
   it("at the audited release: current, no button", () => {
     expect(cliUpdateView("codex", "codex-cli 0.171.0", true)).toEqual({ state: "current", audited: "0.171.0", installed: "0.171.0", button: false, latest: false });
-    expect(cliUpdateView("muse", "1.4.24-R9131.1", false)).toEqual({ state: "current", audited: "1.4.24-R9131.1", installed: "1.4.24-R9131.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "1.4.25-R9361.1", false)).toEqual({ state: "current", audited: "1.4.25-R9361.1", installed: "1.4.25-R9361.1", button: false, latest: false });
   });
   it("M-3396: the previous build stays audited and is now behind the new target", () => {
     expect(AUDITED_CLI_VERSIONS.muse).toEqual(expect.arrayContaining(["1.4.23-R8977.1", "1.4.24-R9131.1"]));
-    expect(cliUpdateView("muse", "1.4.23-R8977.1", false)).toEqual({ state: "behind", audited: "1.4.24-R9131.1", installed: "1.4.23-R8977.1", button: false, latest: false });
+    expect(cliUpdateView("muse", "1.4.23-R8977.1", false)).toEqual({ state: "behind", audited: "1.4.25-R9361.1", installed: "1.4.23-R8977.1", button: false, latest: false });
+    // M-3550: 1.4.24-R9131.1 stays audited and is now behind 1.4.25-R9361.1 in turn
+    expect(AUDITED_CLI_VERSIONS.muse).toEqual(expect.arrayContaining(["1.4.24-R9131.1", "1.4.25-R9361.1"]));
+    expect(cliUpdateView("muse", "1.4.24-R9131.1", false)).toEqual({ state: "behind", audited: "1.4.25-R9361.1", installed: "1.4.24-R9131.1", button: false, latest: false });
   });
   it("newer than anything audited (a host that updated itself ahead of the ledger): not verified, never a button", () => {
     expect(cliUpdateView("claude-code", "2.1.331 (Claude Code)", true)).toEqual({ state: "newer", audited: "2.1.330", installed: "2.1.331", button: false, latest: false });
     expect(cliUpdateView("opencode", "1.19.7", true)).toMatchObject({ state: "newer", button: false, latest: false });
-    expect(cliUpdateView("muse", "1.4.24-R9200.1", false)).toMatchObject({ state: "newer", button: false });
+    expect(cliUpdateView("muse", "1.4.25-R9400.1", false)).toMatchObject({ state: "newer", button: false });
   });
   it("a version that cannot be read: unknown, no button", () => {
     expect(cliUpdateView("grok", "who knows", true)).toEqual({ state: "unknown", audited: "1.0.92", installed: null, button: false, latest: false });
@@ -129,13 +132,13 @@ describe("where an installed CLI stands", () => {
   });
   // AGEND-153: the named exception goes to the vendor's newest release, so the audited release does not decide whether it is offered — at, below and above it — but a version nobody could read still is not.
   it("the named exception (latest-unaudited) is offered behind, at and above the audited release, and flagged as such", () => {
-    expect(cliUpdateView("antigravity", "1.3.5", true, true)).toEqual({ state: "behind", audited: "1.5.14", installed: "1.3.5", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "1.5.14", true, true)).toEqual({ state: "current", audited: "1.5.14", installed: "1.5.14", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "1.5.15", true, true)).toEqual({ state: "newer", audited: "1.5.14", installed: "1.5.15", button: true, latest: true });
-    expect(cliUpdateView("antigravity", "who knows", true, true)).toEqual({ state: "unknown", audited: "1.5.14", installed: null, button: false, latest: true });
+    expect(cliUpdateView("antigravity", "1.3.5", true, true)).toEqual({ state: "behind", audited: "1.5.15", installed: "1.3.5", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "1.5.15", true, true)).toEqual({ state: "current", audited: "1.5.15", installed: "1.5.15", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "1.5.16", true, true)).toEqual({ state: "newer", audited: "1.5.15", installed: "1.5.16", button: true, latest: true });
+    expect(cliUpdateView("antigravity", "who knows", true, true)).toEqual({ state: "unknown", audited: "1.5.15", installed: null, button: false, latest: true });
   });
   it("`latest` without an update in the registry is nothing: no button, not flagged", () => {
-    expect(cliUpdateView("antigravity", "1.3.5", false, true)).toEqual({ state: "behind", audited: "1.5.14", installed: "1.3.5", button: false, latest: false });
+    expect(cliUpdateView("antigravity", "1.3.5", false, true)).toEqual({ state: "behind", audited: "1.5.15", installed: "1.3.5", button: false, latest: false });
   });
   it("an id with no audited release has no reading", () => { expect(cliUpdateView("nonesuch", "1.0.0", true)).toBeNull(); });
 });

@@ -847,12 +847,12 @@ describe("15. whom a write wakes (step 2)", () => {
     expect(h.take()).toEqual([{ to: "dev-b", code: next.code, reasons: ["ready"], by: "dev-a", texts: {} }]);
   });
 
-  it("a send-back and an answer, each with its own words; a comment and a confirmation wake nobody (#2801)", () => {
+  it("a send-back and an answer, each with its own words; a comment wakes its assignee, a confirmation nobody (#2801, comments since)", () => {
     const { board } = withProject();
     const card = main(board, LEAD, { assignee: "dev-a", needsReview: true });
     const h = heard(board);
     board.updateCard(ANN, card.code, { comment: "cache it 30 s" });
-    expect(h.take()).toEqual([]);
+    expect(h.take()).toEqual([{ to: "dev-a", code: card.code, reasons: ["comment"], by: "Ann", texts: { comment: "cache it 30 s" } }]);
     board.moveCard(DEV, card.code, "claimed");
     board.moveCard(DEV, card.code, "blocked", { reason: "codes or messages?" });
     // Its dispatcher hears the question, and answers it on the card.

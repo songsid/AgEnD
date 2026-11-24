@@ -13,6 +13,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { bootFixture, mounted, shotPath, VIEWPORTS } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-office-snacks-m3432";
 const OUT_DIR = join(process.env.OUT ?? "/tmp/smoke-out", SMOKE);
@@ -389,11 +390,11 @@ try {
     if (recordVideo) await page.waitForTimeout(1600);
 
     // D. Backwards-compat: switch style to Cozy (no `snacks`) -> tray disappears.
-    await page.locator(".oo-bar select").nth(1).selectOption("cozy");
+    await withDisplay(page, () => page.locator(".oo-style").selectOption("cozy"));   // M-3556: Style is in ⚙ Display options
     await page.waitForTimeout(500);
     const cozyTrayCount = await page.locator(".oo-snacks").count();
     // Restore synthetic snack pack for remaining cases.
-    await page.locator(".oo-bar select").nth(1).selectOption("synth-snacks");
+    await withDisplay(page, () => page.locator(".oo-style").selectOption("synth-snacks"));
     await page.waitForTimeout(300);
 
     const videoPath = recordVideo ? await page.video()?.path() : null;

@@ -1,0 +1,80 @@
+{
+  "cases": [
+    {
+      "device": "desk",
+      "presses": [
+        {
+          "pointer": "mouse",
+          "selected": "/sysinfo",
+          "events": [
+            {
+              "type": "pointerdown",
+              "prevented": false
+            },
+            {
+              "type": "mousedown",
+              "prevented": true
+            }
+          ]
+        }
+      ],
+      "taskPresses": [
+        {
+          "pointer": "mouse",
+          "selected": "#M-1 "
+        }
+      ],
+      "edgeFocus": true,
+      "unclassifiedPopup": true,
+      "csp": [],
+      "sends": 0
+    },
+    {
+      "device": "phone",
+      "presses": [
+        {
+          "pointer": "mouse",
+          "selected": "/sysinfo",
+          "events": [
+            {
+              "type": "pointerdown",
+              "prevented": false
+            },
+            {
+              "type": "mousedown",
+              "prevented": true
+            }
+          ]
+        },
+        {
+          "pointer": "touch",
+          "selected": "/sysinfo",
+          "events": [
+            {
+              "type": "pointerdown",
+              "prevented": false
+            },
+            {
+              "type": "mousedown",
+              "prevented": true
+            }
+          ]
+        }
+      ],
+      "taskPresses": [
+        {
+          "pointer": "mouse",
+          "selected": "#M-1 "
+        },
+        {
+          "pointer": "touch",
+          "selected": "#M-1 "
+        }
+      ],
+      "edgeFocus": true,
+      "unclassifiedPopup": true,
+      "csp": [],
+      "sends": 0
+    }
+  ]
+}

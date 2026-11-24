@@ -39,6 +39,15 @@ export function playAllowed({ on, still, zones, overview, layout, shared }) {
 }
 
 /**
+ * M-3547: whether reduced motion is the only thing keeping play off here — the viewer's toggle on and a single zones
+ * office of their own dashboard, but the device asks for reduced motion. The Office then says so where a person looks
+ * for it (their card, and beside the greyed tick box); anywhere play is off for another reason, nothing is said.
+ */
+export function playOffForMotion({ on, still, zones, overview, layout, shared }) {
+  return !!still && playAllowed({ on, still: false, zones, overview, layout, shared });
+}
+
+/**
  * The pick-up of one pointer: `down(id, type, x, y, t, name)` on a person (`name`; none: nothing to pick up) — a mouse
  * is "maybe" until it moves SLOP, a touch "press" until LONG_MS (`tick(t)`) or a move past SLOP first ("pan": the view's
  * own drag). Once "held", `move` carries them (`x`, `y` in the view's units; `px` the pointer's travel in CSS px decides

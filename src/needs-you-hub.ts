@@ -92,6 +92,8 @@ export interface NeedsYouHubContext {
   signInKeepAlive?(): import("./needs-you.js").SignInKeepAliveInput[];
   configIssues?(): NonNullable<import("./needs-you.js").NeedsYouInputs["configIssues"]>;
   hubExecution?(): import("./needs-you.js").HubExecutionAttentionInput[];
+  /** M-3543: shared agents whose Hub share lapsed (their backend or folder changed since they were shared). */
+  hubShareLapses?(): import("./needs-you.js").HubShareLapseInput[];
   hubHolds?(): import("./needs-you.js").HubHoldInput[];
   runtimeUpdates?(): import("./needs-you.js").RuntimeUpdateAttentionInput[];
   tmuxHolds?(): import("./needs-you.js").TmuxHoldInput[];
@@ -274,7 +276,7 @@ export class NeedsYouHub {
     }
     let hubHolds: import("./needs-you.js").HubHoldInput[] = [];
     try { hubHolds = this.ctx.hubHolds?.() ?? []; } catch { /* the holds are also in the fleet log */ }
-    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
+    this.items = deriveNeedsYou({ prompts: this.ctx.prompts(), instances: this.ctx.instances(), deliveries, tasks, backendSignIns: this.ctx.backendSignIns?.() ?? [], signInKeepAlive: (() => { try { return this.ctx.signInKeepAlive?.() ?? []; } catch { return []; } })(), configIssues: this.ctx.configIssues?.() ?? [], hubExecution, hubHolds, hubShareLapses: (() => { try { return this.ctx.hubShareLapses?.() ?? []; } catch { return []; } })(), runtimeUpdates: this.ctx.runtimeUpdates?.() ?? [], tmuxHolds: (() => { try { return this.ctx.tmuxHolds?.() ?? []; } catch { return []; } })(), missedOffline: this.ctx.missedOffline?.() ?? [], ownerOf: i => this.ctx.ownerOf(i) });
     try { this.items.push(...(this.ctx.contactSuggestions?.() ?? [])); }
     catch (error) { this.ctx.log("warn", "Could not read Classic contact suggestions", { reason: error instanceof Error ? error.message : "unavailable" }); }
 

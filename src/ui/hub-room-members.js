@@ -6,6 +6,7 @@ import { hi } from "./hub-agent-intro.js";
 // The dots use the Fleet sidebar's colours (.dot ok / busy / warn / off), so a state reads the same in both.
 // The shell owns the room's detail (and reads it again on member.changed); this panel applies presence.changed in place.
 import { html, useEffect, useState } from "/assets/app-html.js";
+import { lang } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
@@ -16,6 +17,36 @@ import { roomSource, RoomSourceMark } from "./hub-room-source.js";
 linkRoomsU2Css();
 
 const AGENTS_SHOWN = 8;
+/**
+ * M-3533 M1 (docs/design/hub-office-visit.md §2.6): past this many people and agents together, the list is compact — a
+ * summary line, a filter, one line a row, the people not online folded, the agents grouped by owner (folded). A smaller
+ * room keeps today's list.
+ */
+export const COMPACT_OVER = 12;
+
+/** M1: a member matches the filter by its name or (an agent) its owner's, ignoring case. */
+export const memberMatches = (m, q) => { const s = String(q || "").trim().toLocaleLowerCase(); return !s || `${m.name || ""} ${m.owner?.name || ""}`.toLocaleLowerCase().includes(s); };
+
+/**
+ * M1: the agents by owner — keyed by the owner's id (two owners of one name are two groups), named by their name; my own
+ * group first, then the owners by name in the viewer's language (a group does not move as its agents start and stop).
+ * Within a group, the list's own order (presence).
+ */
+export function byOwner(agents, locale = undefined) {
+  const groups = new Map();
+  for (const m of agents) {
+    const key = String(m.owner?.id || `name:${m.owner?.name || ""}`);
+    if (!groups.has(key)) groups.set(key, { key, owner: String(m.owner?.name || ""), mine: m.owner?.mine === true, agents: [] });
+    groups.get(key).agents.push(m);
+  }
+  return [...groups.values()].sort((a, b) => (Number(b.mine) - Number(a.mine)) || a.owner.localeCompare(b.owner, locale) || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/** M1: people in a stable order — me first, then by name in the viewer's language, the member id breaking a tie. */
+export function peopleOrder(people, meId, locale = undefined) {
+  return [...people].sort((a, b) => (Number(b.id === meId) - Number(a.id === meId)) || String(a.name || "").localeCompare(String(b.name || ""), locale)
+    || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
+}
 
 /**
  * The dot class and words for one member, from the shared rooms presence mapping (hub-room-presence.js: reason codes,
@@ -46,11 +77,12 @@ export function ownerAgent(name) {
  *   until the next detail;
  * - onMention(member): puts 「@name 」 in the composer;
  * - onOpenChat(member): opens the one-to-one, offered only for an agent whose member row says `canAsk`;
- * - onSettings().
+ * - onSettings();
+ * - compact (M1): true / false for that list whatever the size; absent, a room over COMPACT_OVER gets the compact one.
  */
-export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings } = {}) {
+export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined } = {}) {
   const [presence, setPresence] = useState({}), [open, setOpen] = useState(null), [expanded, setExpanded] = useState(false);
-  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [gone, setGone] = useState({});
+  const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [gone, setGone] = useState({}), [q, setQ] = useState("");
   useEffect(() => { setPresence({}); setGone({}); }, [detail]);
   useEffect(() => client.subscribeRooms?.({
     // The whole state each time: presence, its reason code and note. One the event omits is cleared (undefined), so a
@@ -75,19 +107,16 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
     if (r?.ok) { setOpen(null); setGone(old => ({ ...old, [m.id]: true })); }   // the shell reads the room again on member.changed
     else setFailed(true);
   };
+  // `compact` true / false: that list whatever the room's size (the classic list's own tests); by default, by size.
+  const compact = typeof force === "boolean" ? force : people.length + agents.length > COMPACT_OVER;
   // An agent's second line names whose it is beside its state (「處理中 · 林小華的 Agent」), always shown, not only on hover.
+  // M1: in a compact list a row is one line — the name, its state — and the owner and introduction move into its card.
   const row = (m, extra = null) => {
-    const v = memberStatus(m), owner = (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${m.intro||m.kind==="assistant"?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
+    const v = memberStatus(m), owner = !compact && (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
+    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
-  return html`<aside class="hub-room-members">
-    ${detail.room?.purpose?html`<section class="hub-room-purpose-panel"><h4>${rp("title")}</h4><p>${detail.room.purpose}</p></section>`:manager&&client.roomPurposeV1===true&&typeof detail.room?.purpose==="string"?html`<button type="button" class="btn btn-link" onClick=${()=>onSettings?.()}>${rp("add")}</button>`:null}
-    <section><h4>${heads.member}</h4>
-      <ul>${people.map(m => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`)}</ul>
-    </section>
-    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${hm("noAgents")}</p></section>`}
-    ${agents.length ? html`<section><h4>${heads.agent}</h4>
-      <ul>${shown.map(m => html`<li class="hub-member hub-member-agent" key=${m.id}>
+  const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;
+  const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id}>
         <button type="button" class="hub-member-open" title=${roomSource(m)?.label || ""} aria-label=${`${m.name}. ${memberStatus(m).text}. ${roomSource(m)?.label || ""}`} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
           <strong>${m.name}</strong>${m.intro?html`<p class="note">${m.intro}</p>`:null}${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
@@ -100,9 +129,37 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
           </div>
           ${failed ? html`<p class="note" role="alert">${hm("removeFailed")}</p>` : null}
         </div>` : null}
-      </li>`)}</ul>
+      </li>`;
+  // M1: the compact list (§2.6) — the summary, the filter, who is online, the rest folded; the agents by owner, folded.
+  // A filter opens every group with a match and shows only the matches; the summary keeps the room's counts, and the two
+  // headings say how many match of how many (the leader, #4366: clear that the list is filtered).
+  const compactList = () => {
+    const locale = lang(), ordered = peopleOrder(people, meId, locale);
+    const online = ordered.filter((m) => m.id === meId || m.presence === "online"), owners = byOwner(agents, locale);
+    const on = online.filter((m) => memberMatches(m, q)), off = ordered.filter((m) => !online.includes(m) && memberMatches(m, q));
+    const groups = owners.map((g) => ({ ...g, shown: g.agents.filter((m) => memberMatches(m, q)) })).filter((g) => g.shown.length);
+    const filtering = !!q.trim();
+    return html`<p class="note hub-members-sum">${hm("summary", people.length, online.length, agents.length, owners.length)}</p>
+    <input class="hub-members-filter" type="search" value=${q} placeholder=${hm("filter")} aria-label=${hm("filterLabel")} onInput=${(e) => setQ(e.target.value)} />
+    ${filtering && !on.length && !off.length && !groups.length ? html`<p class="note hub-members-none" role="status">${hm("noMatch")}</p>` : null}
+    <section class="hub-members-people"><h4>${filtering ? hm("membersMatch", on.length + off.length, people.length) : heads.member}</h4>
+      ${on.length ? html`<ul>${on.map(person)}</ul>` : null}
+      ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
+    </section>
+    ${agents.length ? html`<section><h4>${filtering ? hm("agentsMatch", groups.reduce((n, g) => n + g.shown.length, 0), agents.length) : heads.agent}</h4>
+      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
+    </section>` : null}`;
+  };
+  return html`<aside class=${`hub-room-members${compact ? " compact" : ""}`}>
+    ${detail.room?.purpose?html`<section class="hub-room-purpose-panel"><h4>${rp("title")}</h4><p>${detail.room.purpose}</p></section>`:manager&&client.roomPurposeV1===true&&typeof detail.room?.purpose==="string"?html`<button type="button" class="btn btn-link" onClick=${()=>onSettings?.()}>${rp("add")}</button>`:null}
+    ${compact ? compactList() : html`<section><h4>${heads.member}</h4>
+      <ul>${people.map(person)}</ul>
+    </section>
+    ${agents.length ? null : html`<section class="hub-room-no-agents"><h4>${hm("agents")}</h4><p class="note">${hm("noAgents")}</p></section>`}
+    ${agents.length ? html`<section><h4>${heads.agent}</h4>
+      <ul>${shown.map(agentItem)}</ul>
       ${fold.rest ? html`<button type="button" class="btn btn-link hub-members-more" onClick=${() => setExpanded(!expanded)}>${expanded ? hm("fewer") : hroom("moreN", fold.rest)}</button>` : null}
-    </section>` : null}
+    </section>` : null}`}
     ${assistant ? html`<section><ul><li class="hub-member hub-member-assistant">${row({ ...assistant, name: hroom("roomAssistant") })}</li></ul></section>` : null}
     <section class="hub-room-who"><h4>${hroom("whoSees")}</h4><p class="note">${hroom("whoSeesRoom")}</p></section>
     ${manager ? html`<button type="button" class="btn btn-link hub-room-settings-link" onClick=${() => onSettings?.()}>${hroom("roomSettings")}</button>` : null}

@@ -1,0 +1,18 @@
+[
+  {
+    "version": "base",
+    "name": "DeliveryOutbox recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+    "status": "failed",
+    "caseMilliseconds": 10010.615221,
+    "fault": "11s artificial parent FleetManager module evaluation delay",
+    "testTimeoutMilliseconds": 10000
+  },
+  {
+    "version": "fixed",
+    "name": "DeliveryOutbox pre-begin crash fixture recovers a pre-begin dispatch after SIGKILL when target stays stopped, then expires it visibly",
+    "status": "passed",
+    "caseMilliseconds": 266.65591199999835,
+    "fault": "11s artificial parent FleetManager module evaluation delay",
+    "testTimeoutMilliseconds": 10000
+  }
+]

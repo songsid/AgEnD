@@ -1,0 +1,180 @@
+{
+  "implementationCommit": "fc42b03c662235195b7145488aac1fd17863f4da",
+  "originalFailure": {
+    "run": 45124417631,
+    "attempt": 1,
+    "head": "fb31c785d1adf6d325c196de1d8a28f5066fb971",
+    "job": 137526250718,
+    "caseMilliseconds": 10005,
+    "testTimeoutMilliseconds": 10000,
+    "exactAwaitLatency": "not recorded by original job"
+  },
+  "sources": [
+    {
+      "path": "src/delivery-outbox.test.ts",
+      "sha256": "019a757098635bf04e867ab11bf2116450a57eb44155042da85a5b469d220b5a",
+      "gitBlob": "b7d97338f2b6986fae3b0585ede7e8ffea9653ab"
+    },
+    {
+      "path": "tests/support/durable-ci-suites.ts",
+      "sha256": "af5b305860139a1a211b50574dd33d754a2a1d269c353892017ffddf2c8864b5",
+      "gitBlob": "c975f36cec6c3d7e2d1cf6ba51d2044c09603c5d"
+    },
+    {
+      "path": "tests/durable-ci-partition-m3496.test.ts",
+      "sha256": "53daff766d6e606465dc057b65978ba82cacd03308a4f6c73285521568bedf44",
+      "gitBlob": "26089065e8ca811c41da06c5b6ad4666a0e10ae3"
+    },
+    {
+      "path": "scripts/manual/test-outbox-contention-m3538.py",
+      "sha256": "a6f1e33c21b87887c88755a15fbab53aa47cf3a3ace58acae835ee26e8ac823a",
+      "gitBlob": "436c2136a036bf88c881ec66680ccef59cdbd86b"
+    },
+    {
+      "path": "scripts/manual/test-outbox-contention-m3538_test.py",
+      "sha256": "c499ddfac4652525eb5dd8a7f4d3772d54fea9a4ecb8b3371fceddcbb234bfee",
+      "gitBlob": "443f0cc0d3d73a3c908ae758365c4f6afb41c65f"
+    },
+    {
+      "path": "scripts/manual/vitest.outbox-import-fault-m3538.ts",
+      "sha256": "3d8341f917bfd7773e61a3a9275ac640d1581fc86da25101d66995d8d2b95864",
+      "gitBlob": "bcc31e734bf7c61891468f3d77e981d70f7fae55"
+    }
+  ],
+  "results": {
+    "outboxCases": 16,
+    "partitionCases": 12,
+    "totalVitestPass": 28,
+    "testTypesExit": 0,
+    "parserControls": 4,
+    "contentionRuns": 30,
+    "maximumContentionCaseMilliseconds": 983.9081770000012,
+    "busyProcessesPerRun": 2,
+    "cpuAffinityCount": 1,
+    "faultBase": "10s timeout",
+    "faultFixed": "passed"
+  },
+  "rawReportHashes": [
+    {
+      "path": "run-1.json",
+      "sha256": "41c6b49040259a7e391bdc62387850aa0f2f36cc01b246860bcb4bdd253abb78"
+    },
+    {
+      "path": "run-2.json",
+      "sha256": "de9c99a3b3d1c4d88a734b4b2f1c3ce176d2eb6fb5f4207cacdcc04570f79900"
+    },
+    {
+      "path": "run-3.json",
+      "sha256": "b7a5c39bfc8156795e1e6dcc93b9b700a81f8c25512d1b12c97ce6a2a31799ab"
+    },
+    {
+      "path": "run-4.json",
+      "sha256": "6b10f175c54a1cfd0fa3073493917a50999fa4dc1bd644ee0dc6e0b8174c5586"
+    },
+    {
+      "path": "run-5.json",
+      "sha256": "85d539f3a2b33f6023a1c3e2175e934ec902a9480d5d6261258dd9c767cbdceb"
+    },
+    {
+      "path": "run-6.json",
+      "sha256": "a915bc3ca7074569349d5fdd5e47d144ce528774d5f7b013bc2fcb8ba2e929bd"
+    },
+    {
+      "path": "run-7.json",
+      "sha256": "c3143d708f0a9a70f06bcefefe73820825e70f920457d43b0b7984be00f4dee5"
+    },
+    {
+      "path": "run-8.json",
+      "sha256": "a2f6eb1f9fb6164edd64122a15151296a0a61a7d83b2d3acfd7d2133b02fb0ad"
+    },
+    {
+      "path": "run-9.json",
+      "sha256": "edfcd17ea1417a716839b468613e46f09fab37c5125befae46def637f2b770e9"
+    },
+    {
+      "path": "run-10.json",
+      "sha256": "503fa4b54a4dcdc2e3ab14bc946c334ce23978011501d77f857ae71b72de74f7"
+    },
+    {
+      "path": "run-11.json",
+      "sha256": "19d9d0e076d43c4b737da2d32ae902e7ffcfd476aa77aedc33dacff29150243a"
+    },
+    {
+      "path": "run-12.json",
+      "sha256": "aef043dcc013dc1183024e9f0718745e4dbc4c9aeaa6cdb6c61c3ada037feb66"
+    },
+    {
+      "path": "run-13.json",
+      "sha256": "f21ffa9424c27a74bc584921999e4abd59fbe53af2bb5e0bbd80ae9b2dbeefe2"
+    },
+    {
+      "path": "run-14.json",
+      "sha256": "049c1be6094cdd907600f7461c98d9bf4ebcd92dfb5134ab231933c56787e25b"
+    },
+    {
+      "path": "run-15.json",
+      "sha256": "dddaf130e7ebecf67de45eda2a55fa603ea40d2d1d4d3f003fadbf1966d18333"
+    },
+    {
+      "path": "run-16.json",
+      "sha256": "67e00c6dac1f5c46f857729ac7b14756c552832453795e59a49139d84bd830a7"
+    },
+    {
+      "path": "run-17.json",
+      "sha256": "6ecdad802d8668d1025c34ea3eb0b1e45e6cafd4b28c9c6c0bbc1b6f72a73bdd"
+    },
+    {
+      "path": "run-18.json",
+      "sha256": "9cbc50e5de96d74dc60db29d5906b29c91fd9478702762b570f193bc91c78fe7"
+    },
+    {
+      "path": "run-19.json",
+      "sha256": "69213825078bb2d4a3fb7167847c1e87244e8f53102055af34dbd458ca1d8e7e"
+    },
+    {
+      "path": "run-20.json",
+      "sha256": "a6eec6faefdf141307d18207778a1127512aa85526ca1067543a2b204973012f"
+    },
+    {
+      "path": "run-21.json",
+      "sha256": "dd33317d5bc780fcf7df19d89870d3de4160cdbe3605d696b3b97e273cd4e3b7"
+    },
+    {
+      "path": "run-22.json",
+      "sha256": "81f6d70cd950d8fc6c0a12002ee18b05c9ac1c2266ca648bd63cafd2951d531d"
+    },
+    {
+      "path": "run-23.json",
+      "sha256": "1294bc87dabbd6b1519a21fd2b6294c2da45a2962f0cc8d45f99436c8eb0eeac"
+    },
+    {
+      "path": "run-24.json",
+      "sha256": "b7f1d5dabdacc2e4dcbb46a7f465e1d59f9fe135e46bde173e68424f2f8e2414"
+    },
+    {
+      "path": "run-25.json",
+      "sha256": "78473f380a3b1fbc43d9d211c9b3ca51508b6650d8c001acf931c85bb6fae6ca"
+    },
+    {
+      "path": "run-26.json",
+      "sha256": "8374c50e503d7284b8dce7138e76cfc84f784a6bc1d1090fe5351a514e91d081"
+    },
+    {
+      "path": "run-27.json",
+      "sha256": "791385712d2698ce55fd1f85dca50178fbb10c6b93a9e6faeb648c8fef889893"
+    },
+    {
+      "path": "run-28.json",
+      "sha256": "bc33ec2c3372be3c69a6d48de553986b872046a04b976207fa2c3af084cfef7a"
+    },
+    {
+      "path": "run-29.json",
+      "sha256": "a7be4bd1745f857385810a986f4a388a9b585cafd42f7ed95688e57fc81fc185"
+    },
+    {
+      "path": "run-30.json",
+      "sha256": "e89fa47bf203a02aab160428035c21508018a91371c48dbef992033c1d0a8362"
+    }
+  ],
+  "rawReportScope": "Private scratch raw Vitest reports; public summary is author execution evidence. Separate processes share normal transform caches."
+}

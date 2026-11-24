@@ -1,0 +1,755 @@
+{
+ "cases": {
+  "desk-light-zh-TW": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 104,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 104,
+      "width": 439,
+      "height": 30
+     },
+     "btn": {
+      "x": 1254,
+      "y": 104,
+      "width": 92,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 140,
+      "width": 340,
+      "height": 256
+     },
+     "zb": {
+      "x": 1316,
+      "y": 154,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 948,
+     "y": 140,
+     "width": 340,
+     "height": 256
+    }
+   },
+   "no note": true,
+   "tick applies, still open": {
+    "pass": true,
+    "detail": {
+     "before": 0
+    }
+   },
+   "click elsewhere closes": true,
+   "Esc closes": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-en": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 146,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 146,
+      "width": 475,
+      "height": 30
+     },
+     "btn": {
+      "x": 1210,
+      "y": 146,
+      "width": 136,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 182,
+      "width": 340,
+      "height": 256
+     },
+     "zb": {
+      "x": 1316,
+      "y": 196,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 948,
+     "y": 182,
+     "width": 340,
+     "height": 256
+    }
+   },
+   "no note": true,
+   "tick applies, still open": {
+    "pass": true,
+    "detail": {
+     "before": 0
+    }
+   },
+   "click elsewhere closes": true,
+   "Esc closes": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-zh-TW-reduced": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 104,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 104,
+      "width": 439,
+      "height": 30
+     },
+     "btn": {
+      "x": 1254,
+      "y": 104,
+      "width": 92,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400",
+     "rgb(13, 13, 13)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 140,
+      "width": 340,
+      "height": 272
+     },
+     "zb": {
+      "x": 1316,
+      "y": 154,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 948,
+     "y": 140,
+     "width": 340,
+     "height": 272
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 961,
+      "y": 271,
+      "width": 314,
+      "height": 24
+     },
+     "lb": {
+      "x": 989,
+      "y": 247,
+      "width": 65,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-en-reduced": {
+   "mounted": true,
+   "one row": {
+    "pass": true,
+    "detail": {
+     "x": 280,
+     "y": 146,
+     "width": 1066,
+     "height": 30
+    }
+   },
+   "scope left, ⚙ right": {
+    "pass": true,
+    "detail": {
+     "scope": {
+      "x": 280,
+      "y": 146,
+      "width": 475,
+      "height": 30
+     },
+     "btn": {
+      "x": 1210,
+      "y": 146,
+      "width": 136,
+      "height": 30
+     }
+    }
+   },
+   "no option in the row": true,
+   "⚙ label": true,
+   "dropdown open": true,
+   "dropdown items": true,
+   "not modal": true,
+   "labels alike": {
+    "pass": true,
+    "detail": [
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400",
+     "rgb(236, 236, 236)|13px|400"
+    ]
+   },
+   "no buttons in the options": true,
+   "clear of the zoom stack": {
+    "pass": true,
+    "detail": {
+     "pb": {
+      "x": 948,
+      "y": 182,
+      "width": 340,
+      "height": 272
+     },
+     "zb": {
+      "x": 1316,
+      "y": 196,
+      "width": 38,
+      "height": 193
+     }
+    }
+   },
+   "dropdown heading": true,
+   "dropdown on screen": {
+    "pass": true,
+    "detail": {
+     "x": 948,
+     "y": 182,
+     "width": 340,
+     "height": 272
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 961,
+      "y": 313,
+      "width": 314,
+      "height": 24
+     },
+     "lb": {
+      "x": 989,
+      "y": 289,
+      "width": 82,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "reduced: card has no Pat/Feed, no hint": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-light-zh-TW": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 730,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(255, 255, 255) 85%)"
+    }
+   },
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "no note": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "fade follows content": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 730,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(33, 33, 33) 85%)"
+    }
+   },
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "no note": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "fade follows content": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-light-zh-TW-reduced": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 742,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(255, 255, 255) 85%)"
+    }
+   },
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 20,
+      "y": 609.40625,
+      "width": 350,
+      "height": 24
+     },
+     "lb": {
+      "x": 48,
+      "y": 577.40625,
+      "width": 70,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "fade follows content": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
+   "reduced: card has no Pat/Feed, no hint": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en-reduced": {
+   "mounted": true,
+   "no desk row": true,
+   "sheet order": {
+    "pass": true,
+    "detail": [
+     "office",
+     "team",
+     "oo-people",
+     "heading",
+     "style",
+     "oo-hide-asleep",
+     "oo-play",
+     "oo-night",
+     "oo-dialogue",
+     "oo-key-tick",
+     "rule",
+     "oo-edit",
+     "oo-share"
+    ]
+   },
+   "heading": true,
+   "sheet scrolls, foot fades": {
+    "pass": true,
+    "detail": {
+     "sh": 742,
+     "ch": 692,
+     "more": true,
+     "fade": "linear-gradient(rgba(0, 0, 0, 0), rgb(33, 33, 33) 85%)"
+    }
+   },
+   "pickers spaced": {
+    "pass": true,
+    "detail": {
+     "o": {
+      "x": 220,
+      "y": 300.40625,
+      "width": 150,
+      "height": 44
+     },
+     "t": {
+      "x": 220,
+      "y": 352.40625,
+      "width": 150,
+      "height": 44
+     }
+    }
+   },
+   "reduced: one line under Drag and pat": {
+    "pass": true,
+    "detail": {
+     "nb": {
+      "x": 20,
+      "y": 609.40625,
+      "width": 350,
+      "height": 24
+     },
+     "lb": {
+      "x": 48,
+      "y": 577.40625,
+      "width": 86,
+      "height": 24
+     },
+     "lines": 1
+    }
+   },
+   "reduced: said only there": true,
+   "reduced: box off and locked": true,
+   "last action reachable": {
+    "pass": true,
+    "detail": {
+     "share": {
+      "x": 20,
+      "y": 784.40625,
+      "width": 350,
+      "height": 44
+     },
+     "bb": {
+      "x": 0,
+      "y": 152.40625,
+      "width": 390,
+      "height": 691.59375
+     }
+    }
+   },
+   "no fade at the end": true,
+   "fade follows content": true,
+   "⋯ not stuck pressed": {
+    "pass": true,
+    "detail": "rgba(0, 0, 0, 0)"
+   },
+   "reduced: card has no Pat/Feed, no hint": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-dark-en-short": {
+   "mounted": true,
+   "short: last option on screen": {
+    "pass": true,
+    "detail": {
+     "lb": {
+      "x": 961,
+      "y": 397,
+      "width": 314,
+      "height": 32
+     },
+     "vh": 520
+    }
+   },
+   "short: last option works": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-zh-TW-all-offices": {
+   "mounted": true,
+   "all offices: lobby tile offered": true,
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": true
+}
