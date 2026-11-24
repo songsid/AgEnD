@@ -1,5 +1,5 @@
 {
-  "sourceHead": "9a49e9a5c59b49918227bebbcc60cbec4eb03271",
+  "sourceHead": "fcb5b397a748f5d6881f208e84ef90f98ef33833",
   "dirty": [],
   "checks": [
     {
@@ -47,6 +47,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: My agents tells the owner Notes's character is too large",
       "ok": true
     },
@@ -72,6 +76,10 @@
     },
     {
       "name": "desk-en-dark: the room's style is Studio (large)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: Echo alone takes a top-row seat under its area's name",
       "ok": true
     },
     {
@@ -103,6 +111,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: My agents tells the owner Notes's character is too large",
       "ok": true
     },
@@ -131,6 +143,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: Echo alone takes a top-row seat under its area's name",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: My agents tells the owner Notes's character is too large",
       "ok": true
     },
@@ -142,11 +158,11 @@
   "pictures": [
     {
       "path": "m3533-r2c-desk-zh-TW-light-1-office.png",
-      "sha256": "7801c59bf977dc064fbdd61113c4b4cc6856af8f31c2d7a6b5b1b24213002a23"
+      "sha256": "caddb17a274ad9c87f4d58ab2794bbbee3337856d8206b046b29365f657746ff"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-1z-office-close.png",
-      "sha256": "d8b450b3da6677eb2141f7aab852d8fbdf1982bf504d3e32e9d288b8c5b47e90"
+      "sha256": "c56b8470a5488ace170d029185d4e7325f43ddac36a231f52e1bac14710ecbd5"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-1q-fox-close.png",
@@ -154,23 +170,27 @@
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-2-card-atlas.png",
-      "sha256": "585d20d5d1fcc1a74339bbe42944aa176bf3e4eed9a2176c286dde6b006f0bb9"
+      "sha256": "7023296629579a053bff1f4f5e5f2b42af34e80f7a7ab43afe18e027345a3020"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-3-office-studio-large.png",
-      "sha256": "cdd32df819a8ff57f3abc1e5c7767a7234e1c2b84de19444cb91b137e0910837"
+      "sha256": "b9d69e4559d7a8935c77a6d0216a2a91c1f72dbd0c281e36b875b1dba41bcb0e"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-3z-top-row-title-close.png",
+      "sha256": "2c0a886a86b4ee82af7ba93b52ad26894148b4902cd383adbbf4a90f58b7e46b"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-4-my-agents-too-large.png",
-      "sha256": "d66418d563229682834c4166f206c900790434376b168e47349526ee6c430a73"
+      "sha256": "eb26934e9232f6616d37e14e8a3eb23d3bca5c29c67c17e5854bc7551ac4f2a0"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1-office.png",
-      "sha256": "526b5f13961f5b3c2782fd642552be429cce25eba097da6904fc21b8390077ec"
+      "sha256": "0d2626df36f6697827ae770c2ce0cfb77b72cfaacbbc7c020c850f99eae2f85c"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1z-office-close.png",
-      "sha256": "9166ee79b5696ad78198a6e602abf7806b1195c28662675ca340564f4b5696ba"
+      "sha256": "21edb1f311f16f8c9e74c06ffe4a46b438f1d059df205bb7f0127c26633a77fb"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1q-fox-close.png",
@@ -178,23 +198,27 @@
     },
     {
       "path": "m3533-r2c-desk-en-dark-2-card-atlas.png",
-      "sha256": "a86cd4f7e0fd87b823ff58034609e190df818857cb413c846aaa7d67d57980b5"
+      "sha256": "f29934b635dcbf528ac962b8ac42356334c7fa44ba663b89f202efcbdcd555a9"
     },
     {
       "path": "m3533-r2c-desk-en-dark-3-office-studio-large.png",
-      "sha256": "930ed25ba7a1bf5cc040de40bc86dade7763027721efb2099caedd7f185db01b"
+      "sha256": "867f0f20c7bca3558ff2efcf1e84e6d6a37b786441204c038243709d57d0e908"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-3z-top-row-title-close.png",
+      "sha256": "381337d1658eadaa6a10b791c0e15a995dc5e17ad7ad6dc2e2cef20f8db287b5"
     },
     {
       "path": "m3533-r2c-desk-en-dark-4-my-agents-too-large.png",
-      "sha256": "69751001ce5eb61eb435dea507e05bc88500b26dbdaaa12d177767f36136f9ac"
+      "sha256": "45764ab5159b69ada8290ee4a40d35019793df3ab0c66a438143643d88582fa6"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1-office.png",
-      "sha256": "f5c340a5f4e5c34d90c4e9eb8512579c3df1b737cabec9da1450f9cbfc1bf1dc"
+      "sha256": "dea105c7ce9f3c37d2d4e3712bba8b904a0d36ee19a9c44e7e7f52a552b2dcea"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1z-office-close.png",
-      "sha256": "8c59641e138bb7e780d857de1fa98595510048c7fadfd1be10fdf14b1b2b6ccb"
+      "sha256": "93a68a1080e0c54add1ccf2c462c8f1724bd8f17b5ad2a5e2f8fe5879ee51bd3"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1q-fox-close.png",
@@ -202,11 +226,15 @@
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-2-card-atlas.png",
-      "sha256": "6adc43915cd6b8533fdfc211b80ab3ca03941ae804b9ac6e88704bbabb4126c0"
+      "sha256": "7a9bf0f331dd5a94478cbb4ef5d55343c9c7ef64cf47256d211ec70c048c288e"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-3-office-studio-large.png",
-      "sha256": "04c26ae1f7d8512b112d91d1cb5bd1c6cc448da8a8dd2006eaa257ea71e4299d"
+      "sha256": "c843e46f56ceb5572bfb8a053ae65f624ba28a0a96f42cf592f523a124223ad2"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-3z-top-row-title-close.png",
+      "sha256": "649eb25c79a1a8fb420a35f261c7bd399bd84bdfa33b8b035974f48d54b44bb9"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-4-my-agents-too-large.png",
@@ -214,11 +242,11 @@
     },
     {
       "path": "m3533-r2c-phone-en-light-1-office.png",
-      "sha256": "9087ec42acd7850793a85de22276fd0233e895a109682ae2ab3cf4460ea7889c"
+      "sha256": "c42edae1ae3ea4fd774812b5dea00290e6ec28cbde738fbf9dee4026da52f506"
     },
     {
       "path": "m3533-r2c-phone-en-light-1z-office-close.png",
-      "sha256": "b16b814c8bc319be9ece762117526ccd0ab9c5a4c5e02e36ae02ed801428f5fd"
+      "sha256": "35fd9ce3498c830fecab86d4dbbb9d7c1483b20a5f88328303a16d9341a15365"
     },
     {
       "path": "m3533-r2c-phone-en-light-1q-fox-close.png",
@@ -226,11 +254,15 @@
     },
     {
       "path": "m3533-r2c-phone-en-light-2-card-atlas.png",
-      "sha256": "015fd4426ea46c501a4644fda659add6d3bfdaa51064d2f6665617b2c78ae209"
+      "sha256": "f5103d1dfd10fa3577f422096b548183ebee1dca9cbf50be45e81d067e09bccd"
     },
     {
       "path": "m3533-r2c-phone-en-light-3-office-studio-large.png",
-      "sha256": "d7a44713b41e71ce9edf9a5b730d49cacc5807889c8051de59d9ab606c9f371e"
+      "sha256": "98ae03588db99055c3f56444358ecff4b9f6fd4d4dc4679ec56825abe18e7225"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-3z-top-row-title-close.png",
+      "sha256": "0f8453f9ac97f89c60c47fd8979472c9f2a8e4f7ae56f6257f284d5d58b1a159"
     },
     {
       "path": "m3533-r2c-phone-en-light-4-my-agents-too-large.png",
@@ -307,5 +339,5 @@
       "h": 1.5
     }
   },
-  "summary": "34/34"
+  "summary": "38/38"
 }
