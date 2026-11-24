@@ -28,6 +28,7 @@ import { HUB_ROOM_CONTEXT_CAPABILITY } from "../room-context-model.js";
  */
 import { HubAdminDashboard } from "../admin-dashboard.js";
 import { HubVersionRecommendations, HubRecommendationRefusal } from "../recommendations.js";
+import { HubSessionLimitSettings, HubSessionLimitRefusal } from "../session-limits.js";
 import { HubFleetUpdates, HubFleetUpdateRefusal } from "../fleet-updates.js";
 import { HubFleetVersions } from "../fleet-versions.js";
 import { HubGroupPolicyError } from "../group-policy/errors.js";
@@ -108,7 +109,9 @@ export const HUB_UI_MODULES = Object.freeze(["panel-hub.js", "hub-personal-agent
   // M-3137: Fleet versions (Connected fleets' columns and summary, the older-Fleet banner) with its own words.
   "hub-fleet-versions.js",
   // M-3162: Administration → Overview (the counts dashboard), its own words.
-  "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js", "hub-room-source.js", "hub-room-source-strings.js"]);
+  "hub-admin-overview.js", "hub-ai-apps.js", "hub-ai-apps-strings.js", "hub-room-source.js", "hub-room-source-strings.js",
+  // M-3592: Administration → Sign-in.
+  "hub-session-limits.js"]);
 const BODY_LIMIT = 96 * 1024;
 const UPLOADS_PER_SESSION = 2, UPLOADS_TOTAL = 8;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
@@ -198,6 +201,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const sharing = new HubSharingService(core);
   const personal=personalFactory?.(core);
   if(personal)Object.defineProperty(mountedDeps,"personal",{value:personal.turns});
+  const sessionLimits = new HubSessionLimitSettings(core);
   const sessions = new HubSessions(core), catalog = new HubCatalogService(core, publishSharingSettlement), policy = new HubPolicyService(core);
   const grantSearch = new HubGrantSearch(core);
   const ownerIntro=(e:{id:string;fleetId:string|null})=>{
@@ -1005,6 +1009,18 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   async function admin(req: IncomingMessage, res: ServerResponse, path: string, ctx: ReturnType<HubSessions["context"]>, method: string,
     signedIn: () => unknown, csrf: () => unknown, body: () => Promise<Record<string, unknown>>, guard: <T>(w: () => Promise<T>) => Promise<T>): Promise<void> {
     let r: RegExpExecArray | null;
+    // M-3592: how long a sign-in lasts (absolute and idle), the administrator's.
+    if (path === "/hub/v1/admin/session-limits") {
+      if ((req.url ?? "").includes("?")) throw new HubProtocolError("invalid");
+      if (method !== "GET" && method !== "PUT") throw new HttpError(405, "method");
+      try {
+        if (method === "GET") { signedIn(); return send(res, 200, await guard(() => sessionLimits.settings(ctx))); }
+        csrf(); const input = await body(); return send(res, 200, await guard(() => sessionLimits.save(ctx, input)));
+      } catch (error) {
+        if (!(error instanceof HubSessionLimitRefusal)) throw error;
+        return send(res, error.status, { code: error.code });
+      }
+    }
     if (path === "/hub/v1/admin/recommended-version" || path === "/hub/v1/admin/recommended-version/preview") {
       try {
         if (path.endsWith("/preview")) {
