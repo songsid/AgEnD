@@ -9,7 +9,8 @@ import { shortContactTicketId } from "./contact-change-proposals.js";
 
 export interface ContactStateHost {
   store: {
-    list(filter: { status?: string; cursor?: string }): { items: ContactTicket[]; nextCursor: string | null };
+    /** No write (Prism #4436 P2-2): the ordinary list marks expired tickets and bumps their revision. */
+    pendingSnapshot(limit?: number): { items: ContactTicket[]; truncated: boolean };
     policy(instance: string): ContactStoredPolicy;
     origin(instance: string): ContactOrigin | undefined;
   };
@@ -23,7 +24,6 @@ export interface ContactStateHost {
   now(): number;
 }
 
-const TICKET_PAGES = 20;
 const person = (p: ContactPerson): string => `${p.label} (${p.platform === "discord" ? "Discord" : p.platform === "telegram" ? "Telegram" : "this computer"})`;
 
 export function contactStateView(host: ContactStateHost, filter: { agent?: string } = {}) {
@@ -32,10 +32,9 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
   const names = host.names().filter(n => involves(n));
 
   const held: Array<Record<string, unknown>> = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < TICKET_PAGES; page++) {
-    const result = host.store.list({ status: "pending", ...(cursor ? { cursor } : {}) });
-    for (const t of result.items) {
+  const snapshot = host.store.pendingSnapshot();
+  {
+    for (const t of snapshot.items) {
       if (t.state !== "pending" || Date.parse(t.expiresAt) <= host.now() || !involves(t.source, t.target)) continue;
       const approvers = host.store.policy(t.target).approvers ?? [];
       held.push({
@@ -46,8 +45,6 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
         current: t.targetGeneration === host.generation(t.target) && t.sourceGeneration === host.generation(t.source),
       });
     }
-    if (!result.nextCursor) break;
-    cursor = result.nextCursor;
   }
 
   const grants = names.flatMap(target => {
@@ -55,7 +52,8 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
     return policy.grants.filter(g => Date.parse(g.expiresAt) > host.now()).map(g => ({
       grant_id: g.id, target: label(target), revision: policy.revision, person: person(g.person), from: label(g.source),
       verbs: g.verbs, expires_at: g.expiresAt, remaining_uses: g.remainingUses,
-      current: !g.targetGeneration || g.targetGeneration === generation,
+      // The same exact bindings the proposal's matcher checks (Prism #4436 P2-3): both incarnations, none missing.
+      current: g.targetGeneration === generation && g.sourceGeneration === host.generation(g.source),
     }));
   });
 
@@ -71,7 +69,8 @@ export function contactStateView(host: ContactStateHost, filter: { agent?: strin
   });
 
   return {
-    held, grants, rooms, retained_origins,
+    held, ...(snapshot.truncated ? { held_truncated: "More messages are held than listed; the admin sees all on Fleet › Authorizations." } : {}),
+    grants, rooms, retained_origins,
     how_to: [
       "Approve or decline a held message: propose_contact_change { kind: 'ticket-decision', ticket_id (the short_id works), decision }. An admin confirms the card.",
       "Change or revoke a rule: propose_contact_change { kind: 'grant-adjust' | 'grant-revoke', target, grant_id }.",

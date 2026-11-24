@@ -1252,8 +1252,9 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
 
 /** General proposes; only the system platform callback can confirm. */
 const proposeContactChange: Handler = async (ctx, raw, respond, meta) => {
-  const parsed = validateArgs(ProposeContactChangeArgs, raw, "propose_contact_change");
-  if (!parsed.ok) { respond(null, parsed.error); return; }
+  // Prism #4436 P3: field errors get the same localized sentence and next step as every other refusal.
+  const parsed = ProposeContactChangeArgs.safeParse(raw);
+  if (!parsed.success) { respond(null, contactProposalRefusal(parsed.error)); return; }
   if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true || !meta.callerCurrent?.()) {
     respond(null, "Only a current configured General may propose a contact change"); return;
   }

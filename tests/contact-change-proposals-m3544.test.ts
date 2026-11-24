@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterEach, expect, it, vi } from "vitest";
 import Database from "better-sqlite3";
 import { performance } from "node:perf_hooks";
@@ -251,13 +252,23 @@ it('M-3693: the 9-character short id people see approves the held message, throu
 it('M-3693: an id prefix shorter than 9, a prefix two pending tickets share, or a decided ticket is refused with the next step — never guessed', async () => {
   const r = rig(), a = r.ticket();
   expect(() => resolvePendingTicket(r.store, a.id.slice(0, 5))).toThrow('contact-proposal-ticket-unavailable');
-  const b = r.ticket(); vi.spyOn(r.store, 'list').mockReturnValue({ items: [a, { ...b, id: a.id.slice(0, 9) + 'x' }], nextCursor: null });
-  expect(() => resolvePendingTicket(r.store, a.id.slice(0, 9))).toThrow('contact-proposal-ticket-ambiguous');
-  vi.restoreAllMocks();
   const respond = vi.fn();
   await outboundHandlers.get('propose_contact_change')!(r.fm, { change: { kind: 'ticket-decision', ticket_id: 'Rzzzzzzzz', decision: 'approve-once' } }, respond, { instanceName: 'general', callerCurrent: () => true } as any);
   expect(respond.mock.calls[0]![1]).toMatch(/^Not proposed: no pending held message has that ticket id\..*contact_state/);
   expect(respond.mock.calls[0]![1]).not.toContain('contact-proposal-ticket-unavailable');
+});
+it('Prism #4436 P2-1: a match behind more than 20 pages of history is found, and a second pending match anywhere makes it ambiguous', () => {
+  const r = rig(), oldest = r.ticket();
+  // 1100 newer decided tickets (history) fill more than 20 list pages of 50 before the oldest pending one.
+  const clone = r.db.prepare("INSERT INTO contact_auth_tickets SELECT ?, ?, request_hash, request_json, json_set(ticket_json,'$.id',?,'$.state','declined'), created_at+? FROM contact_auth_tickets WHERE id=?");
+  for (let i = 1; i <= 1100; i++) { const id = `R${randomUUID()}`; clone.run(id, `op-history-${i}`, id, i, oldest.id); }
+  expect(r.store.list({}).nextCursor).not.toBeNull();
+  expect(resolvePendingTicket(r.store, oldest.id.slice(0, 9)).id).toBe(oldest.id);
+  const twin = oldest.id.slice(0, 9) + randomUUID().slice(8);
+  r.db.prepare("INSERT INTO contact_auth_tickets SELECT ?, 'op-twin', request_hash, request_json, json_set(ticket_json,'$.id',?), created_at+2000 FROM contact_auth_tickets WHERE id=?").run(twin, twin, oldest.id);
+  expect(() => resolvePendingTicket(r.store, oldest.id.slice(0, 9))).toThrow('contact-proposal-ticket-ambiguous');
+  r.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.state','declined') WHERE id=?").run(twin);
+  expect(resolvePendingTicket(r.store, oldest.id.slice(0, 9)).id).toBe(oldest.id);   // a decided twin does not count
 });
 it('M-3693: every refusal is a sentence with a next step, in English and zh-TW; an unknown code still says what to do', () => {
   const codes = ['general-only', 'hub-contact-restricted', 'contact-proposal-limit', 'contact-proposal-ticket-unavailable', 'contact-proposal-ticket-ambiguous', 'conflict',
@@ -303,6 +314,47 @@ it('M-3693: contact_state shows held messages (with short id and who decides), r
   const refused = vi.fn();
   await outboundHandlers.get('contact_state')!(r.fm, {}, refused, { instanceName: 'worker' } as any);
   expect(refused.mock.calls[0]![1]).toContain('configured General');
+});
+it('Prism #4436 P2-2: contact_state writes nothing even when a pending ticket has run out (no expiry write, no revision bump)', async () => {
+  const r = rig(), live = r.ticket(), stale = r.ticket();
+  r.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.expiresAt',?) WHERE id=?").run(new Date(Date.now() - 60_000).toISOString(), stale.id);
+  const before = (r.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n, raw = () => JSON.parse((r.db.prepare('SELECT ticket_json FROM contact_auth_tickets WHERE id=?').get(stale.id) as { ticket_json: string }).ticket_json);
+  const respond = vi.fn(); await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any);
+  expect((r.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n).toBe(before);
+  expect(raw()).toMatchObject({ state: 'pending', revision: stale.revision });       // untouched: the next ordinary read expires it
+  expect(respond.mock.calls[0]![0].held.map((h: any) => h.ticket_id)).toEqual([live.id]);   // and it is not shown as held
+});
+it('Prism #4436 P2-2: the store snapshot and the prefix query leave out a ticket past its expiry, and write nothing', () => {
+  const r = rig(), live = r.ticket(), stale = r.ticket();
+  r.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.expiresAt',?) WHERE id=?").run(new Date(Date.now() - 60_000).toISOString(), stale.id);
+  const before = (r.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n;
+  expect(r.store.pendingSnapshot().items.map(t => t.id)).toEqual([live.id]);
+  expect(r.store.pendingByPrefix(stale.id.slice(0, 9))).toEqual([]);
+  expect(r.store.pendingByPrefix("R%")).toEqual([]);                                  // not an id: never a LIKE pattern
+  expect((r.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n).toBe(before);
+});
+it('Prism #4436 P2-3: a rule is current only with both exact incarnations, as the proposal matcher requires', async () => {
+  const r = rig();
+  r.store.writePolicy('worker', { revision: 0, grants: [{ id: '', person, source: 'room', target: 'worker', verbs: ['send_to_instance' as const], expiresAt: new Date(Date.now() + 86400000).toISOString(), remainingUses: null }] }, admin, n => r.gen.get(n)!);
+  const read = async () => { const respond = vi.fn(); await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any); return respond.mock.calls[0]![0].grants[0]; };
+  expect((await read()).current).toBe(true);
+  r.gen.set('room', 'r2');                                                           // the source was replaced
+  expect((await read()).current).toBe(false);
+  r.gen.set('room', 'r1');
+  const policy = r.store.policy('worker'); delete (policy.grants[0] as any).targetGeneration;
+  r.db.prepare('UPDATE contact_auth_policies SET policy_json=? WHERE instance=?').run(JSON.stringify(policy), 'worker');
+  expect((await read()).current).toBe(false);                                        // a missing binding is not current
+});
+it('Prism #4436 P3: a field error gets the localized sentence and next step, not the raw schema text', async () => {
+  const r = rig(), was = getLocale();
+  try {
+    for (const [locale, start] of [['en', /^Not proposed: change\.target: .*Check the fields/], ['zh-TW', /^沒有提出：change\.target: .*請依工具說明檢查/]] as const) {
+      setLocale(locale as any);
+      const respond = vi.fn();
+      await outboundHandlers.get('propose_contact_change')!(r.fm, { change: { kind: 'mode', mode: 'restricted' } }, respond, { instanceName: 'general', callerCurrent: () => true } as any);
+      expect(respond.mock.calls[0]![1], locale).toMatch(start);
+    }
+  } finally { setLocale(was); }
 });
 it('M-3693: the grant_id contact_state shows is the one grant-adjust needs', async () => {
   const r = rig();

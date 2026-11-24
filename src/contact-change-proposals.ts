@@ -48,28 +48,20 @@ export interface PreparedContactChange {
 }
 /** The short id people see — the same rule as the web's shortTicketId (src/ui/contact-auth-client.js): R + 8 hex. */
 export const shortContactTicketId = (id: string): string => /^R[a-f0-9]{8}-[a-f0-9-]{27}$/.test(id) ? id.slice(0, 9) : id;
-/** How many tickets a short-id lookup reads (newest first, 50 a page): pending tickets expire, so they are recent. */
-const SHORT_ID_SCAN_PAGES = 20;
 /**
  * M-3693: the held message a person names. People see a 9-character short id (cards, notices, contact_state); the
  * full id still works. A prefix of at least 9 characters resolves to the one pending ticket starting with it; none or
  * several are refused, never guessed.
  */
-export function resolvePendingTicket(store: { get(id: string): ContactTicket | undefined; list(filter: { status?: string; cursor?: string }): { items: ContactTicket[]; nextCursor: string | null } }, id: string): ContactTicket {
+export function resolvePendingTicket(store: { get(id: string): ContactTicket | undefined; pendingByPrefix(prefix: string): ContactTicket[] }, id: string): ContactTicket {
   const exact = store.get(id);
   if (exact) { if (exact.state !== "pending") throw Error("contact-proposal-ticket-unavailable"); return exact; }
   if (id.length < 9) throw Error("contact-proposal-ticket-unavailable");
-  const found: ContactTicket[] = [];
-  let cursor: string | undefined;
-  for (let page = 0; page < SHORT_ID_SCAN_PAGES; page++) {
-    const result = store.list({ status: "pending", ...(cursor ? { cursor } : {}) });
-    found.push(...result.items.filter(t => t.state === "pending" && t.id.startsWith(id)));
-    if (!result.nextCursor) break;
-    cursor = result.nextCursor;
-  }
+  // One query over every pending ticket (Prism #4436 P2-1: no page limit can hide a second match).
+  const found = store.pendingByPrefix(id);
   if (found.length > 1) throw Error("contact-proposal-ticket-ambiguous");
   if (!found.length) throw Error("contact-proposal-ticket-unavailable");
-  return found[0]!;
+  return found[0]!;   // live: the query leaves out a ticket past its expiry; the card re-checks it before Confirm
 }
 const REFUSAL_CODES = new Set(["general-only", "hub-contact-restricted", "contact-proposal-limit", "contact-proposal-ticket-unavailable",
   "contact-proposal-ticket-ambiguous", "conflict", "stale-generation", "invalid-grant-origin", "contact-proposal-not-room", "not-found",
