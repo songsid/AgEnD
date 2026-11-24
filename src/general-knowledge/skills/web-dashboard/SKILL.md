@@ -341,10 +341,10 @@ tab is hidden — per browser, not on phones or plain-HTTP addresses. Config: `n
 `needs_you.dm` (default off), `needs_you.task_board` (default off: the task board's cards waiting
 for you — set `true` to list them).
 
-Held Hub one-to-one questions offer **Don't answer this question** (不處理這題), including an uncertain hold
+Held Hub one-to-one questions offer **Close this question** (不處理這題), including an uncertain hold
 without **Try again**. A verified administrator who manages that Agent confirms in the dashboard; the Hub then
 marks it not answered for the asker and the item clears only after acknowledgement. An existing Hub answer is
-preserved. Closing does not resend the question or stop work already running. Offline or unsupported Hubs leave
+preserved. Closing is final: the same message cannot be retried, but the asker may send a new question. Closing does not resend the question or stop work already running. Offline or unsupported Hubs leave
 the item in place and explain what to do. **Try again** remains a separate action that can deliver the question.
 
 **Notices** (#2910): on a fleet with no chat connection, what General would have posted (a version's new features, a

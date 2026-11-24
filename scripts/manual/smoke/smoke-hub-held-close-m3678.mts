@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { bootFixture, matrix } from "../smoke-fixture/index.mts";
 const out = process.env.OUT!; mkdirSync(out, { recursive: true });
 const before = process.env.STAGE === "before";
+const copyOnly = process.env.CAPTURE_ONLY === "copy";
 const fx = await bootFixture({ port: 0, classic: false, host: true,
   roster: [{ name: "demo-helper", backend: "codex", displayName: "Demo helper" }] });
 const fm = fx.fm, results: unknown[] = [];
@@ -21,7 +22,7 @@ try {
     const { page, ctx } = await fx.page(c, { path: "/ui/needs", host: true });
     const errors: string[] = []; page.on("pageerror", (e: Error) => errors.push(e.message));
     const retry = c.lang === "en" ? "Try again" : "再試一次";
-    const close = c.lang === "en" ? "Don't answer this question" : "不處理這題";
+    const close = c.lang === "en" ? "Close this question" : "不處理這題";
     await page.getByRole("button", { name: retry, exact: true }).waitFor();
     const stem = `${c.device}-${c.theme}-${c.lang}`;
     await page.screenshot({ path: join(out, `${stem}-held.png`) });
@@ -46,12 +47,12 @@ try {
       await page.waitForFunction(() => document.querySelectorAll(".n-item").length === 1);
       await page.waitForFunction(() => { const e = document.querySelector(".toast.ok"); return !!e && Number(getComputedStyle(e).opacity) > .99; });
       if (closes !== count + 1) throw Error("Wrong close count");
-      await page.screenshot({ path: join(out, `${stem}-closed.png`) });
+      if (!copyOnly) await page.screenshot({ path: join(out, `${stem}-closed.png`) });
     }
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
     if (overflow || errors.length) throw Error(JSON.stringify({ overflow, errors }));
     results.push({ ...c, overflow, errors, closes }); await ctx.close();
   }
-  writeFileSync(join(out, "receipt.json"), JSON.stringify({ stage: before ? "before" : "after",
+  writeFileSync(join(out, "receipt.json"), JSON.stringify({ stage: before ? "before" : "after", captureOnly: copyOnly ? "held-confirm" : "all",
     sourceHead: execFileSync("git", ["rev-parse", "HEAD"], { cwd: process.env.REPO, encoding: "utf8" }).trim(), results }, null, 2));
 } finally { await fm.needsYou.stop(); await fx.close(); }

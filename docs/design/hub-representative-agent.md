@@ -52,7 +52,7 @@ A focused adapter fixture covers a legacy tuple refusing delivery, an old provid
 
 ## Closing held one-to-one questions
 
-Needs you offers **Don't answer this question** for every representative held row,
+Needs you offers **Close this question** for every representative held row,
 including uncertain input or a saved answer whose release could not be confirmed.
 The verified managing administrator confirms in the existing dashboard dialog.
 The model has no close tool. The web route requires the signed-in session, CSRF,

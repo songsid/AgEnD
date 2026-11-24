@@ -848,9 +848,9 @@ Say plainly that these are not in the product yet:
   (after 2 s, 10 s and 30 s) before holding the question. A held question that never reached the agent shows
   **Try again** (再試一次): it goes back through the Hub's checks and is delivered only when the Hub allows it. A question the Hub
   refused, or one that may already have reached the agent, has no Try again. For a held one-to-one question,
-  a verified managing administrator can choose **Don't answer this question** (不處理這題) and confirm.
+  a verified managing administrator can choose **Close this question** (不處理這題) and confirm.
   The Hub marks the question not answered and tells the asker that the owner chose not to answer. An answer already
-  received by the Hub is kept. This never enters the question again or stops work already running in the agent.
+  received by the Hub is kept. Closing is final: the same message cannot be retried, but the asker may send a new question. This never enters the question again or stops work already running in the agent.
   The item disappears only after the Hub acknowledges. An offline or older Hub keeps the item with an explanation;
   reconnect or update the Hub, then repeat the close action. Do not use Try again just to clear an item.
 

@@ -141,11 +141,12 @@ describe("M-3632 the Try again button", () => {
     release(); await settle(4);
     expect(tryButton().disabled).toBe(false);
   });
-  it.each([["en", "Don't answer this question"], ["zh-TW", "不處理這題"]])("M-3678 %s uncertain hold can close only after confirmation; Cancel permits retry",async(lang,label)=>{
+  it.each([["en", "Close this question"], ["zh-TW", "不處理這題"]])("M-3678 %s uncertain hold can close only after confirmation; Cancel permits retry",async(lang,label)=>{
     (globalThis as any).confirm=undefined;
     i18n.setLang(lang,{store:false});app.appStore.set({needs:[{...ITEM,hubRetry:undefined,hubClose:true}]});
     await mount();await settle(4);const C:any=await import("/assets/ui-confirm.js");
     button(label).click();await settle(3);expect(C.confirmStore.get().queue).toHaveLength(1);
+    expect(C.confirmStore.get().queue[0].message).toContain(lang==="en"?"This can't be undone.":"關閉後無法復原。");
     expect(reqs.filter(r=>r.url==="/ui/needs/hub-close")).toHaveLength(0);
     expect(p.root.textContent).not.toContain(lang==="en"?"Closing…":"結束中…");
     C.answerConfirm(C.confirmStore.get().queue[0].id,false);await settle(3);expect(button(label).disabled).toBe(false);
@@ -157,9 +158,9 @@ describe("M-3632 the Try again button", () => {
     (globalThis as any).confirm=undefined;
     i18n.setLang("en",{store:false});app.appStore.set({needs:[{...ITEM,hubRetry:undefined,hubClose:true}]});
     answer=()=>({status:403,body:{code:"verification-required"}});await mount();await settle(3);
-    const C:any=await import("/assets/ui-confirm.js");button("Don't answer this question").click();await settle(2);
+    const C:any=await import("/assets/ui-confirm.js");button("Close this question").click();await settle(2);
     C.answerConfirm(C.confirmStore.get().queue[0].id,true);await settle(4);
-    expect(button("Don't answer this question").disabled).toBe(false);
+    expect(button("Close this question").disabled).toBe(false);
     const T:any=await import("/assets/ui-toast.js");await p.mount(h(T.Toasts,{}));await settle(3);expect(p.root.textContent).toContain("Verify your admin account");
   });
 

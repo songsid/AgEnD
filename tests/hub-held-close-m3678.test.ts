@@ -73,3 +73,12 @@ it("a late answer cannot disclose after the owner closes",async()=>{
   releaseLease:{decisionId:randomUUID(),messageId:q.id,operationId,phase:"release-answer",operationDigest:"a".repeat(64),revocationVersion:1,exposureRevision:1,linkEpoch:w.link.linkEpoch,expiresAt:Date.now()+5000}},w.link) as never,w.link)).rejects.toThrow("denied");
  expect(r!.db.prepare("SELECT stage,answer_id FROM hub_messages WHERE id=?").get(q.id)).toEqual({stage:"cancelled",answer_id:null});
 });
+
+it("asking again with a closed message's exact retry key cannot reopen it",async()=>{
+ const w=await world(),q=await w.ask();await closeAsk(w,q.id);
+ const {idempotency_key:key}=r!.db.prepare("SELECT idempotency_key FROM hub_messages WHERE id=?").get(q.id) as {idempotency_key:string};
+ const sent=r!.sent.length;
+ const retry=await r!.call(w.a,"POST",`/hub/v1/rooms/${w.room}/messages`,{text:"Question",idempotencyKey:key});
+ expect(retry.status).toBe(200);expect(retry.json).toMatchObject({id:q.id,receipt:{stage:"cancelled",reasonCode:"owner-declined"}});
+ expect(r!.sent).toHaveLength(sent);expect(r!.db.prepare("SELECT COUNT(*) AS n FROM hub_messages WHERE room_id=?").get(w.room)).toEqual({n:1});
+});
