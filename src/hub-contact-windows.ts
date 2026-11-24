@@ -30,7 +30,10 @@ export class HubContactWindows {
     try { return this.load().some(r => r.agent === agent && r.expiresAt > this.now() && !settledSafe(settled, r)); }
     catch { return true; } // Unreadable state cannot grant contact permission.
   }
-  /** M-3660: the question whose window restricts `agent` now (its correlation id), or null — the same rule as restricted(). */
+  /**
+   * M-3660: the question whose window restricts `agent` now (its correlation id), or null — the same rule as restricted().
+   * Unreadable state gives null here while restricted() still refuses: the refusal then gives the general reason.
+   */
   restrictingQuestion(agent: string, settled?: (agent: string, correlationId: string) => boolean): string | null {
     try { return this.load().find(r => r.agent === agent && r.expiresAt > this.now() && !settledSafe(settled, r))?.correlationId ?? null; }
     catch { return null; }
@@ -40,7 +43,13 @@ export class HubContactWindows {
     if (rows.some(r => r.agent === agent && r.correlationId === correlationId)) return; // retries do not extend a window
     if (rows.length >= 4096) throw Error("Too many Hub contact windows");
     rows.push({ agent, correlationId, expiresAt: this.now() + HUB_CONTACT_WINDOW_MS });
-    atomicWriteFileSync(this.file, JSON.stringify(rows), { mode: 0o600 }); this.rows = rows;
+    // M-3660: fail closed — the window holds in memory even when it cannot be saved (the caller is told by the throw).
+    this.rows = rows; atomicWriteFileSync(this.file, JSON.stringify(rows), { mode: 0o600 });
+  }
+  /** M-3660: the agent's daemon says no Hub answer turn is running (or a different one): its other windows end. */
+  closeAgent(agent: string, except?: string): void {
+    const rows = this.load().filter(r => r.expiresAt > this.now() && !(r.agent === agent && r.correlationId !== except));
+    this.rows = rows; atomicWriteFileSync(this.file, JSON.stringify(rows), { mode: 0o600 });
   }
   answered(agent: string, correlationId: string): void {
     const rows = this.load().filter(r => r.expiresAt > this.now() && !(r.agent === agent && r.correlationId === correlationId));

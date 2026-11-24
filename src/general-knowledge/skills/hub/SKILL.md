@@ -325,11 +325,11 @@ On your Fleet, **Settings → Hub**, under **Shared agents** (分享的 Agent), 
 - **While it answers a Hub question, this agent may not contact other agents** defaults on, including existing shares.
   In Fleet **Settings → Hub → Shared agents**, untick it to allow agent-to-agent help; saving a shared agent's choice
   follows the same confirmation as sharing. Existing owners get a Settings notice they acknowledge once. A Hub question
-  reaches the agent only when it is idle, as a turn of its own; other messages wait for that turn. The restriction covers
-  only that answer turn: it ends when the turn ends, when the question settles (answered, withdrawn, revoked, expired,
-  held), or after 30 minutes at most. The owner's and other agents' turns are never blocked. During the answer turn,
-  send_to_instance, delegate_task, request_information and broadcast are refused with the reason; contact works again
-  from the next turn.
+  reaches the agent only when it is idle, as a turn of its own; other messages wait for that turn. If the agent stays busy
+  for 30 minutes, the question is not delivered: the asker sees it was not answered and the owner sees it in Needs you.
+  The restriction covers only the answer turn and ends when that turn ends (30 minutes at most); the owner's and other
+  agents' turns are never blocked. During the answer turn, send_to_instance, delegate_task, request_information and
+  broadcast are refused, naming the question; contact works again from the next turn.
   Answers to agend-hub and hub_room_post still work. The agent's own tools/folder, previously learned information and
   actions after the window ends are not isolated. Hub General and MCP agents are not changed by this setting.
 - A ClassicBot room's agent can be shared through the same confirmed owner choice. Its row is tagged **ClassicBot room** /

@@ -41,7 +41,7 @@ describe("HubContactWindows with a settled-question reader (M-3660)", () => {
 });
 
 describe("FleetManager: the contact window ends when its question settles, across turns (M-3660)", () => {
-  it("held after a refused report: contact is allowed again; a question still being answered keeps the refusal", withDir(async dir => {
+  it("held after a refused report: the window holds while that answer turn still works, ends with the turn, and no later turn is refused", withDir(async dir => {
     const fm = new FleetManager(dir);
     try {
       (fm as any).fleetConfig = { instances: { worker: {} } };
@@ -56,8 +56,11 @@ describe("FleetManager: the contact window ends when its question settles, acros
       (fm as any).hubReports = () => Promise.resolve({ ok: false, message: "Not delivered to the Hub asker: the question is no longer open" });
       await fm.hubReport({ caller: "worker", correlationId: "hub-19a46113", text: "answer", callerCurrent: () => true });
       state.set("hub-19a46113", "held");
-      expect(fm.hubContactRestricted("worker")).toBe(false); // this turn
-      expect(fm.hubContactRestricted("worker")).toBe(false); // and every later one: nothing is open
+      // M-3660 review: the turn is still working on the asker's text — settling (a hold, expiry, revoke) lifts nothing yet.
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      expect(fm.hubContactQuestion("worker")).toBe("hub-19a46113");
+      (fm as any).hubQuestionTurnEnded("worker", "hub-19a46113");
+      expect(fm.hubContactRestricted("worker")).toBe(false); // the turn is over: every later turn may contact agents
       // A new question in progress restricts again, and only it.
       state.set("hub-2006708e", "open");
       await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-2006708e", text: "Q2", stillCurrent: () => true, beforeInput: async () => true });
@@ -95,5 +98,66 @@ describe("FleetManager: the window covers only the Hub answer turn (M-3660)", ()
     } finally { fm.stormWindow.shutdown(); }
   }));
 
+  it("an accepted answer inside its own running turn does not lift it; the turn's end does", withDir(async dir => {
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).hubQuestionInput("worker", "hub-q2");
+      (fm as any).hubQuestionSettled = () => true;             // released: the Hub has the answer
+      (fm as any).hubReports = () => Promise.resolve({ ok: true });
+      await fm.hubReport({ caller: "worker", correlationId: "hub-q2", text: "answer", callerCurrent: () => true });
+      expect(fm.hubContactRestricted("worker")).toBe(true);    // the same turn may still be working on the asker's text
+      (fm as any).hubQuestionTurnEnded("worker", "hub-q2");
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
+
+  it("lost signals are made good on reconnect: a dropped end (no turn running) and a dropped input (one running)", withDir(async dir => {
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).hubQuestionInput("worker", "hub-old");       // its hub_question_turn_ended never arrived
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubQuestionTurnState("worker", null);        // the daemon, on (re)connect: no Hub turn running
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+      (fm as any).hubQuestionTurnState("worker", "hub-new", true);   // its hub_question_input was lost; the turn runs
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      expect(fm.hubContactQuestion("worker")).toBe("hub-new");
+      (fm as any).hubQuestionInput("worker", "hub-stale");     // a window left from before (a fleet restart)…
+      (fm as any).hubQuestionTurnState("worker", "hub-new", true);   // …ends when the daemon names another turn
+      expect(new HubContactWindows(join(dir, "hub-contact-windows.json")).restrictingQuestion("worker")).toBe("hub-new");
+      (fm as any).hubQuestionTurnState("worker", "hub-off", false);  // an opted-out share's turn opens nothing
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
+
+  it("a Classic room opens no window before the write: a question never written (declined, failed) leaves nothing", withDir(async dir => {
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).fleetConfig = { instances: { room: {} } };
+      vi.spyOn(fm as any, "isClassicInstance").mockReturnValue(true);
+      vi.spyOn(fm as any, "waitForInstanceIdle").mockResolvedValue(true);
+      vi.spyOn(fm as any, "classicPrivacy").mockReturnValue({ begin: vi.fn() });
+      vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, _payload, options) => { await options?.beforeInput?.(); return false; });
+      await (fm as any).deliverHubQuestion({ agent: "room", correlationId: "hub-c1", text: "Q", stillCurrent: () => true, beforeInput: async () => true });
+      expect(fm.hubContactRestricted("room")).toBe(false);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
+
+  it("the opt-out travels in the question's delivery meta (nothing kept in fleet memory)", withDir(async dir => {
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).fleetConfig = { instances: { worker: {} } };
+      const payloads: any[] = [];
+      vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, payload, options) => { payloads.push(payload); await options?.beforeInput?.(); return true; });
+      for (const limit of [false, true, undefined]) await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-o", text: "Q", contactLimit: limit, stillCurrent: () => true, beforeInput: async () => true });
+      expect(payloads.map(p => p.meta.hub_contact_limit)).toEqual(["off", undefined, undefined]);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
 });
 
+describe("HubContactWindows fails closed (M-3660)", () => {
+  it("a window that cannot be saved still holds in memory", withDir(dir => {
+    const windows = new HubContactWindows(join(dir, "missing-dir", "w.json"), () => 0);
+    expect(() => windows.begin("worker", "hub-x")).toThrow();
+    expect(windows.restricted("worker")).toBe(true);
+  }));
+});

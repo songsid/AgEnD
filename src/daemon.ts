@@ -1,6 +1,7 @@
 import type { ClaudeRequestObservation } from "./claude-request-observation.js";
 import { managedClaudeBinding } from "./claude-credential-launch.js";
 import { HUB_REPORT_TARGET } from "./hub-report-target.js";
+import { atomicWriteFileSync } from "./atomic-write.js";
 import { RoomConversationGeneration, roomContextInputMarker } from "./hub-room-conversation.js";
 import { checkpointGrokDelivery, type GrokDeliveryProof } from "./grok-delivery-proof.js";
 import { nativePaneToolRefusal } from "./native-pane-tools.js";
@@ -1453,7 +1454,21 @@ const FLEET_RESPONSE_TYPES = new Set([
   "fleet_display_name_response", "fleet_description_response", "fleet_persona_emoji_response", "fleet_web_theme_response",
 ]);
 
-/** M-3660: a question from the Hub (a representative or room ask) that the agent answers with report_result to agend-hub. */
+/** M-3660: the Hub question a pane is answering as its own turn. `restored`: taken up again after a daemon restart. */
+interface HubAnswerTurn { correlationId: string; contactLimit: boolean; sawWorking: boolean; restored: boolean }
+function readHubAnswerTurn(file: string): HubAnswerTurn | null {
+  try {
+    const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
+    const r = raw as { correlationId?: unknown; contactLimit?: unknown };
+    if (!r || typeof r.correlationId !== "string" || !/^hub-[A-Za-z0-9-]+$/.test(r.correlationId)) return null;
+    return { correlationId: r.correlationId, contactLimit: r.contactLimit !== false, sawWorking: true, restored: true };
+  } catch { return null; }
+}
+/**
+ * M-3660: a question from the Hub (a representative or room ask) that the agent answers with report_result to agend-hub.
+ * It trusts the meta: only the fleet writes fleet_inbound, and from_instance "agend-hub" is its reserved sender — an
+ * agent's send_to_instance is stamped with the agent's own name.
+ */
 export function isHubQuestionMeta(meta: Record<string, string>): boolean {
   return meta.from_instance === HUB_REPORT_TARGET && meta.request_kind === "query" && /^hub-[A-Za-z0-9-]+$/.test(meta.correlation_id ?? "");
 }
@@ -3456,6 +3471,7 @@ export class Daemon extends EventEmitter {
         }
         // Batch response for prune path
         this.ipcServer?.send(socket, { type: "query_sessions_response", sessions });
+        this.ipcServer?.send(socket, this.hubAnswerTurnStateMessage());   // M-3660: a fresh connection learns the current turn
       } else this.handleFleetMessage(msg, reply => { this.ipcServer?.send(socket, reply); });
     });
 
@@ -6333,6 +6349,7 @@ export class Daemon extends EventEmitter {
     if (msg.type === "hub_room_tools_changed") { this.ipcServer?.broadcast({type:"hub_room_tools_changed"}); return true; }
     if (msg.type === "query_sessions") {
       send({ type: "query_sessions_response", sessions: [] });
+      send(this.hubAnswerTurnStateMessage());   // M-3660
     } else if (msg.type === "fleet_inbound") {
       const meta = msg.meta as Record<string, string>;
       const targetSession = msg.targetSession as string | undefined;
@@ -7291,19 +7308,40 @@ export class Daemon extends EventEmitter {
    * after that turn's work (or the next write into the idle pane). The fleet keeps the agent's contact window for exactly
    * this turn: hub_question_input opens it, hub_question_turn_ended closes it.
    */
-  private hubAnswerTurn: { correlationId: string; sawWorking: boolean } | null = null;
-  private hubAnswerTurnBegins(correlationId: string | undefined): void {
+  // It is kept on disk too (hub-answer-turn.json): a daemon restarted mid-turn takes it up again, so deliveries keep
+  // waiting behind it and its end is still announced; the fleet is told the current state again on every (re)connect.
+  private hubAnswerTurnState: HubAnswerTurn | null | undefined;
+  private get hubAnswerTurn(): HubAnswerTurn | null {
+    if (this.hubAnswerTurnState === undefined) { const file = this.hubAnswerTurnFile(); this.hubAnswerTurnState = file ? readHubAnswerTurn(file) : null; }
+    return this.hubAnswerTurnState;
+  }
+  private hubAnswerTurnFile(): string | null { return typeof this.instanceDir === "string" ? join(this.instanceDir, "hub-answer-turn.json") : null; }
+  private setHubAnswerTurn(turn: HubAnswerTurn | null): void {
+    this.hubAnswerTurnState = turn;
+    const file = this.hubAnswerTurnFile();
+    if (!file) return;
+    try {
+      if (turn) atomicWriteFileSync(file, JSON.stringify({ correlationId: turn.correlationId, contactLimit: turn.contactLimit }), { mode: 0o600 });
+      else rmSync(file, { force: true });
+    } catch (err) { this.logger.warn({ err }, "Hub answer turn could not be saved; this daemon still keeps it"); }
+  }
+  private hubAnswerTurnBegins(correlationId: string | undefined, contactLimit = true): void {
     if (correlationId !== undefined && this.hubAnswerTurn?.correlationId === correlationId) return; // a retried write
     this.endHubAnswerTurn();
     if (correlationId === undefined) return;
-    this.hubAnswerTurn = { correlationId, sawWorking: false };
-    this.broadcastFleetMessage({ type: "hub_question_input", correlationId });
+    this.setHubAnswerTurn({ correlationId, contactLimit, sawWorking: false, restored: false });
+    this.broadcastFleetMessage({ type: "hub_question_input", correlationId, contactLimit });
   }
   private endHubAnswerTurn(): void {
     const turn = this.hubAnswerTurn;
     if (!turn) return;
-    this.hubAnswerTurn = null;
+    this.setHubAnswerTurn(null);
     this.broadcastFleetMessage({ type: "hub_question_turn_ended", correlationId: turn.correlationId });
+  }
+  /** M-3660: the current Hub answer turn, told to a fleet connection when it (re)connects (a signal may have been lost). */
+  private hubAnswerTurnStateMessage(): Record<string, unknown> {
+    const turn = this.hubAnswerTurn;
+    return { type: "hub_question_turn_state", correlationId: turn?.correlationId ?? null, ...(turn ? { contactLimit: turn.contactLimit } : {}) };
   }
 
   /** M-3239: Claude's and Codex's transcripts tell each tool call and answer; their pane's spinner alone is not a turn. */
@@ -7327,19 +7365,23 @@ export class Daemon extends EventEmitter {
   private noteTurnEdge(state: string): void {
     if (state !== "idle") {
       if (this.turnEndTimer) { clearTimeout(this.turnEndTimer); this.turnEndTimer = null; }
-      if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;if(this.hubAnswerTurn)this.hubAnswerTurn.sawWorking=true;}
+      if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;{const hubTurn=this.hubAnswerTurn;if(hubTurn)hubTurn.sawWorking=true;}}
       return;
     }
     if (this.turnEndTimer) return;
     const roomGeneration=this.roomConversationState?this.roomConversationGeneration():null,roomInputEpoch=this.hubRoomInputEpoch;
     this.turnEndTimer = setTimeout(() => {
       this.turnEndTimer = null;                                        // a working edge before this cancels it: the turn went on
-      if (this.hubAnswerTurn?.sawWorking) this.endHubAnswerTurn();     // M-3660: the Hub answer turn worked and is over
       const turn = this.turnWatch.end();
       // A Claude/Codex compaction spinner is not a completed model turn. Require fresh tool/text evidence.
       const bin=this.backend?.binaryName,needsTranscript=bin==="claude"||bin==="codex";
       const realWork=!needsTranscript||this.hubRoomTurnActivityStart!==null&&this.hubRoomTranscriptActivity>this.hubRoomTurnActivityStart;
       this.hubRoomTurnActivityStart=null;
+      // M-3660: the Hub answer turn ends only on real work (a compaction spinner is not its end: realWork needs a fresh
+      // working edge AND transcript activity since it, so a flicker leaves the turn running until real work then idle) —
+      // or, taken up again after a daemon restart, on the first idle edge.
+      const hubTurn = this.hubAnswerTurn;
+      if (hubTurn?.sawWorking && (realWork || hubTurn.restored)) this.endHubAnswerTurn();
       if(turn&&realWork&&roomGeneration&&roomGeneration===this.roomConversationGeneration()&&roomInputEpoch===this.hubRoomInputEpoch)
         this.broadcastFleetMessage({type:"hub_room_turn_ended",generation:roomGeneration,turn:`${this.hubRoomTurnBoot}:${++this.hubRoomTurnSequence}`});
       if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
@@ -8934,7 +8976,7 @@ export class Daemon extends EventEmitter {
           sent = await this.deliverMessage(pasted, status, {
             deliveryEpoch,
             submissionId: meta.message_id,
-            ...(isHubQuestionMeta(meta) ? { hubQuestion: meta.correlation_id } : {}),
+            ...(isHubQuestionMeta(meta) ? { hubQuestion: meta.correlation_id, hubContactLimit: meta.hub_contact_limit !== "off" } : {}),
             ...(meta.hub_room_context_generation ? { roomContextGeneration: meta.hub_room_context_generation } : {}),
             ...(meta.verification_id ? { humanVerificationId: meta.verification_id, humanMeta: meta } : {}),
             verdict,
@@ -9027,6 +9069,8 @@ export class Daemon extends EventEmitter {
       onPaneWritten?: () => void;
       /** M-3660: this delivery is a Hub question (its correlation id): it is written only into an idle pane, as a turn of its own. */
       hubQuestion?: string;
+      /** M-3660: false when the share opted out of the contact limit (the fleet's meta hub_contact_limit=off). */
+      hubContactLimit?: boolean;
       /** Board 003648ac: just before each paste of this message (after every wait and fence), synchronously. */
       beforePaneWrite?: () => void;
       /**
@@ -9257,7 +9301,7 @@ export class Daemon extends EventEmitter {
           writeCurrent,
           opts?.humanVerificationId,
           // M-3660: written into an idle pane, so whatever Hub answer turn ran is over; a Hub question begins its own.
-          () => { if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion); opts?.beforePaneWrite?.(); },
+          () => { if (!handingOffToNativeQueue) this.hubAnswerTurnBegins(opts?.hubQuestion, opts?.hubContactLimit !== false); opts?.beforePaneWrite?.(); },
           opts?.lookBeforePaneWrite,
           opts?.humanMeta,
         );

@@ -34,7 +34,7 @@ describe("Hub-question contact limit", () => {
       const ctx = context(); ctx.hubContactQuestion = vi.fn(() => "hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
       const text = (await call(tool, ctx, args)).mock.calls[0]![1] as string;
       expect(text).toContain("Hub question hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
-      expect(text).toContain("not stuck: it lifts when this turn ends");
+      expect(text).toContain("not stuck: it lifts when this answer turn ends.");
       expect(text).toContain("correlation_id hub-19a46113-ebfc-4e89-b0c4-f26b2f877d32");
       expect(ctx.hubContactQuestion).toHaveBeenCalledWith("worker");
       ctx.hubContactQuestion = vi.fn(() => { throw new Error("unreadable"); });   // unknown: the general reason, never a crash

@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { createBackend } from "../src/backend/factory.js";
 import { Daemon, isHubQuestionMeta } from "../src/daemon.js";
 
 const BUSY = readFileSync(join(__dirname, "fixtures", "claude-2.1.293-busy-empty.pane.txt"), "utf8");
@@ -21,10 +22,10 @@ const roots: string[] = [];
 afterEach(() => { vi.useRealTimers(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
 const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return logger; } } as any;
 
-function rig() {
+function rig(opts: { backend?: "claude-code" | "grok"; root?: string } = {}) {
   let quiet = false;
   vi.useFakeTimers();
-  const root = mkdtempSync(join(tmpdir(), "agend-m3660-")); roots.push(root);
+  const root = opts.root ?? mkdtempSync(join(tmpdir(), "agend-m3660-")); if (!opts.root) roots.push(root);
   const dir = join(root, "instances", "rep");
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, "window-id"), "@1");
@@ -43,7 +44,7 @@ function rig() {
     working_directory: root, backend: "claude-code", log_level: "silent",
     restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
     context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
-  } as any, dir, false, new ClaudeCodeBackend(dir) as any, control as any, logger);
+  } as any, dir, false, (opts.backend === "grok" ? createBackend("grok", dir) : new ClaudeCodeBackend(dir)) as any, control as any, logger);
   d.processStatus = "running";
   d.tmux = { capturePane: vi.fn(async () => (quiet ? BUSY.replace(/^✻.*$/m, "") : BUSY)), getWindowId: () => "@1", isWindowAlive: async () => true };
   vi.spyOn(d, "wake").mockResolvedValue(undefined);
@@ -57,7 +58,7 @@ function rig() {
   vi.spyOn(d, "paneReadinessForDelivery").mockImplementation(async () => (quiet ? "ready" : "busy"));
   const events: string[] = [];
   vi.spyOn(d, "broadcastFleetMessage").mockImplementation((msg: any) => {
-    if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended") events.push(`${msg.type}:${msg.correlationId}`);
+    if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended") events.push(`${msg.type}:${msg.correlationId}${msg.contactLimit === false ? ":off" : ""}`);
   });
   vi.spyOn(d, "writeMessageToPane").mockImplementation(async (...args: unknown[]) => {
     (args[10] as (() => void) | undefined)?.();   // beforePaste: called right before the paste, as the real write does
@@ -67,7 +68,11 @@ function rig() {
   const hub = (cid: string) => ({ user: "instance:agend-hub", user_id: "instance:agend-hub", chat_id: "", thread_id: "", message_id: `hubmsg-${cid.slice(4)}`,
     ts: new Date().toISOString(), from_instance: "agend-hub", from_display: "Hub", correlation_id: cid, request_kind: "query", requires_reply: "true" });
   const human = (id: string) => ({ user: "owner", user_id: "1", chat_id: "chat", thread_id: "topic", message_id: id, ts: new Date().toISOString(), text: "" });
-  return { d, events, hub, human, setQuiet: (v: boolean) => { quiet = v; } };
+  const failures: string[] = [];
+  vi.spyOn(d, "reportCrossInstanceDeliveryFailure").mockImplementation((meta: any) => { failures.push(meta.correlation_id ?? meta.message_id); });
+  /** A turn that really worked: the working edge, transcript activity (Claude's evidence), then the idle edge. */
+  const work = () => { d.noteTurnEdge("working"); d.hubRoomTranscriptActivity++; d.noteTurnEdge("idle"); };
+  return { d, events, hub, human, failures, work, root, setQuiet: (v: boolean) => { quiet = v; } };
 }
 
 describe("isHubQuestionMeta", () => {
@@ -115,15 +120,97 @@ describe("a Hub question is a turn of its own (M-3660)", () => {
   });
 
   it("the turn's idle edge after work ends it; an idle edge before any work (the previous turn settling) does not", async () => {
-    const { d, events, hub, setQuiet } = rig();
+    const { d, events, hub, setQuiet, work } = rig();
     setQuiet(true);
     const cid = `hub-${randomUUID()}`;
     d.noteTurnEdge("idle");                                   // the previous turn's idle edge, still settling
     d.pushChannelMessage("A Hub question", hub(cid));
     await vi.advanceTimersByTimeAsync(10_000);                // that settle fires after the write
     expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+    work();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events.slice(2)).toEqual([`hub_question_turn_ended:${cid}`]);
+  });
+
+  it("a compaction flicker mid-turn (working → idle with no transcript work) does not end it; the next real work does", async () => {
+    const { d, events, hub, setQuiet, work } = rig();
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    d.noteTurnEdge("working"); d.noteTurnEdge("idle");        // a compaction spinner: no tool call, no text
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+    d.noteTurnEdge("idle");                                   // re-armed: an idle edge alone ends nothing
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events).toHaveLength(2);
+    work();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events.slice(2)).toEqual([`hub_question_turn_ended:${cid}`]);
+  });
+
+  it("a daemon restarted mid-turn takes the turn up again: deliveries still wait behind it, and its end is announced", async () => {
+    const first = rig();
+    first.setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    first.d.pushChannelMessage("A Hub question", first.hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(first.events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+    const next = rig({ root: first.root });                   // a new daemon on the same instance directory
+    expect(next.d.hubAnswerTurnStateMessage()).toEqual({ type: "hub_question_turn_state", correlationId: cid, contactLimit: true });
+    next.d.pushChannelMessage("an owner's message", next.human("m-3"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(next.events).toEqual([]);                          // the pane is still busy with the Hub turn: no hand-off into it
+    next.d.noteTurnEdge("working"); next.d.noteTurnEdge("idle");   // restored: its first idle edge ends it (no transcript proof needed)
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(next.events).toEqual([`hub_question_turn_ended:${cid}`]);   // ended by the edge itself, before any write
+    next.setQuiet(true);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(next.events).toEqual([`hub_question_turn_ended:${cid}`, "write:other:idle"]);
+    expect(next.d.hubAnswerTurnStateMessage()).toEqual({ type: "hub_question_turn_state", correlationId: null });
+  });
+
+  it("a fleet (re)connecting asks for sessions and is told the current Hub turn, or none", async () => {
+    const { d, hub, setQuiet } = rig();
+    const told: any[] = [];
+    d.handleFleetMessage({ type: "query_sessions" }, (reply: any) => told.push(reply));
+    expect(told).toContainEqual({ type: "hub_question_turn_state", correlationId: null });
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    told.length = 0;
+    d.handleFleetMessage({ type: "query_sessions" }, (reply: any) => told.push(reply));
+    expect(told).toContainEqual({ type: "hub_question_turn_state", correlationId: cid, contactLimit: true });
+  });
+
+  it("the share's opt-out travels in the delivery meta to the daemon's hub_question_input", async () => {
+    const { d, events, hub, setQuiet } = rig();
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", { ...hub(cid), hub_contact_limit: "off" });
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events).toEqual([`hub_question_input:${cid}:off`, "write:hub:idle"]);
+  });
+
+  it("a non-Claude backend (grok: no transcript evidence needed) reports working through the pane state, and its turn ends on idle", async () => {
+    const { d, events, hub, setQuiet } = rig({ backend: "grok" });
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
     d.noteTurnEdge("working"); d.noteTurnEdge("idle");
     await vi.advanceTimersByTimeAsync(10_000);
     expect(events.slice(2)).toEqual([`hub_question_turn_ended:${cid}`]);
+  });
+
+  it("an owner's turn that outlasts the 30-minute idle wait: the question is never written and its failure is reported (the asker gets a status line, the owner a Needs-you item)", async () => {
+    const { d, events, hub, failures } = rig();
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(31 * 60_000);
+    expect(events).toEqual([]);                               // no write, no window
+    expect(failures).toEqual([cid]);                          // → the fleet's hubDeliveryFailed → held as uncertain
   });
 });
