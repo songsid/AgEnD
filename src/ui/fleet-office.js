@@ -770,7 +770,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
   const bubbles = [], rp = p.reply, tSaid = Date.now(), replies = [];
-  for (const sp of speakers) {
+  for (let sp of speakers) {
     if (sp.look.dim || sp.look.pose === "away") continue;
     // Talk "Over their head": a live reply, in full (wrapped), in place of the state's line.
     const said = rp ? rp.chat.recent(sp.look.name, tSaid) : null;
@@ -788,6 +788,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     const b = own ? { text: own, shown: [...own].length }
       : scText ? { text: scText, shown: [...scText].length }
       : bubbleAt(sp.look.name, says, ms, linesFor(says, p.lang, sk.pack, p.lines, sp.look.name));   // #3681: theirs, their set's, the pack's
+    // M-3533 R2c (Lumen): a room's own characters stand taller than the style's figures; their bubble stays inside the
+    // area's box, as a figure's does (the Fleet's own office is unchanged).
+    const ar = b && sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
+    if (ar && ar.rect) { const bx = bubbleBox(ctx, sp.x, sp.y, b.text), min = ar.rect.y + 2; if (bx.y < min) sp = { ...sp, y: sp.y + (min - bx.y) }; }
     if (b) bubbles.push({ key: sp.look.name, area: sp.area, state: sp.look.state, calling: CALLING.has(sp.look.state), rank: own ? 0 : scText ? 1 : bubbleRank(sp.look.state), shown: b.shown, ...(raSays ? { keep: true } : {}),
       box: bubbleBox(ctx, sp.x, sp.y, b.text), tail: { x: sp.x, y: sp.y }, sp, b });
   }

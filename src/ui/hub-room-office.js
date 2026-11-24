@@ -34,12 +34,12 @@ const clip = (text, n) => { const c = [...text]; return c.length > n ? `${c.slic
 const STORAGE_PREFIX = "agend_hub_room_office:";
 
 /**
- * M-3533 R2c: the largest an agent's own character is drawn in a room office, in the scene's units: a built-in desk cell's
- * width (fleet-office-skin.js: a desk is 88 wide) and a pack character's suggested height (32×48 at scale 2). The Fleet's
- * own office draws a pack's strip at the size its pack gives; a room's built-in style has no such scale, so a larger one
- * is drawn smaller, kept in proportion (Lumen R2c 4), never larger.
+ * M-3533 R2c: an agent's own character in a room office is fitted into the built-in figure's box (fleet-office-skin.js
+ * charBox: 48 × 66), kept in proportion, never larger — one scale for everyone in the room (Lumen's choice, B, over the
+ * pack's own scale: at 64 × 96 a robot stood twice a figure's height and crossed its area's edge and name). Its feet stay
+ * on the seat, as a figure's. Drawn unsmoothed, as the Fleet office draws every strip.
  */
-export const CHARACTER_FIT = { w: 88, h: 96 };
+export const CHARACTER_FIT = { w: 48, h: 66 };
 /**
  * An agent's character as the drawing takes it (a checked pack's strips, fleet-office-pack.js), its pictures at `src(pose,
  * hash)`, each fitted into CHARACTER_FIT; null when it has none or a strip is not a well-formed one.

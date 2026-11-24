@@ -169,6 +169,11 @@ try {
       const stage = await page.locator(".oo-stage").first().boundingBox();
       // A close look at the desks (the scene's first row), where the own characters sit beside the figures.
       if (stage) await shot("1z-office-close", { x: stage.x, y: stage.y, width: Math.min(stage.width, phone ? 390 : 760), height: Math.min(stage.height, phone ? 360 : 420) });
+      // The fox at its desk, close (Lumen R2c: its readability at the room's size on record).
+      const fox = await page.evaluate(() => { const b = [...document.querySelectorAll(".hub-room-office .oo-desk")].find((e) => (e.textContent || "").startsWith("Quill")) as HTMLElement | undefined;
+        const r = b?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null; });
+      if (fox) await shot("1q-fox-close", { x: Math.max(0, fox.x + fox.w / 2 - 90), y: Math.max(0, fox.y + fox.h / 2 - 90), width: 180, height: 180 });
+      receipt.measured[`${tag}-foxDesk`] = fox;
       // Atlas's card: no portrait — the set's stand (Lumen R2c 4: portrait, else stand, else the figure).
       await page.evaluate(() => { const b = [...document.querySelectorAll(".hub-room-office .oo-desk")].find((e) => (e.textContent || "").startsWith("Atlas")) as HTMLElement | undefined; b?.click(); });
       await page.locator(".hub-room-office .oo-card").first().waitFor(); await page.waitForTimeout(1500);

@@ -221,15 +221,15 @@ describe("M-3533 R2c: an agent's own character in the room office, end to end", 
 });
 
 describe("M-3533 R2c: the page draws it", () => {
-  it("characterSet: each pose at most CHARACTER_FIT, in proportion; never larger; a malformed strip: none", async () => {
+  it("characterSet: each pose fitted into the built-in figure's box (48 × 66), in proportion; never larger; a malformed strip: none", async () => {
     const { characterSet, CHARACTER_FIT } = await import("/ui/js/hub-room-office.js");
     const st = (dw: number, dh: number) => ({ sha256: "a".repeat(64), frames: 2, w: 32, h: 48, fps: 4, ax: 16, ay: 48, dw, dh });
     const src = (pose: string, h: string) => `/x/${pose}?v=${h}`;
-    expect(CHARACTER_FIT).toEqual({ w: 88, h: 96 });
+    expect(CHARACTER_FIT).toEqual({ w: 48, h: 66 });
     const big = characterSet({ idle: st(128, 192) }, src)!.idle;
-    expect([big.dw, big.dh, big.src]).toEqual([64, 96, `/x/idle?v=${"a".repeat(64)}`]);
+    expect([big.dw, big.dh, big.src]).toEqual([44, 66, `/x/idle?v=${"a".repeat(64)}`]);
     const wide = characterSet({ idle: st(176, 48) }, src)!.idle;
-    expect([wide.dw, wide.dh]).toEqual([88, 24]);
+    expect([wide.dw, Math.round(wide.dh * 100) / 100]).toEqual([48, 13.09]);
     const small = characterSet({ idle: st(32, 48) }, src)!.idle;
     expect([small.dw, small.dh]).toEqual([32, 48]);
     expect(characterSet({ idle: { ...st(32, 48), frames: "2" } }, src)).toBeNull();

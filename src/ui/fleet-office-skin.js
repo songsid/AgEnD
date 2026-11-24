@@ -996,7 +996,8 @@ export function withCharacters(base, sets, images) {
   const characters = Object.create(null), byInstance = Object.create(null);
   names.forEach((name, i) => { characters[`set${i}`] = sets[name]; byInstance[name] = `set${i}`; });
   const sk = spriteSkin({ id: base.id, characters, byInstance, props: {}, room: {}, desk: {} }, images, base);
-  return { ...base, drawCharacter: sk.drawCharacter, charBox: sk.charBox };
+  // `ownCharacters`: the scene keeps their speech bubbles inside their area (a taller character's would rise above it).
+  return { ...base, drawCharacter: sk.drawCharacter, charBox: sk.charBox, ownCharacters: true };
 }
 /** #2631: the cozy's picture (loadBuiltInSkin for "cozy"). */
 export const loadCozySkin = (opts = {}) => loadBuiltInSkin("cozy", opts);
