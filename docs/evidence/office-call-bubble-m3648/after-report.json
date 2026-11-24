@@ -1,0 +1,62 @@
+{
+ "label": "after",
+ "cases": {
+  "desk-light-en": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 113,
+   "lastBubble": {
+    "s": "Still thinking…",
+    "x": 1100,
+    "y": 667,
+    "at": 9261.900000035763
+   },
+   "distinct": [
+    "Still thinking…"
+   ]
+  },
+  "desk-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 121,
+   "lastBubble": {
+    "s": "還在想…",
+    "x": 1100,
+    "y": 646,
+    "at": 9265.5
+   },
+   "distinct": [
+    "還在想…"
+   ]
+  },
+  "phone-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 121,
+   "lastBubble": {
+    "s": "還在想…",
+    "x": 296,
+    "y": 487,
+    "at": 9189.200000047684
+   },
+   "distinct": [
+    "還在想…"
+   ]
+  },
+  "phone-light-en": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 112,
+   "lastBubble": {
+    "s": "Still thinking…",
+    "x": 296,
+    "y": 487,
+    "at": 9211.699999988079
+   },
+   "distinct": [
+    "Still thinking…"
+   ]
+  }
+ },
+ "source": "5d2a7988bad7a08009322eb73dc4651cbec6dee4"
+}

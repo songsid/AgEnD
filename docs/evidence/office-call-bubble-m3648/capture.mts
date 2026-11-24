@@ -1,0 +1,36 @@
+// M-3648 captures (scratch): Cozy, a stuck agent at the Help desk and an idle one; zero real names. LABEL=before|after.
+// Records every speech bubble line drawn on the Office canvas (its words and place), then shoots the office.
+import { mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+const REPO = process.env.REPO!, LABEL = process.env.LABEL ?? "after", OUT = join(process.env.OUT!, LABEL);
+mkdirSync(OUT, { recursive: true });
+const { bootFixture, mounted } = await import(join(REPO, "scripts/manual/smoke-fixture/index.mts"));
+const fx = await bootFixture({ port: 0, oldPort: Number(process.env.HP ?? 49049), classic: false, roster: [
+  { name: "general", general: true, backend: "claude-code", displayName: "General", status: "running" },
+  { name: "example-agent", backend: "codex", displayName: "Example helper", status: "running" },
+] });
+fx.fm.getInstanceExecutionState = (name: string) => (name === "example-agent" ? "stuck" : "idle");
+const WANTED = ["Hmm, stuck?", "Still thinking…", "嗯，卡住了？", "還在想…"];
+const RECORD = `(() => { const w = window; w.__said = []; const orig = CanvasRenderingContext2D.prototype.fillText; const want = new Set(${JSON.stringify(WANTED)});
+  CanvasRenderingContext2D.prototype.fillText = function (s, x, y) { if (this.canvas && this.canvas.classList && this.canvas.classList.contains("oo-canvas") && want.has(String(s))) {
+    const m = this.getTransform(), r = this.canvas.getBoundingClientRect(), d = w.devicePixelRatio || 1; w.__said.push({ s: String(s), x: Math.round(r.left + (m.a * x + m.e) / d), y: Math.round(r.top + (m.d * y + m.f) / d), at: performance.now() }); }
+    return orig.apply(this, arguments); }; })();`;
+const report: any = { label: LABEL, cases: {} };
+const cases = [{ device: "desk", theme: "light", lang: "en" }, { device: "desk", theme: "dark", lang: "zh-TW" }, { device: "phone", theme: "dark", lang: "zh-TW" }, { device: "phone", theme: "light", lang: "en" }] as const;
+try {
+  for (const c of cases) {
+    const key = `${c.device}-${c.theme}-${c.lang}`, errors: string[] = [];
+    const { ctx, page, csp } = await fx.page(c as any, { path: "/ui/fleet/org", storage: { agend_org_mode: "office", agend_org_office_skin: "cozy" } });
+    await page.addInitScript({ content: RECORD });
+    page.on("pageerror", (e: Error) => errors.push(String(e)));
+    await mounted(page, 30000);
+    await page.goto(`${fx.base}/ui/fleet/org`);
+    await page.locator(".oo-canvas").waitFor(); await page.waitForTimeout(9000);   // a few bubble rounds
+    await page.screenshot({ path: join(OUT, `${key}-office.png`) });
+    const said = await page.evaluate(() => ((window as any).__said as any[]));
+    report.cases[key] = { errors, csp: await csp(), bubbleLines: said.length, lastBubble: said.length ? said[said.length - 1] : null, distinct: [...new Set(said.map((x: any) => x.s))] };
+    await ctx.close();
+  }
+} finally { await fx.close(); }
+writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
+console.log(JSON.stringify(report, null, 2));
