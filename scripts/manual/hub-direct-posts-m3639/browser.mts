@@ -89,7 +89,7 @@ try {
       check(`${tag} mute persisted`,(await r.call(a,"GET",`/hub/v1/rooms/${directId}`)).json.room.directMessagesMuted);
       await page.locator(".hub-dock .note[role=status]").waitFor();
       check(`${tag} previous post remains while muted`,await page.getByText("The notes are ready. Here is the summary.",{exact:true}).count()>0);
-      if(await page.locator(".hub-room-menu button[aria-haspopup]").getAttribute("aria-expanded")==="true")await page.locator(".hub-room-menu button[aria-haspopup]").click();await page.locator(".toast").waitFor();
+      if(await page.locator(".hub-room-menu button[aria-haspopup]").getAttribute("aria-expanded")==="true")await page.locator(".hub-room-menu button[aria-haspopup]").click();await page.locator(".toast").waitFor();await page.locator(".toast").evaluate((e:Element)=>Promise.all(e.getAnimations().map(a=>a.finished)));
       const toastStyle=await page.locator(".toast").evaluate((e:Element)=>{const s=getComputedStyle(e);return {color:s.color,background:s.backgroundColor,rootTheme:document.documentElement.dataset.theme,text:e.textContent,width:e.clientWidth,scrollWidth:e.scrollWidth};});writeFileSync(join(out,`${tag}-toast-style.json`),JSON.stringify(toastStyle));
       await page.screenshot({path:join(out,`${tag}-muted-toast.png`)});
       await page.locator(".toast").waitFor({state:"hidden"});if(await page.locator(".hub-room-menu button[aria-haspopup]").getAttribute("aria-expanded")!=="true")await page.locator(".hub-room-menu button[aria-haspopup]").click();
