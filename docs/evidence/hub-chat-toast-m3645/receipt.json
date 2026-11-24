@@ -1,0 +1,404 @@
+{
+  "sourceHead": "8cb1b658b3c7effb2dd84306a6c37c12025d67a4",
+  "baseRef": "1f144267ae27d6b52637b4e7ed02b03c03b3bcaa",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light-direct-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-after: …never on the composer, Send or one of the 2 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-direct-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-after: …never on the composer, Send or one of the 6 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-group-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-after: …never on the composer, Send or one of the 2 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-direct-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-after: …never on the composer, Send or one of the 6 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-group-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-after: …never on the composer, Send or one of the 2 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-direct-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-after: …never on the composer, Send or one of the 6 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-group-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-after: …never on the composer, Send or one of the 2 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-direct-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-before: the toast covers Send or a message row (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-after: the toast stands in the chat's head",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-after: …never on the composer, Send or one of the 6 message rows shown",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-after: …and lets clicks through to the head's buttons",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-after: two confirmations in a row: the newest stands in the head, the older gives way",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-group-after: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3645-desk-en-light-direct-before-1-toast.png",
+      "sha256": "b3613d7f8811d4185b1c06167776f3af41951e1d9d5814323b58ebc599d184b9"
+    },
+    {
+      "path": "m3645-desk-en-light-direct-after-1-toast.png",
+      "sha256": "363df67c603ce7db594e32513769a3f82e8afc127887ce81d40a4e31473e2ea7"
+    },
+    {
+      "path": "m3645-desk-en-light-direct-after-2-newest.png",
+      "sha256": "4ada6831f8e46b8ddb1054afe4273e8caec5a34450cbfcd03423fd215088ed76"
+    },
+    {
+      "path": "m3645-desk-en-light-group-before-1-toast.png",
+      "sha256": "2c2c6fd99b44d05adebe576767df66df06a44de45399235dba42af9d814e9866"
+    },
+    {
+      "path": "m3645-desk-en-light-group-after-1-toast.png",
+      "sha256": "80ea33b0b92740479fa0d0e6d448dab51b6beda1b6ae5969c985a9b47788c233"
+    },
+    {
+      "path": "m3645-desk-en-light-group-after-2-newest.png",
+      "sha256": "68fe821a19444b1f5e8c603f6dd0ba9984dacdb13d917b8b9ca394eb5cef5510"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-direct-before-1-toast.png",
+      "sha256": "7e2d7493971d408458113b2b4fc8908148e387d03f5e74d3355e214f79ab17d5"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-direct-after-1-toast.png",
+      "sha256": "d4385034c1b9b7ee7175444178349ab72ebf870d610b59616f7ac9615c1ccfa7"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-direct-after-2-newest.png",
+      "sha256": "04ea5c23839fbd1e275b087f05d285a117b855c6a6703a61f47a636681e88a18"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-group-before-1-toast.png",
+      "sha256": "7dfd433b8a2ce27e08e23cdba4643059ed58a183e9f3783c29f5106ca41169da"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-group-after-1-toast.png",
+      "sha256": "8d3fe40a79700ac088e5b0c02ab077e1c0a2537ee09ac2de7cdc2aa1d46a887d"
+    },
+    {
+      "path": "m3645-desk-zh-TW-dark-group-after-2-newest.png",
+      "sha256": "be17c42ddbd3b125aa19f9dd2794852888c7641806c9b4041c3d06b5d5c27ed4"
+    },
+    {
+      "path": "m3645-phone-en-light-direct-before-1-toast.png",
+      "sha256": "6634ebce9f5586266c180abd5402ccce49eebb730b406013caef12070bee35ff"
+    },
+    {
+      "path": "m3645-phone-en-light-direct-after-1-toast.png",
+      "sha256": "684307508363400cce3c7c08de26c517c526cbf15eb607c27abef2168b1817fd"
+    },
+    {
+      "path": "m3645-phone-en-light-direct-after-2-newest.png",
+      "sha256": "80ae6675b5dbf8f58a890ae9f9eddd63427987ea705d1e49e1137095a405aace"
+    },
+    {
+      "path": "m3645-phone-en-light-group-before-1-toast.png",
+      "sha256": "afce153e8321edbe6db5af160e88df12dbdc38e1b54afa4a434a052d21612d26"
+    },
+    {
+      "path": "m3645-phone-en-light-group-after-1-toast.png",
+      "sha256": "0d5aec98c883eddbe4fe95c0961493f455be1f31e092c5ba10f73065491f44f6"
+    },
+    {
+      "path": "m3645-phone-en-light-group-after-2-newest.png",
+      "sha256": "2c2633b922c5a8f11a550746271665bda4ccc7e81855bafd3a9a4887bad006fe"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-direct-before-1-toast.png",
+      "sha256": "478938722cebf49437278602a486d4252de8f3ccfbad9351e3a058318d3b0b1c"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-direct-after-1-toast.png",
+      "sha256": "5738ebf99771df59de4e9d9f1545360e7bd0c4c0054cb96b616e56adf49762ea"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-direct-after-2-newest.png",
+      "sha256": "408d443c3b8e7121d5e37193f29faf84fe8ce2b3c23d7cce4d72065fb4f4122e"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-group-before-1-toast.png",
+      "sha256": "cd42bc531d867cd37aa8f8d2be87934cb80e71baf388f9d50b49d2fb9cb8ee61"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-group-after-1-toast.png",
+      "sha256": "27de5fcc5f0fbd82b7609310fde3773e0d5324ea3aca8d17cdbc0dcb6b029424"
+    },
+    {
+      "path": "m3645-phone-zh-TW-dark-group-after-2-newest.png",
+      "sha256": "5b8598b0b877733456cd2a6b38f8b580a16f02a0dade91b932eb5fff0add5768"
+    }
+  ],
+  "before": {
+    "desk-en-light-direct-before": {
+      "onSend": true,
+      "onRows": 0,
+      "toast": {
+        "l": 1067,
+        "t": 792,
+        "r": 1342,
+        "b": 836
+      }
+    },
+    "desk-en-light-group-before": {
+      "onSend": false,
+      "onRows": 0,
+      "toast": {
+        "l": 1077.984375,
+        "t": 792,
+        "r": 1342,
+        "b": 836
+      }
+    },
+    "desk-zh-TW-dark-direct-before": {
+      "onSend": true,
+      "onRows": 0,
+      "toast": {
+        "l": 1070.984375,
+        "t": 792,
+        "r": 1342,
+        "b": 836
+      }
+    },
+    "desk-zh-TW-dark-group-before": {
+      "onSend": false,
+      "onRows": 0,
+      "toast": {
+        "l": 1082.984375,
+        "t": 792,
+        "r": 1342,
+        "b": 836
+      }
+    },
+    "phone-en-light-direct-before": {
+      "onSend": false,
+      "onRows": 1,
+      "toast": {
+        "l": 16,
+        "t": 60,
+        "r": 374,
+        "b": 92
+      }
+    },
+    "phone-en-light-group-before": {
+      "onSend": false,
+      "onRows": 1,
+      "toast": {
+        "l": 16,
+        "t": 60,
+        "r": 374,
+        "b": 92
+      }
+    },
+    "phone-zh-TW-dark-direct-before": {
+      "onSend": false,
+      "onRows": 1,
+      "toast": {
+        "l": 16,
+        "t": 60,
+        "r": 374,
+        "b": 92
+      }
+    },
+    "phone-zh-TW-dark-group-before": {
+      "onSend": false,
+      "onRows": 1,
+      "toast": {
+        "l": 16,
+        "t": 60,
+        "r": 374,
+        "b": 92
+      }
+    }
+  },
+  "summary": "54/54"
+}
