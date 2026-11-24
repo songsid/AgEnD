@@ -111,16 +111,21 @@ export function named(d, members = []) {
   const taken = new Set(), rename = new Map();
   const instances = list.map((i) => {
     const b = base(i), owner = owners.get(i.name) || "";
-    let label = b;
+    let label = b, fit = i.assistant ? { short: hroom("roomAssistantTag") } : null;
     if (count.get(b) > 1 && owner) {
       label = `${b}${open}${owner}${close}`;
       if ([...label].length > LABEL_MAX) label = `${b}${open}${owner.split(/\s+/)[0]}${close}`;
       label = clip(label, KEY_MAX);
+      // The owner part, for the drawing's tag: too narrow for both, it keeps the owner and cuts the name — the owner is
+      // what tells the two agents apart (fleet-office-skin.js fitText, #4379 review). The room assistant's tag has a
+      // shorter word for a narrow tag ("Assistant").
+      const who = label.endsWith(close) ? label.slice(b.length + open.length, -close.length) : "";
+      if (who && label === `${b}${open}${who}${close}`) fit = { owner: [open, who, close] };
     }
     label = safeKey(label);
     for (let n = 2, at = label; taken.has(label); n++) label = `${at} ${n}`;
     taken.add(label); rename.set(i.name, label);
-    return { ...i, name: label, display_name: label, member: i.name, plain: b };
+    return { ...i, name: label, display_name: label, member: i.name, plain: b, ...(fit ? { tag_fit: fit } : {}) };
   });
   const offices = d && d.offices && Array.isArray(d.offices.offices)
     ? { ...d.offices, offices: d.offices.offices.map((o) => ({ ...o, members: (Array.isArray(o.members) ? o.members : []).map((m) => rename.get(m) ?? m) })) } : d?.offices;

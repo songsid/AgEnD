@@ -89,6 +89,8 @@ describe("the drawing's input (pure)", () => {
     expect(JSON.stringify(d.instances.map((i: any) => [i.name, i.display_name]))).not.toMatch(/e1|e2/);
     i18n.setLang("en", { store: false });
     expect(office.named(STATE(["e1", "e2"]), members).instances.map((i: any) => i.name)).toEqual(["Notes (Alex Sample)", "Notes (Casey Sample)", "Room assistant"]);
+    // The owner part also rides beside the label, for the office's tag (#4379 review); a unique name has none.
+    expect(office.named(STATE(["e1", "e2"]), members).instances.map((i: any) => i.tag_fit ?? null)).toEqual([{ owner: [" (", "Alex Sample", ")"] }, { owner: [" (", "Casey Sample", ")"] }, { short: "Assistant" }]);
     // A unique name stays bare; too long with the owner: the owner's first word.
     const long = [{ kind: "agent", id: "e1", owner: { name: "Alexandra Samplesworth" } }, { kind: "agent", id: "e2", owner: { name: "Casey Sample" } }];
     expect(office.named(STATE(["e1", "e2"]), long).instances.map((i: any) => i.name).slice(0, 2)).toEqual(["Notes (Alexandra)", "Notes (Casey Sample)"]);
@@ -97,6 +99,42 @@ describe("the drawing's input (pure)", () => {
     expect(new Set(same.instances.map((i: any) => i.name)).size).toBe(3);
     expect(new Set(office.named(STATE(["e1", "e2"])).instances.map((i: any) => i.name)).size).toBe(3);
   });
+  // #4379 review: a tag too narrow for "Atlas（Alex Sample）" cut the owner ("Atlas（Al…"), the only thing telling the two
+  // Atlases apart. With its owner part, the tag keeps the owner and cuts the name; then the owner's first word, then its
+  // first character; never wider than its width (#4376's places hold). Without one (a Fleet name), cut at its end as before.
+  it("a tag keeps the owner and cuts the name; never wider than its width; a name with no owner part is cut at its end", async () => {
+    const { fitText, tagBox } = await import("/ui/js/fleet-office-skin.js");
+    const ctx = { save() {}, restore() {}, font: "", measureText: (t: string) => ({ width: [...t].length * 6 }) };   // 6 per character
+    const fit = (s: string, max: number, f: any = null) => { const t = fitText(ctx, s, max, f); expect(t.length * 6, `${t} within ${max}`).toBeLessThanOrEqual(max); return t; };
+    const zh = { owner: ["（", "Alex Sample", "）"] }, en = { owner: [" (", "Alex Sample", ")"] };
+    expect(fit("Atlas（Alex Sample）", 200, zh)).toBe("Atlas（Alex Sample）");     // fits: as it is
+    expect(fit("Atlas（Alex Sample）", 84, zh)).toBe("Atlas（Alex）");             // the whole name, the owner's first word
+    expect(fit("Atlas（Alex Sample）", 60, zh)).toBe("Atl…（Alex）");             // a cut name, the owner's word kept
+    expect(fit("Atlas（Alex Sample）", 48, zh)).toBe("A…（Alex）");               // the owner's word before the name's length
+    expect(fit("Atlas (Alex Sample)", 48, en)).toBe("Atl… (A)");                   // narrower than that: the owner's initial
+    expect(fit("Atlas（Alex Sample）", 84)).toBe("Atlas（Alex Sa…");                   // no owner part: cut at its end, as before
+    expect(fit("Build bot (staging area)", 60)).toBe("Build bot…");
+    expect(fit("Atlas（Alex Sample）", 84, { owner: ["（", "Casey", "）"] })).toBe("Atlas（Alex Sa…");
+    // #4379 review: two owners of one first word ("Alex A", "Alex B"): the whole owner with the name cut, never two
+    // identical "Longer (Alex)" tags where a cut name with each whole owner fits.
+    const pair = ["Alex A", "Alex B"].map((o) => fit(`Longer (${o})`, 84, { owner: [" (", o, ")"] }));
+    expect(pair).toEqual(["Long… (Alex A)", "Long… (Alex B)"]);
+    expect(new Set(pair).size).toBe(2);  // an owner that is not the label's end: ignored
+    // The whole name with the owner's word cut, before only its initial; the room assistant's shorter word.
+    expect(fit("Atlas (Morganstern Lee)", 90, { owner: [" (", "Morganstern Lee", ")"] })).toBe("Atlas (Morgan…)");
+    expect(fit("Room assistant", 60, { short: "Assistant" })).toBe("Assistant");
+    expect(fit("Room assistant", 40, { short: "Assistant" })).toBe("Room …");               // the short word too long: cut at its end, as before
+    // The tag's own box takes the same text, so the places measured from it (#4376) are the drawn tag's.
+    expect(tagBox(ctx, 100, 50, "Atlas（Alex Sample）", false, zh).text).toBe("Atlas（Alex）");
+    expect(tagBox(ctx, 100, 50, "Atlas（Alex Sample）", true, zh).text).toBe("A…（Alex）");
+    // And what the tag itself paints, from the look's owner part (fleet-office.js looksOf → look.tail).
+    const { pixelSkin, DEFAULT_PAL } = await import("/ui/js/fleet-office-skin.js");
+    const painted: string[] = [];
+    const g = new Proxy({ ...ctx, fillText: (t: string) => { painted.push(t); } } as any, { get(o, k) { return k in o ? o[k] : () => {}; }, set(o, k, v) { o[k] = v; return true; } });
+    pixelSkin.drawTag(g, 100, 50, { label: "Atlas（Alex Sample）", fit: zh }, { pal: { ...DEFAULT_PAL }, mode: "light" }, true);
+    expect(painted).toContain("A…（Alex）");
+  });
+
   it("words every state as the member list does; answering here is 處理中 doing what it does now", () => {
     i18n.setLang("zh-TW", { store: false });
     const w = (i: any, members: any[] = []) => office.officeWords({ i: { name: "Notes", member: "e1", ...i } }, members);

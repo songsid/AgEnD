@@ -13,6 +13,7 @@ import { hroom } from "./hub-room-strings.js";
 import { collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
 import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { roomSource, RoomSourceMark } from "./hub-room-source.js";
+import { firstCharacter } from "/assets/instance-nav.js";
 
 linkRoomsU2Css();
 
@@ -61,6 +62,40 @@ export function memberStatus(m) {
   const note = v.noteKey ? hroom(v.noteKey) : v.noteText;
   // M-3137 (versions spec §2.4): an agent whose Fleet needs an AgEnD update says whom to ask, not only whose it is.
   return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word, ...(v.word === "needsUpdate" ? { update: true } : {}) };
+}
+
+const LUM = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const RATIO = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const INK_DARK = "#111111", INK_LIGHT = "#ffffff";
+const GRAPHEME = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+/** Exactly one grapheme (one emoji, with its modifiers and joiners), else "": a longer label never fills a 20 px disc. */
+function oneGrapheme(text) {
+  const parts = GRAPHEME ? [...GRAPHEME.segment(text)] : Array.from(text);
+  return parts.length === 1 ? text : "";
+}
+
+/**
+ * M-3533 R2a: an agent's avatar as its owner's Fleet shows it — its persona emoji, else its initial — on its identity
+ * colour (the room detail's `look`, from the owner's catalog), else on the default tint. An emoji label longer than one
+ * character (the catalog allows 64 bytes) is not drawn: the initial instead. Text on the colour is whichever of the two
+ * inks actually painted (#111111, white) has the higher contrast on it.
+ */
+export function agentAvatar(m) {
+  const color = typeof m?.look?.color === "string" && /^#[0-9a-f]{6}$/i.test(m.look.color) ? m.look.color.toLowerCase() : null;
+  const emoji = typeof m?.look?.emoji === "string" ? oneGrapheme(m.look.emoji.trim()) : "";
+  const lum = color ? LUM(color) : null;
+  return { color, text: emoji || firstCharacter(m?.name || "") || "?", emoji: !!emoji, ink: lum === null ? null : (RATIO(lum, LUM(INK_LIGHT)) >= RATIO(lum, LUM(INK_DARK)) ? INK_LIGHT : INK_DARK) };
+}
+/**
+ * The avatar in the row (the emoji or initial drawn from `data-av`, so the row's text is still the name alone), in the
+ * slot M-3256's source badge had: every agent row's badge was the same logo, so the avatar now says "an agent" (people's
+ * rows have none) and the source is said by the row's title, its accessible name and the agent's card (the design check).
+ */
+function AgentAvatar({ m }) {
+  const a = agentAvatar(m);
+  // The colour goes in through the CSSOM (no style attribute: the dashboard's CSP, web-csp-1300).
+  const paint = (el) => { if (!el?.style) return; if (a.color) { el.style.setProperty("--av", a.color); el.style.setProperty("--av-ink", a.ink); } else { el.style.removeProperty("--av"); el.style.removeProperty("--av-ink"); } };
+  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}${a.color ? "" : " neutral"}`} aria-hidden="true" data-av=${a.text} ref=${paint}></span>`;
 }
 
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
@@ -121,7 +156,11 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M1: in a compact list a row is one line — the name, its state — and the owner and introduction move into its card.
   const row = (m, extra = null) => {
     const v = memberStatus(m), owner = !compact && (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
+    // R2a: an agent's avatar takes the source mark's slot (the source in the row's title, accessible name and card). The
+    // room assistant has the sidebar's 「Hub 助理」 disc (its first character, "H"), so the column lines up.
+    const agentRow = m.kind === "agent" || m.kind === "later";
+    const mark = agentRow ? html`<${AgentAvatar} m=${m} />` : m.kind === "assistant" ? html`<${AgentAvatar} m=${{ name: hroom("hubAssistant") }} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`;
+    return html`<span class="hub-member-name">${mark}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;
   const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id} data-member=${m.id}>
