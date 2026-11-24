@@ -1,6 +1,6 @@
 # M-3533 R2b: each shared agent's own pictures in a room (real app)
 
-These are captures of the real Hub, its real room pages and the real Fleet-side sender (`src/hub/member/agent-pictures.ts`), all from this branch's committed code (655cf1090). The sender ran against the Hub's own receive, as a Fleet's link does. They were taken headless with Chromium, with motion reduced.
+These are captures of the real Hub, its real room pages and the real Fleet-side sender (`src/hub/member/agent-pictures.ts`), all from this branch's committed code (e91e2339b, with R2b-server's review fixes merged). The sender ran against the Hub's own receive, as a Fleet's link does. They were taken headless with Chromium, with motion reduced.
 
 **The room.** Two people (the admin, who manages the room, and Alex Sample) and six agents of two owners, with made-up names. Each picture is drawn for the capture; none is real.
 
