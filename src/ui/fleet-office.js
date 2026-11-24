@@ -1924,6 +1924,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const talkWho = talkTo ? people.find((d) => d.node && d.node.name === talkTo) || null : null;
   const talkLabel = talkWho ? nodeText(talkWho.node).primary : talkTo;
   const sidePanel = tmode === "panel" && !!talkTo;
+  // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
+  const dockShown = dialogueOn && dlgVisible && (tmode === "window" || tmode === "box");
   dlgRef.current = dialogueOn ? {
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
     acts: actsHere, share: talk !== undefined,
@@ -2525,7 +2527,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
     ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><h3 class="oo-display-h">${to("display")}</h3>
       <div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
-  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}${sidePanel && !phone ? " ot-side" : ""}`} ref=${ooRef}>
+  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dockShown ? " has-dialogue" : ""}${sidePanel && !phone ? " ot-side" : ""}`} ref=${ooRef}>
     ${folded ? null : html`<div class="oo-bar oo-bar-row">
       <div class="oo-bar-scope">${scopeItems}</div>
       <div class="oo-bar-actions">${actionItems}
@@ -2643,7 +2645,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
         ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
       </div>` : null}
-    ${dialogueOn && dlgVisible && tmode !== "bubble" ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
+    ${dockShown ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
       aria-label=${onOpen && !shared ? to("dlgOpenChat") : dlgSay} title=${onOpen && !shared ? to("dlgOpenChat") : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}

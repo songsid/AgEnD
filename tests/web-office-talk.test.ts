@@ -229,11 +229,14 @@ describe("talking on the page", () => {
   });
   it("side panel: the conversation beside the map; Shift+Enter is a new line; closing it", async () => {
     await office();
-    fire(dialogue(), "change"); await settle(4);
+    await pick("box"); await clickBox();
     await pick("panel");
-    await clickBox();
     const panel = p.root.querySelector(".ot-panel");
     expect(panel).not.toBeNull();
+    // One way at a time: the dialogue box is not under the panel (its checkbox stays as it was).
+    expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
+    expect(p.root.querySelector(".ot-bar")).toBeNull();
+    expect(dialogue().checked).toBe(true);
     expect(p.root.querySelector(".oo").className).toContain("ot-side");
     expect(panel.querySelector(".ot-head").textContent).toContain("atlas");
     expect(panel.querySelector(".ot-md").innerHTML).toContain("Earlier reply");
