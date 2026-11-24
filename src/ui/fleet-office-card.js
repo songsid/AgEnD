@@ -13,7 +13,6 @@ import { modelSwitchText, modelName, observationLabel } from "/assets/model-obse
 //   First seen  Day 42
 //   Now: Typing away
 //                               [Find in office]  [Chat]
-//   (M-3547: with reduced motion on, a line over the buttons says drag, pat and feed are off and why.)
 //
 // What a viewer sees follows the host (GET /ui/office-levels, src/office-levels.ts): the level for anyone who sees the
 // Office; work tokens, today and first seen only where the usage report is served (`detail`). A share link's page (no
@@ -31,14 +30,12 @@ register("ocard", {
     card: "{0}'s card", level: "Lv {0}", work: "{0} work tokens", estimated: "estimated", toNext: "{0} to Lv {1}", office: "Office", model: "Model", backend: "Backend",
     today: "Today", todayN: "{0} work tokens · {1} requests", firstSeen: "First seen", day: "Day {0}", now: "Now", nowLabel: "Now: ", find: "Find in office", chat: "Chat", pat: "Pat", feed: "Feed", tell: "Tell {0} (with their next message)", tellNote: "Off: only you see it. On: a line like “[Office] <your name> patted your head ×3” rides the next message they get anyway — it never wakes them.",
     chatWindow: "Open {0}’s chat in a new window",
-    playOff: "Drag, pat and feed are off: this device asks for reduced motion.",
     close: "Close", xp: "Progress to Lv {0}",
   },
   "zh-TW": {
     card: "{0} 的名片", level: "Lv {0}", work: "{0} 工作 token", estimated: "估算", toNext: "再 {0} 到 Lv {1}", office: "辦公室", model: "模型", backend: "後端",
     today: "今天", todayN: "{0} 工作 token · {1} 次請求", firstSeen: "首次出現", day: "第 {0} 天", now: "現在", nowLabel: "現在：", find: "在辦公室找它", chat: "聊天", pat: "摸頭", feed: "餵點心", tell: "讓 {0} 知道（隨下一則訊息）", tellNote: "關閉：只有你看得到。開啟：下一則本來就會送給它的訊息會附上一行，例如「[Office] <你的名字> patted your head ×3」，不會叫醒它。",
     chatWindow: "在新視窗開啟 {0} 的聊天",
-    playOff: "拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。",
     close: "關閉", xp: "升到 Lv {0} 的進度",
   },
 });
@@ -333,7 +330,7 @@ function drawPortraitAvatar(cv, im, W) {
  * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`; M-3533: `action`
  * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat).
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, playOff = false }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null }) {
   const box = useRef(null), canvas = useRef(null), bgCanvas = useRef(null), swipe = useRef(null);
   const [picRev, setPicRev] = useState(0);
   const spec = useMemo(() => resolveCardSpec(packCard), [packCard]);
@@ -395,11 +392,6 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const down = (e) => { if (sheet) swipe.current = e.clientY; };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
 
-  // M-3547: play is off only because this device asks for reduced motion — said where Pat and Feed would be.
-  // A quoted setting name (「…」) is kept on one line with the few words before it and its full stop: a break inside it
-  // reads as two words, and one right before it starts a line with 「.
-  const offNote = playOff ? html`<p class="muted oo-card-play-off" role="note">${tc("playOff").split(/([^\s、，：]{0,3}「[^」]*」[。，]?)/).map((s, i) => (i % 2 ? html`<span class="oo-nowrap">${s}</span>` : s))}</p>` : null;
-
   // Legacy default path (packs without `card`): preserve exact markup and classes.
   if (!spec) {
     return html`<div ref=${box} class=${`oo-card${sheet ? " sheet" : ""}`} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
@@ -426,7 +418,6 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
       ${tell ? html`<label class="check oo-card-tell" title=${tc("tellNote")}><input type="checkbox" checked=${tell.on} onChange=${(e) => tell.set(e.target.checked)} />
         <span>${tc("tell", m.name)}</span></label>` : null}
       <div class="oo-card-actions">
-        ${offNote}
         ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
@@ -485,7 +476,6 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     }
     if (sec === "actions") {
       return html`<div key="actions" class="oo-card-actions">
-        ${offNote}
         ${onReact ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-pat" onClick=${() => onReact("pat")}>${tc("pat")}</button>
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}

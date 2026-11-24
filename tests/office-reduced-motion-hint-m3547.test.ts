@@ -1,9 +1,9 @@
 /**
- * M-3547: with reduced motion on, drag, pat and feed are off in the Office (playAllowed) — and the Office now says so
- * without hovering: a line on the person's card where Pat and Feed would be, and a note beside the greyed "Drag and
- * pat" tick box. A hint only: nothing can turn play on while reduced motion is on. Without reduced motion nothing
- * changes; where play is off for another reason (the viewer's own toggle, All offices, a share link or a room) nothing
- * is said.
+ * M-3547, redone in M-3556 (user 2026-11-24: fold it into the Office toolbar rework): with reduced motion on, drag, pat
+ * and feed are off in the Office (playAllowed), and ⚙ Display options says why in one line under the greyed "Drag and
+ * pat" — nowhere else (no note in the bar, nothing on a person's card). A hint only: nothing turns play on while reduced
+ * motion is on. Without reduced motion nothing changes; where play is off for another reason (the viewer's own toggle, a
+ * style without zones, All offices, a share link or a room) nothing is said.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { openDisplay } from "./helpers/office-display.js";
@@ -64,19 +64,20 @@ describe("the hint on the page", () => {
     await openDisplay(p.root);                                              // M-3556: Drag and pat is in ⚙ Display options
   };
   const openCard = async (name = "atlas") => { p.root.querySelector(`.oo-desk[data-name="${name}"]`).click(); await settle(4); };
-  const cardNote = () => p.root.querySelector(".oo-card .oo-card-play-off");
-  const barNote = () => p.root.querySelector(".oo-play-still");
+  const cardNote = () => p.root.querySelector(".oo-card .oo-card-play-off");      // the old card hint: gone
+  const note = () => p.root.querySelector(".oo-play-still");
   const box = () => p.root.querySelector(".oo-play input");
 
-  it("reduced motion: the card says why, where Pat and Feed would be; the tick box has a note beside it", async () => {
+  it("reduced motion: one line under Drag and pat, inside Display options; the card has no Pat or Feed and no hint", async () => {
     motion(true);
     await office();
     expect(box().disabled).toBe(true);
-    expect(barNote().textContent.trim()).toBe("Off while reduced motion is on");
-    expect(barNote().parentNode.className).toContain("oo-play");                 // inside the box's label: kept beside it
+    expect(note().textContent.trim()).toBe("Off: your system asks for reduced motion");
+    expect(note().parentNode.className).toContain("oo-play");                     // inside the box's label: read with its name
+    expect(!!p.root.querySelector(".oo-display-pop .oo-play .oo-play-still")).toBe(true);
+    expect(p.root.querySelectorAll(".oo-play-still")).toHaveLength(1);             // only there
     await openCard();
-    expect(cardNote().textContent.trim()).toBe("Drag, pat and feed are off: this device asks for reduced motion.");
-    expect(cardNote().parentNode.className).toContain("oo-card-actions");
+    expect(cardNote()).toBeNull();
     expect(p.root.querySelector(".oo-card-pat")).toBeNull();
     expect(p.root.querySelector(".oo-card-feed")).toBeNull();
   });
@@ -85,18 +86,14 @@ describe("the hint on the page", () => {
     motion(true);
     I.setLang("zh-TW", { store: false });
     await office("zh-TW");
-    expect(barNote().textContent.trim()).toBe("開啟「減少動態效果」時關閉");
-    await openCard();
-    expect(cardNote().textContent.trim()).toBe("拖曳、摸頭與餵點心已關閉：這台裝置開啟了「減少動態效果」。");
-    // Never broken inside the term, nor right before it (a line starting with 「): kept with the words before it.
-    expect(cardNote().querySelector(".oo-nowrap").textContent).toBe("開啟了「減少動態效果」。");
+    expect(note().textContent.trim()).toBe("已關閉：系統開了「減少動態效果」");
   });
 
   it("without reduced motion nothing changes: no note, Pat and Feed on the card", async () => {
     motion(false);
     await office();
     expect(box().disabled).toBe(false);
-    expect(barNote()).toBeNull();
+    expect(note()).toBeNull();
     await openCard();
     expect(cardNote()).toBeNull();
     expect(p.root.querySelector(".oo-card-pat")).not.toBeNull();
@@ -106,9 +103,7 @@ describe("the hint on the page", () => {
     motion(true);
     localStorage.setItem("agend_org_office_play", "0");
     await office();
-    expect(barNote()).toBeNull();
-    await openCard();
-    expect(cardNote()).toBeNull();
+    expect(note()).toBeNull();
   });
 
   it("a style without zones (no play offered): no hint", async () => {
@@ -116,8 +111,6 @@ describe("the hint on the page", () => {
     localStorage.setItem("agend_org_office_skin", "pixel");
     await office();
     expect(p.root.querySelector(".oo-play")).toBeNull();
-    expect(barNote()).toBeNull();
-    await openCard();
-    expect(cardNote()).toBeNull();
+    expect(note()).toBeNull();
   });
 });
