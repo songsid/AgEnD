@@ -68,7 +68,7 @@ Built-in safeguards:
 ### Night shift and scheduled work
 
 - Schedules (cron, one-shot or silent) let assistants work on a timer. For example: "every weekday at 6 pm, write up today's dev log and post it to this channel", or "every five minutes, check each instance's progress and @ me if one is stuck".
-- A daily summary is sent at 21:00 by default.
+- A daily summary is sent at 21:00 if `daily_summary` is on (off by default).
 - You can set a daily spending limit, with a warning at 80%.
 
 ---
