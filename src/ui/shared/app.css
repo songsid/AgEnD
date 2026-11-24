@@ -2654,11 +2654,22 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
    on a phone a bottom sheet. Tone over borders; the status tokens for the level's tier. */
 .oo-card { position: absolute; left: 0; top: 0; z-index: 8; width: 320px; max-height: calc(100% - 2 * var(--s-3)); overflow-y: auto; box-sizing: border-box; padding: var(--s-3); font-size: var(--fs-sm); line-height: var(--lh-sm);
   color: var(--text); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-lg); box-shadow: var(--shadow-2); }
-.oo-card.sheet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: 75dvh; transform: none; z-index: 40; border-radius: var(--r-lg) var(--r-lg) 0 0;
+.oo-card.sheet { position: fixed; left: 0; right: 0; top: auto; bottom: 0; width: auto; max-height: var(--oo-sheet-max, 50dvh); transform: none; z-index: 40; border-radius: var(--r-lg) var(--r-lg) 0 0;
   padding-bottom: calc(var(--s-3) + env(safe-area-inset-bottom, 0px)); touch-action: none; }
 /* M-3253: the sheet sits on the window's foot (M-3166 took the phone's tab bar away: the old 56 px lift left a gap), its
    close and its two actions a fingertip's 44 px. */
 .oo-card.sheet { padding: var(--s-2) var(--s-4) max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
+/* M-3633: the sheet takes at most half the window, so the office stays in view above it whatever the pack's card (a
+   large avatar and every section scroll inside it); its actions stay at its foot while the rest scrolls. */
+/* …and on a desk, a card held shorter under an area's name (it scrolls) keeps its actions at its foot the same way. */
+.oo-card .oo-card-actions { position: sticky; bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); z-index: 2;
+  margin-bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); padding-bottom: var(--oo-card-frame-pad, var(--s-3)); background: var(--oo-card-bg, var(--surface)); }
+/* …and while there is more to scroll (data-more), the content fades into them: a cue that the card goes on. */
+.oo-card[data-more] .oo-card-actions::before { content: ""; position: absolute; left: 0; right: 0; bottom: 100%; height: var(--s-7); pointer-events: none;
+  background: linear-gradient(to bottom, transparent, var(--oo-card-bg, var(--surface))); }
+.oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions { position: sticky; bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px)));
+  z-index: 2; margin-bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px))); padding: var(--s-2) 0 max(var(--s-4), env(safe-area-inset-bottom, 0px));
+  background: var(--oo-card-bg, var(--surface)); }
 /* A pack's card.motion: how the card pops up (opacity and the individual scale/translate, so its placement transform stays). */
 .oo-card[data-enter] { animation: var(--oo-card-enter-ms, 220ms) both; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
 .oo-card[data-enter="fade"] { animation-name: oo-card-fade; }
@@ -2676,6 +2687,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet .oo-card-actions .btn { flex: 1; min-height: var(--tap); justify-content: center; }
 .oo-card.sheet .oo-card-actions { flex-wrap: wrap; }
 .oo-card-grip { width: 36px; height: 4px; margin: 0 auto var(--s-2); border-radius: var(--r-full); background: var(--surface-2); }
+/* M-3633: a sheet whose content scrolls scrolls natively (pan-y); its grip is then the handle that closes it — kept at
+   its top, a fingertip tall (the bar drawn in the middle of it), never taken by the browser (touch-action none). */
+.oo-card.sheet[data-scrolls], .oo-card-custom.sheet[data-scrolls] .oo-card-body { touch-action: pan-y; }
+.oo-card.sheet .oo-card-grip { position: sticky; top: calc(-1 * var(--s-2)); z-index: 3; box-sizing: content-box; width: 36px; height: 4px;
+  padding: calc((var(--tap) - 4px) / 2) calc(50% - 18px); margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-4)) 0; background-clip: content-box; touch-action: none; cursor: grab; }
 .oo-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
 .oo-card-avatar { position: relative; flex: none; width: 56px; height: 56px; border-radius: var(--r-md); background: var(--surface-2); }
 .oo-card-avatar canvas { width: 56px; height: 56px; image-rendering: pixelated; border-radius: inherit; }
@@ -2706,7 +2722,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card-custom.sheet { width: auto; max-width: none; padding: 0; border-radius: var(--oo-card-radius, var(--r-lg)) var(--oo-card-radius, var(--r-lg)) 0 0; }
 .oo-card-bg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; border-radius: inherit; }
 .oo-card-body { position: relative; z-index: 1; padding: var(--oo-card-frame-pad, var(--s-3)); max-height: inherit; overflow-y: auto; box-sizing: border-box; }
-.oo-card-custom.sheet .oo-card-body { padding: max(var(--s-2), var(--oo-card-frame-pad, var(--s-2))) max(var(--s-4), var(--oo-card-frame-pad, var(--s-4))) max(var(--s-4), env(safe-area-inset-bottom, 0px)); max-height: 75dvh; touch-action: pan-y; }
+.oo-card-custom.sheet .oo-card-body { padding: max(var(--s-2), var(--oo-card-frame-pad, var(--s-2))) max(var(--s-4), var(--oo-card-frame-pad, var(--s-4))) max(var(--s-4), env(safe-area-inset-bottom, 0px)); max-height: var(--oo-sheet-max, 50dvh); touch-action: none; }
 .oo-card-custom .oo-card-grip { background: var(--oo-card-muted, var(--surface-2)); opacity: 0.45; }
 .oo-card-custom .oo-card-avatar { box-sizing: border-box; width: var(--oo-card-avatar, 56px); height: var(--oo-card-avatar, 56px); border-radius: var(--oo-card-radius, var(--r-md));
   border: 1px solid var(--oo-card-border, var(--border)); background: color-mix(in srgb, var(--oo-card-bg, var(--surface-2)) 82%, var(--oo-card-text, var(--text)) 18%); }

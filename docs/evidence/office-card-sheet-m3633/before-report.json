@@ -1,0 +1,88 @@
+{
+ "label": "before",
+ "cases": {
+  "desk-dark-en": {
+   "errors": [],
+   "csp": [],
+   "sheet": false,
+   "card": {
+    "x": 565,
+    "y": 373,
+    "w": 340,
+    "h": 519
+   },
+   "vh": 900,
+   "sheetShare": null,
+   "labelOverlapPx": [
+    395,
+    972
+   ],
+   "peopleAboveSheet": null,
+   "actionsInView": true,
+   "scrolls": false
+  },
+  "desk-light-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "sheet": false,
+   "card": {
+    "x": 565,
+    "y": 391,
+    "w": 340,
+    "h": 501
+   },
+   "vh": 900,
+   "sheetShare": null,
+   "labelOverlapPx": [
+    0,
+    0
+   ],
+   "peopleAboveSheet": null,
+   "actionsInView": true,
+   "scrolls": false
+  },
+  "phone-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "sheet": true,
+   "card": {
+    "x": 0,
+    "y": 294,
+    "w": 390,
+    "h": 550
+   },
+   "vh": 844,
+   "sheetShare": 65,
+   "labelOverlapPx": [
+    1307,
+    1307
+   ],
+   "peopleAboveSheet": [],
+   "actionsInView": true,
+   "scrolls": false
+  },
+  "phone-light-en": {
+   "errors": [],
+   "csp": [],
+   "sheet": true,
+   "card": {
+    "x": 0,
+    "y": 274,
+    "w": 390,
+    "h": 570
+   },
+   "vh": 844,
+   "sheetShare": 68,
+   "labelOverlapPx": [
+    1307,
+    1307
+   ],
+   "peopleAboveSheet": [],
+   "actionsInView": true,
+   "scrolls": false
+  }
+ },
+ "pack": {
+  "ok": true
+ }
+}

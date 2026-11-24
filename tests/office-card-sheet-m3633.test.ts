@@ -1,0 +1,122 @@
+/**
+ * M-3633: a person's card leaves the office in view.
+ * - On a phone the bottom sheet takes at most half the window (any pack card: a large avatar and every section scroll
+ *   inside it), its actions stay at its foot, and a swipe down closes it only from its top (scrolled in, it scrolls).
+ * - On a desk the floating card keeps off the areas' names (cardSpot): the same spot when it covers none, else lower,
+ *   else the other side, else the spot covering the least.
+ */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
+// @ts-expect-error — a JS module of the app, with no types
+import { cardSpot } from "../src/ui/fleet-office-view.js";
+import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
+import { fire } from "./helpers/mini-dom.js";
+
+const CSS = readFileSync(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
+const rule = (sel: string) => { const i = CSS.indexOf(`${sel} {`); expect(i, sel).toBeGreaterThanOrEqual(0); return CSS.slice(i, CSS.indexOf("}", i)); };
+
+describe("the phone sheet (app.css)", () => {
+  it("at most half the window, plain and pack cards alike; it scrolls; its actions stay at its foot", () => {
+    expect(rule(".oo-card.sheet")).toContain("max-height: var(--oo-sheet-max, 50dvh)");
+    expect(rule(".oo-card-custom.sheet .oo-card-body")).toContain("max-height: var(--oo-sheet-max, 50dvh)");
+    expect(CSS).not.toMatch(/\.oo-card[^{]*\.sheet[^{]*\{[^}]*75dvh/);
+    // Prism #4414: a browser that takes a touch for scrolling cancels the pointer — a sheet that fits keeps the swipe
+    // (none); one that scrolls scrolls natively (pan-y) and closes from its grip, which the browser never takes.
+    expect(rule(".oo-card.sheet")).toContain("touch-action: none");
+    expect(rule(".oo-card.sheet[data-scrolls], .oo-card-custom.sheet[data-scrolls] .oo-card-body")).toContain("touch-action: pan-y");
+    const grip = rule(".oo-card.sheet .oo-card-grip");
+    expect(grip).toContain("touch-action: none");
+    expect(grip).toContain("position: sticky");
+    // Prism #4414 r2: a whole touch target (--tap, 44 px) around its 4 px bar.
+    expect(grip).toContain("padding: calc((var(--tap) - 4px) / 2)");
+    expect(grip).toContain("height: 4px");
+    const actions = rule(".oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions");
+    expect(actions).toContain("position: sticky");
+    expect(actions).toContain("background: var(--oo-card-bg, var(--surface))");
+  });
+});
+
+describe("a swipe down closes the sheet only from its top", () => {
+  let card: any;
+  const mounted: AppPage[] = [];
+  beforeAll(async () => { const p = page(); card = await import("/ui/js/fleet-office-card.js"); p.restore(); });
+  afterEach(async () => { for (const p of mounted.splice(0)) { await p.unmount(); p.restore(); } });
+  const open = async () => {
+    const p = page(); mounted.push(p);
+    let closed = 0;
+    const model = card.cardModel({ node: { name: "n", display_name: "Notes", status: "running", execution_state: "idle" }, lv: () => 1, levels: null, share: true, rows: [], display: "Notes", state: "Idle", now: "", where: "" });
+    await p.mount(h(card.OfficeCard, { model, avatar: () => {}, sheet: true, place: () => {}, onFind: () => {}, onClose: () => { closed++; } }));
+    await settle(4);
+    return { el: p.root.querySelector(".oo-card.sheet") as any, closed: () => closed };
+  };
+  const swipe = (el: any, dy: number) => { fire(el, "pointerdown", { clientY: 100 }); fire(el, "pointerup", { clientY: 100 + dy }); };
+  it("at its top: a swipe of 60 px or more closes it, a short one does not", async () => {
+    const c = await open();
+    swipe(c.el, 30); expect(c.closed()).toBe(0);
+    swipe(c.el, 80); expect(c.closed()).toBe(1);
+  });
+  it("a sheet that scrolls: marked, a swipe on its content scrolls (never closes), one from its grip closes", async () => {
+    const c = await open();
+    Object.defineProperty(c.el, "scrollHeight", { configurable: true, value: 900 });
+    Object.defineProperty(c.el, "clientHeight", { configurable: true, value: 420 });
+    const rows = c.el.querySelector(".oo-card-rows") ?? c.el.querySelector(".oo-card-head");
+    fire(rows, "pointerdown", { clientY: 100, bubbles: true }); fire(rows, "pointerup", { clientY: 200, bubbles: true });
+    expect(c.closed()).toBe(0);
+    const grip = c.el.querySelector(".oo-card-grip");
+    expect(grip).not.toBeNull();
+    fire(grip, "pointerdown", { clientY: 100, bubbles: true }); fire(grip, "pointerup", { clientY: 200, bubbles: true });
+    expect(c.closed()).toBe(1);
+  });
+});
+
+describe("a card that scrolls says there is more (Leader #4414)", () => {
+  it("the CSS: while data-more, the content fades into the pinned actions", () => {
+    const fade = rule(".oo-card[data-more] .oo-card-actions::before");
+    expect(fade).toContain("linear-gradient(to bottom, transparent, var(--oo-card-bg, var(--surface)))");
+    expect(fade).toContain("pointer-events: none");
+  });
+  it("data-more while not scrolled to its end; none at the end", async () => {
+    const card = await import("/ui/js/fleet-office-card.js");
+    const p = page();
+    try {
+      const model = card.cardModel({ node: { name: "n", display_name: "Notes", status: "running", execution_state: "idle" }, lv: () => 1, levels: null, share: true, rows: [], display: "Notes", state: "Idle", now: "", where: "" });
+      await p.mount(h(card.OfficeCard, { model, avatar: () => {}, sheet: false, place: () => {}, onFind: () => {}, onClose: () => {} }));
+      await settle(4);
+      const el = p.root.querySelector(".oo-card") as any;
+      Object.defineProperty(el, "scrollHeight", { configurable: true, value: 600 });
+      Object.defineProperty(el, "clientHeight", { configurable: true, value: 400 });
+      el.scrollTop = 0; fire(el, "scroll"); await settle(2);
+      expect(el.hasAttribute("data-more")).toBe(true);
+      el.scrollTop = 200; fire(el, "scroll"); await settle(2);
+      expect(el.hasAttribute("data-more")).toBe(false);
+    } finally { await p.unmount(); p.restore(); }
+  });
+});
+
+describe("cardSpot: beside the person, clear of the areas' names", () => {
+  const base = { gap: 20, cw: 300, ch: 400, w: 1200, h: 700 };
+  it("no names in the way: right of them, level with their head (as before)", () => {
+    expect(cardSpot({ ...base, px: 400, py: 300 })).toEqual({ x: 420, y: 276 });
+    expect(cardSpot({ ...base, px: 1000, py: 300 })).toEqual({ x: 680, y: 276 });             // no room right: left
+    expect(cardSpot({ ...base, px: 400, py: 650 })).toEqual({ x: 420, y: 292 });              // kept inside the stage
+  });
+  it("a name under the spot: lower, just under it", () => {
+    const avoid = [{ x: 450, y: 250, w: 200, h: 40 }];
+    expect(cardSpot({ ...base, px: 400, py: 300, h: 800, avoid })).toEqual({ x: 420, y: 296 });
+  });
+  it("lower does not fit: the other side", () => {
+    const avoid = [{ x: 490, y: 150, w: 200, h: 40 }];
+    expect(cardSpot({ ...base, px: 500, py: 300, h: 560, avoid })).toEqual({ x: 180, y: 152 });
+  });
+  it("too tall to go lower on either side: held shorter just under the name, and it scrolls (not under CARD_MIN_H)", () => {
+    const avoid = [{ x: 0, y: 100, w: 1200, h: 40 }];
+    expect(cardSpot({ ...base, ch: 600, px: 400, py: 300, avoid })).toEqual({ x: 420, y: 146, maxH: 546 });
+    // Too little room under the name to be worth it: the least covered spot, whole.
+    expect(cardSpot({ ...base, ch: 600, px: 400, py: 300, avoid: [{ x: 0, y: 450, w: 1200, h: 40 }] }).maxH).toBeUndefined();
+  });
+  it("nowhere clear: the spot covering the least", () => {
+    const avoid = [{ x: 0, y: 0, w: 1200, h: 700 }];
+    expect(cardSpot({ ...base, px: 400, py: 300, avoid })).toEqual({ x: 420, y: 276 });
+  });
+});
