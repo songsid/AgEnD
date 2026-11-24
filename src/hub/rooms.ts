@@ -10,6 +10,7 @@
  *   release lease the Hub issued for exactly its id and digest, and only if authorization still holds at that moment.
  * - Reads re-check both people and the grant on every poll, and are paced.
  */
+import { directPostsAvailable, nextDirectSequence, type DirectPostRow } from "./direct-posts.js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type Database from "better-sqlite3";
 import { HubButtonsService, type HubButtonQuestion } from "./buttons.js";
@@ -41,7 +42,7 @@ interface RoomRow { id: string; asker: string; exposure_id: string; owner_at_cre
 /** A room as the conversation list shows it (#3226 B). */
 export interface HubRoomListItem extends HubRoom {
   agentKind?: "personal"; answerOnly?:true; exposureName: string; exposureState: HubExposure["state"]; ownerName: string;
-  closureReason?: "owner-stopped-sharing";
+  directMessagesMuted?:boolean; closureReason?: "owner-stopped-sharing";
   grantExpiresAt: number; lastAt: number; waiting: boolean; features: readonly string[];
 }
 type RoomViewRow = RoomRow & { fleet_id: string|null; answer_only:number; exposure_name: string; exposure_state: HubExposure["state"]; exposure_revision: number; frozen_through: number; sharing_paused: number;
@@ -70,7 +71,7 @@ export interface HubFileView { id: string; name: string; size: number; mime: str
 const fileView = (roomId: string, r: HubAttachmentRef): HubFileView => ({ id: r.id, name: r.name, size: r.size, mime: r.mime, url: `/hub/v1/rooms/${roomId}/files/${r.id}` });
 export interface HubRoomEntryView extends HubRoomEntry {
   /** M-3596: an open question's progress — when it was handed to the agent, else how many open questions to it came first. */
-  startedAt?: number; ahead?: number; idempotencyKey?: string; via?:{id:string;name:string}; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
+  ownPost?:true; startedAt?: number; ahead?: number; idempotencyKey?: string; via?:{id:string;name:string}; buttons?: import("../reply-buttons-controller.js").ReplyButtonsView; pollResult?: true; expired?: boolean; questionFiles?: HubFileView[]; answerFiles?: HubFileView[] }
 const FILES = "attachments-v1";
 const b64 = (data: string): Buffer => { const b = Buffer.from(data, "base64"); if (b.toString("base64") !== data) throw new HubProtocolError("invalid"); return b; };
 
@@ -102,6 +103,13 @@ export class HubRoomsService {
     return exposure.fleet_id&&this.links.get(exposure.fleet_id)?.current() ? "idle" : "offline";
   }
 
+  private roomListItem(r:RoomViewRow,features:readonly string[]):HubRoomListItem {
+    const item=roomListItem(r,features);
+    return this.core.atomic(db=>{if(!directPostsAvailable(db))return item;
+      const last=db.prepare("SELECT MAX(created_at) AS at FROM hub_direct_posts WHERE room_id=?").get(r.id) as {at:number|null};
+      const mute=db.prepare("SELECT muted FROM hub_direct_mutes WHERE room_id=?").get(r.id) as {muted:number}|undefined;
+      return {...item,lastAt:Math.max(item.lastAt,last.at??0),directMessagesMuted:!!mute?.muted};});
+  }
   private store(): HubAttachmentStore { const s = this.core.deps.attachments; if (!s) throw new HubProtocolError("incompatible"); return s; }
   /** The optional features of a fleet's current link (empty while it has none: nothing new is offered or sent). */
   features(fleetId: string|null): readonly string[] {
@@ -212,7 +220,7 @@ export class HubRoomsService {
   async listAuthorized(ctx: HubRequestContext): Promise<{ rooms: readonly HubRoomListItem[]; grantProof: HubGrantSubjectProof }> {
     const asker = await ctx.requirePerson(), me = personKeyString(asker), context = this.core.groupContext(ctx);
     const askerPermit = await this.core.groupAsker(asker, context);
-    const rows = this.core.atomic(db => db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, last_at DESC LIMIT 100`).all(me) as RoomViewRow[]);
+    const rows = this.core.atomic(db => db.prepare(`${ROOM_VIEW_SQL} WHERE r.asker=? ORDER BY (r.state='active') DESC, ${directPostsAvailable(db)?"MAX(last_at,COALESCE((SELECT MAX(created_at) FROM hub_direct_posts dp WHERE dp.room_id=r.id),0))":"last_at"} DESC LIMIT 100`).all(me) as RoomViewRow[]);
     const proofs = new Map<string, HubOperationPermit | null>();
     for (const row of rows) if (!proofs.has(row.exposure_id)) {
       try { proofs.set(row.exposure_id, await this.core.groupExposure(row.exposure_id, null, context)); }
@@ -226,9 +234,9 @@ export class HubRoomsService {
       const fresh = db.prepare(`${ROOM_VIEW_SQL} WHERE r.id=? AND r.asker=?`).get(row.id, me) as RoomViewRow | undefined;
       if (fresh?.state === "active") {
         const grant = readGrant(db, fresh.grant_id);
-        if (!grant || !grantSubjectApplies(grantOf(grant), asker, subjectProof)) return [roomListItem({ ...fresh, state: "held" }, [])];
+        if (!grant || !grantSubjectApplies(grantOf(grant), asker, subjectProof)) return [this.roomListItem({ ...fresh, state: "held" }, [])];
       }
-      return fresh ? [roomListItem(fresh, this.featuresOf(fresh.fleet_id))] : [];
+      return fresh ? [this.roomListItem(fresh, this.featuresOf(fresh.fleet_id))] : [];
     }), { assertCurrent() { askerPermit.assertCurrent(); subjectProof.assertCurrent(); } });
     return { rooms, grantProof: subjectProof };
   }
@@ -267,9 +275,9 @@ export class HubRoomsService {
       if (!fresh) throw new HubProtocolError("not-found");
       if (fresh.state === "active") {
         const grant = readGrant(db, fresh.grant_id);
-        if (!grant || !grantSubjectApplies(grantOf(grant), asker, permit.grant)) return roomListItem({ ...fresh, state: "held" }, []);
+        if (!grant || !grantSubjectApplies(grantOf(grant), asker, permit.grant)) return this.roomListItem({ ...fresh, state: "held" }, []);
       }
-      return roomListItem(fresh, this.featuresOf(fresh.fleet_id));
+      return this.roomListItem(fresh, this.featuresOf(fresh.fleet_id));
     }, permit);
   }
 
@@ -312,7 +320,7 @@ export class HubRoomsService {
     }
     const files = fileIds.length ? (this.requireFiles(exposure.fleetId), store!.pending(db, roomId, me, fileIds)) : [];
     const digest = messageContentDigest("question", text, { attachments: files });
-    const sequence = ((db.prepare("SELECT MAX(sequence) AS n FROM hub_messages WHERE room_id=?").get(roomId) as { n: number | null }).n ?? 0) + 1;
+    const sequence = nextDirectSequence(db,roomId);
     const id = randomUUID(), ref = this.core.deps.content.put(tx, { question: text });
     if(application){if(!this.core.deps.content.bindMessage)throw new HubProtocolError("unavailable");this.core.deps.content.bindMessage(tx,ref,id);}
     if (files.length) { this.requireFiles(exposure.fleetId);store!.bindQuestion(db, files, id, exposure.fleetId); }
@@ -382,6 +390,8 @@ export class HubRoomsService {
     if (!ownerId || !(await this.core.eligible(personFromString(ownerId)))) throw new HubProtocolError("revoked");
     await ctx.current();
     const permit = await this.core.exposureGrant(room.exposure_id, room.grant_id, asker, this.core.groupContext(ctx));
+    let ownRows:DirectPostRow[]=[];
+    let selectedCount=0;
     const rows = this.core.atomic((db) => {
       const now = this.core.now(); // A grant may have expired while the directory/group checks were in flight.
       const r = db.prepare("SELECT * FROM hub_rooms WHERE id=?").get(roomId) as RoomRow;
@@ -391,18 +401,21 @@ export class HubRoomsService {
       // History stays readable while the grant does (a later exposure revision or a freeze stops new questions only).
       if (grant.state !== "active" || now >= grant.expiresAt || !grantSubjectApplies(grant, asker, permit.grant) || !grant.permissions.includes("read-own-room")
         || exposure.state === "withdrawn") throw new HubProtocolError("revoked");
-      if (page) {
-        let before = Number.MAX_SAFE_INTEGER;
-        if (page.before) {
-          const cursor = db.prepare("SELECT sequence,answer_id FROM hub_messages WHERE id=? AND room_id=?").get(page.before.replace(/:answer$/, ""), roomId) as { sequence: number; answer_id: string | null } | undefined;
-          if (!cursor || page.before.endsWith(":answer") && !cursor.answer_id) throw new HubProtocolError("not-found"); before = cursor.sequence;
-        }
-        return db.prepare(`SELECT * FROM hub_messages WHERE room_id=? AND sequence${page.before?.endsWith(":answer") ? "<=" : "<"}? ORDER BY sequence DESC LIMIT ?`).all(roomId, before, page.limit + 1) as MessageRow[];
+      const own=directPostsAvailable(db);
+      const timeline=own?"SELECT id,sequence,0 AS own FROM hub_messages WHERE room_id=@room UNION ALL SELECT id,sequence,1 AS own FROM hub_direct_posts WHERE room_id=@room":"SELECT id,sequence,0 AS own FROM hub_messages WHERE room_id=@room";
+      let before=Number.MAX_SAFE_INTEGER;
+      if(page?.before){
+        const id=page.before.replace(/:answer$/, ""), target=db.prepare(`SELECT * FROM (${timeline}) WHERE id=@id`).get({room:roomId,id}) as {sequence:number;own:number}|undefined;
+        if(!target)throw new HubProtocolError("not-found");
+        if(page.before.endsWith(":answer")&&(target.own||!db.prepare("SELECT 1 FROM hub_messages WHERE id=? AND answer_id IS NOT NULL").get(id)))throw new HubProtocolError("not-found");
+        before=target.sequence;
       }
-      return db.prepare("SELECT * FROM hub_messages WHERE room_id=? AND sequence>? ORDER BY sequence LIMIT 100").all(roomId, after) as MessageRow[];
+      const selections=db.prepare(`SELECT * FROM (${timeline}) WHERE sequence ${page?(page.before?.endsWith(":answer")?"<=":"<"):">"} @bound ORDER BY sequence ${page?"DESC":"ASC"} LIMIT @limit`).all({room:roomId,bound:page?before:after,limit:page?page.limit+1:100}) as {id:string;own:number}[];
+      selectedCount=selections.length;if(page)selections.splice(page.limit);
+      ownRows=selections.filter(r=>r.own).map(r=>db.prepare("SELECT * FROM hub_direct_posts WHERE id=?").get(r.id) as DirectPostRow);
+      return selections.filter(r=>!r.own).map(r=>db.prepare("SELECT * FROM hub_messages WHERE id=?").get(r.id) as MessageRow).sort((a,b)=>a.sequence-b.sequence);
     });
-    const more = !!page && rows.length > page.limit;
-    if (page) { rows.splice(page.limit); rows.reverse(); }
+    const more = !!page && selectedCount > page.limit;
     const store = this.core.deps.attachments;
     const files = store ? this.core.atomic((db) => new Map(rows.map(m => [m.id, { question: store.forMessage(db, m.id, "question"), answer: store.forMessage(db, m.id, "answer") }]))) : null;
     const views = this.core.atomic(db => new Map(rows.map(m => [m.id, this.buttons.view(db, m.id)])));
@@ -428,7 +441,7 @@ export class HubRoomsService {
       return new Map(open.map(m => [m.id, begun.has(m.id) ? { startedAt: begun.get(m.id)! }
         : { ahead: (ahead.get(m.exposure_id, m.id, m.created_at) as { n: number }).n }]));
     }) : new Map<string, { startedAt: number } | { ahead: number }>();
-    const entries = rows.map((m) => {
+    const entries:HubRoomEntryView[] = rows.map((m) => {
       const q = this.core.deps.content.get(m.question_ref), a = m.answer_ref ? this.core.deps.content.get(m.answer_ref) : undefined;
       const expired = q === undefined || (m.answer_ref !== null && a === undefined);
       // #3226 B: when it was asked (the chat's time on the question), beside the receipt's stage time; D: the files, as B maps them.
@@ -439,6 +452,12 @@ export class HubRoomsService {
         ...(a?.answer !== undefined ? { answer: a.answer } : {}), ...(expired ? { expired: true } : {}),
         ...(qf.length ? { questionFiles: qf } : {}), ...(af.length ? { answerFiles: af } : {}), ...(progress.get(m.id) ?? {}) };
     });
+    for(const post of ownRows){
+      const answer=this.core.deps.content.get(post.content_ref)?.answer;
+      const refs=this.core.deps.attachments?this.core.atomic(db=>this.core.deps.attachments!.forMessage(db,post.id,"answer")):[];
+      entries.push({ownPost:true,messageId:post.id,sequence:post.sequence,askedAt:post.created_at,receipt:{messageId:post.id,contentDigest:post.digest,stage:"answered",sequence:0,at:post.created_at},...(answer===undefined?{expired:true}:{answer}),...(refs.length?{answerFiles:refs.map(f=>fileView(roomId,f))}:{})});
+    }
+    entries.sort((a,b)=>a.sequence-b.sequence);
     const view = await this.view(ctx, roomId);
     // Content and the awaited room projection can cross a grant deadline. Check only after both settle.
     this.core.atomic(db => { this.askerRoom(db, roomId, asker, this.core.now(), "read-own-room", permit.grant); }, permit);

@@ -120,24 +120,24 @@ export const roomAnswerAckSchema = z.strictObject({ messageId: uuid, answerId: u
 export const roomReactSchema = z.strictObject({ messageId: uuid, roomId: uuid, exposureId: uuid, emoji: z.string().max(16) });
 export const roomReactResultSchema = z.strictObject({ messageId: uuid, ok: z.boolean(), code: z.enum(["invalid", "denied", "not-found", "archived", "revoked"]).optional() });
 const roomPostRefusalCode = z.enum(["invalid", "denied", "revoked", "not-found", "archived", "ambiguous-room", "rate-limited", "conflict", "unavailable", "stale", "backpressure"]);
-const roomPostChoice = z.strictObject({ id: uuid, name: plain(120) });
+const roomPostChoice = z.strictObject({ id: uuid, name: plain(256), kind: z.literal("direct").optional() }).refine(v=>v.kind||Buffer.byteLength(v.name)<=120);
 export const roomListSchema = z.strictObject({ exposureId: uuid });
 export const roomListResultSchema = z.discriminatedUnion("ok", [
   z.strictObject({ ok: z.literal(true), exposureId: uuid, rooms: z.array(roomPostChoice).max(200), truncated: z.boolean().optional() }),
   z.strictObject({ ok: z.literal(false), exposureId: uuid, code: roomPostRefusalCode, retryAt: epoch.optional() }),
 ]);
 export const roomPostSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),
-  text: plain(HUB_LIMITS.question).refine(s => s.trim().length > 0), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional(),mentionFeedback:z.literal(true).optional() });
+  text: plain(HUB_LIMITS.answer), direct:z.literal(true).optional(), attachments:attachmentList.optional(), idempotencyKey: uuid, onBehalfOf: z.strictObject({ receiptId: z.string().regex(/^hmsg-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i).transform(s => s.toLowerCase()) }).optional(),mentionFeedback:z.literal(true).optional() }).refine(b=>b.direct ? (b.text.trim().length>0||!!b.attachments?.length)&&!b.onBehalfOf&&!b.mentionFeedback : !b.attachments&&Buffer.byteLength(b.text)<=HUB_LIMITS.question&&b.text.trim().length>0);
 export const roomPostResultSchema = z.discriminatedUnion("ok", [
-  z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch,mentionRefusals:roomMentionFeedbackSchema.optional() }),
-  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
+  z.strictObject({ ok: z.literal(true), roomId: uuid, messageId: uuid, at: epoch,message:plain(512).optional(),mentionRefusals:roomMentionFeedbackSchema.optional() }),
+  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, message:plain(512).optional(), retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
 ]);
 
 export const roomMembersSchema = z.strictObject({ exposureId: uuid, room: plain(128).refine(s => s.trim().length > 0 && !/[\u0000-\u001f\u007f]/.test(s)),v2:z.literal(true).optional(),...roomMemberOptions }).refine(v=>v.v2||![v.query,v.kind,v.limit,v.cursor].some(x=>x!==undefined));
 export const roomMembersResultSchema = z.union([boundedRoomMembersSchema,
   z.strictObject({ ok: z.literal(true), roomId: uuid, members: z.array(z.strictObject({ id: plain(128), kind: z.enum(["person", "agent", "assistant"]), name: plain(256), presence: plain(32),
     owner: z.strictObject({ name: plain(256) }).optional(), presenceReason: plain(32).optional(), presenceNote: plain(256).optional() })).max(200) }),
-  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
+  z.strictObject({ ok: z.literal(false), code: roomPostRefusalCode, message:plain(512).optional(), retryAt: epoch.optional(), rooms: z.array(roomPostChoice).max(200).optional() }),
 ]);
 export const peopleSearchSchema = z.strictObject({ exposureId: uuid, q: plain(64).refine(s => s.trim() === s && s.length >= 2 && !/[\u0000-\u001f\u007f]/.test(s)) });
 export const peopleSearchResultSchema = z.discriminatedUnion("ok", [

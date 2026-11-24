@@ -189,3 +189,32 @@ it("H5 negotiates bounded options, refuses unsupported filters and fences an awa
  expect(modern.members).toHaveBeenCalledWith(expect.any(String),"Weekly",{v2:true,query:"Notes",kind:"agent",limit:7});
  modern.members.mockImplementationOnce(async()=>{h.replace();return result;});expect(await h.adapter.members(h.caller,"Weekly")).toEqual({ok:false,code:"stale"});
 });
+
+it("M-3639: learns direct IDs only from an opted-in list and refuses an old Hub before posting",async()=>{
+ const h=fixture();h.link.list=async exposureId=>({ok:true,exposureId,rooms:[{id:h.roomId,name:"Demo reader",kind:"direct"}]});h.adapter.connected(h.link);
+ expect(await h.adapter.rooms(h.caller)).toMatchObject({ok:false});
+ (h.link.features as Set<string>).add("direct-posts-v1");expect(await h.adapter.rooms(h.caller)).toMatchObject({ok:true});
+ expect(await h.adapter.post(h.caller,{room:h.roomId,text:"Follow-up",operationId:randomUUID()})).toMatchObject({ok:true});expect(h.received[0]).toMatchObject({direct:true});
+ (h.link.features as Set<string>).delete("direct-posts-v1");
+ expect(await h.adapter.post(h.caller,{room:h.roomId,text:"Later",operationId:randomUUID()})).toMatchObject({ok:false,message:expect.stringContaining("too old")});expect(h.link.post).toHaveBeenCalledTimes(1);
+});
+it("M-3639: freezes files before send, coalesces concurrent calls, and retries the same refs after restart",async()=>{
+ const h=fixture(),ids:string[]=[],refs:unknown[]=[],bytes=Buffer.from("fixture"),sha256="1".repeat(64);
+ const files={prepare:vi.fn(async()=>[{ref:{id:randomUUID(),name:"demo.txt",size:bytes.length,mime:"text/plain",sha256},bytes}]),send:vi.fn(async(file:any,put:any)=>{ids.push(file.ref.id);await put({id:file.ref.id,offset:0,total:bytes.length,sha256,data:bytes.toString("base64")});})};
+ const opts={...h.options,directRoom:()=>true,files:files as never};const adapter=new HubRoomPostAdapter(opts),link={...h.link,features:new Set([...h.link.features,"direct-posts-v1","attachments-v1"]),putFile:vi.fn(async()=>{}),post:vi.fn(async(value:any)=>{refs.push(value.attachments);throw Error("lost result");})};adapter.connected(link);
+ const input={room:h.roomId,text:"",files:["demo.txt"],operationId:randomUUID()};
+ expect(await Promise.all([adapter.post(h.caller,input),adapter.post(h.caller,input)])).toEqual([{ok:false,code:"uncertain"},{ok:false,code:"uncertain"}]);expect(link.post).toHaveBeenCalledTimes(1);adapter.close();
+ const next=new HubRoomPostAdapter(opts);next.connected({...link,post:async value=>{refs.push(value.attachments);return {ok:true,roomId:h.roomId,messageId:h.messageId,at:1000,message:"Delivered to Demo reader."};}});
+ expect(await next.post(h.caller,input)).toMatchObject({ok:true});expect(refs[1]).toEqual(refs[0]);expect(ids[1]).toBe(ids[0]);
+ expect(await next.post(h.caller,{...input,files:["different.txt"]})).toMatchObject({ok:false,code:"conflict"});next.close();
+ // Saved success omits display-only additions, so the older strict journal reader remains usable.
+ expect(()=>new HubRoomPostAdapter(opts)).not.toThrow();
+});
+it("M-3639: changing files or retiring consent during file staging never posts",async()=>{
+ const h=fixture();let content="1".repeat(64),stop=false;
+ const files={prepare:vi.fn(async()=>[{ref:{id:randomUUID(),name:"demo.txt",size:1,mime:"text/plain",sha256:content},bytes:Buffer.from("x")}]),send:vi.fn(async()=>{if(stop)h.replace();})};
+ const a=new HubRoomPostAdapter({...h.options,directRoom:()=>true,files:files as never}),link={...h.link,features:new Set([...h.link.features,"direct-posts-v1","attachments-v1"]),putFile:vi.fn(async()=>{}),post:vi.fn(async()=>{throw Error("lost");})};a.connected(link);
+ const input={room:h.roomId,text:"File",files:["demo.txt"],operationId:randomUUID()};await a.post(h.caller,input);expect(link.post).toHaveBeenCalledTimes(1);content="2".repeat(64);
+ expect(await a.post(h.caller,input)).toMatchObject({ok:false,code:"conflict"});expect(link.post).toHaveBeenCalledTimes(1);
+ stop=true;expect(await a.post(h.caller,{...input,operationId:randomUUID()})).toMatchObject({ok:false,code:"uncertain"});expect(link.post).toHaveBeenCalledTimes(1);a.close();
+});

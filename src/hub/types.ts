@@ -73,9 +73,9 @@ export interface HubRoomReactResult { messageId: MessageId; ok: boolean; code?: 
 /** Proactive group-room messages are scoped by the authenticated link and its own published exposure. */
 export type HubRoomPostRefusalCode = "invalid" | "denied" | "revoked" | "not-found" | "archived" | "ambiguous-room" | "rate-limited" | "conflict" | "unavailable" | "stale" | "backpressure";
 export interface HubRoomListRequest { exposureId: ExposureId }
-export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string }[]; truncated?: boolean }
+export type HubRoomListResult = { ok: true; exposureId: ExposureId; rooms: readonly { id: RoomId; name: string; kind?:"direct" }[]; truncated?: boolean }
   | { ok: false; exposureId: ExposureId; code: HubRoomPostRefusalCode; retryAt?: Millis };
-export interface HubRoomPost { exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string }; mentionFeedback?: true }
+export interface HubRoomPost { direct?:true; attachments?:HubAttachmentRef[]; exposureId: ExposureId; room: string; text: string; idempotencyKey: string; onBehalfOf?: { receiptId: string }; mentionFeedback?: true }
 export type HubRoomMembersRequest = { exposureId: ExposureId; room: string;v2?:true } & import("./room-members-model.js").RoomMemberOptions;
 export type HubRoomMembersResult = import("zod").z.infer<typeof import("./room-members-model.js").boundedRoomMembersSchema> | { ok: true; roomId: RoomId; members: readonly { id: string; kind: "person" | "agent" | "assistant"; name: string; presence: string; owner?: { name: string }; presenceReason?: string; presenceNote?: string }[] }
   | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis;message?:string; rooms?: readonly { id: RoomId; name: string }[] };
@@ -85,8 +85,8 @@ export type HubPeopleSearchResult = { ok: true; people: readonly { id: string; n
 export interface HubRoomPostAnswer { id: string; idempotencyKey: string; postId: MessageId; roomId: RoomId; exposureId: ExposureId;
   message: { id: MessageId; author: { name: string }; text: string; at: Millis }; receiptId?: string }
 export interface HubRoomPostAnswerAck { id: string }
-export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
-  | { ok: false; code: HubRoomPostRefusalCode; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
+export type HubRoomPostResult = { ok: true; roomId: RoomId; messageId: MessageId; at: Millis; message?:string; mentionRefusals?: import("./room-mention-feedback-model.js").HubRoomMentionFeedback }
+  | { ok: false; code: HubRoomPostRefusalCode; message?:string; retryAt?: Millis; rooms?: readonly { id: RoomId; name: string }[] };
 
 export type HubAgentStateReason = "quota" | "auth" | "approval" | "update" | "operator" | "idle" | "capacity" | "error" | "stopped" | "crashed" | "stuck" | "unknown";
 export interface HubAgentState { exposureId: ExposureId; state: "idle" | "working" | "paused"; reason?: HubAgentStateReason; note?: string }

@@ -411,6 +411,7 @@ export class HubGroupRooms {
   }
   async agentPost(input: unknown, link: HubLinkContext): Promise<HubRoomPostResult> {
     const body = validated(roomPostSchema, input), { source, fence } = await this.agentSource(body.exposureId, link);
+    if(body.direct||body.attachments)throw new HubProtocolError("incompatible");
     if(body.mentionFeedback&&!link.features.has(HUB_ROOM_MENTION_FEEDBACK_CAPABILITY))throw new HubProtocolError("incompatible");
     const {mentionFeedback:_feedback,...operation}=body;
     const digest = createHash("sha256").update(JSON.stringify(operation)).digest("hex"); let added = false; let refusedEffects: string | undefined;

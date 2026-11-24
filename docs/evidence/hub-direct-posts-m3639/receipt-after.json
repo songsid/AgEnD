@@ -1,0 +1,182 @@
+{
+  "stage": "after",
+  "checks": [
+    {
+      "name": "grant created",
+      "ok": true
+    },
+    {
+      "name": "direct created",
+      "ok": true
+    },
+    {
+      "name": "question accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en muted check",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW muted check",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "desk-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en muted check",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW muted check",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "desk-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en muted check",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW muted check",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "phone-light-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en muted check",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-en no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW actual room.post accepted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW muted check",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW mute persisted",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW subsequent send refused",
+      "ok": true
+    },
+    {
+      "name": "phone-dark-zh-TW no horizontal overflow",
+      "ok": true
+    },
+    {
+      "name": "no page errors",
+      "ok": true
+    }
+  ],
+  "errors": []
+}

@@ -56,6 +56,7 @@ import { HubRoomAdmin } from "../rooms/admin.js";
 import { HubGroupRooms, HubRoomRefusal } from "../rooms/service.js";
 import { HUB_ROOM_OFFICE_FEATURE, type RoomOfficeLook } from "../rooms/office.js";
 import { SHARE_MODULES } from "../../office-share-page.js";
+import { HubDirectPosts, HUB_DIRECT_POST_CAPABILITY } from "../direct-posts.js";
 import { directMessages, directRoomView, directUnread, markDirectRead } from "../rooms/direct-view.js";
 import { HubAttachmentRefused } from "../attachments/store.js";
 import { HubQuotaService } from "../quota.js";
@@ -215,6 +216,10 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
 
   const rooms = new HubRoomsService(core, policy);
   const groupRooms = new HubGroupRooms(core, deps.roomOffice === true);
+  const directPosts=new HubDirectPosts(core,(roomId,asker,id)=>{
+    if(id){groupRooms.publish({type:"message.added",roomId,data:{roomId,messageId:id},audiencePerson:asker});groupRooms.publish({type:"unread.changed",roomId,data:{roomId},audiencePerson:asker});}
+    else groupRooms.publish({type:"room.changed",roomId,data:{roomId},audiencePerson:asker});
+  });
   /**
    * M-3596: a 1:1 room's agent as its asker sees it. The room's own presence (offline, paused, held) wins; on a current link
    * the agent's reported state (agent.state: working, or paused with a reason) says whether it is busy right now.
@@ -864,6 +869,9 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
           } : {}) });
         }
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
+      } else if(method==="PATCH") {
+        csrf();const b=await body();if(Object.keys(b).length!==1||typeof b.directMessagesMuted!=="boolean")throw new HubProtocolError("invalid");
+        const room=await guard(()=>rooms.view(ctx,roomId));await ctx.current();directPosts.setMuted(roomId,personKeyString(room.asker),b.directMessagesMuted);return send(res,200,{ok:true});
       } else if (method === "GET") {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
         return send(res, 200, { room: directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId), groupRooms.agents.reported(room.exposureId)), me: { id: person, role: "member" },
@@ -1219,18 +1227,18 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       case "fleet.info": fleetVersions.report(frame.payload, link); fleetUpdates.report(frame.payload, link); return;
       case "fleet.update-status": await fleetUpdates.status(frame.payload, link); return;
       case "room.list":
-        try { return { ...reply, type: "room.list-result", payload: await groupRooms.agentRooms(frame.payload, link) }; }
+        try { return { ...reply, type: "room.list-result", payload: await (async()=>{const result=await groupRooms.agentRooms(frame.payload,link);if(!result.ok||!link.features.has(HUB_DIRECT_POST_CAPABILITY))return result;const all=[...result.rooms,...await directPosts.rooms(frame.payload.exposureId,link)];return {...result,rooms:all.slice(0,200),...(all.length>200?{truncated:true}:{})};})() }; }
         catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.list-result", payload: { ok: false, exposureId: frame.payload.exposureId, code: roomPostCode(error) } }; }
       case "room.post-answer-ack": groupRooms.postReplies.acknowledge(frame.payload, link); return;
       case "room.members":
         try { return { ...reply, type: "room.members-result", payload: await groupRooms.agentMembers(frame.payload, link) }; }
-        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.members-result", payload: { ok: false, code: roomPostCode(error) } }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.members-result", payload: { ok: false, code: roomPostCode(error), } }; }
       case "people.search":
         try { return { ...reply, type: "people.search-result", payload: await groupRooms.agentPeople(frame.payload, link) }; }
-        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "people.search-result", payload: { ok: false, code: roomPostCode(error) } }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "people.search-result", payload: { ok: false, code: roomPostCode(error), } }; }
       case "room.post":
-        try { return { ...reply, type: "room.post-result", payload: await groupRooms.agentPost(frame.payload, link) }; }
-        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.post-result", payload: { ok: false, code: roomPostCode(error) } }; }
+        try { return { ...reply, type: "room.post-result", payload: await (frame.payload.direct?directPosts.post(frame.payload,link):groupRooms.agentPost(frame.payload, link)) }; }
+        catch (error) { if (!(error instanceof HubProtocolError)) throw error; return { ...reply, type: "room.post-result", payload: { ok: false, code: roomPostCode(error),...(frame.payload.direct?{message:error.code==="stale"?"The sharing or sending connection changed; check hub_room_list before trying again.":"The person is no longer allowed to ask this agent, or their permission expired."}:{}) } }; }
       case "room.context-state": return { ...reply, type: "room.context-state-result", payload: groupRooms.agents.contextState(frame.payload,link) };
       case "room.context-input": return { ...reply, type: "room.context-input-result", payload: groupRooms.agents.contextInput(frame.payload,link) };
       case "room.answer":
@@ -1314,7 +1322,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       prepareDirectoryRotation: (token, actor) => sessions.prepareDirectoryRotation(token, actor),
       completeDirectoryRotation: (rotation, operationId) => sessions.completeDirectoryRotation(rotation, operationId),
     } satisfies HubDirectoryBrowserSessions),
-    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentIntroV1: true, agentCatalogV1: true, agentPicturesV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-purpose-v1", "room-ask-v1", "room-post-v1", HUB_ROOM_CONTEXT_CAPABILITY, HUB_ROOM_BRIEF_CAPABILITY, HUB_ROOM_MEMBERS_CAPABILITY, HUB_ROOM_ANSWER_STATUS_CAPABILITY, "person-prefs-v1", ...(roomAgentRequests ? ["room-owner-requests-v1"] : []), ...(roomDiscovery ? ["room-agent-discovery-v1"] : []), ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
+    handle, receive, memberReady: link => { recommendations.ready(link); fleetUpdates.ready(link); }, memberConnected: link => { fleetVersions.connected(link); agentCatalogs.connected(link); }, memberClosed: fleetId => { if (live()) groupRooms.agents.disconnected(fleetId); }, agentIntroV1: true, agentCatalogV1: true, agentPicturesV1: true, exposureRequestsV1: true, features: Object.freeze(["agent-intro-defaults-v1", "agent-sharing-v1", "agent-intros-v1", "admin-dashboard-v1", "fleet-update-v1", "rooms-v1", "room-purpose-v1", "room-ask-v1", "room-post-v1", HUB_DIRECT_POST_CAPABILITY, HUB_ROOM_CONTEXT_CAPABILITY, HUB_ROOM_BRIEF_CAPABILITY, HUB_ROOM_MEMBERS_CAPABILITY, HUB_ROOM_ANSWER_STATUS_CAPABILITY, "person-prefs-v1", ...(roomAgentRequests ? ["room-owner-requests-v1"] : []), ...(roomDiscovery ? ["room-agent-discovery-v1"] : []), ...(personal ? ["personal-agents-v1"] : []), ...(teams ? ["teams-v1"] : []), ...(deps.roleAdmin ? ["role-settings-v1"] : []), ...(deps.roomAssistant && deps.assistantAdmin ? ["room-assistant-v1"] : []), ...(deps.refreshAuthorization ? ["sharing-pause-v1"] : []), ...(deps.groupHttp ? [GROUP_POLICY_FEATURE, ...(deps.pairingNotices ? ["quick-pairing-v1"] : [])] : []), ...(grantSubjectsOffered() ? ["grant-subjects-v1"] : []),
       ...(deps.directoryNotices ? ["directory-security-notices-v1"] : []), ...(deps.memberAddressNotices ? ["member-address-notices-v1"] : []), ...(deps.directorySettings ? [HUB_DIRECTORY_SETTINGS_FEATURE, HUB_DIRECTORY_CA_FEATURE, HUB_DIRECTORY_EDITOR_FEATURE] : [])]),
     async close() { closed = true; sharingRequests.close(); agentCatalogs.close(); agentPictures.close(); personal?.owner.close(); await personal?.turns.close(); fleetUpdates.close(); recommendations.close(); fleetVersions.close(); grantSearch.close(); for (const end of streams) end(); await mcp.close(); await groupRooms.close(); await rooms.buttons.close(); rooms.forget(); quota.close(); },
   };

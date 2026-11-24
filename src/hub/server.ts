@@ -1,3 +1,4 @@
+import { HUB_DIRECT_POST_CAPABILITY } from "./direct-posts-model.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
@@ -37,7 +38,7 @@ export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: 
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 /** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
 export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
-  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_AGENT_PICTURES_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY,HUB_ASKER_NAME_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_AGENT_PICTURES_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY,HUB_ASKER_NAME_CAPABILITY,HUB_DIRECT_POST_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
 }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   introOffered?: boolean;
@@ -252,6 +253,7 @@ export class HubServer {
     if ((frame.type === "room.answer" || frame.type === "agent.state") && (!context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "room.answer" && frame.payload.buttons && !context.features.has(HUB_ROOM_BUTTONS_CAPABILITY)) throw new HubProtocolError("incompatible");
     if (frame.type === "room.react" && (!context.features.has(HUB_ROOM_REACT_CAPABILITY) || !context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if (frame.type === "room.post" && (frame.payload.direct || frame.payload.attachments) && !context.features.has(HUB_DIRECT_POST_CAPABILITY)) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.list" || frame.type === "room.post" || frame.type === "room.members" || frame.type === "people.search" || frame.type === "room.post-answer-ack") && (!context.features.has(HUB_ROOM_POST_CAPABILITY) || !context.features.has(HUB_ROOM_ASK_CAPABILITY) || !context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "relocate.ack") {
       if (!context.features.has(HUB_MEMBER_RELOCATION_CAPABILITY) || !context.features.has("welcome-caps-v1")) throw new HubProtocolError("incompatible");
@@ -297,6 +299,7 @@ export class HubServer {
     if (frame.type === "pairing.notice-v2" && (!connection.context.features.has("pairing-notices-v2") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if (frame.type === "pairing.notice-v3" && (!connection.context.features.has("pairing-notices-v3") || !connection.context.features.has("pairing-notices-v1") || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     if ((frame.type === "room.ask" || frame.type === "room.answer-ack") && (!connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
+    if(!connection.context.features.has(HUB_DIRECT_POST_CAPABILITY)&&((frame.type==="room.list-result"&&frame.payload.ok&&frame.payload.rooms.some(r=>r.kind))||(frame.type==="room.post-result"&&frame.payload.message)))throw new HubProtocolError("incompatible");
     if ((frame.type === "room.list-result" || frame.type === "room.post-result" || frame.type === "room.members-result" || frame.type === "people.search-result" || frame.type === "room.post-answer") && (!connection.context.features.has(HUB_ROOM_POST_CAPABILITY) || !connection.context.features.has(HUB_ROOM_ASK_CAPABILITY) || !connection.context.features.has("welcome-caps-v1"))) throw new HubProtocolError("incompatible");
     await connection.link.send(frame);
   }

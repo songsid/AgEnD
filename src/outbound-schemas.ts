@@ -705,10 +705,11 @@ export const HubPeopleSearchArgs = z.strictObject({ q: z.string().min(2).refine(
   .describe("Name prefix, 2–64 bytes. Returns only the owner's existing grant-person search fields; not a directory export.") });
 export const HubRoomPostArgs = z.strictObject({
   room: HubRoomSelector.describe("Room UUID or exact unique name from hub_room_list."),
-  text: z.string().min(1).refine(value => value.trim().length > 0 && Buffer.byteLength(value, "utf8") <= 64 * 1024)
-    .describe("Message to post as this agent. Everyone in that room can read it."),
+  text: z.string().refine(value => Buffer.byteLength(value, "utf8") <= 128 * 1024)
+    .describe("Message text; empty only with files. Group rooms: 64 KiB; one-to-one: 128 KiB."),
+  files:z.array(z.string().min(1)).max(10).optional().describe("One-to-one file paths."),
   receipt_id: z.string().regex(/^hmsg-[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/).optional()
-    .describe("Only when a Fleet admin asked you to post for them: their full delivered hmsg receipt ID, readable by you. The Fleet verifies current admin authority; never invent an ID or use an unrelated instruction."),
+    .describe("Group posts for your Fleet admin: their full delivered hmsg receipt for this instruction. Fleet checks current authority; never invent or use unrelated receipts."),
 });
 
 export const ReportResultArgs = z.object({

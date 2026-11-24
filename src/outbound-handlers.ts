@@ -140,7 +140,7 @@ export interface OutboundContext {
   hubRoomList?(caller: import("./hub/member/room-post.js").RoomCaller): Promise<import("./hub/member/room-post.js").RoomListResult>;
   hubRoomMembers?(caller: import("./hub/member/room-post.js").RoomCaller, room:string,options?:import("./hub/room-members-model.js").RoomMemberOptions): Promise<import("./hub/types.js").HubRoomMembersResult|import("./hub/member/room-post.js").ShareLapsed>;
   hubPeopleSearch?(caller: import("./hub/member/room-post.js").RoomCaller, q:string): Promise<import("./hub/types.js").HubPeopleSearchResult|import("./hub/member/room-post.js").ShareLapsed>;
-  hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
+  hubRoomPost?(caller: import("./hub/member/room-post.js").RoomCaller, value: {room:string;text:string;operationId:string;receiptId?:string;files?:string[]}): Promise<import("./hub/member/room-post.js").RoomPostResult>;
   /** Existing one-to-one/room answer hook; null keeps ordinary routing. */
   hubReport?(input: { correlationId: string; caller: string; text: string; callerCurrent(): boolean; extras?: HubReportExtras }): Promise<HubReportOutcome> | null;
   /** Persist a cross-instance action before its MCP call is acknowledged. */
@@ -2616,9 +2616,11 @@ const hubRoom = (kind: "list"|"post"|"members"|"people"|"intro"): Handler => asy
   const caller = {agent:meta.instanceName,current};
   if (kind === "post") {
     if (!meta.operationId) { respond(null, "Hub room posts require an operation identity"); return; }
-    const value=parsed.data as {room:string;text:string;receipt_id?:string};
-    respond(await ctx.hubRoomPost?.(caller, {room:value.room,text:value.text,operationId:meta.operationId,
-      ...(value.receipt_id ? {receiptId:value.receipt_id} : {})}) ?? {ok:false,code:"unavailable"});
+    const value=parsed.data as {room:string;text:string;receipt_id?:string;files?:string[]};
+    const result=await ctx.hubRoomPost?.(caller, {room:value.room,text:value.text,operationId:meta.operationId,...(value.files?.length?{files:value.files}:{}),
+      ...(value.receipt_id ? {receiptId:value.receipt_id} : {})}) ?? {ok:false as const,code:"unavailable"};
+    const reasons:Record<string,string>={uncertain:"Not confirmed: this message may already have arrived; do not resend as a fresh call.",stale:"The sending agent or its sharing changed; check hub_room_list before trying again.",invalid:"Check the room, message and files; files are supported only in a compatible one-to-one chat.",conflict:"This operation or duplicate message was already used; check the chat before sending anything else.",unavailable:"No compatible connected Hub is available for this agent.",denied:"This agent is not allowed to post in that chat.",revoked:"The person's permission to ask this agent is no longer current.","not-found":"Use a current chat ID from hub_room_list."};
+    respond(!result.ok&&!("message" in result)?{...result,message:reasons[result.code]??"This Hub refused the message; check hub_room_list before trying again."}:result);
   } else if(kind === "members") {const {room,...options}=parsed.data as {room:string}&import("./hub/room-members-model.js").RoomMemberOptions;respond(await ctx.hubRoomMembers?.(caller,room,...(Object.keys(options).length?[options]:[]))??{ok:false,code:"unavailable"});}
   else if(kind === "people") respond(await ctx.hubPeopleSearch?.(caller,(parsed.data as {q:string}).q)??{ok:false,code:"unavailable"});
   else respond(await ctx.hubRoomList?.(caller) ?? {ok:false,code:"unavailable"});
