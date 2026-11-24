@@ -1,0 +1,238 @@
+{
+  "label": "after",
+  "cases": {
+    "desk-display-options": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 0,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "desk-zh-display-options": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 0,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "desk-dialogue-dock": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 0,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "phone-dialogue-dock": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 0,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "desk-talk-panel": {
+      "errors": [],
+      "csp": [],
+      "panel": 6,
+      "taps": 3,
+      "small": [
+        {
+          "t": "Open full chat",
+          "w": 107,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "×",
+          "w": 36,
+          "h": 36,
+          "inView": true
+        }
+      ],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": "Idle",
+      "openFullChat": {
+        "w": 107,
+        "h": 30,
+        "inView": true
+      }
+    },
+    "desk-talk-box": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 7,
+      "small": [
+        {
+          "t": "Click",
+          "w": 49,
+          "h": 24,
+          "inView": true
+        },
+        {
+          "t": "Auto",
+          "w": 47,
+          "h": 24,
+          "inView": true
+        },
+        {
+          "t": "Fast",
+          "w": 45,
+          "h": 24,
+          "inView": true
+        },
+        {
+          "t": "Skip",
+          "w": 45,
+          "h": 24,
+          "inView": true
+        },
+        {
+          "t": "×",
+          "w": 28,
+          "h": 24,
+          "inView": true
+        },
+        {
+          "t": "Send",
+          "w": 82,
+          "h": 35,
+          "inView": true
+        },
+        {
+          "t": "History",
+          "w": 50,
+          "h": 23,
+          "inView": true
+        }
+      ],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "desk-talk-bubble": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 7,
+      "small": [
+        {
+          "t": "Full reply",
+          "w": 80,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "Open full chat",
+          "w": 107,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "Click",
+          "w": 55,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "Auto",
+          "w": 54,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "Fast",
+          "w": 51,
+          "h": 30,
+          "inView": true
+        },
+        {
+          "t": "Skip",
+          "w": 52,
+          "h": 30,
+          "inView": true
+        }
+      ],
+      "clipped": [],
+      "replyTextCssPx": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "state": null,
+      "openFullChat": {
+        "w": 107,
+        "h": 30,
+        "inView": true
+      }
+    },
+    "phone-talk-panel": {
+      "errors": [],
+      "csp": [],
+      "panel": 11,
+      "taps": 3,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": "閒置",
+      "openFullChat": {
+        "w": 104,
+        "h": 44,
+        "inView": true
+      }
+    },
+    "phone-talk-box": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 7,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [],
+      "state": null,
+      "openFullChat": null
+    },
+    "phone-talk-bubble": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 7,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "state": null,
+      "openFullChat": {
+        "w": 104,
+        "h": 44,
+        "inView": true
+      }
+    }
+  }
+}
