@@ -31,30 +31,51 @@ async function world() {
   const messageId = (r.sent.find(s => s.frame.type === "question")!.frame.payload as HubQuestion).identity.messageId;
   const admit = async () => ((await r!.http.receive(r!.frame("authorize.request", { messageId, operationId: randomUUID(), exposureRevision: 1, phase: "admit" }, link) as never, link)) as any).payload;
   const original = r.directory.checkEligibility.bind(r.directory);
-  /** The directory read for `who` throws `times` times (an LDAP timeout), then answers normally. */
-  const failFor = (who: typeof asker, times: number) => {
-    let left = times;
+  /**
+   * The directory read for `who` fails `times` times, then answers normally. As the real LDAP directory does, a failure is
+   * its `{ eligible: false, reason: "unavailable" }` reply; `how` may instead throw (an error, or a bare null).
+   */
+  const failFor = (who: typeof asker, times: number, how: Array<"reply" | "throw" | "null"> = ["reply"]) => {
+    let n = 0;
     vi.spyOn(r!.directory, "checkEligibility").mockImplementation(async key => {
-      if (personKeyString(key) === personKeyString(who) && left > 0) { left--; throw new Error("ldap timeout"); }
+      if (personKeyString(key) === personKeyString(who) && n < times) {
+        const mode = how[Math.min(n++, how.length - 1)];
+        if (mode === "throw") throw new Error("ldap timeout");
+        if (mode === "null") throw null;
+        return { eligible: false, reason: "unavailable" } as never;
+      }
       return original(key);
     });
   };
+  const leases = () => (r!.db.prepare("SELECT COUNT(*) n FROM hub_leases").get() as { n: number }).n;
   const said = (message: string) => logs.filter(l => l.message === message).map(l => l.meta);
-  return { owner, asker, admit, failFor, said, logs };
+  return { owner, asker, admit, failFor, said, logs, leases };
 }
 
 describe("M-3600 authorize refusals", () => {
-  it("one directory read that cannot answer is retried once and the admit goes through, with the cause logged", async () => {
+  it("one directory read that cannot answer (its unavailable reply) is retried once and the admit goes through, with the cause logged", async () => {
     const w = await world(); w.failFor(w.asker, 1);
     const out = await w.admit();
     expect(out.ok).toBe(true);
-    expect(w.said("Hub authorize retrying after a transient refusal")).toEqual([expect.objectContaining({ phase: "admit", stage: "asker-directory", code: "Error", attempt: 1 })]);
+    expect(w.said("Hub authorize retrying after a transient refusal")).toEqual([expect.objectContaining({ phase: "admit", stage: "asker-directory", code: "unavailable", attempt: 1 })]);
     expect(w.said("Hub authorize refused")).toEqual([]);
+  });
+  it("a directory that throws is treated the same way", async () => {
+    const w = await world(); w.failFor(w.asker, 1, ["throw"]);
+    expect((await w.admit()).ok).toBe(true);
+    expect(w.said("Hub authorize retrying after a transient refusal")).toEqual([expect.objectContaining({ stage: "asker-directory", code: "Error" })]);
+  });
+  it("a retry that rejects with a bare null is still a refusal, and no lease is written", async () => {
+    const w = await world(); w.failFor(w.asker, 2, ["reply", "null"]);
+    expect(await w.admit()).toEqual({ ok: false, reasonCode: "unavailable" });
+    expect(w.leases()).toBe(0);
+    expect(w.said("Hub authorize refused")).toEqual([expect.objectContaining({ stage: "asker-directory", code: "object", attempt: 2 })]);
   });
   it("still failing after the one retry: refused unavailable, and the log names the step that failed", async () => {
     const w = await world(); w.failFor(w.owner, 2);
     expect(await w.admit()).toEqual({ ok: false, reasonCode: "unavailable" });
-    expect(w.said("Hub authorize refused")).toEqual([expect.objectContaining({ phase: "admit", stage: "owner-directory", code: "Error", attempt: 2 })]);
+    expect(w.said("Hub authorize refused")).toEqual([expect.objectContaining({ phase: "admit", stage: "owner-directory", code: "unavailable", attempt: 2 })]);
+    expect(w.leases()).toBe(0);
     expect(r!.audits.filter(x => x.action === "authorize.admit" && x.result === "denied").map(x => x.reasonCode)).toEqual(["unavailable"]);
   });
   it("a real refusal (the asker no longer eligible) is not retried and not logged as a failure", async () => {
@@ -67,7 +88,7 @@ describe("M-3600 authorize refusals", () => {
     expect(w.said("Hub authorize refused")).toEqual([]);
   });
   it("the log carries no names, logins or directory text", async () => {
-    const w = await world(); w.failFor(w.asker, 2);
+    const w = await world(); w.failFor(w.asker, 2, ["throw"]);
     await w.admit();
     const text = JSON.stringify(w.logs);
     for (const s of ["alex", "Alex", "olivia", "ldap timeout", personKeyString(w.asker)]) expect(text).not.toContain(s);

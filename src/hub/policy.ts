@@ -81,9 +81,10 @@ export class HubPolicyService {
     const image = identity(row), epoch = link.linkEpoch;
     // M-3600: each directory lookup is its own step, so a refusal's log names which one could not answer.
     trace.stage = "asker-directory";
-    if (!(await this.core.eligible(personFromString(row.asker)))) throw new HubProtocolError("revoked");
+    // A directory that could not answer is "unavailable" (retried once by authorize), never a revocation.
+    if (!(await this.core.eligibleOrUnavailable(personFromString(row.asker)))) throw new HubProtocolError("revoked");
     trace.stage = "owner-directory";
-    if (!(await this.core.eligible(personFromString(row.owner)))) throw new HubProtocolError("revoked");
+    if (!(await this.core.eligibleOrUnavailable(personFromString(row.owner)))) throw new HubProtocolError("revoked");
     trace.stage = "grant";
     const permit = await this.core.exposureGrant(row.exposure_id, row.grant_id, personFromString(row.asker),
       { requestId: randomUUID(), current: () => link.current() });
@@ -122,17 +123,17 @@ export class HubPolicyService {
     catch (e) {
       // M-3600: a directory, grant or database step that could not answer gets one more try (a member's question was held for
       // a link round-trip on a single slow lookup). A real refusal, a changed message or a dropped link never does.
-      let last: unknown = e, attempt = 1;
+      let last: unknown = e, attempt = 1, retried = false;
       if (!denial(e) && transient(trace.stage, e) && link.current()) {
         this.log?.("info", "Hub authorize retrying after a transient refusal", meta(e, 1));
         await new Promise(resolve => setTimeout(resolve, this.retryMs));
         if (link.current()) {
           attempt = 2;
-          try { permit = await this.operation(first, link, trace); last = null; }
+          try { permit = await this.operation(first, link, trace); retried = true; }
           catch (again) { last = again; }
         }
       }
-      if (last !== null) {
+      if (!retried) {
         const code = denial(last);
         if (!code) this.log?.("warn", "Hub authorize refused", meta(last, attempt));
         return refuse(code ?? "unavailable", first);
