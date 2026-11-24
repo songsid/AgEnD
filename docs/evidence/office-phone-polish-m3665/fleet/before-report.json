@@ -1,0 +1,193 @@
+{
+ "label": "before",
+ "cases": {
+  "desk-light-en-cozy": {
+   "errors": [],
+   "csp": [],
+   "calls": 98,
+   "tagNames": [
+    "Worker",
+    "General",
+    "Paused one",
+    "Offline one",
+    "Stuck one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-light-en-studio": {
+   "errors": [],
+   "csp": [],
+   "calls": 107,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-light-en-studio-large": {
+   "errors": [],
+   "csp": [],
+   "calls": 106,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-light-en-pixel": {
+   "errors": [],
+   "csp": [],
+   "calls": 100,
+   "tagNames": [
+    "Stuck one",
+    "Worker",
+    "General",
+    "Paused one",
+    "Offline one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-light-en-guild": {
+   "errors": [],
+   "csp": [],
+   "calls": 105,
+   "tagNames": [
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General",
+    "Paused one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-light-en-school": {
+   "errors": [],
+   "csp": [],
+   "calls": 105,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "desk-dark-zh-TW-cozy": {
+   "errors": [],
+   "csp": [],
+   "calls": 104,
+   "tagNames": [
+    "Paused one",
+    "Offline one",
+    "Stuck one",
+    "Worker",
+    "General"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": []
+  },
+  "phone-dark-zh-TW-cozy": {
+   "errors": [],
+   "csp": [],
+   "calls": 106,
+   "tagNames": [
+    "Worker",
+    "General",
+    "Paused one",
+    "Offline one",
+    "Stuck one"
+   ],
+   "tagCss": 3,
+   "zoom": "30%",
+   "chips": [
+    {
+     "t": "總覽",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "工作區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "休息區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "求救區 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "午睡角 2",
+     "whole": true,
+     "inView": false
+    }
+   ]
+  },
+  "phone-light-en-cozy": {
+   "errors": [],
+   "csp": [],
+   "calls": 105,
+   "tagNames": [
+    "Stuck one",
+    "Worker",
+    "General",
+    "Paused one",
+    "Offline one"
+   ],
+   "tagCss": 3,
+   "zoom": "30%",
+   "chips": [
+    {
+     "t": "Whole office",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Work 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Lounge 1",
+     "whole": true,
+     "inView": true
+    },
+    {
+     "t": "Help desk 1",
+     "whole": true,
+     "inView": false
+    },
+    {
+     "t": "Nap corner 2",
+     "whole": true,
+     "inView": false
+    }
+   ]
+  }
+ },
+ "source": "3ed153b1"
+}

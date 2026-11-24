@@ -1,0 +1,54 @@
+{
+ "errors": [],
+ "out": {
+  "desk-zh-TW-light": {
+   "zoom": "60%",
+   "tagsOff": false,
+   "people": 31,
+   "peopleInView": 28,
+   "minChipH": 30,
+   "chipsBad": [],
+   "chips": []
+  },
+  "phone-zh-TW-dark": {
+   "zoom": "29%",
+   "tagsOff": false,
+   "people": 31,
+   "peopleInView": 26,
+   "minChipH": 30,
+   "chipsBad": [],
+   "chips": [
+    "總覽",
+    "工作區 2",
+    "休息區 23",
+    "午睡角 6"
+   ]
+  },
+  "desk-en-dark": {
+   "zoom": "60%",
+   "tagsOff": false,
+   "people": 31,
+   "peopleInView": 28,
+   "minChipH": 30,
+   "chipsBad": [],
+   "chips": []
+  },
+  "phone-en-light": {
+   "zoom": "29%",
+   "tagsOff": false,
+   "people": 31,
+   "peopleInView": 26,
+   "minChipH": 30,
+   "chipsBad": [
+    "Nap corner 6"
+   ],
+   "chips": [
+    "Whole office",
+    "Work 2",
+    "Lounge 23",
+    "Nap corner 6"
+   ]
+  }
+ },
+ "source": "3ed153b1"
+}
