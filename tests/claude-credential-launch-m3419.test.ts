@@ -231,6 +231,18 @@ it("M-3558: any other remote key still refuses, naming it (never channelsEnabled
  const r=run(s.command,f);expect(r.status).not.toBe(0);
  expect(r.stderr).toContain('"forceLoginMethod"');expect(r.stderr).not.toContain(value);
 });
+it("M-3558: the remote cache matrix — {}, channelsEnabled true/false allowed; a wrong type, auth keys, env, unknown and mixed refused; unparsable refused", () => {
+ const f=fixture(),s=stage(f),spec=readManagedClaudeSpec(s.launch.path),remote=join(f.config,'remote-settings.json');
+ const verdict=(body:string)=>{writeFileSync(remote,body);try{managedClaudeAuthInputs(spec);return "ok";}catch(e){return (e as Error).message;}};
+ for(const body of ['{}','{"channelsEnabled":true}','{"channelsEnabled":false}'])expect(verdict(body),body).toBe("ok");
+ expect(verdict('{"channelsEnabled":"x"}')).toContain('has "channelsEnabled"');
+ expect(verdict('{"channelsEnabled":null}')).toContain('has "channelsEnabled"');
+ expect(verdict('{"apiKeyHelper":"x"}')).toContain('has "apiKeyHelper"');
+ expect(verdict('{"env":{"ANTHROPIC_API_KEY":"x"}}')).toContain('has "env"');
+ expect(verdict('{"someFutureKey":1}')).toContain('has "someFutureKey"');
+ const mixed=verdict('{"channelsEnabled":true,"forceLoginOrgUUID":"x"}');expect(mixed).toContain('has "forceLoginOrgUUID"');expect(mixed).not.toContain('channelsEnabled');
+ for(const body of ['{not json','[]','null','"x"'])expect(verdict(body),body).toContain('unavailable');
+});
 it("M-3558: the keys named are a few plain words, whatever the file holds", () => {
  const f=fixture(),s=stage(f),spec=readManagedClaudeSpec(s.launch.path);
  writeFileSync(join(f.config,'remote-settings.json'),JSON.stringify({"a\nb":1,["x".repeat(90)]:1,c:1,d:1,e:1}));

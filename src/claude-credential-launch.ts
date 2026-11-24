@@ -20,7 +20,7 @@ const unavailable = (why?: string) => new UnsupportedCliError(`Managed Claude cr
  * pushes `{ channelsEnabled }` refused every start after the first). Any other key still refuses the launch; the
  * file is fingerprinted either way, so it changing during a start refuses that start.
  */
-export const AUTH_NEUTRAL_REMOTE_KEYS: ReadonlySet<string> = new Set(["channelsEnabled"]);
+export const AUTH_NEUTRAL_REMOTE_KEYS: ReadonlyMap<string, (value: unknown) => boolean> = new Map([["channelsEnabled", (value: unknown) => typeof value === "boolean"]]);
 /** The keys named in a refusal: a few, each a short plain word (the file is the organization's, not ours). */
 const keyNames = (keys: string[]) => keys.slice(0, 3).map((k) => `"${k.replace(/[^\w.-]/g, "?").slice(0, 40)}"`).join(", ") + (keys.length > 3 ? ` and ${keys.length - 3} more` : "");
 export function readClaudeCredentialSelection(home: string, profile: string | null): ClaudeCredentialMetadata | null {
@@ -90,7 +90,8 @@ export function managedClaudeAuthInputs(spec:ManagedClaudeSpec):string {
   // A dynamically supplied policy cannot be proven from auth status's source-class field: only keys that cannot
   // change how Claude signs in are allowed (AUTH_NEUTRAL_REMOTE_KEYS); the refusal names the others.
   if(!cache||typeof cache!=="object"||Array.isArray(cache))throw unavailable();
-  const blocking=Object.keys(cache).filter(key=>!AUTH_NEUTRAL_REMOTE_KEYS.has(key));
+  // An allowed key must hold its own type too (channelsEnabled a boolean): anything else may not mean what it says.
+  const blocking=Object.entries(cache).filter(([key,v])=>!AUTH_NEUTRAL_REMOTE_KEYS.get(key)?.(v)).map(([key])=>key);
   if(blocking.length)throw unavailable(`Claude's remote-settings.json (from your organization) has ${keyNames(blocking)}, which may change how Claude signs in.`);
   paths.add(remoteCache);
  }
