@@ -32,14 +32,17 @@ function run(env: Record<string, string> = {}) {
   const r = spawnSync("bash", [SCRIPT, "0.172.0"], { encoding: "utf8", timeout: 30_000,
     env: { PATH: process.env.PATH ?? "", HOME: d, RIG: rig, MARK: mark, WAIT: "0",
       CAPTURE: "printf 'hello\\nagain\\nafter resume\\n'", ...env } });
-  return { status: r.status, out: r.stdout, err: r.stderr, log: readFileSync(mark, "utf8") };
+  const log = readFileSync(mark, "utf8");
+  // What a failing assertion shows: the exit, the script's log and its stderr (CI has no other view of the run).
+  const why = `exit ${r.status} signal ${r.signal}\n--- log\n${log}--- stderr\n${r.stderr}${r.error ? `--- spawn error\n${r.error.message}` : ""}`;
+  return { status: r.status, out: r.stdout, err: r.stderr, log, why };
 }
 
 describe("mcp-start.sh fails when it proved nothing", () => {
   it("control: every launch starts the server and every turn reaches codex — exit 0, PASS, the log printed", () => {
     const r = run();
-    expect(r.status).toBe(0);
-    expect(r.out).toContain("mcp-start: PASS");
+    expect(r.status, r.why).toBe(0);
+    expect(r.out, r.why).toContain("mcp-start: PASS");
     expect(r.log).toContain("--- reached: hello");
     expect(r.log).toContain("--- reached: after resume");
     expect(r.log).not.toContain("FAILED");
@@ -48,7 +51,7 @@ describe("mcp-start.sh fails when it proved nothing", () => {
 
   it("a launch that fails: exit 1, the step named, the log still printed", () => {
     const r = run({ FAKE_LAUNCH_RC: "2" });
-    expect(r.status).toBe(1);
+    expect(r.status, r.why).toBe(1);
     expect(r.log).toContain("--- FAILED: rig launch main fresh trust");
     expect(r.err).toContain("mcp-start: FAIL");
     expect(r.out).toContain("--- launch-fresh @");
@@ -56,21 +59,21 @@ describe("mcp-start.sh fails when it proved nothing", () => {
 
   it("a launch after which the MCP server never starts: exit 1, said so for each launch", () => {
     const r = run({ FAKE_NO_START: "1" });
-    expect(r.status).toBe(1);
+    expect(r.status, r.why).toBe(1);
     expect(r.log).toContain("--- FAILED: the MCP server did not start after launch-fresh");
     expect(r.log).toContain("--- FAILED: the MCP server did not start after launch-resume");
   });
 
   it("a turn that never reached codex: exit 1, NOT reached for that turn only", () => {
     const r = run({ CAPTURE: "printf 'hello\\nafter resume\\n'" });
-    expect(r.status).toBe(1);
+    expect(r.status, r.why).toBe(1);
     expect(r.log).toContain("--- NOT reached: again");
     expect(r.log).toContain("--- reached: hello");
   });
 
   it("a pane that can't be read: exit 1, every turn NOT reached", () => {
     const r = run({ CAPTURE: "exit 3" });
-    expect(r.status).toBe(1);
+    expect(r.status, r.why).toBe(1);
     for (const t of ["hello", "again", "after resume"]) expect(r.log).toContain(`--- NOT reached: ${t}`);
   });
 });
