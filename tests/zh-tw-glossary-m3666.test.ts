@@ -26,12 +26,13 @@ function files(dir: string, out: string[] = []): string[] {
 /** The clear errors: each with the word to write instead. */
 export const ZH_CLEAR_ERRORS: ReadonlyArray<readonly [string, string]> = [["管理者", "管理員"], ["覧", "覽"], ["占用", "佔用"]];
 
-/** Every hit as `path:line: word → fix`. Released notes (docs/CHANGELOG*) are history; the glossary names the words it forbids. */
+/** Every hit as `path:line: word → fix`. Released notes (docs/CHANGELOG*) and evidence records (docs/evidence/, which quote the
+ *  before values) are history; the glossary names the words it forbids. */
 export function clearErrorHits(paths: string[], read: (p: string) => string = (p) => readFileSync(p, "utf8")): string[] {
   const out: string[] = [];
   for (const p of paths) {
     const rel = relative(ROOT, p).split("\\").join("/");
-    if (/^docs\/CHANGELOG[^/]*\.md$/.test(rel) || rel === "docs/terminology.md") continue;
+    if (/^docs\/CHANGELOG[^/]*\.md$/.test(rel) || rel.startsWith("docs/evidence/") || rel === "docs/terminology.md") continue;
     read(p).split("\n").forEach((line, i) => {
       for (const [bad, good] of ZH_CLEAR_ERRORS) if (line.includes(bad)) out.push(`${rel}:${i + 1}: ${bad} → ${good}`);
     });
@@ -54,9 +55,10 @@ describe("M-3666: the zh-TW clear-error check", () => {
     expect(hits).toEqual(["src/x.ts:2: 管理者 → 管理員", "src/x.ts:3: 覧 → 覽", "src/x.ts:4: 占用 → 佔用"]);
   });
 
-  it("control: released notes and the glossary itself are not scanned", () => {
-    const fake = { [join(ROOT, "docs", "CHANGELOG.zh-TW.md")]: "占用", [join(ROOT, "docs", "terminology.md")]: "管理者" };
-    expect(clearErrorHits(Object.keys(fake), (p) => fake[p]!)).toEqual([]);
+  it("control: released notes, evidence records and the glossary itself are not scanned", () => {
+    const fake = { [join(ROOT, "docs", "CHANGELOG.zh-TW.md")]: "占用", [join(ROOT, "docs", "terminology.md")]: "管理者",
+      [join(ROOT, "docs", "evidence", "zh-tw-audit-m3663", "README.md")]: "瀏覧器", [join(ROOT, "docs", "evidence.md")]: "占用" };
+    expect(clearErrorHits(Object.keys(fake), (p) => fake[p]!)).toEqual(["docs/evidence.md:1: 占用 → 佔用"]);
   });
 });
 
@@ -88,6 +90,7 @@ describe("M-3666: the approved words, on the strings the audit found", () => {
     expect(t("inst.dialog_parked_hold_claude_resume")).toContain("「Resume full session as-is」");
     expect(t("delivery.forged_warning", "peer", "xmsg-1")).toMatch(/；Delivery not found$/);
     expect(t("dashboard.progress.fail.download-failed")).toContain("proxy");
+    expect(t("setup.platform_general.skipped")).toContain("quickstart →「Add another platform」");   // quickstart prints it in English
   });
 
   it("the web UI: persona → 人設, team → 團隊, pane → 窗格, emoji and `workspaces` kept", () => {

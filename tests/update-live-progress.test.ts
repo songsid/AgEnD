@@ -28,7 +28,7 @@ describe("/update live progress", () => {
       expect(editMessage).toHaveBeenLastCalledWith(
         "-1001",
         "message-7",
-        "📦 正在更新 AgEnD... (0s)",
+        "📦 正在更新 AgEnD...（0s）",
         "42",
       );
 
@@ -38,7 +38,7 @@ describe("/update live progress", () => {
       expect(editMessage).toHaveBeenLastCalledWith(
         "-1001",
         "message-7",
-        "⬇️ 下載及安裝中... (3s)",
+        "⬇️ 下載及安裝中...（3s）",
         "42",
       );
 
@@ -47,7 +47,7 @@ describe("/update live progress", () => {
       expect(editMessage).toHaveBeenLastCalledWith(
         "-1001",
         "message-7",
-        "❌ 更新在「下載／安裝」階段失敗：npm timeout (3s)",
+        "❌ 更新在「下載／安裝」階段失敗：npm timeout（3s）",
         "42",
       );
       expect(readUpdateProgress(dir)).toBeNull();

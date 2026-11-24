@@ -66,7 +66,7 @@ describe("#1854 rank 9: directions and claims in Settings and Log", () => {
   it("a loosening change waits for a fleet admin in chat (General topic) or on the host — Web's lead and the Log's wait", () => {
     const [lead, leadZh] = both("settings.webLead"), [wait, waitZh] = both("log.enabling");
     expect([lead, wait].map(s => s.includes("in chat (General topic) or on the host"))).toEqual([true, true]);
-    expect([leadZh, waitZh].map(s => s.includes("在聊天（General topic）或主機上確認"))).toEqual([true, true]);
+    expect([leadZh, waitZh].map(s => s.includes("在聊天（General 主題）或主機上確認"))).toEqual([true, true]);
   });
   it("the public-link hint says previews get their own tunnel (no false \"No preview exposure\")", () => {
     const [en, zh] = both("settings.publicLinkHint");
