@@ -91,4 +91,16 @@ describe("the pages say to verify, in en and zh-TW", () => {
   it("a plain 403 (a manager-only read) still says only managers may see it", async () => {
     expect(await show("agent", "en", { status: 403, body: { error: "forbidden" } })).toContain("Only this agent's managers can see its permissions.");
   });
+  it("Needs you's request title names the agents as the page does (their display names)", async () => {
+    const pg = page({ url: "http://127.0.0.1:19280/ui/needs", storage: { agend_tour_done: "1" } }); mounted.push(pg);
+    g.fetch = async () => ({ ok: false, status: 404, json: async () => ({}) });
+    (await import("/assets/app-i18n.js") as any).setLang("en");
+    const store = await import("/assets/app-store.js") as any;
+    store.appStore.set({ streamOn: () => () => {}, instances: [{ name: "lead", display_name: "Example lead" }, { name: "worker", display_name: "Example worker" }] });
+    const { ContactNeedsItem } = await import("/ui/js/contact-needs.js") as any;
+    await pg.mount(h(ContactNeedsItem, { item: { id: `contact:${TICKET}`, type: "contact", reason: "contact_request", instance: "worker", since: 0,
+      contactTicket: { id: TICKET, source: "lead", target: "worker" } } }));
+    await settle(4);
+    expect(text(pg.root.querySelector(".n-title"))).toBe("Example lead wants to contact Example worker");
+  });
 });
