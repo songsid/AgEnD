@@ -126,8 +126,8 @@ register("orgo", {
   },
   "zh-TW": {
     display: "顯示選項", playMotionOff: "已關閉：系統開了「減少動態效果」",
-    label: "辦公室：每個 team 是一間房間，每個 Agent 一張桌子；General 和未加入 team 的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
-    office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有 team", lobby: "大廳（General、未加入 team）", lobbyRoom: "大廳",
+    label: "辦公室：每個團隊是一間房間，每個 Agent 一張桌子；General 和未加入團隊的 Agent 在大廳。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示整個場景，F 切換全螢幕。",
+    office: "辦公室", allOffice: "整個 fleet", show: "顯示", allTeams: "所有團隊", lobby: "大廳（General、未加入團隊）", lobbyRoom: "大廳",
     people: "成員", peopleN: "成員（{0}）", findPerson: "尋找成員", everyone: "顯示全部", nobody: "沒有符合這個篩選的成員。",
     unseated: "{0} 位沒有座位", skinUnknown: "這裡沒有它的風格「{0}」：以辦公桌顯示。", closed: "休息中", desks: "桌子", tapAgain: "再點一下開啟聊天",
     capWorking: "埋頭打字中", capIdle: "喝茶休息", capPaused: "睡著了", capNeeds: "在呼叫你", capAway: "空位", capStarting: "剛到座位", capQueued: "等待啟動",

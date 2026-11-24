@@ -432,7 +432,7 @@ describe("discord registration includes the new commands", () => {
       setLocale("en");
       expect(t("slash.login")).toBe("Sign in or install a CLI backend remotely");
       setLocale("zh-TW");
-      expect(t("slash.login")).toBe("遠端登入或安裝 CLI Backend");
+      expect(t("slash.login")).toBe("遠端登入或安裝 CLI 後端");
     } finally {
       setLocale("en");
     }
