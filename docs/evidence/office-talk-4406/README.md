@@ -2,7 +2,7 @@
 
 These are captures of the real Office UI, taken in headless Chromium with the smoke fixture on the built-in default style. Two fixture agents, Alpha and Beta; no real names. The chat messages are published the way the fleet publishes them (`emitSseEvent("message")`, as smoke-2861 does). `capture.mts` is the capture script: copy it to `scripts/manual/smoke/` and run it with `REPO=<checkout> OUT=<dir> LABEL=after`, using the same Playwright image the ui-gate smokes use.
 
-- **After:** `62eae8de`, with the phone fixes from the Leader's capture check. The evidence commit after it changes only this folder.
+- **After:** the phone fixes from the Leader's capture check and Prism's r2 (`62eae8de`, then the commit before this folder's). The evidence commit after it changes only this folder.
 - **Before:** `f3a27821`, the #4383 head this branch is merged onto.
 
 | File | What it shows |
@@ -21,9 +21,10 @@ The capture script reads every visible talk control's size, and the size on the 
 
 | Case | Controls | Under 44 px | Off screen | Other |
 |---|---|---|---|---|
-| Box | 7 (點擊 自動 快速 跳過 ×, 送出, 歷史紀錄) | none | none | |
-| Panel | 3 (開啟完整聊天 104 × 44, ×, 送出) | none | none | state pill 閒置 |
-| Bubble | 7 (the bar's pills, 完整回覆, 開啟完整聊天 104 × 44, 送出) | none | none | reply text 11 CSS px (it was about 3 px at 30 %) |
+| Box | 8 (點擊 自動 快速 跳過 ×, 送出, 歷史紀錄, the input) | none | none | input text 16 px |
+| Panel | 4 (開啟完整聊天 104 × 44, ×, 送出, the input) | none | none | state pill 閒置; input text 16 px |
+| Bubble | 8 (the bar's pills, 完整回覆, 開啟完整聊天 104 × 44, 送出, the input) | none | none | reply text 11 CSS px (it was about 3 px at 30 %), its rows 113–158 px down a 513 px canvas |
+| Bubble, short phone (390 × 520: a 189 px canvas) | 8 | none | none | no room over Alpha's head: the bubble sits below it, tail up; its rows 82–127 px down the 189 px canvas, all on screen (`after-phone-short-talk-bubble.png`) |
 
 On a desk with a mouse the controls keep their compact size; the 44 px floor applies under 900 px wide or on a coarse pointer.
 

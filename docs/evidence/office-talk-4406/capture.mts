@@ -17,9 +17,9 @@ const report: any = { label: LABEL, cases: {} };
 // Every fillText on the Office canvas with its size on the page (CSS px): font px × the transform's scale ÷ devicePixelRatio.
 const RECORD = `(() => { const w = window; w.__texts = []; const orig = CanvasRenderingContext2D.prototype.fillText;
   CanvasRenderingContext2D.prototype.fillText = function (s, x, y) { if (this.canvas && this.canvas.classList && this.canvas.classList.contains("oo-canvas")) {
-    const m = this.getTransform(), px = parseFloat((/([0-9.]+)px/.exec(this.font) || [0, 0])[1]); w.__texts.push({ s: String(s), css: px * Math.hypot(m.a, m.b) / (w.devicePixelRatio || 1) }); }
+    const m = this.getTransform(), px = parseFloat((/([0-9.]+)px/.exec(this.font) || [0, 0])[1]); const d = w.devicePixelRatio || 1; w.__texts.push({ s: String(s), css: px * Math.hypot(m.a, m.b) / d, top: (m.d * y + m.f) / d, left: (m.a * x + m.e) / d }); }
     return orig.apply(this, arguments); }; })();`;
-const TAPS = ".ot-tool, .ot-send, .ot-link, .ot-full, .ot-close, .ot-bar .btn, .ot-more";
+const TAPS = ".ot-tool, .ot-send, .ot-link, .ot-full, .ot-close, .ot-bar .btn, .ot-more, textarea.ot-input";
 async function office(c: any, storage: Record<string, string>) {
   const { ctx, page, csp } = await fx.page(c, { storage: { agend_org_mode: "office", ...storage } });
   await page.addInitScript({ content: RECORD });
@@ -45,9 +45,13 @@ async function shoot(key: string, c: any, storage: Record<string, string>, act: 
       .map((e) => { const r = e.getBoundingClientRect(); return { t: ((e.textContent || "").trim() || e.getAttribute("aria-label") || e.className).slice(0, 14), w: Math.round(r.width), h: Math.round(r.height), inView: r.left >= 0 && r.right <= innerWidth + 0.5 && r.top >= 0 && r.bottom <= innerHeight + 0.5 }; }), TAPS);
     const small = taps.filter((x: any) => x.w < 44 || x.h < 44), clipped = taps.filter((x: any) => !x.inView);
     const replyText = await o.page.evaluate((r: string) => ((window as any).__texts as any[]).filter((x) => x.s.length > 3 && r.includes(x.s)).slice(-6).map((x) => Math.round(x.css * 10) / 10), REPLY);
+    const replyRows = await o.page.evaluate((r: string) => { const cv = document.querySelector(".oo-canvas") as HTMLCanvasElement; const rc = cv.getBoundingClientRect();
+      const rows = ((window as any).__texts as any[]).filter((x) => x.s.length > 3 && r.includes(x.s)).slice(-6);
+      return rows.length ? { canvasH: Math.round(rc.height), canvasW: Math.round(rc.width), minTop: Math.round(Math.min(...rows.map((x) => x.top))), maxTop: Math.round(Math.max(...rows.map((x) => x.top))), minLeft: Math.round(Math.min(...rows.map((x) => x.left))) } : null; }, REPLY);
+    const inputFont = await o.page.evaluate(() => { const e = document.querySelector("textarea.ot-input") as HTMLElement | null; return e ? getComputedStyle(e).fontSize : null; });
     const state = await o.page.evaluate(() => document.querySelector(".ot-state")?.textContent ?? null);
     const full = await o.page.evaluate(() => { const e = document.querySelector(".ot-full") as HTMLElement | null; if (!e || e.offsetParent === null) return null; const r = e.getBoundingClientRect(); return { w: Math.round(r.width), h: Math.round(r.height), inView: r.left >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5 }; });
-    report.cases[key] = { errors: o.errors, csp: await o.csp(), panel: panel.length, taps: taps.length, small, clipped, replyTextCssPx: replyText, state, openFullChat: full }; }
+    report.cases[key] = { errors: o.errors, csp: await o.csp(), panel: panel.length, taps: taps.length, small, clipped, replyTextCssPx: replyText, replyRows, inputFont, state, openFullChat: full }; }
   catch (e) { report.cases[key] = { failed: String(e).slice(0, 300), errors: o.errors }; await o.page.screenshot({ path: join(OUT, `${key}-FAILED.png`) }); }
   finally { await o.ctx.close(); }
 }
@@ -61,6 +65,8 @@ try {
     await shoot(`${dev}-talk-box`, c, { agend_org_office_talk: "box" }, async (p) => { msg("user", "How is the build?"); await p.waitForTimeout(600); msg("agent", REPLY); await p.waitForTimeout(2500); });
     await shoot(`${dev}-talk-bubble`, c, { agend_org_office_talk: "bubble" }, async (p) => { await chatWith(p); msg("agent", REPLY); await p.waitForTimeout(3500); });
   }
+  // A short phone (a landscape-ish 390 × 520 window): the stage leaves little room over the heads.
+  if (AFTER) await shoot("phone-short-talk-bubble", PHONE, { agend_org_office_talk: "bubble" }, async (p) => { await p.setViewportSize({ width: 390, height: 520 }); await p.waitForTimeout(800); await chatWith(p); msg("agent", REPLY); await p.waitForTimeout(3500); });
 } finally { await fx.close(); }
 writeFileSync(join(OUT, "report.json"), JSON.stringify(report, null, 2));
 console.log(JSON.stringify(report, null, 2));

@@ -9,6 +9,8 @@
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": null,
       "state": null,
       "openFullChat": null
     },
@@ -20,6 +22,8 @@
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": null,
       "state": null,
       "openFullChat": null
     },
@@ -31,6 +35,8 @@
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": null,
       "state": null,
       "openFullChat": null
     },
@@ -42,6 +48,8 @@
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": null,
       "state": null,
       "openFullChat": null
     },
@@ -49,7 +57,7 @@
       "errors": [],
       "csp": [],
       "panel": 6,
-      "taps": 3,
+      "taps": 4,
       "small": [
         {
           "t": "Open full chat",
@@ -66,6 +74,8 @@
       ],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": "15px",
       "state": "Idle",
       "openFullChat": {
         "w": 107,
@@ -77,7 +87,7 @@
       "errors": [],
       "csp": [],
       "panel": 0,
-      "taps": 7,
+      "taps": 8,
       "small": [
         {
           "t": "Click",
@@ -110,6 +120,12 @@
           "inView": true
         },
         {
+          "t": "Say something ",
+          "w": 845,
+          "h": 39,
+          "inView": true
+        },
+        {
           "t": "Send",
           "w": 82,
           "h": 35,
@@ -124,6 +140,8 @@
       ],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": "15.2352px",
       "state": null,
       "openFullChat": null
     },
@@ -131,7 +149,7 @@
       "errors": [],
       "csp": [],
       "panel": 0,
-      "taps": 7,
+      "taps": 8,
       "small": [
         {
           "t": "Full reply",
@@ -179,6 +197,14 @@
         11,
         11
       ],
+      "replyRows": {
+        "canvasH": 651,
+        "canvasW": 1106,
+        "minTop": 86,
+        "maxTop": 131,
+        "minLeft": 805
+      },
+      "inputFont": "15px",
       "state": null,
       "openFullChat": {
         "w": 107,
@@ -190,10 +216,12 @@
       "errors": [],
       "csp": [],
       "panel": 11,
-      "taps": 3,
+      "taps": 4,
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": "16px",
       "state": "閒置",
       "openFullChat": {
         "w": 104,
@@ -205,10 +233,12 @@
       "errors": [],
       "csp": [],
       "panel": 0,
-      "taps": 7,
+      "taps": 8,
       "small": [],
       "clipped": [],
       "replyTextCssPx": [],
+      "replyRows": null,
+      "inputFont": "16px",
       "state": null,
       "openFullChat": null
     },
@@ -216,7 +246,7 @@
       "errors": [],
       "csp": [],
       "panel": 0,
-      "taps": 7,
+      "taps": 8,
       "small": [],
       "clipped": [],
       "replyTextCssPx": [
@@ -227,6 +257,44 @@
         11,
         11
       ],
+      "replyRows": {
+        "canvasH": 513,
+        "canvasW": 390,
+        "minTop": 113,
+        "maxTop": 158,
+        "minLeft": 193
+      },
+      "inputFont": "16px",
+      "state": null,
+      "openFullChat": {
+        "w": 104,
+        "h": 44,
+        "inView": true
+      }
+    },
+    "phone-short-talk-bubble": {
+      "errors": [],
+      "csp": [],
+      "panel": 0,
+      "taps": 8,
+      "small": [],
+      "clipped": [],
+      "replyTextCssPx": [
+        11,
+        11,
+        11,
+        11,
+        11,
+        11
+      ],
+      "replyRows": {
+        "canvasH": 189,
+        "canvasW": 390,
+        "minTop": 82,
+        "maxTop": 127,
+        "minLeft": 193
+      },
+      "inputFont": "16px",
       "state": null,
       "openFullChat": {
         "w": 104,
