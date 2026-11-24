@@ -677,8 +677,8 @@ are separate UI work; do not claim those screens or a remote-update switch from 
   - **Sign people out after** (登入多久後要重新登入): from 1 hour to 7 days, default 8 hours.
   - **Or after this long without using the Hub** (或多久沒使用 Hub 就登出): from 15 minutes to 24 hours, default 1 hour.
     It can't be longer than the first.
-  - A new length applies to new sign-ins. A shorter one also signs out anyone already signed in longer than it; a
-    longer one doesn't lengthen sign-ins made before it.
+  - A longer sign-in time applies to new sign-ins only. A shorter one also signs out anyone already signed in longer
+    than it, counted from when they signed in. The time without use applies to everyone at once.
   - An open Hub page counts as using it, so the second limit applies only when no Hub page is open.
   - Saving is recorded in the audit log.
 - **Tabs** (M-3162): Administration opens on **Overview** (總覽) where the Hub serves it. The tabs are **Overview**,

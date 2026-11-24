@@ -8,7 +8,7 @@ import { register, t } from "/assets/app-i18n.js";
 register("hubSessionLimits", {
   en: {
     title: "Sign-in", absolute: "Sign people out after", idle: "Or after this long without using the Hub",
-    note: "Applies to new sign-ins. A shorter time also signs out anyone already signed in longer than it.",
+    note: "A longer sign-in time applies to new sign-ins; a shorter one also signs out anyone already signed in longer than it. The time without use applies to everyone at once.",
     activity: "An open Hub page counts as using it: people are signed out for not using it only when no Hub page is open.",
     save: "Save", saving: "Saving…", saved: "Saved.", failed: "Couldn’t save. Try again.", conflict: "Someone else changed this. The current setting is shown; try again.",
     denied: "Only an administrator can change this.", tooLong: "The time without use can’t be longer than the sign-in itself.",
@@ -16,7 +16,7 @@ register("hubSessionLimits", {
   },
   "zh-TW": {
     title: "登入時間", absolute: "登入多久後要重新登入", idle: "或多久沒使用 Hub 就登出",
-    note: "套用於之後的登入。改短時，已登入超過這個時間的人也會被登出。",
+    note: "登入時間改長只套用於之後的登入；改短時，已登入超過這個時間的人也會被登出。沒使用的時間會立即套用到所有人。",
     activity: "開著 Hub 頁面就算在使用：只有沒開任何 Hub 頁面時，才會因為沒使用而登出。",
     save: "儲存", saving: "儲存中…", saved: "已儲存。", failed: "無法儲存，請再試一次。", conflict: "這項設定已被其他人修改，已顯示目前的設定，請再試一次。",
     denied: "只有管理員可以修改這項設定。", tooLong: "沒使用的時間不能比登入時間還長。",

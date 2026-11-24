@@ -98,6 +98,36 @@ describe("M-3592 the sign-in lifetime setting", () => {
     expect(await signedIn(w2, early), "raised").toBe(false);                                      // still ended at 8 h
   });
 
+  it("#4397 review: a limit lowered and raised again before a session is next checked still ended it (absolute and idle)", async () => {
+    const w = await world();
+    const member = await w.r.signIn("member");
+    for (let i = 0; i < 3; i++) { w.advance(30 * MIN); expect(await signedIn(w, member)).toBe(true); }                   // 90 min, in use
+    const admin = await w.r.signIn("admin");
+    expect((await w.r.call(admin, "PUT", PATH, { absoluteMinutes: 60, idleMinutes: 30, ifRevision: 0 })).status).toBe(200);
+    expect((await w.r.call(admin, "PUT", PATH, { absoluteMinutes: 480, idleMinutes: 60, ifRevision: 1 })).status).toBe(200);
+    expect(await signedIn(w, member), "lowered then raised, not checked between").toBe(false);
+
+    const v = await world();
+    const idle = await v.r.signIn("member");
+    v.advance(40 * MIN);                                                                                             // unused 40 min
+    const a2 = await v.r.signIn("admin");
+    expect((await v.r.call(a2, "PUT", PATH, { absoluteMinutes: 480, idleMinutes: 15, ifRevision: 0 })).status).toBe(200);
+    expect((await v.r.call(a2, "PUT", PATH, { absoluteMinutes: 480, idleMinutes: 60, ifRevision: 1 })).status).toBe(200);
+    expect(await signedIn(v, idle), "idle lowered then raised").toBe(false);
+  });
+
+  it("a lower limit pulls a session's stored end in to its sign-in + the limit, never pushes one out", async () => {
+    const w = await world();
+    await w.r.signIn("member");
+    const end = () => (w.r.db.prepare("SELECT s.expires_at, s.created_at FROM hub_sessions s JOIN hub_people p ON p.person=s.person WHERE p.login_label='member' AND s.state='active'").get() as any);
+    const before = end();
+    expect(before.expires_at - before.created_at).toBe(8 * HOUR);
+    expect((await w.r.call(w.admin, "PUT", PATH, { absoluteMinutes: 120, idleMinutes: 60, ifRevision: 0 })).status).toBe(200);
+    expect(end().expires_at - end().created_at).toBe(2 * HOUR);
+    expect((await w.r.call(w.admin, "PUT", PATH, { absoluteMinutes: 600, idleMinutes: 60, ifRevision: 1 })).status).toBe(200);
+    expect(end().expires_at - end().created_at).toBe(2 * HOUR);
+  });
+
   it("the idle limit applies to every session at once: unused longer than it, signed out; used within it, kept", async () => {
     const w = await world();
     const a = await w.r.signIn("member");

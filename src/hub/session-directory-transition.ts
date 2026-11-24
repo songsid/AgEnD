@@ -90,7 +90,9 @@ export function takeHubDirectorySessionRotation(handle: HubDirectorySessionRotat
         || readHubSessionEpoch(db) !== expectedEpoch || !current(db, r, state.old.person, expectedEpoch, now)
         || r.token_hash !== state.old.token_hash || r.created_at !== state.old.created_at || r.expires_at !== state.old.expires_at) throw new HubProtocolError("revoked");
       // Return only copied SQL values. The caller advances the epoch, then inserts with NO further application callbacks.
-      return { tokenHash: hash(state.token), id: state.newId, person: state.old.person, at: now, expiresAt: state.old.expires_at };
+      // M-3592: the successor keeps the predecessor's sign-in time and end, so an administrator's lower sign-in limit
+      // still counts from when the person signed in, not from the rotation.
+      return { tokenHash: hash(state.token), id: state.newId, person: state.old.person, at: now, signedInAt: state.old.created_at, expiresAt: state.old.expires_at };
     },
     committed(operation: HubDirectorySettingsOperation) {
       state.phase = "committed"; state.operationId = operation.id; state.nextEpoch = operation.directoryEpoch;

@@ -95,6 +95,13 @@ export class HubSessionLimitSettings {
       db.prepare(`INSERT INTO hub_session_limits VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET
         absolute_minutes=excluded.absolute_minutes, idle_minutes=excluded.idle_minutes, revision=excluded.revision, set_at=excluded.set_at`)
         .run(input.absoluteMinutes, input.idleMinutes, before.revision + 1, this.core.now());
+      // #4397 review: the new limits are written into the sessions now, not only when each is next used — so a lower
+      // limit raised again before a session is next checked still ended it. Each active session's end is pulled in to
+      // its sign-in + the absolute limit (never pushed out); any already past it, or unused longer than the idle limit,
+      // ends now.
+      const now = this.core.now(), absMs = input.absoluteMinutes * 60_000, idleMs = input.idleMinutes * 60_000;
+      db.prepare("UPDATE hub_sessions SET expires_at=created_at+? WHERE state='active' AND expires_at>created_at+?").run(absMs, absMs);
+      db.prepare("UPDATE hub_sessions SET state='ended' WHERE state='active' AND (expires_at<=? OR ?-seen_at>?)").run(now, now, idleMs);
       this.core.audit(tx, { requestId: ctx.requestId,
         actor: permit.actor.kind === "directory" ? { kind: "person", person: permit.actor.person } : { kind: "local-host" },
         action: "session.limits-updated", result: "completed",
