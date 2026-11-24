@@ -355,6 +355,30 @@ What is real and what is not:
 
 R1 comes first: it needs nothing new from any Fleet, and it shows the idea to everyone in a room at once.
 
+## Decided while building (M-3533)
+
+Settled with the builder during the build; where one differs from the text above, this section is the current one.
+
+- **Office options (R1b).** A room's office has no options row. Hide paused, bedtime, dialogue and the key open
+  from a gear at the bottom of the zoom stack, and from "…" on a phone. The Fleet office is unchanged.
+- **Compact member list (M1).** People: the viewer first, then by name, the same inside "Not online". Owner
+  groups: the viewer's own first, then by owner name, keyed by the owner's id. Same-named agents: by owner name,
+  then id. While a filter is on, a fold's number is the rows under it and the headings say "matches n / total";
+  the summary line keeps the room's counts. Rows and folds are at least 44 px on a phone.
+- **Look cards are three slices (R2).** R2a: colour and avatar from what the Fleet already sends. R2b: the
+  pictured avatar in a new capped frame. R2c: the agent's own character pictures in the room office.
+- **Colour (R2a).** The colour is the one the owner's Fleet gives the agent: chosen, else its automatic per-agent
+  identity colour. The backend's colour, which the owner's own office uses when nothing is chosen, is never
+  copied: the Hub does not show an agent's backend. This corrects "the same colour as in its owner's office" in
+  2.3 for that case.
+- **Avatar in the member list (R2a).** The avatar (emoji, else initial on the colour; a neutral disc with a ring
+  when there is no look) takes the place of the source badge; the source stays in the tooltip, the accessible
+  name and the card. People's rows have none. The room assistant has the Hub's "H" disc. The card keeps the
+  figure until R2b.
+- **Pictures (R2b).** Each place shows what the Fleet shows in the same kind of place: the card the identity
+  card's picture, the small avatar the chat avatar. The small avatar is sent already reduced. Over the 512 KB
+  cap, drop the character pictures first, then the portrait, never the small avatar.
+
 ## Questions for the owner
 
 **Answered by the owner on 2026-11-23: all six as recommended** (「6 題都照建議」, relayed by the leader). The
