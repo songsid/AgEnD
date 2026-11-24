@@ -101,7 +101,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
@@ -132,7 +132,7 @@ register("orgo", {
     b_working: "處理中|打字中…|快好了|專心中|再測一次", b_idle: "喝茶中|隨時可以開工|伸個懶腰|有事找我嗎？",
     b_paused: "Zzz…|晚點回來", b_stopped: "下班了|Zzz…", b_needs: "需要你！|有個問題|在這裡！",
     b_crashed: "糟糕，當掉了|救命！", b_stuck: "嗯，卡住了？|還在想…",
-    hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
+    options: "辦公室選項", hideAsleep: "隱藏暫停與停止的成員", nightOn: "0–6 點就寢：閒著的人去睡", playOn: "拖曳與摸頭", playStill: "開啟「減少動態效果」時關閉", layoutIgnored: "它儲存的配置不適用這個風格：以風格本身的配置顯示。",
     styleForAll: "整個 fleet 的風格，所有人共用：每台裝置與分享連結都一樣", styleHere: "這個瀏覽器裡整個 fleet 的風格",
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
@@ -842,7 +842,10 @@ export function OfficeKey({ pal }) {
  * page's own stream (the fleet's offices, acts and skins); `storage` where this browser's choices are kept (not the
  * Fleet office's); `cardRows(name)` a card's rows instead of the office's (the room's: owner, introduction); `words(node)`
  * a person's state and activity in the page's own words ({ state, now }: the room's member list's), instead of the Fleet's;
- * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `officesKey` read the offices
+ * `foldBar` (with `onMore`): no options row over the scene on a desk either — the options open in the sheet from a button
+ * in the zoom stack (a Hub room's office: the scene right under the room's header, M-3533 #4370);
+ * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `cardName(name)` a card's
+ * title instead of the person's name (the room's: the agent's own, without the owner its scene label carries); `officesKey` read the offices
  * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
  */
 function ensureDialogueStyle() {
@@ -853,11 +856,11 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, officesKey = undefined }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
-  const phone = useOfficePhone(), compact = phone && typeof onMore === "function";
+  const phone = useOfficePhone(), compact = phone && typeof onMore === "function", folded = compact || (foldBar && typeof onMore === "function");
   const store = useMemo(() => createOfficeStore({ ...(lease ? { fetch: (path, o) => lease.fetch(path, o) } : {}), ...(storage ? { storage } : {}) }), [lease, storage]);
   const streamOn = () => (stream === false ? null : appStore.get().streamOn);
   const stateOf = (node) => (words ? words(node).state : stateWords(node));
@@ -1221,8 +1224,11 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const nodes = all.filter(keep);
     if (zones) {
       const skKey = shared ? "" : officeKey;
-      if (seatKeyRef.current !== skKey) {
-        seatKeyRef.current = skKey;
+      // M-3533 (#4370): the seats given restart when the office or its style changes — on a shared page too (a room's
+      // office, a share link), whose per-device seat choices are not kept (skKey ""), so a style with more seats is not
+      // drawn with the old one's overflow spots.
+      if (seatKeyRef.current !== officeKey) {
+        seatKeyRef.current = officeKey;
         seatsRef.current = new Map();
         seatPrefsRef.current = skKey ? store.seats(skKey) : {};
       }
@@ -2334,13 +2340,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
-    ${compact ? null : html`<div class="oo-bar">${barItems}</div>`}
-    ${compact && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
-      <div class="oo-sheet-tiles">
+    ${folded ? null : html`<div class="oo-bar">${barItems}</div>`}
+    ${folded && more ? html`<${Dialog} title=${to("office")} cls="oo-sheet" onClose=${closeMore}>
+      ${compact ? html`<div class="oo-sheet-tiles">
         ${tile("fitwidth", to("fit"), () => { closeMore(); fit(); }, "oo-sheet-fit")}
         ${tile("fitwidth", to("fill"), toggleFill, "oo-sheet-fill", fitMode === "cover")}
         ${tile("fullscreen", to("fullscreen"), () => { closeMore(); enterFs(); }, "oo-sheet-fs")}
-      </div>
+      </div>` : null}
       ${typeof onLive === "function" ? html`<label class="check oo-sheet-live"><input type="checkbox" checked=${!!live} onChange=${() => onLive(!live)} /><span>${t("orgc.live")}</span></label>` : null}
       <div class="oo-bar oo-sheet-bar" onClick=${sheetClick}>${barItems}</div>
     </${Dialog}>` : null}
@@ -2367,7 +2373,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         ${tipDesk.office ? html`<div class="muted oo-tip-office">${tipDesk.office}</div>` : null}
       </div>` : null}
       ${cardOf ? html`<${OfficeCard} key=${cardOf.key}
-        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null,
+        model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
         avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
@@ -2393,7 +2399,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
         return html`<li key=${d.key}>${d.node.i
-          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
+          ? html`<button type="button" class="oo-desk" data-name=${d.node.name} data-key=${d.key} data-slot=${Number.isInteger(d.box?.slot) ? d.box.slot : undefined} aria-label=${`${full}${where}${cap ? ` · ${cap}` : ""}.`} aria-haspopup="dialog"
               onFocus=${() => setTip(d.key)} onBlur=${() => setTip(null)} onClick=${() => { cardFrom.current = d.key; setCard((cur) => (cur === d.key ? null : d.key)); }}>${nt.primary}</button>`
           : html`<span class="oo-desk" data-name=${d.node.name} data-key=${d.key}>${full}</span>`}</li>`;
       })}</ul>
@@ -2405,6 +2411,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <button type="button" class=${`icon-btn oo-fill${fitMode === "cover" ? " on" : ""}`} aria-pressed=${fitMode === "cover" ? "true" : "false"} aria-label=${to("fillTitle")}
           title=${to("fillTitle")} onClick=${toggleFill}>${to("fill")}</button>
         <button type="button" class="icon-btn oo-fs" aria-label=${to(fs ? "exitFullscreen" : "fullscreen")} title=${to(fs ? "exitFullscreen" : "fullscreen")} onClick=${toggleFs}><${Icon} name=${fs ? "fullscreenexit" : "fullscreen"} size=${16} /></button>
+        ${folded && !compact ? html`<button type="button" class="icon-btn oo-options" aria-haspopup="dialog" aria-expanded=${more ? "true" : "false"} aria-label=${to("options")} title=${to("options")} onClick=${() => onMore(!more)}><${Icon} name="settings" size=${16} /></button>` : null}
       </div>
       ${showSnacks ? html`<div ref=${snackTrayRef} class="oo-snacks" role="toolbar" aria-label=${to("snacks")}>
         ${packSnacks.map((sn) => {

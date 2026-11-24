@@ -160,6 +160,16 @@ describe("the room page", () => {
       expect([docked(pg), !!q(pg, ".hub-room-office"), pg.window.location.search.includes("view=office")]).toEqual([true, false, false]);
     } finally { restore(); }
   });
+  it("desktop: no options row over the scene; the zoom stack's options button opens them (#4370)", async () => {
+    const { pg, restore } = await roomPage();
+    try {
+      fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo"));
+      expect([q(pg, ".hub-room-office .oo > .oo-bar"), !!q(pg, ".hub-room-office .oo-zoom .oo-options")]).toEqual([null, true]);
+      fire(q(pg, ".oo-zoom .oo-options"), "click"); await until(() => q(pg, ".oo-sheet .oo-hide-asleep"));
+      // The options and the key, not the zoom stack's own fit / fill / full screen again.
+      expect([!!q(pg, ".oo-sheet .oo-sheet-bar .oo-hide-asleep"), !!q(pg, ".oo-sheet .oo-key-btn"), q(pg, ".oo-sheet .oo-sheet-tiles")]).toEqual([true, true, null]);
+    } finally { restore(); }
+  });
   it("a draft in the box is still there after a look at the office", async () => {
     const { pg, restore } = await roomPage();
     try {
@@ -271,10 +281,12 @@ describe("an office read that keeps failing", () => {
 });
 
 describe("the card's @ it sends to the member picked (#4355 review)", () => {
+  const cardTitles: string[] = [];
   const askFrom = async (pg: AppPage, pick: (label: string) => boolean) => {
     fire(pg.root.querySelectorAll(".hub-room-tabs .seg-item")[1], "click"); await until(() => q(pg, ".hub-room-office .oo-desk"));
     const desk = [...pg.root.querySelectorAll(".hub-room-office .oo-desk")].find((e: any) => pick(e.textContent)) as any;
     fire(desk, "click"); await until(() => q(pg, ".oo-card-action"));
+    cardTitles.push(q(pg, ".oo-card-name").textContent);
     const before = q(pg, ".hub-dock textarea")?.value ?? "";
     fire(q(pg, ".oo-card-action"), "click"); await until(() => docked(pg) && q(pg, ".hub-dock textarea")?.value !== before);
     return q(pg, ".hub-dock textarea");
@@ -287,6 +299,8 @@ describe("the card's @ it sends to the member picked (#4355 review)", () => {
       // The office's state names both "Notes"; the first (a's figure) is labelled with its owner alone.
       const box = await askFrom(pg, (l) => l === `Notes (${a.owner.name})`);
       expect(box.value).toBe(`@${a.name} `);
+      // The card says the agent's own name: the owner the scene's label adds is on the card's Owner row already (Lumen).
+      expect(cardTitles.at(-1)).toBe("Notes");
       const post = await send(pg, posts, box);
       expect(post.mentions).toContain(a.id); expect(post.mentions).not.toContain(b.id);
 
