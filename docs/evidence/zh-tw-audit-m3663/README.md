@@ -2,7 +2,7 @@
 
 The audit at snapshot `074e58860` lists fifteen findings: one Japanese character in 瀏覧器, five 占→佔 values and nine half-width parenthesis pairs. The Leader supplied the exact rows inline. Each was rechecked against alpha base `3ed153b1541f020aa027781f905a615b2d3e63df`; all fifteen findings are still present, so none is stale on this tip.
 
-The patch changes only those values: 瀏覽器; the five listed occupancy/cost-share labels; eight `update.progress.*` messages and `progress.trace_title` with full-width parentheses. Characters are typed directly. A source scan finds no remaining 覧 under `src`. Literal commands, placeholders, English text and glossary terms are unchanged. Three existing test files update only expected zh text to match; their lifecycle/error/ownership assertions remain intact.
+The patch changes only those values: 瀏覽器; the five listed occupancy/cost-share labels; eight `update.progress.*` messages and `progress.trace_title` with full-width parentheses. Characters are typed directly. A source scan finds no remaining 覧 under `src`. Literal commands, placeholders, English text and glossary terms are unchanged. Six existing test files update only expected zh text to match; their lifecycle/error/ownership assertions remain intact.
 
 [Every row's before/after disposition and main presence](audit-dispositions.json), [source/proof bindings](verification.json).
 
@@ -28,3 +28,9 @@ The last scan is successful when there are zero matches. The copy-only tests use
 Main snapshot `22c1977842a45350a0937ee9d184083bd6f74796` contains twelve affected values. It has no `settings-hub-setup-strings.js`, `hub-admin-overview.js` or `progress.trace_title`; those three rows are dev-only, not feature backports. Recheck fresh main after the actual dev merge and carry the twelve present fixes as a standalone twin. The parent delivery is complete only after both required branches and checks are delivered.
 
 Rollback only these zh values and their matching expected-copy literals in a normal follow-up. No runtime, stored configuration, API or database rollback is needed.
+
+## R1 complete expected-copy coverage
+
+Review and exact-head CI identified three more existing test files with old zh expectations. Four lines now use the full-width characters: the tool-history prefix, two restart-progress messages, and healthy update completion. English rows, timing, cleanup, cancellation and message-ownership assertions are unchanged. All four production files and the fifteen audit dispositions remain byte-identical to the reviewed head.
+
+The complete grep set for the affected message text and keys covers eight full suites; all176 tests PASS. This overlaps the earlier61-case result and must not be added to it as unique coverage. The files are restart-progress, update-welcome-quiet-1854, slash-authz, command-gates-by-platform, update-progress-honest-2476, update-live-progress, live-progress-cancel and install-user-manager-3630. The exact original failed-job logs were inspected before correction; their hashes are retained privately. The unrelated Codex audit reached-hello assertion is untouched; its local pass was reported by the reviewer, not rerun by this author. Fresh exact-head CI is still required.
