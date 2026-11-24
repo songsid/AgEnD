@@ -26,12 +26,13 @@ try {
   const person = { kind: "person", name: "Example owner" } as const;
   const names = fx.instances.map((i: any) => i.name);
   const project = board.createProject(person, { name: "Example project" });
-  // 60 main tasks finished over the last 12 days (a few cancelled), and some at work.
+  // 60 main tasks finished over the last 11 days (a few cancelled), and some at work.
   for (let i = 0; i < 60; i++) {
     const c = board.createCards(person, { cards: [{ title: `Example task ${i + 1} · 示範任務 ${i + 1}`, assignee: names[i % names.length], project: project.id }] }).cards[0];
     const cancel = i % 13 === 7;
     board.moveCard(person, c.code, cancel ? "cancelled" : "done", cancel ? { reason: "Not needed" } : { result: "Done." });
-    const at = new Date(Date.now() - (i * 5 + 1) * 3_600_000).toISOString();
+    // 40 in the last 3 days (more than the Done column's 20), the rest from 80 hours to 11 days ago (archived).
+    const at = new Date(Date.now() - (i < 40 ? i * 1.5 + 1 : 80 + (i - 40) * 10) * 3_600_000).toISOString();
     db.prepare("UPDATE tasks SET done_at = ?, updated_at = ? WHERE code = ?").run(cancel ? null : at, at, c.code);
   }
   for (const [title, to] of [["Plan the next release · 規劃下一版", "claimed"], ["Fix the sign-in page · 修登入頁", "blocked"], ["Write the guide · 寫說明", "open"]] as const) {
