@@ -74,6 +74,15 @@ describe("M-3526: shorter words, the same schemas", () => {
     expect(Buffer.byteLength(JSON.stringify(menu("worker")))).toBeLessThan(46_000);   // 43.4 KB now; 59.9 KB before
     expect(Buffer.byteLength(JSON.stringify(menu("general")))).toBeLessThan(66_000);   // 80.9 KB before
   });
+  it("the task tool tells an agent how to point at a card: #M-3, not a URL — one sentence, in the description only (an agent once built a localhost link)", () => {
+    const description = TOOLS.find(t => t.name === "task")!.description!;
+    expect(description).toContain("In a reply, write a card as #M-3, not a URL: the web chat shows it as a chip.");
+    expect(description.split("#M-3")).toHaveLength(2);                                  // said once
+    expect(Buffer.byteLength(description), "the sentence is the only growth: 930 bytes now").toBeLessThan(1000);
+    // Not repeated where the prompt is paid for every session: the skill is read on demand, and the fleet prompt is the diet's (M-3528).
+    expect(readFileSync(join(process.cwd(), "src/general-knowledge/skills/task-board/SKILL.md"), "utf8")).not.toContain("#M-3");
+    expect(readFileSync(join(process.cwd(), "src/instructions.ts"), "utf8")).not.toContain("#M-3");
+  });
   it("the task tool points to its skill, which keeps the rules the description no longer spells out", () => {
     expect(TOOLS.find(t => t.name === "task")!.description).toContain("task-board skill");
     const skill = readFileSync(join(process.cwd(), "src/general-knowledge/skills/task-board/SKILL.md"), "utf8");

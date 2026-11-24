@@ -1,0 +1,4 @@
+---
+section: Fixed
+---
+- **An agent's `#M-3` in a reply is a card chip, and agents know to write it.** In an instance's web chat, `#M-3` in a person's message became a chip (number, title, status) that opens the card, but the same `#M-3` in the agent's reply stayed plain text, and nothing told the agent the form exists, so it built `http://localhost:…/ui/fleet?card=M-3` links that do not open from another machine or a phone. An agent's reply now draws the chip for a card that exists, by the same rule as a person's message (not in code, a link label or a URL; a number that is no card stays text), and the `task` tool's description says: in a reply, write a card as `#M-3`, not a URL. A card the viewer may not see, such as a hidden instance's card over the public link, is still left out of the chip's answer: the number stays text and no title, status or owner is shown. Nothing is stored and no setting changed.
