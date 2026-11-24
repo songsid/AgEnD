@@ -1,0 +1,209 @@
+{
+  "sourceHead": "c4e82abef4b83022eb4b42e7fdb1d7de5edf7e25",
+  "baseRef": "074e5886017b12fad33f7c8b33677705b918012b",
+  "dirty": [],
+  "checks": [
+    {
+      "name": "desk-en-light-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the panel takes the members rail's place",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: Reply about this page puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: the panel takes the members rail's place",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: Reply about this page puts its line in the room's box",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-before: the card says previews are not available here (the bug)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-before: no page errors",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: the card offers Preview",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: no \"not available\" note",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: the page runs in the card (sandbox allow-scripts, from the Hub's preview listener)",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: Open in panel opens the room's side panel",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: no page errors",
+      "ok": true
+    }
+  ],
+  "pictures": [
+    {
+      "path": "m3591-desk-en-light-before-1-card.png",
+      "sha256": "a685ee2817268f65a2fd515544d40fdd5b06d14b2325f90ea6846c759b3665b6"
+    },
+    {
+      "path": "m3591-desk-en-light-after-1-card.png",
+      "sha256": "de9696218f84a47fbeb3b11d92f4c5b0c6260022ef15eecbf8414d907d29017d"
+    },
+    {
+      "path": "m3591-desk-en-light-after-2-running.png",
+      "sha256": "934bf25d195bf0b2662f5e9a6561662c15cb54649139db6cf6701448bf0af34b"
+    },
+    {
+      "path": "m3591-desk-en-light-after-3-panel.png",
+      "sha256": "59b349079e0afc6ec9e12311e77ba14cd7fa2aa2f80ad6e9a5e14f2ee8bfb0af"
+    },
+    {
+      "path": "m3591-desk-en-light-after-4-reply-line.png",
+      "sha256": "6b9a386ada2cb60c16fae271d0073706d8b92f43e79bba079ecf83b174ccb96c"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-before-1-card.png",
+      "sha256": "1f7934d41012ab757d3d150feadd72101bc8fe518bb57d2d1b01b3b0d3b6ea1a"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-1-card.png",
+      "sha256": "fb5610fc4a3a076b2b310ca489c26760a1a6d987ac1b154a05ec3cdc53a060dd"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-2-running.png",
+      "sha256": "b3984fe16b684580adbbbc60636a78994c27fc09fe1147e102b9f467800af95e"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-3-panel.png",
+      "sha256": "59d97320085dd72842e1a6c4e272c9cc022652a8f8e93f27f77f878a1cd29755"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-4-reply-line.png",
+      "sha256": "e6d29857f1225eb42bf671646e37ed4f5fda5d7664eb3792294db09296145b81"
+    },
+    {
+      "path": "m3591-phone-en-light-before-1-card.png",
+      "sha256": "4b9f7676fe34515d7f6e6feccfb3f21cbea067b3a61338907751767e7c2aa571"
+    },
+    {
+      "path": "m3591-phone-en-light-after-1-card.png",
+      "sha256": "0260cbdd00ae873f86f6f75e114b09ab31a495445e119a8dcc392270dec61f98"
+    },
+    {
+      "path": "m3591-phone-en-light-after-2-running.png",
+      "sha256": "9d7511f384098f0cd8b5f310d2dabab95a18cb0a7dab4d4d4480d79fc3bb6199"
+    },
+    {
+      "path": "m3591-phone-en-light-after-3-panel.png",
+      "sha256": "452642fe12ddde30875d5525bc59ba77c24c8ef45ce1f078810b1e8969ffe7b9"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-before-1-card.png",
+      "sha256": "c81cd729a89ff4d09df759700cb963eb81c19687c922b519037734fe29f494c7"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-1-card.png",
+      "sha256": "3556fee9e365725aa2477ee7cf3855ec8d6cda8cf9e96244d39988218b364f9f"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-2-running.png",
+      "sha256": "47aa311f997946b5ae27362bc6c6d1f9e471ec0a3e449d9b67f2f23fd9a0b836"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-3-panel.png",
+      "sha256": "908b8b16616ce86a24fc3f426179337e3e330b25d20b973a0e889039c9f3f4c1"
+    }
+  ]
+}
