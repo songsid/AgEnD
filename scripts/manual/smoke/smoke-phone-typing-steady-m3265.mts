@@ -20,6 +20,11 @@
 // Fails on #4057 (71d5e04e3) and beta.9: 注音 at a person's pace (436 → 480 on every character) and per key while candidates show
 // (keys, keys-pan); on #4026's base English fails too.
 //   PW_DIR=<dir with playwright-core> REPO=<checkout> OUT=<dir> [PW_ENGINE=webkit] [MODELS=en,zhuyin] npx tsx scripts/manual/smoke/smoke-phone-typing-steady-m3265.mts
+// M-3705 (ui-gate flake, ad158c5f): the page's clock is the test's while it types. The app takes a reading that has held
+// DOWN_HOLD_MS (300 ms) as a real change (M-3206), and a reading here lives until the next step sets another — so on a busy
+// runner the CDP round trips of one step (the key, its wait, two reads) once kept key 1's bar (436) for over 300 ms, and the
+// app rightly followed it (shell writes 2: 436 on key 1, 480 at settle). From the keyboard settled on, the page's timers,
+// performance.now and frames run only through page.clock.runFor: each reading lives exactly the time a model gives it.
 // ui-gate: {"name": "Phone typing steady per character (IME too)", "hp": 19681}
 import { bootFixture, caseName, freshPage, matrix, mounted, shotPath } from "../smoke-fixture/index.mts";
 
@@ -73,6 +78,7 @@ try {
       const failed: string[] = [];
       const need = (ok: boolean, what: string) => { if (!ok) failed.push(what); };
       const p = await freshPage(fx, c, { account: "operator", path: `/ui/chat/${encodeURIComponent(name)}`, beforeNavigate: async (ctx: any, pg: any) => {
+        await pg.clock.install();   // M-3705: real time until the keyboard has settled; paused for the typing (below)
         await ctx.addInitScript({ content: "window.__name = (f) => f;" + FAKE_VV + WRITES + (STANDALONE ? STANDALONE_JS : "") });
         // Chromium: the iPhone's safe area (an installed app draws under the status bar and over the home indicator).
         if (STANDALONE && !WEBKIT) await (await ctx.newCDPSession(pg)).send("Emulation.setSafeAreaInsetsOverride", { insets: INSET });
@@ -91,6 +97,14 @@ try {
         document.getElementById("msgIn")!.dispatchEvent(new CompositionEvent(t, { bubbles: true, data: d })), [type, data] as [string, string]);
       await page.locator("#msgIn").tap(); await page.waitForTimeout(200);
       await vv(480); await page.waitForTimeout(1000);                     // the keyboard up, past the focus follow window
+      // M-3705: from here the page's time moves only as the model says (the harness's own latency is never a reading's age).
+      // pauseAt takes a time ahead of the page's clock (it fast-forwards to it, so never the past): 250 ms on, which only adds to
+      // the settle above; a busy runner that let the page's clock pass it first is asked again.
+      for (let at = 0; ; at++) {
+        try { await page.clock.pauseAt(Date.now() + 250); break; }
+        catch (e) { if (at >= 4 || !/fast-forward to the past/.test(String(e))) throw e; }
+      }
+      const tick = (ms: number) => page.clock.runFor(ms);
       await page.evaluate(() => (window as any).__writes());
       const per: Array<{ step: string; writes: string[]; moved: boolean; covered: boolean }> = [];
       let last = await bottom();
@@ -106,37 +120,37 @@ try {
       };
       if (model === "en") {
         const readings: Array<[number, number]> = [[436, 0], [480, 0], [480, 12], [480, 0], [844, 0], [480, 0], [436, 0], [480, 0]];
-        for (const [i, [h, top]] of readings.entries()) await step(`key ${i + 1} @${h}/${top}`, async () => { await vv(h, top); await page.keyboard.type("hello wo"[i]!); await page.waitForTimeout(60); });
-        await step("settle", async () => { await page.waitForTimeout(600); });
+        for (const [i, [h, top]] of readings.entries()) await step(`key ${i + 1} @${h}/${top}`, async () => { await vv(h, top); await page.keyboard.type("hello wo"[i]!); await tick(60); });
+        await step("settle", async () => { await tick(600); });
       } else if (model === "keys" || model === "keys-pan") {
         // The user's iPhone (iOS 27.3, portrait, 注音): each key while the candidates show changes the candidate row, and the
         // view with it — a few px of height (keys), or of pan (keys-pan) — through compositionupdate.
         const jitter = [0, 5, -2, 3, 0, 7, 1, 4];
         for (const [c, ch] of [..."你好"].entries()) {
-          await step(`char ${c + 1} bar`, async () => { await ime("compositionstart", "ㄋ"); await vv(436); await page.waitForTimeout(150); });
+          await step(`char ${c + 1} bar`, async () => { await ime("compositionstart", "ㄋ"); await vv(436); await tick(150); });
           for (const [k, d] of jitter.entries()) {
             await step(`char ${c + 1} key ${k + 1}`, async () => {
               await ime("compositionupdate", "ㄋㄧ".slice(0, 1 + (k % 2)));
               if (model === "keys") await vv(436 - d); else await vv(436, Math.max(0, d));
-              await page.keyboard.type("abcdefgh"[k]!); await page.waitForTimeout(150);
+              await page.keyboard.type("abcdefgh"[k]!); await tick(150);
               await during();
             });
           }
-          await step(`char ${c + 1} chosen`, async () => { await ime("compositionend", ch); await vv(480); await page.waitForTimeout(PAUSE); });
+          await step(`char ${c + 1} chosen`, async () => { await ime("compositionend", ch); await vv(480); await tick(PAUSE); });
         }
       } else {
         const pause = model === "zhuyin-fast" ? 120 : PAUSE;
-        if (model === "bar-stays") await vv(436), await page.waitForTimeout(600), await page.evaluate(() => (window as any).__writes()), last = await bottom();
+        if (model === "bar-stays") await vv(436), await tick(600), await page.evaluate(() => (window as any).__writes()), last = await bottom();
         const chars = "你好今天";
         for (const [i, ch] of [...chars].entries()) {
           await step(`char ${i + 1}`, async () => {
             await ime("compositionstart", "ㄋ");
             if (model !== "bar-stays") await vv(436);
-            for (const k of "abc") { await page.keyboard.type(k); await page.waitForTimeout(150); }
+            for (const k of "abc") { await page.keyboard.type(k); await tick(150); }
             await during();
             await ime("compositionend", ch);
             if (model !== "bar-stays") await vv(480);
-            await page.waitForTimeout(pause);
+            await tick(pause);
           });
         }
       }
@@ -158,8 +172,9 @@ try {
       // Under it only for #4026's 300 ms when the first bar comes up (the opening steps), never after.
       need(typed.every((s) => !s.covered), `${model}: the box is never under the view (M-3244) (${typed.filter((s) => s.covered).map((s) => s.step).join(", ")})`);
       // Typing stopped: the shell is the view again (M-3111: no band between the box and the keyboard) — one move, at the end.
-      await page.waitForTimeout(2500);
+      await tick(2500);
       const rest = { shell: await shellH(), view: await view() };
+      await page.clock.resume();
       need(rest.shell === `${rest.view}px`, `${model}: once typing stops, the shell is the view again (${JSON.stringify(rest)})`);
       report[`${caseName(c)}/${model}`] = { shellWrites, boxWrites, titleBar, moves, rest, steps: per.map((s) => `${s.step}: ${s.writes.length ? s.writes.join(" · ") : "—"}${s.moved ? " (moved)" : ""}${s.covered ? " (covered)" : ""}`) };
       need(errs.length === 0, `page errors: ${errs.join(" | ")}`);
