@@ -5,7 +5,7 @@
 // Filters stack (each "is" or "is not" some values; a main task stays when it or one of its sub tasks matches them all)
 // and ride in the address with the project (`?tp=`, `?tf=`), so a filtered board can be sent as a link; the last ones
 // and the display choices are remembered on this device. No style attribute anywhere (the CSP).
-import { html, useState } from "/assets/app-html.js";
+import { html, useEffect, useRef, useState } from "/assets/app-html.js";
 import { t, register, lang } from "/assets/app-i18n.js";
 import { Icon } from "/assets/ui-icons.js";
 import { Menu } from "/assets/ui-menu.js";
@@ -308,25 +308,54 @@ export function ColumnScroll({ reach, onScroll }) {
     ${btn(-1, "prev", reach.left, t("taskview.columnsLeft"))}${btn(1, "next", reach.right, t("taskview.columnsRight"))}</div>`;
 }
 
-/** The project's search: filters what the board and the list show as you type; Esc clears it. */
-export function SearchField({ value, onChange }) {
-  return html`<div class="tb-search tb-find">
+/**
+ * The project's search: filters what the board and the list show as you type; Esc clears it. On a phone the field is closed
+ * (`closed`: the toolbar's 🔍 opens it) unless it holds words; Esc on an empty field asks to close it (`onEmptyEscape`).
+ */
+export function SearchField({ value, onChange, closed = false, inputRef = null, onEmptyEscape = null }) {
+  return html`<div class=${`tb-search tb-find${closed ? " is-closed" : ""}`}>
     <${Icon} name="search" size=${16} cls="tb-search-icon" />
-    <input type="search" value=${value} placeholder=${t("taskview.search")} aria-label=${t("taskview.searchLabel")} title=${t("taskview.searchLabel")}
-      onInput=${(e) => onChange(e.target.value)} onKeyDown=${(e) => { if (e.key === "Escape" && value) { e.preventDefault(); e.stopPropagation(); onChange(""); } }} />
+    <input id="tb-find-input" type="search" ref=${inputRef} value=${value} placeholder=${t("taskview.search")} aria-label=${t("taskview.searchLabel")} title=${t("taskview.searchLabel")}
+      onInput=${(e) => onChange(e.target.value)}
+      onKeyDown=${(e) => {
+        if (e.key !== "Escape") return;
+        if (value) { e.preventDefault(); e.stopPropagation(); onChange(""); } else if (onEmptyEscape) onEmptyEscape();
+      }} />
   </div>`;
 }
 
 /**
  * One row of controls under a project's header: the board / list switch, the search, Filter and Display, the buttons that scroll
  * the board's columns while some are out of sight (`scroller`: its `reach` and `by(direction)`), then the filters in force as chips. The filters, the view and the display are kept on this device.
+ * On a phone it is one row — the switch at the left; Filter, Display and the 🔍 at the right — and the search field opens from
+ * the 🔍 (under the row); a search that holds words keeps its field open, and the 🔍 is marked. The 🔍 is not drawn on a desk,
+ * where the field is always there (the page's CSS decides: the same markup serves both).
  */
 export function TaskToolbar({ cards, display, onDisplay, filters, onFilters, query, onQuery, scroller = null }) {
+  const [asked, setAsked] = useState(false);
+  const field = useRef(null);
+  const focusNext = useRef(false);
+  const hasWords = query !== "";
+  const open = asked || hasWords;
+  useEffect(() => {
+    if (open && focusNext.current) { focusNext.current = false; if (field.current) field.current.focus(); }
+  });
+  /** The 🔍: opens the field and puts the cursor in it; with words in it, only takes the cursor there; else shuts it. */
+  const toggle = () => {
+    if (hasWords) { if (field.current) field.current.focus(); return; }
+    if (asked) { setAsked(false); return; }
+    focusNext.current = true;
+    setAsked(true);
+  };
   return html`<div class="tb-view-bar">
     <${ViewToggle} display=${display} onChange=${onDisplay} />
-    <${SearchField} value=${query} onChange=${onQuery} />
-    <${FilterMenu} cards=${cards} filters=${filters} onChange=${onFilters} />
-    <${DisplayMenu} display=${display} onChange=${onDisplay} />
+    <${SearchField} value=${query} onChange=${onQuery} closed=${!open} inputRef=${field} onEmptyEscape=${() => setAsked(false)} />
+    <div class="tb-view-actions">
+      <${FilterMenu} cards=${cards} filters=${filters} onChange=${onFilters} />
+      <${DisplayMenu} display=${display} onChange=${onDisplay} />
+      <button type="button" class=${`btn btn-sm tb-search-toggle${hasWords ? " active" : ""}`} aria-expanded=${open ? "true" : "false"} aria-controls="tb-find-input"
+        aria-label=${t("taskview.searchLabel")} title=${t("taskview.searchLabel")} onClick=${toggle}><${Icon} name="search" size=${16} /></button>
+    </div>
     ${scroller && scroller.reach.over ? html`<${ColumnScroll} reach=${scroller.reach} onScroll=${scroller.by} />` : null}
     <${FilterBar} cards=${cards} filters=${filters} onChange=${onFilters} />
   </div>`;

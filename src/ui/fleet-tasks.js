@@ -6,7 +6,8 @@
 // when its revision moved. Over the temporary public link the board is read-only (the server refuses its writes there).
 // A card moves by drag, by Alt+arrow keys on its title, by its ⋯ menu or its page's Status chip, up and down — touch and
 // keyboard need no drag. A project shows as the board or as a list (a switch in the toolbar, with search and filters in
-// the same row, fleet-task-view.js); on a phone the board shows one status at a time. A card's ⋯ (or a right click, or the
+// the same row, fleet-task-view.js); on a phone the board shows one status at a time (a row of pills that scrolls sideways), the head and
+// the toolbar are laid out for the width, and every control is a 44px box that is not drawn bigger (task-board.css). A card's ⋯ (or a right click, or the
 // menu key) opens its menu; its page steps to the previous / next card (fleet-task-menu.js). The open card is in the
 // address (`?card=`): opening one adds a history entry, so Back returns to the board or the list.
 import { html, useEffect, useMemo, useRef, useState } from "/assets/app-html.js";
@@ -311,7 +312,8 @@ export function TaskBoardTab({ lease }) {
 
 /** The board's Instance button (taskhall's): the fleet's instances and what each works on. */
 function InstancesButton({ onClick }) {
-  return html`<button type="button" class="btn" title=${t("tasks.instancesTip")} onClick=${onClick}><${Icon} name="team" size=${16} />${t("tasks.instances")}</button>`;
+  // The label is its own span: a phone narrower than 390px keeps only the icon (the label stays for a screen reader), so the head fits.
+  return html`<button type="button" class="btn" title=${t("tasks.instancesTip")} onClick=${onClick}><${Icon} name="team" size=${16} /><span class="tb-btn-label">${t("tasks.instances")}</span></button>`;
 }
 
 function Home({ cards, projects, stats, writable, onOpenProject, onOpen, onDialog, onInstances, reload }) {
@@ -513,6 +515,20 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   const scrollEl = useRef(null);
   const [reach, setReach] = useState(NO_REACH);
   const showsColumns = display.view !== "list" && mains.length > 0;
+  // On a phone the statuses are one row of pills that scrolls sideways: the picked one is brought into view (the first time at
+  // once, then smoothly) — by the person's tap, or because it is the status that opens first (Review may be the fourth).
+  const pillRow = useRef(null);
+  const pillsSeen = useRef(false);
+  useEffect(() => {
+    const row = pillRow.current;
+    const on = row && row.querySelector(".tb-seg-btn.active");
+    if (!on || !row.clientWidth || row.scrollWidth <= row.clientWidth + 1) return;   // not drawn (a desk), or all of it fits
+    const a = on.getBoundingClientRect(), b = row.getBoundingClientRect();
+    const left = row.scrollLeft + (a.left - b.left) - (b.width - a.width) / 2;
+    const calm = !pillsSeen.current || !!(globalThis.matchMedia && globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    pillsSeen.current = true;
+    if (typeof row.scrollTo === "function") row.scrollTo({ left, behavior: calm ? "auto" : "smooth" }); else row.scrollLeft = left;
+  }, [current, showsColumns]);
   useEffect(() => {
     const el = scrollEl.current;
     if (!showsColumns || !el) { setReach(NO_REACH); return undefined; }
@@ -589,16 +605,20 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
       <div class="tb-head-main">
         <div class="tb-title s-page-title">
           <button type="button" class="btn btn-ghost btn-sm tb-head-back" onClick=${onBack}><${Icon} name="back" size=${16} />${t("tasks.back")}</button>
-          <h2>${project === NO_PROJECT ? t("tasks.noProject") : project.name}</h2>
-          ${archived ? html`<span class="s-scope">${t("tasks.archived")}</span>` : null}
+          <div class="tb-name">
+            <h2>${project === NO_PROJECT ? t("tasks.noProject") : project.name}</h2>
+            ${archived ? html`<span class="s-scope">${t("tasks.archived")}</span>` : null}
+          </div>
         </div>
         ${project !== NO_PROJECT && project.description ? html`<p class="s-page-lead tb-head-lead">${project.description}</p>` : null}
         ${project === NO_PROJECT ? html`<p class="s-page-lead tb-head-lead">${t("tasksort.placeLead")}</p>` : null}
         <div class="tb-stats" title=${t("tasks.percentTitle")}>
-          <span class="tb-pct">${stats.percent}%</span><${ProgressBar} progress=${stats.units} />
-          <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
-          ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
-          ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
+          <div class="tb-progress">
+            <span class="tb-pct">${stats.percent}%</span><${ProgressBar} progress=${stats.units} />
+            <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
+            ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
+            ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
+          </div>
           ${project !== NO_PROJECT && notSorted ? html`<button type="button" class="tb-flag st-review tb-sort-link" title=${t("tasksort.headerLinkTip")} onClick=${onOpenNoProject}><${Icon} name="inbox" size=${16} /><span class="tb-sort-link-short">${t("tasksort.headerLink", notSorted)}</span><span class="tb-sort-link-long">${t("tasksort.title", notSorted)}</span><span class="tb-sort-link-go">${t("tasksort.go")}</span> →</button>` : null}
           <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
         </div>
@@ -611,9 +631,11 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
     <${TaskToolbar} cards=${own} display=${display} onDisplay=${onDisplay} filters=${filters} onFilters=${onFilters} query=${query} onQuery=${onQuery}
       scroller=${display.view === "list" ? null : { reach, by: scrollColumns }} />
     ${display.view === "list" ? listBody() : mains.length === 0 && !drag ? empty()
-    : html`${html`<div class="tb-seg tb-status-seg" role="group" aria-label=${t("taskview.statusTabs")}>${columns.map((status) =>
-        html`<button key=${status} type="button" aria-pressed=${current === status ? "true" : "false"} class=${`tb-seg-btn${current === status ? " active" : ""}`}
-          onClick=${() => setPhoneStatus(status)}><span class=${`tb-dot st-${status}`} aria-hidden="true"></span>${t(`tasks.${status}`)} <span class="tb-count">${mains.filter((c) => c.status === status).length}</span></button>`)}</div>`}
+    : html`${html`<div class="tb-seg tb-status-seg" role="group" aria-label=${t("taskview.statusTabs")} ref=${pillRow}>${columns.map((status) => {
+        const count = mains.filter((c) => c.status === status).length;
+        return html`<button key=${status} type="button" aria-pressed=${current === status ? "true" : "false"} class=${`tb-seg-btn${current === status ? " active" : ""}${count === 0 ? " is-empty" : ""}`}
+          onClick=${() => setPhoneStatus(status)}><span class=${`tb-dot st-${status}`} aria-hidden="true"></span>${t(`tasks.${status}`)} <span class="tb-count">${count}</span></button>`;
+      })}</div>`}
       <div class="tb-scroll" ref=${scrollEl}><div class="tb-columns">
       ${columns.map((status) => {
         const list = mains.filter((c) => c.status === status);

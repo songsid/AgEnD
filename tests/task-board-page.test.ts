@@ -949,7 +949,9 @@ describe("one toolbar row", () => {
   it("the board / list switch, search, Filter and Display are one row; the choice of view is remembered", async () => {
     await mount();
     expect(qa(".tb-view-bar").length).toBe(1);
-    expect([...q(".tb-view-bar").children].map((el: any) => el.className.split(" ")[0])).toEqual(["tb-seg", "tb-search", "menu", "menu"]);
+    // One row: the switch, the search field, then Filter, Display and the phone's 🔍 together (a phone puts them at the row's right).
+    expect([...q(".tb-view-bar").children].map((el: any) => el.className.split(" ")[0])).toEqual(["tb-seg", "tb-search", "tb-view-actions"]);
+    expect([...q(".tb-view-actions").children].map((el: any) => el.className.split(" ")[0])).toEqual(["menu", "menu", "btn"]);
     expect(qa(".tb-view-toggle button").map((b) => [text(b), b.getAttribute("aria-pressed")])).toEqual([["Board", "true"], ["List", "false"]]);
     await toggle("List");
     expect(q(".tb-columns")).toBeNull();
@@ -985,6 +987,39 @@ describe("one toolbar row", () => {
     expect(rows().length).toBe(4);
     await mount({ agend_tasks_project: "1", agend_tasks_query: "badge" });   // what was searched comes back
     expect(rows()).toEqual(["M-3"]);
+  });
+
+  it("a phone's search is behind the 🔍 in the row: it opens the field and puts the cursor in it, stays open while the field has words, and Esc on an empty field closes it", async () => {
+    await mount();
+    const find = () => q(".tb-find"), button = () => q(".tb-search-toggle");
+    expect(button().getAttribute("aria-controls"), "it names the field it opens").toBe(q(".tb-find input").id);
+    expect(find().className, "closed to begin with (the page's CSS draws it closed on a phone only; a desk always shows it)").toContain("is-closed");
+    expect(button().getAttribute("aria-expanded")).toBe("false");
+    fire(button(), "click"); await settle(6);
+    expect(find().className).not.toContain("is-closed");
+    expect(button().getAttribute("aria-expanded")).toBe("true");
+    expect(doc().activeElement, "the cursor is in the field").toBe(q(".tb-find input"));
+    fire(button(), "click"); await settle(6);
+    expect(find().className, "the 🔍 again, with nothing typed, shuts it").toContain("is-closed");
+    fire(button(), "click"); await settle(6);
+    await typeInto(q(".tb-find input"), "shop");
+    expect(button().className, "a search with words marks the 🔍").toContain("active");
+    fire(button(), "click"); await settle(6);
+    expect(find().className, "with words in it the field stays open").not.toContain("is-closed");
+    expect(doc().activeElement).toBe(q(".tb-find input"));
+    await typeInto(q(".tb-find input"), "");
+    expect(find().className, "emptied by hand: still open").not.toContain("is-closed");
+    expect(button().className).not.toContain("active");
+    fire(q(".tb-find input"), "keydown", { key: "Escape", cancelable: true }); await settle(6);
+    expect(find().className, "Esc on an empty field closes it").toContain("is-closed");
+    expect(button().getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("a search kept on the device opens the field with the board (and marks the 🔍), so the narrowed board is never a mystery", async () => {
+    await mount({ agend_tasks_project: "1", agend_tasks_query: "badge" });
+    expect(q(".tb-find").className).not.toContain("is-closed");
+    expect(q(".tb-find input").value).toBe("badge");
+    expect(q(".tb-search-toggle").className).toContain("active");
   });
 
   it("a main task stays when one of its sub tasks matches the search", async () => {
@@ -1074,6 +1109,15 @@ describe("a phone: one status at a time, and a ⋯ on every card", () => {
     fire(qa(".tb-status-seg button")[1], "click"); await settle(4);
     expect(qa(".tb-col.is-current").map((c) => c.getAttribute("aria-label"))).toEqual(["In progress"]);
     expect(qa(".tb-status-seg button")[1].getAttribute("aria-pressed")).toBe("true");
+  });
+  it("a status without cards is marked (a phone draws it quieter) and can still be picked", async () => {
+    await mount();
+    expect(qa(".tb-status-seg button").map((b) => [text(b), b.className.split(" ").includes("is-empty")])).toEqual(
+      [["To do 1", false], ["In progress 1", false], ["Blocked 0", true], ["To confirm 1", false], ["Done 1", false]]);
+    fire(qa(".tb-status-seg button")[2], "click"); await settle(4);
+    expect(qa(".tb-col.is-current").map((c) => c.getAttribute("aria-label")), "the empty status is shown, with nothing in it").toEqual(["Blocked"]);
+    expect(qa(".tb-status-seg button")[2].getAttribute("aria-pressed")).toBe("true");
+    expect(qa(".tb-col.is-current .tb-tile").length).toBe(0);
   });
   it("every tile and row has a ⋯ that opens the card's menu (Move to …), so a phone needs no drag or right click", async () => {
     await mount();
@@ -1317,6 +1361,38 @@ describe("the columns that do not fit the window", () => {
       i18n.setLang("zh-TW", { store: false });
       expect([i18n.t("taskview.scrollColumns"), i18n.t("taskview.columnsLeft"), i18n.t("taskview.columnsRight")]).toEqual(["捲動欄位", "左邊的欄位", "右邊的欄位"]);
     } finally { i18n.setLang("en", { store: false }); }
+  });
+  it("a project's head keeps its parts as they were, in two groups a phone lays out: the name, and the progress line (Insights and the banner stay the stats' own)", async () => {
+    await mount();
+    expect([...q(".tb-title").children].map((el: any) => el.className.split(" ")[0]), "the way back, then the name with its badge").toEqual(["btn", "tb-name"]);
+    expect([...q(".tb-name").children].map((el: any) => el.tagName.toLowerCase())).toEqual(["h2"]);
+    expect(text(q(".tb-name h2"))).toBe("Leaderboard");
+    const stats = [...q(".tb-stats").children].map((el: any) => el.className.split(" ")[0]);
+    expect(stats[0], "the numbers are one group").toBe("tb-progress");
+    expect(stats.at(-1), "Insights is the stats' own last child (a phone puts it beside the name)").toBe("btn");
+    expect(q(".tb-stats > .tb-insights")).toBeTruthy();
+    expect(text(q(".tb-progress .tb-pct"))).toMatch(/%$/);
+    expect(q(".tb-progress svg.tb-bar")).toBeTruthy();
+    const instances = qa(".tb-head-actions .btn").find((b) => !b.className.includes("btn-primary"));
+    expect(text(instances.querySelector(".tb-btn-label")), "its label is a span of its own (a narrow phone draws the icon only; a screen reader still gets the words)").toBe("Instances");
+    expect(text(instances)).toBe("Instances");
+  });
+  it("on a desk the groups take no part (display: contents, outside any media query), and the phone's layout and 44px boxes are in the media queries meant for them", () => {
+    const css = readFileSync(join(UI, "shared", "task-board.css"), "utf8");
+    const depthAt = (i: number) => { let d = 0; for (let k = 0; k < i; k++) { if (css[k] === "{") d++; else if (css[k] === "}") d--; } return d; };
+    const mediaOf = (needle: string) => { const at = css.indexOf(needle); expect(at, needle).toBeGreaterThan(0); const m = css.lastIndexOf("@media", at); return { depth: depthAt(at), query: css.slice(m, css.indexOf("{", m)).trim() }; };
+    const PHONE = "@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px)";
+    const TOUCH = "@media (pointer: coarse), (max-width: 899px)";
+    expect(mediaOf(".tb-name, .tb-progress, .tb-view-actions { display: contents; }").depth, "the wrappers: for every screen").toBe(0);
+    expect(mediaOf(".tb-search-toggle { display: none; }").depth, "no 🔍 on a desk").toBe(0);
+    for (const needle of [".tb-bar-head { display: grid", ".tb-home > .tb-head { display: flex", ".tb-status-seg { display: flex", ".tb-find.is-closed { display: none; }", ".tb-col { padding: 0; border-width: 0"]) {
+      expect(mediaOf(needle), needle).toEqual({ depth: 1, query: PHONE });
+    }
+    for (const needle of [":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn", ":is(.tb-search input)"]) expect(mediaOf(needle), needle).toEqual({ depth: 1, query: TOUCH });
+    expect(mediaOf(".tb-btn-label { position: absolute"), "a phone under 390px keeps only the Instances icon").toEqual({ depth: 1, query: "@media (max-width: 389px)" });
+    // a control is grown by a transparent border and a negative margin, never drawn bigger
+    const grown = css.slice(css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn"), css.indexOf(":is(.tb-head-back, .tb-bar-head .tb-head-actions .btn") + 600);
+    expect(grown).toMatch(/min-height: var\(--tap\); border-block: var\(--grow\) solid transparent; margin-block: calc\(-1 \* var\(--grow\)\); background-clip: padding-box;/);
   });
   it("the @ list's board-off row reads at 4.5:1 or more in every theme: its colour is --text-3 on the menu's --bg, never dimmed by an opacity (#4367 review)", () => {
     const css = readFileSync(join(UI, "shared", "task-board.css"), "utf8");
