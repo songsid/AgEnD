@@ -22,6 +22,10 @@ The neutral avatar's initial uses the theme's secondary text on its raised surfa
 
 ## Review fixes before the user's look (every capture above re-taken from this branch's code; see the commit that adds them)
 
+The captures are from the branch after it merged release/2.3.5-alpha with #4376 (M-3539: name tags keep clear of each
+other, the zone names and the zoom control). The owner-kept fit and the open card's cover work inside #4376's tag
+placement: a spot an open card covers is not used, so a tag there moves to its next free place or is left to hover.
+
 | What | Capture |
 |---|---|
 | The room assistant's row in a compact list: its name whole ("Room assistant" / 房間助理), its status ("Idle · provided by the Hub") on a second line | `desk-en-dark-r2a-after-1-office.png` and `desk-zh-TW-light-r2a-after-1-office.png` (members panel, bottom) |
