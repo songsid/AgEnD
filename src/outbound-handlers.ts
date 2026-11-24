@@ -112,6 +112,8 @@ export interface OutboundContext {
     getModel?(channelId: string, adapterId?: string, fleetDefault?: string): string | undefined;
   } | null;
   lastActivityMs(name: string): number;
+  /** M-3674: the last turn another agent started for `name` (a message from another instance it took up), ISO or null. */
+  lastAgentTurnOf?(name: string): string | null;
   startInstance(name: string, config: InstanceConfig, topicMode: boolean, kind?: "fleet-topic" | "classic", resumePaused?: boolean): Promise<void>;
   /** #2942: a Windows create an agent asked for — held as a pending settings change for a fleet admin's General card. */
   requestWindowsCreate?(requester: string, rawArgs: Record<string, unknown>): Promise<{ id: string; state: string }>;
@@ -813,6 +815,7 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
     kind: "fleet-topic" | "classic";
     tags: string[];
     last_activity: string | null;
+    last_agent_turn?: string | null;
   };
 
   let allInstances: FullInstance[] = Object.entries(ctx.fleetConfig?.instances ?? {})
@@ -835,6 +838,8 @@ const listInstances: Handler = (ctx, rawArgs, respond, meta) => {
         kind: "fleet-topic" as const,
         tags: config.tags ?? [],
         last_activity: ctx.lastActivityMs(name) ? new Date(ctx.lastActivityMs(name)).toISOString() : null,
+        // M-3674: beside last_activity (a person's message to it, or its own call), the last turn another agent started.
+        last_agent_turn: ctx.lastAgentTurnOf?.(name) ?? null,
       };
     });
 
@@ -989,6 +994,7 @@ const describeInstance: Handler = (ctx, rawArgs, respond) => {
       model: model?.model ?? config.model ?? "default",
       model_source: model?.source ?? (config.model ? "instance" : "unresolved"),
       last_activity: ctx.lastActivityMs(targetName) ? new Date(ctx.lastActivityMs(targetName)).toISOString() : null,
+      last_agent_turn: ctx.lastAgentTurnOf?.(targetName) ?? null,   // M-3674
       worktree_source: config.worktree_source ?? null,
     });
     return;

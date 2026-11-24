@@ -633,6 +633,19 @@ export class DeliveryOutbox extends EventEmitter {
   }
 
   /** Bounded metadata query, distinct from the existing unbounded reminder API. */
+  /**
+   * M-3674: when `instance` last took up a message another instance sent it — send_to_instance's family (task, report,
+   * query, update), a steer or a broadcast: the newest delivered one, at the turn that took it up (consumed_at), else
+   * when it was delivered (finished_at); ISO, or null (none kept). The agent-started side of an agent's activity, beside
+   * its last reply to a person (web chat history). One indexed step back from the newest row (target, state, seq).
+   */
+  lastAgentTurn(instance: string): string | null {
+    const row = this.db.prepare(`SELECT COALESCE(consumed_at, finished_at) AS at FROM deliveries
+      WHERE target_instance=? AND state='delivered' AND kind IN ('fleet_inbound','steer','broadcast') AND source_instance<>target_instance
+      ORDER BY created_seq DESC LIMIT 1`).get(instance) as { at: string | null } | undefined;
+    return row && typeof row.at === "string" && row.at ? row.at : null;
+  }
+
   workingObligations(instance: string): { references: WorkingStateReference[]; total: number } {
     const total = this.db.prepare(`SELECT COALESCE(SUM((owner_instance=?) + (requester_instance=?)),0) AS n
       FROM reply_obligations WHERE state='open' AND (owner_instance=? OR requester_instance=?)`)
