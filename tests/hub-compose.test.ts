@@ -242,6 +242,20 @@ describe.skipIf(process.platform === "win32")("Hub server factory (S5b) over a r
     expect(JSON.parse(json)).toEqual({ enabled: false });
   });
 
+  // M-3563 (#4386 review): the HTTP config says the sign-in account can hold no "@" only for AD's sAMAccountName login.
+  it("loginWithoutAt: set for an AD directory (sAMAccountName), never for OpenLDAP (uid)", async () => {
+    const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
+    sealFixtureHub(hub);
+    const first = await f.create(hub.config.hub, () => true);
+    expect(http.state.deps!.config.loginWithoutAt).toBeUndefined();
+    await first.close();
+    const ad = { ...hub.config.hub, directory: { ...(hub.config.hub.directory as object), profile: "ad" } };
+    sealFixtureHub(hub, ad);
+    const second = await f.create(ad, () => true);
+    expect(http.state.deps!.config.loginWithoutAt).toBe(true);
+    await second.close();
+  });
+
   it("composes group permits off by default, preserves intact never-enabled repair, and fences them on close", async () => {
     const hub = await initializedHub(), http = fakeHttp(), f = factory(hub.home, http.entry);
     // A valid public CA bundle may exceed canonicalArguments' request-body bound.

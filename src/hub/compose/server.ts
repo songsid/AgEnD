@@ -135,7 +135,7 @@ export interface HubHttpDeps {
   /** Private physical response ownership only; the directory route must independently prove the actor and operation. */
   directoryResponse?: { capture(req: IncomingMessage, res: ServerResponse, current: () => boolean): HubDirectoryResponse };
   preview?: Readonly<HubPreviewView>;
-  config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey }>;
+  config: Readonly<{ hubId: string; name: string; memberOrigin: string; webOrigin: string; administrator: PersonKey; loginWithoutAt?: boolean }>;
   /** M-2682: Hub Administration → This Hub — what it is (read-only) and, with the host's writer, its rename. */
   hubSettings?: Readonly<{ info: Readonly<{ hubId: string; memberSpkiSha256: string; issuerKeyId: string; version: string | null; coexistence?: string | null }>; writer?: HubSettingsWriter }>;
   issuer: { keyId: string; sign(envelope: Omit<HubAskerEnvelope, "signature">): HubAskerEnvelope };
@@ -580,7 +580,9 @@ export function createHubServerFactory(options: HubServerFactoryOptions) {
           return responseListener.capture(req, res, () => proof() === true && live());
         } }) } : {}),
         preview: hubPreviewView(settings.webOrigin, settings.preview, previewBoot),
-        config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }) }),
+        config: Object.freeze({ hubId: settings.hubId, name: settings.name, memberOrigin: settings.memberOrigin, webOrigin: settings.webOrigin, administrator: Object.freeze({ ...settings.administrator }),
+          // M-3563: sign-in by sAMAccountName (AD's default), which can hold no "@": the page may say to drop an "@…" part.
+          ...(resolvedDirectory.loginAttribute === "sAMAccountName" ? { loginWithoutAt: true } : {}) }),
         hubSettings: Object.freeze({ info: Object.freeze({ hubId: identity.hubId, memberSpkiSha256: identity.spkiSha256, issuerKeyId: identity.issuerKeyId, version: options.version ?? null,
           coexistence: typeof cfg.coexistence === "string" ? cfg.coexistence : null }),
           ...(options.settingsWriter ? { writer: options.settingsWriter } : {}) }),

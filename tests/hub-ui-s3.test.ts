@@ -296,6 +296,64 @@ describe("the Hub workspace's pages (S3b: the real client over /hub/v1/*)", () =
     expect(calls.filter((x) => x.method === "POST").map((x) => x.body)).toEqual([{ login: "alex", password: "pw" }, { login: "alex", password: "pw" }]);
   });
 
+  // M-3563 (the user, 11-24): Chrome / Edge offered the email address from their saved personal info for 帳號. The fields
+  // are a named login form; a login that works is handed to the browser's password manager as typed; an account typed
+  // as an email address (the directory's has no "@") is told what to type instead.
+  it("M-3563: a named login form; a refused 'user@domain' says to type the part before the @; a login that works is saved as typed", async () => {
+    let tries = 0;
+    hubApi({
+      "GET /hub/v1/session": () => [200, { signedIn: false, hub: { name: "Team Hub" } }],
+      "POST /hub/v1/session": (b) => (++tries === 1 ? [403, { code: "denied" }] : [200, { ...SIGNED, login: b.login }]),
+      "GET /hub/v1/exposures": () => [200, { mine: [], askable: [] }],
+      "GET /hub/v1/rooms": () => [200, { rooms: [] }],
+    });
+    const stored: any[] = [];
+    const pg = await mountTab("ask");
+    // After the mount: the page's own window (and navigator) is the global one now.
+    const g = globalThis as any, hadPC = "PasswordCredential" in g, oldPC = g.PasswordCredential, nav = g.navigator, oldCred = nav?.credentials;
+    g.PasswordCredential = class { id: string; password: string; name: string; constructor(o: any) { this.id = o.id; this.password = o.password; this.name = o.name; } };
+    Object.defineProperty(nav, "credentials", { configurable: true, value: { store: async (c: any) => { stored.push({ id: c.id, password: c.password }); return c; } } });
+    try {
+      await until(() => pg.root.querySelector(".hub-signin"));
+      const [login, pw] = ["#hubLogin", "#hubPassword"].map((sel) => pg.root.querySelector(sel) as any);
+      expect([login.getAttribute("name"), login.getAttribute("autocomplete"), pw.getAttribute("name"), pw.getAttribute("autocomplete")])
+        .toEqual(["username", "username", "password", "current-password"]);
+      // This Hub signs in by sAMAccountName (the shell's mark): an account typed with "@" is told what to type.
+      pg.document.body.setAttribute("data-hub-login", "no-at");
+      input(pg, "#hubLogin", "alex@example.com"); input(pg, "#hubPassword", "pw"); await settle(5);
+      fire(pg.root.querySelector(".hub-signin form")!, "submit");
+      await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
+      expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work. Type only your account name, the part before the @ (for example alex), not your email address.");
+      expect(stored, "a refusal is never saved").toEqual([]);
+      input(pg, "#hubLogin", " alex "); input(pg, "#hubPassword", "pw"); await settle(5);
+      fire(pg.root.querySelector(".hub-signin form")!, "submit");
+      await until(() => pg.root.querySelector(".hub-home"));
+      expect(stored).toEqual([{ id: "alex", password: "pw" }]);
+    } finally {
+      if (oldCred === undefined) delete nav.credentials; else Object.defineProperty(nav, "credentials", { configurable: true, value: oldCred });
+      if (hadPC) g.PasswordCredential = oldPC; else delete g.PasswordCredential;
+    }
+  });
+  // #4386 review: a Hub may sign in by an account that holds an "@" (userPrincipalName, mail): no mark, no such advice.
+  it("M-3563: a Hub whose account may hold an \"@\" (no mark): a refused 'user@domain' gets the plain line only", async () => {
+    hubApi({
+      "GET /hub/v1/session": () => [200, { signedIn: false, hub: { name: "Team Hub" } }],
+      "POST /hub/v1/session": () => [403, { code: "denied" }],
+    });
+    const pg = await mountTab("ask");
+    await until(() => pg.root.querySelector(".hub-signin"));
+    expect(pg.document.body.getAttribute("data-hub-login")).toBeNull();
+    input(pg, "#hubLogin", "alex@example.com"); input(pg, "#hubPassword", "pw"); await settle(5);
+    fire(pg.root.querySelector(".hub-signin form")!, "submit");
+    await until(() => pg.root.querySelector(".hub-signin [role=alert]"));
+    expect(pg.root.querySelector(".hub-signin [role=alert]")!.textContent).toBe("That account and password didn't work.");
+    // The lead says what is true now: the Hub keeps nothing; the browser may offer to save.
+    expect(pg.root.querySelector(".hub-signin-lead")!.textContent).toBe("Use your company account. The Hub checks your password with the directory and never keeps it; your browser may offer to save it for you.");
+  });
+  it("M-3563: no Credential Management API (Firefox, Safari): signing in works as before, nothing thrown", async () => {
+    expect(() => hubPanel.rememberLogin("alex", "pw")).not.toThrow();
+  });
+
   it("Ask: New chat (the launcher, M-3190) lists what is granted, a row opens the room — the question is sent with a fresh idempotency key and the CSRF token; its stage shows; one read per poll", async () => {
     const e = { id: "e1", displayName: "Sales numbers", revision: 1 };
     const R1 = "11111111-2222-4333-8444-555555555555";
