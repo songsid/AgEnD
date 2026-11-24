@@ -75,6 +75,7 @@ it("recovery does not auto-approve or replay an existing held operation; new adm
  store.writePolicy("worker",{revision:0,grants:[{id:"",person:admin,source:"leader",target:"worker",verbs:["send_to_instance"],expiresAt:new Date(10_000).toISOString(),remainingUses:2}]},admin,()=>"demo-generation");
  expect(()=>service.requireApplication(request)).toThrow(ContactHeldError);expect(admit).not.toHaveBeenCalled();
  expect(store.get(ticket.id)?.state).toBe("pending");expect(store.policy("worker","demo-generation").grants[0]?.remainingUses).toBe(2);
+ expect(()=>service.requireApplication({...request,message:"Conflicting question"})).toThrow("operation-conflict");
  expect(service.requireApplication({...request,operationId:"fresh-operation"})).toBeUndefined();
 });
 it("explicit mixed singleton and explicit unknown never gain authority by normalization",()=>{
@@ -111,4 +112,12 @@ it("the real authorization-list method accepts old and current person selectors 
 it("a removed sibling bot's stale runtime configuration cannot add a contact admin",()=>{
  const {fm}=rig();fm.worlds.set("removed-bot",{adapter:{id:"removed-bot",type:"discord"},channelConfig:{id:"removed-bot",type:"discord",access:{allowed_users:["removed-admin"]}}});
  expect(fm.contactAdminOf("leader",{...alias,userId:"removed-admin"})).toBe(false);
+});
+it("contact admin follows the current central Fleet-admin gate, not just an enumerated list",()=>{
+ const {fm}=rig(),gate=vi.spyOn(fm,"isFleetAdmin").mockReturnValue(false);
+ expect(fm.contactAdminOf("leader",admin)).toBe(false);
+ gate.mockImplementation((userId,adapterId)=>userId===admin.userId&&adapterId==="demo-main");
+ expect(fm.contactAdminOf("persona-worker",alias)).toBe(true);
+ expect(gate).toHaveBeenCalledWith(admin.userId,"demo-main");
+ expect(gate.mock.calls.some(([,adapterId])=>adapterId==="demo-tg")).toBe(false);
 });

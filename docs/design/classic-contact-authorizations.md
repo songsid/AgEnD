@@ -29,6 +29,14 @@ Contact authorization identifies a person by **platform + user id**, across bot
 connections on that platform. Adapter ids remain transport/proof metadata; a
 second bot observing the message does not create another person or remove their
 configured Fleet-admin role. Discord and Telegram ids remain separate namespaces.
+Contact administrator checks retain the central `isFleetAdmin`/admin gate, evaluated
+against the target connection and configured connections on the same platform.
+This intentionally lets a configured secondary bot's Fleet administrator manage
+contact permissions on primary-bot topics: receiving through another bot must not
+change the person's contact role. Other feature administrator gates are unchanged.
+Runtime-only or removed connection worlds do not enlarge this configured set;
+the target adapter's existing administrator lookup still applies. The existing
+Classic room fallback to `defaults.admin_users` is unchanged by this work.
 The target platform's configured Fleet-admin lists supply eligible approvers;
 its explicit approver selection and all grant action/resource/incarnation bounds
 still apply. This does not change inbound routing, outbound bot selection, or

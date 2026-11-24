@@ -36,3 +36,17 @@ A normal merge onto `2698b1302` (including the Hub answer-turn fix) preserves al
 merged integration check passes 90 tests in six suites plus source TypeScript. There is no migration or manual state-file
 edit. Reverting restores adapter-specific interpretation and may restore those
 contact restrictions; old pending tickets are never automatically dispatched.
+
+Review correction restores current-role checks through the central Fleet-admin
+gate instead of treating the picker inventory as authorization. Five gate and
+notification regression cases fail before this correction. A separate conflicting
+retry assertion also fails before moving the immutable request-hash check ahead
+of the pending-decision response. The full contact and affected-suite union now
+passes 451 tests in 29 files; both TypeScript checks pass. The file list is in
+`reviewCorrection.testFiles`. Old pending operations remain held even with a
+newly matching grant; conflicting payloads return `operation-conflict`.
+
+Configured same-platform contact administrators are intentional. Runtime-only
+or removed worlds do not add eligible connections. The pre-existing Classic
+room `defaults.admin_users` fallback is unchanged. No browser, provider, native
+CLI or live-state campaign was repeated for this correction.

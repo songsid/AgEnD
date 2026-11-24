@@ -5774,21 +5774,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return incarnation;
   }
 
+  /** Eligible connections share a platform; the current Fleet-admin gate still decides each user's role. */
+  private contactAdminAdapterIds(adapter: ChannelAdapter): string[] {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return [...new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)])];
+  }
   /** Contact permissions identify a person by platform/user; sibling bot connections do not create new people. */
   private contactDefaultApprovers(name: string): ContactPerson[] {
     const adapter = this.contactAdapter(name);
     if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
-    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
-    const ids = new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)]);
-    const people = [...ids].flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
+    const people = this.contactAdminAdapterIds(adapter).flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
       platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
     return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];
   }
   contactAdminOf(name: string, actor: ContactPerson): boolean {
     if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
-    if (this.contactDefaultApprovers(name).some(person => sameContactPerson(person, actor))) return true;
     const adapter = this.contactAdapter(name);
-    return !!adapter && actor.platform === adapter.type && !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
+    if (!adapter || actor.platform !== adapter.type) return false;
+    if (this.contactAdminAdapterIds(adapter).some(id => this.isFleetAdmin(actor.userId, id))) return true;
+    return !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
   }
 
   private contactService(): ContactAuthService {
