@@ -85,8 +85,10 @@ const covered = (x, y, cw, ch, avoid) => avoid.reduce((a, r) => a + Math.max(0, 
  * M-3633: where a person's floating card goes (stage px): beside them — right of `px` by `gap`, else left — level with
  * their head (`py` − 24), inside the stage (`w`×`h`, 8 px clear). Clear of the areas' labels (`avoid`, rects on the
  * stage) where it can be: the same spot when it covers none, else that side lower (just under the label it met), else
- * the other side; with none clear, the spot covering the least.
+ * the other side; else held shorter under a label (`maxH`: it scrolls; at least CARD_MIN_H); with none clear, the spot
+ * covering the least.
  */
+export const CARD_MIN_H = 240;
 export function cardSpot({ px, py, gap, cw, ch, w, h, avoid = [] }) {
   const cx = (x) => Math.max(8, Math.min(x, w - cw - 8)), cy = (y) => Math.max(8, Math.min(y, h - ch - 8));
   const right = px + gap, left = px - gap - cw;
@@ -97,9 +99,13 @@ export function cardSpot({ px, py, gap, cw, ch, w, h, avoid = [] }) {
     spots.push({ x, y });
     for (const r of avoid) if (r.y + r.h + 6 > y && r.y + r.h + 6 + ch <= h - 8) spots.push({ x, y: r.y + r.h + 6 });
   }
+  for (const s of sides) for (const r of avoid) {
+    const y = r.y + r.h + 6, room = h - 8 - y;
+    if (room >= CARD_MIN_H && room < ch) spots.push({ x: cx(s), y, maxH: room });
+  }
   let best = spots[0], least = Infinity;
   for (const p of spots) {
-    const c = covered(p.x, p.y, cw, ch, avoid);
+    const c = covered(p.x, p.y, cw, p.maxH ?? ch, avoid);
     if (c === 0) return p;
     if (c < least) { least = c; best = p; }
   }

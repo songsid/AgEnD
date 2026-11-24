@@ -71,6 +71,12 @@ describe("cardSpot: beside the person, clear of the areas' names", () => {
     const avoid = [{ x: 490, y: 150, w: 200, h: 40 }];
     expect(cardSpot({ ...base, px: 500, py: 300, h: 560, avoid })).toEqual({ x: 180, y: 152 });
   });
+  it("too tall to go lower on either side: held shorter just under the name, and it scrolls (not under CARD_MIN_H)", () => {
+    const avoid = [{ x: 0, y: 100, w: 1200, h: 40 }];
+    expect(cardSpot({ ...base, ch: 600, px: 400, py: 300, avoid })).toEqual({ x: 420, y: 146, maxH: 546 });
+    // Too little room under the name to be worth it: the least covered spot, whole.
+    expect(cardSpot({ ...base, ch: 600, px: 400, py: 300, avoid: [{ x: 0, y: 450, w: 1200, h: 40 }] }).maxH).toBeUndefined();
+  });
   it("nowhere clear: the spot covering the least", () => {
     const avoid = [{ x: 0, y: 0, w: 1200, h: 700 }];
     expect(cardSpot({ ...base, px: 400, py: 300, avoid })).toEqual({ x: 420, y: 276 });

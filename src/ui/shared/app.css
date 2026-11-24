@@ -2653,6 +2653,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-card.sheet { padding: var(--s-2) var(--s-4) max(var(--s-4), env(safe-area-inset-bottom, 0px)); }
 /* M-3633: the sheet takes at most half the window, so the office stays in view above it whatever the pack's card (a
    large avatar and every section scroll inside it); its actions stay at its foot while the rest scrolls. */
+/* …and on a desk, a card held shorter under an area's name (it scrolls) keeps its actions at its foot the same way. */
+.oo-card .oo-card-actions { position: sticky; bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); z-index: 2;
+  margin-bottom: calc(-1 * var(--oo-card-frame-pad, var(--s-3))); padding-bottom: var(--oo-card-frame-pad, var(--s-3)); background: var(--oo-card-bg, var(--surface)); }
 .oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions { position: sticky; bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px)));
   z-index: 2; margin-bottom: calc(-1 * max(var(--s-4), env(safe-area-inset-bottom, 0px))); padding: var(--s-2) 0 max(var(--s-4), env(safe-area-inset-bottom, 0px));
   background: var(--oo-card-bg, var(--surface)); }

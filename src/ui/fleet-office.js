@@ -1040,6 +1040,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // back there when it closes); the card's element and where it points (placed every frame: it follows them).
   const [card, setCard] = useState(null);
   const cardFrom = useRef(null), cardEl = useRef(null), cardDesk = useRef(null);
+  // M-3633: how much of the stage a bottom-sheet card covers (px from its foot); the scene is kept in the rest.
+  const sheetCover = useRef(0);
   const stageRef = useRef(null), canvasRef = useRef(null), tipRef = useRef(null), lastType = useRef("mouse");
   // Fullscreen: null, "native" (the Fullscreen API) or "immersive" (the CSS cover); per visit, never kept.
   const ooRef = useRef(null), [fs, setFs] = useState(null), fsRef = useRef(null), fsAsked = useRef(false), fsTarget = useRef(null);
@@ -1514,18 +1516,54 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    */
   const placeCard = () => {
     const el = cardEl.current, c = cardDesk.current;
-    if (!el || !c || !el.style || el.classList?.contains("sheet")) return;
+    if (!el || !c || !el.style) return;
+    if (el.classList?.contains("sheet")) { el.style.removeProperty("max-height"); liftOverSheet(el, c); return; }
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
-    // M-3633: clear of the areas' names — the corner each one's name takes (the Office's own, or one a pack paints there).
-    const avoid = zones && !overview ? Object.values(L.areas || {}).map((ar) => {
-      const q = toScreen(v, ar.rect.x, ar.rect.y);
-      return { x: q.x, y: q.y, w: Math.min(ar.rect.w, AREA_LABEL.w) * v.k, h: Math.min(ar.rect.h, AREA_LABEL.h) * v.k };
+    // Its whole height (a card held shorter below an area's name scrolls: its content's height, not the box's).
+    const sc = (typeof el.querySelector === "function" && el.querySelector(".oo-card-body")) || el;
+    const natural = sc.scrollHeight ? sc.scrollHeight + ((el.offsetHeight || 0) - (sc.clientHeight || 0)) : 0;
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = natural || el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
+    // M-3633: clear of the areas' names — where the Office writes each one (areaTitleBox, a few px around it), else, on a
+    // pack's own picture, the corner a name painted there takes.
+    // The scene's own layout and skin (the draw loop's: this runs in it, where the render's may be an older one).
+    const sc0 = scene.current, part = sc0 && !sc0.overview ? sc0.part : null, sk0 = part && part.skin;
+    const titled = !!(sk0 && sk0.areaTitleBox && sc0.ctx && sc0.env);
+    const avoid = part && part.zones && part.L ? Object.values(part.L.areas || {}).map((ar) => {
+      const b = titled ? sk0.areaTitleBox(sc0.ctx, ar, sc0.env) : null;
+      const r = b ? { x: b.x - 4, y: b.y - 4, w: b.w + 8, h: b.h + 8 } : { x: ar.rect.x, y: ar.rect.y, w: Math.min(ar.rect.w, AREA_LABEL.w), h: Math.min(ar.rect.h, AREA_LABEL.h) };
+      const q = toScreen(v, r.x, r.y);
+      return { x: q.x, y: q.y, w: r.w * v.k, h: r.h * v.k };
     }) : [];
-    const { x, y } = cardSpot({ px: p.x, py: p.y, gap, cw, ch, w: sz.w, h: sz.h, avoid });
+    const { x, y, maxH } = cardSpot({ px: p.x, py: p.y, gap, cw, ch, w: sz.w, h: sz.h, avoid });
+    if (maxH) el.style.setProperty("max-height", `${Math.round(maxH)}px`); else el.style.removeProperty("max-height");
     el.style.setProperty("transform", `translate(${Math.round(x)}px, ${Math.round(y)}px)`);
+  };
+  /**
+   * M-3633: a phone's bottom-sheet card covers the stage's foot. The scene is kept in the rest (setView's clampPan is
+   * given the uncovered height: a scene smaller than it is centred there), and the person is brought above the sheet —
+   * once each time the sheet's height changes, so a pan of their own is left alone. It closes: the whole stage again.
+   */
+  const visSize = () => { const z = sizeRef.current || size; return { w: z.w, h: Math.max(1, z.h - sheetCover.current) }; };
+  const liftOverSheet = (el, c) => {
+    const st = stageRef.current;
+    if (!st || typeof st.getBoundingClientRect !== "function" || typeof el.getBoundingClientRect !== "function") return;
+    const cover = Math.max(0, Math.round(st.getBoundingClientRect().bottom - el.getBoundingClientRect().top));
+    if (cover === sheetCover.current) return;
+    sheetCover.current = cover;
+    // The scene's current layout (this runs in the draw loop, where the render's `L` may be an older one).
+    const LL = (scene.current && !scene.current.overview && scene.current.part && scene.current.part.L) || L;
+    const v = view0(), w = c.walks ? walkers.at(c.name, now()) : null;
+    const p = toScreen(v, w ? w.x : c.box.x + c.box.w / 2, w ? w.y : c.box.y + c.box.h), room = (sizeRef.current || size).h - cover - 16;
+    vp.current = clampPan({ ...v, y: v.y - Math.max(0, p.y - room) }, LL.width, LL.height, visSize());
+    apply();
+  };
+  const unliftSheet = () => {
+    if (!sheetCover.current) return;
+    sheetCover.current = 0;
+    vp.current = clampPan(view0(), L.width, L.height, size);
+    apply();
   };
   /**
    * Put the view on everything that shows it beside the canvas: the overview's frame (the part of the scene in view;
@@ -1575,7 +1613,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * fit (a resize fits it again).
    */
   const setView = (v, user = true, fit = false) => {
-    vp.current = clampPan(v, L.width, L.height, size);
+    vp.current = clampPan(v, L.width, L.height, visSize());
     fitted.current = fit;
     apply();
     if (!user) return;
@@ -1615,7 +1653,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       else if (!touched.current) reopen();
       else { const v = vp.current, cx = (was.w / 2 - v.x) / v.k, cy = (was.h / 2 - v.y) / v.k; vp.current = { k: v.k, x: size.w / 2 - cx * v.k, y: size.h / 2 - cy * v.k }; }
     } else if (fitted.current) vp.current = fitL(fitMode);   // the scene's size changed
-    vp.current = clampPan(view0(), L.width, L.height, size);
+    vp.current = clampPan(view0(), L.width, L.height, visSize());
     raw.current = vp.current.k;
   }, [officeKey, size.w, size.h, ratio, L.width, L.height]);
   useEffect(() => () => flushSave(), []);
@@ -2642,7 +2680,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
-        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; placeCard();
+        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; if (!el || !el.classList?.contains("sheet")) unliftSheet(); placeCard();
           // #4379 review: the tags it covers (or uncovers) are judged at the next frame; a still scene draws one now.
           if (was !== el && scene.current) { scene.current.dirty = true; const go = () => (still ? draw(0) : loop.current?.wake()); if (typeof requestAnimationFrame === "function") requestAnimationFrame(go); else go(); } }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
