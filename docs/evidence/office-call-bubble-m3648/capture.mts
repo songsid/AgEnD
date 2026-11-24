@@ -27,6 +27,9 @@ try {
     await page.goto(`${fx.base}/ui/fleet/org`);
     await page.locator(".oo-canvas").waitFor(); await page.waitForTimeout(9000);   // a few bubble rounds
     await page.screenshot({ path: join(OUT, `${key}-office.png`) });
+    // The view as it opens (desk: as wide as the panel; phone: at Fit), saved before a zoomed sample clears the record.
+    const said = await page.evaluate(() => ((window as any).__said as any[]));
+    report.cases[key] = { errors, csp: [] as string[], bubbleLines: said.length, lastBubble: said.length ? said[said.length - 1] : null, distinct: [...new Set(said.map((x: any) => x.s))] };
     if (c.device === "phone") {
       // Zoomed in on the helper, to read it: its card's "Find in office" (200 %), then the card closed.
       const desk = page.locator('.oo-desk[data-name="example-agent"]');
@@ -41,8 +44,7 @@ try {
       const z = await page.evaluate(() => ({ said: ((window as any).__said as any[]).map((x) => x.s), pct: document.querySelector(".oo-zoom-pct")?.textContent }));
       report.cases[`${key}-zoomed`] = { zoom: z.pct, bubbleLines: z.said.length, distinct: [...new Set(z.said)] };
     }
-    const said = await page.evaluate(() => ((window as any).__said as any[]));
-    report.cases[key] = { errors, csp: await csp(), bubbleLines: said.length, lastBubble: said.length ? said[said.length - 1] : null, distinct: [...new Set(said.map((x: any) => x.s))] };
+    report.cases[key].csp = await csp();
     await ctx.close();
   }
 } finally { await fx.close(); }

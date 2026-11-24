@@ -9,7 +9,7 @@
     "s": "Still thinking…",
     "x": 1100,
     "y": 667,
-    "at": 9252.599999964237
+    "at": 9260.299999952316
    },
    "distinct": [
     "Still thinking…"
@@ -18,12 +18,26 @@
   "desk-dark-zh-TW": {
    "errors": [],
    "csp": [],
-   "bubbleLines": 121,
+   "bubbleLines": 122,
    "lastBubble": {
     "s": "還在想…",
     "x": 1100,
     "y": 646,
-    "at": 9254.399999976158
+    "at": 9266.799999952316
+   },
+   "distinct": [
+    "還在想…"
+   ]
+  },
+  "phone-dark-zh-TW": {
+   "errors": [],
+   "csp": [],
+   "bubbleLines": 121,
+   "lastBubble": {
+    "s": "還在想…",
+    "x": 296,
+    "y": 487,
+    "at": 9213.699999988079
    },
    "distinct": [
     "還在想…"
@@ -36,37 +50,23 @@
     "嗯，卡住了？"
    ]
   },
-  "phone-dark-zh-TW": {
+  "phone-light-en": {
    "errors": [],
    "csp": [],
-   "bubbleLines": 118,
+   "bubbleLines": 112,
    "lastBubble": {
-    "s": "嗯，卡住了？",
-    "x": 209,
-    "y": 365,
-    "at": 19266
+    "s": "Still thinking…",
+    "x": 296,
+    "y": 487,
+    "at": 9214.899999976158
    },
    "distinct": [
-    "嗯，卡住了？"
+    "Still thinking…"
    ]
   },
   "phone-light-en-zoomed": {
    "zoom": "200%",
-   "bubbleLines": 114,
-   "distinct": [
-    "Hmm, stuck?"
-   ]
-  },
-  "phone-light-en": {
-   "errors": [],
-   "csp": [],
-   "bubbleLines": 114,
-   "lastBubble": {
-    "s": "Hmm, stuck?",
-    "x": 209,
-    "y": 365,
-    "at": 19171.600000023842
-   },
+   "bubbleLines": 115,
    "distinct": [
     "Hmm, stuck?"
    ]

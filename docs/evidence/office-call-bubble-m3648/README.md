@@ -8,11 +8,13 @@ These are captures of the real Office UI on the built-in **Cozy** style, taken i
 | Case | Before: stuck lines drawn | After: stuck lines drawn |
 |---|---|---|
 | Desk, en (light) | **0**: no bubble over the stuck agent | 113 (`Still thinking…` a row above the Help desk name) |
-| Desk, zh-TW (dark) | 122 (the shorter 求救區 name leaves room) | 121 |
-| Phone, zh-TW (dark), at Fit (30 %) | 119 | 118 |
-| Phone, en (light), at Fit (30 %) | **0** | 114 |
-| Phone, zh-TW, zoomed to 200 % on the helper (its card's Find in office), `…-zoomed.png` | 119 | 118: 「嗯，卡住了？」 readable beside 求救區 |
-| Phone, en, zoomed to 200 %, `…-zoomed.png` | **0**: only "Help desk" and the name tag | 114: "Hmm, stuck?" readable, a row up beside "Help desk" |
+| Desk, zh-TW (dark) | 121 (the shorter 求救區 name leaves room) | 122 |
+| Phone, zh-TW (dark), at Fit (30 %) | 121 | 121 |
+| Phone, en (light), at Fit (30 %) | **0** | 112 |
+| Phone, zh-TW, zoomed to 200 % on the helper (its card's Find in office), `…-zoomed.png` | 118 | 118: 「嗯，卡住了？」 readable beside 求救區 |
+| Phone, en, zoomed to 200 %, `…-zoomed.png` | **0**: only "Help desk" and the name tag | 115: "Hmm, stuck?" readable, a row up beside "Help desk" |
+
+Each count is its own 9 s sample: the view as it opens (the Fit rows) is recorded before the zoomed sample starts
 
 The counts are in `before-report.json` and `after-report.json`. No run had page errors or CSP violations.
 
