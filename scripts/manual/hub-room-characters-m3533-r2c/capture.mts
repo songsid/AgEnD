@@ -193,6 +193,16 @@ try {
       check(`${tag}: Atlas's card shows its own character's stand (its orange robot), not the figure`, !!avatar && avatar.orange > 50, avatar);
       await shot("2-card-atlas");
       await page.keyboard.press("Escape"); await page.waitForTimeout(400); await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
+      // Quill's card: the clinic fox's own character (no portrait: the set's stand, filled from its idle) — the leader's check.
+      await page.evaluate(() => { const b = [...document.querySelectorAll(".hub-room-office .oo-desk")].find((e) => (e.textContent || "").startsWith("Quill")) as HTMLElement | undefined; b?.click(); });
+      await page.locator(".hub-room-office .oo-card").first().waitFor(); await page.waitForTimeout(1500);
+      const foxAvatar = await page.evaluate(() => { const cv = document.querySelector(".hub-room-office .oo-card .oo-card-avatar canvas") as HTMLCanvasElement | null; if (!cv) return null;
+        const d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data; let fox = 0;
+        for (let i = 0; i < d.length; i += 4) if (d[i + 3]! > 200 && Math.abs(d[i]! - 235) <= 3 && Math.abs(d[i + 1]! - 130) <= 3 && Math.abs(d[i + 2]! - 40) <= 3) fox++;
+        return { size: `${cv.width}x${cv.height}`, fox }; });
+      check(`${tag}: Quill's card shows its own character, the fox (its orange), not the figure`, !!foxAvatar && foxAvatar.fox > 20, foxAvatar);
+      await shot("2b-card-quill");
+      await page.keyboard.press("Escape"); await page.waitForTimeout(400); await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur?.());
       // Studio (large): the same agents in the large built-in style.
       const patched = await r.call(manager, "PATCH", `/hub/v1/rooms/${roomId}`, { office: { style: "studio-large" } });
       check(`${tag}: the room's style is Studio (large)`, patched.status === 200, patched.status);
