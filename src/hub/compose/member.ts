@@ -595,7 +595,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const askerStore=options.representative.readState ? new HubRoomAskerStore({home:options.home,binding:roomBinding,encryptionKey:roomKey,now,
         identity:{hubId,issuerKeyId:profile.issuerKeyId,issuerPublicKey:createPublicKey(profile.hub.issuerPublicKey),fleetId:profile.fleetId}}) : undefined;
       teardown.add("room author provenance",()=>askerStore?.close());
-      const room = new HubRoomAskAdapter({ askerStore,db, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
+      const room = new HubRoomAskAdapter({ askerStore,db,now,attentionChanged:options.pokeAttention, bindingKey: roomBinding, encryptionKey: roomKey, current: roomCurrent,
         locale: options.representative.locale, generation: options.roomConversationGeneration,feedback:receiveFeedback,
         maxCrossInstanceMessageBytes: options.maxCrossInstanceMessageBytes,remind:options.roomNotify,
         localExposure: id => {
@@ -941,7 +941,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
-          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id));
+          options.attachAttention(() => [...service.attentionItems(),...room.attentionItems()], (id) => service.retryHeld(id));
           options.attachExposures(api);
           options.attachSharing?.(sharingController);
           options.attachRoomAskers?.({verifiedAsker:(id,expected)=>room.verifiedAsker(id,expected)});

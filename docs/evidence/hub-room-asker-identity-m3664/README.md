@@ -2,6 +2,8 @@
 
 Base: `3ed153b1541f020aa027781f905a615b2d3e63df`, release/2.3.5-alpha. Design: [hub-room-asker-identity.md](../../design/hub-room-asker-identity.md). All fixtures use synthetic identities, owned temporary state and inert delivery callbacks. No live Hub, directory, Fleet, account, model or browser campaign.
 
+Current review refinements and scoped validation are in [review-r1.md](review-r1.md). Original-run logs/mutations are retained historical evidence at the initial head.
+
 ## Change and consumer boundary
 
 Room asks currently carry only a displayed name. The optional `room-asker-identity-v1` signs the immediate author id/kind and exact projected payload using the pinned Hub issuer. Old peers retain their wire and ordinary room answers; verified identity is absent. Agent/on-behalf display projections remain agent identities. Room workers/application posts are explicitly scoped assistants. There is no owner or body fallback.
@@ -22,6 +24,6 @@ A separate encrypted, bounded private companion records first admission, exact l
 
 ## Risk and rollback
 
-The critical risks are misclassifying a projected person post, exposing a partially committed identity, or making rollback reject the selected database. Actor-operation checks, exact two-phase binding, explicit capability intersection and the separate encrypted file address these. A damaged companion refuses startup rather than resetting provenance. Capacity refuses new signed admission instead of evicting unexpired work. An orphan without an exact legacy commit remains unavailable; retries cannot invent a matching commit. Historical lookup never revives an interrupted turn.
+The critical risks are misclassifying a projected person post, exposing a partially committed identity, or making rollback reject the selected database. Actor-operation checks, exact two-phase binding, explicit capability intersection and the separate encrypted file address these. A damaged companion refuses startup rather than resetting provenance. Capacity refuses new signed admission instead of evicting unexpired work. An orphan yields no historical identity/input until an exact legacy commit. R1 permits a safe prepared-only correlation rebind when the adapter proves no legacy row, preserving the original subject/payload/destination/admission/deadline. Historical lookup never revives an interrupted turn.
 
 Rollback uses the old name-only room path and ignores the companion outside the selected state set. No live state was modified. Already captured labelled work must retain its immutable consumer provenance; downgrading it into owner work is not supported.

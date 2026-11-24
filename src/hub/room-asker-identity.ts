@@ -18,6 +18,8 @@ export function signRoomAsker(input:Omit<HubRoomAskerIdentity,'signature'>,key:K
  return{...p,signature:sign(null,tuple(p),key).toString('base64url')};
 }
 export interface RoomAskerBinding {hubId:string;issuerKeyId:string;issuerPublicKey:KeyObject;fleetId:string;linkEpoch:number;exposureRevision:number;now:number}
+/** Authenticated proof only: distinguish a clock/freshness hold from malformed or forged data. */
+export class HubRoomAskerClockError extends HubProtocolError {constructor(){super('denied');}}
 /** now is the daemon's first admission time (or its authenticated historical value), never a supplied timestamp. */
 export function verifyRoomAsker(input:unknown,ask:unknown,b:RoomAskerBinding):HubRoomAskerIdentity{
  const p=validated(roomAskerIdentitySchema,input),body=validated(roomAskBaseSchema,ask),key=b.issuerPublicKey;
@@ -25,9 +27,11 @@ export function verifyRoomAsker(input:unknown,ask:unknown,b:RoomAskerBinding):Hu
   ||p.issuer!==b.hubId||p.issuerKeyId!==b.issuerKeyId||p.destinationFleetId!==b.fleetId
   ||p.messageId!==body.messageId||p.roomId!==body.roomId||p.exposureId!==body.exposureId
   ||p.exposureRevision!==b.exposureRevision||p.linkEpoch!==b.linkEpoch||p.contentDigest!==roomAskIdentityDigest(body)
-  ||!Number.isSafeInteger(b.now)||p.issuedAt>b.now+5000||p.expiresAt<=b.now||p.expiresAt<=p.issuedAt||p.expiresAt-p.issuedAt>ROOM_ASKER_FRESH_MS
-  ||p.retainedUntil<=b.now||p.retainedUntil<p.expiresAt||p.retainedUntil-p.issuedAt>ROOM_ASKER_RETENTION_MS
+  ||!Number.isSafeInteger(b.now)||p.expiresAt<=p.issuedAt||p.expiresAt-p.issuedAt>ROOM_ASKER_FRESH_MS
+  ||p.retainedUntil<p.expiresAt||p.retainedUntil-p.issuedAt>ROOM_ASKER_RETENTION_MS
   ||Buffer.from(p.signature,'base64url').toString('base64url')!==p.signature||!verify(null,tuple(p),key,Buffer.from(p.signature,'base64url')))throw new HubProtocolError('denied');
+ // Authenticate FIRST, so arbitrary timestamps in a forged frame cannot create a clock-warning card.
+ if(p.issuedAt>b.now+5000||p.expiresAt<=b.now||p.retainedUntil<=b.now)throw new HubRoomAskerClockError();
  return p;
 }
 export function roomAskerSnapshot(p:HubRoomAskerIdentity):VerifiedHubAsker{return Object.freeze({hubId:p.issuer,id:p.subject.id,kind:p.subject.kind,...(p.subject.displayName===undefined?{}:{displayName:p.subject.displayName})});}

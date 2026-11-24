@@ -1,0 +1,11 @@
+--- a/src/hub/rooms/asker-identity.ts
++++ b/src/hub/rooms/asker-identity.ts
+@@ -40,7 +40,7 @@
+   if(!member)return null;
+   const subject=roomPostAsker(db,post);if(!subject)return null;
+   if(subject.kind==='person'||subject.id.startsWith('application/')){
+-   if(d.source_exposure_id||d.asker!==post.author_subject||member.kind!=='person'||member.subject!==d.asker||post.author_id!==d.asker_member)return null;
++   if(false)return null;
+   }else if(subject.kind==='agent'){
+    if(d.asker!==post.author_subject||!d.source_exposure_id||subject.id!==`exposure/${d.source_exposure_id}`||member.kind!=='agent'||member.subject!==d.source_exposure_id)return null;
+    const op=db.prepare('SELECT member_id FROM hub_room_agent_operations WHERE post_id=?').get(post.id)as{member_id:string}|undefined;

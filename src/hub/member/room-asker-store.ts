@@ -60,20 +60,27 @@ export class HubRoomAskerStore {
  private matches(saved:Saved,accepted:RoomAskerAccepted){const a=saved.destination,b=accepted.destination;return saved.journalDigest===accepted.journalDigest&&a.agent===b.agent&&a.exposureId===b.exposureId&&a.incarnation===b.incarnation&&saved.proof.contentDigest===roomAskIdentityDigest(accepted.ask);}
  private authenticate(saved:Saved,ask:unknown){return verifyRoomAsker(saved.proof,ask,{...this.options.identity,linkEpoch:saved.proof.linkEpoch,exposureRevision:saved.proof.exposureRevision,now:saved.admittedAt});}
  /** FIRST admission uses our clock. A replay cannot refresh admittedAt/retainedUntil. */
- prepare(input:unknown,accepted:RoomAskerAccepted,current:Pick<RoomAskerBinding,'linkEpoch'|'exposureRevision'>,replay=false):void{
+ prepare(input:unknown,accepted:RoomAskerAccepted,current:Pick<RoomAskerBinding,'linkEpoch'|'exposureRevision'>,mode:{replay?:boolean;legacyAbsent?:boolean;canCollect?(messageId:string):boolean}={}):void{
   const admittedAt=this.now();
   // A retained, previously authenticated admission may be retried after transport expiry.
   // Re-signed transport retries must bind the same subject/deadline, and never replace it.
   const candidate=validated(roomAskerIdentitySchema,input),existing=this.row(candidate.messageId);
-  if(existing){const saved=this.read(existing);this.authenticate(saved,accepted.ask);if(!same(saved.proof,candidate))verifyRoomAsker(candidate,accepted.ask,{...this.options.identity,...current,now:admittedAt});if(saved.proof.retainedUntil<=admittedAt||!this.matches(saved,accepted)||!same(saved.proof.subject,candidate.subject)||saved.proof.retainedUntil!==candidate.retainedUntil)throw new HubProtocolError('conflict');return;}
-  if(replay)throw new HubProtocolError("denied");
+  if(existing){const saved=this.read(existing);this.authenticate(saved,accepted.ask);if(!same(saved.proof,candidate))verifyRoomAsker(candidate,accepted.ask,{...this.options.identity,...current,now:admittedAt});if(saved.proof.retainedUntil<=admittedAt||!same(saved.proof.subject,candidate.subject)||saved.proof.retainedUntil!==candidate.retainedUntil)throw new HubProtocolError('conflict');
+   if(!this.matches(saved,accepted)){
+    // The adapter proved there is NO legacy row. Only a prepared orphan can receive the retry's new cid digest.
+    // Keep its original verified proof/admittedAt/deadline; this is not a new admission or an input replay.
+    const a=saved.destination,b=accepted.destination;
+    if(!mode.legacyAbsent||existing.phase!=='prepared'||a.agent!==b.agent||a.exposureId!==b.exposureId||a.incarnation!==b.incarnation)throw new HubProtocolError('conflict');
+    this.db.transaction(()=>{const row=this.row(candidate.messageId);if(!row||row.phase!=='prepared'||row.value!==existing.value)throw new HubProtocolError('conflict');this.write(candidate.messageId,'prepared',{...saved,journalDigest:validated(hash,accepted.journalDigest)});}).immediate();
+   }return;}
+  if(mode.replay)throw new HubProtocolError("denied");
   const proof=verifyRoomAsker(candidate,accepted.ask,{...this.options.identity,...current,now:admittedAt});
   const destination=validated(destinationSchema,accepted.destination);if(proof.exposureId!==destination.exposureId)throw new HubProtocolError('denied');
   this.db.transaction(()=>{
    const old=this.row(proof.messageId);
    if(old){const saved=this.read(old);this.authenticate(saved,accepted.ask);if(!this.matches(saved,accepted)||!same(saved.proof.subject,proof.subject)||saved.proof.retainedUntil!==proof.retainedUntil)throw new HubProtocolError('conflict');return;}
-   // Only expired provenance can be evicted. A prepared/unexpired record stays owned until bound or expired.
-   for(const row of this.rows())if(this.read(row).proof.retainedUntil<=admittedAt)this.db.prepare('DELETE FROM room_asker_companion WHERE message_id=?').run(row.message_id);
+   // Expiry removes identity, never the distinction from legacy input. GC needs an authenticated terminal/absent legacy read.
+   for(const row of this.rows())if(this.read(row).proof.retainedUntil<=admittedAt&&mode.canCollect?.(row.message_id)===true)this.db.prepare('DELETE FROM room_asker_companion WHERE message_id=?').run(row.message_id);
    if((this.db.prepare('SELECT count(*) AS n FROM room_asker_companion').get()as{n:number}).n>=this.limit())throw new HubProtocolError('backpressure');
    this.write(proof.messageId,'prepared',{v:1,proof,destination,journalDigest:validated(hash,accepted.journalDigest),admittedAt});
   }).immediate();

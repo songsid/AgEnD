@@ -1,3 +1,4 @@
+import {HubRoomAskerClockError} from "../room-asker-identity.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY,type RoomAskerDestination,type VerifiedHubAsker,type HubRoomAskerIdentity} from "../room-asker-identity-model.js";
 import type {HubRoomAskerStore,RoomAskerAccepted} from "./room-asker-store.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "../room-answer-status-model.js";
@@ -58,6 +59,8 @@ export interface RoomAskOptions {
   db: Database.Database;
   /** Optional separately encrypted provenance; never changes the strict legacy row. */
   askerStore?: HubRoomAskerStore;
+  now?():number;
+  attentionChanged?():void;
   /** Stable immutable Hub issuer / Fleet / owner binding, from the selected member state set. */
   bindingKey: string;
   encryptionKey: Buffer;
@@ -138,6 +141,7 @@ export function verifyRoomAskJournal(db: Database.Database, options: Pick<RoomAs
 /** Injectable until Track R's negotiated socket dispatcher and room membership checks are composed. */
 export class HubRoomAskAdapter {
   private closed = false;
+  private readonly clockHolds=new Map<string,import("../../needs-you.js").HubExecutionAttentionInput>();
   private link: RoomAskLink | null = null;
   private readonly binding: string;
   private readonly key: Buffer;
@@ -192,6 +196,23 @@ export class HubRoomAskAdapter {
       return this.options.askerStore?.get(messageId,accepted)??null;
     }catch{return null;}
   }
+  attentionItems():import("../../needs-you.js").HubExecutionAttentionInput[]{
+    return this.closed?[]:[...this.clockHolds.values()].filter(item=>this.options.localExposure(item.exposureId)?.agent===item.agent);
+  }
+  private prepareAsker(proof:HubRoomAskerIdentity,saved:Saved,source:RoomAskLink,replay:boolean):void{
+    try{
+      this.options.askerStore!.prepare(proof,this.accepted(saved),{linkEpoch:source.linkEpoch!,exposureRevision:saved.local.revision},{replay,legacyAbsent:!replay,canCollect:id=>{const row=this.row(id);if(!row)return true;this.read(row);return ["answered","acked","held"].includes(row.state);}});
+      if(this.clockHolds.delete(saved.ask.exposureId))this.options.attentionChanged?.();
+    }catch(error){
+      if(error instanceof HubRoomAskerClockError){
+        if(this.clockHolds.size>=4096&&!this.clockHolds.has(saved.ask.exposureId))this.clockHolds.delete(this.clockHolds.keys().next().value!);
+        this.clockHolds.set(saved.ask.exposureId,{id:`room-clock:${saved.ask.exposureId}`,kind:"hold",agent:saved.local.agent,messageId:saved.ask.messageId,exposureId:saved.ask.exposureId,since:this.options.now?.()??Date.now(),
+          detail:this.options.locale==="zh-TW"?"這台電腦與 Hub 的時鐘可能不同，或問題送達得太晚。請檢查兩邊的時間；Hub 會重試，這個問題尚未交給 Agent。":"This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent."});
+        this.options.attentionChanged?.();
+      }
+      throw error;
+    }
+  }
   private provenanceReady(saved:Saved):boolean{return this.options.askerStore?.permitsInput(saved.ask.messageId,this.accepted(saved))??true;}
   private usable(source: RoomAskLink | null): source is RoomAskLink {
     return !this.closed && this.options.current() && source !== null && source === this.link && source.current()
@@ -219,7 +240,7 @@ export class HubRoomAskAdapter {
       const saved = this.read(old);
       if (JSON.stringify(saved.ask) !== JSON.stringify(ask)) throw new HubProtocolError("conflict");
       if (!this.current(saved)) throw new HubProtocolError("stale");
-      if(askerIdentity!==undefined)this.options.askerStore!.prepare(askerIdentity,this.accepted(saved),{linkEpoch:source.linkEpoch!,exposureRevision:saved.local.revision},true);
+      if(askerIdentity!==undefined)this.prepareAsker(askerIdentity,saved,source,true);
       // Finish only an exact previously prepared binding; a proofless retry cannot invent one.
       if(askerIdentity!==undefined)this.options.askerStore!.commit(ask.messageId,this.accepted(saved));
       if(!this.provenanceReady(saved))throw new HubProtocolError("uncertain");
@@ -235,7 +256,7 @@ export class HubRoomAskAdapter {
     const pending = this.options.db.prepare("SELECT count(*) AS n FROM hub_room_asks WHERE state NOT IN ('acked','held')").get() as { n: number };
     if (pending.n >= 4096) throw new HubProtocolError("backpressure");
     const saved:Saved={ ask, local: { agent: local.agent, consentId: local.consentId, revision: local.revision, token: local.token }, cid: `hub-room-${randomUUID()}`, ...(generation ? {generation} : {}) };
-    if(askerIdentity!==undefined)this.options.askerStore!.prepare(askerIdentity,this.accepted(saved),{linkEpoch:source.linkEpoch!,exposureRevision:local.revision});
+    if(askerIdentity!==undefined)this.prepareAsker(askerIdentity,saved,source,false);
     this.save(ask.messageId,"queued",saved);
     if(askerIdentity!==undefined)this.options.askerStore!.commit(ask.messageId,this.accepted(this.read(this.row(ask.messageId)!)));
     this.admitted.set(ask.messageId, source); this.kick(ask.messageId);
@@ -516,7 +537,7 @@ export class HubRoomAskAdapter {
     const saved = this.read(row);
     if (saved.local.agent === agent) this.save(row.message_id, "held", saved);
   }
-  close(): void { this.closed = true; this.link = null; this.admitted.clear(); }
+  close(): void { this.closed = true; this.link = null; this.admitted.clear();this.clockHolds.clear(); }
 }
 
 export function formatRoomAskPrompt(ask: RoomAsk, correlationId: string, locale: "en" | "zh-TW" = "en", { react = false, fileLines = [], maxContextBytes }: { react?: boolean; fileLines?: readonly string[]; maxContextBytes?: number } = {}): string {
