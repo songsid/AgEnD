@@ -793,7 +793,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   }
   // A crowded area speaks less (thinBubbles: calls, then work, a few at most); no bubble covers a name tag. `defer`
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
-  // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`), so it always shows.
+  // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`): a name never keeps a call out.
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes);
   const say = () => { T(); for (const { sp, b, dy } of placed) {
     const text = [...b.text].slice(0, b.shown).join("");

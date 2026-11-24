@@ -2,7 +2,7 @@
  * M-3648: a call's bubble always shows. M-3539 (#4376) made the areas' names block every bubble; on Cozy a stuck or
  * calling agent stands right under "Help desk", both its spots met the name, and "Hmm, stuck?" was left out (beta.20) —
  * and with it the click that opens their chat (#4283). Now the names block chatter only: a call tries a second row up,
- * then may cover a name (never a tag or another bubble), and failing all that is drawn at its own spot.
+ * then may cover a name (never a tag or another bubble: no two bubbles overlap).
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { page, type AppPage } from "./helpers/app-harness.js";
@@ -38,10 +38,13 @@ describe("placeBubbles: area names block chatter, never a call", () => {
     const placed = Z.placeBubbles([{ key: "stuck", calling: true, shown: 5, box: B(100, 80) }], 22, [B(100, 85, 40, 10)], [B(0, 0, 400, 200)]);
     expect(placed.map((b: any) => [b.key, b.dy])).toEqual([["stuck", -22]]);
   });
-  it("nowhere clear at all: a call is drawn at its own spot anyway; chatter beside it still waits", () => {
+  it("a call never covers a tag or another bubble (no two overlap): with every row taken by them it waits, as before", () => {
     const placed = Z.placeBubbles([{ key: "stuck", calling: true, shown: 5, box: B(100, 80) }, { key: "idle", calling: false, shown: 5, box: B(100, 80) }],
       22, [B(0, 0, 400, 200)], []);
-    expect(placed.map((b: any) => [b.key, b.dy])).toEqual([["stuck", 0]]);
+    expect(placed).toEqual([]);
+    // Two calls under one name: the first takes its spot over the name, the second the next clear row.
+    const two = Z.placeBubbles([{ key: "a", calling: true, shown: 9, box: B(100, 80) }, { key: "b", calling: true, shown: 5, box: B(100, 80) }], 22, [], [B(0, 0, 400, 200)]);
+    expect(two.map((b: any) => [b.key, b.dy])).toEqual([["a", 0], ["b", -22]]);
   });
 });
 

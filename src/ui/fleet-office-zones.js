@@ -606,9 +606,9 @@ export function bubbleAt(name, state, ms, lines) {
  * free; else it waits for another round. Returns the placed ones, each with its `dy` (0 or -lift). `rank` (optional,
  * bubbleRank): a lower one goes first (else: calling 0, the rest 2); `blocked`: boxes no bubble may cover (name tags).
  * M-3648: `soft` (the areas' names, M-3539) blocks every bubble but a call: one calling for the person (stuck, needs
- * you, crashed) that finds both spots taken tries a second row up, then may cover an area's name (still clear of the
- * tags and the other bubbles), and failing that is drawn at its own spot anyway — a call is never left out (on Cozy a
- * stuck agent stands right under "Help desk", and its "Hmm, stuck?" went missing in beta.20).
+ * you, crashed) that finds both spots taken tries a second row up, then may cover an area's name — never a tag or
+ * another bubble (no two bubbles overlap) — so a name alone never keeps a call out (on Cozy a stuck agent stands right
+ * under "Help desk", and its "Hmm, stuck?" went missing in beta.20).
  */
 export function placeBubbles(items, lift = 22, blocked = [], soft = []) {
   const rank = (it) => (it.rank ?? (it.calling ? 0 : 2));
@@ -622,7 +622,7 @@ export function placeBubbles(items, lift = 22, blocked = [], soft = []) {
   const first = (it, dys, lists) => dys.find((dy) => { const { r, t } = at(it, dy); return !lists.some((l) => hit(l, r) || (t && hit(l, t))); });
   for (const it of order) {
     let dy = first(it, [0, -lift], [taken, soft]);
-    if (dy === undefined && it.calling) dy = first(it, [-2 * lift], [taken, soft]) ?? first(it, [0, -lift, -2 * lift], [taken]) ?? 0;
+    if (dy === undefined && it.calling) dy = first(it, [-2 * lift], [taken, soft]) ?? first(it, [0, -lift, -2 * lift], [taken]);
     if (dy === undefined) continue;
     const { r, t } = at(it, dy);
     taken.push(r); if (t) taken.push(t); out.push({ ...it, dy });
