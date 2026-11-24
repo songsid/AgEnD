@@ -238,7 +238,7 @@ const zhTW: Record<Key, string> = {
   service_drain_config: "Hub 拒絕啟動：設定已變更或無法讀取。請檢查 fleet.yaml 後重試 agend restart；尚未建立替代機群。",
   service_drain_process: "Hub 拒絕啟動：無法驗證前一個 PID 紀錄或程序身分。請先檢查舊服務與 fleet.pid 再重試；沒有對程序傳送訊號，也沒有移除 PID 檔案。",
   service_drain_listeners: "Hub 拒絕啟動：無法檢查監聽端點的網路介面。請確認設定位址與權限後，再重試 agend restart。",
-  service_drain_timeout: "Hub 拒絕啟動：前一個程序或監聽端點未在既有停止寬限時間內關閉。請檢查舊服務及已占用的埠，再重試；尚未建立替代機群。",
+  service_drain_timeout: "Hub 拒絕啟動：前一個程序或監聽端點未在既有停止寬限時間內關閉。請檢查舊服務及已佔用的埠，再重試；尚未建立替代機群。",
   service_failed: "無法安裝服務：{0}。Hub 設定已保留；之後可用 agend install 安裝。",
   service_skipped: "沒有安裝服務。可用 agend start 啟動 AgEnD，或之後用 agend install 安裝服務。",
   handoff_title: "Hub 安裝紀錄（{0}）",

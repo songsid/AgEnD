@@ -63,8 +63,8 @@ register("log", {
   "zh-TW": {
     offTitle: "紀錄未開啟",
     offBody: "開啟後可逐步看到每個 agent 的工作：收到的要求、回覆、每次工具呼叫的參數與結果、錯誤，以及 fleet 事件。只在這個分頁開著時讀取 agent 自己的對話紀錄，機密值會遮蔽。",
-    enable: "開啟紀錄", enabling: "等待 fleet admin 確認，確認卡片上有說明確認方式…", enabled: "紀錄已開啟。",
-    enableFailed: "紀錄沒有開啟：{0}", offPublic: "fleet admin 可以在「設定 → 網頁儀表板」開啟。",
+    enable: "開啟紀錄", enabling: "等待 fleet 管理員確認，確認卡片上有說明確認方式…", enabled: "紀錄已開啟。",
+    enableFailed: "紀錄沒有開啟：{0}", offPublic: "fleet 管理員可以在「設定 → 網頁儀表板」開啟。",
     unsupported: "{0} 沒有 AgEnD 讀得到的對話紀錄，所以這裡只顯示 fleet 事件。「檢視」可以看它的畫面。",
     kiroWhy: "只有在 AgEnD 能證明 kiro 目前所在的對話時，才會顯示它自己的步驟。{0}目前先顯示 fleet 事件。",
     kiro_not_running: "它沒有在執行。",
@@ -88,7 +88,7 @@ register("log", {
     ev_backend_unreachable: "連不到 CLI", ev_startup_backend_unreachable: "啟動時連不到 CLI", ev_backend_launch_warning: "啟動警告",
     ev_clear_action: "對話已清除", ev_normal_exit_action: "已結束", ev_reply_drop_detected: "有回覆遺失",
     ev_reply_drop_recovered: "遺失的回覆已補回", ev_reply_drop_unrecovered: "遺失的回覆沒有補回",
-    ev_supervision_ended: "監督結束", ev_tmux_server_crash: "tmux 當掉", ev_malformed_tool_call: "格式錯誤的工具呼叫", ev_health_check_error: "健康檢查錯誤", ev_context_lost: "改用全新對話：context 遺失", ev_working_state: "工作狀態紀錄", ev_kiro_reconcile: "Kiro 對話接續處理",
+    ev_supervision_ended: "監督結束", ev_tmux_server_crash: "tmux 當掉", ev_malformed_tool_call: "格式錯誤的工具呼叫", ev_health_check_error: "健康檢查錯誤", ev_context_lost: "改用全新對話：上下文遺失", ev_working_state: "工作狀態紀錄", ev_kiro_reconcile: "Kiro 對話接續處理",
   },
 });
 /** Why a kiro Log shows fleet events only (kiro-log-gate.ts): each is worded above. */
