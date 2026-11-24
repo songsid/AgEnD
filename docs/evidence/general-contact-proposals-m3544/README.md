@@ -15,3 +15,7 @@ The new tool is included in the Fleet/settings category of the restricted-room i
 ## Review correction: strict write boundary
 
 Adjust and multi-row revoke now project only the editable grant fields before calling the existing FleetManager writer. Persisted incarnation/audit metadata stays in the store, where the writer preserves it. Two real-writer regressions fail on the reviewed head and pass after correction: adjust succeeds and preserves neighboring metadata; revoke removes one rule and retains another unchanged. The compact schema also pins valid approve-once with a grant and invalid adjust with a grant. Three affected files pass 29 tests; source/test TypeScript checks pass. Card strings and recorded native payloads are unchanged.
+
+## Shared menu headroom
+
+After a normal merge of release tip d1079b02 (including #4390), the combined General menu measured 65,908 bytes. This PR's own tool guidance and redundant model-facing value hints were shortened by 152 bytes; legal mode/decision values remain in the built-in skill and the same strict runtime validator. Unknown mode/decision tests still refuse. The real combined menu now measures 65,756 bytes. Adding the pending #4391 estimate of 108 bytes would yield 65,864, leaving 136 below the unchanged 66,000 budget. The measured current size and projected pending-PR size are distinct. Two affected suites pass 28 tests; source/test TypeScript pass. User-approved native strings and payloads, and the cleared preparation/apply function, are unchanged.

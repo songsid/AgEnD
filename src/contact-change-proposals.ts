@@ -19,7 +19,7 @@ const ContactChangeSchema = z.discriminatedUnion("kind", [
 export const ProposeContactChangeArgs = z.strictObject({ change: z.strictObject({
   kind: z.enum(["mode", "ticket-decision", "grant-adjust", "grant-revoke"]),
   target: z.string().optional(), ticket_id: z.string().optional(), revision: z.number().optional(),
-  mode: z.enum(["legacy", "restricted"]).optional(), decision: z.enum(["approve-once", "decline"]).optional(),
+  mode: z.string().optional(), decision: z.string().optional(),
   grant: z.strictObject({ expiresAt: z.string(), remainingUses: z.number().nullable(), personKeys: z.array(z.string()).optional() }).optional(),
   grant_id: z.string().optional(), expires_at: z.string().optional(), remaining_uses: z.number().nullable().optional(),
 }).superRefine((value, ctx) => {

@@ -201,6 +201,7 @@ it('zh-TW names before Chinese prose are spaced by their ending script, never by
 });
 it('compact model schema retains the strict runtime variants and all field bounds', () => {
   const invalid = [
+    {kind:'mode',target:'room',mode:'unknown'}, {kind:'ticket-decision',ticket_id:'Rfake',decision:'unknown'},
     {kind:'mode',target:'room'}, {kind:'mode',target:'',mode:'legacy'}, {kind:'mode',target:'room',mode:'legacy',revision:-1},
     {kind:'mode',target:'room',mode:'legacy',ticket_id:'extra'}, {kind:'grant-revoke',target:'worker'},
     {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'not-a-date',remaining_uses:null},
