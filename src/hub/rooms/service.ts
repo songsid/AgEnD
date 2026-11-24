@@ -114,6 +114,30 @@ export class HubGroupRooms {
    * composition (agent-catalog.ts); none: the room office draws no look.
    */
   looks: ((fleetId: string) => Map<string, RoomOfficeLook> | null) | null = null;
+  /** M-3533 R2b: a held picture's bytes by its hash (agent-pictures.ts), set by the composition; none: no picture is served. */
+  pictureFile: ((sha256: string) => { mime: string; bytes: Buffer } | null) | null = null;
+  /** M-3533 R2b: a room agent's disc or portrait, for the room's members only — the hash the room shows for it now. */
+  async picture(ctx: HubRequestContext, id: string, exposureId: string, slot: "disc" | "portrait") {
+    const me = await this.who(ctx);
+    const sha256 = this.core.atomic(db => {
+      this.member(db, id, me);
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, exposureId)) throw new HubRoomRefusal(404, "not-found");
+      const e = readExposure(db, exposureId);
+      const h = e?.fleet_id && this.looks ? this.looks(e.fleet_id)?.get(exposureId)?.[slot] : undefined;
+      if (!h) throw new HubRoomRefusal(404, "not-found");
+      return h;
+    }, this.fence(ctx));
+    const file = this.pictureFile?.(sha256);
+    if (!file) throw new HubRoomRefusal(404, "not-found");
+    return { sha256, ...file };
+  }
+  /** M-3533 R2b: these agents' pictures changed — every room holding one re-reads its members (open pages follow). */
+  lookChanged(exposureIds: readonly string[]): void {
+    const ids = [...new Set(exposureIds)].slice(0, 512);
+    if (!ids.length) return;
+    const rooms = this.core.atomic(db => db.prepare(`SELECT DISTINCT room_id FROM hub_room_members WHERE kind='agent' AND subject IN (${ids.map(() => "?").join(",")})`).all(...ids) as { room_id: string }[]);
+    for (const { room_id: roomId } of rooms) this.emit({ type: "member.changed", roomId, data: { roomId } });
+  }
   constructor(private readonly core: HubCore, private readonly office = false) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
