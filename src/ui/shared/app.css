@@ -5389,3 +5389,6 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .p-fleet :is(.tb-head-actions, .tb-title, .tb-stats) .btn { min-height: var(--tap); }
   .p-fleet .tb-project-menu .icon-btn { width: var(--tap); height: var(--tap); }   /* a project tile's ⋯ */
 }
+
+/* M-3678: the new owner stop action follows the phone tap target. */
+@media (max-width: 899px) { .n-actions .hub-close { min-height: var(--tap); min-width: var(--tap); } }

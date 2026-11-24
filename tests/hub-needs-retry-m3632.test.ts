@@ -133,4 +133,45 @@ describe("M-3632 the Try again button", () => {
     release(); await settle(4);
     expect(tryButton().disabled).toBe(false);
   });
+  it.each([["en", "Don't answer this question"], ["zh-TW", "不處理這題"]])("M-3678 %s uncertain hold can close only after confirmation; Cancel permits retry",async(lang,label)=>{
+    (globalThis as any).confirm=undefined;
+    i18n.setLang(lang,{store:false});app.appStore.set({needs:[{...ITEM,hubRetry:undefined,hubClose:true}]});
+    await mount();await settle(4);const C:any=await import("/assets/ui-confirm.js");
+    button(label).click();await settle(3);expect(C.confirmStore.get().queue).toHaveLength(1);
+    expect(reqs.filter(r=>r.url==="/ui/needs/hub-close")).toHaveLength(0);
+    expect(p.root.textContent).not.toContain(lang==="en"?"Closing…":"結束中…");
+    C.answerConfirm(C.confirmStore.get().queue[0].id,false);await settle(3);expect(button(label).disabled).toBe(false);
+    button(label).click();await settle(2);C.answerConfirm(C.confirmStore.get().queue[0].id,true);await settle(4);
+    expect(reqs.filter(r=>r.url==="/ui/needs/hub-close")).toEqual([{method:"POST",url:"/ui/needs/hub-close",body:{id:ITEM.id}}]);
+    i18n.setLang("en",{store:false});
+  });
+  it("M-3678 refusal explains verification and keeps the close action usable",async()=>{
+    (globalThis as any).confirm=undefined;
+    i18n.setLang("en",{store:false});app.appStore.set({needs:[{...ITEM,hubRetry:undefined,hubClose:true}]});
+    answer=()=>({status:403,body:{code:"verification-required"}});await mount();await settle(3);
+    const C:any=await import("/assets/ui-confirm.js");button("Don't answer this question").click();await settle(2);
+    C.answerConfirm(C.confirmStore.get().queue[0].id,true);await settle(4);
+    expect(button("Don't answer this question").disabled).toBe(false);
+    const T:any=await import("/assets/ui-toast.js");await p.mount(h(T.Toasts,{}));await settle(3);expect(p.root.textContent).toContain("Verify your admin account");
+  });
+
+});
+
+describe("M-3678 close API authority",()=>{
+  it.each([false,true])("verified actor=%s with CSRF",async verified=>{
+    const store=new WebSessionStore(),session=store.create({tier:"admin",surface:"local",label:"t",tokenEpoch:tokenEpoch(token)});
+    const r=request("/ui/needs/hub-close","POST",{cookie:`agend_session=${session.sessionId}`,origin:local,"x-agend-csrf":csrfTokenFor(session.sessionId)});
+    const actor={platform:"host",adapterId:"host",userId:"operator"};
+    const c={...ctx(store),contactActor:()=>verified?actor:null,closeHubHeld:vi.fn(async()=>({status:200,code:"closed"}))};
+    handleWebRequest(r.req as never,r.res as never,new URL(r.req.url,local),c as never);r.feed({id:"hub:hold:r1"});await flush();
+    expect(r.status()).toBe(verified?200:403);
+    if(verified)expect(c.closeHubHeld).toHaveBeenCalledWith("hub:hold:r1",actor);else expect(c.closeHubHeld).not.toHaveBeenCalled();
+  });
+  it("missing CSRF cannot close even with a verified actor",async()=>{
+    const store=new WebSessionStore(),session=store.create({tier:"admin",surface:"local",label:"t",tokenEpoch:tokenEpoch(token)});
+    const r=request("/ui/needs/hub-close","POST",{cookie:`agend_session=${session.sessionId}`,origin:local});
+    const c={...ctx(store),contactActor:()=>({platform:"host",adapterId:"host",userId:"operator"}),closeHubHeld:vi.fn()};
+    handleWebRequest(r.req as never,r.res as never,new URL(r.req.url,local),c as never);r.feed({id:"hub:hold:r1"});await flush();
+    expect(r.status()).toBe(401);expect(c.closeHubHeld).not.toHaveBeenCalled();
+  });
 });

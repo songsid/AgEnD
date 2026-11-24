@@ -1270,6 +1270,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       case "pairing.notice-ack":
         if (!deps.pairingNotices) throw new HubProtocolError("incompatible");
         deps.pairingNotices.acknowledgeFleet(link, frame.payload.id); return;
+      case "question.close": { const payload = rooms.closeQuestion(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "question.close-result", payload }; }
       case "receipt": { const payload = rooms.receipt(frame.payload, link); directChanged(payload.messageId, false); return { ...reply, type: "receipt", payload }; }
       case "answer": { const payload = await rooms.answer(frame.payload, link); directChanged(payload.messageId, true); return { ...reply, type: "receipt", payload }; }
       case "authorize.request": {

@@ -44,6 +44,7 @@ register("needs", {
     otherEmpty: "No other items are waiting for you.", title: "Needs you", empty: "Nothing needs you right now", emptyHint: "When an agent waits for you, it shows here — and in your chat app's General.", emptyHintWeb: "When an agent waits for you, it shows here.",
     open: "Open chat", kiroOpen: "Open agent", kiroMigration: "Migration instructions", openCard: "Open the card", noAssignee: "Task board (nobody assigned)", fleetSignIns: "AI accounts", signIn: "Connect account",
     gap: "not wrapped up: {0}", gapUnchecked: "{0} checklist item(s) unchecked", gapNoResult: "no result", gapJoin: ", ", acknowledge: "Acknowledge", acknowledging: "Acknowledging…", answering: "Answering…",
+    hubClose: "Don't answer this question", hubClosing: "Closing…", hubCloseTitle: "Close this question?", hubCloseConfirm: "Close question", hubCloseDetail: "You can close this question without sending it to the agent again.", hubCloseMessage: "The Hub will tell the asker this question will not be answered. An answer already sent stays visible. This does not stop work the agent has already started.", hubCloseDone: "The question is closed on the Hub.", hubCloseAnswered: "An answer already reached the Hub; it was kept.", hubCloseVerify: "Verify your admin account, then close this question again.", hubCloseForbidden: "Only an admin who manages this agent can close its question.", hubCloseUnsupported: "Update the Hub to close this question. It is still held.", hubCloseUnavailable: "The Hub did not confirm closure. Check its connection and try closing again; the question was not resent.",
     hubRetry: "Try again", hubRetrying: "Trying again…", hubRetryDone: "Asked the Hub again.",
     hubRetryGone: "This item has already changed. The list will refresh.", hubRetryNot: "This one can't be tried again: the Hub refused it, or the agent changed. Ask the person to send the question again.",
     hubHoldDetail: "The Hub could not confirm this question before it reached the agent. Try again asks the Hub again; nothing is sent without its OK.",
@@ -72,6 +73,7 @@ register("needs", {
     otherEmpty: "沒有其他待處理事項。", title: "等你處理", empty: "目前沒有需要你處理的事", emptyHint: "agent 在等你時，會出現在這裡——也會出現在聊天 app 的 General。", emptyHintWeb: "agent 在等你時，會出現在這裡。",
     open: "開啟聊天", kiroOpen: "開啟 Agent", kiroMigration: "遷移說明", openCard: "打開卡片", noAssignee: "任務看板（沒有負責人）", fleetSignIns: "AI 帳號", signIn: "連接帳號",
     gap: "還沒補齊：{0}", gapUnchecked: "還有 {0} 項沒勾", gapNoResult: "沒有產出總結", gapJoin: "、", acknowledge: "確認", acknowledging: "確認中…", answering: "回覆中…",
+    hubClose: "不處理這題", hubClosing: "結束中…", hubCloseTitle: "不處理這題？", hubCloseConfirm: "不處理這題", hubCloseDetail: "可以結束這題，不會再把問題送給 Agent。", hubCloseMessage: "Hub 會告訴提問者這題不會回答；已經送出的答案會保留。這不會停止 Agent 已經開始的工作。", hubCloseDone: "Hub 已確認結束這題。", hubCloseAnswered: "答案已經送達 Hub，原有答案會保留。", hubCloseVerify: "請先驗證管理員帳號，再結束這題。", hubCloseForbidden: "只有管理這個 Agent 的管理員可以結束這題。", hubCloseUnsupported: "請先更新 Hub，才能結束這題。目前仍保留暫停項目。", hubCloseUnavailable: "Hub 尚未確認結束。請檢查連線後再試；問題沒有重新送出。",
     hubRetry: "再試一次", hubRetrying: "重試中…", hubRetryDone: "已重新詢問 Hub。",
     hubRetryGone: "這個項目已經有變化，清單會重新整理。", hubRetryNot: "這則無法再試：Hub 已拒絕，或 Agent 已變更。請提問的人重新送出問題。",
     hubHoldDetail: "Hub 在問題交給 Agent 之前無法確認。按「再試一次」會重新詢問 Hub，未經 Hub 同意不會送出。",
@@ -288,6 +290,25 @@ function NeedsItem({ item, nowMs, owner }) {
     setClaim("acks", item.id, res && res.ok ? "done" : null);
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
+  const closeKey = `hub-close:${item.id}`, closeAck = c.acks[closeKey];
+  const closeHub = async () => {
+    if (claims.get().acks[closeKey]) return;
+    setClaim("acks", closeKey, "confirming");
+    if (!await confirmDialog({ title: tn("hubCloseTitle"), message: tn("hubCloseMessage"), confirmLabel: tn("hubCloseConfirm"), danger: true })) {
+      setClaim("acks", closeKey, null); return;
+    }
+    setClaim("acks", closeKey, "busy");
+    let res = null, body = {};
+    try {
+      res = await fetch("/ui/needs/hub-close", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) });
+      body = await res.json().catch(() => ({}));
+    } catch { /* clear, localised connection error below */ }
+    setClaim("acks", closeKey, res?.ok ? "done" : null);
+    const key = res?.ok ? body.code === "answered" ? "hubCloseAnswered" : "hubCloseDone"
+      : body.code === "verification-required" ? "hubCloseVerify" : body.code === "forbidden" ? "hubCloseForbidden"
+      : body.code === "unsupported" ? "hubCloseUnsupported" : body.code === "not-found" ? "hubRetryGone" : "hubCloseUnavailable";
+    toast(tn(key), !!res?.ok);
+  };
   // M-3632: held Hub work → back through the Hub's checks (the server re-asks the Hub for its lease; never delivered blind).
   const hubKey = hubRetryKey(item), hubAck = item.hubRetry ? c.acks[hubKey] : undefined;
   const retryHub = async () => {
@@ -307,6 +328,7 @@ function NeedsItem({ item, nowMs, owner }) {
     <div class="n-body">
       <div class="n-title"><strong>${item.type==='host'?hostAlertName(item.hostAlert):itemReason(item)}</strong><span class="n-age">${item.type==='host'?hostAlertText('started')+age(item.since, nowMs):age(item.since, nowMs)}</span></div>
       ${item.type==='host'&&item.hostAlert?html`<p class="n-detail">${hostAlertText(item.hostAlert.level)} · ${hostAlertDescription(item.hostAlert)}</p>`:item.type==='host'?html`<p class="n-detail">${hostAlertText('failed')}</p>`:detailOf(item)?html`<p class="n-detail">${detailOf(item)}</p>`:null}
+      ${item.type === "hub" && item.hubClose ? html`<p class="n-detail">${tn("hubCloseDetail")}</p>` : null}
       ${item.type === "hub" && item.hubRetry ? html`<p class="n-detail">${tn("hubHoldDetail")}</p>` : null}
       ${item.type === "hub" && item.hubProposal ? html`<p class="n-detail">${item.hubProposal.action}</p><pre>${item.hubProposal.arguments}</pre><p class="n-detail">${item.hubProposal.consequences}</p>` : null}
       ${item.generalLocation ? html`<${GeneralLocation} name=${item.instance} attentionOnly=${true} />` : null}
@@ -314,8 +336,9 @@ function NeedsItem({ item, nowMs, owner }) {
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
-        ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck} onClick=${retryHub}>
+        ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck || !!closeAck} onClick=${retryHub}>
             <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
+        ${item.type === "hub" && item.hubClose ? html`<button type="button" class="btn btn-sm hub-close" disabled=${!!closeAck || !!hubAck} onClick=${closeHub}>${tn(closeAck === "busy" ? "hubClosing" : "hubClose")}</button>` : null}
         ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}

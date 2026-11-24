@@ -1,3 +1,4 @@
+import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseResultSchema } from "./question-close-model.js";
 /**
  * Hub P1 representative agent (docs/design/hub-representative-agent.md): the member's only execution path. An admitted
  * Hub question goes to the existing fleet agent the owner published, through ordinary cross-instance delivery; the
@@ -545,7 +546,7 @@ export class HubRepresentativeExecution {
   attentionItems(): HubExecutionAttentionInput[] {
     const rows = this.options.db.prepare(`SELECT * FROM hub_representative_questions WHERE state='held' ORDER BY at DESC LIMIT ${HELD_MAX}`).all() as Row[];
     return rows.map(r => ({ id: `hold:${r.id}`, kind: "hold" as const, agent: r.agent, messageId: r.message_id, exposureId: r.exposure_id, since: r.at,
-      ...(this.retryable(r) ? { retry: true } : {}) }));
+      close: true, ...(this.retryable(r) ? { retry: true } : {}) }));
   }
   /** M-3632: a held question that never reached the agent (the journal still holds it, no input intent) and was held for a reason asking again can change. */
   private retryable(row: Row): boolean {
@@ -569,6 +570,41 @@ export class HubRepresentativeExecution {
     this.options.attentionChanged();
     this.pump();
     return "queued";
+  }
+  private readonly closing = new Map<string, Promise<string>>();
+  /** Owner confirmation only. A missing acknowledgement keeps the card; a repeat asks the Hub about the same id. */
+  closeHeld(attentionId: string): Promise<string> {
+    const id = attentionId.startsWith("hold:") ? attentionId.slice(5) : attentionId;
+    const pending = this.closing.get(id); if (pending) return pending;
+    const run = this.closeHeldOnce(id).finally(() => this.closing.delete(id));
+    this.closing.set(id, run); return run;
+  }
+  private async closeHeldOnce(id: string): Promise<string> {
+    const row = this.row("id", id);
+    if (!row || row.state !== "held") return "not-found";
+    const binding = this.options.binding(), link = this.options.link();
+    if (this.closed || !binding.current() || !link?.current()) return "unavailable";
+    if (!link.features?.has(HUB_QUESTION_CLOSE_CAPABILITY)) return "unsupported";
+    try {
+      this.options.db.transaction(() => {
+        this.options.audit({ action: "representative.close-requested", result: "completed", messageId: row.message_id, exposureId: row.exposure_id }, this.options.db);
+        if (!this.setState(row, "held", ["held"], { reason: "owner-close-pending" })) throw new HubProtocolError("stale");
+      }).immediate();
+      this.forgetRetry(row.id); this.options.attentionChanged();
+      const result = await link.exchange({ v: 1, type: "question.close", requestId: randomUUID(), linkEpoch: link.linkEpoch,
+        payload: { messageId: row.message_id, exposureId: row.exposure_id } }, "question.close-result");
+      if (this.closed || !binding.current() || !link.current() || result.type !== "question.close-result") return "unavailable";
+      const reply = validated(questionCloseResultSchema, result.payload);
+      if (reply.messageId !== row.message_id) throw new HubProtocolError("conflict");
+      this.options.db.transaction(() => {
+        this.options.audit({ action: "representative.closed", result: "completed", messageId: row.message_id, exposureId: row.exposure_id, reasonCode: reply.outcome }, this.options.db);
+        if (!this.setState(row, "released", ["held"], { reason: "owner-declined" })) throw new HubProtocolError("stale");
+      }).immediate();
+      this.options.attentionChanged(); return reply.outcome;
+    } catch {
+      // No blind question/answer resend; the next explicit close is idempotent on the Hub.
+      this.options.attentionChanged(); return "unavailable";
+    }
   }
   private forgetRetry(id: string): void {
     const wait = this.retries.get(id);

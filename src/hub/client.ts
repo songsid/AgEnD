@@ -1,3 +1,4 @@
+import { HUB_QUESTION_CLOSE_CAPABILITY } from "./question-close-model.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "./direct-posts-model.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
@@ -114,7 +115,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
-    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY && c !== HUB_ASKER_NAME_CAPABILITY && c !== HUB_DIRECT_POST_CAPABILITY);
+    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY && c !== HUB_ASKER_NAME_CAPABILITY && c !== HUB_DIRECT_POST_CAPABILITY && c !== HUB_QUESTION_CLOSE_CAPABILITY);
     const origins = this.options.dial ? this.options.dial() : [profile.hub.memberOrigin];
     if (!origins.length) {                                       // a relocation state that does not verify: fail closed
       this.connecting = false; this.stopped = true; this.options.hold("key-changed");
@@ -209,6 +210,7 @@ export class HubMemberClient implements HubMemberTransport {
         current: () => this.current() && this.link === link && this.view === view && this.epoch === epoch && link.current(),
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
+          if (value.type === "question.close" && !features.has(HUB_QUESTION_CLOSE_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if(value.type === "agent.intro" && !features.has(HUB_AGENT_INTRO_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "agent.pictures" || value.type === "agent.picture") && !features.has(HUB_AGENT_PICTURES_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && !features.has(HUB_AGENT_CATALOG_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
@@ -271,6 +273,7 @@ export class HubMemberClient implements HubMemberTransport {
   private async dispatch(frame: HubServerFrame, view: HubMemberLink): Promise<void> {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
     if(frame.type==="room.members-result"&&frame.payload.ok&&"v2" in frame.payload&&!view.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");
+    if (frame.type === "question.close-result" && !view.features.has(HUB_QUESTION_CLOSE_CAPABILITY)) throw new HubProtocolError("incompatible");
     if(frame.type==="question"&&frame.payload.askerName!==undefined&&!view.features.has(HUB_ASKER_NAME_CAPABILITY))throw new HubProtocolError("incompatible");
     if(frame.type==="room.ask"&&frame.payload.brief&&!view.features.has(HUB_ROOM_BRIEF_CAPABILITY))throw new HubProtocolError("incompatible");
     if ((frame.type === "room.context-state-result" || frame.type === "room.context-input-result"

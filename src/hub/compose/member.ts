@@ -1,3 +1,4 @@
+import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
 import { HubDirectRooms } from "../member/direct-rooms.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "../direct-posts-model.js";
 import {HubMemberAgentIntro} from "../member/agent-intro.js";
@@ -133,7 +134,7 @@ export interface HubMemberFactoryOptions {
   sawText?(text: string): void;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   /** M-3632: `retry` sends one held question back through the Hub's checks (Needs you → "Try again"). */
-  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable"): void;
+  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable", close?: (id: string) => Promise<string>): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
   attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;
@@ -827,7 +828,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
         hubId,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY,...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY, HUB_QUESTION_CLOSE_CAPABILITY,...(options.representative.readState&&options.attachAgentRooms&&options.roomNotify?[HUB_DIRECT_POST_CAPABILITY]:[])] : []),
           ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
         revocationFloor: () => journal.revocationVersion(),
@@ -935,7 +936,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         async leave(expected: import("../types.js").HubMemberLeaveBinding) { return live() && await client!.leave(expected); },
         async start() {
           if (!live()) throw new HubStateError("service-unavailable", "the Hub member was switched off while starting");
-          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id));
+          options.attachAttention(() => service.attentionItems(), (id) => service.retryHeld(id), (id) => service.closeHeld(id));
           options.attachExposures(api);
           options.attachSharing?.(sharingController);
           options.attachAgentRooms?.(posts);

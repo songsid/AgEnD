@@ -1,3 +1,4 @@
+import { questionCloseSchema, questionCloseResultSchema } from "./question-close-model.js";
 import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
 import {roomBriefSchema} from "./room-brief-model.js";
 import {agentIntroSchema,agentIntroResultSchema} from "./agent-intro-model.js";
@@ -185,6 +186,7 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 /** The authenticated link is the target. No caller-supplied Fleet ID, owner or credential. */
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
+  frame("question.close", questionCloseSchema),
   frame("agent.intro",agentIntroSchema),
   // agent-pictures-v1 (M-3533 R2b): a Fleet's shared agents' pictures, then the chunks the Hub asked for.
   frame("agent.pictures", agentPicturesSchema), frame("agent.picture", agentPictureChunkSchema),
@@ -204,6 +206,7 @@ export const memberFrameSchema = z.union([
   frame("relocate.ack", z.strictObject({ revision: epoch.min(1), digest: hash })),
 ]);
 export const serverFrameSchema = z.union([
+  frame("question.close-result", questionCloseResultSchema),
   frame("agent.intro-result",agentIntroResultSchema),
   frame("agent.pictures-result", agentPicturesResultSchema), frame("agent.picture-result", agentPictureResultSchema),
   frame("agent.catalog-refresh", agentCatalogRefreshSchema), frame("exposure.request", exposureRequestSchema), frame("exposure.request-ack", exposureRequestAckSchema), frame("exposure.undo-result", exposureUndoResultSchema),

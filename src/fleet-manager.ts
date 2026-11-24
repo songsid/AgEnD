@@ -2738,7 +2738,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               : this.getInstanceAdapterId(agent) === actor.adapter_id && this.isFleetAdmin(actor.user_id, actor.adapter_id),
           }, caller.agent, receiptId),
           attachExposures: api => this.attachHubMemberExposures(api),
-          attachAttention: (read, retry) => this.attachHubExecutionAttention(read, retry),
+          attachAttention: (read, retry, close) => this.attachHubExecutionAttention(read, retry, close),
           updates: { idle: () => this.hubUpdateIdle(), busy: () => !!this.webUpdateOwned || isUpdateInProgress(this.dataDir),
             canInstall: () => this.hubUpdateCanInstall(), launch: (row, control) => this.launchHubUpdate(row, control),
             active: id => this.hubUpdateOwned?.id === id, outcome: row => this.hubUpdateOutcome(row), notify: n => this.recordHubUpdateNotice(n) },
@@ -3533,6 +3533,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   /** M-3632: the member's "Try again" for a held Hub question (null while no member runs). */
+  private hubHeldClose: ((id: string) => Promise<string>) | null = null;
   private hubHeldRetry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -19720,13 +19721,21 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
-  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null): void {
-    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.needsYou?.poke();
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null, close: ((id: string) => Promise<string>) | undefined = undefined): void {
+    this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.hubHeldClose = read ? close ?? null : null; this.needsYou?.poke();
   }
   /**
    * M-3632: Needs you → "Try again" on held Hub work (`hub:hold:<row>`). The question goes back through the member's whole
    * hand-off, including the Hub's begin lease; nothing is delivered without it.
    */
+  async closeHubHeld(itemId: string, actor: ContactPerson): Promise<{ status: number; code: string }> {
+    const item = this.hubExecutionAttention?.().find(i => `hub:${i.id}` === itemId && i.kind === "hold");
+    if (!item || !this.hubHeldClose) return { status: 404, code: "not-found" };
+    if (!this.contactAdminOf(item.agent, actor)) return { status: 403, code: "forbidden" };
+    const code = await this.hubHeldClose(item.id);
+    this.needsYou?.poke();
+    return { status: code === "closed" || code === "answered" ? 200 : code === "not-found" ? 404 : 503, code };
+  }
   retryHubHeld(itemId: string): { status: 200 | 404 | 409; code: "queued" | "not-found" | "not-retryable" } {
     const id = itemId.startsWith("hub:") ? itemId.slice(4) : itemId;
     if (!this.hubHeldRetry || !id.startsWith("hold:")) return { status: 404, code: "not-found" };
