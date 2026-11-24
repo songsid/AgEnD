@@ -213,7 +213,7 @@ describe("the words", () => {
     expect(i18n.t("tasksort.tileBadge", 7)).toBe("7 張待歸檔");
     expect(i18n.t("tasksort.headerLink", 7)).toBe("未分類 7 張");   // one name for the place: the tile's 未分類
     expect(i18n.t("tasksort.go")).toBe("前往歸檔");
-    expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 已歸到 Shop");
+    expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 已歸檔到 Shop");
     i18n.setLang("en", { store: false });
     expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 filed in Shop");
   });

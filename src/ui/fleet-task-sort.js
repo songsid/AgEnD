@@ -23,7 +23,7 @@ register("tasksort", {
   },
   "zh-TW": {
     title: "未分類：{0} 張待歸檔", hint: "沒有人說這張卡屬於哪個專案時，Agent 會先把卡開在未分類。選一個專案就能歸檔。",
-    pick: "歸到…", pickFor: "{0}：歸到專案", moved: "{0} 已歸到 {1}", by: "{0} 建立",
+    pick: "歸檔到…", pickFor: "{0}：歸檔到專案", moved: "{0} 已歸檔到 {1}", by: "{0} 建立",
     openAll: "開啟未分類", seeAll: "看全部 {0} 張",
     tileBadge: "{0} 張待歸檔", headerLink: "未分類 {0} 張", headerLinkTip: "開啟未分類並歸檔", go: "前往歸檔",
     placeLead: "沒指定專案時開出來的卡。打開卡片選專案，或在首頁直接歸檔。",

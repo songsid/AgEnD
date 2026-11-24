@@ -3369,7 +3369,8 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* On a phone or a touch screen (style guide §7: every control a 44px box), laid out for a narrow screen rather than drawn
    bigger. Home's list is one card: a tinted head (title, hint), then a row per card split by a line — the title across the
    whole width (its 44px box from padding that negative margins take back, so nothing is drawn bigger), under it who/when on
-   the left and the picker as a small capsule on the right (32px drawn in a 44px box: transparent border), and "See all" as
+   the left and the picker as a small capsule on the right (32px drawn in a 44px box: transparent border; the two boxes
+   meet, they do not overlap), and "See all" as
    the card's last row. A project's board puts the link on its own line under the stats, as a 44px banner: "No project:
    N to file … File them →". The desk keeps the Waiting box's rows and the pill. */
 @media (pointer: coarse), (max-width: 899px) {
@@ -3377,10 +3378,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tb-sort > .tb-section-title { margin: 0; padding: var(--s-3) var(--s-4) var(--s-1); background: var(--warn-bg); }
   .tb-sort > .tb-sort-hint { margin: 0; padding: 0 var(--s-4) var(--s-3); background: var(--warn-bg); }
   .tb-sort > .rows { gap: 0; }
-  .tb-sort-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s-1) var(--s-3); padding: var(--s-3) var(--s-4); border-top: 1px solid var(--border); border-radius: 0; background: none; }
+  /* the row gap is the title's growth (12px at a 20px line), so the title's 44px box ends where the picker's begins: no overlap */
+  .tb-sort-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4) var(--s-2); border-top: 1px solid var(--border); border-radius: 0; background: none; }
   .tb-sort-row .tb-wait-title { --grow: max(0px, calc((var(--tap) - 1lh) / 2)); grid-column: 1 / -1; padding-block: var(--grow); margin-block: calc(-1 * var(--grow)); }
   .tb-sort-row .tb-sort-meta { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-  .tb-sort-row .tb-sort-pick { grid-column: 2; width: auto; min-width: 0; max-width: 45vw; min-height: var(--tap); margin-block: -6px; padding-inline: var(--s-3);
+  .tb-sort-row .tb-sort-pick { grid-column: 2; width: auto; min-width: 0; max-width: 45vw; min-height: var(--tap); padding-inline: var(--s-3);
     border: 0; border-block: 6px solid transparent; border-radius: var(--r-full); background-color: var(--surface-2); background-clip: padding-box; }
   .tb-sort-foot { margin: 0; border-top: 1px solid var(--border); }
   .tb-sort-foot .btn { flex: 1; min-height: var(--tap); border-radius: 0; color: var(--accent); font-size: var(--fs-sm); }

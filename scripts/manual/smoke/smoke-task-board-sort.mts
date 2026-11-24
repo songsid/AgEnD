@@ -84,6 +84,8 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
     if (phone) {   // the No project tile is below the list on a phone: a shot scrolled to it
       await tileOf(page, c, "No project", "未分類").scrollIntoViewIfNeeded();
       await page.waitForTimeout(300);
+      // the tile's badge is in this shot (the after run; the base has no badge)
+      if (!shotsOnly) chk.tileBadgeInShot = await page.evaluate(() => { const b = document.querySelector(".tb-sort-flag")?.getBoundingClientRect(); return !!b && b.top >= 0 && b.bottom <= window.innerHeight; });
       await page.screenshot({ path: shotPath(SMOKE, c, "1b-home-tile") });
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.locator(".tb-home").evaluate((el: any) => { for (let n = el; n; n = n.parentElement) n.scrollTop = 0; });
@@ -111,8 +113,24 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
         const r = row.getBoundingClientRect(), t = row.querySelector(".tb-wait-title")!.getBoundingClientRect();
         const m = row.querySelector(".tb-sort-meta")!.getBoundingClientRect(), p = row.querySelector(".tb-sort-pick")!.getBoundingClientRect();
         const inner = r.width - parseFloat(getComputedStyle(row).paddingLeft) - parseFloat(getComputedStyle(row).paddingRight);
-        return t.width >= inner - 1 && p.top >= t.top && p.left >= m.right && p.top < m.bottom && p.bottom > m.top;
+        return t.width >= inner - 1 && p.top >= t.bottom - 0.5 && p.left >= m.right && p.top < m.bottom && p.bottom > m.top;
       }));
+      // ... and the title's and the picker's 44px boxes do not overlap: their rectangles share no area, and a tap at the title
+      // box's bottom edge above the picker reaches the title, at the picker's middle the picker (every row, scrolled into view)
+      if (phone) {
+        r.rowBoxes = await page.evaluate(() => [...document.querySelectorAll(".tb-sort-row")].map((row) => {
+          row.scrollIntoView({ block: "center" });
+          const t = row.querySelector(".tb-wait-title")!, p = row.querySelector(".tb-sort-pick")!;
+          const tr = t.getBoundingClientRect(), pr = p.getBoundingClientRect(), cs = getComputedStyle(p);
+          const ox = Math.max(0, Math.min(tr.right, pr.right) - Math.max(tr.left, pr.left)), oy = Math.max(0, Math.min(tr.bottom, pr.bottom) - Math.max(tr.top, pr.top));
+          const atTitleEdge = document.elementFromPoint((pr.left + pr.right) / 2, tr.bottom - 1), atPicker = document.elementFromPoint((pr.left + pr.right) / 2, (pr.top + pr.bottom) / 2);
+          return { title: { y0: Math.round(tr.top), y1: Math.round(tr.bottom), h: Math.round(tr.height * 10) / 10 }, picker: { y0: Math.round(pr.top), y1: Math.round(pr.bottom), h: Math.round(pr.height * 10) / 10,
+            painted: Math.round((pr.height - parseFloat(cs.borderTopWidth) - parseFloat(cs.borderBottomWidth)) * 10) / 10 },
+            overlap: Math.round(ox * oy * 10) / 10, titleEdgeHitsTitle: !!atTitleEdge && t.contains(atTitleEdge), pickerMiddleHitsPicker: atPicker === p };
+        }));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        chk.targetsApart = r.rowBoxes.every((b: any) => b.overlap <= 0.5 && b.titleEdgeHitsTitle && b.pickerMiddleHitsPicker && b.title.h >= 44 && b.picker.h >= 44);
+      }
       const titles = await page.locator(".tb-sort-row .tb-wait-title").allInnerTexts();
       const shortest = titles.reduce((best, t, i) => (t.length < titles[best]!.length ? i : best), 0);
       r.shortTitle = { text: titles[shortest]!.trim(), box: await box(page.locator(".tb-sort-row .tb-wait-title").nth(shortest)) };
@@ -143,6 +161,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       await page.waitForFunction(() => !document.querySelector(".toasts .toast"), null, { timeout: 8000 }).catch(() => {});
       chk.noToastOverTheBoard = (await page.locator(".toasts .toast").count()) === 0;
       await page.screenshot({ path: shotPath(SMOKE, c, "3-project-board") });
+      r.boardHead = await Promise.all((await page.locator(".tb-board-page .menu-text").all()).map(async (b: any) => ({ text: (await b.innerText()).trim(), box: await box(b) })));
       await page.locator(".tb-sort-link").click();
       await page.waitForFunction(() => !document.querySelector(".tb-sort-link"), null, { timeout: 8000 }).catch(() => {});
       await page.waitForTimeout(500);
@@ -155,6 +174,7 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       await tileOf(page, c, "Game", "遊戲").click().catch(() => {});
       await page.waitForTimeout(500);
       await page.screenshot({ path: shotPath(SMOKE, c, "3-project-board") });
+      r.boardHead = await Promise.all((await page.locator(".tb-board-page .menu-text").all()).map(async (b: any) => ({ text: (await b.innerText()).trim(), box: await box(b) })));
     }
   } catch (e) { r.error = String(e).slice(0, 500); chk.ranToTheEnd = false; await page.screenshot({ path: shotPath(SMOKE, c, "failure") }).catch(() => {}); }
   await ctx.close();
