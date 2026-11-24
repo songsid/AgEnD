@@ -1044,3 +1044,7 @@ fleet.yaml (Advanced, or the file) and `agend reload`.
 
 
 For the Hub's **My shared agents → Who may ask** person/name search, AD group grants, expiry and revoke controls, load the `hub` skill. Those controls use the Hub's company-account session, not this Fleet dashboard's guest grants.
+
+## General contact-change proposals
+
+General can call `propose_contact_change` with a structured `change`: room `mode` (`restricted` or `legacy`), `ticket-decision` (full ticket ID, approve-once/decline, optionally exact originating-person keys and expiry/uses), `grant-adjust` (expiry/uses only), or `grant-revoke`. The daemon freezes the current revision and identities and posts its own confirmation in the target connection’s Discord/Telegram General. An authorized person must press Confirm; the tool call, a quoted approval, or General's own buttons never apply it. The card expires after five minutes; a changed revision, route or incarnation requires a new proposal. Unknown origins remain approve-once only. Host-only targets and unavailable platform routes use web Permissions/Authorizations. Contact approval never restricts what the receiving agent does afterward.

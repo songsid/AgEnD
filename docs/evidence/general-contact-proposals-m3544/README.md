@@ -1,0 +1,21 @@
+# General confirmation evidence
+
+The JSON files contain EN and zh-TW card text, button labels, structured proposals and outcomes from the actual `FleetManager` nonce posting, callback authorization/claim and expiry timer. The platform adapter is a synthetic fixture; no Discord/Telegram connection, live Fleet, vendor or model call was made. Ephemeral test nonces are replaced by a visible placeholder; fake ticket/rule/person IDs remain only in structured payloads, not user-facing text.
+
+Covered visible states: posted room mode, approve with standing rules, decline, adjust and revoke; confirmed contact/mode/adjust/revoke; cancelled proposal; confirmed decline; expired, stale, failed and unauthorized. Platform rendering and real delivery are not claimed. User-look review is intentionally of these native payloads, with no invented web confirmation screen.
+
+Thirteen production-method controls pin General-only raw admission, strict schemas, no pre-confirm writes, immutable snapshots, bot/outsider/wrong-adapter/message/web refusal, current target approver, canonical-delivery binding, one-use claim, stale policy/incarnation/route/lifetime/deadline, late-post cleanup, per-General cap, unknown-origin rules and Hub refusal. They use real SQLite ContactAuthStore/ContactAuthService for ticket and grant effects. Existing neighboring tool-profile/native-MCP/Classic-addressing/nonce/Windows-confirmation tests and the upstream manifest precheck also pass (320 tests across eight files before the wording-only updates; the final wording/control file passes 13).
+
+Source/test TypeScript checks and public hygiene checks accompany the PR. The implementation and rollback limits are in `docs/design/general-contact-proposals-m3544.md`. Permission changes reuse existing authority/mutation methods; this is a confirmation path, not an action broker or credential isolation layer.
+
+## CI integration repair
+
+The new tool is included in the Fleet/settings category of the restricted-room impact list. Its model-facing schema uses one compact field table with strict runtime variant validation, rather than repeating common fields in four JSON variants. The General menu is 65,830 bytes (budget 66,000); the worker menu and the budget are unchanged. Regression cases keep conditional required fields, per-kind unknown-field refusal, expiry/count bounds and decline-with-grant refusal. Three affected files pass 30 tests; both TypeScript checks pass. The exact restricted-tools UI smoke passes 12 checks. Native card strings and recorded EN/zh-TW payloads remain byte-identical to the approved 42b65d8f commit. The later write-payload correction below changes the preparation function, without changing its rendering.
+
+## Review correction: strict write boundary
+
+Adjust and multi-row revoke now project only the editable grant fields before calling the existing FleetManager writer. Persisted incarnation/audit metadata stays in the store, where the writer preserves it. Two real-writer regressions fail on the reviewed head and pass after correction: adjust succeeds and preserves neighboring metadata; revoke removes one rule and retains another unchanged. The compact schema also pins valid approve-once with a grant and invalid adjust with a grant. Three affected files pass 29 tests; source/test TypeScript checks pass. Card strings and recorded native payloads are unchanged.
+
+## Shared menu headroom
+
+After a normal merge of release tip d1079b02 (including #4390), the combined General menu measured 65,908 bytes. This PR's own tool guidance and redundant model-facing value hints were shortened by 152 bytes; legal mode/decision values remain in the built-in skill and the same strict runtime validator. Unknown mode/decision tests still refuse. The real combined menu now measures 65,756 bytes. Adding the pending #4391 estimate of 108 bytes would yield 65,864, leaving 136 below the unchanged 66,000 budget. The measured current size and projected pending-PR size are distinct. Two affected suites pass 28 tests; source/test TypeScript pass. User-approved native strings and payloads, and the cleared preparation/apply function, are unchanged.

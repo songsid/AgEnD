@@ -1,0 +1,136 @@
+{
+  "provenance": "Actual FleetManager nonce posting/callback/timer; synthetic adapter/people, no platform connection. Only ephemeral nonce values redacted.",
+  "posted": {
+    "mode": {
+      "proposal": {
+        "kind": "mode",
+        "target": "room",
+        "mode": "restricted"
+      },
+      "card": {
+        "type": "clear_confirm",
+        "instance": "general",
+        "text": "General proposes a contact-permission change. Nothing changes until an admin confirms.\nRoom: Demo room\nMode: Not restricted (older setting) → Restricted\nIn restricted mode, requests from people who aren't admins to other agents wait for approval.\nSwitching on treats earlier conversation history as an unknown requester.\nIf the CLI doesn't support this protection, the agent keeps its current tool permissions.",
+        "buttons": [
+          {
+            "label": "Confirm change",
+            "callback": "contact-change:<ephemeral-test-nonce>:confirm"
+          },
+          {
+            "label": "Cancel proposal",
+            "callback": "contact-change:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      }
+    },
+    "contact": {
+      "proposal": {
+        "kind": "ticket-decision",
+        "ticket_id": "Rbf04ff6e-59cd-4b5d-9afb-574791da4e59",
+        "decision": "approve-once",
+        "grant": {
+          "expiresAt": "2026-12-01T02:41:44.992Z",
+          "remainingUses": null,
+          "personKeys": [
+            "[\"discord\",\"demo\",\"fake-person\"]"
+          ]
+        }
+      },
+      "card": {
+        "type": "clear_confirm",
+        "instance": "general",
+        "text": "General proposes a contact-permission change. Nothing changes until an admin confirms.\nContact request #Rbf04ff6e from Demo room (a message between agents)\nAllow Demo person (Discord) to contact Demo worker until Tue 12/1 10:41\nThis only lets the message through; it doesn't approve what the receiving agent does with it.",
+        "buttons": [
+          {
+            "label": "Confirm change",
+            "callback": "contact-change:<ephemeral-test-nonce>:confirm"
+          },
+          {
+            "label": "Cancel proposal",
+            "callback": "contact-change:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      }
+    },
+    "decline": {
+      "proposal": {
+        "kind": "ticket-decision",
+        "ticket_id": "R8a7e7396-07c5-48fe-aa50-b79e595ffccf",
+        "decision": "decline"
+      },
+      "card": {
+        "type": "clear_confirm",
+        "instance": "general",
+        "text": "General proposes a contact-permission change. Nothing changes until an admin confirms.\nDecline contact request #R8a7e7396 from Demo room (a message between agents)",
+        "buttons": [
+          {
+            "label": "Confirm change",
+            "callback": "contact-change:<ephemeral-test-nonce>:confirm"
+          },
+          {
+            "label": "Cancel proposal",
+            "callback": "contact-change:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      }
+    },
+    "adjust": {
+      "proposal": {
+        "kind": "grant-adjust",
+        "target": "worker",
+        "grant_id": "35390c0a-54f4-40fa-9f00-b38089ee4744",
+        "expires_at": "2026-12-02T02:41:45.004Z",
+        "remaining_uses": null
+      },
+      "card": {
+        "type": "clear_confirm",
+        "instance": "general",
+        "text": "General proposes a contact-permission change. Nothing changes until an admin confirms.\nAgent: Demo worker\nAllowed contact for Demo person (Discord)\nFrom Demo room (a message between agents)\nUntil Wed 12/2 10:41\nThis only lets the message through; it doesn't approve what the receiving agent does with it.",
+        "buttons": [
+          {
+            "label": "Confirm change",
+            "callback": "contact-change:<ephemeral-test-nonce>:confirm"
+          },
+          {
+            "label": "Cancel proposal",
+            "callback": "contact-change:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      }
+    },
+    "revoke": {
+      "proposal": {
+        "kind": "grant-revoke",
+        "target": "worker",
+        "grant_id": "35390c0a-54f4-40fa-9f00-b38089ee4744"
+      },
+      "card": {
+        "type": "clear_confirm",
+        "instance": "general",
+        "text": "General proposes a contact-permission change. Nothing changes until an admin confirms.\nAgent: Demo worker\nAllowed contact for Demo person (Discord)\nFrom Demo room (a message between agents)\nRevoke this rule; later matching contacts will ask again.\nThis only lets the message through; it doesn't approve what the receiving agent does with it.",
+        "buttons": [
+          {
+            "label": "Confirm change",
+            "callback": "contact-change:<ephemeral-test-nonce>:confirm"
+          },
+          {
+            "label": "Cancel proposal",
+            "callback": "contact-change:<ephemeral-test-nonce>:cancel"
+          }
+        ]
+      }
+    }
+  },
+  "outcomes": {
+    "afterConfirm": "Contact request #Rbf04ff6e approved for forwarding. This does not mean the work is finished.",
+    "afterModeConfirm": "Contact-permission change applied.",
+    "afterAdjustConfirm": "The allowed-contact expiry/use limit was updated.",
+    "afterRevokeConfirm": "The allowed-contact rule was revoked.",
+    "afterCancel": "Proposal cancelled; nothing changed.",
+    "afterDeclineConfirmed": "Contact request #R8a7e7396 declined. Nothing will be forwarded.",
+    "expired": "This proposal expired or changed. Ask General to propose again; nothing was applied.",
+    "stale": "This proposal expired or changed. Ask General to propose again; nothing was applied.",
+    "failed": "Could not confirm the change. Check the current Permissions or Authorizations page before proposing again.",
+    "unauthorized": "⛔ Only a Fleet admin can use this button."
+  }
+}
