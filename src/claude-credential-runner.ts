@@ -1,6 +1,7 @@
 /** Internal helper/launcher process. Never import the CLI logger or dotenv loader here. */
 import { spawn } from "./child-process.js";
 import { ClaudeCredentialVault } from "./claude-credential-vault.js";
+import { UnsupportedCliError } from "./backend/types.js";
 import { currentManagedClaude, managedClaudeAuthInputs, managedClaudeEnv, probeManagedClaudeSource, readManagedClaudeSpec, writeClaudeCredentialPipe } from "./claude-credential-launch.js";
 async function run():Promise<void>{
  const [mode,path,...extra]=process.argv.slice(2);if(!path||extra.length||!["helper","launch"].includes(mode))throw Error();
@@ -30,4 +31,5 @@ async function run():Promise<void>{
   }
  }finally{value?.fill(0);try{vault.close();}catch{}}
 }
-void run().catch(()=>{process.stderr.write("Managed Claude credential unavailable or source changed; open Accounts on the local dashboard.\n");process.exitCode=1;});
+// M-3558: a refusal that names its cause (a remote-settings key) says so; anything else stays the plain line.
+void run().catch((e:unknown)=>{process.stderr.write((e instanceof UnsupportedCliError&&/remote-settings/.test(e.message)?e.message:"Managed Claude credential unavailable or source changed; open Accounts on the local dashboard.")+"\n");process.exitCode=1;});

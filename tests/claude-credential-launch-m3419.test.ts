@@ -206,3 +206,35 @@ it("normal-request source proof is read-only and refuses changed or missing loca
  writeFileSync(s.launch.path,JSON.stringify(spec));expect(s.launch.sourceCurrent()).toBe(true);
  rmSync(s.launch.path);expect(s.launch.sourceCurrent()).toBe(false);
 });
+
+// M-3558: an organization's remote-settings.json may hold keys that cannot change how Claude signs in. Two orgs push
+// { channelsEnabled }, and every start after the first was refused. Those keys are allowed (and fingerprinted); any
+// other key still refuses, and the refusal names it, in the error and on the pane.
+it("M-3558: a remote-settings.json holding only channelsEnabled launches; the file is still fingerprinted", () => {
+ const f=fixture(),s=stage(f),spec=readManagedClaudeSpec(s.launch.path),remote=join(f.config,'remote-settings.json');
+ writeFileSync(remote,JSON.stringify({channelsEnabled:true}));
+ const before=managedClaudeAuthInputs(spec);
+ writeFileSync(remote,JSON.stringify({channelsEnabled:false}));
+ expect(managedClaudeAuthInputs(spec)).not.toBe(before);
+ const r=run(s.command,f);expect(r.status,r.stderr).toBe(0);
+ expect(JSON.parse(r.stdout)).toMatchObject({digest:createHash('sha256').update(value).digest('hex'),api:false,base:false,cloud:false});
+});
+it("M-3558: any other remote key still refuses, naming it (never channelsEnabled), in the error and on the pane", () => {
+ const f=fixture(),s=stage(f),spec=readManagedClaudeSpec(s.launch.path),remote=join(f.config,'remote-settings.json');
+ for(const key of ["forceLoginMethod","apiKeyHelper","env","someFutureKey"]){
+  writeFileSync(remote,JSON.stringify({channelsEnabled:true,[key]:key==="env"?{ANTHROPIC_BASE_URL:"https://example.invalid"}:"x"}));
+  let message="";try{managedClaudeAuthInputs(spec);}catch(e){message=(e as Error).message;}
+  expect(message,key).toContain(`remote-settings.json (from your organization) has "${key}"`);
+  expect(message,key).not.toContain("channelsEnabled");
+ }
+ writeFileSync(remote,JSON.stringify({channelsEnabled:true,forceLoginMethod:"console"}));
+ const r=run(s.command,f);expect(r.status).not.toBe(0);
+ expect(r.stderr).toContain('"forceLoginMethod"');expect(r.stderr).not.toContain(value);
+});
+it("M-3558: the keys named are a few plain words, whatever the file holds", () => {
+ const f=fixture(),s=stage(f),spec=readManagedClaudeSpec(s.launch.path);
+ writeFileSync(join(f.config,'remote-settings.json'),JSON.stringify({"a\nb":1,["x".repeat(90)]:1,c:1,d:1,e:1}));
+ let message="";try{managedClaudeAuthInputs(spec);}catch(e){message=(e as Error).message;}
+ expect(message).toContain('"a?b", "'+"x".repeat(40)+'", "c" and 2 more');
+ expect(message).not.toContain("\n");
+});
