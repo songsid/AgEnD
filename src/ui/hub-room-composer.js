@@ -171,7 +171,7 @@ export function refusalText(r) {
  * M-3117 (for M-3125's files): `attach` is ComposerInput's own ({ title, onFiles } — the Fleet's ＋ left of the box), `pending`
  * the files waiting, drawn first in the box (where the 1:1 chat puts its PendingFiles). Neither given: no Attach.
  */
-export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, attach = null, pending = null, canSendEmpty = false }) {
+export function RoomComposer({ store, detail, reply = null, onReply = () => {}, closed = false, inputRef, insertRef, editRef = null, attach = null, pending = null, canSendEmpty = false }) {
   const [value, setValue] = useState(""), [msg, setMsg] = useState(null), [busy, setBusy] = useState(false), [pick, setPick] = useState(0);
   // M-3533: the mentions put in the box for a member, where they were put; each edit moves or retires them by its own
   // range (editRange: the selection when it began, the caret after), never by guessing from the text.
@@ -195,6 +195,9 @@ export function RoomComposer({ store, detail, reply = null, onReply = () => {}, 
     });
     setTimeout(() => input.current?.focus(), 0);
   };
+  // M-3591: the preview panel's "Reply about this page" / Point at it — a line put after what is in the box (`edit`: the
+  // box's text → the next; a line only ever goes after the end, so no bound mention moves).
+  if (editRef) editRef.current = (edit) => setValue((v) => edit(v));
   // Where the box's selection was when this edit began: the edit's own beforeinput (each one, so a caret moved since is
   // never stale); an IME's, where its composition started (kept to its end: the text arrives once, at compositionend);
   // the latest key's (each keydown, an arrow too, replaces it) only where no beforeinput came. Spent by each edit.
