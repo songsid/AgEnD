@@ -21,6 +21,7 @@ const CASES = [
   { device: "phone", theme: "light", lang: "zh-TW", rm: false }, { device: "phone", theme: "dark", lang: "en", rm: false },
   { device: "phone", theme: "light", lang: "zh-TW", rm: true }, { device: "phone", theme: "dark", lang: "en", rm: true },
   { device: "desk", theme: "dark", lang: "en", rm: false, short: true },
+  { device: "desk", theme: "light", lang: "zh-TW", rm: false, all: true },
 ] as const;
 const W = { en: { office: "Office", display: "Display options", note: "Off: your system asks for reduced motion" }, "zh-TW": { office: "辦公室", display: "顯示選項", note: "已關閉：系統開了「減少動態效果」" } } as const;
 
@@ -45,8 +46,8 @@ async function cardCheck(page: any, res: any, tag: string) {
 }
 
 for (const c of CASES) {
-  const short = "short" in c && c.short;
-  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}${short ? "-short" : ""}`, w = W[c.lang];
+  const short = "short" in c && c.short, all = "all" in c && c.all;
+  const tag = `${c.device}-${c.theme}-${c.lang}${c.rm ? "-reduced" : ""}${short ? "-short" : ""}${all ? "-all-offices" : ""}`, w = W[c.lang];
   const res: any = (r.cases[tag] = {});
   const p = await freshPage(fx, c as any).catch((err) => { res.failed = [`freshPage: ${String(err).slice(0, 200)}`]; return null; });
   if (!p) continue;
@@ -60,12 +61,18 @@ for (const c of CASES) {
       const g = await fetch("/ui/offices").then((x) => x.json());
       if ((g.offices || []).length) return;
       await fetch("/ui/offices", { method: "PUT", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rev: g.rev ?? 0, offices: [{ id: "front", name: "Front desk", skin: "cozy", members: [] }, { id: "lab", name: "Lab", skin: "studio", members: [] }] }) });
-    });
+        body: JSON.stringify({ rev: g.rev ?? 0, offices: [{ id: "front", name: "Front desk", skin: "cozy", members: ["general", "example-agent-01"] }, { id: "lab", name: "Lab", skin: "studio", members: ["example-agent-02", "example-agent-03"] }] }) });
+    });                                                                    // the rest are in no office: All offices' lobby tile
     await page.goto(`${base}/ui/fleet/org`);
     await page.locator(".oc-tools .seg-inline button", { hasText: w.office }).click();
     await page.waitForSelector(".oo-canvas", { timeout: 15000 }); await page.waitForTimeout(2000);
-    if (short) {
+    if (all) {
+      // All offices: the lobby tile (大廳格) is one of the options.
+      await page.locator(".oo-office").selectOption("*all"); await page.waitForTimeout(1500);
+      await page.locator(".oo-display-btn").click(); await page.waitForTimeout(300);
+      ok(res, "all offices: lobby tile offered", (await page.locator(".oo-display-pop .oo-lobby-tile input").count()) === 1 && !(await page.locator(".oo-display-pop .oo-lobby-tile input").isDisabled()));
+      await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
+    } else if (short) {
       // The whole list is reachable on a short window: the last option is on screen and takes a click.
       await page.locator(".oo-display-btn").click(); await page.waitForTimeout(300);
       const last = page.locator(".oo-display-pop .oo-display-list > .check").last(), lb = await last.boundingBox(), vh = await page.evaluate(() => innerHeight);
@@ -89,7 +96,9 @@ for (const c of CASES) {
       const looks = await pop.locator(".check > span:first-of-type").evaluateAll((els: any[]) => els.map((e) => { const s = getComputedStyle(e.closest(".check")); return `${s.color}|${s.fontSize}|${s.fontWeight}`; }));
       ok(res, "labels alike", new Set(looks).size === 1, looks);
       ok(res, "no buttons in the options", (await pop.locator(".btn").count()) === 0);
-      const pb = await pop.boundingBox(), vw = await page.evaluate(() => innerWidth);
+      const pb = await pop.boundingBox(), vw = await page.evaluate(() => innerWidth), zb = await box(page, ".oo-zoom");
+      ok(res, "clear of the zoom stack", !!pb && !!zb && (pb.x + pb.width <= zb.x || pb.y >= zb.y + zb.height), { pb, zb });
+      ok(res, "dropdown heading", (await pop.locator(".oo-display-h").innerText()).trim() === w.display);
       ok(res, "dropdown on screen", !!pb && pb.x >= 0 && pb.x + pb.width <= vw, pb);
       if (c.rm) {
         await noteCheck(page, res, ".oo-display-pop", w);
@@ -119,6 +128,10 @@ for (const c of CASES) {
       const hi = order.indexOf("heading"), ri = order.indexOf("rule");
       ok(res, "sheet order", order.slice(0, hi).join() === "office,team,oo-people" && hi > 0 && ri > hi && order.slice(hi + 1, ri).includes("style") && order.slice(ri + 1).includes("oo-edit"), order);
       ok(res, "heading", (await page.locator(".oo-sheet .oo-sheet-h").innerText()).trim() === w.display);
+      // Taller than the screen: it scrolls, with a shadow at its foot until the end; the last action is reachable.
+      const body = page.locator(".oo-sheet .dlg-body");
+      const sc = await body.evaluate((e: any) => ({ sh: e.scrollHeight, ch: e.clientHeight, bg: getComputedStyle(e).backgroundImage }));
+      ok(res, "sheet scrolls, shadow shown", sc.sh > sc.ch && /gradient/.test(sc.bg), sc);
       const o = await box(page, ".oo-sheet .oo-office"), t = await box(page, ".oo-sheet .oo-team");
       ok(res, "pickers spaced", !!o && !!t && t.y - (o.y + o.height) >= 6, { o, t });
       if (c.rm) {
@@ -126,7 +139,15 @@ for (const c of CASES) {
         await noteCheck(page, res, ".oo-sheet", w);
       } else ok(res, "no note", (await page.locator(".oo-play-still").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "2-options") });
-      if (c.rm) { await page.keyboard.press("Escape"); await page.waitForTimeout(300); await cardCheck(page, res, tag); }
+      await body.evaluate((e: any) => { e.scrollTop = e.scrollHeight; }); await page.waitForTimeout(300);
+      const share = await box(page, ".oo-sheet .oo-share"), bb = await body.boundingBox();
+      ok(res, "last action reachable", !!share && !!bb && share.y + share.height <= bb.y + bb.height + 1, { share, bb });
+      await page.screenshot({ path: shotPath(SMOKE, tag, "2b-options-end") });
+      await page.keyboard.press("Escape"); await page.waitForTimeout(300);
+      // The page's ⋯ keeps no pressed look once the sheet is closed (a tap left :hover stuck on touch).
+      const mb = await page.locator(".oo-more-btn").evaluate((e: any) => getComputedStyle(e).backgroundColor);
+      ok(res, "⋯ not stuck pressed", /rgba\(0, 0, 0, 0\)|transparent/.test(mb), mb);
+      if (c.rm) await cardCheck(page, res, tag);
     }
     ok(res, "noOverflow", !(await page.evaluate(`document.documentElement.scrollWidth > document.documentElement.clientWidth`)));
     ok(res, "noPageErrors", p.errors.length === 0, p.errors);

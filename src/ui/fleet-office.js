@@ -2373,9 +2373,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       ${canShare ? html`<${ShareButton} offices=${stored} current=${overview ? "all" : custom ? custom.id : null} disabled=${!!layout}
         get=${lease ? (path, o) => lease.fetch(path, o) : undefined} />` : null}
 `;
-  // The sheet: a heading over the options when scope comes first, a rule before the actions (a Hub room has neither).
-  const hasScope = !oneOffice || auto, hasActions = (canEdit && storedRev !== null) || canLayout || canShare;
-  const barItems = html`${scopeItems}${hasScope ? html`<h3 class="oo-sheet-h">${to("display")}</h3>` : null}${optionItems}
+  // The sheet: a "Display options" heading over the options (a Hub room's too), a rule before the actions (a room has none).
+  const hasActions = (canEdit && storedRev !== null) || canLayout || canShare;
+  const barItems = html`${scopeItems}<h3 class="oo-sheet-h">${to("display")}</h3>${optionItems}
     ${hasActions ? html`<hr class="oo-sheet-rule" />` : null}${actionItems}`;
   // A room's dropdown hangs from the zoom stack's top, inside the stage (which clips): it is never taller than the
   // stage's room below its top (Prism #3556 P2: a 340 px stage); a longer list scrolls.
@@ -2385,7 +2385,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (st && st.height > 0) el.style.maxHeight = `${popMaxHeight(st.bottom, top)}px`;
   };
   const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
-    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
+    ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><h3 class="oo-display-h">${to("display")}</h3>
+      <div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
   return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
     ${folded ? null : html`<div class="oo-bar oo-bar-row">
       <div class="oo-bar-scope">${scopeItems}</div>

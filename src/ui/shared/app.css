@@ -2551,6 +2551,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-display-list .oo-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
 .oo-display-list .check { min-height: 32px; }
 .oo-display-list :is(.check, .oo-pick) { font-size: var(--fs-sm); color: var(--text); }   /* one style for every option, as in the sheet */
+/* The Fleet office's dropdown opens left of the stage's zoom stack (right: --s-3, 38 px wide), never over it. */
+.oo-bar-row .oo-display-pop { right: calc(var(--s-3) + 38px + var(--s-2)); }
+.oo-display-h { margin: 0 0 var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .oo-display-zoom { position: static; border-top: 1px solid var(--border); }   /* the dropdown hangs from the stack's top, not the gear's */
 .oo-display-zoom .oo-display-pop { top: 0; right: calc(100% + 6px); }
 .oo-zoom:has(.oo-display-pop) { overflow: visible; }
@@ -2610,6 +2613,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-key-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
 .oo-zoom { z-index: 6; }
 .oo-zoom .icon-btn { color: var(--text); }
+.oo-zoom .icon-btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }   /* the stack clips an outline */
 /* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */
 .oo-mini { z-index: 6; right: auto; bottom: auto; overflow: hidden; }
 .oo-zoom-pct { display: block; padding: 3px 0; font-size: var(--fs-2xs); line-height: 14px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums;
@@ -2840,6 +2844,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 1 96px; min-width: 88px; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
+  @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
@@ -2867,6 +2872,12 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet .oo-pick { justify-content: space-between; }
 .oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
+/* M-3556: more below the fold shows as a shadow at the sheet's foot (gone at the end): background-attachment local covers it. */
+.oo-sheet .dlg-body {
+  background: linear-gradient(transparent, var(--bg) 70%) center bottom / 100% 40px no-repeat local,
+    linear-gradient(to top, color-mix(in srgb, var(--text) 22%, transparent), transparent) center bottom / 100% 18px no-repeat scroll,
+    var(--bg);
+}
 .oo-sheet .oo-sheet-bar :is(.btn, .oo-people > .btn) { min-height: var(--tap); }
 .oo-sheet .oo-sheet-bar > .btn, .oo-sheet .oo-people > .btn { width: 100%; justify-content: flex-start; }
 .oo-sheet .oo-sheet-bar > :is(.btn, .oo-people, .oo-carousel, .oo-note) { margin-top: var(--s-1); }
