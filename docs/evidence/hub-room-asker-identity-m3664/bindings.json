@@ -1,0 +1,365 @@
+{
+  "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+  "source": [
+    {
+      "path": "docs/design/hub-room-asker-identity.md",
+      "sha256": "869dd8e59fbcab79ced57e601946e5db45ff9bcafa83403dab61d65ab0652db5"
+    },
+    {
+      "path": "src/hub/client.ts",
+      "sha256": "1b3614cb54bd14a0458da00e0133dbd54b5140c57c1a9f436dda979057177f5a"
+    },
+    {
+      "path": "src/hub/compose/member.ts",
+      "sha256": "d569df2b99087214a39e1864a42ba1a6f54ed8fcea8c4adbb7950f2c9cea4c02"
+    },
+    {
+      "path": "src/hub/compose/server.ts",
+      "sha256": "30d3392c585c69991dacd966d35ec32da4a66d46a5605704231f72571d3d2d82"
+    },
+    {
+      "path": "src/hub/http/compose.ts",
+      "sha256": "f11769fb2b1de573289bac46b7a701f5a1d33137bec4b1125b0728dc6ab6ff62"
+    },
+    {
+      "path": "src/hub/http/deps.ts",
+      "sha256": "58165ae013b8c8cc58936de7ddb7ca80bbc0bf4afc04e31a97927514bf3305e1"
+    },
+    {
+      "path": "src/hub/member/room-ask.ts",
+      "sha256": "68872512fff1d70e1bcd91bbffe7c8264ceacb69ff9a697aeb57b2e013b130f2"
+    },
+    {
+      "path": "src/hub/member/room-asker-store.ts",
+      "sha256": "40c3702060f2506f1f1172a08093c5c9e1b5e3d5c3642819a59e197ecab950ad"
+    },
+    {
+      "path": "src/hub/protocol.ts",
+      "sha256": "44ead1dec44b8f8b27ba3653037da3ada96553d50034f9d9b86bfeeb0298b161"
+    },
+    {
+      "path": "src/hub/representative.ts",
+      "sha256": "394750a30f223376529af5437fdbdfabb8534c7ee3912f9f7db93a1cabeac677"
+    },
+    {
+      "path": "src/hub/room-asker-identity-model.ts",
+      "sha256": "81753aad7aa48d70fa7530b7dc40f51c37c0e66955ebdc251cf6965ed5a6e8a4"
+    },
+    {
+      "path": "src/hub/room-asker-identity.ts",
+      "sha256": "178f7b12e434e8bd06d139f6ced74c223f6d5d24d6007480ad648f678e855266"
+    },
+    {
+      "path": "src/hub/rooms/agents.ts",
+      "sha256": "9b993e44945c07763c5c94bd409019d152b93fbe03ccdedc405889b31716ae67"
+    },
+    {
+      "path": "src/hub/rooms/asker-identity.ts",
+      "sha256": "900bd06bfed2aaedf408846cd52622d33cfef08f28a934b862a0e7765deb920b"
+    },
+    {
+      "path": "src/hub/server.ts",
+      "sha256": "c6188f8a5c38c29ee93eaca0b74d6d9d3288b072da12e9c7be70e4b6f3cc8c81"
+    },
+    {
+      "path": "src/hub/types.ts",
+      "sha256": "13c05687f017f9d46009d8f767e76668ae596c46e0e920ae5b01fdd567ad2937"
+    },
+    {
+      "path": "tests/hub-room-asker-adapter-m3664.test.ts",
+      "sha256": "9de94c00a3ace4b009291a5a85d40385dae5811e13dadf25c74527f8638c5edc"
+    },
+    {
+      "path": "tests/hub-room-asker-identity-m3664.test.ts",
+      "sha256": "ca981b8a392178e9b6f8a5db861ca737308a3df308dc75bc583694d9033af3d2"
+    },
+    {
+      "path": "tests/hub-room-asker-negotiation-m3664.test.ts",
+      "sha256": "f86b24288f225558029f3d324a7b4cdcb505ee90a77a1e5dde47bab41a7a6aca"
+    },
+    {
+      "path": "tests/hub-room-asker-source-m3664.test.ts",
+      "sha256": "1863151d755cf09f4f408bd7d22574da25ed4f1d5f045546b19bf7526f45652e"
+    },
+    {
+      "path": "tests/hub-room-asker-store-m3664.test.ts",
+      "sha256": "54d1fdfc1839883237486d7aacb1e393c430e37883e048b229af46f3c120f6db"
+    },
+    {
+      "path": "tests/hub-room-compose-track-c.test.ts",
+      "sha256": "390dec31b77eaf4de537fe41d624505b5c7b76b0fb38b3d914b60203bb651c24"
+    },
+    {
+      "path": "src/needs-you.ts",
+      "sha256": "f13d21eab503255288eb1e0806c7b3569a5b425ec67b80b0798da6fd00782a0f"
+    },
+    {
+      "path": "tests/hub-room-asker-delivery-m3664.test.ts",
+      "sha256": "87cf254b1b7e280b2bcafe829d4349f2b1423b926b25604259388ef65c257616"
+    },
+    {
+      "path": "src/locale.ts",
+      "sha256": "da12bcfbe77652a18c0201a86866943ac4db1de9897264079a957a75b6c368e3"
+    },
+    {
+      "path": "tests/hub-needs-retry-m3632.test.ts",
+      "sha256": "8063d082d492f4ab4e22b0dd95915379cb9c0cea94ab299d5b6fd9517df5928f"
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/README.md",
+      "sha256": "b0258a1996dd2b83226c42c984dd0fa317085377f730f1839ffd8ce649d5d3bf"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/actor-kind-mutant.log",
+      "sha256": "9734444b6457d77763fe608ac2c9879e786788fea4ce6208e3192f44238513e4"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/actor-kind.patch",
+      "sha256": "5c3d48bb4d23de7ac1768584da6c4ba4cb0def3ec25964c5f36671ec8ce4abc9"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/affected-final.log",
+      "sha256": "39c3c1483eaac674747bf30e0b112cd25f2cd54479592d8c79c3d7de82305df5"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/answer-source-final.log",
+      "sha256": "12460f42c77a7b5c46243d8362b1c8f724f7a0bbd6620f964b0a1dacd6fa73ff"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/build-final.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/destination-mutant.log",
+      "sha256": "b257ec0ec794e9c4d0e5504961e175a1ea8d7b019b2993449f38d43bd1a18c6c"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/destination.patch",
+      "sha256": "8a94606fd27225f4c1d1b7e73c52bd21aa7a068e5982b368f646d5fd16acb210"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/legacy-bindings.json",
+      "sha256": "53cc1ece8ec82e72ccf23087071da63f2fe64b74b4fdc5298fa2361ad1326f8d"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/mutation-bindings.json",
+      "sha256": "8e1b1a94be5461274539486a5ca22f94b3e869a395365a523db59b809d7a8e88"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-affected.log",
+      "sha256": "dcbcce0def8f741013024503f29067e5d7650ae6e7fac9ad2bf6f8e596c1ed15"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-build-final.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-auth-mutant.log",
+      "sha256": "6b08b79e8a58f4bfc76aa768316425eeea0934b05a35cace2c2b8cd3e751a6fe"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-auth.patch",
+      "sha256": "d6a32574ae9a52fea4952f0a68735d56acb6e56ba63cde9e231e381aa319b1aa"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-collection.log",
+      "sha256": "f689587f4cfbd89293b0481f9f71879c8cee75cff86982b6865b23b466912ff6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-final.log",
+      "sha256": "16af8dc77f26679e8a1b736e2d0721a48d5392e495d8f82eeff8ecd75a8fb63d"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-clock-phase-restored.log",
+      "sha256": "99bfe83bab89ef5dd4c421a882a8c8ce2c4956b41b92cfef7baca04423af13c5"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-delivery-principal-mutant.log",
+      "sha256": "b727681b728ee42fffa28792f11fc7ce0337bc3de7d147a51a3decd45e144c59"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-delivery-principal.patch",
+      "sha256": "915e351edccf1a961aed3027bd631d908b2eaddc6cf8c28cba4dd486a19095ef"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-expiry-before-input.patch",
+      "sha256": "5ccf9b426e50577ae952818b2a4d941d7dc882bcbd3f0bfcfe58e3b36b1ce0cd"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-expiry-before-inputs.json",
+      "sha256": "e9fb73f655f2ddef0189e6a10617b0113b1b49cad9a67f38bf3aeb42c82ecc1e"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-expiry-before.log",
+      "sha256": "0023126344530b8e67df4176c2e363db9a840bb71e61396fbb26219b9ff1e33e"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-expiry-gc-mutant.log",
+      "sha256": "87b79e317cf14b323adeab0e5ac4defedd999f8d1e8cc2cecf5c4476af1b2670"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-expiry-gc.patch",
+      "sha256": "f8ef536712a729c18614cf3ee97ad53a78e79e20a4ffc7f67cb8f7716ef735c5"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-mutation-bindings.json",
+      "sha256": "65c3aa1a7eb0230f39483302e7f7e43bdf2a64e6f812cfa555ba3c09406cddc9"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-orphan-retry-mutant.log",
+      "sha256": "3657b63e5eb49f0001a3b9f4795adf204069e2f54366df88867062b7489d2e99"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-orphan-retry.patch",
+      "sha256": "d6929ed42c80f896d937953a728c79e65f80dafe94b2d7c6ef7eb587cb48d306"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-restored-final.log",
+      "sha256": "cdade8bc76d5c31bb0a064a2744a56ca84db2438170661b10e4bada252fd1a39"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r1-test-types-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-clock-expiry-before.log",
+      "sha256": "ac0f4bcd6485f30d5ddce422acd8a26df9f7e0b6957afc0b011418251c9267d6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-clock-final.log",
+      "sha256": "d64059d901fc4e1711cceefcb12352eadac2fc2e1821939a9707ad032b181927"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-expiry-before-input.patch",
+      "sha256": "6498aceed1787b764cf32c2e3c05abb51a6ddbf24917426d6a51222973257a17"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-expiry-before-inputs.json",
+      "sha256": "b9319bfbf167e47fe7411a82bad13d2f5a74ebc1cd1bd4dbb7c03a484cc8d265"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r2-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before-input.patch",
+      "sha256": "541829488c0a7ba4634956c4159cb8cfbdfd85e22a0be733077c800556270a18"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before-inputs.json",
+      "sha256": "16e7165fa587e9e218510d941d179528965f2bb350e060d1007f6872df938f85"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-before.log",
+      "sha256": "50fd8d2fd16729e9a0f4325e26ae90d251e154af4a8bf46f73dc10873170ef37"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-retention-final.log",
+      "sha256": "ff6a4279c15a41c15473e8600f8d9bfe6f4247a44030520c409d86f89f7ac745"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/r3-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/restored-answer-final.log",
+      "sha256": "3309132f6c5431142c99825608344386e5645a15ac78966fdc94f794191921a8"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/restored-final.log",
+      "sha256": "f6747314fafaddbe53e0bd25c82e00dda1780511ed46db6d951f8c5bc8115c92"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/review-r1.md",
+      "sha256": "0683ba21af003e3057dfe62c634d09a889873e97dac5b65133ec86ece76246aa"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/review-r2.md",
+      "sha256": "fa743354fbf26bdc8d5032f89f65f6c0fa407bbba029efa57d5ecf5032b33447"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/review-r3.md",
+      "sha256": "a98ed73746300999afa41cf0b2c54d70bbc913f43bb717379068287ceaf6636c"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/signature-mutant.log",
+      "sha256": "6b7299e6eb96e20b9f37e1b5e5a0cfe2285237902a219a53fd99425a76a82a00"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/signature.patch",
+      "sha256": "d10ad380a520963d437250026f234f14c3fe296cc85dea6d15b2555e1a6d35e1"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-affected.log",
+      "sha256": "4cf774f5e644252820906080554c3b63fe02542502c61f668a0039d1ebf66f78"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-bindings.json",
+      "sha256": "438bcff276e0268fba73633a7df090da683dfdccfdc875757e007d3e7de5cc05"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-integration.md",
+      "sha256": "70c7a6312d82c989da1b871d03582dea1835b14c61eeb734218d703d22ce9fc4"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-resolutions.patch",
+      "sha256": "cec81987251d74d15bf3380b21494d16d69f8aa5f1a445b21a620b9f9e58afce"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-affected.log",
+      "sha256": "002bdbf7122644b866b32deab4c9903b811e5d7e4cd4af381687e968f3ba27bb"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-bindings.json",
+      "sha256": "df7ffee2936759a58b1c80da2e271196a3eb8e0de9b4f63db509a57ef6ae38c6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-integration.md",
+      "sha256": "90de8f5ea760da82ac9317a66963493591a6ec3fd2e94a8e60baa6d58e30b239"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-resolutions.patch",
+      "sha256": "79a496b2e4b04ac83ba9eb7a648d8e09a4a9a23749e0a0164837eb657f5ae1b4"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/test-types-final.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/two-phase-mutant.log",
+      "sha256": "f66c6f3a64be8afb34e0f152864db1aa858a73f892ec5989ef8d1f8d91a93504"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/two-phase.patch",
+      "sha256": "1e700cad9699d28a81d56c34ca1c3ad491e814fd3c53a0e42403d0f3bd67db89"
+    }
+  ],
+  "integrationBase": "2698b1302b3439ecd31612b7e18c883dff644b0f",
+  "sourceClearHead": "a71de4546b2cd1d978ebefb5cddaa0bc093a247c"
+}

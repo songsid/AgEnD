@@ -1,0 +1,62 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts (22 tests | 2 failed | 20 skipped) 89ms
+     × clock warning offset -6000 is removed at the signed ask deadline without another proof 55ms
+     × clock warning offset 120001 is removed at the signed ask deadline without another proof 32ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 2 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > clock warning offset -6000 is removed at the signed ask deadline without another proof
+AssertionError: expected [ { …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "agent": "example",
++     "detail": "This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent.",
++     "exposureId": "5f768457-e926-4396-824f-d12dd3136bac",
++     "id": "room-clock:5f768457-e926-4396-824f-d12dd3136bac",
++     "kind": "hold",
++     "messageId": "92145fb5-08c1-4a9b-8e0e-2b45ce78df91",
++     "since": 994000,
++   },
++ ]
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:22:447
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯
+
+ FAIL  tests/hub-room-asker-adapter-m3664.test.ts > M3664 real room journal/delivery seam > clock warning offset 120001 is removed at the signed ask deadline without another proof
+AssertionError: expected [ { …(7) } ] to deeply equal []
+
+- Expected
++ Received
+
+- []
++ [
++   {
++     "agent": "example",
++     "detail": "This computer’s clock differs from the Hub’s, or the request arrived too late. Check both clocks; the Hub will retry. This question has not reached the agent.",
++     "exposureId": "6d141b6a-64b5-447a-99d9-982058bf1ae6",
++     "id": "room-clock:6d141b6a-64b5-447a-99d9-982058bf1ae6",
++     "kind": "hold",
++     "messageId": "ddea369f-ea78-4c2b-a4d3-c5bdd5dbbe01",
++     "since": 1120001,
++   },
++ ]
+
+ ❯ tests/hub-room-asker-adapter-m3664.test.ts:22:447
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  2 failed | 20 skipped (22)
+   Start at  00:20:56
+   Duration  862ms (transform 396ms, setup 101ms, import 508ms, tests 89ms, environment 0ms)

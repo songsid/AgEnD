@@ -69,7 +69,7 @@ register("hubChat", {
     ownerSees: "你的問題會出現在 {0} 的 fleet 聊天裡，標示你的 Hub 身分。",
     agentShares: "它和其他有權限的人共用同一段對話，可能記得別人問過的事。別放不想讓別人知道的內容。",
     adminTitle: "Hub 管理員", adminSees: "看不到內容。",
-    notHere: "這裡沒有", notHereText: "{0} 的檔案與變更、終端機畫面（View）、工具進度：只有 {1} 在自己的 fleet 看得到。",
+    notHere: "這裡沒有", notHereText: "{0} 的檔案與變更、終端機畫面（檢視）、工具進度：只有 {1} 在自己的 fleet 看得到。",
     oneToOne: "一個聊天室只有你和這個 Agent。",
     menu: "選單", mine: "我的 Agent", mineHint: "誰可以提問、到什麼時候", admin: "管理", adminHint: "連接 Fleet",
     back: "對話",

@@ -39,7 +39,7 @@ describe("#2904: a page over a public link never calls a permanent link temporar
     expect([hours, minutes]).toEqual([8, 30]);
     const [en, zh] = both("settings.publicSessionHint");
     expect(en).toContain("An admin's session over the public link also never lasts longer than these settings (a guest's follows the guest settings).");
-    expect(zh).toContain("管理員透過公開連結的 session 也不會超過這裡的設定（訪客依訪客設定）。");
+    expect(zh).toContain("管理員透過公開連結的工作階段也不會超過這裡的設定（訪客依訪客設定）。");
     const [enNote, zhNote] = both("settings.publicSessionLimitNote");
     expect(enNote).toContain(`(${hours} hours, ${minutes} minutes unused by default)`);
     expect(enNote).toContain("never outlive the link");

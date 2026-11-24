@@ -83,7 +83,7 @@ register("runtimeInstall", {
     doneLatest: "{0} is now {1}, the latest release the vendor serves (not audited by AgEnD).", cardLabelUpdateLatest: "Update {0} on {1} to the latest release (not audited by AgEnD)" },
   "zh-TW": { updateLatest: "更新到最新版（未經盤點）",
     latestInfo: "已安裝 {0}。AgEnD 會安裝 {1}，這是它稽核過的版本。按「更新」會更新到廠商釋出的最新版，這個版本 AgEnD 尚未稽核：這個 CLI 會自己更新，無法指定版本。",
-    askUpdateLatest: "要在 {1} 把 {0} 更新到廠商的「最新版」嗎？這個版本 AgEnD 尚未稽核。那台電腦會下載廠商自己的 manifest 指定的版本（不執行廠商的更新程式），比對檔案雜湊與發行者的 Windows 數位簽章，並放在 Runtime 自己的資料夾。任何一項不符就不會改變任何東西。那台電腦會留下更新紀錄。",
+    askUpdateLatest: "要在 {1} 把 {0} 更新到廠商的「最新版」嗎？這個版本 AgEnD 尚未稽核。那台電腦會下載廠商自己的資訊清單指定的版本（不執行廠商的更新程式），比對檔案雜湊與發行者的 Windows 數位簽章，並放在 Runtime 自己的資料夾。任何一項不符就不會改變任何東西。那台電腦會留下更新紀錄。",
     doneLatest: "{0} 現在是 {1}，廠商釋出的最新版（未經 AgEnD 盤點）。", cardLabelUpdateLatest: "在 {1} 上把 {0} 更新到最新版（未經 AgEnD 盤點）" },
 });
 

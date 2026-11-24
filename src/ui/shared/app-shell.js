@@ -750,7 +750,7 @@ register("pendingSummary", {
     "host_cli.native_switch": "把 AgEnD 這台電腦上的 Claude Code 從 npm 安裝改成 Claude 的原生安裝：以 claude.ai/install.sh 安裝 {0}（AgEnD 稽核過的版本，無人值守執行）。npm 那份會留著，等你另外移除。",
     "host_cli.npm_remove": "從 AgEnD 這台電腦移除 npm 安裝的 Claude Code（在那份所在的 npm 目錄執行 npm -g uninstall @anthropic-ai/claude-code）。只有在 `claude` 已經改用原生安裝時才會執行。",
     "runtime_cli.install": "在已配對的 Windows 電腦 {2} 上安裝 {0} {1}：AgEnD 固定的版本，並在那台電腦上檢查（固定的雜湊、registry 簽章、發行者簽章）。只會安裝這個 CLI；頁面送來的內容不會被執行。仍需要那台電腦主人自己的開關允許。",
-    "runtime_cli.update_latest": "如果已配對的 Windows 電腦 {1} 上已經有 {0}，這會把它更新到廠商的「最新版」（未經 AgEnD 稽核）：Runtime 會下載廠商自己的 manifest 指定的版本，並在那台電腦上檢查它的雜湊與發行者簽章，才會切換過去。",
+    "runtime_cli.update_latest": "如果已配對的 Windows 電腦 {1} 上已經有 {0}，這會把它更新到廠商的「最新版」（未經 AgEnD 稽核）：Runtime 會下載廠商自己的資訊清單指定的版本，並在那台電腦上檢查它的雜湊與發行者簽章，才會切換過去。",
     "hub.browserCertificate.replace": "更換 Hub 瀏覽器憑證；成員傳輸身分保持不變。",
     "hub.browserCertificate.fingerprint": "SHA-256 指紋：{0}",
     "hub.browserCertificate.expires": "到期時間：{0}",

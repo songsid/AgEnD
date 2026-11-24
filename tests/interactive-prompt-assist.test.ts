@@ -88,7 +88,7 @@ describe("interactive prompt General assistance", () => {
 
     expect(sendText).toHaveBeenCalledWith(
       "fleet-group",
-      expect.stringContaining("請至 General channel"),
+      expect.stringContaining("請至 General 頻道"),
       { threadId: "worker-topic" },
     );
     expect(notifyAlert).toHaveBeenCalledWith(
@@ -234,7 +234,7 @@ describe("interactive prompt General assistance", () => {
     expect(text).not.toMatch(/Open its View/);
     expect((fm as any).pendingNonceButtons.size).toBe(0);
     setLocale("zh-TW");
-    expect(t("interactive.self_assist", "general")).toMatch(/View 可以看提示/);
+    expect(t("interactive.self_assist", "general")).toMatch(/「檢視」可以看提示/);
     expect(t("interactive.self_assist", "general")).not.toMatch(/按按鈕/);
     setLocale("en");
   });

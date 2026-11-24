@@ -1,0 +1,24 @@
+
+ RUN  v4.1.12 <worktree>
+
+ ❯ .artifacts/m3664/pre-gc-reconstruct/tests/hub-room-asker-adapter-m3664.test.ts (0 test)
+
+⎯⎯⎯⎯⎯⎯ Failed Suites 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  .artifacts/m3664/pre-gc-reconstruct/tests/hub-room-asker-adapter-m3664.test.ts [ .artifacts/m3664/pre-gc-reconstruct/tests/hub-room-asker-adapter-m3664.test.ts ]
+Error: Cannot find module './protocol.js' imported from <worktree>/.artifacts/m3664/pre-gc-reconstruct/src/hub/room-asker-identity.ts
+ ❯ .artifacts/m3664/pre-gc-reconstruct/src/hub/room-asker-identity.ts:2:1
+      1| import {createHash,createPublicKey,sign,verify,type KeyObject} from 'n…
+      2| import {roomAskBaseSchema,HUB_LIMITS} from './protocol.js';
+       | ^
+      3| import {HubProtocolError,validated} from './validation.js';
+      4| import {issuerKeyId} from './identity.js';
+ ❯ .artifacts/m3664/pre-gc-reconstruct/src/hub/member/room-ask.ts:1:1
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 1 passed (2)
+      Tests  20 passed (20)
+   Start at  00:02:32
+   Duration  5.65s (transform 2.86s, setup 1.33s, import 2.33s, tests 1.98s, environment 0ms)
