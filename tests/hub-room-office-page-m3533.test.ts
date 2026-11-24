@@ -472,7 +472,8 @@ describe("Chat with it one-to-one (M-3565)", () => {
     try {
       const second = room.members.filter((m: any) => m.kind === "agent")[1];
       const acts = await card(pg, 1);
-      expect(acts.map((b) => [b.textContent, b.classList.contains("btn-primary")])).toEqual([["@ it", true], ["Chat with it one-to-one", false]]);
+      expect(acts.map((b) => [b.textContent, b.classList.contains("btn-primary")])).toEqual([["@ it", true], ["Chat 1:1", false]]);
+      expect(acts[1].getAttribute("aria-label"), "the whole words its name").toBe("Chat with it one-to-one");
       fire(acts[1], "click"); await until(() => pg.window.location.search.includes("room-direct-m3565"));
       expect(asked).toEqual([{ exposureId: second.id, grantId: `grant-${second.id}` }]);
       expect(pg.window.location.search).toBe("?room=room-direct-m3565");

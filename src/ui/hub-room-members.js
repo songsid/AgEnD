@@ -85,7 +85,8 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M-3565: `focus` ({ id, n }: a message's agent name pressed): that agent's card open, its owner's group unfolded, in view.
   useEffect(() => {
     if (!focus || !focus.id) return;
-    setOpen(focus.id);
+    // Always in view: no filter left hiding it, the list unfolded past its first rows (#4389 review); then its card.
+    setQ(""); setExpanded(true); setOpen(focus.id);
     const t = setTimeout(() => { try { document.querySelector(`.hub-room-members [data-member="${CSS.escape(focus.id)}"]`)?.scrollIntoView({ block: "nearest" }); } catch { /* none */ } }, 0);
     return () => clearTimeout(t);
   }, [focus && focus.n]);

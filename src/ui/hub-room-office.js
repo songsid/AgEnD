@@ -189,7 +189,8 @@ export function RoomOffice({ client, roomId, members, onMention = null, onOpenCh
       cardAction=${onMention || onOpenChat ? (name) => { const m = memberOf(name); if (!m) return null;
         // M-3565: the member card's 「和它一對一對話」 too, when this viewer may ask the agent (as there: canAsk).
         const acts = [...(onMention ? [{ label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) }] : []),
-          ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
+          // The card's row beside "Find in office" and "@ it" is narrow: a short label; the whole words its title and name.
+          ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOneShort"), title: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
         return acts.length > 1 ? acts : acts[0] || null; } : null}
       foldBar=${true} more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
