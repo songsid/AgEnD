@@ -1,4 +1,5 @@
 import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
+import { contactStateView } from "./contact-state-view.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
@@ -5932,6 +5933,16 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /** General can propose only. The platform callback supplies the human actor. */
+  /** M-3693: what contact permissions hold now, for General (read-only; no write, no identity computed here). */
+  contactState(agent?: string) {
+    const store = this.contactService().host.store;
+    const names = [...new Set([...Object.keys(this.fleetConfig?.instances ?? {}), ...(this.classicChannels?.getAll?.() ?? []).map(room => room.instanceName)])];
+    return contactStateView({
+      store, names: () => names, now: () => Date.now(), generation: n => this.contactGeneration(n),
+      label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n,
+      roomMode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
+    }, agent ? { agent } : {});
+  }
   async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
     if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
     if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");

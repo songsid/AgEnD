@@ -231,3 +231,94 @@ it.each(['grant-adjust','grant-revoke'] as const)('%s crosses the real FleetMana
   expect(after.grants.find(g=>g.id===neighbor.id)).toEqual(neighbor);
   expect(after.revision).toBe(before.revision+1);
 });
+
+// ── M-3693: General approves a held message from a person's words (Lumen's admin audit, A1/A2) ─────────────────
+import { contactProposalRefusal, resolvePendingTicket } from "../src/contact-change-proposals.js";
+import { setLocale, getLocale } from "../src/locale.js";
+it('M-3693: the 9-character short id people see approves the held message, through the tool, ending in an admin Confirm card', async () => {
+  const r = rig(), ticket = r.ticket(), short = ticket.id.slice(0, 9);
+  expect(short).not.toBe(ticket.id);
+  const respond = vi.fn();
+  await outboundHandlers.get('propose_contact_change')!(r.fm, { change: { kind: 'ticket-decision', ticket_id: short, decision: 'approve-once' } }, respond, { instanceName: 'general', callerCurrent: () => true } as any);
+  expect(respond).toHaveBeenCalledWith({ status: 'awaiting_platform_admin_confirmation' });
+  const card = [...r.fm.pendingNonceButtons.values()].at(-1);
+  expect(r.adapter.notifyAlert.mock.calls.at(-1)![1].message).toContain(short);   // the card names the short id the person used
+  expect(r.decide).not.toHaveBeenCalled();                                          // proposing decides nothing
+  await r.click(card);
+  expect(r.decide).toHaveBeenCalledOnce(); expect(r.decide.mock.calls[0]![0]).toBe(ticket.id);
+  expect(r.store.get(ticket.id)!.state).not.toBe('pending');
+});
+it('M-3693: an id prefix shorter than 9, a prefix two pending tickets share, or a decided ticket is refused with the next step — never guessed', async () => {
+  const r = rig(), a = r.ticket();
+  expect(() => resolvePendingTicket(r.store, a.id.slice(0, 5))).toThrow('contact-proposal-ticket-unavailable');
+  const b = r.ticket(); vi.spyOn(r.store, 'list').mockReturnValue({ items: [a, { ...b, id: a.id.slice(0, 9) + 'x' }], nextCursor: null });
+  expect(() => resolvePendingTicket(r.store, a.id.slice(0, 9))).toThrow('contact-proposal-ticket-ambiguous');
+  vi.restoreAllMocks();
+  const respond = vi.fn();
+  await outboundHandlers.get('propose_contact_change')!(r.fm, { change: { kind: 'ticket-decision', ticket_id: 'Rzzzzzzzz', decision: 'approve-once' } }, respond, { instanceName: 'general', callerCurrent: () => true } as any);
+  expect(respond.mock.calls[0]![1]).toMatch(/^Not proposed: no pending held message has that ticket id\..*contact_state/);
+  expect(respond.mock.calls[0]![1]).not.toContain('contact-proposal-ticket-unavailable');
+});
+it('M-3693: every refusal is a sentence with a next step, in English and zh-TW; an unknown code still says what to do', () => {
+  const codes = ['general-only', 'hub-contact-restricted', 'contact-proposal-limit', 'contact-proposal-ticket-unavailable', 'contact-proposal-ticket-ambiguous', 'conflict',
+    'stale-generation', 'invalid-grant-origin', 'contact-proposal-not-room', 'not-found', 'invalid-grant', 'forbidden', 'contact-proposal-use-web', 'contact-proposal-route-unavailable'];
+  const was = getLocale();
+  try {
+    for (const locale of ['en', 'zh-TW'] as const) {
+      setLocale(locale as any);
+      for (const code of codes) {
+        const text = contactProposalRefusal(new Error(code));
+        expect(text, `${locale} ${code}`).toMatch(locale === 'en' ? /^Not proposed: .{20,}/ : /^沒有提出：.{10,}/);
+        expect(text, `${locale} ${code}`).not.toContain(code);
+      }
+      expect(contactProposalRefusal(new Error('weird-code'))).toContain('contact_state');
+    }
+  } finally { setLocale(was); }
+});
+it('M-3693: a `target` on a ticket decision (the audit\'s Sonnet case) is refused naming the field', async () => {
+  const r = rig(), ticket = r.ticket(), respond = vi.fn();
+  await outboundHandlers.get('propose_contact_change')!(r.fm, { change: { kind: 'ticket-decision', ticket_id: ticket.id.slice(0, 9), decision: 'approve-once', target: 'worker' } }, respond, { instanceName: 'general', callerCurrent: () => true } as any);
+  expect(respond.mock.calls[0]![1]).toMatch(/target/);
+  expect(r.adapter.notifyAlert).not.toHaveBeenCalled();
+});
+it('M-3693: contact_state shows held messages (with short id and who decides), rules, room modes and restricting origins — and writes nothing', async () => {
+  const r = rig(), ticket = r.ticket();
+  r.store.writePolicy('worker', { revision: 0, grants: [{ id: '', person, source: 'room', target: 'worker', verbs: ['send_to_instance' as const], expiresAt: new Date(Date.now() + 86400000).toISOString(), remainingUses: 3 }] }, admin, n => r.gen.get(n)!);
+  r.store.inheritOrigin('worker', { kind: 'mixed', people: [person, other], chain: ['room', 'worker'], receiptIds: [] });
+  r.store.inheritOrigin('general', { kind: 'human', people: [admin], chain: ['general'], receiptIds: [] });   // a person's origin restricts nothing: not listed
+  const changes = r.db.prepare('SELECT total_changes() AS n').get() as { n: number };
+  const respond = vi.fn();
+  await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any);
+  const state = respond.mock.calls[0]![0];
+  expect((r.db.prepare('SELECT total_changes() AS n').get() as { n: number }).n).toBe(changes.n);   // read-only
+  expect(state.held).toEqual([expect.objectContaining({ ticket_id: ticket.id, short_id: ticket.id.slice(0, 9), from: 'Demo room (room)', to: 'Demo worker (worker)', verb: 'send_to_instance',
+    origin: { kind: 'human', people: ['Demo person (Discord)'] }, decides: ['a fleet admin'], current: true })]);
+  expect(state.held[0]).not.toHaveProperty('message');                           // its text is for approvers only
+  expect(state.grants).toEqual([expect.objectContaining({ target: 'Demo worker (worker)', person: 'Demo person (Discord)', from: 'Demo room (room)', remaining_uses: 3, grant_id: expect.any(String) })]);
+  expect(state.rooms).toEqual([expect.objectContaining({ room: 'Demo room (room)', mode: 'unrestricted', stored_as: 'legacy' })]);
+  expect(state.retained_origins).toEqual([expect.objectContaining({ agent: 'Demo worker (worker)', kind: 'mixed', people: ['Demo person (Discord)', 'Demo admin (Discord)'] })]);
+  const narrowed = vi.fn();
+  await outboundHandlers.get('contact_state')!(r.fm, { agent: 'general' }, narrowed, { instanceName: 'general' } as any);
+  expect(narrowed.mock.calls[0]![0]).toMatchObject({ held: [], grants: [], rooms: [], retained_origins: [] });
+  const refused = vi.fn();
+  await outboundHandlers.get('contact_state')!(r.fm, {}, refused, { instanceName: 'worker' } as any);
+  expect(refused.mock.calls[0]![1]).toContain('configured General');
+});
+it('M-3693: the grant_id contact_state shows is the one grant-adjust needs', async () => {
+  const r = rig();
+  r.store.writePolicy('worker', { revision: 0, grants: [{ id: '', person, source: 'room', target: 'worker', verbs: ['send_to_instance' as const], expiresAt: new Date(Date.now() + 86400000).toISOString(), remainingUses: null }] }, admin, n => r.gen.get(n)!);
+  const respond = vi.fn(); await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any);
+  const g = respond.mock.calls[0]![0].grants[0];
+  const e = await r.post({ kind: 'grant-revoke', target: 'worker', grant_id: g.grant_id });
+  expect(e).toBeTruthy(); await r.click(e);
+  expect(r.write).toHaveBeenCalledOnce();
+});
+it('M-3693: the short id is the web\'s (shortTicketId): the card, the Authorizations page and contact_state print the same one', async () => {
+  const ui = "../src/ui/contact-auth-client.js";   // an untyped browser module: imported by path
+  const { shortTicketId } = await import(ui) as { shortTicketId(id: string): string };
+  const { shortContactTicketId } = await import("../src/contact-change-proposals.js");
+  const r = rig(), ticket = r.ticket();
+  for (const id of [ticket.id, 'R1234abcd-not-a-ticket', 'plain']) expect(shortContactTicketId(id)).toBe(shortTicketId(id));
+  const respond = vi.fn(); await outboundHandlers.get('contact_state')!(r.fm, {}, respond, { instanceName: 'general' } as any);
+  expect(respond.mock.calls[0]![0].held[0].short_id).toBe(shortTicketId(ticket.id));
+});
