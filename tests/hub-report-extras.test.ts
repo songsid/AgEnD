@@ -5,7 +5,7 @@
  */
 import { describe, expect, it, vi } from "vitest";
 import { outboundHandlers } from "../src/outbound-handlers.js";
-import { HUB_REPORT_TARGET, parseHubReportExtras } from "../src/hub-report-target.js";
+import { HUB_ANSWER_UNKNOWN, HUB_ANSWER_USED, HUB_REPORT_TARGET, parseHubReportExtras } from "../src/hub-report-target.js";
 
 const call = async (args: Record<string, unknown>, hubReport: any = vi.fn(() => null)) => {
   let result: unknown, error: string | undefined;
@@ -47,5 +47,28 @@ describe("report_result Hub-only fields", () => {
     expect(parseHubReportExtras("general", {})).toEqual({ ok: true, extras: {} });
     expect(parseHubReportExtras(HUB_REPORT_TARGET, { files: [] }).ok).toBe(false);
     expect(parseHubReportExtras(HUB_REPORT_TARGET, { files: Array.from({ length: 11 }, (_, i) => `/f${i}`) }).ok).toBe(false);
+  });
+});
+
+describe("M-3637 a Hub answer nobody can take says why", () => {
+  it("a hub-… correlation that is not live (used, another agent's, unknown) is refused with the reason, never 'Instance or session not found'", async () => {
+    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "One more thing." });
+    expect(r.error).toBe(HUB_ANSWER_UNKNOWN);
+    expect(r.error).not.toMatch(/not found/i);
+  });
+  it("with no Hub connection here at all (no hook), the same reason", async () => {
+    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-gone", summary: "x" }, undefined as any);
+    expect(r.error).toBe(HUB_ANSWER_UNKNOWN);
+  });
+  it("the representative's own refusal (an answered question) reaches the agent as is", async () => {
+    const hubReport = vi.fn(() => Promise.resolve({ ok: false, message: HUB_ANSWER_USED }));
+    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "hub-used", summary: "x" }, hubReport);
+    expect(r.error).toBe(HUB_ANSWER_USED);
+    expect(r.error).toMatch(/exactly one answer/);
+  });
+  it("a correlation that is not a Hub one keeps the ordinary route", async () => {
+    // This bare ctx cannot finish an ordinary send; reaching it (and not the Hub refusal) is the point.
+    const r = await call({ target_instance: HUB_REPORT_TARGET, correlation_id: "cid-1", summary: "x" }).catch(() => ({ error: "ordinary route" }));
+    expect(r.error).not.toBe(HUB_ANSWER_UNKNOWN);
   });
 });

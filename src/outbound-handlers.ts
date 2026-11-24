@@ -76,7 +76,7 @@ import {
   validateArgs,
 } from "./outbound-schemas.js";
 import type { CrossInstanceRecord } from "./search/search-docs.js";
-import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
+import { HUB_REPORT_TARGET, HUB_ANSWER_UNKNOWN, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -483,6 +483,13 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
   if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
+    return;
+  }
+  // M-3637: a Hub correlation id nobody claimed (used, another agent's, unknown, or no Hub connection here) is refused with
+  // the reason — never the instance lookup's "Instance or session not found: agend-hub". A real instance of that name keeps
+  // the ordinary route.
+  if (targetName === HUB_REPORT_TARGET && parsedCorrelationId?.startsWith("hub-") && !isExternalSender && !ctx.instanceIpcClients.has(targetName)) {
+    respond(null, HUB_ANSWER_UNKNOWN);
     return;
   }
 
