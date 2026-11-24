@@ -7,6 +7,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import { page, h, settle, type AppPage } from "./helpers/app-harness.js";
 import { createHubRoomsFixture, FIXTURE_ME } from "./support/hub-rooms-fixture.js";
+import { fire } from "./helpers/mini-dom.js";
 
 const g = globalThis as any;
 let client: any, shell: any, store: any, router: any, i18n: any, hubPanel: any;
@@ -135,6 +136,31 @@ describe("M-3190: the launcher's rows", () => {
 });
 
 describe("M-3190: the launcher's catalog read", () => {
+  // M-3567 (dev-claude2's diagnosis, 11-24): a grant given while the page was away (a Team's) showed only after a reload —
+  // the 30 s poll pauses while the page is hidden. Coming back (shown again, or its window focused) reads the list again.
+  it("a grant given while the page was away is listed on return; hidden reads nothing; one return, one read", async () => {
+    const askable: any[] = [];
+    const { pg, restore } = await hubAt("/ui/hub?view=new", { askable });
+    const realFetch = g.fetch; let reads = 0, roomReads = 0;
+    g.fetch = async (url: string, init?: any) => { const p = new URL(url, "http://127.0.0.1:19280").pathname;
+      if (p === "/hub/v1/exposures") reads++; if (p === "/hub/v1/rooms" && (!init?.method || init.method === "GET")) roomReads++; return realFetch(url, init); };
+    try {
+      await until(() => pg.root.querySelector(".hub-launch"));
+      await settle(10);
+      expect(rows(pg).map(([name]) => name)).not.toContain("team-agent");
+      // While away, the agent is shared with the person's Team.
+      askable.push({ exposure: { id: "exp-88", displayName: "team-agent", revision: 1 }, grant: { id: "g-88", expiresAt: 2_000_000_000_000 }, ownerName: "吳小安" });
+      const doc = globalThis.document as any, setHidden = (v: boolean) => Object.defineProperty(doc, "hidden", { configurable: true, get: () => v });
+      setHidden(true); fire(doc, "visibilitychange"); await settle(10);
+      expect([reads, rows(pg).some(([name]) => name === "team-agent")], "hidden: nothing read").toEqual([0, false]);
+      setHidden(false); fire(doc, "visibilitychange"); await until(() => rows(pg).some(([name]) => name === "team-agent"));
+      expect(reads, "back: read once").toBe(1);
+      expect(roomReads, "the room list too, once").toBe(1);
+      fire(globalThis.window as any, "focus"); await settle(10);
+      expect(reads, "the focus that comes with the same return: no second read").toBe(1);
+    } finally { delete (globalThis.document as any).hidden; g.fetch = realFetch; restore(); }
+  });
+
   it("a failed read says so with Retry; Retry reads again and the rows come", async () => {
     const askable = [{ exposure: { id: "exp-77", displayName: "fresh-agent", revision: 1 }, grant: { id: "g-77", expiresAt: 2_000_000_000_000 }, ownerName: "吳小安" }];
     const { pg, restore } = await hubAt("/ui/hub?view=new", { askable, catalogFails: 1 });

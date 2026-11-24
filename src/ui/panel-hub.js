@@ -387,7 +387,32 @@ function noteUnread(d) {
   // Read through (0): its @ mark goes too; the next list read has the Hub's own answer for both.
   roomsStore.set({ ...s, rooms: s.rooms.map((r) => (r.id === d.roomId ? { ...r, unread: n, ...(n === 0 ? { mentioned: false } : {}) } : r)) });
 }
-/** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden). */
+/** M-3567: the gap between a page left and a page back (another tab, another window) is when a grant or a new room lands. */
+export const RETURN_MIN_MS = 5_000;
+/**
+ * M-3567: `fn` when the person comes back to the page — it is shown again (visibilitychange) or its window gains focus —
+ * at most once per RETURN_MIN_MS (both fire on one return). The 30 s poll pauses while the page is hidden, so a grant
+ * given meanwhile showed only after a reload.
+ */
+export function useOnReturn(fn) {
+  const latest = useRef(fn);
+  latest.current = fn;
+  useEffect(() => {
+    if (typeof document === "undefined") return undefined;
+    let last = -Infinity;
+    const back = () => {
+      if (document.hidden) return;
+      const now = typeof performance !== "undefined" ? performance.now() : Date.now();   // a gap, not a date
+      if (now - last < RETURN_MIN_MS) return;
+      last = now; latest.current();
+    };
+    document.addEventListener("visibilitychange", back);
+    const w = typeof window !== "undefined" ? window : null;
+    w?.addEventListener?.("focus", back);
+    return () => { document.removeEventListener("visibilitychange", back); w?.removeEventListener?.("focus", back); };
+  }, []);
+}
+/** Keeps the list fresh while something shows it (every ROOMS_MS, paused while the page is hidden; again on return). */
 function useRooms() {
   const rs = useStore(roomsStore);
   useEffect(() => {
@@ -395,6 +420,7 @@ function useRooms() {
     const tick = setInterval(() => { if (session && (typeof document === "undefined" || !document.hidden)) refreshRooms(); }, ROOMS_MS);
     return () => clearInterval(tick);
   }, []);
+  useOnReturn(() => { if (session) refreshRooms(); });
   return rs;
 }
 // A room's id as the list gives it (today's are UUIDs; a Hub with rooms may name them otherwise): matched against the list
@@ -637,6 +663,8 @@ function HubChats() {
 function ChatLauncher() {
   const s = useSession(), rs = useRooms();
   const [cat, reloadCat] = useRead(() => hubClient().catalog());
+  // M-3567: a grant given while the page was away (a Team's, a person's) is listed on return, with no reload.
+  useOnReturn(() => reloadCat());
   const [inRooms, setInRooms] = useState([]);
   const [q, setQ] = useState(""), [busy, setBusy] = useState(false), [msg, setMsg] = useState(null), [newRoom, setNewRoom] = useState(false);
   const groups = rs.rooms.filter((r) => r.kind === "group" && !r.archived).sort((a, b) => (b.lastAt || 0) - (a.lastAt || 0)).slice(0, 5);
