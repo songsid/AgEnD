@@ -13,8 +13,19 @@ const ContactChangeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("grant-adjust"), target: name, revision, grant_id: name,
     expires_at: z.iso.datetime(), remaining_uses: z.number().int().min(1).max(10_000).nullable() }),
   z.strictObject({ kind: z.literal("grant-revoke"), target: name, revision, grant_id: name }),
-]);
-export const ProposeContactChangeArgs = z.strictObject({ change: ContactChangeSchema });
+]).refine(value => value.kind !== "ticket-decision" || !value.grant || value.decision === "approve-once", { message: "A grant requires approve-once", path: ["grant"] });
+// Keep the model's menu compact: conditional required fields are validated by
+// the same strict variant schema at runtime, rather than repeating every field four times.
+export const ProposeContactChangeArgs = z.strictObject({ change: z.strictObject({
+  kind: z.enum(["mode", "ticket-decision", "grant-adjust", "grant-revoke"]),
+  target: z.string().optional(), ticket_id: z.string().optional(), revision: z.number().optional(),
+  mode: z.enum(["legacy", "restricted"]).optional(), decision: z.enum(["approve-once", "decline"]).optional(),
+  grant: z.strictObject({ expiresAt: z.string(), remainingUses: z.number().nullable(), personKeys: z.array(z.string()).optional() }).optional(),
+  grant_id: z.string().optional(), expires_at: z.string().optional(), remaining_uses: z.number().nullable().optional(),
+}).superRefine((value, ctx) => {
+  const parsed = ContactChangeSchema.safeParse(value);
+  if (!parsed.success) for (const issue of parsed.error.issues) ctx.addIssue({ code: "custom", path: issue.path, message: issue.message });
+}) });
 export interface ContactChangeHost {
   service: ContactAuthService;
   label?(target: string): string;

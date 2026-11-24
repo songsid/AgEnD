@@ -199,3 +199,16 @@ it('zh-TW names before Chinese prose are spaced by their ending script, never by
     }
   } finally {setLocale('en');}
 });
+it('compact model schema retains the strict runtime variants and all field bounds', () => {
+  const invalid = [
+    {kind:'mode',target:'room'}, {kind:'mode',target:'',mode:'legacy'}, {kind:'mode',target:'room',mode:'legacy',revision:-1},
+    {kind:'mode',target:'room',mode:'legacy',ticket_id:'extra'}, {kind:'grant-revoke',target:'worker'},
+    {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'not-a-date',remaining_uses:null},
+    {kind:'grant-adjust',target:'worker',grant_id:'g',expires_at:'2027-01-01T00:00:00Z',remaining_uses:0},
+    {kind:'ticket-decision',ticket_id:'Rfake',decision:'decline',grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:null}},
+    {kind:'ticket-decision',ticket_id:'Rfake',decision:'approve-once',grant:{expiresAt:'2027-01-01T00:00:00Z',remainingUses:10001}},
+  ];
+  expect(invalid.length).toBeGreaterThan(0);
+  for(const change of invalid)expect(ProposeContactChangeArgs.safeParse({change}).success,JSON.stringify(change)).toBe(false);
+  expect(ProposeContactChangeArgs.safeParse({change:{kind:'mode',target:'room',mode:'legacy'}}).success).toBe(true);
+});

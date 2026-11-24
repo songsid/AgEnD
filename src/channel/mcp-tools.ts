@@ -158,7 +158,7 @@ const DEFS: Array<[string, ZodType, string]> = [
   ["get_fleet_config", schemas.GetFleetConfigArgs,
     "Read fleet configuration. scope='defaults' for fleet defaults, scope='instance' + name for a specific instance."],
   ["propose_contact_change", schemas.ProposeContactChangeArgs,
-    "General only: propose a contact room-mode change, ticket decision (with optional standing rules), rule expiry/use adjustment or revoke. A system card is posted to the target connection’s General; a currently authorized Discord/Telegram person must confirm. This tool never applies or confirms. No actor or approval proof can be supplied. Host-only targets use the web. Revisions are frozen by the server; no action authority is granted."],
+    "General proposes; a target admin confirms on Discord/Telegram. Fields depend on kind; see the web-dashboard skill. Never self-confirms."],
   ["update_instance_config", schemas.UpdateInstanceConfigArgs,
     "Update a specific instance's config (backend, model, auto_pause_after, display_name, description, backend_options). Saves to fleet.yaml. General alone may also set another portable/local agent’s tool_set directly, without confirmation; self-targets are refused. skipPermissions is refused for everyone. backend_options merges per backend; null or \"\" drops a key; a change restarts the instance. A ClassicBot room takes only backend_options.<backend>.credential_profile (classicBot.yaml); the answer names the profile it relaunched on."],
   ["update_fleet_defaults", schemas.UpdateFleetDefaultsArgs,
