@@ -1,5 +1,5 @@
 {
-  "sourceHead": "3f0d0ac258360a96d864281260437fc7aa58a900",
+  "sourceHead": "9a49e9a5c59b49918227bebbcc60cbec4eb03271",
   "dirty": [],
   "checks": [
     {
@@ -35,6 +35,10 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-light: the fox is found on the scene",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
       "ok": true
     },
@@ -56,6 +60,10 @@
     },
     {
       "name": "desk-en-dark: each own character's every strip was loaded by the page (drawn whole)",
+      "ok": true
+    },
+    {
+      "name": "desk-en-dark: the fox is found on the scene",
       "ok": true
     },
     {
@@ -83,6 +91,10 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark: the fox is found on the scene",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark: Atlas's card shows its own character's stand (its orange robot), not the figure",
       "ok": true
     },
@@ -107,6 +119,10 @@
       "ok": true
     },
     {
+      "name": "phone-en-light: the fox is found on the scene",
+      "ok": true
+    },
+    {
       "name": "phone-en-light: Atlas's card shows its own character's stand (its orange robot), not the figure",
       "ok": true
     },
@@ -126,59 +142,71 @@
   "pictures": [
     {
       "path": "m3533-r2c-desk-zh-TW-light-1-office.png",
-      "sha256": "6e81fc416967913fa92f4b387a846b85dc5b28b22be3210c85e6bb317fda09cd"
+      "sha256": "7801c59bf977dc064fbdd61113c4b4cc6856af8f31c2d7a6b5b1b24213002a23"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-1z-office-close.png",
-      "sha256": "889a4a4176c0341cb177a7c45732e4adb79740a90d1582f96e56da7fadc06177"
+      "sha256": "d8b450b3da6677eb2141f7aab852d8fbdf1982bf504d3e32e9d288b8c5b47e90"
+    },
+    {
+      "path": "m3533-r2c-desk-zh-TW-light-1q-fox-close.png",
+      "sha256": "5541e9455dcc3956abe016ab7a6a0cb934e4e94cfb21ea4fbba509403ce4b0b3"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-2-card-atlas.png",
-      "sha256": "771ba266e04e24e7eda118d452fad90f022e42280e86b7f5c6e8fab287d0e071"
+      "sha256": "585d20d5d1fcc1a74339bbe42944aa176bf3e4eed9a2176c286dde6b006f0bb9"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-3-office-studio-large.png",
-      "sha256": "6e3aac3d4e5b8e9b07bbf6755da5ccc20f2779d710d0513c1b0b4b6fa20dd097"
+      "sha256": "cdd32df819a8ff57f3abc1e5c7767a7234e1c2b84de19444cb91b137e0910837"
     },
     {
       "path": "m3533-r2c-desk-zh-TW-light-4-my-agents-too-large.png",
-      "sha256": "63204ff9758d0b8f1b57802c8903a1e7a9d6c850ad1f1b3eabb709959ae69b74"
+      "sha256": "d66418d563229682834c4166f206c900790434376b168e47349526ee6c430a73"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1-office.png",
-      "sha256": "9ad333250883d8a9addd1a26a5411d495a942580aaa38b514f299fa453c90d6a"
+      "sha256": "526b5f13961f5b3c2782fd642552be429cce25eba097da6904fc21b8390077ec"
     },
     {
       "path": "m3533-r2c-desk-en-dark-1z-office-close.png",
-      "sha256": "7318ea5418d31fa3f36349be83ec2dd2b64a2005b60546e1968648aad654e718"
+      "sha256": "9166ee79b5696ad78198a6e602abf7806b1195c28662675ca340564f4b5696ba"
+    },
+    {
+      "path": "m3533-r2c-desk-en-dark-1q-fox-close.png",
+      "sha256": "1d0c67883e3b83c0441ef1aee1b0f8fde2f8caf2fcecde708017d576a58af588"
     },
     {
       "path": "m3533-r2c-desk-en-dark-2-card-atlas.png",
-      "sha256": "c80f97076294798a81b64dc1801af429beb99427a9e7f1f2f9b8c4a1f8f0f7d7"
+      "sha256": "a86cd4f7e0fd87b823ff58034609e190df818857cb413c846aaa7d67d57980b5"
     },
     {
       "path": "m3533-r2c-desk-en-dark-3-office-studio-large.png",
-      "sha256": "d390fb56b99a9f9eb9491ec19e2736a29e87ea2b4875ee12a0c733e5d193d930"
+      "sha256": "930ed25ba7a1bf5cc040de40bc86dade7763027721efb2099caedd7f185db01b"
     },
     {
       "path": "m3533-r2c-desk-en-dark-4-my-agents-too-large.png",
-      "sha256": "f30d498d959a10ae2078759738b620ef7c1be46365167bcdc503f4fd82803216"
+      "sha256": "69751001ce5eb61eb435dea507e05bc88500b26dbdaaa12d177767f36136f9ac"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1-office.png",
-      "sha256": "4fc9e9a27755cf1b59b75ff6752fdce1a2e195c87f7eeca2f0d49f97b5942ef9"
+      "sha256": "f5c340a5f4e5c34d90c4e9eb8512579c3df1b737cabec9da1450f9cbfc1bf1dc"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-1z-office-close.png",
-      "sha256": "15724a4e0346d77cf162cf0a4abf0ea72c226566fdc970483197dc9b46fee811"
+      "sha256": "8c59641e138bb7e780d857de1fa98595510048c7fadfd1be10fdf14b1b2b6ccb"
+    },
+    {
+      "path": "m3533-r2c-phone-zh-TW-dark-1q-fox-close.png",
+      "sha256": "2a6a53bda8f105243605bcd98c5ad73420e66178f49346df75d37a55abe989e1"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-2-card-atlas.png",
-      "sha256": "49025ae002ff24e3fde286bd4f055eca1dc215202879548b60eaaafb5bd1f734"
+      "sha256": "6adc43915cd6b8533fdfc211b80ab3ca03941ae804b9ac6e88704bbabb4126c0"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-3-office-studio-large.png",
-      "sha256": "c9adbe5f0ab50b71f502d9b0ccbfa4fb1bd19f33072640069da8455ede4836d9"
+      "sha256": "04c26ae1f7d8512b112d91d1cb5bd1c6cc448da8a8dd2006eaa257ea71e4299d"
     },
     {
       "path": "m3533-r2c-phone-zh-TW-dark-4-my-agents-too-large.png",
@@ -186,19 +214,23 @@
     },
     {
       "path": "m3533-r2c-phone-en-light-1-office.png",
-      "sha256": "3c5c264c3baccab3991199d9b34a50e2bbcb35c75a95ff92ab28448d8735891d"
+      "sha256": "9087ec42acd7850793a85de22276fd0233e895a109682ae2ab3cf4460ea7889c"
     },
     {
       "path": "m3533-r2c-phone-en-light-1z-office-close.png",
-      "sha256": "6bd34718d53afc24d2de2961b95d39a6e50681379c0843636492d92d8cbf1f3d"
+      "sha256": "b16b814c8bc319be9ece762117526ccd0ab9c5a4c5e02e36ae02ed801428f5fd"
+    },
+    {
+      "path": "m3533-r2c-phone-en-light-1q-fox-close.png",
+      "sha256": "cd75a12e126014607fa6887a5061265e3cc1c9593b327e2dbd9735833d9c2775"
     },
     {
       "path": "m3533-r2c-phone-en-light-2-card-atlas.png",
-      "sha256": "ada5a96ec4e16484ba465e47b48fd8354883069460e7870c6e1ad72062b361af"
+      "sha256": "015fd4426ea46c501a4644fda659add6d3bfdaa51064d2f6665617b2c78ae209"
     },
     {
       "path": "m3533-r2c-phone-en-light-3-office-studio-large.png",
-      "sha256": "d13f363812495dde74d89938787aff0e66ea2baab81831a752462a43813cb636"
+      "sha256": "d7a44713b41e71ce9edf9a5b730d49cacc5807889c8051de59d9ab606c9f371e"
     },
     {
       "path": "m3533-r2c-phone-en-light-4-my-agents-too-large.png",
@@ -249,7 +281,31 @@
       "Quill": 1796,
       "Nova": 2214,
       "Echo": 2214
+    },
+    "desk-zh-TW-light-foxDesk": {
+      "x": 333.5,
+      "y": 346,
+      "w": 11.5,
+      "h": 4.5
+    },
+    "desk-en-dark-foxDesk": {
+      "x": 333.5,
+      "y": 346,
+      "w": 11.5,
+      "h": 4.5
+    },
+    "phone-zh-TW-dark-foxDesk": {
+      "x": 41.5,
+      "y": 357.5,
+      "w": 5.5,
+      "h": 1.5
+    },
+    "phone-en-light-foxDesk": {
+      "x": 41.5,
+      "y": 357.5,
+      "w": 5.5,
+      "h": 1.5
     }
   },
-  "summary": "30/30"
+  "summary": "34/34"
 }

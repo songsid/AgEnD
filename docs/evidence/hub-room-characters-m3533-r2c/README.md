@@ -1,6 +1,6 @@
 # M-3533 R2c: each shared agent's own character in a room office (real app)
 
-These are captures of the real Hub (HTTPS and SQLite) and its real room pages. The real Fleet-side sender (`src/hub/member/agent-pictures.ts`) cut each agent's set out of a pack sheet (`src/hub-character-plan.ts`, `cropCharacter`) and fed the Hub's own receive, as a Fleet's link does. They were taken headless with Chromium, with motion reduced. Script: `scripts/manual/hub-room-characters-m3533-r2c/capture.mts`. `receipt.json` lists the commit (its `src` clean), every check (30/30), what was measured and each PNG's sha256.
+These are captures of the real Hub (HTTPS and SQLite) and its real room pages. The real Fleet-side sender (`src/hub/member/agent-pictures.ts`) cut each agent's set out of a pack sheet (`src/hub-character-plan.ts`, `cropCharacter`) and fed the Hub's own receive, as a Fleet's link does. They were taken headless with Chromium, with motion reduced. Script: `scripts/manual/hub-room-characters-m3533-r2c/capture.mts`. `receipt.json` lists the commit (its `src` clean), every check (34/34), what was measured and each PNG's sha256.
 
 **Made-up content.** The people (Alex Sample, Casey Sample, the admin) and the agents are made up. The robots were drawn for the capture: one sheet a robot, with rows for idle, working, paused, stand and three walks. The fox is the `office-skin-clinic` test pack's (idle only).
 
@@ -17,10 +17,12 @@ These are captures of the real Hub (HTTPS and SQLite) and its real room pages. T
 | What | Capture |
 |---|---|
 | **The office.** The four own characters at their desks beside the built-in figures: Atlas idle, Quill working, Nova paused (its pose for paused and offline), Echo offline. Name tags and their colours are R2a's. Each set was drawn only once all its strips had loaded (checked: the page loaded each one's every strip) | `*-1-office.png`, close-ups `*-1z-office-close.png` |
+| **The fox, close.** The clinic fox at its desk, found on the scene by its own colour (Lumen: its readability on record) | `*-1q-fox-close.png` |
 | **Atlas's card.** No portrait, so the card shows the set's `stand` (Lumen R2c 4: portrait, else stand, else the figure). Checked: the card's avatar is the orange robot | `*-2-card-atlas.png` |
-| **Studio (large).** The same agents in the large built-in style | `*-3-office-studio-large.png` |
+| **Studio (large).** The same agents in the large built-in style. A room character's speech bubble stays 8 units inside its area's box | `*-3-office-studio-large.png` |
 | **The owner's My agents.** Notes's row says its character is too large for the Hub (512 KB with its avatar and portrait), so room offices draw the plain figure | `*-4-my-agents-too-large.png` |
+| **The rejected size (A).** The pack's own 64 × 96: a robot about twice a figure's height, crossing the Lounge and Nap corner edges and names. Lumen chose B | `rejected-own-scale-64x96-desk-en-dark-3-office-studio-large.png` |
 
 Combinations: desk zh-TW light, desk en dark, phone zh-TW dark, phone en light.
 
-**Size.** The robots and the fox are 32 × 48 at their pack's scale 2: 64 × 96 scene units, inside the room's limit of 88 × 96, so they are drawn at their own size, not scaled. A larger set would be drawn smaller, in proportion (`CHARACTER_FIT`, the unit test).
+**Size (Lumen's B).** Each own character is fitted into the built-in figure's box, 48 × 66 scene units, in proportion and never larger (`CHARACTER_FIT`): the robots and the fox (32 × 48 at their pack's scale 2, so 64 × 96) are drawn at 44 × 66, their feet on the seat as a figure's. Strips are drawn unsmoothed (nearest pixel), as the Fleet office draws every strip, also at this non-whole step.
