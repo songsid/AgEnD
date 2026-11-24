@@ -3185,6 +3185,11 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 /* ── #2293: global search — the sidebar row's shortcut, the header's button (collapsed sidebar, phone), the dialog ── */
 /* #2478: a touch screen has no Ctrl/⌘ K — the shortcut's hint is not shown there (the row is). */
 @media (pointer: coarse) { .side-search .kbd-hint { display: none; } }
+/* M-3559: the search row's label never gives way to its shortcut hint. Where the row is too narrow for both — two nav rows
+   to a line in a short window (122 px), a sidebar narrowed further — the hint goes first; the row's title still names the
+   shortcut. Inside the row's padding, the icon, "Search", the gaps and "Ctrl K" take about 140 px. */
+.side-search { container-type: inline-size; }
+@container (max-width: 144px) { .side-search .kbd-hint { display: none; } }
 .kbd-hint { font: inherit; font-size: var(--fs-xs); color: var(--text-3); border: 1px solid var(--border); border-radius: var(--r-sm); padding: 0 var(--s-1); line-height: 18px; white-space: nowrap; }
 .panel-head .sb-search { display: none; }
 .sb-collapsed .panel-head .sb-search { display: inline-flex; }
