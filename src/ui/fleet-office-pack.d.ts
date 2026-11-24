@@ -25,7 +25,7 @@ export interface PackArea { name: string; rect: { x: number; y: number; w: numbe
 export interface PackFurniture { id: string; sprite: PackStrip; x: number; y: number; depth: number | "y"; activeWhen: string[] | null; activeSprite: PackStrip | null;
   activeFor?: string[] | null; loop?: boolean; activeOn?: "state" | "seated"; hides?: boolean; label: string | null }
 export interface CheckedPack {
-  format: 1; id: string; scale: number; background?: string; foreground?: string; matte?: string;
+  format: 1; id: string; scale: number; /** Its own canvas (logical units), else 1280×720. */ canvas?: { w: number; h: number }; background?: string; foreground?: string; matte?: string;
   areas: Record<string, PackArea>; stateZones: Record<string, string> | null; door: PackPoint;
   /** #2736: where a letter from another office lands, or null (the waypoint nearest the middle). */
   mailDrop: PackPoint | null;
@@ -97,6 +97,8 @@ export interface LayoutOverrides {
   edges?: Array<[string, string]>;
 }
 export const LOGICAL: { w: number; h: number };
+export const CANVAS: { min: { w: number; h: number }; max: { w: number; h: number } };
+export function canvasOf(pack: unknown): { w: number; h: number };
 export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
 export const BUBBLE_KEYS: string[];
@@ -137,7 +139,7 @@ export function packSceneImages(pack: CheckedPack): string[];
 export function packPortraitImages(pack: CheckedPack): string[];
 export const PORTRAIT_STATES: string[];
 export function packStrips(pack: CheckedPack): Array<{ at: string; strip: PackStrip }>;
-export function checkLayoutOverrides(x: unknown): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
+export function checkLayoutOverrides(x: unknown, canvas?: { w: number; h: number }): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
 export function applyOverrides(pack: CheckedPack, ov: LayoutOverrides | null | undefined): { ok: true; pack: CheckedPack } | { ok: false; error: string };
 export function fitNight<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;
 export function fitSeatFor<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;

@@ -113,7 +113,7 @@ A skin pack is an artist's pictures for the Office: a `manifest.json` and PNG fi
 
 ## Make a skin pack
 
-A pack describes one scene on a **1280×720 logical canvas** (16:9). Every coordinate in the manifest is in these logical units. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
+A pack describes one scene on a **1280×720 logical canvas** (16:9), or on its own size with `"canvas": [w, h]` (640×360 to 5120×2880, any shape: a bigger office, or a wide one). Every coordinate in the manifest is in these logical units, within the canvas; the background and the foreground have the canvas's shape. The view fits the whole canvas and zooms as before; in All offices a big office is scaled down into its tile. Pictures are pixel art, drawn unsmoothed at `scale` logical units per image pixel (default 2).
 
 A minimal zones pack:
 
@@ -485,7 +485,8 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `format` | ✅ | `1` |
 | `id` | ✅ | 1–40 letters, digits, `_` or `-`. Not `pixel`, `studio`, `cozy`, `guild` or `school`; ids that differ only in case clash |
 | `scale` | ❌ | logical units per image pixel, 1–8 (default 2) |
-| `background` | with `stateZones` | the scene's picture, 16:9 |
+| `canvas` | ❌ | `[w, h]`: the scene's size in logical units, 640–5120 × 360–2880 (default 1280×720). An older AgEnD refuses a pack with it |
+| `background` | with `stateZones` | the scene's picture, 16:9 (with `canvas`: its shape) |
 | `foreground` | ❌ | a 16:9 picture over the scene (with `stateZones` only) |
 | `matte` | ❌ | `#rrggbb`, the colour around the scene |
 | `areas` | with `stateZones` | `{ name: { rect: [x, y, w, h], seats: [seat, …] } }`, up to 32 areas and 64 seats each |

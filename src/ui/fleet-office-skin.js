@@ -47,7 +47,7 @@
 // among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, canvasOf, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
 import { tierColours } from "./fleet-office-levels.js";
 import { assetUrl } from "/assets/asset-url.js";
 
@@ -745,12 +745,12 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     drawBackground(ctx, L, env) {
       const im = img(pack.background);
       if (!im) { drawBackground(ctx, L, env); return; }
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawForeground(ctx, L, env) {
       const im = img(pack.foreground);
       if (!im) return;
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }

@@ -15,7 +15,7 @@
 //   the left margin) that traffic walks along (bfsPath).
 // - Poses come from the org chart's states (fleet-org.js ORG_STATES / orgState); nothing here invents a status.
 import { hue } from "./fleet-traffic.js";
-import { checkLayoutOverrides } from "./fleet-office-pack.js";
+import { CANVAS, checkLayoutOverrides } from "./fleet-office-pack.js";
 
 // ── Poses: the org chart's states, as a character at a desk ──
 
@@ -125,7 +125,8 @@ export function officeOk(x) {
   if (!x || typeof x !== "object" || typeof x.id !== "string" || !ID.test(x.id) || x.id === AUTO_ID) return null;
   const name = typeof x.name === "string" && x.name.trim() ? x.name.trim().slice(0, 60) : x.id;
   const skin = typeof x.skin === "string" && ID.test(x.skin) ? x.skin : "pixel";
-  const ov = x.overrides === undefined ? null : checkLayoutOverrides(x.overrides);
+  // The host checked them against their pack's canvas; here the largest, so a big office's layout is kept.
+  const ov = x.overrides === undefined ? null : checkLayoutOverrides(x.overrides, CANVAS.max);
   return { id: x.id, name, skin, members: nameList(x.members), layout: layoutOk(x.layout), ...(ov && ov.ok ? { overrides: ov.overrides } : {}),
     ...(x.stayInArea === true ? { stayInArea: true } : {}) };   // M-3286: idle people stay in their own area
 }
