@@ -958,7 +958,7 @@ describe("the Office view on the page", () => {
     expect(sw.querySelectorAll("option").map((o: any) => o.textContent.trim())).toEqual(["Whole fleet", "Ops room"]);
     sw.value = "ops"; fire(sw, "change"); await settle(3);
     expect(desks()).toEqual(["nova", "tide", "quill"]);
-    expect(p.root.querySelectorAll(".oo-bar select")).toHaveLength(1);           // the team filter is the auto office's
+    expect([...p.root.querySelectorAll(".oo-bar select")].filter((s: any) => !s.classList.contains("oo-talk-mode"))).toHaveLength(1);           // the team filter is the auto office's
     expect(localStorage.getItem("agend_org_office")).toBe("ops");
   });
   it("#2431: an office whose stored style this page does not know says so (drawn as Desks), never pretends it is Desks", async () => {

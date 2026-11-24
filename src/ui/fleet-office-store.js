@@ -33,6 +33,7 @@ const LOBBY_KEY = "agend_org_office_lobby";
 const KEY_OPEN_KEY = "agend_org_office_key";
 /** #2861: whether the dialogue box shows here (default: off — nothing changes until a person ticks it). */
 const DIALOGUE_KEY = "agend_org_office_dialogue";
+const TALK_KEY = "agend_org_office_talk";
 /** #4010: { ids, interval } — the offices in the carousel and the seconds each is shown (playing is not kept). */
 const CAROUSEL_KEY = "agend_org_office_carousel";
 /** #2540: { "<office>@<style>": [k, cx, cy] (and a 1 after them: a fit) } — the last VIEWS_MAX views, the most recent last. */
@@ -269,6 +270,9 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
     /** #2861: whether the dialogue box shows here (default: off). */
     dialogueOn: () => read(DIALOGUE_KEY) === "1",
     saveDialogueOn: (v) => write(DIALOGUE_KEY, v ? "1" : "0"),
+    /** How a person is talked to from here (fleet-office-talk.js TALK_MODES), as kept; null: never picked. */
+    talkMode: () => read(TALK_KEY),
+    saveTalkMode: (v) => write(TALK_KEY, String(v)),
     saveLobbyTile: (v) => write(LOBBY_KEY, v ? "1" : "0"),
     /** The view kept for `key` (an office and its style): { k, cx, cy } (fleet-office-view.js savedOf), or null. */
     view: (key) => {

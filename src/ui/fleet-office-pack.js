@@ -119,6 +119,8 @@
 //                                                     { "idle", "working", "needs" } files; PNGs up to 1024×1536 (host)
 //     "dialogBox": { "frame": "box.png", "slice": 8, "background": "#rrggbb", "border", "text", "name" }
 //                                                     optional (#2861): the box's 9-slice frame (≤ 512×512) and colours
+//       "bubble": { "frame", "slice" (default 6), "background", "border", "text", "name", "enter": "pop"|"fade"|"none" }
+//                                                     optional: the reply over a head (talk "Over their head"), the same
 //     "levels": {                                     optional (#2661): the Office levels' words
 //       "titles": [{ "from": 1, "name": "Intern" }, …],   the title from each level up (≤ 32, `from` 0–100000
 //                                                     rising, a name 1–24 characters), in place of the page's own
@@ -516,13 +518,29 @@ function portraitsOf(v, fids) {
 function dialogBoxOf(v) {
   if (v === undefined) return null;
   obj(v, "dialogBox");
-  keys(v, ["frame", "slice", "background", "border", "text", "name"], "dialogBox");
-  if (v.slice !== undefined && v.frame === undefined) throw new Refused("dialogBox.slice", "only with frame");
+  keys(v, ["frame", "slice", "background", "border", "text", "name", "bubble"], "dialogBox");
+  const out = boxLookOf(v, "dialogBox", 8);
+  if (v.bubble !== undefined) {
+    // The reply over a head (the Office's "Over their head" talk): the same look, and how it comes in.
+    obj(v.bubble, "dialogBox.bubble");
+    keys(v.bubble, ["frame", "slice", "background", "border", "text", "name", "enter"], "dialogBox.bubble");
+    out.bubble = boxLookOf(v.bubble, "dialogBox.bubble", 6);
+    if (v.bubble.enter !== undefined) {
+      if (!BUBBLE_ENTER.includes(v.bubble.enter)) throw new Refused("dialogBox.bubble.enter", `one of ${BUBBLE_ENTER.join(", ")}`);
+      out.bubble.enter = v.bubble.enter;
+    }
+  }
+  return out;
+}
+const BUBBLE_ENTER = ["pop", "fade", "none"];
+/** A box's 9-slice frame (`slice` image px a side, else `slice0`) and colours (#rrggbb). */
+function boxLookOf(v, at, slice0) {
+  if (v.slice !== undefined && v.frame === undefined) throw new Refused(`${at}.slice`, "only with frame");
   const out = {};
-  if (v.frame !== undefined) { out.frame = src(v.frame, "dialogBox.frame"); out.slice = v.slice === undefined ? 8 : int(v.slice, 1, LIMIT.slice, "dialogBox.slice"); }
+  if (v.frame !== undefined) { out.frame = src(v.frame, `${at}.frame`); out.slice = v.slice === undefined ? slice0 : int(v.slice, 1, LIMIT.slice, `${at}.slice`); }
   for (const k of ["background", "border", "text", "name"]) {
     if (v[k] === undefined) continue;
-    if (!matteOk(v[k])) throw new Refused(`dialogBox.${k}`, "a colour as #rrggbb");
+    if (!matteOk(v[k])) throw new Refused(`${at}.${k}`, "a colour as #rrggbb");
     out[k] = v[k].toLowerCase();
   }
   return out;
@@ -842,7 +860,7 @@ export const skinPackOk = (x) => { const r = checkSkinPack(x); return r.ok ? r.p
 export const packPortraitImages = (pack) => {
   const p = pack.portraits, all = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)] : [];
   const cs = pack.card && pack.card.style;
-  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame, cs && cs.backgroundImage, cs && cs.frame].filter(Boolean))];
+  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame, pack.dialogBox && pack.dialogBox.bubble && pack.dialogBox.bubble.frame, cs && cs.backgroundImage, cs && cs.frame].filter(Boolean))];
 };
 /** The sheets a strip draws from, in order: `[{ src, frames }]` (single-sheet strips have one entry). */
 export const stripSheets = (st) => (st && Array.isArray(st.sheets) ? st.sheets : st && st.src ? [{ src: st.src, frames: st.frames }] : []);

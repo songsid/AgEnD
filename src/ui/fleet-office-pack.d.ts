@@ -41,7 +41,9 @@ export interface CheckedPack {
   /** #2861: the dialogue box's faces — each an expression (idle, working, needs) → file. */
   portraits?: { default?: PackPortrait; byInstance: Record<string, PackPortrait>; byUser: Record<string, PackPortrait>; npc: Record<string, PackPortrait> };
   /** #2861: the dialogue box's look — a 9-slice frame and colours (#rrggbb). */
-  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string };
+  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string;
+    /** The reply over a head (the Office's "Over their head" talk): its 9-slice frame, colours and entrance. */
+    bubble?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string; enter?: "pop" | "fade" | "none" } };
   /** #4256: optional agent profile card preset, visual style, and layout. */
   card?: PackCard;
   /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */

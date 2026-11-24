@@ -231,7 +231,7 @@ describe("All offices on the page", () => {
     expect(p.root.querySelector(".oo-canvas").getAttribute("aria-label")).toContain("All offices");
     // The whole fleet's own pickers (style, team, people) are not there; the lobby toggle is (in ⚙ Display options).
     await openDisplay(p.root);
-    expect([p.root.querySelectorAll(".oo-bar select").length, p.root.querySelector(".oo-people"), !!p.root.querySelector(".oo-lobby-tile input")]).toEqual([1, null, true]);
+    expect([[...p.root.querySelectorAll(".oo-bar select")].filter((s: any) => !s.classList.contains("oo-talk-mode")).length, p.root.querySelector(".oo-people"), !!p.root.querySelector(".oo-lobby-tile input")]).toEqual([1, null, true]);
     await p.unmount(); await office();
     expect([sw().value, labels().length]).toEqual(["*all", 3]);
     // An office deleted meanwhile, one left: the whole fleet (as an office gone is), All offices no longer offered.

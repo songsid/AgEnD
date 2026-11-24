@@ -209,6 +209,7 @@ A person's line for a state comes from the first of these that has lines for it,
 - A portrait is a file, or expressions by state (`idle`, `working`, `needs`; at least one). A missing state shows `idle`, then any it has. Transparent PNGs up to 1024×1536 px, drawn standing (bottom-anchored) behind the box.
 - `default` is for agents. `byInstance` (up to 500) names instances; `byUser` (up to 200) a person's account as the chat records it, `adapter:id`; `npc` (up to 128) a furniture item the pack defines.
 - `dialogBox.frame` is a 9-slice picture up to 512×512 px with `slice` image px a side (1–128, default 8); the colours are `#rrggbb`, each defaulting to the dashboard's.
+- `dialogBox.bubble` styles the reply drawn over a head when **Talk** is "Over their head" (below): the same keys (`frame` up to 512×512, `slice` default 6, `background`, `border`, `text`, `name`) plus `enter`, how it comes in: `pop` (default), `fade` or `none`. Without it the reply is on light paper, like the state bubbles.
 - They're loaded only the first time the box needs them.
 
 **Custom snacks and eating animations (#4255).** A pack can ship optional snacks and an `eat` pose (`characters.<set>.eat`, any single-sheet, multi-sheet, or frame-list strip):
@@ -332,6 +333,21 @@ What it shows:
 - A screen reader hears each line once (a polite live region).
 
 **Faces.** A pack's `portraits` (below) are used first. Otherwise an agent is drawn as its avatar (its identity-card picture, bot avatar or persona emoji) in a frame, else its initial; a person as their initial. A share link has no avatars: portraits, else initials.
+
+### Talk from the Office
+
+**Talk** in the Office bar picks what a person's **Chat** (their card, a desk, the dialogue box) does. It's per browser, and only on the dashboard (never a share link or a guest page):
+
+| Talk | What Chat does |
+|---|---|
+| **Pop-up window** (default) | Opens their chat in its own window, as before. |
+| **Side panel** | A panel beside the office: their recent messages, the reply rendered as in the chat, a box to type in. On a phone, a sheet from the bottom. |
+| **Dialogue box** | Turns the dialogue box on and adds a line under it to type to them; **Full reply** shows their last reply whole. |
+| **Over their head** | The same line, but the reply is drawn over their head on the map (wrapped, up to six lines, for a few seconds), not in the box. |
+
+- **Enter** sends; **Shift+Enter** is a new line (and Enter while typing with an input method never sends).
+- Every way shows the same conversation as the chat: what you send here is in the chat, and their replies arrive live.
+- **Open full chat** opens the chat itself, for files, quotes, reactions and the rest.
 
 ## Share a view
 

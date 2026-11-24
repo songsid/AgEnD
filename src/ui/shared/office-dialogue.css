@@ -10,3 +10,43 @@
 @media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) {
   .oo.fs > .oo-zone-pills { display: flex; }
 }
+
+/* Talking from the Office (fleet-office-talk.js): the side panel (a bottom sheet on a phone) and the line under the box. */
+.oo { position: relative; }
+.oo.ot-side > .oo-stage, .oo.ot-side > canvas.oo-dialogue-canvas, .oo.ot-side > .oo-zone-pills { margin-right: calc(min(380px, 40%) + 8px); width: auto; }
+.ot-panel { position: absolute; right: 0; bottom: 0; width: min(380px, 40%); z-index: 6; display: flex; flex-direction: column; min-height: 0;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-sm, 8px); box-shadow: var(--shadow-2);
+  animation: ot-in 180ms ease-out; }
+.ot-panel.sheet { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; height: min(62dvh, 560px); z-index: 60;
+  border-radius: 14px 14px 0 0; animation-name: ot-up; padding-bottom: env(safe-area-inset-bottom); }
+@keyframes ot-in { from { transform: translateX(16px); opacity: 0; } }
+@keyframes ot-up { from { transform: translateY(24px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ot-panel { animation: none; } }
+.ot-head { display: flex; align-items: center; gap: var(--s-2); padding: 8px 10px; border-bottom: 1px solid var(--border); }
+.ot-who { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.ot-who strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ot-state { font-size: var(--fs-2xs); padding: 1px 6px; border-radius: 99px; background: var(--surface-2); color: var(--text-2, inherit); }
+.ot-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin: 0; padding: 10px; list-style: none; display: flex; flex-direction: column; gap: 8px; overscroll-behavior: contain; }
+.ot-msg { max-width: 88%; padding: 7px 10px; border-radius: 10px; line-height: 1.45; word-break: break-word; }
+.ot-msg.me { align-self: flex-end; background: var(--accent); color: var(--on-accent); border-bottom-right-radius: 3px; white-space: pre-wrap; }
+.ot-msg.agent { align-self: flex-start; background: var(--surface-2); border-bottom-left-radius: 3px; }
+.ot-msg.pending { opacity: 0.7; }
+.ot-msg.failed { outline: 1px solid var(--danger); }
+.ot-md > :first-child { margin-top: 0; } .ot-md > :last-child { margin-bottom: 0; }
+.ot-md pre { overflow-x: auto; }
+.ot-meta { display: block; font-size: var(--fs-2xs); opacity: 0.8; margin-top: 2px; }
+.ot-bad { color: var(--danger); }
+.ot-note { align-self: center; color: var(--text-2, inherit); font-size: var(--fs-xs); }
+.ot-compose { display: flex; gap: 6px; align-items: flex-end; flex: 1 1 auto; min-width: 0; }
+.ot-panel .ot-compose { padding: 8px 10px; border-top: 1px solid var(--border); flex: 0 0 auto; }
+.ot-input { flex: 1 1 auto; min-width: 0; resize: none; max-height: 7.5em; field-sizing: content; min-height: var(--tap, 32px); padding: 6px 8px;
+  font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; }
+.ot-input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.ot-send { min-height: var(--tap, 32px); }
+.ot-bar { position: relative; flex: 0 0 auto; background: var(--surface); border-top: 1px solid var(--border); padding: 6px 8px; }
+.ot-bar-row { display: flex; align-items: flex-end; gap: 6px; }
+.ot-to { align-self: center; font-weight: 600; white-space: nowrap; max-width: 30%; overflow: hidden; text-overflow: ellipsis; }
+.ot-reply { position: absolute; left: 8px; right: 8px; bottom: calc(100% + 6px); max-height: 50dvh; overflow-y: auto; z-index: 7; padding: 10px 34px 10px 12px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow-2); }
+.ot-reply .ot-close { position: absolute; top: 4px; right: 4px; }
+@media (max-width: 599px) { .ot-bar .ot-full { display: none; } .ot-to { display: none; } }

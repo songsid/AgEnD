@@ -125,11 +125,12 @@ function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; heigh
     const s = sizes.get(src);
     if (s && (s.width > PORTRAIT_MAX.w || s.height > PORTRAIT_MAX.h)) return refuse(400, "skin_portrait_dimensions", `portraits: ${src} is ${s.width}×${s.height} px; at most ${PORTRAIT_MAX.w}×${PORTRAIT_MAX.h}`);
   }
-  const frame = pack.dialogBox?.frame;
-  if (frame) {
+  for (const [at, box] of [["dialogBox", pack.dialogBox], ["dialogBox.bubble", pack.dialogBox?.bubble]] as const) {
+    const frame = box?.frame;
+    if (!frame) continue;
     const s = sizes.get(frame);
-    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `dialogBox.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
-    if (s && pack.dialogBox?.slice && (pack.dialogBox.slice * 2 >= s.width || pack.dialogBox.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `dialogBox.slice: ${pack.dialogBox.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
+    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `${at}.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
+    if (s && box.slice && (box.slice * 2 >= s.width || box.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `${at}.slice: ${box.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
   }
   // #4256: card backgroundImage (CARD_BG_MAX) and 9-slice frame (FRAME_MAX + slice bounds).
   const cardBg = pack.card?.style?.backgroundImage;
