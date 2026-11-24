@@ -42,9 +42,9 @@ register("orgl", {
   "zh-TW": {
     edit: "編輯配置", title: "編輯配置", coords: "顯示座標", addWaypoint: "新增路徑點", removeWaypoint: "移除路徑點",
     joinTo: "連到", join: "連接", unjoin: "取消連接 {0}", corridors: "走道", none: "尚未選取：請選座位、家具、門、信件落點或路徑點。",
-    reset: "還原成 pack 的配置", save: "儲存配置", cancel: "取消", saved: "配置已儲存。", hint: "拖曳，或用方向鍵移動（Shift：一次 10）。",
+    reset: "還原成外觀包的配置", save: "儲存配置", cancel: "取消", saved: "配置已儲存。", hint: "拖曳，或用方向鍵移動（Shift：一次 10）。",
     seat: "{1} 的座位 {0}", furniture: "家具 {0}", night: "家具 {0}（夜間）", door: "門", mail: "信件落點", mailAuto: "信件落點（目前信件落下的位置；拖曳即可指定）", waypoint: "路徑點 {0}", at: "{0}，位置 {1}, {2}",
-    nightReset: "回到 pack 的夜間位置",
+    nightReset: "回到外觀包的夜間位置",
     seatFor: "{1} 的座位 {0}，保留給 {2}", reservedFor: "保留給", lend: "不在時借給別人", nobody: "沒有可選的成員。",
     changed: "有人在這期間修改了辦公室。你的配置已保留：再按一次儲存，會套用到目前的清單。",
     failed: "配置沒有儲存（{0}）。", rateLimited: "儲存太頻繁，請一分鐘後再試。",

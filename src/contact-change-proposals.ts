@@ -1,3 +1,4 @@
+import { contactPersonKey, normalizeContactPersonKey } from "./contact-auth-store.js";
 /** Contact changes are proposals, never agent-held approval capabilities. */
 import { z } from "zod";
 import { ContactDecisionSchema } from "./contact-auth-policy.js";
@@ -76,8 +77,8 @@ export function prepareContactChange(raw: unknown, host: ContactChangeHost): Pre
     const requestLine = t(input.grant ? "contactProposal.request" : input.decision === "decline" ? "contactProposal.declineRequest" : "contactProposal.approveRequest", shortId(ticket!.id), beforeCjk(label(ticket!.source)));
     summary.push(`${requestLine}${getLocale() === "zh-TW" ? "（" : " ("}${t(`contactProposal.verb_${ticket!.verb}`)}${getLocale() === "zh-TW" ? "）" : ")"}`);
     if (input.grant) {
-      const keys = input.grant.personKeys ?? (ticket!.origin.people.length === 1 ? [JSON.stringify([ticket!.origin.people[0]!.platform, ticket!.origin.people[0]!.adapterId, ticket!.origin.people[0]!.userId])] : []);
-      const people = ticket!.origin.people.filter(p => keys.includes(JSON.stringify([p.platform, p.adapterId, p.userId])));
+      const keys = (input.grant.personKeys ?? (ticket!.origin.people.length === 1 ? [contactPersonKey(ticket!.origin.people[0]!)] : [])).map(key => normalizeContactPersonKey(key) ?? "");
+      const people = ticket!.origin.people.filter(p => keys.includes(contactPersonKey(p)));
       if (ticket!.origin.kind === "unknown" || !keys.length || new Set(keys).size !== keys.length || people.length !== keys.length) throw Error("invalid-grant-origin");
       const names = people.map(personName).join(getLocale() === "zh-TW" ? "、" : ", ");
       summary.push(t("contactProposal.allowUntil", beforeCjk(names), label(ticket!.target), when(input.grant.expiresAt)),

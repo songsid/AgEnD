@@ -69,10 +69,10 @@ it('admin revocation, requesting lifecycle/route changes, incarnation replacemen
     expect(r.write, cause).not.toHaveBeenCalled(); vi.restoreAllMocks();
   }
 });
-it('ticket approval with rules uses real store and target configured approver; single-use nonce cannot admit twice', async () => {
+it.each([false, true])('ticket approval (legacy selector=%s) uses real store and target configured approver; single-use nonce cannot admit twice', async legacy => {
   const r = rig(), ticket = r.ticket();
   r.store.writePolicy('worker', { revision: 0, approvers: [other] }, admin, n => r.gen.get(n)!);
-  const input = { kind: 'ticket-decision', ticket_id: ticket.id, decision: 'approve-once', grant: { expiresAt: new Date(Date.now()+86400000).toISOString(), remainingUses: null, personKeys: [contactPersonKey(person)] } };
+  const input = { kind: 'ticket-decision', ticket_id: ticket.id, decision: 'approve-once', grant: { expiresAt: new Date(Date.now()+86400000).toISOString(), remainingUses: null, personKeys: [legacy ? JSON.stringify([person.platform, person.adapterId, person.userId]) : contactPersonKey(person)] } };
   const e = await r.post(input); await r.click(e);
   expect(r.admit).not.toHaveBeenCalled();
   r.store.writePolicy('worker', { revision: 1, approvers: [admin] }, admin, n => r.gen.get(n)!);

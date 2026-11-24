@@ -1,3 +1,4 @@
+import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "./room-asker-identity-model.js";
 import { HUB_DIRECT_POST_CAPABILITY } from "./direct-posts-model.js";
 import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
@@ -116,7 +117,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
-    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY && c !== HUB_ASKER_NAME_CAPABILITY && c !== HUB_DIRECT_POST_CAPABILITY);
+    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY && c !== HUB_ASKER_NAME_CAPABILITY && c !== HUB_DIRECT_POST_CAPABILITY && c !== HUB_ROOM_ASKER_IDENTITY_CAPABILITY);
     const origins = this.options.dial ? this.options.dial() : [profile.hub.memberOrigin];
     if (!origins.length) {                                       // a relocation state that does not verify: fail closed
       this.connecting = false; this.stopped = true; this.options.hold("key-changed");
@@ -195,6 +196,7 @@ export class HubMemberClient implements HubMemberTransport {
       const canReportInfo = offered.includes("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_FLEET_INFO_CAPABILITY) === true;
       const canReceiveRecommendation = canReportInfo && !!this.options.fleetInfo && this.options.receiveRecommendations === true && frame.payload.capabilities?.includes(HUB_RECOMMENDATION_CAPABILITY) === true;
       const features = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
+      if(!features.has("welcome-caps-v1")||!features.has(HUB_ROOM_ASK_CAPABILITY))features.delete(HUB_ROOM_ASKER_IDENTITY_CAPABILITY);
       if(this.options.agentIntro && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_INTRO_CAPABILITY))features.add(HUB_AGENT_INTRO_CAPABILITY);
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
       if (this.options.agentPictures && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_PICTURES_CAPABILITY)) features.add(HUB_AGENT_PICTURES_CAPABILITY);
@@ -275,6 +277,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
     if(frame.type==="room.members-result"&&frame.payload.ok&&"v2" in frame.payload&&!view.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");
     if(frame.type==="question"&&frame.payload.askerName!==undefined&&!view.features.has(HUB_ASKER_NAME_CAPABILITY))throw new HubProtocolError("incompatible");
+    if(frame.type==="room.ask"&&frame.payload.askerIdentity&&!view.features.has(HUB_ROOM_ASKER_IDENTITY_CAPABILITY))throw new HubProtocolError("incompatible");
     if(frame.type==="room.ask"&&frame.payload.brief&&!view.features.has(HUB_ROOM_BRIEF_CAPABILITY))throw new HubProtocolError("incompatible");
     if ((frame.type === "room.context-state-result" || frame.type === "room.context-input-result"
       || frame.type === "room.ask" && !!frame.payload.contextState) && !view.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) throw new HubProtocolError("incompatible");

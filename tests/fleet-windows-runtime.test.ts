@@ -180,7 +180,7 @@ describe("Fleet native routing and durable lane",()=>{
     fm.nativeInstanceRuntime=()=>native;
     fm.lifecycle=new Proxy({},{get(){throw Error("Linux lifecycle must not be accessed for a Windows instance");}});
     Object.defineProperty(fm,"daemons",{value:new Map()});fm.scheduleDeliveryOutboxPump=vi.fn();fm.logger={warn:vi.fn(),debug:vi.fn()};
-    const outbox={contactAuthorizations:{origin:vi.fn(()=>undefined)},begin:vi.fn(()=>"begun"),complete:vi.fn(),retryBeforeBegin:vi.fn(),admit:vi.fn()};fm.deliveryOutbox=outbox;
+    const outbox={contactAuthorizations:{origin:vi.fn(()=>undefined),operationTicket:vi.fn(()=>undefined)},begin:vi.fn(()=>"begun"),complete:vi.fn(),retryBeforeBegin:vi.fn(),admit:vi.fn()};fm.deliveryOutbox=outbox;
     return {fm,native,outbox};
   }
   it("routes start/stop/wake/restart/status/delivery to the adapter before touching tmux lifecycle",async()=>{

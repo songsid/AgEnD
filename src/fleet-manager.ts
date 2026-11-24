@@ -24,7 +24,7 @@ import { ContactAuthService } from "./contact-auth-service.js";
 import { stageContactFiles, type ContactFileLease } from "./contact-auth-files.js";
 import { ContactOriginClearSchema, ContactPermissionsSchema, sameContactPerson } from "./contact-auth-policy.js";
 import { CLASSIC_RESTRICTED_TOOLS, type ContactGuardStatus, type ContactOrigin, type ContactOriginClear, type ContactPerson, type ContactPermissions, type ContactPermissionsWrite, type ContactRoomTools, type ContactTicketDecision } from "./contact-auth-types.js";
-import type { ContactRequest } from "./contact-auth-store.js";
+import { contactPersonKey, normalizeContactPersonKey, type ContactRequest } from "./contact-auth-store.js";
 import { hubSharingNoticeText, type HubSharingNotice, type HubSharingController } from "./hub-sharing-notice.js";
 import { hubPageSharingSettings } from "./hub-page-sharing-settings.js";
 import { replyPreviews } from "./reply-preview-spec.js";
@@ -5781,12 +5781,25 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return incarnation;
   }
 
+  /** Eligible connections share a platform; the current Fleet-admin gate still decides each user's role. */
+  private contactAdminAdapterIds(adapter: ChannelAdapter): string[] {
+    const channels = this.fleetConfig?.channels ?? (this.fleetConfig?.channel ? [this.fleetConfig.channel] : []);
+    return [...new Set([adapter.id, ...channels.filter(ch => ch.type === adapter.type).map(ch => ch.id ?? ch.type)])];
+  }
+  /** Contact permissions identify a person by platform/user; sibling bot connections do not create new people. */
+  private contactDefaultApprovers(name: string): ContactPerson[] {
+    const adapter = this.contactAdapter(name);
+    if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
+    const people = this.contactAdminAdapterIds(adapter).flatMap(id => (this.adminListOf(id) ?? []).map(userId => ({
+      platform: adapter.type as "discord" | "telegram", adapterId: id, userId, label: userId })));
+    return [...new Map(people.map(person => [contactPersonKey(person), person])).values()];
+  }
   contactAdminOf(name: string, actor: ContactPerson): boolean {
     if (actor.platform === "host" && actor.adapterId === "host" && actor.userId === "operator") return true;
     const adapter = this.contactAdapter(name);
-    if (!adapter || actor.adapterId !== adapter.id || actor.platform !== adapter.type) return false;
-    return this.isFleetAdmin(actor.userId, adapter.id)
-      || (!!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true);
+    if (!adapter || actor.platform !== adapter.type) return false;
+    if (this.contactAdminAdapterIds(adapter).some(id => this.isFleetAdmin(actor.userId, id))) return true;
+    return !!this.contactRoom(name) && this.classicChannels?.isAdmin(actor.userId) === true;
   }
 
   private contactService(): ContactAuthService {
@@ -5795,11 +5808,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       restricted: name => this.contactRoom(name)?.restrictedMode === true,
       legacyClassic: name => !!this.contactRoom(name) && this.contactRoom(name)?.restrictedMode !== true,
       adminOf: (name, actor) => this.contactAdminOf(name, actor),
-      defaultApprovers: name => {
-        const adapter = this.contactAdapter(name);
-        if (!adapter || (adapter.type !== "discord" && adapter.type !== "telegram")) return [];
-        return (this.adminListOf(adapter.id) ?? []).map(userId => ({ platform: adapter.type as "discord" | "telegram", adapterId: adapter.id, userId, label: userId }));
-      },
+      defaultApprovers: name => this.contactDefaultApprovers(name),
       generation: name => this.contactGeneration(name),
       hubRestricted: name => this.hubContactRestricted(name),
       delivered: ticket => !!ticket.deliveryId && this.deliveryOutbox!.get(ticket.deliveryId)?.state === "delivered",
@@ -6009,7 +6018,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       try {
         const view = service.view(ticket, actor);
         if (filter.status && view.state !== filter.status) return [];
-        if (filter.person && !view.origin.people.some(person => JSON.stringify([person.platform, person.adapterId, person.userId]) === filter.person)) return [];
+        if (filter.person && !view.origin.people.some(person => contactPersonKey(person) === normalizeContactPersonKey(filter.person ?? ""))) return [];
         return [view];
       } catch { return []; }
     }) };
@@ -7061,6 +7070,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   // ── ArchiverContext bridge ────────────────────────────────────────────
+  /** M-3674: the last turn another agent started for `name` (the delivery outbox), ISO or null; never throws. */
+  lastAgentTurnOf(name: string): string | null {
+    try { return this.deliveryOutbox?.lastAgentTurn(name) ?? null; } catch { return null; }
+  }
+
   lastActivityMs(name: string): number {
     return this.lastActivity.get(name) ?? 0;
   }
@@ -31880,6 +31894,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               // User activity is persisted by the daemon, so both the board and
               // auto-pause retain an accurate age across fleet restarts.
               lastActivity,
+              // M-3674: the last turn another agent started (lastActivity is a person's side).
+              lastAgentTurn: inst.classic ? null : this.lastAgentTurnOf(inst.name),
               currentTask,
               idle: this.getInstanceIdle(inst.name),
               ...this.instancePresentation(inst.name),
@@ -32299,7 +32315,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           model:nativeConfig.model || "default",model_source:nativeConfig.model ? "instance" : "cli-default",
           status:agent && runtime ? runtime.status(name) : "crashed",state:agent && runtime ? runtime.execution(name) : null,execution_state:agent && runtime ? runtime.execution(name) : null,
           interaction:null,interaction_summary:null,context_pct:null,cost:null,
-          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,
+          last_reply:this.webChatHistory.lastAgentReply(name) ?? undefined,last_agent_turn:this.lastAgentTurnOf(name) ?? undefined,
           avatar:avatarFor({name,displayName:display_name}),
           capabilities:{chat:true,settings:true,pause:true,cancel:true,teams:true,schedules:true,delegation:true,mcp:nativeProviderMcpSupported(backend),channels:false,terminal:false,attachments:false,usage:false,send_while_busy:false},
           ...(!agent ? {runtime_error:"Windows profile is missing or invalid; restore its saved conversation before using this instance"}
@@ -32369,6 +32385,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         // #3008 G2: a web-only fleet's General (the agent its owner ticked) — the sidebar pins it first.
         ...(this.isWebOnlyFleet() && this.fleetConfig?.instances[name]?.general_topic === true ? { general: true } : {}),
         last_reply: this.webChatHistory.lastAgentReply(name) ?? undefined,   // #2179: its last reply to a person (ISO)
+        // M-3674: its last turn another agent started (a message from another instance it took up), beside last_reply.
+        last_agent_turn: this.lastAgentTurnOf(name) ?? undefined,
         // #2855: its last reply that reached the channel — the only reply time a guest's sidebar gets (guestStatus).
         last_reply_channel: this.webChatHistory.lastAgentReply(name, { channel: true }) ?? undefined,
         // #2855: the web commands a guest may run here — the table's "anyone" cells for this channel (guestWebCommands);
