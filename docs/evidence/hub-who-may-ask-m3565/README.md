@@ -15,7 +15,7 @@ answer from Atlas.
 | Scene | Before | After |
 |---|---|---|
 | `1-my-agents`: 我的 Agent | "Notes" in plain bold, 「分享中 · 還沒有人可以問」 | "Notes ›" in the link colour; 「分享中 · 設定誰可以問」 button |
-| `2-picker`, `2b-picker-group`, `2c-picker-team`: that button | — | 「允許向 Notes 提問」, the who-may-ask picker the user's Hub shows: 允許 (AD group, Team, Person); a person found by name; an AD group found ("Release team", "Web developers") with its note; a Team to choose ("Web team"). Closing it closes it |
+| `2-picker`, `2b-picker-group`, `2c-picker-team`: that button | — | 「允許向 Notes 提問」, the who-may-ask picker the user's Hub shows: 允許對象 (AD group, Team, Person), each with a choice made, so 「允許提問」 is enabled: a person found by name and chosen (Alex Sample); an AD group found and added ("Release team"), with its note; a Team chosen ("Web team"), with its note. On a phone the sheet is scrolled to its end: the choice, 允許多久 and 「允許提問」 in view. Closing it closes it |
 | `3-sender-card`: Atlas's name on its answer | a toast with its source | the members panel (a phone's sheet) with Atlas's card open: 「在這裡 @ 它」 「和它一對一對話」 |
 | `4-office-card`: Atlas in the office | 「@ 它」 only | 「@ 它」 and 「一對一對話」 ("Chat 1:1"; its title and accessible name are the whole words), side by side with 「在辦公室找它」 |
 | `5-one-to-one`: that button | — (no button; the member card's did nothing without an existing chat) | the admin's one-to-one with Atlas, started from their grant (the first run), then reopened |
