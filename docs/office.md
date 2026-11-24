@@ -155,7 +155,7 @@ A minimal zones pack:
 
 - **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
 - **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
-- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 96 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
+- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
 
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
@@ -567,7 +567,7 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
 | Files in a pack | 220 |
 | One file | 4 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
-| A whole pack | 42 MiB, 96 Mpx of decoded pixels in all |
+| A whole pack | 42 MiB, 64 Mpx of decoded pixels in all |
 | One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |
 | All packs on disk | 1344 MiB, previous versions included |
@@ -631,4 +631,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
 | Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |
-| Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file, 42 MiB and 96 Mpx a pack (#4382). An older AgEnD refuses a pack that uses them | 2.4.0-beta |
+| Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file and 42 MiB a pack (#4382; 64 Mpx of decoded pixels, unchanged). An older AgEnD refuses a pack that uses them | 2.4.0-beta |

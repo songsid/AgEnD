@@ -9,7 +9,7 @@ import { lang } from "/assets/app-i18n.js";
 import { createLease } from "/assets/app-ctx.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hroom } from "./hub-room-strings.js";
-import { presenceView } from "./hub-room-presence.js";
+import { agentPictureSrc, presenceView } from "./hub-room-presence.js";
 
 /** How often a shown office is read again (the share page's POLL_MS). */
 export const ROOM_OFFICE_POLL_MS = 5000;
@@ -197,6 +197,7 @@ export function RoomOffice({ client, roomId, members, onMention = null, onOpenCh
           // The card's row beside "Find in office" and "@ it" is narrow: a short label; the whole words its title and name.
           ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOneShort"), title: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
         return acts.length > 1 ? acts : acts[0] || null; } : null}
+      cardPhoto=${(name) => { const i = shown.instances.find((x) => x.name === name); return i?.member ? agentPictureSrc(roomId, i.member, "portrait", i.picture?.portrait) : null; }}
       foldBar=${true} more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
 }

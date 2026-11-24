@@ -525,6 +525,23 @@ describe("Chat with it one-to-one (M-3565)", () => {
       expect([pg.window.location.search, asked]).toEqual(["?room=room-helper", []]);
     } finally { restore(); }
   });
+  // M-3533 R2b: the card draws the agent's identity-card picture, by the room's own address and its hash; none without one.
+  it("R2b: an agent with a portrait gets it on its card (the room's picture address); one without keeps its figure", async () => {
+    const made: string[] = [], realImage = g.Image, hash = "c".repeat(64);
+    // The scene loads its own pictures (the skin's) too: only the agents' picture addresses are counted.
+    g.Image = class { onload: any = null; set src(v: string) { if (v.includes("/picture/")) made.push(v); } };
+    const ids = (room: any) => room.members.filter((m: any) => m.kind === "agent").slice(0, 2).map((m: any) => m.id);
+    let state: any = null;
+    const { pg, room, restore } = await roomPage({ answer: () => ({ status: 200, body: state }) });
+    try {
+      state = STATE(ids(room)); state.instances[0].picture = { portrait: hash };
+      await card(pg, 0);
+      expect(made).toEqual([`/hub/v1/rooms/room-weekly/agents/${ids(room)[0]}/picture/portrait?v=${hash}`]);
+      fire(q(pg, ".oo-card-close"), "click"); await settle(5);
+      made.length = 0; await card(pg, 1);
+      expect(made, "no portrait: no picture asked for").toEqual([]);
+    } finally { g.Image = realImage; restore(); }
+  });
   it("an agent I may not ask: only @ it", async () => {
     const { pg, restore } = await roomPage({ canAsk: [0] });
     try { expect((await card(pg, 1)).map((b) => b.textContent)).toEqual(["@ it"]); } finally { restore(); }

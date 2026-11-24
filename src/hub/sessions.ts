@@ -20,10 +20,11 @@ import type { HubActor, HubRequestContext, PersonKey } from "./types.js";
 import { recentHubDirectoryAuthentication, prepareHubDirectorySessionRotation, completeHubDirectorySessionRotation, type HubDirectorySessionRotation } from "./session-directory-transition.js";
 import type { HubDirectoryDecisionRequest } from "./settings-directory-decision.js";
 import type { HubCore } from "./http/core.js";
+import { HUB_SESSION_DEFAULT_LIMITS, hubSessionLimits, withinHubSessionLimits } from "./session-limits.js";
 
-/** Absolute and idle lifetimes of a Hub session. */
-export const HUB_SESSION_TTL = 8 * 60 * 60_000;
-export const HUB_SESSION_IDLE = 60 * 60_000;
+/** Absolute and idle lifetimes of a Hub session by default; the administrator's own are in hub_session_limits (M-3592). */
+export const HUB_SESSION_TTL = HUB_SESSION_DEFAULT_LIMITS.absoluteMs;
+export const HUB_SESSION_IDLE = HUB_SESSION_DEFAULT_LIMITS.idleMs;
 /** Sign-in attempts: per login label in a window, and in flight in all. */
 const SIGNIN_WINDOW = 5 * 60_000, SIGNIN_PER_LOGIN = 5, SIGNIN_INFLIGHT = 8;
 const LOGIN_MAX = 256, PASSWORD_MAX = 1024;
@@ -92,7 +93,8 @@ export class HubSessions {
     const person = result.person.key, id = personKeyString(person);
     const token = randomBytes(32).toString("hex"), sessionId = randomUUID();
     const displayName = (result.person.displayName || result.person.login || label).slice(0, 256);
-    this.core.atomic((db, tx) => {
+    const maxAgeMs = this.core.atomic((db, tx) => {
+      const { absoluteMs } = hubSessionLimits(db);                // M-3592: the administrator's limit at sign-in
       // A person row is created only by successful directory sign-in. Its first insertion is the durable claim
       // witness; checking it in this same transaction keeps concurrent sign-ins from claiming/auditing twice.
       const firstAdmin = this.isAdmin(person) && !db.prepare("SELECT 1 FROM hub_people WHERE person=?").get(id);
@@ -100,12 +102,13 @@ export class HubSessions {
         ON CONFLICT(person) DO UPDATE SET display_name=excluded.display_name, login_label=excluded.login_label, status='active', last_checked_at=excluded.last_checked_at`)
         .run(id, person.realm, person.objectId, displayName, result.person.login.slice(0, LOGIN_MAX), now);
       db.prepare("INSERT INTO hub_sessions(token_hash, id, person, created_at, seen_at, expires_at, state, directory_epoch) VALUES(?,?,?,?,?,?,'active',?)")
-        .run(digest(token), sessionId, id, now, now, now + HUB_SESSION_TTL, this.core.directoryEpoch);
+        .run(digest(token), sessionId, id, now, now, now + absoluteMs, this.core.directoryEpoch);
       db.prepare("INSERT INTO hub_session_authentication VALUES(?,?,?)").run(sessionId, this.core.directoryEpoch, now);
       this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "session.signed-in", result: "completed" });
       if (firstAdmin) this.core.audit(tx, { requestId: randomUUID(), actor: { kind: "person", person }, action: "administrator.claimed", result: "completed" });
+      return absoluteMs;
     });
-    return { token, maxAgeMs: HUB_SESSION_TTL,
+    return { token, maxAgeMs,
       view: { sessionId, person, displayName, login: result.person.login, admin: this.isAdmin(person), csrf: hubCsrfOf(token) } };
   }
 
@@ -128,7 +131,10 @@ export class HubSessions {
       const row = db.prepare(`SELECT s.id, s.person, s.created_at, s.seen_at, s.expires_at, s.state, s.directory_epoch, p.realm, p.object_id, p.display_name, p.login_label
         FROM hub_sessions s JOIN hub_people p ON p.person = s.person WHERE s.token_hash = ?`).get(digest(token)) as SessionRow | undefined;
       if (!row || row.state !== "active" || row.directory_epoch !== this.core.directoryEpoch) return null;
-      if (row.expires_at <= now || now - row.seen_at > HUB_SESSION_IDLE) {
+      // M-3592: the administrator's limits now. A lower absolute limit ends a session signed in before it (by its sign-in
+      // time); a higher one never lengthens one (its expires_at was set at sign-in).
+      const limits = hubSessionLimits(db);
+      if (row.expires_at <= now || !withinHubSessionLimits(row, limits, now)) {
         db.prepare("UPDATE hub_sessions SET state='ended' WHERE id=?").run(row.id);
         return null;
       }

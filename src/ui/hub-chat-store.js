@@ -143,8 +143,9 @@ export function createHubChatStore(room, { client = hubClient(), me = "", reason
     },
     /** The question the agent is working on now (the oldest "consumed" one), with when it started; null when none. */
     working() {
-      const w = st.entries.find((e) => e.receipt && e.receipt.stage === "consumed");
-      return w ? { since: w.receipt.at } : null;
+      // M-3596: also from the moment the Hub handed it to the agent (startedAt), long before its "consumed" evidence.
+      const w = st.entries.find((e) => e.receipt && e.answer === undefined && (typeof e.startedAt === "number" || e.receipt.stage === "consumed"));
+      return w ? { since: typeof w.startedAt === "number" ? w.startedAt : w.receipt.at } : null;
     },
     refresh() { schedule(0); },
     /** #3226 D2: send passes `extras.files` to the client as given (hub-attachments checks the mark). */
