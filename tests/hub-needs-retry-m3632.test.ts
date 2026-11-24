@@ -68,10 +68,11 @@ describe("M-3632 POST /ui/needs/hub-retry", () => {
 
 describe("M-3632 the Try again button", () => {
   type Req = { method: string; url: string; body: any };
-  let reqs: Req[] = [], answer: (r: Req) => { status: number; body: unknown } = () => ({ status: 200, body: { ok: true } });
+  type Answer = { status: number; body: unknown };
+  let reqs: Req[] = [], answer: (r: Req) => Answer | Promise<Answer> = () => ({ status: 200, body: { ok: true } });
   const fetchFake = async (url: string, init: any = {}) => {
     const r: Req = { method: init.method || "GET", url, body: init.body ? JSON.parse(init.body) : null }; reqs.push(r);
-    const a = answer(r); return { ok: a.status < 300, status: a.status, json: async () => a.body };
+    const a = await answer(r); return { ok: a.status < 300, status: a.status, json: async () => a.body };
   };
   let p: AppPage, N: any, app: any, i18n: any;
   const ITEM = { id: "hub:hold:r1", type: "hub", instance: "desk", reason: "hub_execution_hold", detail: "", since: Date.now() - 60_000, hubRetry: true };
@@ -83,7 +84,9 @@ describe("M-3632 the Try again button", () => {
     N = await import("/ui/js/panel-needs.js");
   });
   afterAll(() => { p.restore(); delete (globalThis as any).fetch; });
-  beforeEach(async () => { await p.unmount(); reqs = []; app.appStore.set({ ready: true, needsLoaded: true, needs: [{ ...ITEM }], instances: [] }); });
+  beforeEach(async () => { await p.unmount(); reqs = []; answer = () => ({ status: 200, body: { ok: true } }); app.appStore.set({ ready: true, needsLoaded: true, needs: [{ ...ITEM }], instances: [] }); });
+  const posts = () => reqs.filter(r => r.url === "/ui/needs/hub-retry");
+  const tryButton = () => p.root.querySelectorAll("button").find((b: any) => /Try again|Trying again/.test(b.textContent));
   const mount = () => p.mount(h(N.NeedsPanel, { route: { panel: "needs" }, navKey: "needs:|1|en" }));
   const button = (text: string) => p.root.querySelectorAll("button").find((b: any) => b.textContent.includes(text));
   it.each([["en", "Try again", "nothing is sent without its OK"], ["zh-TW", "再試一次", "未經 Hub 同意不會送出"]])("%s: the held item explains and offers Try again", async (lang, label, words) => {
@@ -104,5 +107,30 @@ describe("M-3632 the Try again button", () => {
     app.appStore.set({ needs: [{ ...ITEM, hubRetry: undefined }] });
     await mount(); await settle(4);
     expect(button("Try again")).toBeFalsy();
+  });
+  it("Prism #4410: the same question held again (newer since) gets its own working button; the same hold stays claimed", async () => {
+    i18n.setLang("en", { store: false });
+    await mount(); await settle(4);
+    tryButton().click(); await settle(4);
+    expect(tryButton().disabled).toBe(true);
+    app.appStore.set({ needs: [{ ...ITEM }] }); await settle(4);           // the same hold listed again: still claimed
+    expect(tryButton().disabled).toBe(true);
+    app.appStore.set({ needs: [{ ...ITEM, since: ITEM.since + 5_000 }] }); await settle(4);   // held again, same id
+    expect(tryButton().disabled).toBe(false);
+    tryButton().click(); await settle(4);
+    expect(posts()).toHaveLength(2);
+  });
+  it("Prism #4410: a list that refreshes before the POST answers does not leave the new hold's button off", async () => {
+    i18n.setLang("en", { store: false });
+    let release!: () => void;
+    answer = (r) => r.url === "/ui/needs/hub-retry" ? new Promise(res => { release = () => res({ status: 200, body: { ok: true } }); }) : { status: 200, body: {} };
+    await mount(); await settle(4);
+    tryButton().click(); await settle(2);
+    tryButton().click(); await settle(2);
+    expect(posts()).toHaveLength(1);                                     // in flight: one POST for this hold
+    app.appStore.set({ needs: [{ ...ITEM, since: ITEM.since + 5_000 }] }); await settle(4);
+    expect(tryButton().disabled).toBe(false);
+    release(); await settle(4);
+    expect(tryButton().disabled).toBe(false);
   });
 });

@@ -113,11 +113,14 @@ function itemReason(item) {
  * review): a second click in the same turn, the panel left and opened again, or a list that has not caught up yet all
  * see the same claim.
  * - `acks[id]`: "busy" while its POST is out, "done" once the server took it, until the server's next list drops the
- *   item (then forgotten); a failure gives it back.
+ *   item (then forgotten); a failure gives it back. M-3632: a held Hub item's Try again is claimed per hold, under
+ *   hubRetryKey(item) (its id and since): the same question held again is a new hold with its own button.
  * - `prompts[nonce]`: the same, for a prompt answered while the page has no chat store yet (before Chat boots). When
  *   it arrives, each such claim is handed to it (holdPrompt) — one claim, never two — and its outcome settles there.
  */
 export const claims = createStore({ acks: {}, prompts: {} });
+/** M-3632: one held Hub question's hold, as Try again claims it (a re-hold of the same question has a newer `since`). */
+export const hubRetryKey = (item) => `${item.id}@${item.since}`;
 const chatOwner = () => appStore.get().chatOwner || null;
 let handedTo = null;
 appStore.subscribe((st) => {
@@ -130,7 +133,7 @@ appStore.subscribe((st) => {
     }
   }
   const items = Array.isArray(st.needs) ? st.needs : [];
-  const listed = new Set(items.map((i) => i.id)), nonces = new Set(items.map((i) => i.nonce).filter(Boolean));
+  const listed = new Set([...items.map((i) => i.id), ...items.filter((i) => i.hubRetry).map(hubRetryKey)]), nonces = new Set(items.map((i) => i.nonce).filter(Boolean));
   const c = claims.get();
   const acks = Object.fromEntries(Object.entries(c.acks).filter(([id, v]) => v === "busy" || listed.has(id)));
   const prompts = Object.fromEntries(Object.entries(c.prompts).filter(([n, v]) => v === "busy" || nonces.has(n)));
@@ -286,16 +289,17 @@ function NeedsItem({ item, nowMs, owner }) {
     toast((body && (body.message || body.error)) || t("app.failed"), !!(res && res.ok));
   };
   // M-3632: held Hub work → back through the Hub's checks (the server re-asks the Hub for its lease; never delivered blind).
+  const hubKey = hubRetryKey(item), hubAck = item.hubRetry ? c.acks[hubKey] : undefined;
   const retryHub = async () => {
-    if (claims.get().acks[item.id]) return;
-    setClaim("acks", item.id, "busy");
+    if (claims.get().acks[hubKey]) return;                        // this hold's claim, taken synchronously
+    setClaim("acks", hubKey, "busy");
     let res = null, body = null;
     try {
       res = await fetch("/ui/needs/hub-retry", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: item.id }) });
       body = await res.json().catch(() => ({}));
     } catch { body = null; }
     const ok = !!(res && res.ok);
-    setClaim("acks", item.id, ok ? "done" : null);
+    setClaim("acks", hubKey, ok ? "done" : null);
     toast(ok ? tn("hubRetryDone") : res && res.status === 404 ? tn("hubRetryGone") : res && res.status === 409 ? tn("hubRetryNot") : t("app.failed"), ok);
   };
   return html`<article data-trust="permission" class=${`n-item${BAD.has(item.reason) ? " bad" : ""}`}>
@@ -310,8 +314,8 @@ function NeedsItem({ item, nowMs, owner }) {
       <div class="n-actions">
         ${item.type === "prompt" && Array.isArray(item.actions) ? item.actions.filter((a) => !a.input).map((a) => html`<button key=${a.id} type="button" class="btn btn-sm"
             disabled=${promptBusy} onClick=${() => answer(a.id)}>${(p ? p.busy && !p.confirming : fallback === "busy") ? tn("answering") : a.label}</button>`) : null}
-        ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!ack} onClick=${retryHub}>
-            <${Icon} name="restart" size=${14} />${ack === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
+        ${item.type === "hub" && item.hubRetry ? html`<button type="button" class="btn btn-sm btn-primary" disabled=${!!hubAck} onClick=${retryHub}>
+            <${Icon} name="restart" size=${14} />${hubAck === "busy" ? tn("hubRetrying") : tn("hubRetry")}</button>` : null}
         ${item.type === "delivery" || item.type === "missed" ? html`<button type="button" class="btn btn-sm" disabled=${!!ack} onClick=${acknowledge}>
             <${Icon} name="check" size=${14} />${ack === "busy" ? tn("acknowledging") : tn("acknowledge")}</button>` : null}
         ${(item.reason === "auth_paused" || item.reason === "backend_signin") && item.signIn && signInOffered() ? html`<button type="button" class="btn btn-sm btn-primary" onClick=${() => openSignIn(item.signIn)}>${tn("signIn")}</button>` : null}
