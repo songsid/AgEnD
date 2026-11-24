@@ -7,7 +7,7 @@
  * write 2x; a cache hit is 0.1x, except 0.05x on Opus/Sonnet 5.5 and 0.025x on Fable/Mythos 5.1 and 5.2. Haiku 5.5 is
  * priced by prompt length (over 100,000 tokens: the higher row), counting cache reads and writes.
  * OpenAI (developers.openai.com/api/docs/pricing, …/guides/prompt-caching): on GPT-5.6 and later a cache write is
- * 1.25x uncached input (this table stores that 30-minute rate; the published 12-hour write is 2x and is not stored)
+ * 1.25x uncached input (this table stores that 30-minute rate; the published 12-hour write is 2.5x and is not stored)
  * and the cache lives 30 minutes after its last write or reuse; prompts over 272K input tokens pay the long-context row.
  * Muse (dev.meta.ai/docs/pricing-rate-limits), Standard mode: Meta publishes no cache-write surcharge, so a write is
  * priced as input. Spark has no long-context premium. Contributor-mode ids are a different price and stay unpriced.
