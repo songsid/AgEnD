@@ -1456,13 +1456,16 @@ const FLEET_RESPONSE_TYPES = new Set([
 
 /** M-3660: the Hub question a pane is answering as its own turn. `restored`: taken up again after a daemon restart. */
 interface HubAnswerTurn { correlationId: string; contactLimit: boolean; sawWorking: boolean; restored: boolean }
-function readHubAnswerTurn(file: string): HubAnswerTurn | null {
+/** null: no record (no turn). "unknown": a record that cannot be read or makes no sense — a turn may be running. */
+function readHubAnswerTurn(file: string): HubAnswerTurn | null | "unknown" {
+  let text: string;
+  try { text = readFileSync(file, "utf8"); }
+  catch (err) { return (err as NodeJS.ErrnoException).code === "ENOENT" ? null : "unknown"; }
   try {
-    const raw: unknown = JSON.parse(readFileSync(file, "utf8"));
-    const r = raw as { correlationId?: unknown; contactLimit?: unknown };
-    if (!r || typeof r.correlationId !== "string" || !/^hub-[A-Za-z0-9-]+$/.test(r.correlationId)) return null;
+    const r = JSON.parse(text) as { correlationId?: unknown; contactLimit?: unknown };
+    if (!r || typeof r.correlationId !== "string" || !/^hub-[A-Za-z0-9-]+$/.test(r.correlationId)) return "unknown";
     return { correlationId: r.correlationId, contactLimit: r.contactLimit !== false, sawWorking: true, restored: true };
-  } catch { return null; }
+  } catch { return "unknown"; }
 }
 /**
  * M-3660: a question from the Hub (a representative or room ask) that the agent answers with report_result to agend-hub.
@@ -3556,6 +3559,7 @@ export class Daemon extends EventEmitter {
     }
     if (nativeDisposition) this.isNewSession = nativeDisposition === "fresh";
     this.resetRoomConversation(nativeDisposition === "reattached");
+    this.settleHubAnswerTurnAtLaunch(nativeDisposition === "reattached");
 
     // #1209: conditional continuation for the turn interrupted by the last
     // restart, if the gates allow. Detached; the gate
@@ -7311,11 +7315,28 @@ export class Daemon extends EventEmitter {
   // It is kept on disk too (hub-answer-turn.json): a daemon restarted mid-turn takes it up again, so deliveries keep
   // waiting behind it and its end is still announced; the fleet is told the current state again on every (re)connect.
   private hubAnswerTurnState: HubAnswerTurn | null | undefined;
+  /** Prism #4420 P2-2: the turn record exists but cannot be read — a turn may be running; fail closed until an idle edge. */
+  private hubAnswerTurnUnknown = false;
   private get hubAnswerTurn(): HubAnswerTurn | null {
-    if (this.hubAnswerTurnState === undefined) { const file = this.hubAnswerTurnFile(); this.hubAnswerTurnState = file ? readHubAnswerTurn(file) : null; }
+    if (this.hubAnswerTurnState === undefined) {
+      const file = this.hubAnswerTurnFile(), read = file ? readHubAnswerTurn(file) : null;
+      this.hubAnswerTurnUnknown = read === "unknown";
+      this.hubAnswerTurnState = read === "unknown" ? null : read;
+    }
     return this.hubAnswerTurnState;
   }
+  /** M-3660: a turn is running, or may be (an unreadable record): nothing is handed into it. */
+  private hubAnswerTurnMayRun(): boolean { return this.hubAnswerTurn !== null || this.hubAnswerTurnUnknown; }
+  /** The unknown is resolved (an idle edge, a write into the idle pane): no turn runs; the fleet is told "none". */
+  private resolveUnknownHubAnswerTurn(): void {
+    if (!this.hubAnswerTurnUnknown) return;
+    this.hubAnswerTurnUnknown = false;
+    const file = this.hubAnswerTurnFile();
+    try { if (file) rmSync(file, { force: true }); } catch (err) { this.logger.warn({ err }, "Unreadable Hub answer turn record could not be removed"); }
+    this.broadcastFleetMessage({ type: "hub_question_turn_state", correlationId: null });
+  }
   private hubAnswerTurnFile(): string | null { return typeof this.instanceDir === "string" ? join(this.instanceDir, "hub-answer-turn.json") : null; }
+  /** A turn's end is always kept in memory; a record that cannot be removed is read as a restored turn later (fail closed). */
   private setHubAnswerTurn(turn: HubAnswerTurn | null): void {
     this.hubAnswerTurnState = turn;
     const file = this.hubAnswerTurnFile();
@@ -7323,12 +7344,18 @@ export class Daemon extends EventEmitter {
     try {
       if (turn) atomicWriteFileSync(file, JSON.stringify({ correlationId: turn.correlationId, contactLimit: turn.contactLimit }), { mode: 0o600 });
       else rmSync(file, { force: true });
-    } catch (err) { this.logger.warn({ err }, "Hub answer turn could not be saved; this daemon still keeps it"); }
+    } catch (err) {
+      // Prism #4420 P2-2: a turn that cannot be recorded is not begun — its question is not written (the caller throws).
+      if (turn) { this.hubAnswerTurnState = null; throw err; }
+      this.logger.warn({ err }, "Hub answer turn end could not be saved; a restart reads it as a turn that ends at its first idle edge");
+    }
   }
   private hubAnswerTurnBegins(correlationId: string | undefined, contactLimit = true): void {
     if (correlationId !== undefined && this.hubAnswerTurn?.correlationId === correlationId) return; // a retried write
+    this.resolveUnknownHubAnswerTurn();   // written into the idle pane: whatever might have run is over
     this.endHubAnswerTurn();
     if (correlationId === undefined) return;
+    // Throws when the turn cannot be recorded: the question is then not written, and its delivery fails (reported).
     this.setHubAnswerTurn({ correlationId, contactLimit, sawWorking: false, restored: false });
     this.broadcastFleetMessage({ type: "hub_question_input", correlationId, contactLimit });
   }
@@ -7338,9 +7365,19 @@ export class Daemon extends EventEmitter {
     this.setHubAnswerTurn(null);
     this.broadcastFleetMessage({ type: "hub_question_turn_ended", correlationId: turn.correlationId });
   }
+  /**
+   * Lumen #4420 R2-A: a turn taken up from the record outlives nothing but the pane it ran in. A launch that starts a new
+   * CLI (every launch but a native reattach) ends it, and an unreadable record resolves to "none", at once.
+   */
+  private settleHubAnswerTurnAtLaunch(reattached: boolean): void {
+    if (reattached) return;
+    if (this.hubAnswerTurn?.restored) this.endHubAnswerTurn();
+    this.resolveUnknownHubAnswerTurn();
+  }
   /** M-3660: the current Hub answer turn, told to a fleet connection when it (re)connects (a signal may have been lost). */
   private hubAnswerTurnStateMessage(): Record<string, unknown> {
     const turn = this.hubAnswerTurn;
+    if (!turn && this.hubAnswerTurnUnknown) return { type: "hub_question_turn_state", correlationId: null, unknown: true };
     return { type: "hub_question_turn_state", correlationId: turn?.correlationId ?? null, ...(turn ? { contactLimit: turn.contactLimit } : {}) };
   }
 
@@ -7368,6 +7405,8 @@ export class Daemon extends EventEmitter {
       if (state === "working") {this.turnWatch.begin(Date.now());this.hubRoomTurnActivityStart??=this.hubRoomTranscriptActivity;{const hubTurn=this.hubAnswerTurn;if(hubTurn)hubTurn.sawWorking=true;}}
       return;
     }
+    // Lumen #4420 R2-A: a turn taken up from the record ends on the first idle state, at once (no settle wait, no work proof).
+    if (this.hubAnswerTurn?.restored) this.endHubAnswerTurn();
     if (this.turnEndTimer) return;
     const roomGeneration=this.roomConversationState?this.roomConversationGeneration():null,roomInputEpoch=this.hubRoomInputEpoch;
     this.turnEndTimer = setTimeout(() => {
@@ -7382,6 +7421,7 @@ export class Daemon extends EventEmitter {
       // or, taken up again after a daemon restart, on the first idle edge.
       const hubTurn = this.hubAnswerTurn;
       if (hubTurn?.sawWorking && (realWork || hubTurn.restored)) this.endHubAnswerTurn();
+      else if (!hubTurn) this.resolveUnknownHubAnswerTurn();   // an unreadable record: the pane is idle now, nothing runs
       if(turn&&realWork&&roomGeneration&&roomGeneration===this.roomConversationGeneration()&&roomInputEpoch===this.hubRoomInputEpoch)
         this.broadcastFleetMessage({type:"hub_room_turn_ended",generation:roomGeneration,turn:`${this.hubRoomTurnBoot}:${++this.hubRoomTurnSequence}`});
       if (!turn || turn.messaged || !turn.text.trim() || !this.turnEvidence()) return;
@@ -9125,7 +9165,7 @@ export class Daemon extends EventEmitter {
     const gateWindowId = windowId;
     // M-3660: a Hub question is never handed into a running turn (Claude would merge it into that turn's work), and while
     // a Hub answer turn runs, nothing else is handed into it: each waits for the idle pane and becomes a turn of its own.
-    const exclusiveTurn = opts?.hubQuestion !== undefined || this.hubAnswerTurn !== null;
+    const exclusiveTurn = opts?.hubQuestion !== undefined || this.hubAnswerTurnMayRun();
     const handOffEligible = !exclusiveTurn && !!(supportsQueuedInput || opts?.steer || composerQueue);
     const handOffAdmissible = async (): Promise<boolean> => (await this.probeBlockingDialog()).state === "clear"
       && await this.hasPositiveDeliveryInput(true)

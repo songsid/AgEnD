@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { HubContactWindows } from "../src/hub-contact-windows.js";
 import { FleetManager } from "../src/fleet-manager.js";
+import { outboundHandlers } from "../src/outbound-handlers.js";
 
 function withDir(run: (dir: string) => Promise<void> | void) {
   return async () => {
@@ -139,6 +140,11 @@ describe("FleetManager: the window covers only the Hub answer turn (M-3660)", ()
       vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, _payload, options) => { await options?.beforeInput?.(); return false; });
       await (fm as any).deliverHubQuestion({ agent: "room", correlationId: "hub-c1", text: "Q", stillCurrent: () => true, beforeInput: async () => true });
       expect(fm.hubContactRestricted("room")).toBe(false);
+      (fm.deliverToInstance as any).mockImplementation(async (_n: string, _p: unknown, options: any) => { await options?.beforeInput?.(); return true; });
+      await (fm as any).deliverHubQuestion({ agent: "room", correlationId: "hub-c2", text: "Q", stillCurrent: () => true, beforeInput: async () => true });
+      expect(fm.hubContactRestricted("room")).toBe(false);    // handed over, not yet written
+      (fm as any).hubTurnSignal("room", { type: "hub_question_input", correlationId: "hub-c2", contactLimit: true });   // Lumen R2-C: written
+      expect(fm.hubContactQuestion("room")).toBe("hub-c2");
     } finally { fm.stormWindow.shutdown(); }
   }));
 
@@ -150,6 +156,49 @@ describe("FleetManager: the window covers only the Hub answer turn (M-3660)", ()
       vi.spyOn(fm, "deliverToInstance").mockImplementation(async (_name, payload, options) => { payloads.push(payload); await options?.beforeInput?.(); return true; });
       for (const limit of [false, true, undefined]) await (fm as any).deliverHubQuestion({ agent: "worker", correlationId: "hub-o", text: "Q", contactLimit: limit, stillCurrent: () => true, beforeInput: async () => true });
       expect(payloads.map(p => p.meta.hub_contact_limit)).toEqual(["off", undefined, undefined]);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
+});
+
+describe("Prism P2-1: after a fleet restart the turn state is unknown until the daemon says (M-3660)", () => {
+  it("a persisted window of a settled question holds — the outbound handler refuses — until the daemon's replay", withDir(async dir => {
+    const before = new FleetManager(dir);
+    try { (before as any).hubQuestionInput("worker", "hub-run"); } finally { before.stormWindow.shutdown(); }
+    const fm = new FleetManager(dir);                          // the fleet restarted; the daemon has not reconnected yet
+    try {
+      (fm as any).hubQuestionSettled = () => true;             // the member service says the question is settled (held)
+      expect(fm.hubContactRestricted("worker")).toBe(true);    // unknown is not "no turn running": fail closed
+      const respond = vi.fn();
+      await outboundHandlers.get("send_to_instance")!({ hubContactRestricted: (a: string) => fm.hubContactRestricted(a), hubContactQuestion: (a: string) => fm.hubContactQuestion(a),
+        fleetConfig: { defaults: {}, instances: { worker: {}, peer: {} } }, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() }, deliverToInstance: vi.fn() } as any,
+        { instance_name: "peer", message: "hi" }, respond, { instanceName: "worker", requestId: 1 } as any);
+      expect(respond).toHaveBeenCalledWith(null, expect.stringContaining("Hub question hub-run"));
+      (fm as any).hubQuestionTurnState("worker", "hub-run", true);   // replay: that turn is still running
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubQuestionTurnEnded("worker", "hub-run");
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+    } finally { fm.stormWindow.shutdown(); }
+  }));
+
+  it("the daemon saying 'unknown' changes nothing; 'none' lets a settled window go", withDir(async dir => {
+    const before = new FleetManager(dir);
+    try { (before as any).hubQuestionInput("worker", "hub-old"); } finally { before.stormWindow.shutdown(); }
+    const fm = new FleetManager(dir);
+    try {
+      (fm as any).hubQuestionSettled = () => true;
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubAnswerTurns.set("other", null);           // another agent's state says nothing about this one
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubTurnSignal("worker", { type: "hub_question_turn_state", correlationId: null, unknown: true });   // the daemon cannot tell
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubTurnSignal("worker", { type: "hub_question_turn_state", correlationId: "not-a-hub-id" });   // malformed: ignored
+      expect(fm.hubContactRestricted("worker")).toBe(true);
+      (fm as any).hubTurnSignal("worker", { type: "hub_question_turn_state", correlationId: null });
+      expect(fm.hubContactRestricted("worker")).toBe(false);
+      (fm as any).hubTurnSignal("worker", { type: "hub_question_input", correlationId: "hub-n", contactLimit: true });
+      expect(fm.hubContactQuestion("worker")).toBe("hub-n");
+      (fm as any).hubTurnSignal("worker", { type: "hub_question_turn_ended", correlationId: "hub-n" });
+      expect(fm.hubContactRestricted("worker")).toBe(false);
     } finally { fm.stormWindow.shutdown(); }
   }));
 });

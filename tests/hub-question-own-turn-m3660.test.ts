@@ -170,6 +170,27 @@ describe("a Hub question is a turn of its own (M-3660)", () => {
     expect(next.d.hubAnswerTurnStateMessage()).toEqual({ type: "hub_question_turn_state", correlationId: null });
   });
 
+  it("Lumen R2-A: a turn taken up from the record ends at once on an idle pane, and at a launch that starts a new CLI (not on a reattach)", async () => {
+    const first = rig();
+    first.setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    first.d.pushChannelMessage("A Hub question", first.hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    const idle = rig({ root: first.root });                   // the daemon came back; its pane is idle
+    idle.d.noteTurnEdge("idle");                              // no working edge, no settle wait
+    expect(idle.events).toEqual([`hub_question_turn_ended:${cid}`]);
+    const cid2 = `hub-${randomUUID()}`;
+    first.d.hubAnswerTurnBegins(cid2);                        // a record again (another turn of the first daemon)
+    const reattached = rig({ root: first.root });
+    reattached.d.settleHubAnswerTurnAtLaunch(true);           // a native reattach: the pane may still be answering
+    expect(reattached.events).toEqual([]);
+    expect(reattached.d.hubAnswerTurnStateMessage()).toMatchObject({ correlationId: cid2 });
+    const relaunched = rig({ root: first.root });
+    relaunched.d.settleHubAnswerTurnAtLaunch(false);          // a new CLI: the old turn is over
+    expect(relaunched.events).toEqual([`hub_question_turn_ended:${cid2}`]);
+    expect(relaunched.d.hubAnswerTurnStateMessage()).toEqual({ type: "hub_question_turn_state", correlationId: null });
+  });
+
   it("a fleet (re)connecting asks for sessions and is told the current Hub turn, or none", async () => {
     const { d, hub, setQuiet } = rig();
     const told: any[] = [];
@@ -182,6 +203,35 @@ describe("a Hub question is a turn of its own (M-3660)", () => {
     told.length = 0;
     d.handleFleetMessage({ type: "query_sessions" }, (reply: any) => told.push(reply));
     expect(told).toContainEqual({ type: "hub_question_turn_state", correlationId: cid, contactLimit: true });
+  });
+
+  it("Prism P2-2: an unreadable turn record is unknown, never 'none' — deliveries wait, the fleet is told unknown, and the next idle edge resolves it", async () => {
+    const { d, events, human, setQuiet, root } = rig();
+    writeFileSync(join(root, "instances", "rep", "hub-answer-turn.json"), "{ not json");
+    expect(d.hubAnswerTurnStateMessage()).toEqual({ type: "hub_question_turn_state", correlationId: null, unknown: true });
+    const states: any[] = [];
+    (d.broadcastFleetMessage as any).mockImplementation((msg: any) => { if (msg.type === "hub_question_turn_state") states.push(msg); });
+    d.pushChannelMessage("an owner's message", human("m-4"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(events).toEqual([]);                               // a turn may be running: nothing is handed into it
+    d.noteTurnEdge("idle");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(states).toEqual([{ type: "hub_question_turn_state", correlationId: null }]);   // resolved: the fleet hears "none"
+    setQuiet(true);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(events).toEqual(["write:other:idle"]);
+  });
+
+  it("Prism P2-2: a turn that cannot be recorded is not begun — the Hub question is not written and its delivery fails (reported)", async () => {
+    const { d, events, hub, failures, setQuiet, root } = rig();
+    mkdirSync(join(root, "instances", "rep", "hub-answer-turn.json"));   // the record's path cannot be written
+    expect(d.hubAnswerTurnStateMessage()).toMatchObject({ unknown: true });   // nor read (EISDIR): unknown, not "none"
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(events).toEqual([]);                               // no hub_question_input, no write
+    expect(failures).toEqual([cid]);
   });
 
   it("the share's opt-out travels in the delivery meta to the daemon's hub_question_input", async () => {

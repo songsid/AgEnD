@@ -3086,8 +3086,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private contactWindows(): HubContactWindows {
     return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
   }
-  /** M-3660: each agent's running Hub answer turn as its daemon tells it (re-told on every connect). */
-  private readonly hubAnswerTurns = new Map<string, string>();
+  /**
+   * M-3660: each agent's running Hub answer turn as its daemon tells it (re-told on every connect): a correlation id, or
+   * null for "confirmed none". An agent missing here is unknown (this fleet has not heard from its daemon since it
+   * started): nothing settled lifts its windows then — they hold until the daemon says (Prism #4420 P2-1).
+   */
+  private readonly hubAnswerTurns = new Map<string, string | null>();
   /**
    * M-3660: the agent's daemon is about to write a Hub question into its idle pane: the answer turn's window opens (none for
    * a share that opted out). A window that cannot be saved still holds in memory: fail closed.
@@ -3100,7 +3104,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
   /** M-3660: that answer turn is over (its idle edge, or the next turn's write): the window closes, whatever came of it. */
   private hubQuestionTurnEnded(agent: string, correlationId: string): void {
-    if (this.hubAnswerTurns.get(agent) === correlationId) this.hubAnswerTurns.delete(agent);
+    if (this.hubAnswerTurns.get(agent) === correlationId) this.hubAnswerTurns.set(agent, null);
     try { this.contactWindows().answered(agent, correlationId); }
     catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be closed; it will expire"); }
   }
@@ -3113,12 +3117,23 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     try { this.contactWindows().closeAgent(agent, correlationId ?? undefined); }
     catch (err) { this.logger.warn({ err, agent }, "Hub contact windows could not be reconciled; they will expire"); }
     if (correlationId) this.hubQuestionInput(agent, correlationId, contactLimit);
-    else this.hubAnswerTurns.delete(agent);
+    else this.hubAnswerTurns.set(agent, null);
+  }
+  /** M-3660: a daemon's Hub turn signal (from its current connection). "unknown" (an unreadable turn record) changes nothing. */
+  private hubTurnSignal(agent: string, msg: Record<string, unknown>): void {
+    const cid = typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId) ? msg.correlationId : null;
+    if (msg.type === "hub_question_turn_state") { if (msg.unknown !== true && (cid || msg.correlationId === null)) this.hubQuestionTurnState(agent, cid, msg.contactLimit !== false); }
+    else if (cid && msg.type === "hub_question_input") this.hubQuestionInput(agent, cid, msg.contactLimit !== false);
+    else if (cid && msg.type === "hub_question_turn_ended") this.hubQuestionTurnEnded(agent, cid);
+  }
+  /** M-3660: the agent's daemon has told this fleet its current turn, and it is not this question (unknown is never "none"). */
+  private hubAnswerTurnKnownNone(agent: string, correlationId: string): boolean {
+    return this.hubAnswerTurns.has(agent) && this.hubAnswerTurns.get(agent) !== correlationId;
   }
   /** M-3660: a settled question lifts its window only outside its own running answer turn; inside it, the turn's end does. */
   private hubSettledOutsideTurn(): ((agent: string, correlationId: string) => boolean) | undefined {
     const settled = this.hubQuestionSettled;
-    return settled ? (agent, correlationId) => this.hubAnswerTurns.get(agent) !== correlationId && settled(agent, correlationId) : undefined;
+    return settled ? (agent, correlationId) => this.hubAnswerTurnKnownNone(agent, correlationId) && settled(agent, correlationId) : undefined;
   }
   /** M-3660: the member side's "this question is no longer being answered" reader (null: no member service attached). */
   private hubQuestionSettled: ((agent: string, correlationId: string) => boolean) | null = null;
@@ -3298,7 +3313,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!result) return null;
     return result.then(outcome => {
       // M-3660: an accepted answer inside its own running answer turn does not lift it: the turn's end does.
-      if (outcome.ok && this.hubAnswerTurns.get(input.caller) !== input.correlationId) {
+      if (outcome.ok && this.hubAnswerTurnKnownNone(input.caller, input.correlationId)) {
         try { this.contactWindows().answered(input.caller, input.correlationId); }
         catch (err) { this.logger.warn({ err }, "Hub contact window could not be closed; it will expire"); }
       }
@@ -13868,12 +13883,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
         } else if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended" || msg.type === "hub_question_turn_state") {
           // M-3660: only the instance's current daemon speaks for its pane's turns.
-          const cid = typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId) ? msg.correlationId : null;
-          if (this.instanceIpcClients.get(name) === ipc) {
-            if (msg.type === "hub_question_turn_state") { if (cid || msg.correlationId === null) this.hubQuestionTurnState(name, cid, msg.contactLimit !== false); }
-            else if (cid && msg.type === "hub_question_input") this.hubQuestionInput(name, cid, msg.contactLimit !== false);
-            else if (cid) this.hubQuestionTurnEnded(name, cid);
-          }
+          if (this.instanceIpcClients.get(name) === ipc) this.hubTurnSignal(name, msg);
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);

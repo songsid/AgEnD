@@ -355,7 +355,7 @@ describe("Hub contact window at the Fleet handoff", () => {
       expect(fm.hubContactRestricted("worker")).toBe(true);   // M-3660: inside its own running turn the answer lifts nothing
       (fm as any).hubQuestionTurnEnded("worker", "hub-first");
       expect(fm.hubContactRestricted("worker")).toBe(false);
-      (fm as any).hubAnswerTurns.clear(); (fm as any).contactWindows().begin("worker", "hub-late");   // a window outside any turn
+      (fm as any).hubAnswerTurns.set("worker", null); (fm as any).contactWindows().begin("worker", "hub-late");   // a window outside any turn (the daemon said none runs)
       await fm.hubReport({ caller: "worker", correlationId: "hub-late", text: "answer", callerCurrent: () => true });
       expect(fm.hubContactRestricted("worker")).toBe(false);  // …a successful matching report still closes it
     } finally { fm.stormWindow.shutdown(); restored.stormWindow.shutdown(); rmSync(dir, { recursive: true, force: true }); }
