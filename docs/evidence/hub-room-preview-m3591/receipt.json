@@ -1,5 +1,5 @@
 {
-  "sourceHead": "c4e82abef4b83022eb4b42e7fdb1d7de5edf7e25",
+  "sourceHead": "3bbe54e5de2e2f81c6753a716d902d2ca14e93d6",
   "baseRef": "074e5886017b12fad33f7c8b33677705b918012b",
   "dirty": [],
   "checks": [
@@ -29,6 +29,14 @@
     },
     {
       "name": "desk-en-light-after: the panel takes the members rail's place",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: the panel and its width select have the page's own background (rgb(255, 255, 255))",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light-after: a wider panel names Reply about this page beside its icon",
       "ok": true
     },
     {
@@ -68,6 +76,14 @@
       "ok": true
     },
     {
+      "name": "desk-zh-TW-dark-after: the panel and its width select have the page's own background (rgb(33, 33, 33))",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark-after: a wider panel names Reply about this page beside its icon",
+      "ok": true
+    },
+    {
       "name": "desk-zh-TW-dark-after: Reply about this page puts its line in the room's box",
       "ok": true
     },
@@ -100,6 +116,18 @@
       "ok": true
     },
     {
+      "name": "phone-en-light-after: the panel and its width select have the page's own background (rgb(255, 255, 255))",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: ⋯ names Reply about this page",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light-after: on a phone Reply closes the page and puts its line in the room's box",
+      "ok": true
+    },
+    {
       "name": "phone-en-light-after: no page errors",
       "ok": true
     },
@@ -128,6 +156,18 @@
       "ok": true
     },
     {
+      "name": "phone-zh-TW-dark-after: the panel and its width select have the page's own background (rgb(33, 33, 33))",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: ⋯ names Reply about this page",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark-after: on a phone Reply closes the page and puts its line in the room's box",
+      "ok": true
+    },
+    {
       "name": "phone-zh-TW-dark-after: no page errors",
       "ok": true
     }
@@ -135,75 +175,109 @@
   "pictures": [
     {
       "path": "m3591-desk-en-light-before-1-card.png",
-      "sha256": "a685ee2817268f65a2fd515544d40fdd5b06d14b2325f90ea6846c759b3665b6"
+      "sha256": "8c209d636423c7d770b60513720086c2ecffce29dbb652c47e126a7d704b1df1"
     },
     {
       "path": "m3591-desk-en-light-after-1-card.png",
-      "sha256": "de9696218f84a47fbeb3b11d92f4c5b0c6260022ef15eecbf8414d907d29017d"
+      "sha256": "bb785922addec3d3d7d8fe24ec70d3aee219d5f7f1e206c4b1c00ea0872827a5"
     },
     {
       "path": "m3591-desk-en-light-after-2-running.png",
-      "sha256": "934bf25d195bf0b2662f5e9a6561662c15cb54649139db6cf6701448bf0af34b"
+      "sha256": "fb801fad566cd9a9aadc17b8e1e8fecc66f5de825fd06eb7c937617b924266ce"
     },
     {
       "path": "m3591-desk-en-light-after-3-panel.png",
-      "sha256": "59b349079e0afc6ec9e12311e77ba14cd7fa2aa2f80ad6e9a5e14f2ee8bfb0af"
+      "sha256": "4312b94ac66d4262b01bbbf5587718e8a7ea98daf9e64e295918ad5a35f1c3d5"
+    },
+    {
+      "path": "m3591-desk-en-light-after-3b-panel-wide-reply.png",
+      "sha256": "6b1e8f432cfde2f0b22abb13137f426516b12ac0b53c396a36fa17dfa00405a5"
     },
     {
       "path": "m3591-desk-en-light-after-4-reply-line.png",
-      "sha256": "6b9a386ada2cb60c16fae271d0073706d8b92f43e79bba079ecf83b174ccb96c"
+      "sha256": "d924963139323bb01bb0b7ac70c8a8021979959046c8eccf30d3293586564f33"
     },
     {
       "path": "m3591-desk-zh-TW-dark-before-1-card.png",
-      "sha256": "1f7934d41012ab757d3d150feadd72101bc8fe518bb57d2d1b01b3b0d3b6ea1a"
+      "sha256": "2eaeb86453f883da7bf72bf6db0566fe557ab707f1ca5b16f3edde6ec93c0b7c"
     },
     {
       "path": "m3591-desk-zh-TW-dark-after-1-card.png",
-      "sha256": "fb5610fc4a3a076b2b310ca489c26760a1a6d987ac1b154a05ec3cdc53a060dd"
+      "sha256": "3d529c129cff37a198ae5d368c3aa54e50250703133b1c2117584cb580d2ee1f"
     },
     {
       "path": "m3591-desk-zh-TW-dark-after-2-running.png",
-      "sha256": "b3984fe16b684580adbbbc60636a78994c27fc09fe1147e102b9f467800af95e"
+      "sha256": "4be4710fdf5e28dcd3fcc3e64351ad353c6d10237c9103097a78b781e3759bf4"
     },
     {
       "path": "m3591-desk-zh-TW-dark-after-3-panel.png",
-      "sha256": "59d97320085dd72842e1a6c4e272c9cc022652a8f8e93f27f77f878a1cd29755"
+      "sha256": "c5352503d90e76ca9a439723acf582e791b616576fe591d6eba69f452d5019a3"
+    },
+    {
+      "path": "m3591-desk-zh-TW-dark-after-3b-panel-wide-reply.png",
+      "sha256": "530890f20bf82207aac2cd70eff4186be53441f3cd3d9baec95ec944dc7571ce"
     },
     {
       "path": "m3591-desk-zh-TW-dark-after-4-reply-line.png",
-      "sha256": "e6d29857f1225eb42bf671646e37ed4f5fda5d7664eb3792294db09296145b81"
+      "sha256": "9935a5fd7942ddcb488914cbdcb8272b54c8aac838e9df9ab4b168aeff8093db"
     },
     {
       "path": "m3591-phone-en-light-before-1-card.png",
-      "sha256": "4b9f7676fe34515d7f6e6feccfb3f21cbea067b3a61338907751767e7c2aa571"
+      "sha256": "20e868fe362baf049fcf7fedebb53c979438bcfa14edbb4b8327c6584e12bb69"
     },
     {
       "path": "m3591-phone-en-light-after-1-card.png",
-      "sha256": "0260cbdd00ae873f86f6f75e114b09ab31a495445e119a8dcc392270dec61f98"
+      "sha256": "d66ebd0bc8ee2e68413b6b2d615b8cc60ca2576eae72309c8b2a9ff4fb62f464"
     },
     {
       "path": "m3591-phone-en-light-after-2-running.png",
-      "sha256": "9d7511f384098f0cd8b5f310d2dabab95a18cb0a7dab4d4d4480d79fc3bb6199"
+      "sha256": "016e1e564bb305484511ff6a2536fc0d2645a49d2ddc869bd57baa0a3f0101eb"
     },
     {
       "path": "m3591-phone-en-light-after-3-panel.png",
-      "sha256": "452642fe12ddde30875d5525bc59ba77c24c8ef45ce1f078810b1e8969ffe7b9"
+      "sha256": "bb60a1ea6f9bf1b265f24b04c03c05c546c61ea24c2136f74f84491716873315"
+    },
+    {
+      "path": "m3591-phone-en-light-after-3b-more-reply.png",
+      "sha256": "a92c27a5f6220131e06cac87b134019feb5d2283d71dfa1b8dc1e8224ebdf349"
+    },
+    {
+      "path": "m3591-phone-en-light-after-4-reply-line.png",
+      "sha256": "8c3cd84826f2d0e9d5d1d2ca5fd79e55175deb720d9f39f0317719421cb1364f"
     },
     {
       "path": "m3591-phone-zh-TW-dark-before-1-card.png",
-      "sha256": "c81cd729a89ff4d09df759700cb963eb81c19687c922b519037734fe29f494c7"
+      "sha256": "c3963f0707d0076420accf2224fb08ad062cd0b95bd5291545ca0e0202d113cc"
     },
     {
       "path": "m3591-phone-zh-TW-dark-after-1-card.png",
-      "sha256": "3556fee9e365725aa2477ee7cf3855ec8d6cda8cf9e96244d39988218b364f9f"
+      "sha256": "e24cde23df960153779683a31035822667b5d0ce992529050f11b4d3c78c3b0f"
     },
     {
       "path": "m3591-phone-zh-TW-dark-after-2-running.png",
-      "sha256": "47aa311f997946b5ae27362bc6c6d1f9e471ec0a3e449d9b67f2f23fd9a0b836"
+      "sha256": "caab013f07b8f7f3954eea7638fab82d105d52134da54451d341c54e7c3f7083"
     },
     {
       "path": "m3591-phone-zh-TW-dark-after-3-panel.png",
-      "sha256": "908b8b16616ce86a24fc3f426179337e3e330b25d20b973a0e889039c9f3f4c1"
+      "sha256": "8324a4d46a37b8978c9e484b65941c3d83daeddc02bc2fc317eff22583ab0ca4"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-3b-more-reply.png",
+      "sha256": "47c1113c458f685ca42fb32f310ef9683327f8966d1ba816a026e20be07c1bb3"
+    },
+    {
+      "path": "m3591-phone-zh-TW-dark-after-4-reply-line.png",
+      "sha256": "6d9c4f74d8095c8ce3f55e30c33898c91daaebc5b429c9eda305e7b0269e3eaf"
     }
-  ]
+  ],
+  "replyControl": {
+    "en": {
+      "name": "Reply about this page",
+      "title": "Reply to the message this page came in, naming the page — you write what to change"
+    },
+    "zh-TW": {
+      "name": "回覆這個頁面",
+      "title": "回覆這個頁面所在的訊息並註明頁面——要改什麼由你來寫"
+    }
+  }
 }
