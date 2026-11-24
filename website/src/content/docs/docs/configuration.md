@@ -42,7 +42,7 @@ The most used keys. The [full reference](https://github.com/songsid/AgEnD/blob/m
 | `web.allowed_hosts` | — | Extra `Host` names the dashboard answers to behind a reverse proxy or port forward. Any other `Host` gets 403 |
 | `web.view_access` | `open` | `session` closes `/view` to anyone not signed in |
 | `web.notify_login` | `true` | `false` stops General being told about each local web sign-in |
-| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | How long a sign-in on the directly reached dashboard lasts (up to 720). A public-link session is fixed at 4 h / 30 min idle |
+| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | How long a sign-in on the directly reached dashboard lasts (up to 720). A public-link session lasts at most 8 h / 30 min idle |
 | `web.preview` | `true` | `false` turns off HTML previews in web chat |
 | `web.public_link.allow_public` | `true` | `false` removes the temporary public link from `/web` and closes one already open |
 | `web.public_link.ttl_minutes` | `120` | Lifetime of a public link: 1–480 on a quick tunnel; 1–10080, or `0` for no expiry, with your own domain |
@@ -337,7 +337,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | as above | inherited | Per-channel overrides |
 | `backend_options` | object | merged defaults | Backend-specific options and credential profile |
 | `display_name` / `description` | string | — | Agent label and description |
-| `web_echo` | boolean | `false` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel` |
+| `web_echo` | boolean | follows `web.echo_to_channel` | Copy this room’s web chat to the platform, independent of `web.echo_to_channel`. Unset rooms follow the fleet-wide switch (default `true`); `false` never echoes |
 | `pre_task_command` | string | — | Pasted before every message |
 | `reply_completion_guard` | boolean | from defaults | Override for this channel |
 | `reply_triggers` | boolean | from defaults | Override native-reply triggering for this collab room |

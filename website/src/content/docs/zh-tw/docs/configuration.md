@@ -42,7 +42,7 @@ agend validate
 | `web.allowed_hosts` | — | 透過反向代理或 port forward 連線時，dashboard 額外接受的 `Host` 名稱。其他 `Host` 一律 403 |
 | `web.view_access` | `open` | `session` 會讓沒登入的人看不到 `/view` |
 | `web.notify_login` | `true` | `false` 就不會在 General 通知每次本機網頁登入 |
-| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | 直接連到 dashboard 時，一次登入能維持多久（最多 720）。公開連結的 session 固定 4 小時／閒置 30 分鐘 |
+| `web.session.local.absolute_hours` / `.idle_hours` | `48` / `48` | 直接連到 dashboard 時，一次登入能維持多久（最多 720）。公開連結的 session 最多 8 小時／閒置 30 分鐘 |
 | `web.preview` | `true` | `false` 會關掉網頁聊天裡的 HTML 預覽 |
 | `web.public_link.allow_public` | `true` | `false` 會從 `/web` 拿掉臨時公開連結，並關閉已開啟的連結 |
 | `web.public_link.ttl_minutes` | `120` | 公開連結的有效時間：快速 tunnel 為 1–480；用自己的網域時為 1–10080，或 `0` 代表不過期 |
@@ -337,7 +337,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | 同上 | 繼承 | 個別 channel 覆寫 |
 | `backend_options` | object | 合併預設 | Backend 選項與 credential profile |
 | `display_name` / `description` | string | — | Agent 名稱與說明 |
-| `web_echo` | boolean | `false` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關 |
+| `web_echo` | boolean | 跟著 `web.echo_to_channel` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關。沒設定的聊天室跟著全 fleet 的開關（預設 `true`）；設 `false` 就一定不同步 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
 | `reply_triggers` | boolean | 同 defaults | 這個 collab 聊天室的原生回覆觸發覆寫 |

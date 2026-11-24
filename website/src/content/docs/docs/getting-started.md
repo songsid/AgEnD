@@ -124,7 +124,7 @@ agend web          # on the machine: prints the code and opens the sign-in page
 agend web --code   # only prints them
 ```
 
-Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts 4 hours (30 minutes idle) and ends when the link closes.
+Or send `/web` in General (fleet admins). The bot sends you the link and the code privately, and can also offer a temporary public link for a phone that can't reach the machine. A code works once, for 5 minutes. A sign-in on the dashboard reached directly lasts 48 hours by default; one through the public link lasts at most 8 hours (30 minutes idle) and ends when the link closes.
 
 The dashboard listens only on `127.0.0.1`. To open it from a phone, and for sessions and signing out, see the [Web Guide](/AgEnD/docs/web-guide/).
 
@@ -136,7 +136,7 @@ agend health
 
 ## Updating
 
-Fleet admins can press **Update now** on the dashboard when a new version is out (or **Check for updates** in Settings → Advanced → **Version and update**), send `/update` in General, or run this on the host:
+Fleet admins can press **Update now** on the dashboard when a new version is out (or **Check for updates** in Settings → Advanced → **Version and update**), send `/update` in General or any web chat, or run this on the host:
 
 ```bash
 agend update
