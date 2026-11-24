@@ -16,6 +16,7 @@ import { writeFileSync } from "node:fs";
 import { openOfficePersonCard as currentCard, closeOfficePersonCard } from "../smoke-fixture/office-smoke-card.js";
 import { findOfficePersonPoint as findPerson, pinOfficePointerClock, resumeOfficePointerClock, officePointerClockIsLive } from "../smoke-fixture/office-smoke-pointer.js";
 import { bootFixture, freshPage, mounted, shotPath } from "../smoke-fixture/index.mts";
+import { withDisplay } from "../smoke-fixture/office-display.mts";
 
 const SMOKE = "smoke-office-play-m3293";
 const selectedCases = selectOfficeCaptureCases(process.env.M3513_CASE);
@@ -63,8 +64,8 @@ for (const c of selectedCases) {
     if (c.rm) await page.emulateMedia({ reducedMotion: "reduce" });
     await openOffice(page, base, c.lang);
     const box = page.locator(".oo-play input");
-    // A phone keeps the Office's options in its ⋯ sheet; the desk shows them in the bar.
-    if (c.device === "desk") ok(res, "toggle:shown", (await box.count()) === 1);
+    // M-3556: on a desk the box is in ⚙ Display options — opened for each look, then closed (the scene stays uncovered).
+    if (c.device === "desk") ok(res, "toggle:shown", await withDisplay(page, async () => (await box.count()) === 1));
     if (process.env.M3513_WORDS_ONLY === "1") {
       if (!currentCapture || c.device !== "desk" || c.rm) throw new Error("words-only capture requires an ordinary desktop case");
       await currentCard(page); await page.locator(".oo-card-pat").click(); await page.locator(".oo-card-close").click();
@@ -72,14 +73,14 @@ for (const c of selectedCases) {
       await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
       ok(res, "current-pat-frame", true, "Pat/card close/cursor moved off map; static capture only, not drag/Tell/off behavioral replay");
     } else if (c.rm) {
-      ok(res, "reduced:toggle off and locked", !(await box.isChecked()) && (await box.isDisabled()));
+      ok(res, "reduced:toggle off and locked", await withDisplay(page, async () => !(await box.isChecked()) && (await box.isDisabled())));
       const at = await findPerson(page);
       ok(res, "reduced:person found", !!at);
       await currentCard(page);
       ok(res, "reduced:card has no Pat/Feed", (await page.locator(".oo-card").count()) === 1 && (await page.locator(".oo-card-pat, .oo-card-feed").count()) === 0);
       await page.screenshot({ path: shotPath(SMOKE, tag, "1-card") });
     } else if (c.device === "desk") {
-      ok(res, "toggle:on by default", await box.isChecked());
+      ok(res, "toggle:on by default", await withDisplay(page, () => box.isChecked()));
       await pinOfficePointerClock(page);
       const at = await findPerson(page);
       ok(res, "person found", !!at, at);
@@ -135,11 +136,11 @@ for (const c of selectedCases) {
       await page.screenshot({ path: shotPath(SMOKE, tag, "7-pat-words") });
       // Off: no Pat/Feed, and a drag pans (no one carried).
       ok(res, "pat words: card is closed before toggle", (await page.locator(".oo-card").count()) === 0);
-      await box.click(); await page.waitForTimeout(300);
+      await withDisplay(page, () => box.click()); await page.waitForTimeout(300);
       ok(res, "toggle off: kept here", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === "0");
       await currentCard(page);
       ok(res, "toggle off: no Pat/Feed", (await page.locator(".oo-card-pat").count()) === 0);
-      await box.click();   // back on, for the next case's defaults (each case is its own browser context anyway)
+      await withDisplay(page, () => box.click());   // back on, for the next case's defaults (each case is its own browser context anyway)
     } else {
       ok(res, "toggle:on by default (none stored)", (await page.evaluate(`localStorage.getItem("agend_org_office_play")`)) === null);
       await pinOfficePointerClock(page);

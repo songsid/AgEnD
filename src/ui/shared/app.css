@@ -2537,6 +2537,31 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo { flex: 1 0 auto; display: flex; flex-direction: column; gap: var(--s-2); min-width: 0; width: 100%; }
 .oo > :not(.oo-stage):not(dialog) { margin-left: var(--s-5); margin-right: var(--s-5); }   /* not the editors' dialogs: they centre themselves (#2585) */
 .oo-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+/* M-3556: one row on a desk — scope on the left; actions and ⚙ Display options (a dropdown, like Members) on the right.
+   A Hub room's office opens the same dropdown from the gear in its zoom stack (to the gear's left). */
+.oo-bar-row { flex-wrap: nowrap; justify-content: space-between; }
+.oo-bar-scope, .oo-bar-actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); min-width: 0; }
+.oo-bar-actions { margin-inline-start: auto; justify-content: flex-end; }
+.oo-display-btn { display: inline-flex; align-items: center; gap: var(--s-1); }
+.oo-display { position: relative; }
+.oo-display-btn.on { border-color: var(--accent); }
+.oo-display-pop { position: absolute; z-index: 20; top: calc(100% + 6px); right: 0; width: min(340px, calc(100vw - 32px)); max-height: min(70vh, 480px); overflow-y: auto;
+  padding: var(--s-2) var(--s-3); background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-md); box-shadow: var(--shadow-2); }
+.oo-display-list { flex-direction: column; flex-wrap: nowrap; align-items: stretch; gap: var(--s-1); }
+.oo-display-list .oo-pick { display: flex; align-items: center; justify-content: space-between; gap: var(--s-2); }
+.oo-display-list .check { min-height: 32px; }
+.oo-display-list :is(.check, .oo-pick) { font-size: var(--fs-sm); color: var(--text); }   /* one style for every option, as in the sheet */
+/* The Fleet office's dropdown opens left of the stage's zoom stack (right: --s-3, 38 px wide), never over it. */
+.oo-bar-row .oo-display-pop { right: calc(var(--s-3) + 38px + var(--s-2)); }
+.oo-display-h { margin: 0 0 var(--s-1); font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.oo-display-zoom { position: static; border-top: 1px solid var(--border); }   /* the dropdown hangs from the stack's top, not the gear's */
+.oo-display-zoom .oo-display-pop { top: 0; right: calc(100% + 6px); }
+.oo-zoom:has(.oo-display-pop) { overflow: visible; }
+/* In the dropdown the reduced-motion note goes on its own line under the label (the panel is narrow). */
+.oo-display-list .oo-play { flex-wrap: wrap; row-gap: 0; }
+.oo-sheet .oo-sheet-bar > .oo-pick + .oo-pick { margin-top: var(--s-2); }
+.oo-sheet .oo-sheet-bar > .oo-sheet-rule { min-height: 0; width: 100%; margin: var(--s-3) 0 var(--s-1); border: 0; border-top: 1px solid var(--border); }
+.oo-sheet .oo-sheet-bar > .oo-sheet-h { min-height: 0; margin: var(--s-3) 0 0; padding-top: var(--s-2); border-top: 1px solid var(--border); font-size: var(--fs-xs); font-weight: var(--fw-semibold, 600); color: var(--text-2); }
 .oo-pick { display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-2); }
 .oo-pick .tb-select { max-width: 200px; }
 .oo-people { position: relative; }
@@ -2568,6 +2593,11 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-people-list { list-style: none; margin: 0; padding: 0; }
 .oo-people-list label { display: flex; align-items: center; gap: 8px; padding: 3px 2px; font-size: var(--fs-xs); color: var(--text); cursor: pointer; overflow-wrap: anywhere; }
 .oo-note { font-size: var(--fs-xs); }
+/* M-3547 / M-3556: why "Drag and pat" is locked — one line under it, inside its label (read with its name), in Display options
+   and the phone sheet alike. */
+.oo-play:has(.oo-play-still) { flex-wrap: wrap; row-gap: 0; }
+.oo-play .oo-play-still { flex-basis: 100%; min-width: 0; padding-inline-start: calc(13px + var(--s-2)); }
+.oo-play:has(input:disabled) > span:not(.oo-play-still) { opacity: 0.45; }   /* disabled, as .btn:disabled */
 .oo-stage { position: relative; flex: 1 1 auto; min-height: 340px; overflow: hidden; background: var(--bg); touch-action: none; user-select: none; -webkit-user-select: none; }
 /* #2554: clip, not a scroll container — nothing past the edge (a tile's label) can scroll the stage and its controls. */
 .oo-stage { overflow: clip; }
@@ -2581,9 +2611,9 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
 .oo-key-rows { display: flex; flex-wrap: wrap; gap: var(--s-1) var(--s-4); margin: 0; padding: 0; list-style: none; }
 .oo-key-row { display: inline-flex; align-items: center; gap: 6px; }
 .oo-key-icon { width: 32px; height: 32px; flex: none; image-rendering: pixelated; }
-.oo-key-btn.on { border-color: var(--accent); }
 .oo-zoom { z-index: 6; }
 .oo-zoom .icon-btn { color: var(--text); }
+.oo-zoom .icon-btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--focus); }   /* the stack clips an outline */
 /* The overview's box (left, top, width, height) is set by the page, inside the stage and scaled to it (miniBox). */
 .oo-mini { z-index: 6; right: auto; bottom: auto; overflow: hidden; }
 .oo-zoom-pct { display: block; padding: 3px 0; font-size: var(--fs-2xs); line-height: 14px; text-align: center; color: var(--text-2); font-variant-numeric: tabular-nums;
@@ -2814,6 +2844,7 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .oc-tools:has(.oo-more-btn) .oc-find { flex: 1 1 96px; min-width: 88px; }
   .oc-tools:has(.oo-more-btn) .seg-inline { flex: none; }
   .oc-tools .oo-more-btn { flex: none; width: var(--tap); height: var(--tap); }
+  @media (hover: none) { .oc-tools .oo-more-btn:hover { background: none; } }   /* a tap leaves :hover stuck on touch */
   .oo.phone > :not(.oo-stage):not(dialog) { margin-left: var(--s-3); margin-right: var(--s-3); }
   .oo.phone .oo-stage { min-height: 160px; }
   .oo.phone .oo-mini { display: none; }
@@ -2845,6 +2876,9 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .oo-sheet .oo-pick { justify-content: space-between; }
 .oo-sheet .oo-pick .tb-select { width: 62%; min-height: var(--tap); font-size: var(--fs-md); }
 .oo-sheet .dlg-x { width: var(--tap); height: var(--tap); }
+/* M-3556: more below the fold fades out at the sheet's foot, over the rows (data-more: set while not at the end). */
+.oo-sheet .dlg-body[data-more]::after { content: ""; position: sticky; bottom: calc(-1 * var(--s-4)); flex: none; display: block; height: 48px;
+  margin-top: calc(-48px - var(--s-3)); pointer-events: none; background: linear-gradient(transparent, var(--bg) 85%); }
 .oo-sheet .oo-sheet-bar :is(.btn, .oo-people > .btn) { min-height: var(--tap); }
 .oo-sheet .oo-sheet-bar > .btn, .oo-sheet .oo-people > .btn { width: 100%; justify-content: flex-start; }
 .oo-sheet .oo-sheet-bar > :is(.btn, .oo-people, .oo-carousel, .oo-note) { margin-top: var(--s-1); }
