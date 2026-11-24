@@ -74,7 +74,7 @@ try {
     const week = await page.locator(".tb-done-week").first().innerText().catch(() => "");
     const link = await page.locator(".tb-archived-link").first().innerText().catch(() => "");
     check(`${tag}: the Done column shows its newest 20`, done === 20, done);
-    check(`${tag}: its header says this week's count and how many of them are archived`, new RegExp(`${stats.doneWeek}\\D.*${stats.archivedWeek}`).test(week) && /done this week|本週完成/.test(week), week);
+    check(`${tag}: its header says this week's count and how many of them are archived`, new RegExp(`${stats.doneWeek}\\D.*${stats.archivedWeek}`).test(week) && /done this week|本週完成/i.test(week), week);
     check(`${tag}: the board's header has "Archived · ${stats.archived}"`, new RegExp(String(stats.archived)).test(link), link);
     // A desk's five columns scroll sideways: the Done column brought into view (its head says this week's count).
     if (!phone) { await page.evaluate(() => { const s = document.querySelector(".tb-scroll") as HTMLElement | null; if (s) s.scrollLeft = s.scrollWidth; }); await page.waitForTimeout(400); }
