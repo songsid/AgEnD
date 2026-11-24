@@ -1,0 +1,64 @@
+{
+  "base": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
+  "testedSource": "1fbbe66f460d2b19dbdf801ce58a96c614bb02d0",
+  "baseRegressionCases": 6,
+  "baseFailed": 6,
+  "finalSuites": 14,
+  "finalTests": 271,
+  "sourceTypecheck": 0,
+  "testTypecheck": 0,
+  "mutations": [
+    {
+      "name": "adapter-key",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 7
+    },
+    {
+      "name": "legacy-read",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "admin-adapter",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 3
+    },
+    {
+      "name": "platform-role",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 1
+    },
+    {
+      "name": "unknown",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 2
+    },
+    {
+      "name": "old-ticket",
+      "caught": true,
+      "returncode": 1,
+      "failedTests": 1
+    }
+  ],
+  "testFiles": [
+    "contact-person-identity-m3679",
+    "contact-origin-feedback-4213",
+    "inbound-owner-gate",
+    "contact-standing-grants-m3544",
+    "contact-change-proposals-m3544",
+    "classic-contact-auth-3339",
+    "classic-contact-approvers-3339",
+    "classic-outbound-address-1626",
+    "web-contact-auth-m3339",
+    "web-contact-grants-m3544",
+    "hub-contact-limit-3160",
+    "hub-representative-fleet",
+    "contact-origin-clear-3366",
+    "web-contact-origin-clear-3366"
+  ]
+}
