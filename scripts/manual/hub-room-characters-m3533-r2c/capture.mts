@@ -206,7 +206,7 @@ try {
       for (let round = 0; round < 3; round++) { const inv = await r.call(casey, "GET", "/hub/v1/invitations"); for (const i of inv.json?.invitations ?? []) await r.call(casey, "POST", `/hub/v1/invitations/${i.id}/accept`, {}); await new Promise((res) => setTimeout(res, 150)); }
       await r.call(manager, "PATCH", `/hub/v1/rooms/${soloId}`, { office: { style: "studio-large" } });
       await page.goto(`${origin}/ui/hub?room=${soloId}&view=office`); await page.locator(".oo-stage canvas").first().waitFor(); await page.waitForTimeout(3000);
-      for (let z = 0; z < (phone ? 3 : 1); z++) { await page.locator(".hub-room-office .oo-zoom-in").first().click().catch(() => {}); await page.waitForTimeout(400); }
+      for (let z = 0; z < (phone ? 5 : 2); z++) { await page.locator(".hub-room-office .oo-zoom-in").first().click().catch(() => {}); await page.waitForTimeout(400); }
       await page.waitForTimeout(1200);
       const echo = await page.evaluate(() => {
         const cv = document.querySelector(".hub-room-office .oo-stage canvas") as HTMLCanvasElement | null; if (!cv) return null;
@@ -219,8 +219,8 @@ try {
       });
       check(`${tag}: Echo alone takes a top-row seat under its area's name`, !!echo, echo);
       // The area's name is left of the seat (92 scene units, about two of Echo's widths): the crop reaches it and the top edge above.
-      if (echo) { const x = Math.max(0, echo.x - echo.w * 3.5), y = Math.max(0, echo.y - echo.h * 0.8);
-        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.w * 5.5, (phone ? 390 : 1366) - x), height: Math.min(echo.h * 2.2, (phone ? 844 : 900) - y) }); }
+      if (echo) { const x = Math.max(0, echo.x - echo.w * 3.5), y = Math.max(0, echo.y - echo.h * 1.6);
+        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.w * 6, (phone ? 390 : 1366) - x), height: Math.min(echo.h * 3, (phone ? 844 : 900) - y) }); }
       await page.goto(`${origin}/ui/hub/exposures`); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(1500);
       const lines = await page.evaluate(() => [...document.querySelectorAll("[data-picture-large=character]")].map((e) => (e.textContent || "").trim()));
       check(`${tag}: My agents tells the owner Notes's character is too large`, lines.length === 1 && /512 KB/.test(lines[0]!), lines);
