@@ -47,6 +47,12 @@ try {
         check(`${tag} ${name}: the session menu's role reads "${text}"`, want.test(text), text);
         const tops = await page.locator(".session .pop .role").evaluate((r: Element) => [r.querySelector(".sub")!.getBoundingClientRect().top, r.querySelector("strong")!.getBoundingClientRect().top]);
         check(`${tag} ${name}: the role starts beside its label (never under a lone "Role")`, Math.abs(tops[0]! - tops[1]!) < 6, tops);
+                if (verified) {
+          // The time is one unit: it never splits across lines (09:16 / AM).
+          const lines = await role.evaluate((el: Element) => { const r = document.createRange(); r.selectNodeContents(el); return [...r.getClientRects()].map(b => Math.round(b.top)); });
+          const time = await role.evaluate((el: Element) => { const t = el.textContent!; const at = t.search(/\d/); const r = document.createRange(); const n = el.firstChild!; r.setStart(n, at); r.setEnd(n, t.length); return [...new Set([...r.getClientRects()].map(b => Math.round(b.top)))].length; });
+          check(`${tag} ${name}: the time stays on one line (${new Set(lines).size} line(s) in all)`, time === 1, { time, lines });
+        }
                 check(`${tag} ${name}: no Authorize line for a guest`, (await page.locator(".session .pop .webauth-chip").count()) === 0);
         check(`${tag} ${name}: no page errors`, errors.length === 0, errors);
         const path = shotPath(smoke, tag, name);

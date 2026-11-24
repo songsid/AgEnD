@@ -58,7 +58,7 @@ export function SessionMenu() {
       ${!me ? html`<h3>${t("app.signedOut")}</h3><a class="btn" href=${`/signin?next=${encodeURIComponent(location.pathname)}`}>${t("app.signIn")}</a>` : html`
         <h3>${t("app.signedIn")} · ${me.label}</h3>
         <p class="sub">${t("app.expires", clock(me.expiresAt), span(me.idleMs))}</p>
-        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${me.tier === "guest" ? roleName("guest", typeof me.verifiedUntil === "number", typeof me.verifiedUntil === "number" ? clock(me.verifiedUntil) : undefined) : roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
+        ${me.tier === "guest" || me.tier === "read" || (me.tier === "admin" && auth.st) ? html`<p class="role" data-role=${me.tier === "admin" ? (auth.st.state === "verified" ? "owner" : "admin") : me.tier}><span class="sub">${t("webauth.role")}</span> <strong>${me.tier === "guest" ? roleName("guest", typeof me.verifiedUntil === "number", typeof me.verifiedUntil === "number" ? clock(me.verifiedUntil).replace(/ /g, "\u00a0") : undefined) : roleName(me.tier, !!auth.st && auth.st.state === "verified")}</strong></p>` : null}
         <${AuthorizeChip} />
         <div class="row">
           <button type="button" class="btn" onClick=${() => act("POST", "/auth/logout", () => { location.href = "/signin"; })}><${Icon} name="user" size=${16} />${t("app.signOut")}</button>
