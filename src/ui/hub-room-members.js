@@ -10,9 +10,10 @@ import { lang } from "/assets/app-i18n.js";
 import { hubClient } from "./hub-client.js";
 import { hm } from "./hub-room-members-strings.js";
 import { hroom } from "./hub-room-strings.js";
-import { collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
+import { agentPictureSrc, collapse, headerCounts, presenceDot, presenceView, sortAgents } from "./hub-room-presence.js";
 import { hn, linkRoomsU2Css } from "./hub-room-new-strings.js";
 import { roomSource, RoomSourceMark } from "./hub-room-source.js";
+import { firstCharacter } from "/assets/instance-nav.js";
 
 linkRoomsU2Css();
 
@@ -63,6 +64,44 @@ export function memberStatus(m) {
   return { dot: presenceDot(v.dot), text: note ? `${word} · ${note}` : word, ...(v.word === "needsUpdate" ? { update: true } : {}) };
 }
 
+const LUM = (hex) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((x) => (x <= 0.03928 ? x / 12.92 : ((x + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const RATIO = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
+const INK_DARK = "#111111", INK_LIGHT = "#ffffff";
+const GRAPHEME = typeof Intl !== "undefined" && typeof Intl.Segmenter === "function" ? new Intl.Segmenter(undefined, { granularity: "grapheme" }) : null;
+/** Exactly one grapheme (one emoji, with its modifiers and joiners), else "": a longer label never fills a 20 px disc. */
+function oneGrapheme(text) {
+  const parts = GRAPHEME ? [...GRAPHEME.segment(text)] : Array.from(text);
+  return parts.length === 1 ? text : "";
+}
+
+/**
+ * M-3533 R2a: an agent's avatar as its owner's Fleet shows it — its persona emoji, else its initial — on its identity
+ * colour (the room detail's `look`, from the owner's catalog), else on the default tint. An emoji label longer than one
+ * character (the catalog allows 64 bytes) is not drawn: the initial instead. Text on the colour is whichever of the two
+ * inks actually painted (#111111, white) has the higher contrast on it.
+ */
+export function agentAvatar(m) {
+  const color = typeof m?.look?.color === "string" && /^#[0-9a-f]{6}$/i.test(m.look.color) ? m.look.color.toLowerCase() : null;
+  const emoji = typeof m?.look?.emoji === "string" ? oneGrapheme(m.look.emoji.trim()) : "";
+  const lum = color ? LUM(color) : null;
+  return { color, text: emoji || firstCharacter(m?.name || "") || "?", emoji: !!emoji, ink: lum === null ? null : (RATIO(lum, LUM(INK_LIGHT)) >= RATIO(lum, LUM(INK_DARK)) ? INK_LIGHT : INK_DARK) };
+}
+/**
+ * The avatar in the row (the emoji or initial drawn from `data-av`, so the row's text is still the name alone), in the
+ * slot M-3256's source badge had: every agent row's badge was the same logo, so the avatar now says "an agent" (people's
+ * rows have none) and the source is said by the row's title, its accessible name and the agent's card (the design check).
+ */
+function AgentAvatar({ m, roomId = null }) {
+  // R2b: the disc its owner's sidebar shows, filling the circle as there (instance-nav.js .av img); one that fails to load
+  // gives the R2a avatar back.
+  const src = agentPictureSrc(roomId, m?.id, "disc", m?.look?.disc), [broken, setBroken] = useState(null);
+  if (src && broken !== src) return html`<span class="hub-agent-av pic" aria-hidden="true"><img src=${src} alt="" loading="lazy" decoding="async" onError=${() => setBroken(src)} /></span>`;
+  const a = agentAvatar(m);
+  // The colour goes in through the CSSOM (no style attribute: the dashboard's CSP, web-csp-1300).
+  const paint = (el) => { if (!el?.style) return; if (a.color) { el.style.setProperty("--av", a.color); el.style.setProperty("--av-ink", a.ink); } else { el.style.removeProperty("--av"); el.style.removeProperty("--av-ink"); } };
+  return html`<span class=${`hub-agent-av${a.emoji ? " emoji" : ""}${a.color ? "" : " neutral"}`} aria-hidden="true" data-av=${a.text} ref=${paint}></span>`;
+}
+
 /** 「林小華的 Agent」, but 「Alex 的 Agent」: a name ending in a Latin letter or digit takes a space before 的 (Lumen). */
 export function ownerAgent(name) {
   return hm(/[A-Za-z0-9]$/.test(name) ? "ownerAgentLatin" : "ownerAgent", name);
@@ -80,8 +119,16 @@ export function ownerAgent(name) {
  * - onSettings();
  * - compact (M1): true / false for that list whatever the size; absent, a room over COMPACT_OVER gets the compact one.
  */
-export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined } = {}) {
+export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMention, onOpenChat, onSettings, compact: force = undefined, focus = null } = {}) {
   const [presence, setPresence] = useState({}), [open, setOpen] = useState(null), [expanded, setExpanded] = useState(false);
+  // M-3565: `focus` ({ id, n }: a message's agent name pressed): that agent's card open, its owner's group unfolded, in view.
+  useEffect(() => {
+    if (!focus || !focus.id) return;
+    // Always in view: no filter left hiding it, the list unfolded past its first rows (#4389 review); then its card.
+    setQ(""); setExpanded(true); setOpen(focus.id);
+    const t = setTimeout(() => { try { document.querySelector(`.hub-room-members [data-member="${CSS.escape(focus.id)}"]`)?.scrollIntoView({ block: "nearest" }); } catch { /* none */ } }, 0);
+    return () => clearTimeout(t);
+  }, [focus && focus.n]);
   const [busy, setBusy] = useState(false), [failed, setFailed] = useState(false), [gone, setGone] = useState({}), [q, setQ] = useState("");
   useEffect(() => { setPresence({}); setGone({}); }, [detail]);
   useEffect(() => client.subscribeRooms?.({
@@ -113,10 +160,14 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
   // M1: in a compact list a row is one line — the name, its state — and the owner and introduction move into its card.
   const row = (m, extra = null) => {
     const v = memberStatus(m), owner = !compact && (m.kind === "agent" || m.kind === "later") && m.owner?.name ? (v.update ? hm("askOwner", m.owner.name) : ownerAgent(m.owner.name)) : "";
-    return html`<span class="hub-member-name"><${RoomSourceMark} source=${roomSource(m)} decorative=${true} />${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
+    // R2a: an agent's avatar takes the source mark's slot (the source in the row's title, accessible name and card). The
+    // room assistant has the sidebar's 「Hub 助理」 disc (its first character, "H"), so the column lines up.
+    const agentRow = m.kind === "agent" || m.kind === "later";
+    const mark = agentRow ? html`<${AgentAvatar} m=${m} roomId=${roomId} />` : m.kind === "assistant" ? html`<${AgentAvatar} m=${{ name: hroom("hubAssistant") }} />` : html`<${RoomSourceMark} source=${roomSource(m)} decorative=${true} />`;
+    return html`<span class="hub-member-name">${mark}${m.name}${extra}</span><span class="hub-member-state"><span class=${`dot ${v.dot}`} aria-hidden="true"></span><span>${v.text}</span>${owner ? html`<span class="hub-member-owner">· ${owner}</span>` : null}</span>${!compact&&(m.intro||m.kind==="assistant")?html`<small class="note">${m.kind==="assistant"?hi("assistant"):m.intro}</small>`:null}`;
   };
   const person = (m) => html`<li class="hub-member" key=${m.id}>${row(m, html`${m.id === meId ? html` <span class="tag">${hroom("roleYou")}</span>` : null}${m.role === "manager" ? html` <span class="tag">${hroom("roleManager")}</span>` : null}`)}</li>`;
-  const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id}>
+  const agentItem = (m) => html`<li class="hub-member hub-member-agent" key=${m.id} data-member=${m.id}>
         <button type="button" class="hub-member-open" title=${roomSource(m)?.label || ""} aria-label=${`${m.name}. ${memberStatus(m).text}. ${roomSource(m)?.label || ""}`} aria-expanded=${open === m.id} onClick=${() => { setFailed(false); setOpen(open === m.id ? null : m.id); }}>${row(m)}</button>
         ${open === m.id ? html`<div class="hub-member-card" role="group" aria-label=${m.name}>
           <strong>${m.name}</strong>${m.intro?html`<p class="note">${m.intro}</p>`:null}${m.owner?.name ? html`<small class="note">${hm("ownerOf", m.owner.name)}</small>` : null}
@@ -147,7 +198,7 @@ export function RoomMembersPanel({ client = hubClient(), roomId, detail, onMenti
       ${off.length ? html`<details class="hub-member-group hub-members-offline" open=${filtering}><summary>${hm("notOnline", off.length)}</summary><ul>${off.map(person)}</ul></details>` : null}
     </section>
     ${agents.length ? html`<section><h4>${filtering ? hm("agentsMatch", groups.reduce((n, g) => n + g.shown.length, 0), agents.length) : heads.agent}</h4>
-      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
+      ${groups.map((g) => html`<details class="hub-member-group hub-members-owner" key=${g.key} open=${filtering || (!!focus && g.agents.some((a) => a.id === focus.id))}><summary>${hm("ownerGroup", g.owner || hm("noOwner"), filtering ? g.shown.length : g.agents.length)}</summary><ul>${g.shown.map(agentItem)}</ul></details>`)}
     </section>` : null}`;
   };
   return html`<aside class=${`hub-room-members${compact ? " compact" : ""}`}>

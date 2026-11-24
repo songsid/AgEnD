@@ -24,12 +24,14 @@ export function RoomSourceMark({ source, decorative = false }) {
 }
 
 /** Stateless island inside the shared thread's sender node. No raw markup comes from the message. */
-export function mountSourceAuthor(sender, message) {
+export function mountSourceAuthor(sender, message, openMember = null) {
   const source = message?.sourceBadge;
   if (!sender || !source) return;
   sender.textContent = "";
+  // M-3565: an agent's name opens its member card (where its source is said too); else, as before, the source as a toast.
+  const tap = () => { if (!(openMember && message.authorMember && openMember(message.authorMember))) toast(source.label, true, { detail: true }); };
   render(html`<button type="button" class="hub-source-trigger" title=${source.label}
-    aria-label=${`${message.sender}. ${source.label}`} onClick=${() => toast(source.label, true, { detail: true })}>
+    aria-label=${`${message.sender}. ${source.label}`} onClick=${tap}>
     <${RoomSourceMark} source=${source} decorative=${true} /><span>${message.sender}</span>
   </button>`, sender);
 }

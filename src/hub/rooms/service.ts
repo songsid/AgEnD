@@ -1,7 +1,7 @@
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "../room-members-model.js";
 import {pageRoomMembers} from "./members-page.js";
 import {normalizeRoomPurpose} from "./purpose.js";
-import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, type RoomPresence } from "./office.js";
+import { ROOM_OFFICE_STYLES, newRoomOffice, officeAgent, officeOn, roomOfficeView, withLook, memberLook, type RoomOfficeLook, type RoomPresence } from "./office.js";
 import { agentIntro } from "../agent-intro.js";
 import { countChainStop } from "../admin-dashboard.js";
 import { createHash, randomUUID } from "node:crypto";
@@ -109,6 +109,35 @@ export class HubGroupRooms {
   private readonly agentSearch: HubGrantSearch;
   private readonly agentReadBuckets = new Map<string, { at: number; count: number }>();
   /** M-3533 R1: `office` true once the Hub offers the room office (room-office-v1); until then its field and route are refused. */
+  /**
+   * M-3533 R2a: a Fleet's shared agents' looks (exposure id → colour, emoji) from its owner's agent catalog, set by the
+   * composition (agent-catalog.ts); none: the room office draws no look.
+   */
+  looks: ((fleetId: string) => Map<string, RoomOfficeLook> | null) | null = null;
+  /** M-3533 R2b: a held picture's bytes by its hash (agent-pictures.ts), set by the composition; none: no picture is served. */
+  pictureFile: ((sha256: string) => { mime: string; bytes: Buffer } | null) | null = null;
+  /** M-3533 R2b: a room agent's disc or portrait, for the room's members only — the hash the room shows for it now. */
+  async picture(ctx: HubRequestContext, id: string, exposureId: string, slot: "disc" | "portrait") {
+    const me = await this.who(ctx);
+    const sha256 = this.core.atomic(db => {
+      this.member(db, id, me);
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, exposureId)) throw new HubRoomRefusal(404, "not-found");
+      const e = readExposure(db, exposureId);
+      const h = e?.fleet_id && this.looks ? this.looks(e.fleet_id)?.get(exposureId)?.[slot] : undefined;
+      if (!h) throw new HubRoomRefusal(404, "not-found");
+      return h;
+    }, this.fence(ctx));
+    const file = this.pictureFile?.(sha256);
+    if (!file) throw new HubRoomRefusal(404, "not-found");
+    return { sha256, ...file };
+  }
+  /** M-3533 R2b: these agents' pictures changed — every room holding one re-reads its members (open pages follow). */
+  lookChanged(exposureIds: readonly string[]): void {
+    const ids = [...new Set(exposureIds)].slice(0, 512);
+    if (!ids.length) return;
+    const rooms = this.core.atomic(db => db.prepare(`SELECT DISTINCT room_id FROM hub_room_members WHERE kind='agent' AND subject IN (${ids.map(() => "?").join(",")})`).all(...ids) as { room_id: string }[]);
+    for (const { room_id: roomId } of rooms) this.emit({ type: "member.changed", roomId, data: { roomId } });
+  }
   constructor(private readonly core: HubCore, private readonly office = false) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
@@ -601,9 +630,15 @@ export class HubGroupRooms {
     }
     return this.core.atomic(db => {
       const own = this.member(db, id, me), room = this.room(db, id);
+      // M-3533 R2a: each shared agent's look (its owner's catalog colour and emoji), each Fleet's catalog read once.
+      const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const lookOf = (fleetId: string, exposureId: string) => {
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        return catalogs.get(fleetId)?.get(exposureId) ?? null;
+      };
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", role: m.role, presence: this.assistant.presence(id) };
-        if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...agentIntro(db,m.subject), role: m.role,
+        if (m.kind === "agent") { const e = readExposure(db, m.subject), look = memberLook(e?.fleet_id ? lookOf(e.fleet_id, m.subject) : null); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, ...(look ? { look } : {}), ...agentIntro(db,m.subject), role: m.role,
           ...(e ? { agentKind: e.source_kind === "personal" ? "personal" as const : "fleet" as const } : {}),
           ...(e?.answer_only===1?{answerOnly:true}:{}), owner: { name: this.name(db, m.owner_at_join ?? ""), ...(m.owner_at_join ? { id: m.owner_at_join } : {}), ...(m.owner_at_join === me ? { mine: true } : {}) }, ...this.agents.presence(m.subject), canAsk: canAsk.has(m.subject) }; }
         return { id: m.id, kind: m.kind, name: this.name(db, m.subject), role: m.role,
@@ -834,10 +869,16 @@ export class HubGroupRooms {
       if (!officeOn(room.office_enabled)) throw new HubRoomRefusal(409, "office-off");
       // What a message's progress says (agents.ts), so the two never disagree; a wait that ran out was settled by the sweep above.
       const answering = this.agents.answering(db, id);
+      // R2a: each Fleet's catalog read once (it is the owner's latest, kept by the Hub: there when the Fleet is offline).
+      const catalogs = new Map<string, Map<string, RoomOfficeLook> | null>();
+      const lookOf = (fleetId: string, exposureId: string) => {
+        if (!catalogs.has(fleetId)) catalogs.set(fleetId, this.looks ? this.looks(fleetId) : null);
+        return catalogs.get(fleetId)?.get(exposureId) ?? null;
+      };
       const agents = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? AND kind IN ('agent','assistant') ORDER BY kind,id").all(id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") { const p = this.assistant.presence(id); return officeAgent("assistant", "Hub assistant", p, p === "working", true); }
         const e = readExposure(db, m.subject), p = this.agents.presence(m.subject).presence as RoomPresence;
-        return officeAgent(m.subject, e?.display_name ?? m.subject, p, answering.has(m.subject));
+        return withLook(officeAgent(m.subject, e?.display_name ?? m.subject, p, answering.has(m.subject)), e?.fleet_id ? lookOf(e.fleet_id, m.subject) : null);
       });
       return roomOfficeView({ name: room.name, style: room.office_style }, agents, this.core.now());
     }, this.fence(ctx));

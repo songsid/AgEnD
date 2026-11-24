@@ -9,7 +9,7 @@ import { lang } from "/assets/app-i18n.js";
 import { createLease } from "/assets/app-ctx.js";
 import { Skeleton, ErrorState } from "/assets/ui-states.js";
 import { hroom } from "./hub-room-strings.js";
-import { presenceView } from "./hub-room-presence.js";
+import { agentPictureSrc, presenceView } from "./hub-room-presence.js";
 
 /** How often a shown office is read again (the share page's POLL_MS). */
 export const ROOM_OFFICE_POLL_MS = 5000;
@@ -111,16 +111,21 @@ export function named(d, members = []) {
   const taken = new Set(), rename = new Map();
   const instances = list.map((i) => {
     const b = base(i), owner = owners.get(i.name) || "";
-    let label = b;
+    let label = b, fit = i.assistant ? { short: hroom("roomAssistantTag") } : null;
     if (count.get(b) > 1 && owner) {
       label = `${b}${open}${owner}${close}`;
       if ([...label].length > LABEL_MAX) label = `${b}${open}${owner.split(/\s+/)[0]}${close}`;
       label = clip(label, KEY_MAX);
+      // The owner part, for the drawing's tag: too narrow for both, it keeps the owner and cuts the name — the owner is
+      // what tells the two agents apart (fleet-office-skin.js fitText, #4379 review). The room assistant's tag has a
+      // shorter word for a narrow tag ("Assistant").
+      const who = label.endsWith(close) ? label.slice(b.length + open.length, -close.length) : "";
+      if (who && label === `${b}${open}${who}${close}`) fit = { owner: [open, who, close] };
     }
     label = safeKey(label);
     for (let n = 2, at = label; taken.has(label); n++) label = `${at} ${n}`;
     taken.add(label); rename.set(i.name, label);
-    return { ...i, name: label, display_name: label, member: i.name, plain: b };
+    return { ...i, name: label, display_name: label, member: i.name, plain: b, ...(fit ? { tag_fit: fit } : {}) };
   });
   const offices = d && d.offices && Array.isArray(d.offices.offices)
     ? { ...d.offices, offices: d.offices.offices.map((o) => ({ ...o, members: (Array.isArray(o.members) ? o.members : []).map((m) => rename.get(m) ?? m) })) } : d?.offices;
@@ -131,7 +136,7 @@ export function named(d, members = []) {
  * `members` the room's (its detail's: owner, introduction, the list's states); `onMention(member)` the card's "@ it" (the
  * page switches to Chat with the mention in the box); `more` / `onMore` a phone's options sheet, opened from the room's ⋯.
  */
-export function RoomOffice({ client, roomId, members, onMention = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS, load = loadDrawing }) {
+export function RoomOffice({ client, roomId, members, onMention = null, onOpenChat = null, more = false, onMore = null, timers = globalThis, pollMs = ROOM_OFFICE_POLL_MS, load = loadDrawing }) {
   const [phase, setPhase] = useState("loading");      // loading | live | failed | off
   const [d, setD] = useState(null);
   const [kit, setKit] = useState(null);
@@ -186,7 +191,13 @@ export function RoomOffice({ client, roomId, members, onMention = null, more = f
       oneOffice=${true} readOnly=${true} stream=${false} storage=${storage} words=${(node) => officeWords(node, members)}
       cardRows=${(name) => officeCardRows(members, shown.instances.find((i) => i.name === name)?.member)}
       cardName=${(name) => shown.instances.find((i) => i.name === name)?.plain || ""}
-      cardAction=${onMention ? (name) => { const m = memberOf(name); return m ? { label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) } : null; } : null}
+      cardAction=${onMention || onOpenChat ? (name) => { const m = memberOf(name); if (!m) return null;
+        // M-3565: the member card's 「和它一對一對話」 too, when this viewer may ask the agent (as there: canAsk).
+        const acts = [...(onMention ? [{ label: hroom("mentionIt"), title: hroom("mentionItTitle", name), run: () => onMention(m) }] : []),
+          // The card's row beside "Find in office" and "@ it" is narrow: a short label; the whole words its title and name.
+          ...(onOpenChat && m.canAsk === true ? [{ label: hroom("chatOneToOneShort"), title: hroom("chatOneToOne"), run: () => onOpenChat(m) }] : [])];
+        return acts.length > 1 ? acts : acts[0] || null; } : null}
+      cardPhoto=${(name) => { const i = shown.instances.find((x) => x.name === name); return i?.member ? agentPictureSrc(roomId, i.member, "portrait", i.picture?.portrait) : null; }}
       foldBar=${true} more=${more} onMore=${onMore} officesKey=${`${shown.offices?.offices?.[0]?.skin ?? ""}\n${shown.offices?.offices?.[0]?.members?.join("\n") ?? ""}`} />
   </div>`;
 }

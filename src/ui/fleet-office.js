@@ -102,7 +102,7 @@ register("orgo", {
     b_working: "On it.|Typing…|Almost there|In the zone|One more test", b_idle: "Tea time|Ready when you are|Stretching|Anything for me?",
     b_paused: "Zzz…|Back later", b_stopped: "Off duty|Zzz…", b_needs: "Need you!|A question for you|Over here!",
     b_crashed: "Ouch, crashed|Help!", b_stuck: "Hmm, stuck?|Still thinking…",
-    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime 0–6: the idle sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
+    options: "Office options", hideAsleep: "Hide paused and stopped", nightOn: "Bedtime (0–6): idle agents sleep", playOn: "Drag and pat", playStill: "Off while reduced motion is on", layoutIgnored: "Its saved layout does not fit this style: drawn as the style's own.",
     styleForAll: "The whole fleet's style, for everyone: every device and share link", styleHere: "The whole fleet's style in this browser",
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
@@ -325,7 +325,7 @@ function looksOf(L, work, q, mode, zones, badge = () => null) {
     // At night (#2568) the idle are drawn asleep (their state stays idle: the tooltip and the list say so).
     return [d.key, { name: n.name, label: nodeText(n).primary, state: n.state, pose: officePose(d.night ? "paused" : n.state), night: !!d.night, light: lightOf(n.state), lamp: lampOf(n.state),
       sign: zones ? null : signOf(n.state), coat: coatOf(n.i, n.i ? identityOf(n.i) : null, mode), work: work.get(n.name) || 0, dim: !!q && !match, match, free: zones,
-      badge: badge(n.name) }];
+      badge: badge(n.name), fit: n.i && n.i.tag_fit && typeof n.i.tag_fit === "object" ? n.i.tag_fit : null }];
   }));
 }
 /** A stored office's own layout on a zones style (its overrides); `ignored`: they do not fit this style. */
@@ -388,7 +388,7 @@ const hidingBox = (f) => {
 /** #2698: name tags in one row centred on (x, y) — each { look, x } (its centre), TAG_GAP apart. */
 const TAG_GAP = 4;
 export function tagRow(ctx, x, y, looks) {
-  const ws = looks.map((l) => tagBox(ctx, x, y, l.label).w), total = ws.reduce((a, w) => a + w, 0) + TAG_GAP * Math.max(0, ws.length - 1);
+  const ws = looks.map((l) => tagBox(ctx, x, y, l.label, false, l.fit).w), total = ws.reduce((a, w) => a + w, 0) + TAG_GAP * Math.max(0, ws.length - 1);
   let left = x - total / 2;
   return looks.map((look, i) => { const cx = Math.round(left + ws[i] / 2); left += ws[i] + TAG_GAP; return { look, x: cx }; });
 }
@@ -662,6 +662,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
     titleBoxes.push(...titles.map((x) => x.box));
     const taken = [];
     const touches = (b) => taken.some((o) => overlaps(b, o)) || keep.some((o) => overlaps(b, o));
+    // Under an open card (`p.cover`, bitmap px; #4379 review): no tag, its level badge included, rather than a piece of one
+    // past the card's edge — a forced one (hovered, found) too.
+    const cv = p.cover ? { x: (p.cover.x - ox) / a, y: (p.cover.y - oy) / a, w: p.cover.w / a, h: p.cover.h / a } : null;
+    const covered = (b) => !!cv && overlaps(b, cv);
     /**
      * Draws `look`'s tag at (x, y) at the first of `tries` ([dy, compact]) clear of the others; `force`: at the first.
      * None clear: slid sideways just past what it would touch of `keep` (an area's name, the minimap: never another
@@ -671,9 +675,10 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       // M-3539: a tag stays within the sides of the area its person stands in (a wide name at a lounge's first column
       // poked past its edge): moved in by what it would stick out.
       const ar = Object.values(p.L.areas || {}).find((a) => a.rect && x0 >= a.rect.x && x0 <= a.rect.x + a.rect.w && y >= a.rect.y && y <= a.rect.y + a.rect.h);
-      const w0 = tagBox(ctx, x0, y, look.label, false).w, x = !ar ? x0 : Math.min(Math.max(x0, ar.rect.x + 2 + w0 / 2), ar.rect.x + ar.rect.w - 2 - w0 / 2);
+      const w0 = tagBox(ctx, x0, y, look.label, false, look.fit).w, x = !ar ? x0 : Math.min(Math.max(x0, ar.rect.x + 2 + w0 / 2), ar.rect.x + ar.rect.w - 2 - w0 / 2);
       const at = (dx, dy, compact) => {
-        const box = tagBox(ctx, x + dx, y + dy, look.label, compact), foot = tagFootprint(ctx, box, look.badge, compact);
+        const box = tagBox(ctx, x + dx, y + dy, look.label, compact, look.fit), foot = tagFootprint(ctx, box, look.badge, compact);
+        if (covered(foot)) return null;
         if (!force && touches(foot)) return null;
         // Every place tried keeps within the area's sides, a slide's too (#4376 review): none there, hover or focus.
         if (!force && ar && (box.x < ar.rect.x || box.x + box.w > ar.rect.x + ar.rect.w)) return null;
@@ -682,7 +687,7 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
         return box;
       };
       for (const [dy, compact] of tries) { const b = at(0, dy, compact); if (b) return b; }
-      const [dy0, c0] = tries[0], b0 = tagFootprint(ctx, tagBox(ctx, x, y + dy0, look.label, c0), look.badge, c0);
+      const [dy0, c0] = tries[0], b0 = tagFootprint(ctx, tagBox(ctx, x, y + dy0, look.label, c0, look.fit), look.badge, c0);
       for (const o of keep.filter((k) => overlaps(b0, k))) {
         for (const dx of [o.x - (b0.x + b0.w) - 2, o.x + o.w - b0.x + 2]) if (Math.abs(dx) <= b0.w) { const b = at(dx, dy0, c0); if (b) return b; }
       }
@@ -899,7 +904,8 @@ export function OfficeKey({ pal }) {
  * in the zoom stack (a Hub room's office: the scene right under the room's header, M-3533 #4370);
  * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `cardName(name)` a card's
  * title instead of the person's name (the room's: the agent's own, without the owner its scene label carries); `officesKey` read the offices
- * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
+ * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed); M-3533 R2b:
+ * `cardPhoto(name)` the src of a card's identity-card picture (the room's), or null: the figure.
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -909,7 +915,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -1704,6 +1710,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
     if (!s.overview) {
+      // #4379 review: an open card (beside its person, or a bottom sheet) covers part of the scene: a name tag under it is
+      // left out whole, never a fragment showing past its edge. Its box in bitmap px, as the canvas lies on the page.
+      const cardNow = cardEl.current, cvNow = canvasRef.current;
+      if (cardNow && cvNow && typeof cardNow.getBoundingClientRect === "function" && typeof cvNow.getBoundingClientRect === "function") {
+        const r = cardNow.getBoundingClientRect(), c = cvNow.getBoundingClientRect();
+        s.part.cover = r.width > 0 && r.height > 0 ? { x: (r.left - c.left) * s.ratio, y: (r.top - c.top) * s.ratio, w: r.width * s.ratio, h: r.height * s.ratio } : null;
+      } else s.part.cover = null;
       const e0 = clocked(""), kc = keepClearOf(canvasRef.current, v);
       const moved = drawPart(ctx, s.part, a, ox, oy, ms, still, tipNow.current, kc.length ? { ...e0, keepClear: kc } : e0, false, null, s.bubbleHits);
       if (seenClips) clipClocks.current.prune(seenClips);
@@ -2511,7 +2524,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         model=${cardModel({ node: cardOf.node, lv, levels: wordsOf(cardOf.skin), share: !onOpen, rows: cardRows ? cardRows(cardOf.node.name) : null, display: cardName ? cardName(cardOf.node.name) : "",
           state: stateOf(cardOf.node), now: nowOf(cardOf.node),
           where: [cardOf.office || (custom ? custom.name : to("allOffice")), cardOf.area].filter(Boolean).join(" · ") })}
-        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { cardEl.current = el; placeCard(); }}
+        avatar=${drawAvatar} sheet=${phone || size.w < SHEET_W} place=${(el) => { const was = cardEl.current; cardEl.current = el; placeCard();
+          // #4379 review: the tags it covers (or uncovers) are judged at the next frame; a still scene draws one now.
+          if (was !== el && scene.current) { scene.current.dirty = true; const go = () => (still ? draw(0) : loop.current?.wake()); if (typeof requestAnimationFrame === "function") requestAnimationFrame(go); else go(); } }}
         onChat=${onOpen ? () => { const n = cardOf.node.name; setCard(null); open(n); } : null} onFind=${findCard} onClose=${closeCard}
         onReact=${play ? (kind) => {
           const n = cardOf.node.name;
@@ -2532,7 +2547,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null}
+        photo=${cardPhoto ? cardPhoto(cardOf.node.name) : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;

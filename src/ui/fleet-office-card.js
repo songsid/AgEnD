@@ -330,14 +330,29 @@ function drawPortraitAvatar(cv, im, W) {
  * sheet (a phone); `place(el)`: the page positions the popover (beside the person, following them); `onChat` (none on
  * a share link), `onFind`, `onClose`; M-3293: `onReact(kind)` — Pat and Feed (only where play is on; none on a share
  * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`; M-3533: `action`
- * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat).
+ * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat);
+ * M-3533 R2b: `photo` (src) the agent's identity-card picture (a Hub room's), drawn as the pack portrait is, in place of
+ * the figure once it loads; the figure while it loads or when it fails.
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
+  // `action`: one, or a list (M-3565: a Hub room's "@ it" and "Chat with it one-to-one"); the first is the primary button.
+  const actions = Array.isArray(action) ? action.filter(Boolean) : action ? [action] : [];
+  const actionButtons = actions.map((a, i) => html`<button key=${i} type="button" class=${`btn btn-sm ${i === 0 ? "btn-primary " : ""}oo-card-action`} title=${a.title || undefined} aria-label=${a.title || undefined} onClick=${a.run}>${a.label}</button>`);
   const box = useRef(null), canvas = useRef(null), bgCanvas = useRef(null), swipe = useRef(null);
   const [picRev, setPicRev] = useState(0);
   const spec = useMemo(() => resolveCardSpec(packCard), [packCard]);
   const avatarPx = spec ? spec.avatarPx : 56;
   const wantPortrait = !!(spec && spec.layout.avatarSource === "portrait" && portrait && typeof picture === "function");
+  const [photoIm, setPhotoIm] = useState(null);
+  useEffect(() => {
+    setPhotoIm(null);
+    if (!photo || typeof Image === "undefined") return undefined;
+    let live = true;
+    const im = new Image();
+    im.onload = () => { if (live) setPhotoIm(im); };
+    im.src = photo;
+    return () => { live = false; };
+  }, [photo]);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -357,6 +372,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   useEffect(() => {
     const cv = canvas.current;
     if (!cv) return;
+    if (photoIm && drawPortraitAvatar(cv, photoIm, avatarPx)) return;
     if (wantPortrait) {
       const im = picture(portrait, () => setPicRev((n) => n + 1));
       if (im && drawPortraitAvatar(cv, im, avatarPx)) return;
@@ -390,6 +406,11 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   }, [spec, picture, packScale, picRev, sheet]);
 
   useEffect(() => { place && place(box.current); });
+  // Closed (unmounted): the page hears it, as it heard the card open — a scene drawn around the card (the tags it covered,
+  // #4379 review) is drawn again without it, reduced motion included.
+  const placeNow = useRef(place);
+  placeNow.current = place;
+  useEffect(() => () => { if (placeNow.current) placeNow.current(null); }, []);
   // A bottom sheet closes on a swipe down (60 px or more).
   const down = (e) => { if (sheet) swipe.current = e.clientY; };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };
@@ -424,7 +445,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
-        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
+        ${actionButtons}
       </div>
     </div>`;
   }
@@ -482,7 +503,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
           <button type="button" class="btn btn-sm btn-ghost oo-card-feed" onClick=${() => onReact("feed")}>${tc("feed")}</button>` : null}
         ${onFind ? html`<button type="button" class="btn btn-sm btn-ghost oo-card-find" onClick=${onFind}>${tc("find")}</button>` : null}
         ${onChat ? html`<button type="button" class="btn btn-sm btn-primary oo-card-chat" title=${tc("chatWindow", m.name)} aria-label=${tc("chatWindow", m.name)} onClick=${onChat}>${tc("chat")}</button>` : null}
-        ${action ? html`<button type="button" class="btn btn-sm btn-primary oo-card-action" title=${action.title || undefined} aria-label=${action.title || undefined} onClick=${action.run}>${action.label}</button>` : null}
+        ${actionButtons}
       </div>`;
     }
     return null;

@@ -31,7 +31,7 @@ import { notifyStore, notifySupport, setNotify } from "/assets/app-needs.js";
 import { HubNotifyToggle } from "./hub-room-notify.js";
 import { createHubButtonActions } from "./hub-button-actions.js";
 import { linkRoomsU2Css } from "./hub-room-new-strings.js";
-import { workingLine } from "./hub-room-working.js";
+import { directStatus, workingLine } from "./hub-room-working.js";
 import { roomSource, mountSourceAuthor } from "./hub-room-source.js";
 import { countsLine } from "./hub-room-list.js";
 import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarriesFiles, putBackText, roomTakesFiles, uploadChosen, useFileDrop } from "./hub-attachments.js";
@@ -197,7 +197,7 @@ export function toThreadMessages(messages, { meId, ids, direct = false, expanded
     const quoted = quotedId ? byId.get(quotedId) : null;
     const state = askState(askOf(m, messages)), sourceBadge = roomSource(author);
     out.push({ boot: BOOT, id, role: kind === "person" && !author.via ? "user" : "agent", sender: authorLine(author, mine, direct), ts: iso(m.at), text: String(m.text || ""), mine,
-      ...(sourceBadge ? { sourceBadge } : {}),
+      ...(sourceBadge ? { sourceBadge } : {}), ...(kind === "agent" && author.id ? { authorMember: String(author.id) } : {}),
       ...(kind === "person" && !mine && !author.via ? { person: true } : {}),   // Lumen (spec §3): someone else's words, a bubble on the left
       roomMessage: m.id, ...(mine && state?.delivery ? { delivery: state.delivery } : {}),
       // M-3125: a post's files, as the 1:1 chat maps them (images inline through the Hub's own route; HTML gets its preview card).
@@ -351,6 +351,8 @@ export function createRoomStore(roomId, { client, meId = "", pinsOn = false } = 
     expand(messageId) { if (typeof messageId === "string" && !expanded.has(messageId)) { expanded.add(messageId); changed(); } },
     /** Who is working on an answer in this room now (its answer row has no text yet): their names, in arrival order. */
     working() { return this.workers().map((w) => w.name); },
+    /** M-3596: the answer rows still without text (a 1:1 room's open question: working or queued), for its status line. */
+    pendingAnswers() { return st.messages.filter((m) => m.answerTo && !m.text && (m.stage === "working" || m.stage === "queued")); },
     /** The same, as members ({ kind, name }) — what workingLine() words (the room assistant by its own name). */
     workers() { return st.messages.filter((m) => m.answerTo && !m.text && m.stage === "working" && m.author?.name).map((m) => ({ kind: m.author.kind === "assistant" ? "assistant" : "agent", name: String(m.author.name) })); },
     /**
@@ -404,7 +406,7 @@ function useMembersPanel() {
  * Fleet chat's thread (panel-hub.js's HubThread, given as `Thread`: the thread wiring is one), the room's composer, and
  * the members panel on the right. `client`: the Hub client; `me`: { id } from the session.
  */
-export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, goList = () => {}, onLeft = () => {}, onMe = () => {}, pinsOn = false,
+export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", rooms = [], openRoom = () => {}, openDirect = null, goList = () => {}, onLeft = () => {}, onMe = () => {}, pinsOn = false,
   view = "chat", onView = () => {}, officeHref = (v) => v }) {
   const store = useMemo(() => createRoomStore(roomId, { client, meId, pinsOn }), [roomId]);
   const [pinsOpen, setPinsOpen] = useState(false);
@@ -531,7 +533,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const labels = () => [hroom("mentionAll"), hroom("mentionAssistant"), ...(store.detail()?.members || []).filter((m) => m.kind !== "assistant").map((m) => `@${m.name}`)];
   const extra = {
     isUser: (x) => x.mine === true, canReply: () => !store.closed(),
-    senderBadge: mountSourceAuthor,
+    // M-3565: an agent's name opens its member card (its "@ it here", "Chat with it one-to-one"); its source in the card.
+    senderBadge: (el, msg) => mountSourceAuthor(el, msg, (id) => focusMember(id)),
     mentionLabels: labels,
     // A line's one action: 「展開其餘 N 則」, or 「請房間助理整理」 (spec §10: the same as sending 「@房間助理 整理上面的回答」).
     statusAction: (arg) => { if (String(arg).startsWith("summarise:")) { if (!store.closed()) void store.send(hroom("summarisePrompt"), { mentions: ["assistant"] }); } else store.expand(arg); },
@@ -594,9 +597,31 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   // The Fleet chat's working bar (Lumen): 「Notes 正在處理」, or 「2 個 Agent 正在處理」 — the answer row only when it arrives.
   // Who: this room's answers being worked on; the words: workingLine() (#3857), the one place that says it.
   const working = workingLine({ members: store.workers().map((w) => ({ ...w, presence: "working" })) });
+  // M-3596: a 1:1 room says what its own question is doing — the Fleet chat's bar: working (with the time since the agent got
+  // it), or waiting and why (behind another question, busy, paused, offline, or just sent). The asker's own questions only.
+  const statusOf = (now) => room.kind === "direct" && typeof store.pendingAnswers === "function"
+    ? directStatus(store.pendingAnswers(), { name: room.agent?.name || room.name, presence: room.agent?.presence, reported: room.agent?.reported === true }, now) : null;
+  const status = statusOf(Date.now());
+  // M-3565: a message's agent name → its card in the members panel: the panel opened (a phone's sheet), the card open.
+  const [focus, setFocus] = useState(null), wideNow = useRef(wide);
+  wideNow.current = wide;   // read when pressed: the thread keeps the sender hook from its first render
+  const focusMember = (id) => {
+    const m = (store.detail()?.members || []).find((x) => x && x.kind === "agent" && x.id === id);
+    if (!m) return false;
+    if (wideNow.current) setRail(true); else setSheet(true);
+    setFocus({ id, n: Date.now() });
+    return true;
+  };
+  // M-3565: 「和它一對一對話」 (the member card, the office card) — the viewer's own chat with the agent: the one they have,
+  // else a new one (openDirect, the page's: as 新對話 starts it). Before, with no chat yet it did nothing.
+  const chatWith = (m) => {
+    if (typeof openDirect === "function") { setSheet(false); return openDirect(m); }
+    const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id);
+    if (direct) openRoom(direct.id);
+  };
   const panel = Panel && detail ? html`<${Panel} client=${client} roomId=${roomId} detail=${detail}
         onMention=${(m) => { setSheet(false); insertMention(m); }}
-        onOpenChat=${(m) => { const direct = rooms.find((r) => r.kind === "direct" && r.agent?.exposureId === m.id); if (direct) openRoom(direct.id); }}
+        onOpenChat=${chatWith} focus=${focus}
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
   return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined}>
     <${LightboxHost} />
@@ -621,7 +646,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
       ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []}
-        onMention=${(m) => { mentionNext.current = m; onView("chat"); }} more=${officeMore} onMore=${setOfficeMore} />` : null}
+        onMention=${(m) => { mentionNext.current = m; onView("chat"); }} onOpenChat=${chatWith} more=${officeMore} onMore=${setOfficeMore} />` : null}
       ${!inOffice && group && typeof room.purpose === "string" ? html`<${RoomPurposeCard} initial=${firstCharacter(title || "?") || "?"} purpose=${room.purpose}
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
@@ -633,7 +658,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
          M-3533 R1: the office shows none (design §2.1: no message box under it; to ask, back to Chat). It stays mounted, hidden,
          so a draft and the mentions picked into it are still there when Chat comes back. */ ""}
       ${html`<div class="dock hub-dock" data-trust="composer" hidden=${inOffice}><div class="dock-col">
-        ${working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
+        ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} statusOf=${statusOf} />` : null)
+          : working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
         <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
       </div></div>`}
@@ -643,4 +669,22 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
     ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
       onClose=${() => setSettings(null)} onChanged=${() => { void store.refresh(); }} />` : null}
   </div>`;
+}
+
+/** M-3596: a 1:1 room's status line — the Fleet chat's work bar (working, its elapsed time ticking; or waiting, and why). */
+function DirectStatusBar({ statusOf }) {
+  // Worked out again on every tick (its elapsed time; a hand-off the agent never took turns back to waiting after the grace).
+  const [, tick] = useState(0);
+  const status = statusOf(Date.now());
+  const kind = status ? status.kind : null;
+  useEffect(() => {
+    if (kind !== "working") return undefined;
+    const h = setInterval(() => tick((n) => n + 1), 1000);
+    return () => clearInterval(h);
+  }, [kind]);
+  if (!status) return null;
+  if (status.kind !== "working") return html`<${WorkBarView} kind="awaiting" label=${status.text} note="" noteTitle="" />`;
+  const R = globalThis.AgendChatRender;
+  const elapsed = R && typeof status.since === "number" ? R.formatElapsed(Math.max(0, Date.now() - status.since)) : "";
+  return html`<${WorkBarView} kind="working" label=${status.text} elapsed=${elapsed} elapsedTitle=${hroom("elapsedTitle")} />`;
 }

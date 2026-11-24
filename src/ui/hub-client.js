@@ -638,6 +638,9 @@ export function createHubWebClient({ fetchImpl = (...a) => fetch(...a), readTime
     // M-3162 / M-3161: Administration → Overview's counts for Today or 7 days, in the viewer's time zone (counts only).
     adminDashboard({ range = "7d", timeZone = "UTC" } = {}) { return call("GET", `/hub/v1/admin/dashboard?range=${encodeURIComponent(range)}&timeZone=${encodeURIComponent(timeZone)}`); },
     // M-3141 / M-3138 (versions spec §3.1): the Hub's recommended AgEnD version — read, preview (nothing saved), save.
+    // M-3592: how long a sign-in lasts (Administration → Sign-in).
+    sessionLimits() { return call("GET", "/hub/v1/admin/session-limits"); },
+    saveSessionLimits(input) { return call("PUT", "/hub/v1/admin/session-limits", input); },
     recommendedVersion() { return call("GET", "/hub/v1/admin/recommended-version"); },
     previewRecommendedVersion(input) { return call("POST", "/hub/v1/admin/recommended-version/preview", input); },
     saveRecommendedVersion(input) { return call("PUT", "/hub/v1/admin/recommended-version", input); },

@@ -49,8 +49,8 @@ describe("which fences get a card (§6.1)", () => {
     const THREAD = readFileSync(join(UI, "shared", "chat-thread.js"), "utf8");
     // #1630: the same rule, written as a flag; the emoji lookup is the page's own (never message text).
     // #2053: through the memo; its one caller passes the server's role, and the memo hands it on unchanged.
-    // M-3092: + a Hub room's mention labels. + the task cards a person's own message names (a person's words only: the role "user").
-    expect(THREAD).toContain('renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.(), x.role === "user" ? opts.taskRefs : undefined)');
+    // M-3092: + a Hub room's mention labels. + the task cards a person's message or an agent's reply names (the roles "user" and "agent": HTML cards stay the agent's alone, the chip is data).
+    expect(THREAD).toContain('renderedMarkdown(x.text, x.role === "agent", opts.emojis, opts.mentions, opts.mentionLabels?.(), x.role === "user" || x.role === "agent" ? opts.taskRefs : undefined)');
     // A message this page is still sending is a person's own text: never cards (a literal false, not a role).
     expect(THREAD).toContain('renderedMarkdown(x.text, false, opts.emojis, opts.mentions, opts.mentionLabels?.(), opts.taskRefs)');
     expect(THREAD.match(/renderedMarkdown\(/g)?.length, "defined once, called for a message and a pending send").toBe(3);

@@ -633,6 +633,33 @@ describe("the Office canvas on the page", () => {
     const phone = css.slice(css.indexOf(".oc-office > .oc-bar { padding: var(--s-2) var(--s-3); }"));
     expect(phone.slice(0, 600)).toContain(".oo-mini { display: none; }");
   });
+  // #4379 review: an open card hides the tags it covers; closed, they are drawn again by themselves — with reduced motion
+  // too (a still scene draws only on a change: the card's closing is one), never left out until something else happens.
+  it("reduced motion: the tags a card covers are left out while it is open, and drawn again when it closes", async () => {
+    const real = (globalThis as any).matchMedia, rect = proto.getBoundingClientRect;
+    (globalThis as any).matchMedia = (q: string) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} });
+    // The card's box covers the whole stage (the canvas is at the page's 0, 0).
+    proto.getBoundingClientRect = function () { return this.classList?.contains("oo-card") ? { left: 0, top: 0, right: 960, bottom: 600, width: 960, height: 600 } : rect.call(this); };
+    try {
+      studio(); await office();
+      const cv = p.root.querySelector(".oo-canvas");
+      const names = () => { const c = cv._ctx.calls, f = c.slice(c.map(([k]: any) => k).lastIndexOf("clearRect"));
+        return f.filter((x: any) => x[0] === "fillText").map((x: any) => String(x[1][0])).filter((t: string) => ["atlas", "quill", "sage"].includes(t)); };
+      const before = names().sort();
+      expect(before.length, "no card: tags drawn").toBeGreaterThanOrEqual(2);
+      const v = shown(), nodes = [{ name: "atlas", state: "idle" }, { name: "quill", state: "working" }, { name: "sage", state: "paused" }].map((n) => ({ ...n, i: { name: n.name } }));
+      const seat = Z.zonesLayout(K.STUDIO_PACK, nodes).seats.get("quill"), s = CV.toScreen(v, seat.x, seat.y - 20);
+      fire(cv, "click", { clientX: s.x, clientY: s.y }); await settle(4);
+      expect(p.root.querySelector(".oo-card .oo-card-instance")?.textContent).toBe("quill");
+      await new Promise((r) => setTimeout(r, 40)); await settle(2);
+      expect(names(), "open, over the whole stage: no tag drawn").toEqual([]);
+      fire(cv, "click", { clientX: s.x, clientY: s.y }); await settle(4);           // the same person again: closed
+      expect(p.root.querySelector(".oo-card")).toBeNull();
+      await new Promise((r) => setTimeout(r, 40)); await settle(2);
+      expect(names().sort(), "closed: every tag back, with nothing else happening").toEqual(before);
+    } finally { (globalThis as any).matchMedia = real; proto.getBoundingClientRect = rect; }
+  });
+
   it("draw order: a depth \"y\" item between the people by base y; the foreground after people, furniture and props, before the tags and bubbles", async () => {
     const real = (globalThis as any).matchMedia, was = (globalThis as any).Image;
     (globalThis as any).matchMedia = (q: string) => ({ matches: /reduce/.test(q), addEventListener() {}, removeEventListener() {} });

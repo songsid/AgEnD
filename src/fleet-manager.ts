@@ -1,3 +1,4 @@
+import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
 import { scopedDefaultModel } from "./model-defaults.js";
@@ -898,6 +899,7 @@ export interface ModelCatalog {
  * a bounded per-prompt timeout, consumed exactly once.
  */
 interface NonceButtonEntry {
+  contactChange?: { plan: PreparedContactChange; current(): boolean };
   /**
    * #1490 row 27: the lifecycle of `instanceName` the prompt was offered for (lifecyclePin), taken when it is posted.
    * A Restart acts only while it still holds: a stop, restart or same-name replacement since makes the button stale.
@@ -2688,6 +2690,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           boundHub: () => this.hubMemberBinding?.(this.dataDir)?.hubId ?? null,
           agents: () => this.hubMemberAgents(),
           catalogAgents: () => this.hubCatalogAgents(),
+          pictureSources: agent => this.hubPictureSources(agent),
           sharingNotice: value => this.recordHubSharingNotice(value),
           attachSharing: controller => { this.hubSharingController = controller; },
           maxCrossInstanceMessageBytes: () => this.fleetConfig?.defaults?.max_cross_instance_message_bytes,
@@ -2835,6 +2838,47 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         : isNativeExecInstance(config) ? { ...base, shareable: false as const, reason: "remote-windows" as const }
         : { ...base, shareable: true as const };
     });
+  }
+
+  /**
+   * M-3533 R2b: an agent's pictures for the Hub's room offices, as this Fleet shows them (hub-office-visit.md "Decided while
+   * building"). The disc is the sidebar's (webIdentityImage + instance-nav.js avatarOf): a profile picture, else its theme
+   * avatar while the owner shows agents' themes (fx.show), else its bot's avatar, else a Discord custom persona emoji; a
+   * Unicode emoji or an initial is no picture (the catalog's emoji stays). The portrait is the identity card's (a person's,
+   * else the agent's own). Cheap keys only: the bytes are read when a key changes (hub/member/agent-pictures.ts).
+   */
+  private hubPictureSources(name: string): import("./hub/member/agent-pictures.js").MemberPictureSources {
+    let disc: import("./hub/member/agent-pictures.js").MemberPictureSource | null = null;
+    let portrait: import("./hub/member/agent-pictures.js").MemberPictureSource | null = null;
+    try {
+      const profileFile = profileIdentities(this.dataDir).get(name)?.avatar_path;
+      let profileVersion: string | null = null;
+      if (profileFile && imageMimeForFile(profileFile)) {
+        try { profileVersion = Math.floor(statSync(join(this.dataDir, "avatars", basename(profileFile))).mtimeMs).toString(36); } catch { /* removed */ }
+      }
+      let theme: ReturnType<ThemeStore["get"]>["theme"] = { v: 1 };
+      try { theme = this.themeStore.get(name).theme; } catch { /* unreadable themes: none */ }
+      let themesShown = true;
+      try { themesShown = (this.webPrefs.read(OPERATOR).values as Record<string, unknown>)["fx.show"] !== false; } catch { /* the default: shown */ }
+      // The key names the file and its version (Prism #4393: two agents' uploads may share an mtime).
+      if (profileVersion) disc = { key: `profile:${basename(profileFile!)}:${profileVersion}`, load: () => this.webImage("avatar", name) };
+      else if (themesShown && theme.avatar) { const id = theme.avatar; disc = { key: `theme:${id}`, load: () => this.themeStore.asset(name, id) }; }
+      else {
+        const bots = this.webBots(), connection = bots.own.get(name) ?? bots.speaking.get(name);
+        const owner = connection ? this.botOwner(connection) : null;
+        const source = connection && owner?.adapter.fetchBotAvatar ? this.botAvatarSource(connection, owner) : null;
+        const bot = source ? this.webImageCache("avatars").peek(source.key, source.load) : null;
+        if (source && bot) disc = { key: `${source.key}:${bot.version}`, load: () => this.webImageCache("avatars").read(source.key) };
+        else {
+          const emoji = normalizeEmoji((this.ownInstanceConfig(name)?.status_emojis as Record<string, unknown> | undefined)?.delivered);
+          const cached = emoji?.kind === "custom" ? this.webImageCache("emoji").read(`emoji:${emoji.id}`) : null;
+          if (emoji?.kind === "custom" && cached) disc = { key: `emoji:${emoji.id}:${cached.version}`, load: () => this.webImageCache("emoji").read(`emoji:${emoji.id}`) };
+        }
+      }
+      const person = humanCards(this.dataDir).get(name)?.portrait ?? null, own = theme.card?.portrait ?? null;
+      if (person || own) portrait = { key: person ? `card:${person}` : `agent-card:${own}`, load: () => cardPicture({ dataDir: this.dataDir, themeStore: this.themeStore }, name, "portrait") };
+    } catch { /* unreadable: no pictures */ }
+    return { disc, portrait };
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */
@@ -5793,6 +5837,66 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     this.emitSseEvent("contact-auth", { instance: name, revision: parsed.data.revision,
       originRevision: service.host.store.originRevision(name) });
     return this.contactPermissions(name, actor);
+  }
+
+  /** General can propose only. The platform callback supplies the human actor. */
+  async requestContactChange(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }> {
+    if (!callerCurrent() || this.fleetConfig?.instances[requester]?.general_topic !== true) throw Error("general-only");
+    if (this.hubContactRestricted(requester)) throw Error("hub-contact-restricted");
+    const pending = [...this.pendingNonceButtons.values()].filter(e => e.prefix === "contact-change:");
+    if (pending.length >= 64 || pending.filter(e => e.generalName === requester).length >= 8) throw Error("contact-proposal-limit");
+    const service = this.contactService();
+    const plan = prepareContactChange(raw, { service, label: n => this.fleetConfig?.instances[n]?.display_name || this.contactRoom(n)?.displayName || n, timeZone: () => this.usageZone(), mode: n => { const room = this.contactRoom(n); return room ? room.restrictedMode ? "restricted" : "legacy" : undefined; },
+      generation: n => this.contactGeneration(n), modeAdmin: (n, p) => this.contactAdminOf(n, p),
+      write: (n, value, p) => this.writeContactPermissions(n, value, p), decide: (id, value, p) => this.decideContactAuthorization(id, value, p) });
+    const targetAdapter = this.contactAdapter(plan.target);
+    if (!targetAdapter || !["discord", "telegram"].includes(targetAdapter.type)) throw Error("contact-proposal-use-web");
+    const routes = Object.keys(this.fleetConfig?.instances ?? {}).flatMap(n => {
+      const route = this.settingsGeneralRoute(n, targetAdapter.type as "discord" | "telegram", new Set());
+      return route && route.adapterId === targetAdapter.id && route.adapter === targetAdapter ? [{ name: n, ...route }] : [];
+    });
+    if (routes.length !== 1) throw Error("contact-proposal-route-unavailable");
+    const route = routes[0]!, requesterPin = this.lifecyclePin(requester), deadline = performance.now() + 5 * 60_000;
+    let retired = false;
+    const current = (): boolean => !retired && !this.shuttingDown && performance.now() < deadline && callerCurrent() && requesterPin()
+      && this.fleetConfig?.instances[requester]?.general_topic === true && !this.hubContactRestricted(requester)
+      && route.current() && this.contactAdapter(plan.target) === targetAdapter && this.adapters.get(targetAdapter.id) === targetAdapter && plan.current();
+    if (!current()) throw Error("conflict");
+    const posted = this.postNonceButtonPromptOrThrow({ prefix: "contact-change:", alertType: "clear_confirm", instanceName: route.name,
+      adapter: route.adapter, adapterId: route.adapterId, chatId: route.chatId, threadId: route.topic,
+      message: [t("contactProposal.title"), ...plan.summary].join("\n"),
+      choices: [{ action: "confirm", label: t("contactProposal.confirm") }, { action: "cancel", label: t("contactProposal.cancel") }],
+      expiredText: t("contactProposal.expired"), timeoutMs: 5 * 60_000,
+      extra: { generalName: requester, contactChange: { plan, current } } });
+    const retire = (nonce: string): void => { const entry = this.pendingNonceButtons.get(nonce); if (!entry) return;
+      this.pendingNonceButtons.delete(nonce); if (entry.timer) clearTimeout(entry.timer);
+      void this.retireNonceButtons(entry, entry.messageId ?? "", t("contactProposal.expired")); };
+    void posted.then(nonce => { if (retired || !current()) retire(nonce); }, () => {});
+    try { const nonce = await withinBudget(posted, performance.now() + 5000);
+      if (!current()) { retire(nonce); throw Error("conflict"); }
+      return { status: "awaiting_platform_admin_confirmation" };
+    } catch (error) { retired = true; throw error; }
+  }
+
+  private async handleContactChangeCallback(data: AdapterCallbackData, adapterId: string, adapter?: ChannelAdapter): Promise<boolean> {
+    if (!data.callbackData.startsWith("contact-change:")) return false;
+    const person = data.userId && adapter && this.adapters.get(adapterId) === adapter && adapter.id === adapterId
+      && (adapter.type === "discord" || adapter.type === "telegram") && data.userId !== adapter.getBotUserId?.()
+      ? { platform: adapter.type as "discord" | "telegram", adapterId, userId: data.userId, label: data.username || data.userId } : null;
+    const claimed = this.consumeNonceCallback("contact-change:", /^contact-change:([0-9a-f]{32}):(confirm|cancel)$/, data, adapterId, adapter, undefined,
+      (_user, entry) => !!person && !!entry.messageId && !this.webPromptClicks.has(data) && entry.contactChange?.plan.authorized(person) === true);
+    if (claimed === null) return false;
+    if (claimed === "consumed") return true;
+    const { entry, action } = claimed;
+    const stillCurrent = entry.lifecycleCurrent?.() === true && entry.contactChange?.current() === true;
+    let text = t(stillCurrent ? "contactProposal.cancelled" : "contactProposal.expired");
+    if (action === "confirm" && stillCurrent) {
+      try { if (!person) throw Error("forbidden");
+        entry.contactChange!.plan.apply(person); text = entry.contactChange!.plan.success;
+      } catch { text = t("contactProposal.failed"); }
+    }
+    await this.retireNonceButtons(entry, entry.messageId ?? data.messageId, text);
+    return true;
   }
 
   contactAuthorization(id: string, actor: ContactPerson) {
@@ -19293,7 +19397,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     choices: Array<{ action: string; label: string; confirmation?: import("./backend/types.js").RemoteCardOption["confirmation"] }>;
     expiredText: string;
     deliver?: (choices: Choice[]) => Promise<PrivateSentMessage>;
-    extra?: Pick<NonceButtonEntry, "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
+    extra?: Pick<NonceButtonEntry, "contactChange" | "sessionOomRetry" | "loginProfile" | "pendingChangeId" | "confirmationCurrent" | "confirmationAdmin" | "confirmationStop" | "requesterUserId" | "publicExposureId" | "dashboardOwner" | "generalName" | "promptKind" | "authChannelId" | "allowAnyUser" | "tipId" | "classicGroupId" | "classicUserId" | "classicScope" | "classicReplyTo" | "assistFor" | "remoteCard">;
     timeoutMs?: number;
     /** #2675: an action the dashboard offers beyond the platform's buttons (a typed answer, which the platform takes as a reply). */
     webInput?: { action: string; label: string } | null;
@@ -19554,6 +19658,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (await this.handleTipDismiss(data, adapterId, adapter)) return true;
     if (await this.handleTipUnlock(data, adapterId, adapter)) return true;
     if (await this.handleLoginBackendSelect(data, adapterId, adapter)) return true;
+    if (await this.handleContactChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleSettingsChangeCallback(data, adapterId, adapter)) return true;
     if (await this.handleKiroMigrateCallback(data, adapterId, adapter)) return true;
     if (await this.handleHubSharingCallback(data, adapterId, adapter)) return true;

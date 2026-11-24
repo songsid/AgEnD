@@ -222,7 +222,9 @@ it("keeps direct-chat grants, receipts and old history shapes alongside seam-1 m
   const detail = (await r.call(a, "GET", `/hub/v1/rooms/${id}`)).json;
   expect(detail.me.id).toBe(personKeyString(alex)); expect(detail.members[1].canAsk).toBe(true);
   const page = (await r.call(a, "GET", `/hub/v1/rooms/${id}/messages`)).json;
-  expect(page).toMatchObject({ messages: [{ id: ask.json.id, text: "Direct question" }], entries: [{ messageId: ask.json.id, question: "Direct question" }], more: false });
+  // M-3596: the open question's answer row (no text yet) rides along: queued, nobody ahead, until the agent is handed it.
+  expect(page).toMatchObject({ messages: [{ id: ask.json.id, text: "Direct question" }, { id: `${ask.json.id}:answer`, answerTo: ask.json.id, text: "", stage: "queued", ahead: 0 }],
+    entries: [{ messageId: ask.json.id, question: "Direct question", ahead: 0 }], more: false });
   expect((await r.call(a, "POST", `/hub/v1/rooms/${id}/read`, { upTo: ask.json.id })).status).toBe(200);
   const stop = new AbortController(), deadline = setTimeout(() => stop.abort(), 5000);
   try {

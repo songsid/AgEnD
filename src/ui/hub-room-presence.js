@@ -93,16 +93,19 @@ export function presenceDot(presence, reason) {
   return DOT_CLASS[dot] ?? "off";
 }
 
+const cmp = (a, b) => { const x = String(a ?? ""), y = String(b ?? ""); return x < y ? -1 : x > y ? 1 : 0; };
+
 /**
  * The Agents list order (spec §5): working, then idle (待命), paused, offline,
- * reply-later; stable by name within each group. Only kind "agent"/"later"
+ * reply-later; by name within each group, two agents of one name by their owner's
+ * name, then id (R2a), so they never swap between reads. Only kind "agent"/"later"
  * members sort here — people have their own row and the room assistant has its.
  */
 export function sortAgents(members) {
   return members
     .filter((m) => m.kind === "agent" || m.kind === "later")
     .map((m, i) => [m, i])
-    .sort(([a, ai], [b, bi]) => groupIndex(a.presence) - groupIndex(b.presence) || (a.name < b.name ? -1 : a.name > b.name ? 1 : ai - bi))
+    .sort(([a, ai], [b, bi]) => groupIndex(a.presence) - groupIndex(b.presence) || cmp(a.name, b.name) || cmp(a.owner?.name, b.owner?.name) || cmp(a.id, b.id) || ai - bi)
     .map(([m]) => m);
 }
 
@@ -120,4 +123,13 @@ export function headerCounts(members) {
 /** The first `limit` rows shown, the rest folded behind "… 其餘 N 個". */
 export function collapse(list, limit = 8) {
   return { shown: list.slice(0, limit), rest: Math.max(0, list.length - limit) };
+}
+
+/**
+ * M-3533 R2b: an agent's picture in this room — for the room's members only; `?v=` is the hash the room shows, so a new
+ * picture is a new address. null when there is none (or the room or agent is unknown).
+ */
+export function agentPictureSrc(roomId, exposureId, slot, hash) {
+  return roomId && exposureId && typeof hash === "string" && /^[a-f0-9]{64}$/.test(hash)
+    ? `/hub/v1/rooms/${encodeURIComponent(roomId)}/agents/${encodeURIComponent(exposureId)}/picture/${slot}?v=${hash}` : null;
 }
