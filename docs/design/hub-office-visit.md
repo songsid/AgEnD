@@ -393,6 +393,10 @@ Settled with the builder during the build; where one differs from the text above
   line, so everyone in a room has one scale; captures at the pack's own scale crossed room edges and labels. The
   card shows the portrait, else the set's standing pose, else the figure.
 
+- **Scope from 2026-11-24 (the owner).** The room office stays at its basic feature set. New features built for
+  the Fleet's office are not brought to the room office unless the owner asks. A fix in shared code may land in
+  both. Own characters (R2c) stay.
+
 ## Questions for the owner
 
 **Answered by the owner on 2026-11-23: all six as recommended** (「6 題都照建議」, relayed by the leader). The
