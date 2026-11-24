@@ -216,6 +216,22 @@ describe("All offices on the page", () => {
   /** The overview's layout as the page makes it for `n` zones tiles (each 1280×720). */
   const zonesLay = (n: number) => O.tileLayout(zone(n), STAGE);
 
+  it("the home map: a tile entered (its label, or a click on it) is for this visit; Back returns; a switcher pick is kept", async () => {
+    offices = { rev: 2, offices: TWO };
+    await office();
+    const back = () => p.root.querySelector(".oo-back-all");
+    expect(back()).toBeNull();                                                   // on the map already
+    p.root.querySelectorAll(".oo-tile-label")[0].click(); await settle(6);
+    expect([sw().value, labels().length, localStorage.getItem("agend_org_office")]).toEqual(["front", 0, null]);
+    expect(back().textContent).toBe("← All offices");
+    back().click(); await settle(6);
+    expect([sw().value, labels().length, back()]).toEqual(["*all", 3, null]);
+    await p.unmount(); await office();
+    expect(sw().value).toBe("*all");
+    await choose("lab");                                                         // the switcher: kept, as before
+    await p.unmount(); await office();
+    expect([sw().value, !!back()]).toEqual(["lab", true]);
+  });
   it("the switcher: All offices only with two or more offices; picked, it is kept per device; with fewer it is the whole fleet", async () => {
     offices = { rev: 1, offices: [TWO[0]] };
     await office();
@@ -224,7 +240,8 @@ describe("All offices on the page", () => {
     offices = { rev: 2, offices: TWO };
     await office();
     expect(options()).toEqual([["auto", "Whole fleet"], ["*all", "All offices"], ["*carousel", "Carousel…"], ["front", "Front desk"], ["lab", "Lab"]]);
-    expect(p.root.querySelectorAll(".oo-tile-label")).toHaveLength(0);
+    // Never picked here: it opens on All offices (nothing is kept until a pick).
+    expect([sw().value, labels().length, localStorage.getItem("agend_org_office")]).toEqual(["*all", 3, null]);
     await choose("*all");
     expect([sw().value, localStorage.getItem("agend_org_office")]).toEqual(["*all", "*all"]);
     expect(labels()).toEqual(["Front desk (1)", "Lab (1)", "Lobby (2)"]);
@@ -471,7 +488,7 @@ describe("All offices on the page", () => {
     expect((p.window as any).open.mock.calls.at(-1)?.[0]).toBe("/ui/chat/quill?presentation=popout");
     expect(location.pathname).toBe("/ui/fleet/org");
   });
-  it("a tile's label opens that office (kept as the pick); a double-click on a tile's empty floor too; the lobby opens nothing", async () => {
+  it("a tile's label opens that office (for this visit: the map stays the pick); a double-click on a tile's empty floor too; the lobby opens nothing", async () => {
     offices = { rev: 2, offices: TWO };
     localStorage.setItem("agend_org_office", "*all");
     localStorage.setItem("agend_org_office_skin", "pixel");                  // the whole fleet's style (the lobby tile's): Desks
@@ -485,7 +502,7 @@ describe("All offices on the page", () => {
     expect(parseFloat(lab.style.left)).toBeCloseTo(v.x + lay.tiles[1].x * v.k, 6);
     expect(parseFloat(lab.style.top)).toBeCloseTo(v.y + lay.tiles[1].y * v.k, 6);
     lab.click(); await settle(6);
-    expect([sw().value, localStorage.getItem("agend_org_office"), labels()]).toEqual(["lab", "lab", []]);
+    expect([sw().value, localStorage.getItem("agend_org_office"), labels()]).toEqual(["lab", "*all", []]);
     await choose("*all");
     const v2 = shown(), floor = CV.toScreen(v2, lay.tiles[0].x + 6, lay.tiles[0].y + 6);
     fire(p.root.querySelector(".oo-canvas"), "dblclick", { clientX: floor.x, clientY: floor.y }); await settle(6);

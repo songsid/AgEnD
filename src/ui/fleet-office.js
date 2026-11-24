@@ -107,7 +107,8 @@ register("orgo", {
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
     fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
-    allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Double-click a tile to open that office.",
+    allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Click a tile to open that office.",
+    backAll: "← All offices",
     key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
     keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
@@ -139,7 +140,8 @@ register("orgo", {
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
     fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
-    allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。雙擊一格即可開啟那間辦公室。",
+    allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。點一格即可開啟那間辦公室。",
+    backAll: "← 返回全域",
     key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
     keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
@@ -943,7 +945,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
   const [canShare, setCanShare] = useState(false);                    // #2636: an admin session, here or over the public link
   const [editing, setEditing] = useState(false);
-  const [choice, setChoice] = useState(() => opening ?? store.choice());
+  // Never picked here: All offices, the map of every office (one click enters one, unremembered; Back returns) — the
+  // whole fleet while fewer than two are stored. A pick from the switcher is kept per device, as before.
+  const [choice, setChoice] = useState(() => opening ?? store.choice(ALL_ID));
   const [filter, setFilter] = useState(() => store.filter());
   // #4010: the carousel's offices and interval (per browser); the slide index and playing are this visit only.
   const [carSaved, setCarSaved] = useState(() => store.carousel());
@@ -2321,12 +2325,21 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       }
     }
     const d = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
-    if (!d || !d.node.i) { setTip(null); setCard(null); return; }
+    if (!d || !d.node.i) { if (enterTile(e)) return; setTip(null); setCard(null); return; }
     if (lastType.current === "touch") setTip(null);
     cardFrom.current = null;
     setCard((cur) => (cur === d.key ? null : d.key));
   };
-  // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
+  /** All offices: a click on a tile (off its people) enters that office for this visit; the lobby is no office. */
+  const enterTile = (e) => {
+    const s = scene.current, w = pointOf(e);
+    if (!overview || !s || !s.overview || !w || deskOf(e)) return false;
+    const tt = tileAt(s.lay, w.x, w.y) || labelAt(s.lay, w.x, w.y), tl = tt ? tiles.find((x) => x.key === tt.key) : null;
+    if (!tl || tl.lobby) return false;
+    setCard(null); pick(tl.key, false);
+    return true;
+  };
+  // All offices: a double-click on a tile (off its people) opens that office, as one click does.
   const onDblClick = (e) => {
     const box = dlgAt(e);
     if (box || bubbleAtEvent(e)) return; // the first click already opened it
@@ -2378,7 +2391,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const teamValue = (opts.find((o) => o.team === f.team) || opts[0]).value;
   const setF = (next) => { const v = filterOk(next); store.saveFilter(v); setFilter(v); };
   // While Edit layout is open the office stays (its picker is disabled; this is the guard behind it).
-  const pick = (id) => {
+  /** The switcher's pick (kept per device); `keep` false: a tile entered from All offices, for this visit only. */
+  const pick = (id, keep = true) => {
     if (layoutRef.current) return;
     if (id === CAROUSEL_ID) {
       const cur = store.carousel();
@@ -2386,7 +2400,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const next = { ids: ids.length ? ids : stored.map((o) => o.id), interval: intervalOk(cur && cur.interval) };
       store.saveCarousel(next); setCarSaved(next); setCarIndex(0); setCarPlaying(true);
     }
-    store.saveChoice(id); setChoice(id); setTip(null);
+    if (keep) store.saveChoice(id);
+    setChoice(id); setTip(null);
   };
   const setCarIds = (ids) => {
     const next = { ids, interval: intervalOk(carSaved && carSaved.interval) };
@@ -2515,6 +2530,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // M-3556: the bar in three groups — scope (which office, whom: left of the desk's one row), the display options (behind
   // ⚙) and the actions (right). A phone's ⋯ sheet lists all three in that order.
   const scopeItems = html`
+      ${custom && !carouselPick && opening == null && !layout && overviewOk(stored) ? html`<button type="button" class="btn btn-sm oo-back-all" onClick=${() => pick(ALL_ID)}>${to("backAll")}</button>` : null}
       ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("show")}</span>
         <select class="tb-select oo-team" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
@@ -2607,7 +2623,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };
         return tl.lobby ? html`<span key=${tl.key} ref=${at} class="oo-tile-label lobby">${text}</span>`
           : html`<button key=${tl.key} ref=${at} type="button" class="oo-tile-label" data-office=${tl.key} title=${to("openOffice", tl.name)} aria-label=${to("openOffice", tl.name)}
-              onClick=${() => pick(tl.key)}>${text}</button>`;
+              onClick=${() => pick(tl.key, false)}>${text}</button>`;
       }) : null}
       ${layout ? html`<${LayoutEditor} key=${layout.id} base=${layout.base} start=${layout.start} place=${placeOverlay} dock=${!fs} members=${layoutMembers}
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}

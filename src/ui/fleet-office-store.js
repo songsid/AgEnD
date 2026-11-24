@@ -223,7 +223,8 @@ export function createOfficeStore({ fetch: get = globalThis.fetch, storage } = {
      * #2554's All offices (fleet-office-overview.js ALL_ID; with fewer than two offices stored: the auto office), or
      * #4010's carousel (fleet-office-carousel.js CAROUSEL_ID; with fewer than two ticked: the whole fleet).
      */
-    choice: () => { const v = read(CHOICE_KEY); return typeof v === "string" && v && v.length <= 40 ? v : AUTO_ID; },
+    /** The office picked here, else `none` (by default the whole fleet's). */
+    choice: (none = AUTO_ID) => { const v = read(CHOICE_KEY); return typeof v === "string" && v && v.length <= 40 ? v : none; },
     saveChoice: (id) => write(CHOICE_KEY, String(id)),
     /** #4010: this browser's carousel pick ({ ids, interval }), or null (nothing saved here yet). */
     carousel: () => {
