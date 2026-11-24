@@ -1,9 +1,9 @@
 {
-  "sourceHead": "7bac4673b3002e51ebfbbe89bdd738e738576fae",
+  "sourceHead": "65ec9021ff706f33a4070d35b427b35fec374016",
   "dirty": [],
   "checks": [
     {
-      "name": "the board's numbers: archived and this week's are counted",
+      "name": "the board's numbers: archived (more than a page of 50) and this week's are counted",
       "ok": true
     },
     {
@@ -15,19 +15,43 @@
       "ok": true
     },
     {
-      "name": "desk-en-light: its header says this week's count",
+      "name": "desk-en-light: its header says this week's count and how many of them are archived",
       "ok": true
     },
     {
-      "name": "desk-en-light: the board's header has \"Archived · 20\"",
+      "name": "desk-en-light: the board's header has \"Archived · 80\"",
       "ok": true
     },
     {
-      "name": "desk-en-light: \"Show 20 more\" shows the next 20",
+      "name": "desk-en-light: this week's count stands over the Done cards, outside the column's head",
       "ok": true
     },
     {
-      "name": "desk-en-light: the Archive lists the archived cards, newest first",
+      "name": "desk-en-light: \"Show 17 more\" appends the rest",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the Archive lists the archived cards, newest first, a page of 50",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the Archive's rows say when, as a date and time",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: \"Show more\" reads the next page",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the assignee filter lists only that agent's",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: a card reopened from the Archive is live again and no longer archived",
+      "ok": true
+    },
+    {
+      "name": "desk-en-light: the board counts one archived card fewer",
       "ok": true
     },
     {
@@ -63,19 +87,43 @@
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: its header says this week's count",
+      "name": "desk-zh-TW-dark: its header says this week's count and how many of them are archived",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: the board's header has \"Archived · 20\"",
+      "name": "desk-zh-TW-dark: the board's header has \"Archived · 79\"",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: \"Show 20 more\" shows the next 20",
+      "name": "desk-zh-TW-dark: this week's count stands over the Done cards, outside the column's head",
       "ok": true
     },
     {
-      "name": "desk-zh-TW-dark: the Archive lists the archived cards, newest first",
+      "name": "desk-zh-TW-dark: \"再顯示 17 張\" appends the rest",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the Archive lists the archived cards, newest first, a page of 50",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the Archive's rows say when, as a date and time",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: \"Show more\" reads the next page",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the assignee filter lists only that agent's",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: a card reopened from the Archive is live again and no longer archived",
+      "ok": true
+    },
+    {
+      "name": "desk-zh-TW-dark: the board counts one archived card fewer",
       "ok": true
     },
     {
@@ -111,11 +159,15 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: its header says this week's count",
+      "name": "phone-en-light: its header says this week's count and how many of them are archived",
       "ok": true
     },
     {
-      "name": "phone-en-light: the board's header has \"Archived · 20\"",
+      "name": "phone-en-light: the board's header has \"Archived · 78\"",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: this week's count stands over the Done cards, outside the column's head",
       "ok": true
     },
     {
@@ -123,11 +175,31 @@
       "ok": true
     },
     {
-      "name": "phone-en-light: \"Show 20 more\" shows the next 20",
+      "name": "phone-en-light: \"Show 17 more\" appends the rest",
       "ok": true
     },
     {
-      "name": "phone-en-light: the Archive lists the archived cards, newest first",
+      "name": "phone-en-light: the Archive lists the archived cards, newest first, a page of 50",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the Archive's rows say when, as a date and time",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: \"Show more\" reads the next page",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the assignee filter lists only that agent's",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: a card reopened from the Archive is live again and no longer archived",
+      "ok": true
+    },
+    {
+      "name": "phone-en-light: the board counts one archived card fewer",
       "ok": true
     },
     {
@@ -163,11 +235,15 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: its header says this week's count",
+      "name": "phone-zh-TW-dark: its header says this week's count and how many of them are archived",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: the board's header has \"Archived · 20\"",
+      "name": "phone-zh-TW-dark: the board's header has \"Archived · 77\"",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: this week's count stands over the Done cards, outside the column's head",
       "ok": true
     },
     {
@@ -175,11 +251,31 @@
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: \"Show 20 more\" shows the next 20",
+      "name": "phone-zh-TW-dark: \"再顯示 17 張\" appends the rest",
       "ok": true
     },
     {
-      "name": "phone-zh-TW-dark: the Archive lists the archived cards, newest first",
+      "name": "phone-zh-TW-dark: the Archive lists the archived cards, newest first, a page of 50",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the Archive's rows say when, as a date and time",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: \"Show more\" reads the next page",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the assignee filter lists only that agent's",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: a card reopened from the Archive is live again and no longer archived",
+      "ok": true
+    },
+    {
+      "name": "phone-zh-TW-dark: the board counts one archived card fewer",
       "ok": true
     },
     {
@@ -210,27 +306,43 @@
   "pictures": [
     {
       "path": "m3668-desk-en-light-1-home.png",
-      "sha256": "c8f945d65111b8658e5012cfe416f42867239744c672862faa21269a36dd5aa7"
+      "sha256": "9514663026472abc9d8ef8e5a4c9ba151a360a034638496d92945ab314a52372"
     },
     {
       "path": "m3668-desk-en-light-2-board.png",
-      "sha256": "e4eaf0e608e023ba751019d7a325c2768fb116fd930e362c00b61bdbe4d20855"
+      "sha256": "bc4d8a3b52040103f7d0275b6b235400977b790ada79321e6e45f69420bd44ef"
     },
     {
-      "path": "m3668-desk-en-light-2b-show-more.png",
+      "path": "m3668-desk-en-light-2b-show-more-before.png",
       "sha256": "4ce7b3031ca9f562ba4f42b6b69443fd2f4388f7891a10247e0093709f247f87"
     },
     {
+      "path": "m3668-desk-en-light-2c-show-more-after.png",
+      "sha256": "884cc4ac4626f3433baffd6de2db0654387a02de6c95af56a6a5681eb2b4f149"
+    },
+    {
       "path": "m3668-desk-en-light-3-archive.png",
-      "sha256": "2950a4b1781603fcc8d8af83e88aaecf2d12439e9486f52c3517cf407f5faee0"
+      "sha256": "bdcceaab56d88f65d9bd5bc8a1bfd44c2731632672bb7231f2f36aef20e3c803"
+    },
+    {
+      "path": "m3668-desk-en-light-3b-archive-next-page.png",
+      "sha256": "cb305e845fc415781dfe72f6e629ebf80c2833985b4eca7a8622863281cff7a6"
+    },
+    {
+      "path": "m3668-desk-en-light-3c-archive-filtered.png",
+      "sha256": "ac5f1bc7cc52e9578aa769ff57a9d4f37d08cf66493c6e69b43af2143431eb8f"
+    },
+    {
+      "path": "m3668-desk-en-light-7-reopened.png",
+      "sha256": "ebb1f6a49784b78dc463818ca0efa7aaf4862caa193fc96c55ac5862931677dc"
     },
     {
       "path": "m3668-desk-en-light-4-search.png",
-      "sha256": "6b177fe9ef07e47b6a128fedbf871465fc1c2cb2daf776f8463d8b9fbecaf2f4"
+      "sha256": "8cdac8d6a30c4867d37b4ae842f80f2e7df8310075ab669a6db5a89e389b6eec"
     },
     {
       "path": "m3668-desk-en-light-5-card.png",
-      "sha256": "7ad4a62a1db6d87b99ea0a3bbc82001334ef3367c31e66bf49b310acc744dcec"
+      "sha256": "324ac2f2122d30baa57ffc653cabb3105e0c4715db165a054d070bd9dcece510"
     },
     {
       "path": "m3668-desk-en-light-6-settings.png",
@@ -238,31 +350,47 @@
     },
     {
       "path": "m3668-desk-en-light-6b-settings-refused.png",
-      "sha256": "ec7c9d031dd8cc8db459dd78988b5c3306a2f707af0892d88217836bfc4fa89d"
+      "sha256": "93366eb78d56dae8f67e3ee3f483b5e2cb54b85e4e4f4d18487690232f729d2f"
     },
     {
       "path": "m3668-desk-zh-TW-dark-1-home.png",
-      "sha256": "9d3d0a05471bdcbcfe527e877804a566fc329322a9ba91ac58a012c3c89e25bd"
+      "sha256": "5e64d1e97d3aefb854f92e75d79929600483010f58c00bc6ef4dcc4ed2565913"
     },
     {
       "path": "m3668-desk-zh-TW-dark-2-board.png",
-      "sha256": "a9abb09388c1b577ed7fea1a6ae9d32fd164171dd694aeed28121e86fa9f8170"
+      "sha256": "8bc688353cec42e1b56b4179198685d113227e27f155f77414f6f58211c7f0be"
     },
     {
-      "path": "m3668-desk-zh-TW-dark-2b-show-more.png",
+      "path": "m3668-desk-zh-TW-dark-2b-show-more-before.png",
       "sha256": "437554c3425a0f7a531f0c1ee5f5b85a53b7ffdf463962046cdeaadcf6d92f0f"
     },
     {
+      "path": "m3668-desk-zh-TW-dark-2c-show-more-after.png",
+      "sha256": "0ea581f562d4180b0bc2696b0eaf7d97e4335c51a76d931e4384e3e8d0a3cd85"
+    },
+    {
       "path": "m3668-desk-zh-TW-dark-3-archive.png",
-      "sha256": "833f95232c5b433029a102789ce796672a6809ac2cc6da855c303bdc8313607c"
+      "sha256": "cda868911c62b2557de0a5306189212af45e44b771edaee7ae3f49530a86cf89"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-3b-archive-next-page.png",
+      "sha256": "67c5470bdad8ac01848f065bddb4a5018d8a42052b2d26b838c228c8400e99fe"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-3c-archive-filtered.png",
+      "sha256": "c838324bff7ed8d163d91d8420d3a55d3f707d2e02bcaafe96927dd4366928c7"
+    },
+    {
+      "path": "m3668-desk-zh-TW-dark-7-reopened.png",
+      "sha256": "26c15a147a95acffc1975ad83e0564cbf921958ff94f09751fb3419841652c5b"
     },
     {
       "path": "m3668-desk-zh-TW-dark-4-search.png",
-      "sha256": "5ed22ac5ef17d32858596e7d36f1554e16dd8dc93d262d0cc7d8f36bad8ca465"
+      "sha256": "63a9ede28e24c7a9eeaadb89a7db1eee57e2b42ef555ec942f634d09d096393c"
     },
     {
       "path": "m3668-desk-zh-TW-dark-5-card.png",
-      "sha256": "4df05df1d710d8dac9cde778c7f4d48c08296aebca4d9ab4c89c6a0ef76423cf"
+      "sha256": "2d93cb3a69e59e4a6a5348c52c93e5506894c959fff04031da0f3153a95fb345"
     },
     {
       "path": "m3668-desk-zh-TW-dark-6-settings.png",
@@ -274,27 +402,43 @@
     },
     {
       "path": "m3668-phone-en-light-1-home.png",
-      "sha256": "941519729fad6ea7cdb94d31ce0937ed3b37f349efb68f49ba4d164b0f7f205d"
+      "sha256": "4e2dad08404f8fb9739838bbe66ad7b56576b0125fd0e4209f682bf3dacefaa3"
     },
     {
       "path": "m3668-phone-en-light-2-board.png",
-      "sha256": "3bbaafb54543f0eafbdb27f2d8276e3c07a60b8c52daa939150e9d8a94c9f5ca"
+      "sha256": "b38c34fa7bf2428bbe2ce0f19ec88e96251c3f430baa56db5acbf4d3e6776154"
     },
     {
-      "path": "m3668-phone-en-light-2b-show-more.png",
+      "path": "m3668-phone-en-light-2b-show-more-before.png",
       "sha256": "834ac76c839e9f84a27b396aa01a15aad0b27b568f4c55891aee98dee664f06f"
     },
     {
+      "path": "m3668-phone-en-light-2c-show-more-after.png",
+      "sha256": "2d550490ce50f8d0949590c335e4b6614b47fe295c5bd1d3894d1abdb793e439"
+    },
+    {
       "path": "m3668-phone-en-light-3-archive.png",
-      "sha256": "a2a8d125eedfa73955cd612fc4a704d1f6b135db7ee5459e5253628f2ea1ce41"
+      "sha256": "591de0720c47cc919f72164fbec5afb51f18e4824a5c9d7c3edf027bd6751d03"
+    },
+    {
+      "path": "m3668-phone-en-light-3b-archive-next-page.png",
+      "sha256": "8eaf4f223639e1b5672cfaa3e5f73ab10c746538879eb25dadcf3f642b025d34"
+    },
+    {
+      "path": "m3668-phone-en-light-3c-archive-filtered.png",
+      "sha256": "0f71ad285d04dcfe2f8038d78e6893db820533714d5b160412371f0d9381852d"
+    },
+    {
+      "path": "m3668-phone-en-light-7-reopened.png",
+      "sha256": "fba73229a00c23bd91992cdd6e07ee9cfd827756196ffda2367d41853a0184dd"
     },
     {
       "path": "m3668-phone-en-light-4-search.png",
-      "sha256": "e6de88555fac942325bb45a9c445eaa3bde265268e0a50d7bd65c4b53533448d"
+      "sha256": "08d926f3db5d813c6363918e94907b64ad1ecba7f94d3c3012054b9ad83c6178"
     },
     {
       "path": "m3668-phone-en-light-5-card.png",
-      "sha256": "6e62b7c8ac3f13602315a9b1f0f3c54100e0218e6201453a74a902bfe0ef6036"
+      "sha256": "d4f9cc70b25cec3d8aac612bc7a7b5094baa1fafa6b254219212a5b86e3a4712"
     },
     {
       "path": "m3668-phone-en-light-6-settings.png",
@@ -306,27 +450,43 @@
     },
     {
       "path": "m3668-phone-zh-TW-dark-1-home.png",
-      "sha256": "bfc054dfc5a5364aec13ccd5efb34928548ba46bb3912634c4f6fa2328835183"
+      "sha256": "a8c52e7da2fbd1f5657ffe6938e5aae15a6b487df02654ebeea14c851957efff"
     },
     {
       "path": "m3668-phone-zh-TW-dark-2-board.png",
-      "sha256": "08e7f629ef69de5f15e79bf8bfb016044b8b14d6d68e48f5c56af65ec5bc2ccb"
+      "sha256": "a1f1440b7821e01db27fdd8944fcafaa48a6ce021ca3ecc9fa263025b6046c10"
     },
     {
-      "path": "m3668-phone-zh-TW-dark-2b-show-more.png",
+      "path": "m3668-phone-zh-TW-dark-2b-show-more-before.png",
       "sha256": "49d223de674e56aacd75edaf65696a3a8187e3e13f819d72beaf77d3c16efbcc"
     },
     {
+      "path": "m3668-phone-zh-TW-dark-2c-show-more-after.png",
+      "sha256": "406459ff057655766da3996ad1c8a25bca967bdd5969e23e51e8fa335736c492"
+    },
+    {
       "path": "m3668-phone-zh-TW-dark-3-archive.png",
-      "sha256": "11b0a0b32bb991a7fc7e6b53cf625f59156ff507b11807b26bde60fec2a06892"
+      "sha256": "cb09105b19b246220bb075056b79816a35e2ab7aead218d37ff8483c668a4f7b"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-3b-archive-next-page.png",
+      "sha256": "8c85a95a5e055287bd12c85d2d50d9b39d8b4cad265b11218f25326c6cc30c06"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-3c-archive-filtered.png",
+      "sha256": "bb191142f4d8b1c278e09a89143d58cc9ee8b3a0a9d62c13310fc1b7737ce127"
+    },
+    {
+      "path": "m3668-phone-zh-TW-dark-7-reopened.png",
+      "sha256": "1aa67d2e32fe3edd80d99a17d612032b590a6276cd9b5d143caa84f44582c1fc"
     },
     {
       "path": "m3668-phone-zh-TW-dark-4-search.png",
-      "sha256": "dd033292e8f0aed41200dd00adda28a1d4fcba6aa2bef26cff262f17e2113cf4"
+      "sha256": "a29b7e72174836be3e5cb87f54214ed270ca45646c62cc5540a7a29429b2d393"
     },
     {
       "path": "m3668-phone-zh-TW-dark-5-card.png",
-      "sha256": "dc0036ac4cf1083edcec31a82414d2d22dec5184fad29bd0fa7684a5d85a8dec"
+      "sha256": "bbf54e1dc9ed03d72bd0d12073c91e8db88dce07735431c0f7d7003ce53993e4"
     },
     {
       "path": "m3668-phone-zh-TW-dark-6-settings.png",
@@ -338,15 +498,27 @@
     }
   ],
   "board": {
-    "archived": 20,
-    "doneWeek": 45,
+    "archived": 80,
+    "doneWeek": 48,
+    "archivedWeek": 11,
     "mains": 40
   },
+  "cancelledInDoneRange": [
+    "M-8",
+    "M-21",
+    "M-34",
+    "M-47",
+    "M-60",
+    "M-73",
+    "M-86",
+    "M-99",
+    "M-112"
+  ],
   "measured": {
     "desk-en-light-nameLines": 1,
     "desk-zh-TW-dark-nameLines": 1,
     "phone-en-light-nameLines": 3,
     "phone-zh-TW-dark-nameLines": 2
   },
-  "summary": "51/51"
+  "summary": "75/75"
 }
