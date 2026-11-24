@@ -1,0 +1,46 @@
+{
+  "implementationHead": "805ea0863ee53831177ee270ad59bd6ecd5e0b87",
+  "sourceHashes": {
+    "changes/3663-zh-tw-audit.md": "190d511878d7096cd0a4ff6ded7007152c569d1c1edde1c520f50f20a775faf0",
+    "changes/3663-zh-tw-audit.zh-TW.md": "cabf5e9dec0e488502214daf521723bfdf4b9edfa1af4c46a3ec9ad4b5925601",
+    "src/locale.ts": "11bf9b1444a08c532513a1e9e6dfaa68d5df7e39ac02c9fc061ddb58347529ab",
+    "src/ui/fleet-cache.js": "803d1da690c3847821f6c26cc3fa535a4b292536e6a58b0cdc91715bed6ba5f7",
+    "src/ui/hub-admin-overview.js": "dc621ed65b66fddf95081b39d10653368bc4efe5bbdbb8a8347ca0a490e3dad2",
+    "src/ui/settings-hub-setup-strings.js": "d0c890198493105bc4144e90596f246ef90ea0f442fc8b9ac0a0ba04529401ce",
+    "tests/hub-web-setup-ui.test.ts": "80e210e991c1dbd48e3c85a12634ff4fc9bd36a54e4ad9c329f997791a9cd5e0",
+    "tests/update-live-progress.test.ts": "b303989de893a065547abd883fa46f987832bca1850e93711845739843756d45",
+    "tests/update-progress-honest-2476.test.ts": "881b7dc99f8aca5337ecf1375201d2c0e1e90301dc898ee62a99dd146223d7d1"
+  },
+  "catalogChecks": {
+    "count": 15,
+    "englishUnchanged": true,
+    "keysAndPlaceholdersUnchanged": true,
+    "exactReverseRestoresAllFourSources": true
+  },
+  "sourceGlyphScan": "rg 覧 src returned no matches after correction",
+  "directCharacters": "no added source line contains a Unicode escape",
+  "proofs": {
+    "focused": {
+      "sha256": "d4c91989e4694b6b12fe0ebc32a7555a675f8195998fd8de820af91516818c06",
+      "result": "7 suites61 tests PASS; locale/CLI/web/zh terms/admin and affected copy assertions"
+    },
+    "values": {
+      "sha256": "c28bae131852978ae502363e8b91011c71c15a3f13967c6823c0fbefb0f95f75",
+      "result": "15value changes; actual catalogs evaluated; reverse restores sources"
+    },
+    "changelog": {
+      "sha256": "e67b1b2d0c2cb16d372889da9aa71cdd424301f1cbbe941001d610c7da8fa063",
+      "result": "changelog-assemble: 805 fragment(s) OK"
+    },
+    "initialCopyExpectations": {
+      "sha256": "e319004ae7d9705b59cdf7ac04f04db4cd2834bf23cd020d593355a3632503b2",
+      "result": "5 failures from old zh bracket expected text; corrected literals only, not behavior assertions"
+    }
+  },
+  "limits": [
+    "wording-only; no new browser/native/visual matrix",
+    "no local typecheck claim; CI typecheck remains required",
+    "main twin only for12 present rows; no Hub or trace feature backport",
+    "English glossary separate and unchanged"
+  ]
+}
