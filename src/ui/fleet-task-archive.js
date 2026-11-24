@@ -15,7 +15,7 @@ register("tasksArchive", {
     title: "{0} · archived", lead: "Main tasks finished more than {0} days ago. Search finds them too, and a card's number opens it; move one to To do to reopen it.",
     who: "Assigned to", everyone: "Everyone", more: "Show more", none: "Nothing archived here.", noneWho: "Nothing archived for {0}.", failed: "The archive could not be read.",
     done: "Done {0}", cancelled: "Cancelled {0}", count: "{0} of {1}",
-    week: "{0} done this week", weekArchived: "{0} done this week · {1} archived", weekTip: "Main tasks done in the last 7 days. The archived ones are off the board: the header's Archived link lists them",
+    week: "{0} done this week", weekArchived: "{0} archived", weekTip: "Main tasks done in the last 7 days. The archived ones are off the board: the header's Archived link lists them",
     showMore: "Show {0} more", doneShow: "Show", tag: "Archived", tagTip: "Finished more than {0} days ago: off the board, not deleted", tile: "{0} archived",
   },
   "zh-TW": {
@@ -23,7 +23,7 @@ register("tasksArchive", {
     title: "{0} · 已封存", lead: "完成超過 {0} 天的主任務。搜尋也找得到，用卡片編號也能開啟；移回「待辦」即可重新開啟。",
     who: "負責", everyone: "所有人", more: "顯示更多", none: "這裡沒有封存的卡片。", noneWho: "{0} 沒有封存的卡片。", failed: "無法讀取封存清單。",
     done: "{0} 完成", cancelled: "{0} 取消", count: "{0} / {1}",
-    week: "本週完成 {0} 張", weekArchived: "本週完成 {0} 張 · 其中 {1} 張已封存", weekTip: "近 7 天完成的主任務。已封存的不在看板上，可從標題列的「已封存」查看",
+    week: "本週完成 {0} 張", weekArchived: "其中 {0} 張已封存", weekTip: "近 7 天完成的主任務。已封存的不在看板上，可從標題列的「已封存」查看",
     showMore: "再顯示 {0} 張", doneShow: "顯示", tag: "已封存", tagTip: "完成超過 {0} 天：已離開看板，沒有刪除", tile: "已封存 {0} 張",
   },
 });
@@ -33,8 +33,14 @@ export const DONE_PAGE = 20;
 /** Finished cards, the most recently finished first (when they finished, else their last change). */
 export const newestDone = (cards) => [...cards].sort((a, b) => String(b.doneAt || b.updatedAt || "").localeCompare(String(a.doneAt || a.updatedAt || "")) || String(b.id).localeCompare(String(a.id)));
 
-/** The Done column's "this week" line: how many main tasks were done in the last 7 days, and how many of them are archived. */
-export const weekLabel = (stats) => (stats && stats.archivedWeek > 0 ? t("tasksArchive.weekArchived", stats.doneWeek || 0, stats.archivedWeek) : t("tasksArchive.week", (stats && stats.doneWeek) || 0));
+/**
+ * The Done column's "this week" line: how many main tasks were done in the last 7 days, and how many of them are
+ * archived ("48 done this week · 11 archived"). Two unbreakable parts: a narrow column wraps it only at the "·".
+ */
+export function weekLabel(stats) {
+  const done = html`<span class="tb-nowrap">${t("tasksArchive.week", (stats && stats.doneWeek) || 0)}</span>`;
+  return stats && stats.archivedWeek > 0 ? html`${done} · <span class="tb-nowrap">${t("tasksArchive.weekArchived", stats.archivedWeek)}</span>` : done;
+}
 
 /** A finish time as the Archive shows it: "Nov 21, 14:05" / "11月21日 14:05" (with the year when it isn't this year's). */
 export function finishedAt(iso, now = new Date()) {

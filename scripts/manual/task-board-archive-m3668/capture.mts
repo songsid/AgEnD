@@ -92,7 +92,8 @@ try {
     const after = await page.locator('.tb-col.st-done .tb-tile').count();
     const left = await page.locator(".tb-done-more").count();
     check(`${tag}: "${moreBefore}" appends the rest`, after > 20 && after === done + Number((moreBefore.match(/\d+/) || ["0"])[0]) && left === 0, { moreBefore, after, left });
-    await page.locator('.tb-col.st-done .tb-tile').last().scrollIntoViewIfNeeded(); await shot("2c-show-more-after");
+    // The join in one frame: the 20th card (the old last) and the first appended ones under it.
+    await page.locator('.tb-col.st-done .tb-tile').nth(19).evaluate((el: HTMLElement) => el.scrollIntoView({ block: "start" })); await shot("2c-show-more-after");
     // The Archive list.
     await page.locator(".tb-archived-link").first().click(); await page.locator(".tb-archive .tb-row").first().waitFor(); await page.waitForTimeout(800);
     const rows = await page.locator(".tb-archive .tb-row").count();

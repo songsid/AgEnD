@@ -217,13 +217,14 @@ describe("the page: the Done column, the Archive", () => {
   // a date and time (a rounded "3 days ago" read as contradicting "more than 3 days"), the relative time their tooltip.
   it("this week's line without archived ones; the Archive's finish time is a date and time", async () => {
     const { finishedAt, weekLabel } = await import("/ui/js/fleet-task-archive.js") as any;
-    expect([weekLabel({ doneWeek: 12, archivedWeek: 0 }), weekLabel({ doneWeek: 12, archivedWeek: 4 })]).toEqual(["12 done this week", "12 done this week · 4 archived"]);
+    const said = async (v: unknown) => { await p.mount(h("p", null, v)); await settle(2); return [p.root.textContent, p.root.querySelectorAll(".tb-nowrap").length]; };
+    expect([await said(weekLabel({ doneWeek: 12, archivedWeek: 0 })), await said(weekLabel({ doneWeek: 12, archivedWeek: 4 }))]).toEqual([["12 done this week", 1], ["12 done this week · 4 archived", 2]]);
     const now = new Date("2026-11-25T00:00:00Z"), at = "2026-11-21T06:05:00Z";
     expect(finishedAt(at, now)).toMatch(/^Nov 21, \d\d:05$/);
     expect(finishedAt("2025-11-21T06:05:00Z", now)).toMatch(/2025/);
     (await import("/assets/app-i18n.js") as any).setLang("zh-TW");
     try {
-      expect([weekLabel({ doneWeek: 12, archivedWeek: 4 }), finishedAt(at, now)]).toEqual(["本週完成 12 張 · 其中 4 張已封存", expect.stringMatching(/^11月21日 \d\d:05$/)]);
+      expect([(await said(weekLabel({ doneWeek: 12, archivedWeek: 4 })))[0], finishedAt(at, now)]).toEqual(["本週完成 12 張 · 其中 4 張已封存", expect.stringMatching(/^11月21日 \d\d:05$/)]);
     } finally { (await import("/assets/app-i18n.js") as any).setLang("en"); }
     await board();
     fire(q(".tb-archived-link"), "click"); await settle(6);
