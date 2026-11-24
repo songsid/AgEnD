@@ -2,9 +2,10 @@
  * Task cards in the web chat — the page side, on the real ChatPanel in the mini DOM.
  *   - `#` in the chat box opens the list of task cards (the command palette's own look); typing narrows it, the arrows move,
  *     Enter / Tab put the number in (never a send), Esc closes it; not in a word or a URL, not on a command line.
- *   - A person's message that names a card shows a chip (number, title, status) that links to the card; the number is the
- *     text until the card's answer arrives; a number that is no card, an agent's message and a message from before this
- *     feature are drawn as they always were.
+ *   - A person's message or an agent's reply that names a card shows a chip (number, title, status) that links to the card;
+ *     the number is the text until the card's answer arrives; a number that is no card (or one the server leaves out, as a
+ *     hidden instance's card over the public link), a status line and a message from before this feature are drawn as they
+ *     always were.
  *   - What is sent is the draft as typed (the server adds the card summary for the agent).
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -192,14 +193,37 @@ describe("a task card in a message", () => {
     const chip = c.chips()[0];
     expect([chip.querySelector(".task-ref-title").textContent, chip.querySelector("b")]).toEqual(["<b>Ship</b> it", null]);
   });
-  it("a number that is no card, an agent's message, and a message from before this feature are drawn as they were", async () => {
-    const c = await open([row(1, "user", "an old message about #M-99 and #S-98"), row(2, "agent", "I finished #M-1 and #M-3"), row(3, "user", "plain words, no numbers"), row(4, "user", "a bare M-1, as written before this feature, and `#M-3` in code")]);
+  it("a number that is no card and a message from before this feature are drawn as they were", async () => {
+    const c = await open([row(1, "user", "an old message about #M-99 and #S-98"), row(3, "user", "plain words, no numbers"), row(4, "user", "a bare M-1, as written before this feature, and `#M-3` in code")]);
     await wait(20); await settle(); await settle();
     expect(c.chips()).toEqual([]);
     const text = [...c.root.querySelectorAll(".msg .md")].map((m: any) => m.textContent);
-    expect(text).toEqual(["an old message about #M-99 and #S-98", "I finished #M-1 and #M-3", "plain words, no numbers", "a bare M-1, as written before this feature, and #M-3 in code"]);
-    // Only the person's own numbers are asked about, once (the page may ask about a number in code: the renderer draws no chip there).
+    expect(text).toEqual(["an old message about #M-99 and #S-98", "plain words, no numbers", "a bare M-1, as written before this feature, and #M-3 in code"]);
+    // The person's numbers are asked about, once (the page may ask about a number in code: the renderer draws no chip there).
     expect(reads.filter((u) => u.startsWith("/ui/tasks/refs?codes=")).map((u) => decodeURIComponent(u.split("codes=")[1]!))).toEqual(["M-99,S-98,M-3"]);
+  });
+  it("an agent's reply that writes a card's number is a chip, like a person's: asked once with the person's numbers, and never in code or for a card the server leaves out", async () => {
+    // M-4 is a card the server does not give this viewer (a hidden instance's, over the public link): the answer leaves it out.
+    const c = await open([row(1, "user", "where is #M-1?"), row(2, "agent", "#M-1 is in progress; #S-2 is next. #M-4 is not shown to you, and `#M-3` is code.")]);
+    await wait(20); await settle(); await settle();
+    const chips = c.chips();
+    expect(chips.map((a) => a.getAttribute("href"))).toEqual(["/ui/fleet?card=M-1", "/ui/fleet?card=M-1", "/ui/fleet?card=S-2"]);
+    const [personChip, agentChip] = [chips[0], chips[1]];
+    expect([agentChip.querySelector(".task-ref-title").textContent, agentChip.querySelector(".tb-pill.st-claimed").textContent, agentChip.getAttribute("title")])
+      .toEqual([personChip.querySelector(".task-ref-title").textContent, "In progress", "M-1 · Build the login API · In progress · @dev-a"]);
+    // The agent's row: the chips are inside its own bubble, and the hidden card's number and the code are the text they were.
+    const agentRow = [...c.root.querySelectorAll(".msg.agent .md")][0] as any;
+    expect(agentRow.querySelectorAll("a.task-ref")).toHaveLength(2);
+    expect(agentRow.textContent).toContain("#M-4 is not shown to you");
+    expect(agentRow.querySelectorAll("code")[0].textContent).toBe("#M-3");
+    expect(JSON.stringify(reads)).not.toContain("localhost");
+    expect(reads.filter((u) => u.startsWith("/ui/tasks/refs?codes=")).map((u) => decodeURIComponent(u.split("codes=")[1]!))).toEqual(["M-1,S-2,M-4,M-3"]);
+  });
+  it("a status line is not read: its numbers are text, and nothing is asked for them", async () => {
+    const c = await open([row(1, "status", "#M-1 was moved to done"), row(2, "agent", "ok")]);
+    await wait(20); await settle(); await settle();
+    expect(c.chips()).toEqual([]);
+    expect(reads.filter((u) => u.startsWith("/ui/tasks/refs?codes="))).toEqual([]);
   });
   it("a board that cannot be read leaves the numbers as text (a chat from an older host, or a failure)", async () => {
     board = false;

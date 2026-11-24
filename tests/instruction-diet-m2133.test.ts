@@ -12,7 +12,7 @@ import { join, resolve } from "node:path";
 import { IpcServer } from "../src/channel/ipc-bridge.js";
 import { COMPOSITE_TOOLS, TOOLS, expandCompositeCall, withComposites } from "../src/channel/mcp-tools.js";
 import { TOOL_PROFILES } from "../src/tool-permissions.js";
-import { DASHBOARD_FEATURE_TOOLS, dashboardFeaturesOff, withoutFeatures } from "../src/dashboard-permissions.js";
+import { DASHBOARD_FEATURE_TOOLS, TASK_CARD_REF_HINT, dashboardFeaturesOff, withoutFeatures } from "../src/dashboard-permissions.js";
 
 const APPEARANCE = DASHBOARD_FEATURE_TOOLS.appearance;
 const EMOJI = ["list_emojis", "preview_emojis", "list_stickers", "preview_stickers", "set_persona_emoji"];
@@ -73,6 +73,11 @@ describe("M-3526: shorter words, the same schemas", () => {
   it("the default worker menu stays inside its budget (13.9k o200k before; about 9.9k after)", () => {
     expect(Buffer.byteLength(JSON.stringify(menu("worker")))).toBeLessThan(46_000);   // 43.4 KB now; 59.9 KB before
     expect(Buffer.byteLength(JSON.stringify(menu("general")))).toBeLessThan(66_000);   // 80.9 KB before
+  });
+  it("the task tool tells an agent how to point at a card (#M-3, not a URL) in one sentence — what it costs: tests/task-card-ref-hint.test.ts", () => {
+    const description = TOOLS.find(t => t.name === "task")!.description!;
+    expect(description).toContain(TASK_CARD_REF_HINT);
+    expect(Buffer.byteLength(description), "the sentence is the only growth: 930 bytes now").toBeLessThan(1000);
   });
   it("the task tool points to its skill, which keeps the rules the description no longer spells out", () => {
     expect(TOOLS.find(t => t.name === "task")!.description).toContain("task-board skill");

@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { TASK_CARD_REF_HINT } from "./dashboard-permissions.js";
 
 /**
  * #2163: who an entry is for — General, an instance with the coordinator or full tool set, a fleet worker, a ClassicBot
@@ -126,6 +127,11 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // M-2133 / M-3526 (inventory recs 1 and 2): fewer, shorter tool schemas.
   { id: "2.4-tool-diet", since: "2.4.0-beta.19",
     text: "Tool changes: the emoji and sticker tools are one `emoji_sticker` tool (action list_emojis, preview_emojis, set_persona_emoji, list_stickers or preview_stickers, with that action's fields in `args`). Your look tools are one `web_appearance` tool, listed only when a person switches your look on (Settings → Agents); the web-appearance skill lists its actions. The task tool's full rules are in the `task-board` skill." },
+  // An agent wrote `http://localhost:…/ui/fleet?card=M-1` links; the sentence is the one in the `task` description and the
+  // CLI reference (TASK_CARD_REF_HINT), told once to a session that loaded the description before it. `since` is this line's next beta
+  // (2.4.0-beta.19 is published without it).
+  { id: "2.4-card-refs", since: "2.4.0-beta.20", tools: ["task"],
+    text: `Task cards: ${TASK_CARD_REF_HINT}` },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */

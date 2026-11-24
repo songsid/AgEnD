@@ -6,9 +6,10 @@
  *      the page draws.
  *   2. Typing `#`: where the list opens, what it searches for, what goes in when a card is chosen.
  *   3. The chip: number, title, status, a link to the card; only for a card the page knows; the card's own words are escaped;
- *      nothing in a code span or a URL; a page that does not ask (an agent's message, the Hub) draws what it always drew.
- *   4. The page's index of cards: asks only for a person's own numbers, each once, again after a board change; an answer that
- *      never comes leaves the number as text; a newer list request wins.
+ *      nothing in a code span or a URL; a page that does not ask (the Hub, a message from before this feature) draws what it always drew.
+ *   4. The page's index of cards: asks for the numbers in a person's words and an agent's reply (no other row), each once, again
+ *      after a board change; an answer that never comes, or a card the server leaves out (a hidden instance's, over the public
+ *      link), leaves the number as text; a newer list request wins.
  *   5. A thread's cached Markdown follows what the page knows of a card.
  */
 import { describe, expect, it, vi } from "vitest";
@@ -155,7 +156,7 @@ describe("the chip", () => {
     const html = draw("#M-3 then #S-4 then #M-3", { "M-3": CARD, "S-4": { ...CARD, title: "Write tests", status: "open", statusLabel: "To do" } });
     expect([...html.matchAll(/data-task-ref="([MS]-\d+)"/g)].map((m) => m[1])).toEqual(["M-3", "S-4", "M-3"]);
   });
-  it("a page that does not ask draws what it always drew (an agent's message, the Hub, a message before this feature)", () => {
+  it("a page that does not ask draws what it always drew (the Hub, a message before this feature)", () => {
     for (const text of ["#M-3", "see #M-3 and #S-4 done"]) {
       expect(R().renderMarkdown(text, {})).toBe(`<p>${text}</p>`);
       expect(R().renderMarkdown(text)).toBe(`<p>${text}</p>`);
@@ -185,9 +186,22 @@ describe("the thread's cached Markdown follows what the page knows", () => {
     expect(renderedMarkdown("#M-3", false, undefined, undefined, undefined, info)).toBe("<p>#M-3</p>");
     spy.mockRestore();
   });
-  it("a page without cards renders and caches as before (the Hub, an agent's message)", () => {
+  it("a page without cards renders and caches as before (the Hub)", () => {
     clearRenderedMarkdown();
     expect(renderedMarkdown("#M-3 and #M-4", true, undefined, undefined, undefined)).toBe("<p>#M-3 and #M-4</p>");
+  });
+  it("an agent's reply (the markdown that may carry cards) draws the chip too: the same rule, code and a card the page has no view of stay text", () => {
+    clearRenderedMarkdown();
+    const seen = (code: string) => (code === "M-3" ? CARD : null);      // #M-9 is a card the viewer may not see (a hidden instance's, over the link): no view of it
+    const html = renderedMarkdown("Done: #M-3. #M-9 is held back, `#M-3` in code stays code, and see M-3 and https://example.com/#M-3.", true, undefined, undefined, undefined, seen);
+    expect([...html.matchAll(/data-task-ref="([MS]-\d+)"/g)].map((m) => m[1])).toEqual(["M-3"]);
+    expect(html).toContain("#M-9 is held back");
+    expect(html).toContain("<code>#M-3</code>");
+    expect(html).not.toContain("Hidden");
+    // The answer for #M-9 never carried a title, so none can be in the drawing; once the page knows it, the same text is drawn again.
+    const later = renderedMarkdown("Done: #M-3. #M-9 is held back, `#M-3` in code stays code, and see M-3 and https://example.com/#M-3.", true, undefined, undefined, undefined,
+      (code: string) => (code === "M-9" ? { ...CARD, title: "Now visible" } : seen(code)));
+    expect(later).toContain('data-task-ref="M-9"');
   });
 });
 
@@ -200,15 +214,17 @@ describe("the page's index of cards", () => {
   }
   const settleAll = async (index: any) => { for (let i = 0; i < 20 && index.pending(); i++) await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); };
   const user = (text: string) => ({ role: "user", text });
+  const agent = (text: string) => ({ role: "agent", text });
 
-  it("asks for the numbers a person's messages name, each once, in one request, and knows them when they come", async () => {
+  it("asks for the numbers a person's words and an agent's reply name, each once, in one request, and knows them when they come", async () => {
     const { calls, index } = rig((url) => ({ refs: decodeURIComponent(url.split("codes=")[1]!).split(",").filter((c) => c !== "M-99").map((c) => viewOf(c)) }));
     const seen = vi.fn();
     index.subscribe(seen);
-    index.ensure([user("see #M-3 and #M-99 and M-55"), user("again #M-3 and #S-4"), { role: "agent", text: "I did #M-77" }, { role: "user", text: 5 }, null]);
+    index.ensure([user("see #M-3 and #M-99 and M-55"), user("again #M-3 and #S-4"), agent("I did #M-77 and #M-3"), { role: "status", text: "#M-66" }, { role: "activity", text: "#M-67" }, { role: "user", text: 5 }, null]);
     await settleAll(index);
-    expect(calls).toEqual([`/ui/tasks/refs?codes=${encodeURIComponent("M-3,M-99,S-4")}`]);
-    expect([index.get("M-3")?.title, index.get("S-4")?.title, index.get("M-99"), index.get("M-77")]).toEqual(["Title of M-3", "Title of S-4", null, null]);
+    // The agent's #M-77 is asked about with the person's numbers; a status line and the activity timeline are not read.
+    expect(calls).toEqual([`/ui/tasks/refs?codes=${encodeURIComponent("M-3,M-99,S-4,M-77")}`]);
+    expect([index.get("M-3")?.title, index.get("S-4")?.title, index.get("M-99"), index.get("M-77")?.title, index.get("M-66")]).toEqual(["Title of M-3", "Title of S-4", null, "Title of M-77", null]);
     expect(seen).toHaveBeenCalledTimes(1);
     index.ensure([user("#M-3 once more")]);
     await settleAll(index);
