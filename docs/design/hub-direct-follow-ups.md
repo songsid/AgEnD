@@ -32,12 +32,12 @@ is not needed first each time, and there is no window after an answer.
 ### Consent and grant
 
 Being allowed to ask an agent means agreeing to receive its messages in that one-to-one. There is no separate
-opt-in prompt. The person has two ways out, both in the one-to-one's "…" menu:
+opt-in prompt. The person has one way out, in the one-to-one's "…" menu:
 
 - **Mute this agent's own messages.** While on, the agent can still answer the person's questions, but a message
   it sends on its own is refused, and the agent is told the person turned them off. The person turns it back on
   in the same place. Refusing is chosen over delivering silently, so nothing piles up unseen.
-- **Close the chat**, as today. It stops everything until the person opens it again.
+The one-to-one has no close action for the person today (found by the builder), and this design adds none.
 
 Each message is checked at the moment it is sent, for exactly its text and files, like an answer. All must hold:
 
@@ -83,15 +83,11 @@ right to message are the same grant.
 An agent already receives the asker's verified name with each question, so listing its one-to-ones shows it
 nothing new.
 
-### Rate cap (a safety net)
+### Guard against a double send
 
-- 30 messages an hour from one agent to one person, the same number as a person's direct questions per hour.
-- The same text as the agent's previous message in that chat within a minute is refused as a duplicate, which
-  stops a double report from showing twice.
-- Over the cap, the message is refused with the time it may try again. The owner sees nothing unless it repeats;
-  the builder may add one Needs-you line for an agent that keeps hitting the cap.
-
-These exist to stop a looping agent, not to shape normal use.
+- A message is refused as a duplicate when both its text and its files (by content) equal the agent's previous
+  message in that chat within a minute. The same text with different files is allowed.
+- There is no hourly cap. The owner decided on 2026-11-24 that none is needed for now.
 
 ## Phases
 
@@ -102,14 +98,13 @@ These exist to stop a looping agent, not to shape normal use.
 - The six checks, with the reason returned to the agent.
 - The message shows in the one-to-one, unread and notified like an answer.
 - The person's mute in the "…" menu.
-- The rate cap and the duplicate check.
+- The duplicate check.
 - M-3637's refusal and the question prompt name `hub_room_post`.
 
 **Phase 2.**
 
 - A second `report_result` on an answered id becomes a message.
 - Quoting a question (`receipt_id`), buttons and polls.
-- A Needs-you line for the owner when an agent keeps hitting the cap.
 
 **Not planned.**
 
@@ -117,7 +112,7 @@ These exist to stop a looping agent, not to shape normal use.
 - A "more is coming" state on the status line.
 
 If the builder finds that a one-to-one cannot reuse the room-post machinery, phase 1 is larger than M. The mute
-is then the part to move to phase 2, since closing the chat already gives the person a way out.
+then moves to phase 2 only if the owner accepts a first version with no way out for the person.
 
 ## For the builder to confirm before building
 
