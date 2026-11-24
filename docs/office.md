@@ -349,7 +349,7 @@ What it shows:
 - **Enter** sends; **Shift+Enter** is a new line (and Enter while typing with an input method never sends).
 - Every way shows the same conversation as the chat: what you send here is in the chat, and their replies arrive live.
 - **Open full chat** opens the chat itself, for files, quotes, reactions and the rest.
-- One talk at a time: with **Side panel** or **Over their head** the [dialogue box](#the-dialogue-box) isn't shown under it, and with **Dialogue box** the talk box takes its place.
+- One talk at a time: with **Side panel** or **Over their head** the [dialogue box](#the-dialogue-box) isn't shown under it, and with **Dialogue box** the talk box takes its place. **Dialogue box** works whether or not **Dialogue** is ticked, and leaves that tick as you set it.
 
 **The Dialogue box way.** The box shows only their side: the whole reply, typed out, two lines a page (three on a phone), with ▼ once a page is whole. A click on the box (or Enter or Space) shows the rest of the page at once, then the next page, and after the last page closes the reply. The words keep clear of the portrait. The pack's `dialogBox` colours are used, else a night blue with gold. **History** opens the conversation's backlog over the box: both sides, the reply rendered as in the chat, and **Open full chat**. **×** closes the box.
 

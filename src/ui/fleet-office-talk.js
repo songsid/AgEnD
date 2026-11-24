@@ -60,6 +60,9 @@ export function talkTextOf(m) {
 /**
  * The conversations: `open(name)` reads its recent history once; `send(name, text)` shows it at once (pending) and
  * posts it; `take(m)` a live `message` event (the server's copy of a pending send replaces it, by clientId);
+ * #4406: whichever comes first — the history, the send's answer or the live copy — the server's copy settles the
+ * page's own (its messageId from the send's answer, or its clientId on the live copy), as the chat does (chat-store's
+ * settleOutgoing), so a reply never shows twice;
  * `thread(name)` { msgs, loaded, error }; `lastReply(name)`; `subscribe(fn)`. `fetch` and `rid` are the page's.
  */
 export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` } = {}) {
@@ -70,7 +73,19 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
   const thread = (name) => { if (!threads.has(name)) threads.set(name, { msgs: [], loaded: false, loading: false, error: false }); return threads.get(name); };
   const row = (m) => {
     const text = talkTextOf(m);
-    return text === null ? null : { key: `${m.boot}-${m.id}`, role: m.role, text, ts: m.ts };
+    if (text === null) return null;
+    const r = { key: `${m.boot}-${m.id}`, role: m.role, text, ts: m.ts };
+    if (typeof m.messageId === "string" && m.messageId) r.messageId = m.messageId;
+    if (m.role === "user" && typeof m.clientId === "string" && m.clientId) r.clientId = m.clientId;   // the live copy's only
+    return r;
+  };
+  /** The page's own sends that the server's copy now stands for (same messageId, or same clientId): gone. Whether any went. */
+  const settle = (th) => {
+    const ids = new Set(), cids = new Set();
+    for (const x of th.msgs) if (!x.local) { if (x.messageId) ids.add(x.messageId); if (x.clientId) cids.add(x.clientId); }
+    const n = th.msgs.length;
+    th.msgs = th.msgs.filter((x) => !(x.local && ((x.messageId && ids.has(x.messageId)) || cids.has(x.clientId))));
+    return th.msgs.length !== n;
   };
   const keep = (th) => { if (th.msgs.length > KEEP) th.msgs.splice(0, th.msgs.length - KEEP); };
   return {
@@ -100,20 +115,21 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
         const old = Array.isArray(d && d.messages) ? d.messages.map(row).filter(Boolean) : [];
         const have = new Set(th.msgs.map((m) => m.key));
         th.msgs = [...old.filter((m) => !have.has(m.key)), ...th.msgs];
-        keep(th); th.loaded = true; th.error = !d;
+        settle(th); keep(th); th.loaded = true; th.error = !d;
       } catch { th.error = true; }
       th.loading = false; changed(name);
     },
     async send(name, text) {
       const words = String(text || "").trim();
       if (!words) return false;
-      const th = thread(name), clientId = rid(), mine = { key: `c-${clientId}`, role: "user", text: words, pending: true, clientId };
+      const th = thread(name), clientId = rid(), mine = { key: `c-${clientId}`, role: "user", text: words, pending: true, clientId, local: true };
       th.msgs.push(mine); keep(th); changed(name);
       try {
         const r = await f("/ui/send", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ instance: name, message: words, clientId }) });
         const d = await r.json().catch(() => ({}));
         if (!r.ok || d.error || d.sent === false) throw new Error(d.error || "send");
         mine.pending = false;
+        if (typeof d.messageId === "string" && d.messageId) { mine.messageId = d.messageId; settle(th); }
       } catch { mine.pending = false; mine.failed = true; }
       changed(name);
       return !mine.failed;
@@ -123,9 +139,12 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
       const r = row(m);
       if (!r) return;
       const th = threads.get(m.instance);
-      if (th.msgs.some((x) => x.key === r.key)) return;
-      const i = m.role === "user" && m.clientId ? th.msgs.findIndex((x) => x.clientId === m.clientId) : -1;
+      // Already here (the history brought it first): only the page's own copy of it may still have to go.
+      const had = th.msgs.find((x) => x.key === r.key);
+      if (had) { if (r.clientId && !had.local) had.clientId = r.clientId; if (settle(th)) changed(m.instance); return; }
+      const i = m.role === "user" && m.clientId ? th.msgs.findIndex((x) => x.local && x.clientId === m.clientId) : -1;
       if (i >= 0) th.msgs[i] = r; else th.msgs.push(r);
+      settle(th);
       if (r.role === "agent") said.set(m.instance, { text: r.text, at: Date.now(), page: 0, pageAt: null, pages: 1, whole: false, wholeAt: null });
       keep(th); changed(m.instance);
     },
@@ -146,9 +165,15 @@ const md = (text) => {
   return R && typeof R.renderMarkdown === "function" ? R.renderMarkdown(text) : String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 };
 
-/** A textarea that sends on Enter (Shift+Enter: a new line; never mid-IME composition). */
+/**
+ * A textarea that sends on Enter (Shift+Enter: a new line; never mid-IME composition). #4406: each draft is its
+ * target's — switching to someone else (a click, or the dialogue box's front speaker changing) shows theirs, never
+ * carries the words typed for the one before; going back finds them again.
+ */
 function Composer({ talk, name, label, autoFocus }) {
-  const [text, setText] = useState(""), ref = useRef(null);
+  const [drafts, setDrafts] = useState(() => new Map()), ref = useRef(null);
+  const text = (name && drafts.get(name)) || "";
+  const setText = (v) => setDrafts((d) => { const n = new Map(d); if (v) n.set(name, v); else n.delete(name); return n; });
   useEffect(() => { if (autoFocus && ref.current) ref.current.focus(); }, [name, autoFocus]);
   const go = () => { const v = text.trim(); if (!v || !name) return; setText(""); void talk.send(name, v); };
   const key = (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); go(); } };
@@ -224,15 +249,16 @@ const measurer = (font) => {
   measureCtx.font = font;
   return (s) => measureCtx.measureText(s).width;
 };
-export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClose }) {
+export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClose, still = false }) {
   const [, tick] = useState(0), [log, setLog] = useState(false), reply = useRef(null), root = useRef(null), fig = useRef(null);
   const v = peek();
   const live = !!(v && v.conv);
   useEffect(() => {
     if (!v) return undefined;
-    const h = setInterval(() => tick((x) => x + 1), 50);
+    // Reduced motion (`still`, the canvas box's own): nothing types, so a slow tick only for Auto / Fast's waits.
+    const h = setInterval(() => tick((x) => x + 1), still ? 250 : 50);
     return () => clearInterval(h);
-  }, [!!v]);
+  }, [!!v, still]);
   // The text keeps clear of the portrait: its drawn width, as a property (the page's CSP allows no style attribute).
   useLayoutEffect(() => {
     const el = root.current, im = fig.current;
@@ -268,7 +294,7 @@ export function TalkStage({ peek, ops, talk, read, onRead, phone, onFull, onClos
     lines = all.slice(page * per, page * per + per);
     pageChars = lines.reduce((a, l) => a + [...l].length, 0);
     const pace = readPace(read, pageChars);
-    n = Math.floor(((t - (c.pageAt ?? c.replyShownAt)) * pace.cps) / 1000);
+    n = still ? Infinity : Math.floor(((t - (c.pageAt ?? c.replyShownAt)) * pace.cps) / 1000);
     whole = n >= pageChars;
     if (whole && c.wholeAt == null) c.wholeAt = t;
     if (whole && pace.wait < Infinity && t - c.wholeAt >= pace.wait) setTimeout(() => step(true), 0);

@@ -986,6 +986,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [talkTo, setTalkTo] = useState(null);
   const [readMode, setReadMode] = useState(() => (chatUi ? chatUi.readModeOf(store.talkRead()) : "click"));
   const chat = useMemo(() => (chatUi ? chatUi.createTalk() : null), [chatUi]);
+  // #4406: the Dialogue-box talk shows the dialogue's conversations, so they run while it is picked — without ticking
+  // Dialogue for the person (their own choice, kept as they left it when they pick another way to talk).
+  const boxTalk = !!chat && talk === undefined && typeof onOpen === "function" && chatUi.talkModeOf(talkMode) === "box";
+  const dlgOn = dialogueOn || boxTalk;
   const replyRef = useRef(null);
   const dlg = useMemo(createDialogue, []);
   const faces = useMemo(() => createFaces(), []);
@@ -997,13 +1001,6 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   const dialogueCanvasRef = useRef(null);
   const [dlgHot, setDlgHot] = useState(false);
-  /** The box as last drawn (`b`, dlgShown's): its page whole while it types, else the next page, else (a reply) it goes. */
-  const stepDialogue = (b) => {
-    const c = b.conv;
-    if (!b.whole) c.pageAt = -1e15;
-    else if (!b.last) { c.page = (c.page || 0) + 1; c.pageAt = now(); c.wholeAt = null; }
-    else if (b.answered) dlg.drop(c.instance);
-  };
   const dlgRef = useRef(null), dlgShown = useRef(null), dlgLines = useRef(new Map()), talkSeen = useRef(new Set());
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
@@ -1153,7 +1150,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (who) setDlgSay(to("dlgSays", ...words(who)));
   };
   useEffect(() => {
-    if (!dialogueOn || talk !== undefined) return undefined;
+    if (!dlgOn || talk !== undefined) return undefined;
     const sub = streamOn();
     if (!sub) return undefined;
     let skew = 0;
@@ -1173,9 +1170,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const hold = (off) => (lease ? lease.hold(off) : off);
     const offs = [hold(sub("clock", (d) => { if (d && typeof d.now === "number") skew = d.now - Date.now(); })), hold(sub("message", take))];
     return () => { for (const off of offs) if (typeof off === "function") off(); };
-  }, [dialogueOn, lease, talk === undefined]);
+  }, [dlgOn, lease, talk === undefined]);
   useEffect(() => {
-    if (!dialogueOn || !talk) return;
+    if (!dlgOn || !talk) return;
     let changed = false;
     for (const x of talkOf(talk)) {
       const k = `${x.instance}|${x.kind}|${x.at}`;
@@ -1188,13 +1185,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       sayFor(x.instance, (who) => (x.kind === "heard" ? [to("dlgSomeone"), to("dlgHeardShare", nodeText(who.node).primary)] : [nodeText(who.node).primary, to("dlgAnsweredShare")]));
     }
     if (changed) dlgWake();
-  }, [dialogueOn, talk]);
+  }, [dlgOn, talk]);
   // What is over goes (an answer after its fade, a conversation never answered); the box is drawn again meanwhile.
   useEffect(() => {
-    if (!dialogueOn) return undefined;
+    if (!dlgOn) return undefined;
     const h = setInterval(() => { if (dlg.sweep(now(), still, !!(dlgRef.current && dlgRef.current.vn)) || dlg.size()) dlgWake(); }, 1000);
     return () => clearInterval(h);
-  }, [dialogueOn]);
+  }, [dlgOn]);
   const toggleDialogue = () => {
     const v = !dialogueOn;
     store.saveDialogueOn(v); setDialogueOn(v);
@@ -1327,11 +1324,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const quiet = chat.subscribe(() => { if (still && scene.current) draw(0); else loop.current?.wake(); });
     return () => { if (typeof off === "function") off(); quiet(); };
   }, [chat, tmode, lease]);
-  const dialogueOnNow = () => { if (!dialogueOn) { store.saveDialogueOn(true); setDialogueOn(true); dlgWake(); } };
   const pickTalkMode = (v) => {
     store.saveTalkMode(v); setTalkMode(v);
     if (v === "window") setTalkTo(null);
-    if (v === "box") dialogueOnNow();
   };
   // What a view and per-device seat choices are kept for: the office and its style (All offices: its own key).
   const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
@@ -1701,7 +1696,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   /** A desk opens its chat: out of fullscreen first (the chat is beside the view, or instead of it). */
   const open = (name) => {
     if (!onOpen) return;
-    if (tmode !== "window") { setTalkTo(name); if (tmode === "box") dialogueOnNow(); return; }
+    if (tmode !== "window") { setTalkTo(name); return; }
     if (fsRef.current) exitFs();
     onOpen(name);
   };
@@ -1820,6 +1815,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!front) { dlgShown.current = null; showDialogueDock(false); return false; }
     const who = d.who.get(front.instance), node = who.node;
     const stage = stageOf(front, t, node.state === "working", still);
+    // Talk "Dialogue box" (d.vn) keeps an answer until it is clicked away in its own box (TalkStage); the dock is not drawn then.
     if (stage.done && !d.vn) { dlgShown.current = null; showDialogueDock(false); return false; }
     showDialogueDock(true);
     const cv = dialogueCanvasRef.current;
@@ -1852,53 +1848,35 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       return im ? { kind: "portrait", im } : { kind: "initial", text: firstCharacter(front.person.name || to("dlgSomeone")) };
     };
     const answered = stage.phase === "answered";
-    // Talk "Dialogue box" (d.vn): the whole line, read page by page with clicks (advanceDialogue); else its first words.
-    const vn = !!d.vn;
-    const words = answered ? (vn ? front.replyFull ?? front.reply : front.reply) ?? to("dlgAnsweredShare")
-      : front.person ? (vn ? front.full ?? front.text : front.text) ?? "" : to("dlgHeardShare", agentName);
+    const words = answered ? front.reply ?? to("dlgAnsweredShare") : front.person ? front.text ?? "" : to("dlgHeardShare", agentName);
     ctx.setTransform(s.ratio, 0, 0, s.ratio, 0, 0);
     ctx.font = `400 ${L0.font}px system-ui, sans-serif`;
-    const lk = `${front.id}|${answered ? 1 : 0}|${L0.text.w}|${L0.font}|${vn ? 1 : 0}`;
+    const lk = `${front.id}|${answered ? 1 : 0}|${L0.text.w}|${L0.font}`;
     let lines = dlgLines.current.get(lk);
     if (!lines) {
-      lines = wrap((x) => ctx.measureText(x).width, words, L0.text.w, vn ? 400 : L0.text.lines);
+      lines = wrap((x) => ctx.measureText(x).width, words, L0.text.w, L0.text.lines);
       if (dlgLines.current.size > 32) dlgLines.current.clear();
       dlgLines.current.set(lk, lines);
     }
     const act = d.acts && d.acts.get(front.instance);
     const status = stage.phase === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null;
-    const per = Math.max(1, L0.text.lines), pages = Math.max(1, Math.ceil(lines.length / per));
-    const page = vn ? Math.min(front.page || 0, pages - 1) : 0, last = page >= pages - 1;
-    if (vn) lines = lines.slice(page * per, page * per + per);
-    // It stays (no fade) until clicked away; each page types out from when it was turned to (pageAt: -∞ once clicked whole).
-    const stg = vn ? { ...stage, alpha: 1, done: false, typedAt: front.pageAt ?? stage.typedAt } : stage;
-    const pageChars = lines.reduce((a, l) => a + [...l].length, 0);
-    const pace = vn ? chatUi.readPace(d.read, pageChars) : { cps: DLG.CPS, wait: Infinity };
-    const typedN = still ? Infinity : Math.floor(((t - stg.typedAt) * pace.cps) / 1000);
-    const whole = typedN >= pageChars;
-    if (vn && whole && front.wholeAt == null) front.wholeAt = t;
-    // Auto / Fast: a typed page goes on by itself after its wait (a reply's last page: closed); the loop keeps running.
-    const goesOn = vn && pace.wait < Infinity && (answered || !last);
     const L = fitBox(L0, lines.length, !!status);
-    dlgShown.current = { L, stage: stg, key: who.key, name: front.instance, conv: front, whole, last, answered };
-    const goNow = goesOn && whole && t - front.wholeAt >= pace.wait;
+    dlgShown.current = { L, stage, key: who.key, name: front.instance };
     const frameSrc = pack && pack.dialogBox && pack.dialogBox.frame, frameIm = frameSrc ? pic(frameSrc) : null;
-    const drew = drawBox(ctx, {
+    return drawBox(ctx, {
       // A short landscape dock keeps the name and words; decorative faces need headroom above the box.
-      L, stage: stg, cps: pace.cps, cue: vn && (answered || !last), left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
+      L, stage, left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
       name: answered ? agentName : front.person ? front.person.name || to("dlgSomeone") : to("dlgSomeone"),
       lines, status: status ? `${agentName} · ${status}` : null, more,
       colours: boxColours(pack && pack.dialogBox, s.env.pal), frame: frameIm ? { im: frameIm, slice: pack.dialogBox.slice || 8, k: pack.scale || 2 } : null,
     }, t, { ...s.env, still });
-    if (goNow) stepDialogue(dlgShown.current);
-    return drew || goesOn;
   }
   // A newly mounted dock must paint even when reduced motion leaves the map loop asleep.
   useLayoutEffect(() => {
-    if (!dialogueOn || !dlgVisible) return;
+    if (!dlgOn || !dlgVisible) return;
     if (scene.current) drawDialogue(scene.current.ctx, scene.current, still ? 0 : now());
     if (!still) loop.current?.wake();
-  }, [dialogueOn, dlgVisible, dlgSay, width, phone, ratio]);
+  }, [dlgOn, dlgVisible, dlgSay, width, phone, ratio]);
 
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
   // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
@@ -1983,8 +1961,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     drop: (instance) => { dlg.drop(instance); dlgWake(); },
   };
   // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
-  const dockShown = dialogueOn && dlgVisible && tmode === "window";
-  dlgRef.current = dialogueOn ? {
+  const dockShown = dlgOn && dlgVisible && tmode === "window";
+  dlgRef.current = dlgOn ? {
     vn: tmode === "box", read: readMode,
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
     acts: actsHere, share: talk !== undefined,
@@ -2156,25 +2134,12 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return hit && people.some(d => d.node.i && d.node.name === hit.name) ? hit : null;
   };
   const openDialogue = (e) => {
-    const vn = tmode === "box";
-    if (shared || !onOpen || !dlgShown.current || (!vn && e.detail > 1)) return;
+    if (shared || !onOpen || !dlgShown.current || e.detail > 1) return;
     if (e.type === "keydown") {
       if (e.repeat || e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();
     }
-    if (vn) { advanceDialogue(); return; }
     setCard(null); open(dlgShown.current.name);
-  };
-  /**
-   * Talk "Dialogue box", as a visual novel: a click shows the page whole while it types, else turns to the next page,
-   * else (the reply's last page) closes it — the next conversation, or none. The line under the box talks to them.
-   */
-  const advanceDialogue = () => {
-    const b = dlgShown.current;
-    if (!b || !b.conv) return;
-    if (talkTo !== b.name) setTalkTo(b.name);
-    stepDialogue(b);
-    dlgWake();
   };
   /** Skip (the reading controls): every reply in the box, or over the heads, goes now. */
   const skipTalk = () => { if (tmode === "box") dlg.skip(); else if (chat) chat.skipAll(); dlgWake(); };
@@ -2638,10 +2603,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${onStageMove} onPointerUp=${onStageUp} onPointerCancel=${onStageCancel}
       onWheel=${onWheel} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${g.clickCapture}>
-      ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
+      ${dlgOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
       <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(carouselPick ? "labelCarousel" : overview ? "labelAll" : "label")}
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onClick=${onClick} ondblclick=${onDblClick}></canvas>
-      ${tmode === "box" ? html`<${chatUi.TalkStage} peek=${stagePeek} ops=${stageOps} talk=${chat} read=${readMode} onRead=${pickRead} phone=${phone}
+      ${tmode === "box" ? html`<${chatUi.TalkStage} peek=${stagePeek} ops=${stageOps} talk=${chat} read=${readMode} onRead=${pickRead} phone=${phone} still=${still}
         onFull=${openFull} onClose=${() => { dlg.skip(); setTalkTo(null); dlgWake(); }} />` : null}
       ${overview ? tiles.map((tl) => {
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };
@@ -2738,7 +2703,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       </div>` : null}
     ${dockShown ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
-      aria-label=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : dlgSay} title=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : null}
+      aria-label=${onOpen && !shared ? to("dlgOpenChat") : dlgSay} title=${onOpen && !shared ? to("dlgOpenChat") : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
     ${tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
       read=${readMode} onRead=${pickRead} onSkip=${skipTalk} />` : null}

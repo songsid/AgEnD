@@ -337,18 +337,13 @@ export function drawBox(ctx, v, t, env) {
   ctx.fillStyle = c.name; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   ctx.fillText(fit(ctx, v.name, nw - 16), nx + 10, ny + L.nameH / 2 + 1);
   // The words, typed out.
-  const n = env.still ? Infinity : Math.floor(((t - stage.typedAt) * (v.cps || DLG.CPS)) / 1000);
+  const n = env.still ? Infinity : Math.floor(((t - stage.typedAt) * DLG.CPS) / 1000);
   ctx.font = `400 ${L.font}px system-ui, sans-serif`; ctx.fillStyle = c.text; ctx.textBaseline = "top";
   const shown = typed(v.lines, n);
   shown.forEach((l, i) => ctx.fillText(l, L.text.x, L.text.y + 6 + i * L.lineH));
   // The agent's line while it works; "+N" for the conversations waiting.
   ctx.font = `italic 600 ${L.narrow ? 12 : 13}px system-ui, sans-serif`; ctx.textBaseline = "bottom";
   if (v.status) { ctx.fillStyle = c.name; ctx.textAlign = "right"; ctx.fillText(fit(ctx, v.status, b.w - 2 * L.pad), b.x + b.w - L.pad, b.y + b.h - Math.round(L.pad * 0.75)); }
-  // The click-through box: ▼ once the page is typed (more to read, or a click closes it).
-  if (v.cue && !v.status && n >= lengthOf(v.lines)) {
-    ctx.font = "700 14px system-ui, sans-serif"; ctx.fillStyle = c.name; ctx.textAlign = "right"; ctx.textBaseline = "bottom";
-    ctx.fillText("▼", b.x + b.w - L.pad, b.y + b.h - Math.round(L.pad * 0.6));
-  }
   ctx.font = `600 ${L.narrow ? 11 : 12}px system-ui, sans-serif`;
   if (v.more > 0) {
     ctx.font = "700 13px system-ui, sans-serif";

@@ -70,6 +70,62 @@ describe("the talk store (createTalk)", () => {
     expect(seen.every((n) => n === "atlas")).toBe(true);
     expect(await talk.send("atlas", "   ")).toBe(false);
   });
+  // #4406 (Prism): the server's copy of a send can come first in the history, before or after the send's answer and
+  // before its live copy. Whatever the order, one copy stays: the server's.
+  describe("a send and the server's copy of it, in any order: one message, never two", () => {
+    const SERVER = { boot: "b", id: 9, role: "user", instance: "atlas", text: "hello", messageId: "m-9", ts: "t9" };
+    const LIVE = { ...SERVER, clientId: "r1" };
+    const held = () => {
+      let release!: (v: unknown) => void;
+      const history = new Promise((r) => { release = r; });
+      let answer: (v: unknown) => void = () => {};
+      const f = vi.fn(async (url: string) => {
+        if (url.startsWith("/ui/history")) return history;
+        return new Promise((r) => { answer = r; });
+      });
+      const talk = T.createTalk({ fetch: f as any, rid: () => "r1" });
+      return { talk, release: (msgs: unknown[]) => release(res({ messages: msgs })), answer: (b: unknown) => answer(res(b)) };
+    };
+    const texts = (talk: any) => talk.thread("atlas").msgs.map((m: any) => `${m.key}:${m.text}`);
+    it("history held → send → its answer → history (with the server's copy) → live copy", async () => {
+      const { talk, release, answer } = held();
+      const opened = talk.open("atlas");
+      const sent = talk.send("atlas", "hello");
+      answer({ sent: true, messageId: "m-9" }); await sent;
+      release([SERVER]); await opened;
+      expect(texts(talk)).toEqual(["b-9:hello"]);
+      talk.take(LIVE);
+      expect(texts(talk)).toEqual(["b-9:hello"]);
+    });
+    it("history held → send → history (with the server's copy) → live copy → the send's answer last", async () => {
+      const { talk, release, answer } = held();
+      const opened = talk.open("atlas");
+      const sent = talk.send("atlas", "hello");
+      release([SERVER]); await opened;
+      talk.take(LIVE);                                         // the server's copy is already here: the page's own goes
+      expect(texts(talk)).toEqual(["b-9:hello"]);
+      answer({ sent: true, messageId: "m-9" }); expect(await sent).toBe(true);
+      expect(texts(talk)).toEqual(["b-9:hello"]);
+    });
+    it("history held → send → history → the send's answer (no live copy yet): settled by its messageId", async () => {
+      const { talk, release, answer } = held();
+      const opened = talk.open("atlas");
+      const sent = talk.send("atlas", "hello");
+      release([SERVER]); await opened;
+      expect(texts(talk)).toEqual(["b-9:hello", "c-r1:hello"]);      // not known yet to be the same message
+      answer({ sent: true, messageId: "m-9" }); await sent;
+      expect(texts(talk)).toEqual(["b-9:hello"]);
+    });
+    it("the ordinary order (live copy first) still replaces the pending one in place; an unrelated message stays", async () => {
+      const { talk, release, answer } = held();
+      const opened = talk.open("atlas"); release([{ ...SERVER, id: 1, messageId: "m-1", text: "earlier" }]); await opened;
+      const sent = talk.send("atlas", "hello");
+      talk.take(LIVE);
+      answer({ sent: true, messageId: "m-9" }); await sent;
+      talk.take({ boot: "b", id: 10, role: "user", instance: "atlas", text: "hello", messageId: "m-10", ts: "t10" });   // the same words, another message
+      expect(texts(talk)).toEqual(["b-1:earlier", "b-9:hello", "b-10:hello"]);
+    });
+  });
   it("a refused send stays, marked failed; a file alone reads as a file; a button says its label", async () => {
     const talk = T.createTalk({ fetch: (async (url: string) => (url === "/ui/send" ? res({ error: "nope" }, false) : res({ messages: [] }))) as any });
     await talk.open("atlas");
@@ -225,7 +281,8 @@ describe("talking on the page", () => {
     try {
       await office();
       await pick("box");
-      expect((await dialogue()).checked).toBe(true);
+      expect((await dialogue()).checked).toBe(false);                              // #4406: Dialogue stays as it was left (off)
+      expect(localStorage.getItem("agend_org_office_dialogue")).toBeNull();
       expect(localStorage.getItem("agend_org_office_talk")).toBe("box");
       expect(p.root.querySelector(".ot-stage")).toBeNull();                         // nobody yet: the scene as it was
       await clickBox();
@@ -328,7 +385,7 @@ describe("talking on the page", () => {
     expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
     expect(p.root.querySelector(".ot-bar")).toBeNull();
     expect(p.root.querySelector(".ot-stage")).toBeNull();
-    expect((await dialogue()).checked).toBe(true);
+    expect((await dialogue()).checked).toBe(false);                               // never ticked for the person
     expect(p.root.querySelector(".oo").className).toContain("ot-side");
     expect(panel.querySelector(".ot-head").textContent).toContain("atlas");
     expect(panel.querySelector(".ot-md").innerHTML).toContain("Earlier reply");
@@ -359,5 +416,52 @@ describe("talking on the page", () => {
     const drawn = () => (p.root.querySelector(".oo-canvas")._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
     for (let i = 0; i < 40 && !drawn().includes("On my way to the docs"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));   // typed out
     expect(drawn()).toEqual(expect.arrayContaining(["On my way to the docs", "▼"]));
+  });
+  it("#4406: on the page, reduced motion reaches the dialogue box (the reply whole at once)", async () => {
+    const prior = (globalThis as any).matchMedia;
+    (globalThis as any).matchMedia = (q: string) => ({ matches: q.includes("reduce"), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    try {
+      await office();
+      await pick("box"); await clickBox();
+      emit("message", { boot: "b", id: nextId++, instance: "atlas", role: "agent", text: "A reply shown at once", ts: new Date().toISOString() });
+      await tick(4);
+      expect(p.root.querySelector(".ot-stage .ot-words").textContent).toContain("A reply shown at once");
+    } finally { if (prior === undefined) delete (globalThis as any).matchMedia; else (globalThis as any).matchMedia = prior; }
+  });
+  it("#4406: a draft is its target's — switching to someone else never sends the words typed for the one before", async () => {
+    const posted: any[] = [];
+    const talk = T.createTalk({ fetch: (async (url: string, o?: any) => { if (url === "/ui/send") { posted.push(JSON.parse(o.body)); return res({ sent: true }); } return res({ messages: [] }); }) as any });
+    const panel = (name: string) => p.mount(h(T.TalkPanel, { talk, name, label: name, state: null, sheet: false, onClose: () => {}, onFull: null }));
+    const input = () => p.root.querySelector(".ot-panel .ot-input");
+    await panel("atlas");
+    input().value = "for atlas only"; fire(input(), "input"); await settle(2);
+    await panel("quill");                                        // the target changes under the same composer
+    expect(input().value).toBe("");
+    fire(input(), "keydown", { key: "Enter" }); await tick(4);
+    expect(posted).toEqual([]);                                   // nothing typed for quill: nothing sent
+    p.root.querySelector(".ot-panel .ot-send").click(); await tick(4);
+    expect(posted).toEqual([]);
+    input().value = "for quill"; fire(input(), "input"); await settle(2);
+    fire(input(), "keydown", { key: "Enter" }); await tick(4);
+    await panel("atlas");                                        // back: atlas's own draft is still there
+    expect(input().value).toBe("for atlas only");
+    fire(input(), "keydown", { key: "Enter" }); await tick(4);
+    expect(posted.map((x) => [x.instance, x.message])).toEqual([["quill", "for quill"], ["atlas", "for atlas only"]]);
+    await p.unmount();
+  });
+  it("#4406: reduced motion — the dialogue box shows a reply whole at once, as the canvas box does", async () => {
+    const talk = T.createTalk({ fetch: (async () => res({ messages: [] })) as any });
+    const peek = () => ({ name: "atlas", label: "atlas", status: null, portrait: null, colours: null, more: 0,
+      conv: { instance: "atlas", answeredAt: 1, reply: "All done here", page: 0, pageAt: null } });
+    const ops = { now: () => 5000, drop: () => {}, skip: () => {}, target: () => {} };
+    const stage = (still: boolean) => p.mount(h(T.TalkStage, { peek, ops, talk, read: "click", onRead: () => {}, phone: false, onFull: () => {}, onClose: () => {}, still }));
+    const words = () => p.root.querySelector(".ot-stage .ot-words").textContent;
+    await stage(false);
+    expect(words()).not.toContain("All done here");              // typed out from now: nothing yet at t = 0
+    await p.unmount();
+    await stage(true);
+    expect(words()).toContain("All done here");                   // still: whole at once, with its cue
+    expect(p.root.querySelector(".ot-stage .ot-cue")).not.toBeNull();
+    await p.unmount();
   });
 });
