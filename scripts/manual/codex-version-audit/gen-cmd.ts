@@ -21,7 +21,10 @@ writeFileSync(join(shared, "config.toml"), [
 ].join("\n"));
 const b = new CodexBackend(instDir);
 // GEN_ASK=1: skipPermissions: false — codex asks for approval in a workspace-write sandbox (#2886).
-const config = { workingDirectory: workDir, instanceDir: instDir, instanceName: "audit", mcpServers: {}, skipPermissions: process.env.GEN_ASK !== "1", skipResume: resume !== "resume" };
+// GEN_MCP=<stub.mjs>: one stdio MCP server, as AgEnD registers its own (M-3653: codex 0.172 defers optional stdio
+// servers on a warm catalog; a stub that logs its starts and exits shows when codex launches it).
+const mcpServers = process.env.GEN_MCP ? { agend: { command: process.execPath, args: [process.env.GEN_MCP], env: { STUB_MARK: process.env.GEN_MCP_MARK ?? "" } } } : {};
+const config = { workingDirectory: workDir, instanceDir: instDir, instanceName: "audit", mcpServers, skipPermissions: process.env.GEN_ASK !== "1", skipResume: resume !== "resume" };
 b.writeConfig(config as any);
 if (trust === "trust") b.preTrust(workDir);
 const home = (b as any).isolatedCodexHome as string;
