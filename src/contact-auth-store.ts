@@ -281,6 +281,24 @@ export class ContactAuthStore {
     const row = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE id=?").get(id) as TicketRow | undefined;
     return row ? this.read(row) : undefined;
   }
+  /**
+   * M-3693: pending tickets as they stand, WITHOUT the expiry write the other reads do (General's contact_state is
+   * read-only). A ticket past its expiry or the application TTL is left out, exactly as those reads would mark it.
+   * `limit` rows at most; `truncated` says more were pending.
+   */
+  pendingSnapshot(limit = 1000): { items: ContactTicket[]; truncated: boolean } {
+    const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE json_extract(ticket_json,'$.state')='pending' AND created_at>? ORDER BY created_at DESC,id LIMIT ?")
+      .all(this.now() - CONTACT_APPLICATION_TTL_MS, limit + 1) as TicketRow[];
+    const items = rows.slice(0, limit).map(row => JSON.parse(row.ticket_json) as ContactTicket).filter(t => Date.parse(t.expiresAt) > this.now());
+    return { items, truncated: rows.length > limit };
+  }
+  /** M-3693: up to two live pending tickets whose id starts with `prefix` (no write); [] for a prefix that is not an id's. */
+  pendingByPrefix(prefix: string): ContactTicket[] {
+    if (!/^[A-Za-z0-9-]+$/.test(prefix)) return [];
+    const rows = this.db.prepare("SELECT * FROM contact_auth_tickets WHERE substr(id,1,?)=? AND json_extract(ticket_json,'$.state')='pending' AND created_at>?")
+      .all(prefix.length, prefix, this.now() - CONTACT_APPLICATION_TTL_MS) as TicketRow[];
+    return rows.map(row => JSON.parse(row.ticket_json) as ContactTicket).filter(t => Date.parse(t.expiresAt) > this.now()).slice(0, 2);
+  }
   pending(): ContactTicket[] {
     this.db.prepare("UPDATE contact_auth_tickets SET ticket_json=json_set(ticket_json,'$.state','expired','$.revision',json_extract(ticket_json,'$.revision')+1) "
       + "WHERE created_at<=? AND json_extract(ticket_json,'$.state')='pending'").run(this.now() - CONTACT_APPLICATION_TTL_MS);

@@ -112,7 +112,7 @@ export const TOOL_PROFILES: Readonly<Record<ToolSetName, readonly string[]>> = {
     "list_teams", "list_instances", "describe_instance", "get_fleet_status", "get_usage", "get_effort", "list_models", "get_cache_report", "get_usage_report",
     "get_instance_logs", "get_fleet_config", "validate_config", "list_deployments",
     // Read-only runtime status, plus General-only requests that require a separate human confirmation.
-    "kiro_engine_status", "propose_contact_change",
+    "kiro_engine_status", "propose_contact_change", "contact_state",
     "hub_set_intro", "hub_room_list", "hub_room_post", "hub_room_members", "hub_people_search",
     "send_to_instance", "delegate_task", "request_information", "report_result", "broadcast", "delivery_status",
     ...ORCHESTRATION,

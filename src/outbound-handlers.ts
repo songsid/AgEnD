@@ -1,4 +1,4 @@
-import { ProposeContactChangeArgs } from "./contact-change-proposals.js";
+import { ProposeContactChangeArgs, ContactStateArgs, contactProposalRefusal } from "./contact-change-proposals.js";
 import { compactDeliveryStatus, compactSendAck } from "./tool-receipt-output.js";
 import { ContactHeldError } from "./contact-auth-service.js";
 import { KNOWN_BACKENDS, validateFleetConfig, type ValidationResult } from "./config-validator.js";
@@ -88,6 +88,8 @@ function hubContactRefusal(ctx: OutboundContext, agent: string): string {
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
   requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
+  /** M-3693: contact_state's read-only view (see contact-state-view.ts). */
+  contactState?(agent?: string): unknown;
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
   /** M-3660: the Hub question whose answer turn holds the restriction (its correlation id), for the refusal's text. */
@@ -1256,14 +1258,27 @@ const kiroEngineStatusHandler: Handler = (ctx, rawArgs, respond) => {
 
 /** General proposes; only the system platform callback can confirm. */
 const proposeContactChange: Handler = async (ctx, raw, respond, meta) => {
-  const parsed = validateArgs(ProposeContactChangeArgs, raw, "propose_contact_change");
-  if (!parsed.ok) { respond(null, parsed.error); return; }
+  // Prism #4436 P3: field errors get the same localized sentence and next step as every other refusal.
+  const parsed = ProposeContactChangeArgs.safeParse(raw);
+  if (!parsed.success) { respond(null, contactProposalRefusal(parsed.error)); return; }
   if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true || !meta.callerCurrent?.()) {
     respond(null, "Only a current configured General may propose a contact change"); return;
   }
   if (!ctx.requestContactChange) { respond(null, "Contact proposals are unavailable; use the web Permissions or Authorizations page"); return; }
   try { respond(await ctx.requestContactChange(meta.instanceName, parsed.data.change, meta.callerCurrent)); }
-  catch (error) { respond(null, `Contact proposal not applied: ${(error as Error).message}`); }
+  catch (error) { respond(null, contactProposalRefusal(error)); }
+};
+
+/** M-3693: General reads what contact permissions hold (read-only). */
+const contactState: Handler = async (ctx, raw, respond, meta) => {
+  const parsed = validateArgs(ContactStateArgs, raw, "contact_state");
+  if (!parsed.ok) { respond(null, parsed.error); return; }
+  if (!meta?.instanceName || ctx.fleetConfig?.instances[meta.instanceName]?.general_topic !== true) {
+    respond(null, "Only this fleet's configured General may read contact permissions"); return;
+  }
+  if (!ctx.contactState) { respond(null, "Contact permissions are unavailable here; the admin can see them in the web dashboard's Permissions / Authorizations pages"); return; }
+  try { respond(ctx.contactState(parsed.data.agent)); }
+  catch (error) { respond(null, `Could not read contact permissions (${(error as Error).message}); the admin can see them in the web dashboard's Permissions / Authorizations pages`); }
 };
 
 /** #2598 B2: a fleet admin confirms the kiro classic → TUI move. */
@@ -2669,6 +2684,7 @@ export const outboundHandlers = new Map<string, Handler>([
   ["close_poll", closePoll],
   ["kiro_engine_status", kiroEngineStatusHandler],
   ["propose_contact_change", proposeContactChange],
+  ["contact_state", contactState],
   ["migrate_kiro_instance", migrateKiroInstance],
   ["reconcile_kiro_instance", reconcileKiroInstance],
   ["get_usage", getUsage],

@@ -3,6 +3,7 @@ export const GENERAL_ROLE_INSTRUCTIONS = "# Fleet Coordinator\n\nYou are the fle
 
 /** Fixed installed program assets, never an enumeration of a runtime profile. */
 export const GENERAL_SKILL_NAMES = [
+  "admin",
   "backend-providers",
   "bug-report",
   "concepts",
