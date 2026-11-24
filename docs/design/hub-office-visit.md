@@ -378,8 +378,10 @@ Settled with the builder during the build; where one differs from the text above
 - **Pictures (R2b).** Each place shows what the Fleet shows in the same kind of place: the card the identity
   card's picture, the small avatar the sidebar's avatar (the Fleet draws none on chat messages). The sidebar's
   choice is, in order: an uploaded profile picture, the theme avatar, the bot's avatar (already cached by the
-  Fleet), the persona emoji, the initial. It is sent as the owner's sidebar shows it, already reduced to 64×64;
-  the portrait is sent at 256×256. A card with no portrait keeps the figure. Pictures follow changes on the
+  Fleet), the persona emoji, the initial. It is sent as the owner's sidebar shows it. PNG pictures are reduced
+  to 64×64 (small avatar) and 256×256 (portrait); JPEG and webp go unchanged when they fit (small avatar up to
+  64 KB), because AgEnD ships no codec for them. A picture too large to send falls back to the emoji or figure,
+  and the owner's My agents row says why. A card with no portrait keeps the figure. Pictures follow changes on the
   Fleet with no re-share, and unsharing removes them. No per-agent switch and no change of states in this slice.
   Over the 512 KB cap, drop the character pictures first, then the portrait, never the small avatar.
 
