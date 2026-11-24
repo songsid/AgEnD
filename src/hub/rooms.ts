@@ -17,7 +17,7 @@ import { buttonsDigest } from "./buttons-model.js";
 import type { HubTx } from "./types.js";
 import { HubProtocolError, scalarString, validated } from "./validation.js";
 import { messageContentDigest, personKeyString } from "./identity.js";
-import { HUB_LIMITS, answerSchema } from "./protocol.js";
+import { HUB_ASKER_NAME_CAPABILITY, HUB_LIMITS, answerSchema } from "./protocol.js";
 import type { HubAttachmentChunk, HubAttachmentRef } from "./types.js";
 import type { HubAttachmentStore } from "./attachments/store.js";
 import { isInlineImage } from "./attachments/limits.js";
@@ -481,7 +481,10 @@ export class HubRoomsService {
             asker: personFromString(msg.asker), owner: personFromString(msg.owner), destinationFleetId: fleetId, exposureId: msg.exposure_id, roomId: msg.room_id,
             grantId: msg.grant_id, grantRevision: msg.grant_revision, exposureRevision: msg.exposure_revision, revocationVersion: this.core.revocationVersion(),
             contentDigest: msg.content_digest, issuedAt: now, expiresAt: now + ENVELOPE_MS, nonce: randomBytes(32).toString("hex") });
-          return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { text, identity, ...(files.length ? { attachments: files } : {}) } };
+          // M-3594: the asker's display name from the Hub's own directory (the name room asks carry), never asker text.
+          const askerName = link.features.has(HUB_ASKER_NAME_CAPABILITY) ? askerDisplayName(db, msg.asker) : undefined;
+          return { v: 1, type: "question", requestId: randomUUID(), linkEpoch: link.linkEpoch,
+            payload: { text, identity, ...(files.length ? { attachments: files } : {}), ...(askerName ? { askerName } : {}) } };
         });
         if (!frame) continue;
         try { permit?.assertCurrent(); } catch { return false; }
@@ -619,4 +622,13 @@ export class HubRoomsService {
         nextReceiptSequence: page.length ? page[page.length - 1]!.sequence : input.afterReceiptSequence, more: rows.length > 128 };
     });
   }
+}
+
+/** M-3594: a person's directory display name as the Hub's rooms show it; undefined when the Hub has none or it is unusable. */
+function askerDisplayName(db: Database.Database, person: string): string | undefined {
+  let name: string | undefined;
+  // A Hub without the people tables (or a read that fails) sends the question without a name, never holds it.
+  try { name = (db.prepare("SELECT display_name FROM hub_people WHERE person=? UNION ALL SELECT display_name FROM hub_room_people WHERE person=? LIMIT 1").get(person, person) as { display_name: string } | undefined)?.display_name; }
+  catch { return undefined; }
+  return name && name.trim() && Buffer.byteLength(name, "utf8") <= 256 && scalarString(name) ? name : undefined;
 }
