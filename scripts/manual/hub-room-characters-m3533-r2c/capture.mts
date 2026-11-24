@@ -170,9 +170,18 @@ try {
       // A close look at the desks (the scene's first row), where the own characters sit beside the figures.
       if (stage) await shot("1z-office-close", { x: stage.x, y: stage.y, width: Math.min(stage.width, phone ? 390 : 760), height: Math.min(stage.height, phone ? 360 : 420) });
       // The fox at its desk, close (Lumen R2c: its readability at the room's size on record).
-      const fox = await page.evaluate(() => { const b = [...document.querySelectorAll(".hub-room-office .oo-desk")].find((e) => (e.textContent || "").startsWith("Quill")) as HTMLElement | undefined;
-        const r = b?.getBoundingClientRect(); return r ? { x: r.x, y: r.y, w: r.width, h: r.height } : null; });
-      if (fox) await shot("1q-fox-close", { x: Math.max(0, fox.x + fox.w / 2 - 90), y: Math.max(0, fox.y + fox.h / 2 - 90), width: 180, height: 180 });
+      // Found by its own orange (235,130,40; Atlas's robot is 232,128,64) on the scene's canvas.
+      const fox = await page.evaluate(() => {
+        const cv = document.querySelector(".hub-room-office .oo-stage canvas") as HTMLCanvasElement | null; if (!cv) return null;
+        const d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data; let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
+        for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i]! - 235) <= 2 && Math.abs(d[i + 1]! - 130) <= 2 && Math.abs(d[i + 2]! - 40) <= 2) {
+          const p = i / 4, x = p % cv.width, y = Math.floor(p / cv.width); x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+        if (x1 < 0) return null;
+        const r = cv.getBoundingClientRect(), k = r.width / cv.width;
+        return { x: r.x + ((x0 + x1) / 2) * k, y: r.y + ((y0 + y1) / 2) * k, w: (x1 - x0 + 1) * k, h: (y1 - y0 + 1) * k };
+      });
+      if (fox) await shot("1q-fox-close", { x: Math.max(0, fox.x - 60), y: Math.max(0, fox.y - 60), width: 120, height: 120 });
+      check(`${tag}: the fox is found on the scene`, !!fox, fox);
       receipt.measured[`${tag}-foxDesk`] = fox;
       // Atlas's card: no portrait — the set's stand (Lumen R2c 4: portrait, else stand, else the figure).
       await page.evaluate(() => { const b = [...document.querySelectorAll(".hub-room-office .oo-desk")].find((e) => (e.textContent || "").startsWith("Atlas")) as HTMLElement | undefined; b?.click(); });

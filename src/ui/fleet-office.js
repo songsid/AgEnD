@@ -799,8 +799,15 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   // (All offices): drawn after every tile, unclipped, so a bubble at a tile's edge is whole.
   // M-3648: an area's name blocks chatter; a call may cover it (placeBubbles' `soft`): a name never keeps a call out.
   const placed = placeBubbles(thinBubbles(bubbles, p.zones ? p.L.over : null), 22, tags, titleBoxes);
-  const say = () => { T(); for (const { sp, b, dy } of placed) {
-    const text = [...b.text].slice(0, b.shown).join("");
+  // M-3533 R2c: and after placing (which lifts a bubble clear of another), a room character's bubble still stays in its area.
+  const inArea = (sp, text, dy) => {
+    const ar = sk.ownCharacters && p.zones && sp.area != null ? p.L.areas && p.L.areas[sp.area] : null;
+    if (!ar || !ar.rect || !dy) return dy;
+    const over = ar.rect.y + 2 - bubbleBox(ctx, sp.x, sp.y, text, -dy).y;
+    return over > 0 ? Math.max(0, dy - over) : dy;
+  };
+  const say = () => { T(); for (const { sp, b, dy: lifted } of placed) {
+    const text = [...b.text].slice(0, b.shown).join(""), dy = inArea(sp, b.text, lifted);
     sk.drawBubble(ctx, sp.x, sp.y, text, env, -dy);
     if (bubbleHits && text) {
       const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
