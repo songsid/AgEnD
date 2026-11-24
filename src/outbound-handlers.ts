@@ -76,7 +76,7 @@ import {
   validateArgs,
 } from "./outbound-schemas.js";
 import type { CrossInstanceRecord } from "./search/search-docs.js";
-import { HUB_REPORT_TARGET, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
+import { HUB_REPORT_TARGET, HUB_ANSWER_UNKNOWN, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
 
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
@@ -502,6 +502,10 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
   const existsInConfig = targetName in (ctx.fleetConfig?.instances ?? {})
     || targetInstanceName in (ctx.fleetConfig?.instances ?? {});
   if (!existsInConfig && !targetIpc) {
+    // M-3637: no real target of that name after the ordinary resolution (config, live IPC, registered session): a Hub
+    // correlation id nobody claimed (used, another agent's, unknown, or no Hub connection here) gets the reason, never
+    // "Instance or session not found: agend-hub". A configured or registered agend-hub keeps its ordinary route above.
+    if (targetName === HUB_REPORT_TARGET && parsedCorrelationId?.startsWith("hub-") && !isExternalSender) { respond(null, HUB_ANSWER_UNKNOWN); return; }
     respond(null, `Instance or session not found: ${targetName}`);
     return;
   }
