@@ -444,7 +444,7 @@ pack tools, and rolling back. Point people there for more than the summary below
 
 **Office** (the third view, remembered per device; M-3556: its bar is one row — Office, Show, People on the left; Edit
 offices, Share… and **⚙ Display options** on the right, a dropdown holding Style, Hide paused and stopped, Drag and pat,
-Bedtime, Lobby tile, Dialogue and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
+Bedtime, Lobby tile, Dialogue, Talk and Key; a phone's ⋯ sheet lists the same in that order; a Hub room's gear opens the same
 dropdown) draws the same fleet as a pixel office: a room per team, a desk
 per instance with a name tag, General and "Not in a team" in the **Lobby**. Each little person is its state: typing
 with the lamp on (working), tea break (idle), asleep behind a **Closed** sign (paused/stopped), a hand up under a
@@ -505,8 +505,14 @@ a tile on one canvas, each exactly as its own view (its style, members, seats, b
 name and head count, each as large as its office's content, packed to fill the panel; **Lobby tile** (on by
 default; disabled when everyone is in an office) adds the instances in no office. Below 75% name tags show on hover
 only. Hover and click work across
-tiles; a tile's label, or a double-click on it, opens that office; traffic between offices flies straight across.
-Edit offices and Edit layout wait for a single office.
+tiles; it is where the Office opens until another office is picked in the switcher; a tile's label, or a click on the
+tile (off its people), opens that office for this visit and **← All offices** goes back; traffic between offices flies
+straight across. Edit offices and Edit layout wait for a single office.
+**Talk** (in ⚙ Display options, per browser, dashboard only): what **Chat** does in the Office — **Pop-up window**
+(default), **Side panel** (a bottom sheet on a phone), **Dialogue box** (a visual-novel box over the foot of the scene:
+the reply typed two lines a page, click for the rest / next page / close, **History** for both sides) or **Over their
+head** (the reply over the agent, styled by a pack's `dialogBox.bubble`); reading **Click** / **Auto** / **Fast**,
+**Skip** closes every reply. Same conversation as the chat (`/ui/history`, `/ui/send`); never on a share link.
 **Share…** (#2636; an admin session, on the dashboard reached directly or over the public link — never read-only or a guest; the URL shows only to its maker, in the dialog) makes an Office share
 link: anyone who opens it watches **Whole fleet** (#2716, in the fleet's style), one office or **All offices** live, in the link's **Look** (#2715: Light, Dark or the viewer's device; default what the maker's dashboard shows now), read-only, with no sign-in — names, identity
 colours and states, every 5 s; no chat, no settings (a click shows a card with name, title, state, office and level only); agents' `office_set` lines only when

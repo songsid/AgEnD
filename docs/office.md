@@ -63,6 +63,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
 | **Drag and pat** | pick people up and pat or feed them: see [Bedtime, strolls and mail](#bedtime-strolls-and-mail) (zones styles) | per device, on by default |
 | **Dialogue** | the [dialogue box](#the-dialogue-box): what people say to agents here, and the replies | per browser, off by default |
+| **Talk** | what **Chat** does here: the pop-up window, a side panel, the dialogue box or over their head; see [Talk from the Office](#talk-from-the-office) (dashboard only) | per browser, Pop-up window by default |
 | **Key** | what the things carried between desks mean, in a strip above the scene (with **Live** on) | per browser |
 
 **The styles.**
@@ -336,18 +337,32 @@ What it shows:
 
 ### Talk from the Office
 
-**Talk** in the Office bar picks what a person's **Chat** (their card, a desk, the dialogue box) does. It's per browser, and only on the dashboard (never a share link or a guest page):
+**Talk** in **⚙ Display options** picks what a person's **Chat** (their card, a desk, the dialogue box) does. It's per browser, and only on the dashboard (never a share link or a guest page):
 
 | Talk | What Chat does |
 |---|---|
 | **Pop-up window** (default) | Opens their chat in its own window, as before. |
 | **Side panel** | A panel beside the office: their recent messages, the reply rendered as in the chat, a box to type in. On a phone, a sheet from the bottom. |
-| **Dialogue box** | Turns the dialogue box on and adds a line under it to type to them; **Full reply** shows their last reply whole. |
-| **Over their head** | The same line, but the reply is drawn over their head on the map (wrapped, up to six lines, for a few seconds), not in the box. |
+| **Dialogue box** | A visual-novel box laid over the foot of the scene (the Office keeps its size), with their portrait large beside it and a line inside the box to type to them. |
+| **Over their head** | The reply is drawn over their head on the map, a page at a time, with a line under the scene to type to them. |
 
 - **Enter** sends; **Shift+Enter** is a new line (and Enter while typing with an input method never sends).
 - Every way shows the same conversation as the chat: what you send here is in the chat, and their replies arrive live.
 - **Open full chat** opens the chat itself, for files, quotes, reactions and the rest.
+- One talk at a time: with **Side panel** or **Over their head** the [dialogue box](#the-dialogue-box) isn't shown under it, and with **Dialogue box** the talk box takes its place.
+
+**The Dialogue box way.** The box shows only their side: the whole reply, typed out, two lines a page (three on a phone), with ▼ once a page is whole. A click on the box (or Enter or Space) shows the rest of the page at once, then the next page, and after the last page closes the reply. The words keep clear of the portrait. The pack's `dialogBox` colours are used, else a night blue with gold. **History** opens the conversation's backlog over the box: both sides, the reply rendered as in the chat, and **Open full chat**. **×** closes the box.
+
+**Over their head.** The reply is wrapped into pages over their head, in the pack's `dialogBox.bubble` style (below), else light paper. **Full reply** under the scene shows their last reply whole.
+
+**Reading** (the box's own buttons, and the row under the scene for Over their head; per browser):
+
+| Reading | What it does |
+|---|---|
+| **Click** (default) | Each page waits for a click. |
+| **Auto** | A typed page goes on by itself after a pause that grows with its length (1.4–5 s). |
+| **Fast** | Typed quickly, and goes on after a short pause. |
+| **Skip** | Closes every reply shown now. |
 
 ## Share a view
 
