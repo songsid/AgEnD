@@ -6,7 +6,7 @@
  */
 import { createHash, randomUUID } from "node:crypto";
 import type { HubMemberLink } from "../client.js";
-import { canonicalArguments } from "../identity.js";
+import { HUB_LIMITS } from "../protocol.js";
 import {
   agentPictureResultSchema, agentPicturesResultSchema, characterSetBytes, HUB_AGENT_CHARACTERS_CAPABILITY, HUB_AGENT_PICTURES_CAPABILITY, HUB_PICTURE_AGENT_MAX, HUB_PICTURE_CHUNK,
   HUB_PICTURE_DISC_MAX, sniffPicture, type HubAgentPicturesRow, type HubCharacterSet, type HubPictureMime, type HubPictureOmitted, type HubPictureRef, type HubPictureSlot,
@@ -29,6 +29,21 @@ type Made = Prepared | "too-large" | null;
 type MadeCharacter = { set: HubCharacterSet; bytes: Map<string, Prepared> } | "too-large" | null;
 
 export const MEMBER_PICTURES_POLL_MS = 5_000;
+/**
+ * M-3533 R2c (Prism #4421): what one `agent.pictures` frame may take, serialized — the link refuses a frame over
+ * HUB_LIMITS.frame (256 KiB), and a refused report would be sent unchanged on every tick. Room for its envelope.
+ */
+export const MEMBER_PICTURES_REPORT_MAX = HUB_LIMITS.frame - 4 * 1024;
+/**
+ * The report fitted into one frame: every row keeps its disc and portrait (a report replaces the Fleet's rows, so none may
+ * be left out); characters, whole, are left out from the last row back until the frame fits. Such a set is not "too large"
+ * (the agent's own cap is not why): it is sent when the report has room again.
+ */
+export function fitReport(rows: HubAgentPicturesRow[], size: (rows: HubAgentPicturesRow[]) => number, max = MEMBER_PICTURES_REPORT_MAX): HubAgentPicturesRow[] {
+  const out = rows.slice();
+  for (let i = out.length - 1; i >= 0 && size(out) > max; i--) if (out[i]!.character) { const { character: _c, ...rest } = out[i]!; out[i] = rest; }
+  return out;
+}
 
 export class HubMemberAgentPictures {
   private link: HubMemberLink | null = null;
@@ -146,8 +161,11 @@ export class HubMemberAgentPictures {
         ...(tooLarge.length ? { tooLarge } : {}) });
     }
     if (!live()) return;
-    const revision = createHash("sha256").update(canonicalArguments({ agents: rows })).digest("hex");
-    const reply = await link.exchange({ v: 1, type: "agent.pictures", requestId: randomUUID(), linkEpoch: link.linkEpoch, payload: { revision, agents: rows } }, "agent.pictures-result");
+    const frameOf = (agents: HubAgentPicturesRow[]) => ({ v: 1 as const, type: "agent.pictures" as const, requestId: randomUUID(), linkEpoch: link.linkEpoch,
+      // The rows' own JSON (built in a fixed key order): canonicalArguments caps its input at 64 KiB, which characters exceed.
+      payload: { revision: createHash("sha256").update(JSON.stringify(agents)).digest("hex"), agents } });
+    const fitted = fitReport(rows, agents => Buffer.byteLength(JSON.stringify(frameOf(agents))));
+    const reply = await link.exchange(frameOf(fitted), "agent.pictures-result");
     const result = agentPicturesResultSchema.parse(reply.payload);
     if (!result.ok || !live()) return;
     for (const hash of result.need) {

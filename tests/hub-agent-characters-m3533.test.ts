@@ -220,6 +220,50 @@ describe("M-3533 R2c: an agent's own character in the room office, end to end", 
   });
 });
 
+describe("M-3533 R2c (Prism #4421): a report fits one frame", () => {
+  // 96 agents, each a nine-pose set of 32 frames with a duration each: their rows alone are over the link's 256 KiB.
+  const POSES9 = ["idle", "working", "paused", "stand", "walk", "walkDown", "walkUp", "walkSide", "walkLeft"];
+  const full = Object.fromEntries(POSES9.map((pose, row) => [pose, { src: "s.png", frames: 32, w: 1, h: 1, fps: 4, durations: Array.from({ length: 32 }, (_, i) => 59_000 + i), ax: 0, ay: 1, dw: 2, dh: 2, row, col: 0 }]));
+  const sheetOf = (seed: number) => encodePng({ width: 32, height: 9, data: new Uint8Array(32 * 9 * 4).map((_, i) => (i % 4 === 3 ? 255 : (i * 7 + seed) & 255)) });
+  async function run(n: number) {
+    const { HUB_LIMITS } = await import("../src/hub/protocol.js");
+    const frames: any[] = [];
+    const link: any = { linkEpoch: 1, features: new Set([HUB_AGENT_PICTURES_CAPABILITY, HUB_AGENT_CHARACTERS_CAPABILITY]), current: () => true,
+      exchange: async (frame: any) => { frames.push(frame); return frame.type === "agent.pictures" ? { type: "agent.pictures-result", payload: { ok: true, need: [] } } : { type: "agent.picture-result", payload: { ok: true, stored: true } }; } };
+    const ids = Array.from({ length: n }, () => randomUUID());
+    const disc = encodePng({ width: 2, height: 2, data: new Uint8Array(16).fill(200) });
+    const sender = new HubMemberAgentPictures({ current: () => true, reduce: reduceInProcess, crop: cropInProcess,
+      exposures: () => ids.map((id, i) => ({ id, agent: `a${i}` })),
+      sources: (agent) => { const seed = Number(agent.slice(1)); return { disc: { key: `d${seed}`, load: () => ({ bytes: disc }) }, portrait: null,
+        character: { key: `c${seed}`, load: () => ({ plan: characterPlan(full as never)!, pictures: new Map([["s.png", sheetOf(seed) as Uint8Array]]) }) } }; } });
+    sender.connected(link); await sender.refresh(); sender.close();
+    const report = frames.find(f => f.type === "agent.pictures");
+    return { report, bytes: Buffer.byteLength(JSON.stringify(report)), limit: HUB_LIMITS.frame, ids };
+  }
+  it("96 nine-pose 32-frame sets: the report still fits; every row keeps its avatar; whole sets are left out from the end, never part of one", async () => {
+    const { report, bytes, limit, ids } = await run(96);
+    expect(bytes).toBeLessThanOrEqual(limit);
+    const rows = report.payload.agents;
+    expect(rows).toHaveLength(96);
+    expect(rows.every((r: any) => r.disc)).toBe(true);
+    const sent = rows.filter((r: any) => r.character);
+    expect(sent.length).toBeGreaterThan(0);
+    expect(sent.length).toBeLessThan(96);
+    expect(sent.every((r: any) => Object.keys(r.character).length === 9), "a set is whole").toBe(true);
+    // Left out from the last row back: the sent ones are a prefix of the report's order (by exposure id).
+    const order = rows.map((r: any) => r.exposureId);
+    expect(order).toEqual([...ids].sort());
+    expect(rows.slice(0, sent.length).every((r: any) => r.character)).toBe(true);
+    expect(rows.every((r: any) => !r.tooLarge), "not \"too large\": its own cap is not why").toBe(true);
+    expect(agentPicturesRowSchema.safeParse(rows[0]).success).toBe(true);
+  });
+  it("a report that fits is sent whole (the control)", async () => {
+    const { report, bytes, limit } = await run(4);
+    expect(bytes).toBeLessThan(limit);
+    expect(report.payload.agents.every((r: any) => r.disc && Object.keys(r.character).length === 9)).toBe(true);
+  });
+});
+
 describe("M-3533 R2c: the page draws it", () => {
   it("characterSet: each pose fitted into the built-in figure's box (48 × 66), in proportion; never larger; a malformed strip: none", async () => {
     const { characterSet, CHARACTER_FIT } = await import("/ui/js/hub-room-office.js");

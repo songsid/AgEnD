@@ -82,5 +82,9 @@ gives it some". Decided with Lumen while building (11-24, all six as recommended
   set in `hub_agent_character_strips` (migration `s3-agent-characters`), one row a pose, whole: a strip held already with
   another type or size than declared drops the set. A room shows it only when every strip is held; a file lives only while
   some row names it as it is.
+- **One frame.** A report must fit the link's 256 KiB frame (a refused one would be sent unchanged on every tick), and a
+  report replaces the Fleet's rows, so none may be left out: every row keeps its disc and portrait, and whole character
+  sets are left out from the last row back until it fits (`fitReport`). Such a set is not "too large" (the agent's own cap
+  is not why); it is sent when the report has room. The report's revision hashes the rows' own JSON (Prism #4421).
 - `GET /hub/v1/rooms/<room>/agents/<exposure>/character/<pose>` serves one strip, to the room's members only, with the
   picture route's headers.
