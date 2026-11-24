@@ -1,0 +1,154 @@
+/**
+ * M-3533 R2b: the Hub's copy of shared agents' pictures (agent-pictures-model.ts). One stored file per content hash, kept only
+ * while some published agent's latest report names it; a report replaces its Fleet's rows. Read only after the caller's own
+ * authorization (a room member's, through the room service). Nothing here is served by itself.
+ */
+import type Database from "better-sqlite3";
+import { createHash } from "node:crypto";
+import { readExposure } from "./catalog.js";
+import { personKeyString } from "./identity.js";
+import type { HubCore } from "./http/core.js";
+import type { HubLinkContext } from "./server.js";
+import { HubProtocolError, validated } from "./validation.js";
+import {
+  agentPictureChunkSchema, agentPicturesSchema, HUB_AGENT_PICTURES_CAPABILITY, HUB_PICTURE_CHUNK, sniffPicture,
+  type HubAgentPictureResult, type HubAgentPicturesResult, type HubPictureMime, type HubPictureSlot,
+} from "./agent-pictures-model.js";
+
+export const HUB_AGENT_PICTURES_MIGRATION = Object.freeze({ component: "s3-agent-pictures", version: 1, up(db: Database.Database) {
+  db.exec(`CREATE TABLE hub_agent_picture_files(sha256 TEXT PRIMARY KEY, mime TEXT NOT NULL, bytes BLOB NOT NULL, stored_at INTEGER NOT NULL)`);
+  db.exec(`CREATE TABLE hub_agent_pictures(exposure_id TEXT PRIMARY KEY REFERENCES hub_exposures(id) ON DELETE CASCADE,
+    fleet_id TEXT NOT NULL, generation INTEGER NOT NULL, disc TEXT, portrait TEXT, too_large TEXT NOT NULL DEFAULT '', updated_at INTEGER NOT NULL)`);
+} });
+
+interface Row { exposure_id: string; fleet_id: string; generation: number; disc: string | null; portrait: string | null; too_large: string }
+/** An agent's pictures as a room may show them: only pictures the Hub holds; `tooLarge` is for its owner alone. */
+export interface HubAgentPictureLook { disc?: string; portrait?: string; tooLarge?: HubPictureSlot[] }
+interface Assembly { sha256: string; mime: HubPictureMime; size: number; count: number; next: number; parts: Buffer[] }
+
+const slotsOf = (s: string): HubPictureSlot[] => s.split(",").filter((x): x is HubPictureSlot => x === "disc" || x === "portrait");
+
+export class HubAgentPictures {
+  private readonly links = new Map<string, HubLinkContext>();
+  private readonly assembling = new WeakMap<HubLinkContext, Assembly>();
+  /** Called with the exposures whose shown pictures changed (rooms tell their open pages). */
+  changed: ((exposureIds: string[]) => void) | null = null;
+  constructor(private readonly core: HubCore) {}
+
+  private fleetOf(link: HubLinkContext) {
+    if (!link.current()) throw new HubProtocolError("stale");
+    if (!link.features.has(HUB_AGENT_PICTURES_CAPABILITY)) throw new HubProtocolError("incompatible");
+    const fleet = this.core.deps.store.read().fleets.find(f => f.id === link.fleetId);
+    if (!fleet || fleet.status !== "active" || personKeyString(fleet.owner) !== personKeyString(link.owner)) throw new HubProtocolError("revoked");
+    const known = this.links.get(fleet.id);
+    if (known && known !== link && known.current()) throw new HubProtocolError("stale");
+    return fleet;
+  }
+  private shown(db: Database.Database, rows: Row[]): Map<string, string> {
+    const has = (h: string | null) => !!h && !!db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h);
+    return new Map(rows.map(r => [r.exposure_id, JSON.stringify([has(r.disc) ? r.disc : null, has(r.portrait) ? r.portrait : null, r.too_large])]));
+  }
+  /** Drop rows whose agent is no longer a published share of a current Fleet, then files no row names. */
+  private sweep(db: Database.Database): void {
+    const fleets = this.core.deps.store.read().fleets;
+    for (const row of db.prepare("SELECT exposure_id,fleet_id,generation FROM hub_agent_pictures").all() as Row[]) {
+      const f = fleets.find(x => x.id === row.fleet_id), e = readExposure(db, row.exposure_id);
+      if (!f || f.status !== "active" || f.generation !== row.generation || !e || e.fleet_id !== row.fleet_id || e.state !== "published")
+        db.prepare("DELETE FROM hub_agent_pictures WHERE exposure_id=?").run(row.exposure_id);
+    }
+    db.prepare(`DELETE FROM hub_agent_picture_files WHERE sha256 NOT IN
+      (SELECT disc FROM hub_agent_pictures WHERE disc IS NOT NULL UNION SELECT portrait FROM hub_agent_pictures WHERE portrait IS NOT NULL)`).run();
+  }
+  prune(): void { this.core.atomic(db => this.sweep(db)); }
+
+  /** `agent.pictures`: this Fleet's agents and their pictures now; the answer names the hashes the Hub still needs. */
+  report(value: unknown, link: HubLinkContext): HubAgentPicturesResult {
+    const body = validated(agentPicturesSchema, value);
+    let changed: string[] = [];
+    const need = this.core.atomic(db => {
+      const fleet = this.fleetOf(link);
+      const before = db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=?").all(fleet.id) as Row[];
+      const shownBefore = this.shown(db, before);
+      db.prepare("DELETE FROM hub_agent_pictures WHERE fleet_id=?").run(fleet.id);
+      for (const a of body.agents) {
+        const e = readExposure(db, a.exposureId);
+        // A row for an agent that is not this Fleet's published share is not an error (the report may cross a withdrawal): skipped.
+        if (!e || e.fleet_id !== fleet.id || e.state !== "published" || e.owner !== personKeyString(fleet.owner)) continue;
+        db.prepare("INSERT INTO hub_agent_pictures VALUES(?,?,?,?,?,?,?)").run(a.exposureId, fleet.id, fleet.generation,
+          a.disc?.sha256 ?? null, a.portrait?.sha256 ?? null, (a.tooLarge ?? []).join(","), this.core.now());
+      }
+      this.sweep(db);
+      const after = db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=?").all(fleet.id) as Row[];
+      const shownAfter = this.shown(db, after);
+      changed = [...new Set([...shownBefore.keys(), ...shownAfter.keys()])].filter(id => shownBefore.get(id) !== shownAfter.get(id));
+      this.links.set(fleet.id, link);
+      const want = new Set<string>();
+      for (const r of after) for (const h of [r.disc, r.portrait]) if (h && !db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h)) want.add(h);
+      return [...want];
+    });
+    this.assembling.delete(link);
+    if (changed.length) this.notify(changed);
+    return { ok: true, need };
+  }
+
+  /** `agent.picture`: one chunk of a picture this Fleet's report named and the Hub does not hold. */
+  chunk(value: unknown, link: HubLinkContext): HubAgentPictureResult {
+    const c = validated(agentPictureChunkSchema, value);
+    const data = Buffer.from(c.data, "base64");
+    if (data.length !== (c.index === c.count - 1 ? c.size - HUB_PICTURE_CHUNK * (c.count - 1) : HUB_PICTURE_CHUNK)) return { ok: false, code: "invalid" };
+    const wanted = this.core.atomic(db => {
+      const fleet = this.fleetOf(link);
+      if (db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(c.sha256)) return "held" as const;
+      return db.prepare("SELECT 1 FROM hub_agent_pictures WHERE fleet_id=? AND (disc=? OR portrait=?)").get(fleet.id, c.sha256, c.sha256) ? "wanted" as const : "no" as const;
+    });
+    if (wanted === "held") { this.assembling.delete(link); return { ok: true, stored: true }; }
+    if (wanted === "no") { this.assembling.delete(link); return { ok: false, code: "not-wanted" }; }
+    let a = this.assembling.get(link);
+    if (c.index === 0) { a = { sha256: c.sha256, mime: c.mime, size: c.size, count: c.count, next: 0, parts: [] }; this.assembling.set(link, a); }
+    if (!a || a.sha256 !== c.sha256 || a.mime !== c.mime || a.size !== c.size || a.count !== c.count || a.next !== c.index) { this.assembling.delete(link); return { ok: false, code: "invalid" }; }
+    a.parts.push(data); a.next++;
+    if (a.next < a.count) return { ok: true, stored: false };
+    this.assembling.delete(link);
+    const bytes = Buffer.concat(a.parts);
+    if (bytes.length !== a.size || createHash("sha256").update(bytes).digest("hex") !== a.sha256 || sniffPicture(bytes) !== a.mime) return { ok: false, code: "invalid" };
+    const exposures = this.core.atomic(db => {
+      const fleet = this.fleetOf(link);
+      const rows = db.prepare("SELECT exposure_id FROM hub_agent_pictures WHERE fleet_id=? AND (disc=? OR portrait=?)").all(fleet.id, a!.sha256, a!.sha256) as { exposure_id: string }[];
+      if (!rows.length) return null;
+      db.prepare("INSERT OR IGNORE INTO hub_agent_picture_files VALUES(?,?,?,?)").run(a!.sha256, a!.mime, bytes, this.core.now());
+      // Every agent showing it now (another Fleet's agent may share the same picture).
+      return (db.prepare("SELECT exposure_id FROM hub_agent_pictures WHERE disc=? OR portrait=?").all(a!.sha256, a!.sha256) as { exposure_id: string }[]).map(r => r.exposure_id);
+    });
+    if (!exposures) return { ok: false, code: "not-wanted" };
+    this.notify(exposures);
+    return { ok: true, stored: true };
+  }
+
+  private notify(ids: string[]): void { try { this.changed?.(ids); } catch { /* a room refresh is best effort */ } }
+
+  /** A Fleet's published agents' pictures the Hub holds (exposure id → hashes). Call after the caller's authorization. */
+  looksOf(fleetId: string): Map<string, HubAgentPictureLook> {
+    return this.core.atomic(db => {
+      const fleet = this.core.deps.store.read().fleets.find(f => f.id === fleetId);
+      const out = new Map<string, HubAgentPictureLook>();
+      if (!fleet || fleet.status !== "active") return out;
+      const has = (h: string | null) => !!h && !!db.prepare("SELECT 1 FROM hub_agent_picture_files WHERE sha256=?").get(h);
+      for (const r of db.prepare("SELECT * FROM hub_agent_pictures WHERE fleet_id=? AND generation=?").all(fleetId, fleet.generation) as Row[]) {
+        const e = readExposure(db, r.exposure_id);
+        if (!e || e.fleet_id !== fleetId || e.state !== "published") continue;
+        const tooLarge = slotsOf(r.too_large);
+        out.set(r.exposure_id, { ...(has(r.disc) ? { disc: r.disc! } : {}), ...(has(r.portrait) ? { portrait: r.portrait! } : {}), ...(tooLarge.length ? { tooLarge } : {}) });
+      }
+      return out;
+    });
+  }
+  /** A held picture's bytes. Call only after the caller's authorization names this hash. */
+  file(sha256: string): { mime: HubPictureMime; bytes: Buffer } | null {
+    return this.core.atomic(db => {
+      const row = db.prepare("SELECT mime,bytes FROM hub_agent_picture_files WHERE sha256=?").get(sha256) as { mime: HubPictureMime; bytes: Buffer } | undefined;
+      return row ? { mime: row.mime, bytes: Buffer.from(row.bytes) } : null;
+    });
+  }
+  disconnected(fleetId: string): void { this.links.delete(fleetId); }
+  close(): void { this.links.clear(); }
+}

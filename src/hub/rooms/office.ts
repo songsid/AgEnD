@@ -55,24 +55,34 @@ export interface RoomOfficeAgent {
   presence: RoomPresence; answering?: true; assistant?: true;
   /** M-3533 R2a: its look as its owner's Fleet shows it (the identity colour and persona emoji its catalog sends). */
   color?: { person: string }; avatar?: { kind: "emoji"; text: string };
+  /** M-3533 R2b: content hashes of the pictures the Hub holds for it (the room's picture route serves them to members). */
+  picture?: { disc?: string; portrait?: string };
 }
 
 /** M-3533 R2a: an agent's look from its owner's agent catalog (agent-catalog-model.ts row `avatar`): colour, emoji. */
-export interface RoomOfficeLook { color: string | null; emoji: string | null }
+export interface RoomOfficeLook { color: string | null; emoji: string | null; disc?: string; portrait?: string }
 
 /** M-3533 R2a: the look a room's member list draws (its avatar): a checked colour and emoji, or null when it has neither. */
-export function memberLook(look: RoomOfficeLook | null | undefined): { color?: string; emoji?: string } | null {
+export function memberLook(look: RoomOfficeLook | null | undefined): { color?: string; emoji?: string; disc?: string; portrait?: string } | null {
   if (!look) return null;
   const color = typeof look.color === "string" && /^#[0-9a-f]{6}$/i.test(look.color) ? look.color.toLowerCase() : null;
   const emoji = typeof look.emoji === "string" && look.emoji.trim() ? look.emoji.trim() : null;
-  return color || emoji ? { ...(color ? { color } : {}), ...(emoji ? { emoji } : {}) } : null;
+  const { disc, portrait } = pictureOf(look);
+  return color || emoji || disc || portrait ? { ...(color ? { color } : {}), ...(emoji ? { emoji } : {}), ...(disc ? { disc } : {}), ...(portrait ? { portrait } : {}) } : null;
+}
+/** M-3533 R2b: only a content hash crosses (agent-pictures.ts holds the bytes). */
+function pictureOf(look: RoomOfficeLook): { disc?: string; portrait?: string } {
+  const ok = (h: unknown): h is string => typeof h === "string" && /^[a-f0-9]{64}$/.test(h);
+  return { ...(ok(look.disc) ? { disc: look.disc } : {}), ...(ok(look.portrait) ? { portrait: look.portrait } : {}) };
 }
 /** The look onto the drawing's own fields (identity-color.js resolveColor: a chosen colour; instance-nav.js avatarOf). */
 export function withLook(agent: RoomOfficeAgent, look: RoomOfficeLook | null | undefined): RoomOfficeAgent {
   if (!look) return agent;
   const color = typeof look.color === "string" && /^#[0-9a-f]{6}$/i.test(look.color) ? look.color.toLowerCase() : null;
   const emoji = typeof look.emoji === "string" && look.emoji.trim() ? look.emoji.trim() : null;
-  return { ...agent, ...(color ? { color: { person: color } } : {}), ...(emoji ? { avatar: { kind: "emoji" as const, text: emoji } } : {}) };
+  const picture = pictureOf(look);
+  return { ...agent, ...(color ? { color: { person: color } } : {}), ...(emoji ? { avatar: { kind: "emoji" as const, text: emoji } } : {}),
+    ...(picture.disc || picture.portrait ? { picture } : {}) };
 }
 
 /** The member list's presences: a personal agent whose computer is offline answers "later", when it is back. */

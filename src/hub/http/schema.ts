@@ -5,6 +5,7 @@ import { HUB_ROOM_OFFICE_MIGRATION, HUB_ROOM_OFFICE_STYLE_MIGRATION } from "../r
 import { HUB_ROOM_AGENT_REQUESTS_MIGRATION } from "../room-agent-requests.js";
 import { HUB_AGENT_INTRO_TOOL_MIGRATION } from "../agent-intro-tool.js";
 import { HUB_AGENT_INTROS_MIGRATION } from "../agent-intro.js";
+import { HUB_AGENT_PICTURES_MIGRATION } from "../agent-pictures.js";
 import { HUB_SHARING_WITHDRAWAL_MIGRATION } from "../sharing-withdrawal.js";
 import { HUB_SHARING_REQUESTS_MIGRATION } from "../sharing-requests.js";
 import { HUB_SHARING_RETENTION_MIGRATION } from "../sharing-retention.js";
@@ -154,4 +155,5 @@ export const HUB_HTTP_MIGRATIONS: readonly HubHttpMigration[] = Object.freeze([
   HUB_ROOM_OFFICE_MIGRATION,
   HUB_LAPSE_EVIDENCE_MIGRATION,
   HUB_ROOM_OFFICE_STYLE_MIGRATION,
+  HUB_AGENT_PICTURES_MIGRATION,
 ]);
