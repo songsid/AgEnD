@@ -168,6 +168,14 @@ describe("a Hub's own workspace (serveAppShell's hubWorkspace, for slice 1's lis
     serveAppShell(req as never, res as never, fm, "full", opts);
     return bodyTag(body);
   }
+  // M-3563 (#4386 review): the Hub's own shell says when its sign-in account can hold no "@" (sAMAccountName), and only then.
+  it("the Hub's shell: data-hub-login=\"no-at\" only for a Hub signing in by an account with no \"@\"", async () => {
+    const { serveHubWorkspaceShell } = await import("../src/web-api.js");
+    const body = (hub: any) => { let b = ""; serveHubWorkspaceShell({ setHeader() {}, writeHead() {}, end(x?: string) { b = String(x ?? ""); }, headersSent: false } as never, hub); return bodyTag(b); };
+    expect(body({ name: "Team Hub", loginWithoutAt: true })).toContain(' data-hub-login="no-at"');
+    expect(body({ name: "Team Hub" })).not.toContain("data-hub-login");
+    expect(body({ name: "Team Hub", loginWithoutAt: false })).not.toContain("data-hub-login");
+  });
   it("marks the page the Hub's, with its name — escaped and one line — and reads nothing of the fleet's", () => {
     expect(shellWith({ hubWorkspace: { name: "Team Hub" } })).toContain(' data-hub="hub" data-hub-name="Team Hub"');
     // S3b: Hub-only — no fleet cookie, session, preference or preview is read (a throwing context proves it).

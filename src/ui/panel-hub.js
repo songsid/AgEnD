@@ -301,7 +301,10 @@ function HubSignIn() {
     const r = await hubClient().signIn(form.login.trim(), form.password);
     if (mine !== generation.current || joinRequest() !== requestId) return;
     if (r.ok) {
-      setForm({ login: "", password: "" });
+      // M-3563: the browser keeps this login as typed (the directory account), so it offers it next time — never the
+      // email address from its own saved personal info. The fields keep their values until the form goes away (a
+      // browser judges a sign-in by them).
+      rememberLogin(form.login.trim(), form.password);
       if (company.requestId) {
         const joined = await approval.run(r.csrf);
         if (mine !== generation.current || joined.code === "retired") return;
@@ -311,7 +314,11 @@ function HubSignIn() {
     }
     setBusy(false);
     setForm((f) => ({ ...f, password: "" }));
-    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw("errSignIn"));
+    // M-3563: a browser fills its saved email address into 帳號. Where this Hub signs in by an account that can hold no "@"
+    // (AD's sAMAccountName: the shell's data-hub-login="no-at"), say what to type instead; elsewhere ("@" may be right:
+    // userPrincipalName, mail…) the plain line.
+    const noAt = typeof document !== "undefined" && document.body?.dataset?.hubLogin === "no-at";
+    setMsg(r.code === "backpressure" ? hw("errBusyHub") : r.code === "unavailable" ? hw("errDirectory") : hw(noAt && form.login.includes("@") ? "errSignInAt" : "errSignIn"));
   };
   return html`<main class="hub-signin-page"><section class="hub-signin hub-signin-card" aria-labelledby="hubSignInTitle">
     <div class="hub-signin-brand"><strong>${t("hubShell.brand")}</strong>${name ? html`<span>${name}</span>` : null}</div>
@@ -321,10 +328,10 @@ function HubSignIn() {
     ${company.requestId && company.view === undefined ? html`<${Skeleton} variant="form" lines=${2} label=${hj("loading")} />` : company.requestId && company.view && !company.view.ok ? html`<${ErrorState} message=${joinError(company.view.code)} onRetry=${company.retry} />` : null}
     ${!company.requestId || company.view?.ok && company.view.state === "pending" ? html`<form class="hub-signin-form" onSubmit=${submit}>
       <label for="hubLogin">${hw("login")}</label>
-      <input id="hubLogin" autocomplete="username" spellcheck=${false} autocapitalize="none"
+      <input id="hubLogin" name="username" autocomplete="username" spellcheck=${false} autocapitalize="none"
         value=${form.login} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, login: v })); }} />
       <label for="hubPassword">${hw("password")}</label>
-      <input id="hubPassword" type="password" autocomplete="current-password"
+      <input id="hubPassword" name="password" type="password" autocomplete="current-password"
         value=${form.password} onInput=${(e) => { const v = e.target.value; setForm((f) => ({ ...f, password: v })); }} />
       <button type="submit" class="hub-signin-go" disabled=${busy || company.requestId && !company.view?.ok}>${company.requestId ? hj("signInConnect") : hw("signIn")}</button>
     </form>` : company.view?.ok ? html`<p role="status">${joinError(company.view.reason || company.view.state)}</p>` : null}
@@ -332,6 +339,18 @@ function HubSignIn() {
     <p class="hub-signin-msg" role=${msg ? "alert" : undefined}>${msg || ""}</p>
     ${company.requestId && (msg || company.view?.state !== "pending") && company.view?.returnPath ? html`<a class="btn btn-sm" href=${company.view.returnPath} rel="noreferrer">${hj("return")}</a>` : null}
   </section></main>`;
+}
+
+/**
+ * M-3563: hand a login that worked to the browser's password manager (Chrome, Edge: the Credential Management API), the
+ * account exactly as typed. Where the browser has none, or the person declines, nothing happens; never an error.
+ */
+export function rememberLogin(login, password) {
+  try {
+    const PC = globalThis.PasswordCredential, store = globalThis.navigator?.credentials?.store;
+    if (typeof PC !== "function" || typeof store !== "function" || !login || !password) return;
+    Promise.resolve(globalThis.navigator.credentials.store(new PC({ id: login, password, name: login }))).catch(() => {});
+  } catch { /* none */ }
 }
 
 /** Load a list from the client; `reload` reads it again. null while loading, { error } on failure. */
