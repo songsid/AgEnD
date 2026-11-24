@@ -198,7 +198,16 @@ try {
       check(`${tag}: the room's style is Studio (large)`, patched.status === 200, patched.status);
       await page.reload(); await page.locator(".oo-stage canvas").first().waitFor(); await page.waitForTimeout(3500);
       await shot("3-office-studio-large");
-      // Echo's top-row seat, close (Lumen R2c b): its head may reach the area's name, which is written again over it (M-3539).
+      // A top-row seat under its area's name, close (Lumen R2c b): a room of Echo alone in Studio (large), so Echo takes the
+      // nap area's first seat, right under its name; the scene zoomed in on a phone. The name is written again over its head (M-3539).
+      const solo = await r.call(manager, "POST", "/hub/v1/rooms", { name: lang === "en" ? "Nap check" : "午睡檢查", people: [personKeyString(caseyKey)] });
+      const soloId = solo.json?.room?.id;
+      await r.call(manager, "POST", `/hub/v1/rooms/${soloId}/invitations`, { agents: [byName("Echo").id] });
+      for (let round = 0; round < 3; round++) { const inv = await r.call(casey, "GET", "/hub/v1/invitations"); for (const i of inv.json?.invitations ?? []) await r.call(casey, "POST", `/hub/v1/invitations/${i.id}/accept`, {}); await new Promise((res) => setTimeout(res, 150)); }
+      await r.call(manager, "PATCH", `/hub/v1/rooms/${soloId}`, { office: { style: "studio-large" } });
+      await page.goto(`${origin}/ui/hub?room=${soloId}&view=office`); await page.locator(".oo-stage canvas").first().waitFor(); await page.waitForTimeout(3000);
+      for (let z = 0; z < (phone ? 3 : 1); z++) { await page.locator(".hub-room-office .oo-zoom-in").first().click().catch(() => {}); await page.waitForTimeout(400); }
+      await page.waitForTimeout(1200);
       const echo = await page.evaluate(() => {
         const cv = document.querySelector(".hub-room-office .oo-stage canvas") as HTMLCanvasElement | null; if (!cv) return null;
         const d = cv.getContext("2d")!.getImageData(0, 0, cv.width, cv.height).data; let x0 = Infinity, y0 = Infinity, x1 = -1, y1 = -1;
@@ -208,10 +217,10 @@ try {
         const r = cv.getBoundingClientRect(), k = r.width / cv.width;
         return { x: r.x + x0 * k, y: r.y + y0 * k, w: (x1 - x0 + 1) * k, h: (y1 - y0 + 1) * k };
       });
-      check(`${tag}: Echo is found on the Studio (large) scene`, !!echo, echo);
-      // The area's top band: its name is at its top left, so the crop reaches well left of Echo and above its head.
-      if (echo) { const u = Math.max(echo.w, 12), x = Math.max(0, echo.x - u * 7), y = Math.max(0, echo.y - echo.h * 0.9);
-        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.x + echo.w + u * 2 - x, phone ? 390 - x : 1366 - x), height: echo.h * 2.2 }); }
+      check(`${tag}: Echo alone takes a top-row seat under its area's name`, !!echo, echo);
+      // The area's name is left of the seat (92 scene units, about two of Echo's widths): the crop reaches it and the top edge above.
+      if (echo) { const x = Math.max(0, echo.x - echo.w * 3.5), y = Math.max(0, echo.y - echo.h * 0.8);
+        await shot("3z-top-row-title-close", { x, y, width: Math.min(echo.w * 5.5, (phone ? 390 : 1366) - x), height: Math.min(echo.h * 2.2, (phone ? 844 : 900) - y) }); }
       await page.goto(`${origin}/ui/hub/exposures`); await page.locator("[data-my-agents]").waitFor(); await page.waitForTimeout(1500);
       const lines = await page.evaluate(() => [...document.querySelectorAll("[data-picture-large=character]")].map((e) => (e.textContent || "").trim()));
       check(`${tag}: My agents tells the owner Notes's character is too large`, lines.length === 1 && /512 KB/.test(lines[0]!), lines);
