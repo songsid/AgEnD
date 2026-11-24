@@ -334,7 +334,8 @@ import { ThemeStore } from "./web-theme-store.js";
 import { OfficeStore, OfficeWriteLimiter } from "./web-office-store.js";
 import { WebPinStore } from "./web-pin-store.js";
 import { OfficeSkinStore } from "./web-office-skins.js";
-import { OfficeActs } from "./web-office-acts.js";
+import { OfficeActs, officeMembers } from "./web-office-acts.js";
+import { characterPlan, ownCharacter } from "./hub-character-plan.js";
 import { OFFICE_PACK_TOOLS, OfficePackTools, type PackChangeView } from "./web-office-pack-tools.js";
 import { WebAppearance } from "./web-appearance.js";
 import { effectiveAppearanceLimits } from "./web-appearance-limits.js";
@@ -2878,7 +2879,39 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       const person = humanCards(this.dataDir).get(name)?.portrait ?? null, own = theme.card?.portrait ?? null;
       if (person || own) portrait = { key: person ? `card:${person}` : `agent-card:${own}`, load: () => cardPicture({ dataDir: this.dataDir, themeStore: this.themeStore }, name, "portrait") };
     } catch { /* unreadable: no pictures */ }
-    return { disc, portrait };
+    let character: import("./hub/member/agent-pictures.js").MemberCharacterSource | null = null;
+    try { character = this.hubCharacterSource(name); } catch { /* unreadable offices or packs: no character */ }
+    return { disc, portrait, character };
+  }
+
+  /**
+   * M-3533 R2c: the agent's own character (hub-character-plan.ts ownCharacter): the set its owner gave it by name in
+   * the first of these offices (their own order) holding it, else in the "All" office's pack. The key is that pack's version
+   * and the set's name: a changed pack, set or office changes it; the pictures are read and cut only then.
+   */
+  private hubCharacterSource(name: string): import("./hub/member/agent-pictures.js").MemberCharacterSource | null {
+    const list = this.officeStore.list();
+    if (!list.readable) return null;
+    let chart: { names: string[]; teams: Array<{ name: string; members: string[] }> } | null = null;
+    const holds = (office: { members: readonly string[] }, agent: string) => {
+      if (!office.members.length) return true;
+      if (office.members.includes(agent)) return true;
+      if (!office.members.some(m => m.startsWith("team:"))) return false;
+      chart ??= (() => { const c = this.orgChart(); return { names: Object.keys(c.instances), teams: c.teams }; })();
+      return officeMembers({ members: [...office.members] }, chart).includes(agent);
+    };
+    const hit = ownCharacter({ offices: list.offices, autoSkin: list.autoSkin ?? null, holds, pack: id => this.officeSkins.pack(id) }, name);
+    if (!hit) return null;
+    const sha = this.officeSkins.list().packs.find(p => p.id === hit.packId)?.sha;
+    if (!sha) return null;
+    return { key: `${hit.packId}@${sha}:${hit.set}`, load: () => {
+      const pack = this.officeSkins.pack(hit.packId), files = this.officeSkins.get(hit.packId)?.files;
+      const plan = pack && files ? characterPlan(pack.characters[hit.set]) : null;
+      if (!plan) return null;
+      const pictures = new Map<string, Uint8Array>();
+      for (const src of plan.sources) { const id = files![src], bytes = id ? this.officeSkins.picture(hit.packId, id) : null; if (!bytes) return null; pictures.set(src, bytes); }
+      return { plan, pictures };
+    } };
   }
 
   /** The actual launch target, including Classic's own effective backend/folder; never aliases a room to a Fleet topic. */
