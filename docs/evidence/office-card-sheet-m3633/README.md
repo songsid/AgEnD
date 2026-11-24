@@ -3,7 +3,7 @@
 These are captures of the real Office UI, taken in headless Chromium with the smoke fixture. The pack is the synthetic one from #4383's evidence, with no real names: one shared sheet, Work and Lounge painted into its background, and an `rpg` card with the `lg` avatar. That large card is what used to cover the scene. `capture.mts` is the capture script. Copy it to `scripts/manual/smoke/` and run it with `REPO=<checkout> OUT=<dir> LABEL=after`, using the same Playwright image the ui-gate smokes use.
 
 - **Before:** the release tip `82e95256`.
-- **After:** `93a63fbb`, the source commit; `after-report.json` names it too.
+- **After:** `3a1a6b30`, the source commit; `after-report.json` names it too.
 
 | Case | Before | After |
 |---|---|---|
@@ -25,9 +25,9 @@ The capture script sends Chromium real touch events (CDP `Input.dispatchTouchEve
 
 | Drag | Result |
 |---|---|
-| Up on the content | It scrolls: `scrollTop` goes from 0 to 145–166. The sheet stays open. |
-| Down on the content, scrolled in | It scrolls back to 20–40. The sheet stays open. |
-| Down from the grip, at the top | The sheet closes. The grip is a 32 px handle. |
+| Up on the content | It scrolls: `scrollTop` goes from 0 to 158 (zh-TW) and 145 (en). The sheet stays open. |
+| Down on the content, scrolled in | It scrolls back to 17 (zh-TW) and 40 (en). The sheet stays open. |
+| Down from the grip, at the top | The sheet closes. The grip is a 44 × 356 px handle around its 4 px bar; `elementFromPoint` 2 px inside its top edge, at its middle and 2 px inside its bottom edge all land on it. |
 
 A sheet whose content fits is unchanged: a swipe down anywhere on it closes it.
 

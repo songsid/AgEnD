@@ -119,7 +119,9 @@ try {
       };
       const st = () => page.evaluate(() => { const el = document.querySelector(".oo-card.sheet") as HTMLElement | null; if (!el) return { open: false };
         const sc = (el.querySelector(".oo-card-body") as HTMLElement | null) || el, g = (el.querySelector(".oo-card-grip") as HTMLElement).getBoundingClientRect(), b = sc.getBoundingClientRect();
-        return { open: true, scrolls: el.hasAttribute("data-scrolls"), scrollTop: Math.round(sc.scrollTop), grip: { x: g.x + g.width / 2, y: g.y + g.height / 2, h: Math.round(g.height) }, mid: { x: b.x + b.width / 2, y: b.y + b.height * 0.6 } }; });
+        // The grip's hit area: the element under its centre and 2 px inside its top and bottom edges.
+        const gr = el.querySelector(".oo-card-grip") as HTMLElement, hit = [g.y + 2, g.y + g.height / 2, g.y + g.height - 2].map((y) => document.elementFromPoint(g.x + g.width / 2, y) === gr);
+        return { open: true, scrolls: el.hasAttribute("data-scrolls"), scrollTop: Math.round(sc.scrollTop), grip: { x: g.x + g.width / 2, y: g.y + g.height / 2, h: Math.round(g.height), w: Math.round(g.width), hit }, mid: { x: b.x + b.width / 2, y: b.y + b.height * 0.6 } }; });
       const s0 = await st();
       await drag(s0.mid.x, s0.mid.y, s0.mid.y - 160);                     // up on the content: it scrolls
       const s1 = await st();
@@ -130,7 +132,7 @@ try {
       const s3 = await st();
       await drag(s3.grip.x, s3.grip.y, s3.grip.y + 120);                   // down from the grip at its top: it closes
       const s4 = await st();
-      touch = { start: s0, afterUpOnContent: { open: s1.open, scrollTop: s1.scrollTop }, afterDownOnContentScrolled: { open: s2.open, scrollTop: s2.scrollTop }, gripHeight: s3.grip.h, afterGripDown: { open: s4.open } };
+      touch = { start: s0, afterUpOnContent: { open: s1.open, scrollTop: s1.scrollTop }, afterDownOnContentScrolled: { open: s2.open, scrollTop: s2.scrollTop }, grip: { h: s3.grip.h, w: s3.grip.w, hit: s3.grip.hit }, afterGripDown: { open: s4.open } };
     }
     report.cases[key] = { errors, csp: await csp(), ...m, touch };
     await ctx.close();

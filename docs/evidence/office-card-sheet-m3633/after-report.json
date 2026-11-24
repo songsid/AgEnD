@@ -73,8 +73,14 @@
      "scrollTop": 0,
      "grip": {
       "x": 179,
-      "y": 439,
-      "h": 32
+      "y": 445,
+      "h": 44,
+      "w": 356,
+      "hit": [
+       true,
+       true,
+       true
+      ]
      },
      "mid": {
       "x": 195,
@@ -83,13 +89,21 @@
     },
     "afterUpOnContent": {
      "open": true,
-     "scrollTop": 145
+     "scrollTop": 158
     },
     "afterDownOnContentScrolled": {
      "open": true,
-     "scrollTop": 40
+     "scrollTop": 17
     },
-    "gripHeight": 32,
+    "grip": {
+     "h": 44,
+     "w": 356,
+     "hit": [
+      true,
+      true,
+      true
+     ]
+    },
     "afterGripDown": {
      "open": false
     }
@@ -125,8 +139,14 @@
      "scrollTop": 0,
      "grip": {
       "x": 179,
-      "y": 439,
-      "h": 32
+      "y": 445,
+      "h": 44,
+      "w": 356,
+      "hit": [
+       true,
+       true,
+       true
+      ]
      },
      "mid": {
       "x": 195,
@@ -135,13 +155,21 @@
     },
     "afterUpOnContent": {
      "open": true,
-     "scrollTop": 166
+     "scrollTop": 145
     },
     "afterDownOnContentScrolled": {
      "open": true,
-     "scrollTop": 61
+     "scrollTop": 40
     },
-    "gripHeight": 32,
+    "grip": {
+     "h": 44,
+     "w": 356,
+     "hit": [
+      true,
+      true,
+      true
+     ]
+    },
     "afterGripDown": {
      "open": false
     }
@@ -151,5 +179,5 @@
  "pack": {
   "ok": true
  },
- "source": "93a63fbb07707c16b403cc9c296d6adee82b00ce"
+ "source": "3a1a6b304a90a0588aaa57751eaa2cb97c2e4d9e"
 }
