@@ -38,6 +38,10 @@ import { DropOverlay, MAX_FILES, PendingFiles, hf, hubFileAttachment, pageCarrie
 import { LightboxHost, openLightbox } from "/assets/image-lightbox.js";
 import { ROOM_PINS_MAX, RoomPinsButton, RoomPinsDialog } from "./hub-room-pins.js";
 import { RoomOffice } from "./hub-room-office.js";
+// M-3591: an HTML page in a room opens in the side panel, as in a one-to-one chat (panel-hub.js HubRoomView).
+import { PreviewPanel, closePanel, panelStore } from "/assets/preview-panel.js";
+import { msgKey } from "/assets/chat-thread.js";
+import { bindRoomFeedback, bootHubPreview, downloadHtml, draftWithLine, panelOpenFor, roomPanelKey, setHubPreviewOptIn } from "./hub-preview.js";
 // M-3125 PR3: the one quote target an annotated room picture has (here, so a page with an older dictionary has the words).
 register("hubRoomAnnotate", { en: { quote: "Quote in this room" }, "zh-TW": { quote: "引用到這個房間" } });
 
@@ -422,8 +426,28 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => { setFiles([]); setFileMsg(""); }, [roomId]);
   const wide = useRailWide();
-  const input = useRef(null), threadRef = useRef(null), insert = useRef(null);
+  const input = useRef(null), threadRef = useRef(null), insert = useRef(null), editDraft = useRef(null);
   const Panel = useMembersPanel();
+  // M-3591: the room's side panel for its HTML pages — the one-to-one chat's (panel-hub.js HubRoomView): the previews set
+  // up for this page, the panel's "Reply about this page" / Point at it lines into this room's box. Leaving the room
+  // closes it (PreviewPanel closes on unmount; the page is keyed by the room).
+  const split = useRef(null), panelKey = roomPanelKey(roomId);
+  const [panelOpen, setPanelOpen] = useState(() => panelOpenFor(panelKey));
+  useEffect(() => { bootHubPreview(); }, []);
+  useEffect(() => {
+    setPanelOpen(panelOpenFor(panelKey));
+    const off = panelStore.subscribe(() => setPanelOpen(panelOpenFor(panelKey)));
+    const release = bindRoomFeedback({
+      findMsg: (key) => store.messages().find((x) => msgKey(x) === key) || null,
+      addLine: (line) => editDraft.current?.((d) => draftWithLine(d, line)),
+      focus: () => {
+        const el = input.current; if (!el) return;
+        el.focus();
+        setTimeout(() => { try { const n = el.value.length; el.setSelectionRange(n, n); } catch { /* not a text field */ } }, 0);
+      },
+    });
+    return () => { off(); release(); };
+  }, [store]);
   // dev-claude2's room settings (hub-room-settings.js), opened from the header or the members panel.
   const [settings, setSettings] = useState(null);
   const openSettings = () => { import("./hub-room-settings.js").then((m) => { if (typeof m.RoomSettings === "function") setSettings(() => m.RoomSettings); }, () => {}); };
@@ -593,7 +617,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   ].filter(Boolean);
   const line2 = narrow && inOffice ? hroom("tabOffice") : group ? `${countsLine(room.people, room.agents)}${hasAssistant ? ` · ${hroom("roomAssistant")}` : ""}`
     : room.assistant ? hroom("providedByHub") : room.agent?.answerOnly ? hp("answerOnlyAsker") : String(room.agent?.owner?.name || "");
-  const showRail = wide && rail && Panel && group && detail;
+  // M-3591: the panel takes the members rail's place while it shows a page (the members button brings the rail back).
+  const showRail = wide && rail && Panel && group && detail && !(panelOpen && !inOffice);
   // The Fleet chat's working bar (Lumen): 「Notes 正在處理」, or 「2 個 Agent 正在處理」 — the answer row only when it arrives.
   // Who: this room's answers being worked on; the words: workingLine() (#3857), the one place that says it.
   const working = workingLine({ members: store.workers().map((w) => ({ ...w, presence: "working" })) });
@@ -608,7 +633,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const focusMember = (id) => {
     const m = (store.detail()?.members || []).find((x) => x && x.kind === "agent" && x.id === id);
     if (!m) return false;
-    if (wideNow.current) setRail(true); else setSheet(true);
+    // M-3591 (#4407 review): on a desk the rail is where a shown page's panel is — close the page first, as the members
+    // button does (read when pressed: the thread keeps this hook from its first render).
+    if (wideNow.current) { if (panelOpenFor(panelKey)) closePanel(); setRail(true); } else setSheet(true);
     setFocus({ id, n: Date.now() });
     return true;
   };
@@ -623,7 +650,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onMention=${(m) => { setSheet(false); insertMention(m); }}
         onOpenChat=${chatWith} focus=${focus}
         onSettings=${() => { setSheet(false); openSettings(); }} />` : null;
-  return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined}>
+  return html`<div class=${`hub-chat hub-room-page${showRail ? " with-rail" : ""}`} data-room=${roomId} data-width=${fullWidth ? "full" : undefined} ref=${split}>
     <${LightboxHost} />
     ${pinsOpen ? html`<${RoomPinsDialog} pins=${store.pins()} onClose=${() => setPinsOpen(false)} onJump=${(p) => void showPin(p)} onUnpin=${(p) => void togglePin(p.messageId)} />` : null}
     <section class="hub-chat-main" ref=${mainRef}>
@@ -641,8 +668,8 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
           return html`<a key=${v} class=${`seg-item${on ? " active" : ""}`} href=${officeHref(v)} aria-current=${on ? "page" : undefined} data-label=${label}
             onClick=${(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button > 0) return; e.preventDefault(); onView(v); }}>${label}</a>`; })}</nav>` : null}
         <span class="hub-head-tools"><${RoomPinsButton} count=${pinCount} onOpen=${() => setPinsOpen(true)} /><${TextSizeButton} /><${HubNotifyToggle} /></span>
-        ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? rail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
-          onClick=${() => (wide ? setRail(!rail) : setSheet(true))}><${Icon} name="team" size=${18} /></button>` : null}
+        ${group && Panel ? html`<button type="button" class="icon-btn hub-room-rail-toggle" aria-pressed=${(wide ? showRail : sheet) ? "true" : "false"} title=${hroom("members")} aria-label=${hroom("members")}
+          onClick=${() => { if (!wide) { setSheet(true); return; } if (panelOpen && !inOffice) { closePanel(); setRail(true); return; } setRail(!rail); }}><${Icon} name="team" size=${18} /></button>` : null}
         ${menuItems.length ? html`<${Menu} cls="hub-room-menu" label=${hroom("menu")} fit=${true} ownerKey=${roomId} items=${menuItems} />` : null}
       </header>
       ${inOffice ? html`<${RoomOffice} key=${roomId} client=${client} roomId=${roomId} members=${detail?.members || []}
@@ -651,7 +678,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
         onEdit=${detail?.me?.role === "manager" && client.roomPurposeV1 === true ? openSettings : undefined} />` : null}
       ${leaveError ? html`<p class="err hub-room-leave-err" role="alert">${leaveError}</p>` : null}
       ${room.closureReason === "owner-stopped-sharing" ? html`<p class="note" role="status">${hroom("noAnswerStopped", room.ownerName || room.agent?.owner?.name || "")}</p>` : null}
-      ${inOffice ? null : html`<${Thread} store=${store} name=${title} panelKey=${`hub-room:${roomId}`} threadRef=${threadRef} extra=${extra}
+      ${inOffice ? null : html`<${Thread} store=${store} name=${title} panelKey=${panelKey} threadRef=${threadRef} extra=${extra}
         emptyView=${room.assistant ? html`<div class="hub-assistant-empty"><${Empty} icon="bot" title=${hroom("hubAssistant")} hint=${hroom("hubAssistantEmpty")} /></div>`
           : group ? html`<p class="note">${hroom("composerHint")}</p>` : null} />`}
       ${/* M-3117: under the thread, the Fleet chat's dock — its column, its padding, the working line and the box in it.
@@ -660,10 +687,13 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
       ${html`<div class="dock hub-dock" data-trust="composer" hidden=${inOffice}><div class="dock-col">
         ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} statusOf=${statusOf} />` : null)
           : working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
-        <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
+        <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert} editRef=${editDraft}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
       </div></div>`}
     </section>
+    ${/* M-3591: the office has no thread, so no page panel beside it (leaving for the office closes it). */ ""}
+    ${inOffice ? null : html`<${PreviewPanel} name=${panelKey} split=${split} msgs=${() => store.messages()} subscribe=${(fn) => store.subscribe(() => fn(panelKey, "msgs"))}
+      keyOf=${msgKey} reveal=${(k) => threadRef.current && threadRef.current.reveal(k)} download=${downloadHtml} allow=${(commit) => setHubPreviewOptIn(true, commit)} />`}
     ${showRail ? html`<${RailFrame} trust="hub-context" label=${hroom("members")} title=${hroom("members")} closeLabel=${hroom("cancel")} onClose=${() => setRail(false)}>${panel}</${RailFrame}>` : null}
     ${!wide && sheet && panel && group ? html`<${Dialog} title=${hroom("members")} label=${hroom("members")} onClose=${() => setSheet(false)}><div class="hub-rail-sheet">${panel}</div></${Dialog}>` : null}
     ${settings && detail ? html`<${settings} client=${client} roomId=${roomId} detail=${detail} assistant=${hasAssistant}
