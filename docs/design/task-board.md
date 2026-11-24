@@ -378,6 +378,17 @@ its creation or one it dispatches), its sub tasks following; `move_project` (`id
 each card moved or refused on its own with a line per card. Archived projects are refused; a project's lead, renaming
 and archiving stay the person's.
 
+Where a new main task goes when an agent's `create` names no project: counting the projects
+that are not archived — none: no project, as always; one: that project; several: the one the caller leads, when it leads
+exactly one of them, else `create` is refused with the projects listed and nothing is written, so the agent asks the person and
+creates again — or, when nobody can answer (a scheduled or automated run), creates it with `project: "none"`. A project named (id
+or name) is taken as given, `null` / `"none"` is a deliberate no project, and a blank string counts as nothing said. A sub task follows its main task and is never asked; a person's create (the dashboard) is never asked.
+The answer to a main task's create says where it went and why ("the board's only project, chosen for you", "you lead this
+project") and what to tell the person (`#M-n` opens the card in the chat, then the project's name). A card left in no project on a
+board that has projects also says: ask which project it belongs to, move it once they say, and keep the rule in `soul.md` — the
+agent's own memory — so the next such card goes there. A plain `create` that lands
+in a project this way stays unassigned, as a plain task is.
+
 The loop the person's confirmation needs closes through the tool: `done` on a held card answers that it waits for the
 person; `mine` lists "sent back to you" with the reason; `get` shows the comments new to the assignee and the latest
 few, a send-back marked "(sent back)"; and every claim, done or update returns the board's notes (the new comments

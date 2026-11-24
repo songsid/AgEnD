@@ -159,7 +159,7 @@ export const TaskBoardArgs = z.object({
     .describe("list: full task records instead of compact rows"),
   stale: z.boolean().optional().describe("list: only claimed cards whose assignee stopped"),
   // The task board (docs/design/task-board.md): naming one of these makes create/update a board card's.
-  project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id (create, list filter); by id for update/move_project, null or \"none\" takes a main task out"),
+  project: z.union([z.string(), z.number().int()]).nullable().optional().describe("Project name or id (create, list filter); by id for update/move_project, null or \"none\" takes a main task out. create without it: the only project, else the one you lead, else you are asked to name one: ask the person"),
   name: z.string().optional().describe("A new project's name (create_project)"),
   watcher: z.string().optional().describe("watch / unwatch: the instance (default: yourself; another only on a card you may edit)"),
   ids: z.array(z.string()).optional().describe("move_project: main tasks to move, e.g. [\"M-3\"]"),
