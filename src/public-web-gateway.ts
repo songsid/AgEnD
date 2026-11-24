@@ -122,6 +122,9 @@ export function isPublicWebRoute(method: string, path: string): boolean {
   if (method === "POST" && /^\/ui\/api\/contact-authorizations\/R[a-f0-9-]{36}\/decision$/.test(path)) return true;
   if ((method === "GET" || method === "PUT") && /^\/ui\/api\/instances\/[^/]+\/contact-permissions$/.test(path)) return true;
   if (method === "POST" && /^\/ui\/api\/instances\/[^/]+\/contact-permissions\/origin-clear$/.test(path)) return true;
+  // M-3680 (decision 7933bf90; found by the link-parity audit): Needs you's "Try again" on held Hub work (M-3632) was
+  // missing here. The handler admits an admin session only over the link.
+  if (method === "POST" && path === "/ui/needs/hub-retry") return true;
   // #1827: the person's own name (a profile edit, which the public link may make).
   if ((method === "GET" || method === "POST") && path === "/ui/profile") return true;
   if (isPublicPrivilegedRoute(method, path)) return true;

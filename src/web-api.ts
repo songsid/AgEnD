@@ -1091,7 +1091,7 @@ function handlePageShare(req: IncomingMessage, res: ServerResponse, url: URL, ct
 
 /**
  * #2716/#3679: an Office-wide setting kept in web-offices.json beside the offices (PUT { <key>: value }): who may save
- * the offices may set it — an admin session, never the CLI token or the public link; asked again once the body is in;
+ * the offices may set it — an admin session (over the public link too, M-3278), never the CLI token; asked again once the body is in;
  * counted with the offices' saves (OfficeWriteLimiter); every page hears `offices` and reads again.
  */
 function officeSettingPut(req: IncomingMessage, res: ServerResponse, url: URL, ctx: WebApiContext, o: {
@@ -3059,8 +3059,9 @@ export function handleWebRequest(
   // ── Fleet → Org chart → Office: the offices people made (web-offices.json, web-office-store.ts) ──
   // GET /ui/offices: { rev, offices, readable } for whoever may open the org chart (the public link too: it reads the
   // chart; a guest's routes do not include it). PUT /ui/offices { offices, rev? }: a person's change, as a theme's reset
-  // or lock is — an admin session only, never the CLI token, never the public link (absent from its manifest, and
-  // refused here too); asked again once the body is in. Every page hears `offices` on the stream and reads again.
+  // or lock is — an admin session only (over the public link too since M-3278, decision 7933bf90; a read-only session
+  // there is refused below), never the CLI token; asked again once the body is in. Every page hears `offices` on the
+  // stream and reads again.
   if (method === "GET" && path === "/ui/offices") {
     const store = ctx.officeStore;
     if (!store) { json(res, 404, { error: "Offices are not kept on this fleet" }); return true; }
@@ -3107,7 +3108,7 @@ export function handleWebRequest(
 
   // #2716: PUT /ui/office-style { skin }: the whole-fleet office's style for every viewer, device and share link (a skin
   // id, or null for the default; read back as GET /ui/offices's autoSkin). Who may save the offices may set it, as they
-  // would: an admin session, never the CLI token or the public link; asked again once the body is in; counted with the
+  // would: an admin session (over the public link too, M-3278), never the CLI token; asked again once the body is in; counted with the
   // offices' saves. Every page hears `offices` and reads again.
   if (method === "PUT" && path === "/ui/office-style") {
     return officeSettingPut(req, res, url, ctx, { key: "skin", invalid: "office_style_invalid", shape: "{ skin: a skin id, or null }", failed: "Saving the office style failed",
@@ -3594,6 +3595,8 @@ export function handleWebRequest(
   // M-3632: Needs you → "Try again" on held Hub work: back through the Hub's checks, never a blind delivery.
   if (method === "POST" && path === "/ui/needs/hub-retry") {
     if (!ctx.retryHubHeld) { json(res, 404, { error: "not-found", code: "not-found" }); return true; }
+    // M-3680: over the public link, an admin session's (decision 7933bf90); a read-only session or a guest there: no.
+    if (linkRestricted(req, url, ctx)) { json(res, 403, { error: "forbidden", code: "forbidden" }); return true; }
     const retry = ctx.retryHubHeld.bind(ctx);
     (async () => {
       let body: Record<string, unknown>;
@@ -4294,7 +4297,7 @@ export function handleWebRequest(
   };
 
   if (method === "POST" && path === "/ui/schedules") {
-    // #1724: schedules are not created, edited or deleted over the public link (absent from its manifest too, #1689).
+    // #1724: an admin session's (M-3278, decision 7933bf90: over the public link too).
     if (!ctx.scheduler) { json(res, 500, { error: "Scheduler not initialized" }); return true; }
     (async () => {
       try {
@@ -4477,7 +4480,7 @@ export function handleWebRequest(
   }
 
   if (method === "POST" && path === "/ui/teams") {
-    // #1689: not over the public link (absent from its manifest too), like editing and deleting a team.
+    // #1689: an admin session's (M-3278, decision 7933bf90: over the public link too), like editing and deleting a team.
     (async () => {
       try {
         const body = await parseBody(req);
@@ -4497,7 +4500,7 @@ export function handleWebRequest(
   }
 
   // #1689: edit a team — the same update as the update_team tool (applyTeamUpdate), from the members the page sends:
-  // what to add and remove is worked out against the team as it is now. Never over the public link.
+  // what to add and remove is worked out against the team as it is now. An admin session's, over the public link too (M-3278).
   const teamEditMatch = path.match(/^\/ui\/teams\/(.+)$/);
   if ((method === "PATCH" || method === "PUT") && teamEditMatch) {
     const name = decodeURIComponent(teamEditMatch[1]);
@@ -5334,7 +5337,7 @@ function shellOwnerCss(ctx: AppShellContext, mode: AppShellMode, viewer: PrefsVi
 /**
  * AgEnD Hub P1 (docs/design/hub.md, docs/design/hub-ui-client.md): the page's Hub mark — presentation only, never
  * authority, set by the listener that serves the page (never a client's choice): `member` on this fleet's listener when
- * `hub_member.enabled`, never over the public link. `hub` is only the Hub listener's own workspace page
+ * `hub_member.enabled` (over the public link, an admin session's only: M-3278). `hub` is only the Hub listener's own workspace page
  * (serveHubWorkspaceShell). Nothing otherwise: no Hub UI is drawn and no Hub module loads.
  */
 function hubBodyAttrs(req: IncomingMessage, ctx: AppShellContext): string {
