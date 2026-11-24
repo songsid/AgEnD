@@ -494,7 +494,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
   const doneCut = new Set(doneAll.slice(doneLimit).map((c) => c.id));
   // What the page draws: every unfinished main task, the newest finished ones; `matched` still counts them all.
   const mains = matched.filter((c) => !doneCut.has(c.id));
-  const moreDone = doneCut.size ? html`<button type="button" class="btn btn-sm tb-done-more" onClick=${() => setDoneLimit((n) => n + DONE_PAGE)}>${t("tasksArchive.showMore")}</button>` : null;
+  const moreDone = doneCut.size ? html`<button type="button" class="btn btn-sm tb-done-more" onClick=${() => setDoneLimit((n) => n + DONE_PAGE)}>${t("tasksArchive.showMore", Math.min(DONE_PAGE, doneCut.size))}</button>` : null;
   const searching = filters.length > 0 || query.trim() !== "";
   // Finished cards hidden: no Done column (a card is still confirmed or finished from its dialog).
   const columns = display.done === "hide" ? COLUMNS.filter((s) => s !== "done") : COLUMNS;
@@ -663,6 +663,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
             ${status === "done" && archiveDays > 0 ? html`<span class="muted tb-done-week" title=${t("tasksArchive.weekTip")}>${t("tasksArchive.week", stats.doneWeek || 0)}</span>`
               : status === "done" ? html`<button type="button" class="tb-link" title=${t("tasks.toggleDone")} onClick=${() => onDisplay({ ...display, done: display.done === "all" ? "recent" : "all" })}>${display.done === "all" ? t("tasks.all") : t("tasks.recent")}</button>` : null}
             <span class="tb-count">${status === "done" ? doneAll.length : list.length}</span></h3>
+          ${status === "done" && archiveDays > 0 ? html`<p class="muted tb-done-week-line">${t("tasksArchive.week", stats.doneWeek || 0)}</p>` : null}
           ${cellItems(list, drag ? drag.id : null, line, (card, dragging) => {
             const lit = Math.max(flashed.get(card.id) || 0, ...(subsOf.get(card.id) || []).map((s) => flashed.get(s.id) || 0));
             return html`<${Tile} key=${card.id} card=${card} dragging=${dragging} flash=${now - lit < 4000} subs=${subsOf.get(card.id)} runs=${runs} writable=${writable} cards=${cards} lead=${lead}

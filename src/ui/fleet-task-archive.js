@@ -16,7 +16,7 @@ register("tasksArchive", {
     who: "Assigned to", everyone: "Everyone", more: "Show more", none: "Nothing archived here.", noneWho: "Nothing archived for {0}.", failed: "The archive could not be read.",
     done: "Done {0}", cancelled: "Cancelled {0}", count: "{0} of {1}",
     week: "{0} this week", weekTip: "Main tasks finished in the last 7 days, archived ones included",
-    showMore: "Show 20 more", doneShow: "Show", tag: "Archived", tagTip: "Finished more than {0} days ago: off the board, not deleted", tile: "{0} archived",
+    showMore: "Show {0} more", doneShow: "Show", tag: "Archived", tagTip: "Finished more than {0} days ago: off the board, not deleted", tile: "{0} archived",
   },
   "zh-TW": {
     link: "已封存 · {0}", linkTip: "完成超過 {0} 天：已離開看板，仍可用搜尋或卡片編號找到",
@@ -24,7 +24,7 @@ register("tasksArchive", {
     who: "負責", everyone: "所有人", more: "顯示更多", none: "這裡沒有封存的卡片。", noneWho: "{0} 沒有封存的卡片。", failed: "無法讀取封存清單。",
     done: "{0}完成", cancelled: "{0}取消", count: "{0} / {1}",
     week: "本週 {0} 張", weekTip: "近 7 天完成的主任務，含已封存的",
-    showMore: "再顯示 20 張", doneShow: "顯示", tag: "已封存", tagTip: "完成超過 {0} 天：已離開看板，沒有刪除", tile: "已封存 {0} 張",
+    showMore: "再顯示 {0} 張", doneShow: "顯示", tag: "已封存", tagTip: "完成超過 {0} 天：已離開看板，沒有刪除", tile: "已封存 {0} 張",
   },
 });
 
