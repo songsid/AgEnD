@@ -356,14 +356,16 @@ export class HubGroupRooms {
         const roster=(db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(room.id) as MemberRow[]).map(m=>{
           if(m.kind==="assistant")return {id:"assistant",kind:"assistant" as const,name:"Hub assistant",presence:this.assistant.presence(room.id),intro:"Hub assistant. Answers from this room's chat.",mentionable:false as const};
           if(m.kind==="agent"){const e=readExposure(db,m.subject);return {id:m.subject,kind:m.kind,name:e?.display_name??m.subject,presence:this.agents.presence(m.subject).presence,owner:{name:this.name(db,m.owner_at_join??"")},intro:agentIntro(db,m.subject).intro};}
-          return {id:m.id,kind:m.kind,name:this.name(db,m.subject),presence:db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject,this.core.now())?"online":"offline"};
+          // M-3594: a person's id is their stable Hub person id (realm/objectId, as a 1:1 question's asker id), not this
+          // room's membership row, so an agent can tell one person apart across rooms and private questions.
+          return {id:m.subject,kind:m.kind,name:this.name(db,m.subject),presence:db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject,this.core.now())?"online":"offline"};
         });
         return pageRoomMembers(room.id,roomRow.purpose,roster,body,JSON.stringify([source.id,source.owner]));
       }
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id LIMIT 201").all(room.id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", presence: this.assistant.presence(room.id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject) }; }
-        return { id: m.id, kind: m.kind, name: this.name(db, m.subject), presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
+        return { id: m.subject, kind: m.kind, name: this.name(db, m.subject), presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
       });
       if (members.length > 200) throw new HubProtocolError("backpressure");
       return { ok: true, roomId: room.id, members };

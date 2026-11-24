@@ -6,7 +6,7 @@ import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_E
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Dedicated TLS machine listener. No Hub browser routes or ordinary fleet authority lives here. */
-import { HUB_FLEET_UPDATE_CAPABILITY } from "./protocol.js";
+import { HUB_ASKER_NAME_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "./protocol.js";
 import { createServer, type Server } from "node:https";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
@@ -36,7 +36,7 @@ export interface HubRelocationAck { fleetId: string; linkEpoch: number; digest: 
 export interface HubLinkContext { fleetId: string; owner: PersonKey; linkEpoch: number; current(): boolean; readonly features: ReadonlySet<string> }
 /** fleet-update-v1 is the existing explicit signal that this peer accepts a 32-name welcome. */
 export function hubWelcomeCapabilities(configured:readonly string[],member:readonly string[]):string[]{
-  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
+  return configured.filter(c=>![HUB_FLEET_UPDATE_CAPABILITY,HUB_ROOM_MENTION_FEEDBACK_CAPABILITY,HUB_AGENT_CATALOG_CAPABILITY,HUB_EXPOSURE_REQUEST_CAPABILITY,HUB_AGENT_CATALOG_LAPSE_CAPABILITY,HUB_AGENT_INTRO_CAPABILITY,HUB_ROOM_BRIEF_CAPABILITY,HUB_ROOM_MEMBERS_CAPABILITY,HUB_ROOM_ANSWER_STATUS_CAPABILITY,HUB_ASKER_NAME_CAPABILITY].includes(c)||member.includes(HUB_FLEET_UPDATE_CAPABILITY));
 }
 interface Connection { link: HubSocket<HubMemberFrame, HubServerFrame>; context: HubLinkContext; ready: boolean; hello: boolean; timer: NodeJS.Timeout;
   introOffered?: boolean;

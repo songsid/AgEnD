@@ -11,6 +11,10 @@ import { fleetUpdateRequestSchema, fleetUpdateCancelSchema, fleetUpdateStatusSch
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 /** Phase 3 receiver offer; old-Hub compatibility is negotiated by the member client. */
 export const HUB_FLEET_UPDATE_CAPABILITY = "fleet-update-v1";
+/** M-3594: a 1:1 question may carry `askerName`, the asker's display name from the Hub's own directory (the source room asks
+ * use), never text the asker typed. Offered only beside fleet-update-v1 (a 32-name hello), and dropped with it on the
+ * legacy retry, so a 16-name member hello is unchanged. */
+export const HUB_ASKER_NAME_CAPABILITY = "asker-name-v1";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
 import { validHubAnswerButtons } from "./buttons-model.js";
 import { recommendationSchema, recommendationAckSchema } from "./recommendation-model.js";
@@ -81,8 +85,10 @@ export const attachmentName = plain(255).refine(s => s.length > 0 && !/[\\/\u000
 export const attachmentMime = z.string().regex(/^(?:image|application|text)\/[a-z0-9][a-z0-9.+-]{0,99}$/);
 export const attachmentRefSchema = z.strictObject({ id: uuid, name: attachmentName, size: z.number().int().min(1).max(HUB_ATTACHMENT_FILE_MAX), mime: attachmentMime, sha256: hash });
 const attachmentList = z.array(attachmentRefSchema).min(1).max(HUB_ATTACHMENTS_PER_MESSAGE).refine(list => new Set(list.map(r => r.id)).size === list.length, "Duplicate attachment");
-/** `attachments` only ever goes to a peer whose link enabled attachments-v1 (an old peer's strict schema refuses it). */
-export const questionSchema = z.strictObject({ text: plain(HUB_LIMITS.question), identity: askerSchema, attachments: attachmentList.optional() });
+/** `attachments` only ever goes to a peer whose link enabled attachments-v1 (an old peer's strict schema refuses it);
+ * `askerName` only to one that enabled asker-name-v1 (M-3594). */
+export const questionSchema = z.strictObject({ text: plain(HUB_LIMITS.question), identity: askerSchema, attachments: attachmentList.optional(),
+  askerName: plain(256).refine(s => s.trim().length > 0).optional() });
 export const receiptSchema = z.strictObject({ messageId: uuid, contentDigest: hash,
   stage: z.enum(["queued", "delivered", "consumed", "answered", "rejected", "cancelled", "failed", "uncertain"]),
   sequence: epoch.min(1), at: epoch, memberDeliveryId: uuid.optional(), reasonCode: reason.optional() });
