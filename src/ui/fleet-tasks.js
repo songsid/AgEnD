@@ -81,7 +81,7 @@ export function TaskBoardTab({ lease }) {
   const seq = useRef(0);
   const setAt = (v) => { setAtRaw(v); setQuery(""); writeStored(PROJECT_KEY, v === null ? null : String(v)); };
   const reload = (ifMoved = false) => setVersion((v) => ({ n: v.n + 1, ifMoved }));
-  const shown = useRef({ rev: null, allDone: false });
+  const shown = useRef({ rev: null, epoch: null, allDone: false });
 
   useEffect(() => {
     const mine = ++seq.current;
@@ -90,13 +90,17 @@ export function TaskBoardTab({ lease }) {
         const q = new URLSearchParams();
         if (allDone) q.set("done", "all");
         // The same board at the same revision is not sent again.
-        if (version.ifMoved && shown.current.rev !== null && shown.current.allDone === allDone) q.set("rev", String(shown.current.rev));
+        if (version.ifMoved && shown.current.rev !== null && shown.current.allDone === allDone) {
+          q.set("rev", String(shown.current.rev));
+          // #4428 review: and where time had left the board's lines (a card archived since is a new board).
+          if (shown.current.epoch !== null) q.set("epoch", shown.current.epoch);
+        }
         const qs = q.toString();
         const r = await lease.fetch(`/ui/tasks/board${qs ? `?${qs}` : ""}`, { method: "GET", headers: { "Content-Type": "application/json" } });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const d = await r.json();
         if (!lease.current() || mine !== seq.current || d.unchanged) return;
-        shown.current = { rev: typeof d.rev === "number" ? d.rev : null, allDone };
+        shown.current = { rev: typeof d.rev === "number" ? d.rev : null, epoch: typeof d.epoch === "string" ? d.epoch : null, allDone };
         setState({ data: d });
       } catch { if (lease.current() && mine === seq.current) setState((s) => (s && s.data ? s : { error: true })); }
     })();

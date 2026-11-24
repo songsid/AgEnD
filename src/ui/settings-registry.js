@@ -90,6 +90,7 @@ const ROWS = [
   ["defaults.liveness-crash", "agent-defaults", "#g-live-crash", "settings.livenessCrash", "defaults.task_board.liveness.crash_grace_minutes", ["crashed", "crash grace", "minutes"], ["當掉", "恢復"]],
   ["defaults.wake-comment", "agent-defaults", "#g-wake-comment", "settings.wakesComment", "defaults.task_board.comment_wakes", ["comment", "mention", "@", "wake", "task board", "card"], ["留言", "提及", "叫醒", "任務板", "卡片"]],
   ["defaults.wake-progress", "agent-defaults", "#g-wake-progress", "settings.wakesProgress", "defaults.task_board.progress_wakes", ["progress", "finished", "watchers", "dispatcher", "wake", "task board", "card"], ["進度", "完成", "關注者", "派工者", "叫醒", "任務板", "卡片"]],
+  ["defaults.task-archive", "agent-defaults", "#g-archive-days", "settings.archiveTitle", "defaults.task_board.archive_after_days", ["archive", "archived", "finished", "done", "days", "task board", "card"], ["封存", "完成", "天", "任務板", "卡片"]],
   ["defaults.wake-leader", "agent-defaults", "#g-wake-leader", "settings.wakesLeader", "defaults.task_board.leader", ["leader", "task board leader", "lead", "progress", "task board"], ["看板負責人", "leader", "負責人", "進度", "任務板"]],
   ["defaults.concurrency", "agent-defaults", "#g-conc", "settings.concurrency", "startup.concurrency", ["startup", "concurrency", "parallel", "spawn"], ["啟動", "並行"]],
   ["defaults.project-roots", "agent-defaults", "#g-roots", "settings.projectRootsTitle", "project_roots", ["project roots", "folders", "directory", "where agents work", "working directory"], ["專案資料夾", "資料夾", "目錄", "工作目錄"]],

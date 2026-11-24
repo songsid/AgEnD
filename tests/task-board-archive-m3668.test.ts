@@ -194,5 +194,21 @@ describe("the page: the Done column, the Archive", () => {
     expect(hit.textContent).toContain("M-7");
     expect(hit.textContent).toContain("Archived");
   });
-});
 
+  // #4428 review: a same-revision read sends where time had left the board's lines too, so a card archived since is read.
+  it("reading the board again after a reconnect sends the revision and the epoch the page has", async () => {
+    const live: Record<string, Array<(d: unknown) => void>> = {};
+    const before = app.appStore.get().streamOn;
+    app.appStore.set({ streamOn: (name: string, fn: (d: unknown) => void) => { (live[name] ??= []).push(fn); return () => {}; } });
+    const plain = handler;
+    handler = (path) => { const d: any = plain(path); return path.startsWith("/ui/tasks/board") ? { ...d, epoch: "3:12:40:7" } : d; };
+    try {
+      await board();
+      seen.length = 0;
+      for (const fn of live.connection ?? []) fn("live");
+      await settle(8);
+      const reads = seen.filter((s) => s.startsWith("/ui/tasks/board"));
+      expect(reads).toEqual([`/ui/tasks/board?rev=1&epoch=${encodeURIComponent("3:12:40:7")}`]);
+    } finally { app.appStore.set({ streamOn: before }); }
+  });
+});
