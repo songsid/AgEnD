@@ -11,7 +11,7 @@
     },
     {
       "path": "src/hub/compose/member.ts",
-      "sha256": "455ff4a76d43521a0663b6bfca9073b5f04fd96ca6da6dffc38952cbb4725947"
+      "sha256": "d569df2b99087214a39e1864a42ba1a6f54ed8fcea8c4adbb7950f2c9cea4c02"
     },
     {
       "path": "src/hub/compose/server.ts",
@@ -27,7 +27,7 @@
     },
     {
       "path": "src/hub/member/room-ask.ts",
-      "sha256": "9d544f6116dc668a5c02cf24da217a321897ce38f465a4cfd611c2ef05c73975"
+      "sha256": "68872512fff1d70e1bcd91bbffe7c8264ceacb69ff9a697aeb57b2e013b130f2"
     },
     {
       "path": "src/hub/member/room-asker-store.ts",
@@ -39,7 +39,7 @@
     },
     {
       "path": "src/hub/representative.ts",
-      "sha256": "48ede060fd114b12203ada68537a04e1ed33a8fba9683593e8c25071472e1dc2"
+      "sha256": "394750a30f223376529af5437fdbdfabb8534c7ee3912f9f7db93a1cabeac677"
     },
     {
       "path": "src/hub/room-asker-identity-model.ts",
@@ -67,7 +67,7 @@
     },
     {
       "path": "tests/hub-room-asker-adapter-m3664.test.ts",
-      "sha256": "0bf1f89a76fc9b832a53d1c292e42b64f60c48309194eb81a9bda570a87b42e1"
+      "sha256": "9de94c00a3ace4b009291a5a85d40385dae5811e13dadf25c74527f8638c5edc"
     },
     {
       "path": "tests/hub-room-asker-identity-m3664.test.ts",
@@ -99,7 +99,7 @@
     },
     {
       "path": "src/locale.ts",
-      "sha256": "0ed5c4d3bd799805404b34b8cacd9a7381945331f912f152f9a17f7a337a7be2"
+      "sha256": "da12bcfbe77652a18c0201a86866943ac4db1de9897264079a957a75b6c368e3"
     },
     {
       "path": "tests/hub-needs-retry-m3632.test.ts",
@@ -324,6 +324,30 @@
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
     {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-affected.log",
+      "sha256": "002bdbf7122644b866b32deab4c9903b811e5d7e4cd4af381687e968f3ba27bb"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-bindings.json",
+      "sha256": "df7ffee2936759a58b1c80da2e271196a3eb8e0de9b4f63db509a57ef6ae38c6"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-build.log",
+      "sha256": "1cb4a6114ed55ded74ab13c959402f0e99332ef70c8f710ee7cada8f272bc2ec"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-integration.md",
+      "sha256": "90de8f5ea760da82ac9317a66963493591a6ec3fd2e94a8e60baa6d58e30b239"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-resolutions.patch",
+      "sha256": "79a496b2e4b04ac83ba9eb7a648d8e09a4a9a23749e0a0164837eb657f5ae1b4"
+    },
+    {
+      "path": "docs/evidence/hub-room-asker-identity-m3664/sync2-test-types.log",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
       "path": "docs/evidence/hub-room-asker-identity-m3664/test-types-final.log",
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
     },
@@ -336,6 +360,6 @@
       "sha256": "1e700cad9699d28a81d56c34ca1c3ad491e814fd3c53a0e42403d0f3bd67db89"
     }
   ],
-  "integrationBase": "a12b8fe3243fe7908fc58a0742be26095fca1e3f",
-  "sourceClearHead": "cddc5d7b88638c1b38900bdd62a7648ae5da07ca"
+  "integrationBase": "2698b1302b3439ecd31612b7e18c883dff644b0f",
+  "sourceClearHead": "a71de4546b2cd1d978ebefb5cddaa0bc093a247c"
 }

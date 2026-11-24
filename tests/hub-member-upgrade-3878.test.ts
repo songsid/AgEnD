@@ -18,6 +18,7 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
   const attempts: HubRepresentativeDelivery[] = [], inputs: HubRepresentativeDelivery[] = [], answers: string[] = [];
   let api: HubMemberExposureApi | null = null, refuseBegin = true, epoch = 0;
   const links: string[] = [];
+  let settled: ((agent: string, correlationId: string) => boolean) | null = null;
   try {
     const profile = await r.pair();
     r.setReceive(async (frame, link) => {
@@ -39,6 +40,7 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     const create = createHubMemberFactory({ home: r.memberHome, components: MEMBER_COMPONENTS, boundHub: () => r.identity.hubId,
       agents: () => [{ name: "probe", display: "Probe" }], representative: {
         agentToken: agent => agent === "probe" ? "owned-generation" : null, attachReports() {},
+        attachQuestionSettled: read => { settled = read; },   // M-3660
         beginRetryMs: [],   // M-3632: this fixture's Hub never grants the begin lease; hold at once, as the alpha.3 format it reproduces did
         deliver: async input => { attempts.push(input); const ok = await input.beforeInput(); if (ok) inputs.push(input); return ok; },
       }, attachExposures: value => { api = value; }, attachAttention() {}, pokeAttention() {},
@@ -57,7 +59,11 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     const readState = () => { const db = new Database(path, { readonly: true });
       try { return db.prepare("SELECT state FROM hub_representative_questions WHERE message_id=?").get(held.identity.messageId); } finally { db.close(); } };
     await vi.waitFor(() => expect(readState()).toEqual({ state: "held" }));
-    expect(inputs).toHaveLength(0); await service.close(); service = undefined;
+    expect(inputs).toHaveLength(0);
+    expect(settled!("probe", attempts[0]!.correlationId)).toBe(true);   // M-3660: held, so its contact window would end
+    expect(settled!("someone-else", attempts[0]!.correlationId)).toBe(false);
+    await service.close(); service = undefined;
+    expect(settled).toBeNull();   // detached: windows hold until they expire
     // The alpha.3 format predates pairing binding; preserve all durable question/consent/floor bytes.
     const old = new Database(path);
     const before = old.prepare("SELECT * FROM hub_representative_questions").all();
@@ -77,10 +83,12 @@ it("#3878: reopens an alpha.3 held question, reconnects, and answers new work on
     await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: randomUUID(), linkEpoch: epoch, payload: next });
     await vi.waitFor(() => expect(inputs).toHaveLength(1));
     const rep = (service as unknown as { representative: HubRepresentativeExecution }).representative;
+    expect(settled!("probe", inputs[0]!.correlationId)).toBe(false);   // M-3660: being answered: the window keeps restricting
     expect(await rep.report({ correlationId: inputs[0]!.correlationId, caller: "probe", text: "Owned answer" })!).toMatchObject({ ok: true });
     const replayId = randomUUID();
     await r.server.send(profile.fleetId, { v: 1, type: "question", requestId: replayId, linkEpoch: epoch, payload: next });
     await vi.waitFor(() => expect(r.received.some(frame => frame.type === "receipt" && frame.requestId === replayId && frame.payload.messageId === next.identity.messageId)).toBe(true));
     expect(inputs).toHaveLength(1); expect(answers).toEqual([next.identity.messageId]); expect(readState()).toEqual({ state: "held" });
+    expect(settled!("probe", inputs[0]!.correlationId)).toBe(true);   // M-3660: answered and released
   } finally { await service?.close(); await r.close(); }
 });

@@ -173,6 +173,8 @@ export interface HubRepresentativeHost {
   ): void;
   /** Private Classic input may reopen room output only after its Hub work has ended and a fresh idle proof. */
   attachPrivateQuestions?(read: ((agent: string) => boolean) | null): void;
+  /** M-3660: whether a Hub question is no longer being answered, so its contact window ends (null: detached). */
+  attachQuestionSettled?(read: ((agent: string, correlationId: string) => boolean) | null): void;
   /** M-3127: the `react` hook for a room question's correlation id (null: detached). Absent: this Fleet has none. */
   attachReacts?(handler: ((input: { correlationId: string; caller: string; emoji: string; callerCurrent(): boolean }) => Promise<HubReportOutcome> | null) | null): void;
 }
@@ -954,6 +956,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             room.deliveryFailed(cid, agent); service.deliveryFailed(cid, agent);
           });
           options.representative.attachPrivateQuestions?.(agent => service.hasOpenQuestion(agent) || room.hasOpenQuestion(agent));
+          options.representative.attachQuestionSettled?.((agent, cid) => (service.questionSettled(cid, agent) ?? room.questionSettled(cid, agent)) === true);
           options.representative.attachReacts?.(input => room.react(input));
           options.attachRoomInputs?.((cid,agent,generation) => room.inputHandoff(cid,agent,generation));
           options.attachRoomOwed?.(room);
@@ -961,6 +964,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
             options.representative.attachReacts?.(null);
             options.representative.attachReports(null, null);
             options.representative.attachPrivateQuestions?.(null);
+            options.representative.attachQuestionSettled?.(null);
             options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
             options.attachExposures(null);
           options.attachSharing?.(null);
@@ -987,6 +991,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           client?.fence();
           options.representative.attachReports(null, null);
           options.representative.attachPrivateQuestions?.(null);
+          options.representative.attachQuestionSettled?.(null);
             options.attachRoomInputs?.(null);options.attachRoomOwed?.(null);options.attachRoomAskers?.(null);
           options.attachExposures(null);
           options.attachSharing?.(null);

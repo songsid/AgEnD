@@ -78,11 +78,20 @@ import {
 import type { CrossInstanceRecord } from "./search/search-docs.js";
 import { HUB_REPORT_TARGET, HUB_ANSWER_UNKNOWN, parseHubReportExtras, type HubReportExtras, type HubReportOutcome } from "./hub-report-target.js";
 
+/** M-3660: why and until when — naming the Hub question whose answer turn holds the restriction, when it is known. */
+function hubContactRefusal(ctx: OutboundContext, agent: string): string {
+  let question: string | null = null;
+  try { question = ctx.hubContactQuestion?.(agent) ?? null; } catch { question = null; }
+  return question ? t("hub.contactRefusedFor", question) : t("hub.contactRefused");
+}
+
 /** Shared context available to all outbound tool handlers. */
 export interface OutboundContext {
   requestContactChange?(requester: string, raw: unknown, callerCurrent: () => boolean): Promise<{ status: string }>;
   readonly dataDir: string;
   hubContactRestricted?(agent: string): boolean;
+  /** M-3660: the Hub question whose answer turn holds the restriction (its correlation id), for the refusal's text. */
+  hubContactQuestion?(agent: string): string | null;
   classicContactRestricted?(instance: string): boolean;
   prepareContactFiles?(instance: string, paths: readonly string[]): Promise<import("./contact-auth-files.js").ContactFileLease | undefined>;
   restrictedClassicRouting?(instance: string): { adapterId: string; chatId: string; threadId?: string } | undefined;
@@ -479,7 +488,7 @@ const sendToInstance: Handler = async (ctx, rawArgs, respond, meta) => {
     } finally { try { await lease?.dispose(); } catch { /* confirmed Hub delivery must not become a retryable cleanup error */ } }
   }
   // Only a claimed Hub answer above is exempt, never an ordinary instance merely named agend-hub.
-  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
   // Files or buttons only ever travel with a live Hub answer: never dropped silently onto an ordinary message.
   if (meta.hubExtras && Object.keys(meta.hubExtras).length) {
     respond(null, `report_result files/buttons/poll need a live Hub question: target_instance "${HUB_REPORT_TARGET}" with the correlation_id it gave you.`);
@@ -2051,7 +2060,7 @@ const broadcast: Handler = async (ctx, rawArgs, respond, meta) => {
   const v = validateArgs(BroadcastArgs, rawArgs, "broadcast");
   if (!v.ok) { respond(null, v.error); return; }
   const { message, targets, team: teamName, tags: filterTags, task_summary, request_kind, requires_reply } = v.data;
-  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, t("hub.contactRefused")); return; }
+  if (ctx.hubContactRestricted?.(meta.instanceName)) { respond(null, hubContactRefusal(ctx, meta.instanceName)); return; }
   if (rejectOversizedCrossInstanceMessage(ctx, message, respond)) return;
 
   const senderLabel = meta.senderSessionName ?? meta.instanceName;
