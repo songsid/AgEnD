@@ -28676,8 +28676,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!pending || pending.phase === "mode") return true;
 
     // Telegram keyboards are visible to everyone in a group. Only the user who
-    // issued /start may consume the pending selection.
-    if (data.userId && data.userId !== pending.userId) return true;
+    // issued /start may consume the pending selection. No user id fails closed:
+    // choosing the backend is part of creating the room.
+    if (!data.userId || data.userId !== pending.userId) return true;
     const callbackChannelId = data.threadId ?? data.chatId;
     if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
 
@@ -28779,7 +28780,9 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     if (!match) return true;
     const pending = this.pendingClassicStarts.get(match[1]);
     if (!pending || pending.phase !== "mode") return true;
-    if (data.userId && data.userId !== pending.userId) return true;
+    // Same identity rule as the backend click. A missing user id must not settle
+    // Restricted or Free, including Free opened by a fleet admin.
+    if (!data.userId || data.userId !== pending.userId) return true;
     const callbackChannelId = data.threadId ?? data.chatId;
     if (callbackChannelId !== pending.channelId && data.chatId !== pending.channelId) return true;
     if (match[2] === "free" && !this.canChooseFreeMode(pending.userId, pending.adapterId)) {

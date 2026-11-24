@@ -198,6 +198,46 @@ describe("Classic /start mode menu (M-3682)", () => {
     expect(r.classic.get("direct-free", r.adapterId)?.restrictedMode).toBe(false);
   });
 
+  it("a click with no user id leaves both choices pending", async () => {
+    const r = rig("telegram", true);
+    await r.fm.beginClassicBackendSelection({
+      command: "start",
+      channelId: "12345",
+      channelName: "room",
+      userId: r.userId,
+      respond: r.respond,
+    }, r.adapter);
+    const backendChoices = r.adapter.promptUser.mock.calls[0][2] as { id: string }[];
+    const codex = backendChoices.find(choice => choice.id.endsWith(":codex"))!;
+    const backendNonce = codex.id.split(":")[1];
+    for (const userId of [undefined, ""] as const) {
+      await r.fm.handleClassicBackendSelection({
+        callbackData: codex.id, chatId: "12345", messageId: "menu", userId,
+      });
+    }
+    expect(r.adapter.promptUser).toHaveBeenCalledOnce();
+    expect(r.fm.pendingClassicStarts.has(backendNonce)).toBe(true);
+    expect(r.start).not.toHaveBeenCalled();
+
+    await r.fm.handleClassicBackendSelection({
+      callbackData: codex.id, chatId: "12345", messageId: "menu", userId: r.userId,
+    });
+    const menu = r.adapter.promptUser.mock.calls.at(-1);
+    const free = (menu[2] as { id: string }[]).find(choice => choice.id.endsWith(":free"))!;
+    const modeNonce = free.id.split(":")[1];
+    for (const userId of [undefined, ""] as const) {
+      await r.fm.handleClassicModeSelection({
+        callbackData: free.id, chatId: "12345", messageId: "menu", userId,
+      });
+    }
+    expect(r.fm.pendingClassicStarts.has(modeNonce)).toBe(true);
+    expect(r.start).not.toHaveBeenCalled();
+    expect(r.classic.getAll()).toHaveLength(0);
+    await click(r, free.id, "12345");
+    expect(r.classic.get("12345", r.adapterId)?.restrictedMode).toBe(false);
+    expect(r.start).toHaveBeenCalledOnce();
+  });
+
   it("only the /start user can consume the mode click", async () => {
     const r = rig("telegram", true);
     const menu = await telegramMenu(r);
