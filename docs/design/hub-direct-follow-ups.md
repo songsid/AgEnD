@@ -1,6 +1,9 @@
-# Hub one-to-one: an agent adds follow-ups after its answer (M-3638)
+# Hub one-to-one: an agent messages its asker on its own (M-3638)
 
 Status: design for the owner to choose from. No code. Written 2026-11-24 against the dev tip `9f9c34dfd`.
+Revised the same day on the owner's direction: follow the ClassicBot model, where an agent posts into the person's
+chat whenever it has something. A short follow-up window is no longer the main option, and flooding is not a
+concern for now.
 
 ## The problem
 
@@ -10,102 +13,99 @@ In a one-to-one chat with a shared agent, each question takes exactly one answer
 more.
 
 An agent that answered "I'll prepare the data pack" and later wanted to add "the data pack is ready" was refused.
-M-3637 makes that refusal say why. This design lets the follow-up through. In a group room an agent can already
-post again with `hub_room_post`; a one-to-one has no equivalent.
+M-3637 makes that refusal say why. A ClassicBot in a Discord or Telegram chat has no such limit: it replies into
+its chat whenever it has something. In a Hub group room an agent can also post again with `hub_room_post`. Only
+the Hub one-to-one is limited to one answer.
 
-## What stays the same in every option
+## The model
 
-- A follow-up is the agent's message to the person who asked. Nobody else sees it.
-- Every follow-up passes the same release check as an answer, at the moment it is sent, for exactly its text and
-  files. Nothing is approved in advance at answer time.
-- No follow-up is stored for later delivery after a refusal. The agent is told the reason and that is the end.
-- The owner's Fleet keeps its audit line for each one, as for an answer.
-
-## Options
-
-### A. Follow-ups on the answered question (recommended)
-
-The question's correlation id stays usable after the answer, for a limited window and a limited count. The agent
-sends a follow-up the way it sent the answer.
+**A one-to-one is a chat the agent can post into at any time, as long as the person may still ask it.** A question
+is not needed first each time, and there is no window after an answer.
 
 | Point | Choice |
 |---|---|
-| Window | 24 hours after the answer |
-| Count | Up to 5 follow-ups for one question |
-| Agent's tool | `report_result` to `agend-hub` with the same `correlation_id`. The first is the answer, later ones are follow-ups. No new tool, no new argument |
-| What the agent is told | On success: "Delivered as a follow-up (3 left, until 14:20 tomorrow)". On refusal: the reason, in one sentence (window over, count used, no longer allowed, paused, asker gone, this Hub is too old) |
-| Content | Text and files, with the answer's size limits. No buttons or polls in the first version |
-| What the asker sees | A new message from the agent at the bottom of the chat, quoting the question it belongs to, as the answer does. It counts as unread and notifies exactly like an answer |
-| Status line (M-3596) | Unchanged. The line shows working or queued only while a question has no answer. A follow-up arrives as a message and does not reopen it |
+| Where | Only a one-to-one that already exists: the person opened it and has asked this agent at least once. An agent cannot start a chat with someone who never asked it |
+| When | Any time, while every check below holds |
+| Content | Text and files, with an answer's size limits. Buttons and polls as answers have them, if the builder finds they come at no extra cost; otherwise later |
+| Who sees it | Only that person |
 
-**Checks at each follow-up.** All must hold, as for an answer:
+### Consent and grant
 
-1. the agent is still shared, with the same consent (a backend or folder change ends follow-ups, like asks);
-2. the asker may still ask this agent (Who may ask, a group, a team grant);
-3. the agent is not paused by its owner;
-4. the asker's account is still active and the one-to-one is not closed;
-5. the reporting agent process is the current one.
+Each message is checked at the moment it is sent, for exactly its text and files, like an answer. All must hold:
 
-A failed check refuses the follow-up. A paused agent is refused, not held: a message that appears hours after
-"paused" was lifted would surprise both sides.
+1. the agent is still shared, with the same consent (a backend or folder change ends it until shared again);
+2. the person may still ask this agent now (Who may ask, a group, a team grant), and that grant has not expired;
+3. the agent's sharing is not paused by its owner;
+4. the person's account is active and the one-to-one is not closed;
+5. the sending agent process is the current one.
 
-**Noise limits.**
+A failed check refuses the message with a one-sentence reason to the agent (not allowed any more, paused, expired,
+the person has left, this Hub is too old). Nothing is kept to send later: a message that appears after a pause is
+lifted or a grant is given back would surprise both sides. A message already delivered stays in the chat.
 
-- 5 for one question and 24 hours, as above.
-- The same text as the previous message to that question is refused as a duplicate. This also stops an agent that
-  reports twice by mistake from answering twice.
-- Follow-ups count toward the agent's existing rate limits for answers.
+Revoke, pause and expiry therefore stop messages at once, with no extra setting: the right to be asked and the
+right to message are the same grant.
 
-**If the asker has left.**
+### What the person sees
 
-- Offline or signed out: the follow-up is kept in the chat and is unread when they return. Same as an answer.
-- Removed from the Hub, access revoked, or the one-to-one closed: refused; the agent is told the asker can no
-  longer be reached. The text is not sent anywhere.
+- A new message from the agent at the bottom of the one-to-one, as an answer looks. When the agent names the
+  earlier question, the message quotes it; otherwise it stands alone.
+- It counts as unread and notifies exactly like an answer: the badge on the chat in the list, and whatever
+  notification the person has for answers.
+- The status line (M-3596) is unchanged. It shows working or queued only while a question has no answer. A
+  message from the agent does not open it.
+- The person's reply is an ordinary question to the agent.
+- Offline or signed out: the message waits in the chat, unread.
 
-**Cost.** Size M. The Fleet keeps an answered question's record for the window. The link needs a negotiated
-feature so that an older Hub refuses a follow-up cleanly. The Hub accepts more than one agent message for a
-question and shows them in order.
+### The agent's tool
 
-### B. The agent may post in the one-to-one at any time
+Two ways in, one path behind them:
 
-The one-to-one behaves as a room with two members: the agent uses `hub_room_post` with the one-to-one as the room,
-with no question needed.
+1. **`hub_room_post` with the one-to-one as the room.** `hub_room_list` also lists the agent's one-to-ones, marked
+   as such, named by the person. The agent posts with the id, as to a room. `receipt_id` quotes a question. This is
+   the same tool and habit as group rooms, so there is nothing new to learn.
+2. **`report_result` on a correlation id that was already answered** becomes a message in that one-to-one, quoting
+   that question, instead of a refusal. This is what agents already try, as the reported case shows.
 
-- Window and count: none per question; a rate limit instead (for example 5 an hour to one person).
-- Covers more: a scheduled report, "the nightly job failed".
-- New risk: an agent can start messaging a person who only once asked it something. That needs the asker's
-  consent (a "may message me" setting for each agent) and a mute, which is a larger design.
-- Size L.
+The result says "Delivered to <name>." or gives the refusal reason. The question prompt gains one sentence telling
+the agent it may write to this person again later with `hub_room_post`.
 
-### C. Only "it's ready": one completion notice
+An agent already receives the asker's verified name with each question, so listing its one-to-ones shows it
+nothing new.
 
-The answer can declare that work continues; the agent may then send exactly one completion message, with no
-window limit other than 7 days.
+### Rate cap (a safety net)
 
-- Smallest noise.
-- Too narrow: "it will take longer", "here is a correction" and a second file all need more than one message, and
-  the agent must decide at answer time that more is coming.
-- Size M, the same plumbing as A.
+- 30 messages an hour from one agent to one person, the same number as a person's direct questions per hour.
+- The same text as the agent's previous message in that chat within a minute is refused as a duplicate, which
+  stops a double report from showing twice.
+- Over the cap, the message is refused with the time it may try again. The owner sees nothing unless it repeats;
+  the builder may add one Needs-you line for an agent that keeps hitting the cap.
 
-## Recommendation
+These exist to stop a looping agent, not to shape normal use.
 
-**A, with 24 hours and 5 follow-ups.** It fixes the reported case with the tool agents already use, adds no new
-kind of consent, and its limits are easy to explain. B is the right later step if owners want agents to report on
-their own; it should wait for its own design because of the asker's consent. C costs the same as A and does less.
+## Options
 
-The two numbers are the owner's to choose. Shorter (1 hour) fits quick additions but not long jobs. Longer
-(7 days) fits long jobs but keeps a channel open to someone who may have forgotten the question.
+- **A (recommended): the model above, with both ways in.** Size M to L; the builder confirms.
+- **B: the model above with `hub_room_post` only.** A second `report_result` still gets M-3637's refusal, which
+  then points to `hub_room_post`. A little less to build, but the agent's natural second report fails once before
+  it learns.
+- **C: a new tool, `hub_direct_post({to})`.** Clearer name, but one more tool in every shared agent's list for
+  something `hub_room_post` already expresses.
+
+## Left for later
+
+- A mute or "don't message me" setting for the person. Not needed while flooding is not a concern; the person can
+  stop it today only by asking the owner or an administrator. Worth adding before the Hub opens beyond the pilot.
+- An agent starting a chat with someone who never asked it.
+- A "more is coming" state on the status line.
 
 ## For the builder to confirm before building
 
-- Whether the Hub's journal and the receipt stages assume one answer for a message, and what changes for more.
-- Whether the release authorization (`phase: "release-answer"`) can be asked again for the same message, or needs
-  a new phase.
-- How long an answered question's record is kept on the Fleet today.
-- That the one-to-one view (`src/hub/rooms/direct-view.ts`) can list several agent messages for one entry.
-
-## Not in this design
-
-- Agent-started one-to-one messages (option B).
-- Follow-ups in group rooms: `hub_room_post` already covers them.
-- A "more is coming" state on the status line. It can be added later if askers ask for it.
+- Whether the Hub's journal and the receipt stages assume one agent message for a question, and what a message
+  with no question needs.
+- Which authorization the release uses: `phase: "release-answer"` is tied to a question's message id; a message
+  with no question needs its own phase or the room-post path.
+- Whether a one-to-one can go through the room-post machinery (`src/hub/member/room-post.ts`) or needs its own
+  route beside the direct service.
+- That the one-to-one view (`src/hub/rooms/direct-view.ts`) can show agent messages that belong to no question.
+- That an older Hub refuses cleanly (a negotiated feature on the link).
