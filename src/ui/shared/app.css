@@ -2177,6 +2177,14 @@ textarea.s-yaml { white-space: pre; overflow-x: auto; }
 .shell:has(.s-pending) .toasts { bottom: calc(var(--s-6) + 64px); }
 /* In a chat the composer owns the bottom (Stop reply, Send): toasts come in under the header instead (alpha.2 sweep). */
 @media (min-width: 900px) and (pointer: fine), (min-width: 900px) and (pointer: none), (min-width: 900px) and (min-height: 501px), (min-width: 1024px) { .shell:has(.p-chat) .toasts { top: calc(var(--header-h) + var(--s-2)); bottom: auto; } }
+/* M-3645: a Hub chat's composer owns the bottom (Send) and its thread starts right under the chat's head, so a toast stands
+   in the head's band: over its title and buttons for a few seconds (toasts let clicks through), never on Send or a message
+   row. A confirmation is one line there, and an older one gives way to the newest, so the stack never runs down the thread;
+   an error or a source's details keep every line. */
+.shell:has(.hub-chat-head) .toasts { top: var(--s-1); bottom: auto; }
+.shell:has(.hub-chat-head) .toasts > .toast.ok:not(.toast-detail) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.shell:has(.hub-chat-head) .toasts > .toast.ok:not(.toast-detail):not(:last-child) { display: none; }
+@media (max-width: 899px), (pointer: coarse) and (max-height: 500px) and (max-width: 1023px) { .shell:has(.hub-chat-head) .toasts { top: calc(env(safe-area-inset-top) + var(--s-3)); } }
 .op-line { display: flex; align-items: center; justify-content: center; gap: var(--s-2); }
 .op-line.ok { color: var(--ok); }
 .op-line.bad { color: var(--danger); }
