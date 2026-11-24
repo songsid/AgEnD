@@ -214,7 +214,24 @@ export function withoutTaskBoardGuidance(workflow: string): string {
   return workflow.replace(/^## Progress Tracking\b[\s\S]*?(?=^## |(?![\s\S]))/m, "");
 }
 export function withoutTaskCommands(cli: string): string {
-  return cli.split("\n").filter((line) => !/^\s*agend-agent task\b/.test(line)).join("\n");
+  return cli.split("\n").filter((line) => !/^\s*agend-agent task\b/.test(line) && !line.includes(TASK_CARD_REF_SLOT)).join("\n");
+}
+
+/**
+ * How an agent points at a card in a reply (an agent once built `http://localhost:…/ui/fleet?card=M-3` links, which do not
+ * open from another machine or a phone). The web chat draws `#M-3` as a chip (src/ui/shared/chat-render.js). One sentence, written
+ * here once and shown wherever the `task` tool is described, whatever the mode:
+ *  - MCP mode (every runtime, a native Windows agent too): the `task` tool's description (channel/mcp-tools.ts);
+ *  - CLI mode (`agent_mode: cli`, no MCP server): the Task Board section of agent-cli-instructions.md, which holds
+ *    TASK_CARD_REF_SLOT in its place (withTaskCardRef fills it; withoutTaskCommands drops it with the board's commands);
+ *  - an agent already running keeps the tool description it loaded: agent-whats-new.ts tells it once.
+ * Each agent reads exactly one of the first two, so the steady cost is this one sentence, once.
+ */
+export const TASK_CARD_REF_HINT = "In a reply, write a card as #M-3, not a URL: the web chat shows it as a chip.";
+/** Where agent-cli-instructions.md says it (a comment line in its Task Board commands). */
+export const TASK_CARD_REF_SLOT = "{{TASK_CARD_REF_HINT}}";
+export function withTaskCardRef(cli: string): string {
+  return cli.replaceAll(TASK_CARD_REF_SLOT, TASK_CARD_REF_HINT);
 }
 
 /** (b) What an agent is told when the person switches the task board on for it (its tool list follows at once). */

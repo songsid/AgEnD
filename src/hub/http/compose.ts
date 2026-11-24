@@ -216,6 +216,12 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
   const quota = new HubQuotaService(core);
   const fleetVersions = new HubFleetVersions(core);
   const agentCatalogs = new HubAgentCatalogs(core);
+  // M-3533 R2a: a room office draws each shared agent in its owner's colour and emoji, from the owner's catalog rows.
+  groupRooms.looks = (fleetId) => {
+    const report = agentCatalogs.reportOf(fleetId);
+    if (!report) return null;
+    return new Map(report.catalog.agents.filter((a) => a.exposure && a.avatar).map((a) => [a.exposure!.id, { color: a.avatar!.color, emoji: a.avatar!.emoji }]));
+  };
   const previousAccess = new HubPreviousAccess(core, agentCatalogs);
   const sharingRequests = new HubSharingRequests(core, agentCatalogs, publishSharingSettlement);
   const recommendations = new HubVersionRecommendations(core, fleetVersions);
@@ -1110,7 +1116,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
     if (handleWebIconRequest(req, res, path)) return true;
     if (path === "/") { res.writeHead(302, { Location: "/ui/hub", "Cache-Control": "no-store" }); res.end(); return true; }
     if (path === "/web" || path === "/ui" || path === "/ui/hub" || path === "/ui/hub/exposures" || path === "/ui/hub/admin") {
-      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview });
+      serveHubWorkspaceShell(res, { name: deps.config.name, preview: deps.preview, loginWithoutAt: deps.config.loginWithoutAt === true });
       return true;
     }
     if (path.startsWith("/ui/js/")) {

@@ -388,6 +388,11 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   }, [spec, picture, packScale, picRev, sheet]);
 
   useEffect(() => { place && place(box.current); });
+  // Closed (unmounted): the page hears it, as it heard the card open — a scene drawn around the card (the tags it covered,
+  // #4379 review) is drawn again without it, reduced motion included.
+  const placeNow = useRef(place);
+  placeNow.current = place;
+  useEffect(() => () => { if (placeNow.current) placeNow.current(null); }, []);
   // A bottom sheet closes on a swipe down (60 px or more).
   const down = (e) => { if (sheet) swipe.current = e.clientY; };
   const up = (e) => { if (sheet && swipe.current !== null && e.clientY - swipe.current > 60) onClose(); swipe.current = null; };

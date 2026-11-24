@@ -37,8 +37,14 @@ it.each(["en","zh-TW"])("badges agent members while keeping people and their pre
     {id:"f",kind:"agent",name:"Project helper",owner:{name:"Alex"},presence:"idle",agentKind:"fleet"},
     {id:"a",kind:"agent",name:"Personal helper",owner:{name:"Alex"},presence:"idle",agentKind:"personal"},
   ]}}));await settle(10);
-  expect(p.root.querySelectorAll('.hub-member-agent [data-room-source="agend"]')).toHaveLength(2);
-  expect(p.root.querySelector('.hub-member:not(.hub-member-agent) [data-room-source]')).toBeNull();
+  // M-3533 R2a (the design check): an agent row wears its avatar in the badge's slot — every agent's badge was the same
+  // logo — and says its source by its title and accessible name; a person's row has neither avatar nor badge.
+  const rows=[...p.root.querySelectorAll(".hub-member-agent .hub-member-open")] as any[];
+  expect(rows.map(b=>[!!b.querySelector(".hub-agent-av"),b.querySelector("[data-room-source]")])).toEqual([[true,null],[true,null]]);
+  // Each title names the owner, and a personal agent's differs from a Fleet agent's.
+  expect(rows.every(b=>(b.getAttribute("title")||"").includes("Alex"))).toBe(true);
+  expect(new Set(rows.map(b=>b.getAttribute("title"))).size).toBe(2);
+  expect(p.root.querySelector('.hub-member:not(.hub-member-agent) [data-room-source], .hub-member:not(.hub-member-agent) .hub-agent-av')).toBeNull();
   expect(p.root.querySelectorAll('.hub-member-agent .dot.ok')).toHaveLength(2);
   const button=[...p.root.querySelectorAll(".hub-member-open")].find(b=>b.textContent?.includes("Personal helper"))!;
   expect(button.getAttribute("aria-label")).toContain(lang==="en"?"Alex's personal agent":"Alex 的個人 Agent");

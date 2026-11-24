@@ -32,6 +32,9 @@ import { SchedulerDb } from "../src/scheduler/db.js";
 import { deriveNeedsYou } from "../src/needs-you.js";
 import { isPublicWebRoute } from "../src/public-web-gateway.js";
 import { bindGatewayRequest } from "../src/web-request-context.js";
+import "../src/ui/chat-render.js";
+// @ts-expect-error — a page module: plain JS, no declarations
+import { createTaskRefIndex } from "../src/ui/chat-task-refs.js";
 
 const LOCAL_HOST = "127.0.0.1:19280", LOCAL_ORIGIN = `http://${LOCAL_HOST}`;
 const UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
@@ -822,6 +825,31 @@ describe("4i. a card as a chat shows it (`/ui/tasks/refs`), over the link", () =
     // An admin session over the link, and the dashboard itself, read as they did before.
     expect(codes((await ask(db, byNumber, { tier: "admin" })).body)).toEqual([hidden.code, sub.code, open.code]);
     expect(codes((await ask(db, byNumber, { local: true })).body)).toEqual([hidden.code, sub.code, open.code]);
+  });
+
+  // An agent's reply names cards with `#M-n` as a person's message does, and the page draws a chip from the same answer
+  // (src/ui/chat-task-refs.js, shared/chat-render.js). The writer changes nothing about what the viewer may be shown.
+  it("an agent's reply that names a hidden card gets no chip over the link — the number stays text, and no title, status or owner of it is drawn; the dashboard and an admin session draw it", async () => {
+    const { db, hidden, sub, open } = seed();
+    const reply = `Done: #${hidden.code}, its step #${sub.code} and #${open.code}, and \`#${open.code}\` in code.`;
+    const drawn = async (opts: { tier?: "admin" | "read"; local?: boolean }) => {
+      const index = createTaskRefIndex(async (url: string) => { const r = await ask(db, url.slice("/ui/tasks/refs".length), opts); return { ok: r.status === 200, json: async () => r.body }; });
+      index.ensure([{ role: "agent", text: reply }]);
+      for (let i = 0; i < 100 && index.pending(); i++) await Promise.resolve();   // microtasks only: this file runs on fake timers
+      for (let i = 0; i < 5; i++) await Promise.resolve();
+      const info = (code: string) => { const v = index.get(code); return v ? { title: v.title, status: v.status, statusLabel: v.status, tip: `${v.code} · ${v.title}${v.assignee ? ` · @${v.assignee}` : ""}` } : null; };
+      return (globalThis as any).AgendChatRender.renderMarkdown(reply, { htmlCards: true, taskRefs: info }) as string;
+    };
+    const chipsOf = (html: string) => [...html.matchAll(/data-task-ref="([MS]-\d+)"/g)].map((m) => m[1]);
+    const link = await drawn({ tier: "read" });
+    expect(chipsOf(link), "the visible cards are chips, in text order; the hidden one and the code are not").toEqual([sub.code, open.code]);
+    expect(link, "the hidden card's number is the text the agent wrote").toContain(`#${hidden.code},`);
+    for (const word of ["Hidden main", "spy"]) expect(link, `nothing of the hidden card (${word}) is drawn`).not.toContain(word);
+    expect(link).toContain("Open main for the link");
+    expect(chipsOf(await drawn({ tier: "admin" })), "an admin session over the link reads every card").toEqual([hidden.code, sub.code, open.code]);
+    const local = await drawn({ local: true });
+    expect(chipsOf(local), "the dashboard itself too").toEqual([hidden.code, sub.code, open.code]);
+    expect(local).toContain("Hidden main for the link");
   });
 });
 

@@ -56,6 +56,11 @@ describe("zonesLayout at night", () => {
 });
 
 describe("the setting", () => {
+  it("M-3560: its label — English reworded to match the zh-TW meaning; zh-TW unchanged", async () => {
+    const I = await import("/assets/app-i18n.js");
+    expect(I.tIn("en", "orgo.nightOn")).toBe("Bedtime (0–6): idle agents sleep");
+    expect(I.tIn("zh-TW", "orgo.nightOn")).toBe("0–6 點就寢：閒著的人去睡");
+  });
   it("off by default, kept per device", () => {
     const m = new Map<string, string>();
     const st = S.createOfficeStore({ storage: { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => void m.set(k, v) } });

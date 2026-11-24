@@ -85,10 +85,10 @@
     return '<span class="mention" data-mention="' + kind + ":" + id + '" title="' + id + '">' + label + "</span>";
   }
 
-  // A task card's number in a person's message — `#M-3` or `#s3` (a bare M-3 is the word it is) — drawn as a chip (number, title,
-  // status) that opens the card (Fleet › Tasks, ?card=). Only for a card the page knows (store.taskRefs(code) → { title, status,
-  // statusLabel, tip }), and only on a page that asks for it (the person's own words, in the Fleet chat); any other number
-  // stays the text it was. The rule is the server's (src/chat-task-refs.ts) and the page's (chat-task-refs.js): a test holds the
+  // A task card's number in a person's or an agent's message — `#M-3` or `#s3` (a bare M-3 is the word it is) — drawn as a chip
+  // (number, title, status) that opens the card (Fleet › Tasks, ?card=). Only for a card the page knows (store.taskRefs(code) →
+  // { title, status, statusLabel, tip }; a card the viewer may not see is none), and only on a page that asks for it (the Fleet
+  // chat); any other number stays the text it was. The rule is the server's (src/chat-task-refs.ts) and the page's (chat-task-refs.js): a test holds the
   // three to one list of cases. The href is built from the matched digits, the class from a fixed list; the card's own words
   // (title, labels) are inserted escaped.
   var TASK_REF_RE = /(?<![A-Za-z0-9_\/&#@-])#([MmSs])-?(\d{1,9})(?![A-Za-z0-9_-]|\.\d)/g;

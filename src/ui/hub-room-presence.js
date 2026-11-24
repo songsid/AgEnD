@@ -93,16 +93,19 @@ export function presenceDot(presence, reason) {
   return DOT_CLASS[dot] ?? "off";
 }
 
+const cmp = (a, b) => { const x = String(a ?? ""), y = String(b ?? ""); return x < y ? -1 : x > y ? 1 : 0; };
+
 /**
  * The Agents list order (spec §5): working, then idle (待命), paused, offline,
- * reply-later; stable by name within each group. Only kind "agent"/"later"
+ * reply-later; by name within each group, two agents of one name by their owner's
+ * name, then id (R2a), so they never swap between reads. Only kind "agent"/"later"
  * members sort here — people have their own row and the room assistant has its.
  */
 export function sortAgents(members) {
   return members
     .filter((m) => m.kind === "agent" || m.kind === "later")
     .map((m, i) => [m, i])
-    .sort(([a, ai], [b, bi]) => groupIndex(a.presence) - groupIndex(b.presence) || (a.name < b.name ? -1 : a.name > b.name ? 1 : ai - bi))
+    .sort(([a, ai], [b, bi]) => groupIndex(a.presence) - groupIndex(b.presence) || cmp(a.name, b.name) || cmp(a.owner?.name, b.owner?.name) || cmp(a.id, b.id) || ai - bi)
     .map(([m]) => m);
 }
 
