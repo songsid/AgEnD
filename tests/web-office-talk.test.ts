@@ -16,6 +16,7 @@ import * as PK from "../src/ui/fleet-office-pack.js";
 import { checkSkinUpload } from "../src/web-office-skins.js";
 import { page, settle, h, type AppPage } from "./helpers/app-harness.js";
 import { fire, MiniElement } from "./helpers/mini-dom.js";
+import { openDisplay } from "./helpers/office-display.js";
 
 const FIXTURE = join(process.cwd(), "tests", "fixtures", "office-skin-clinic");
 const MANIFEST = () => JSON.parse(readFileSync(join(FIXTURE, "manifest.json"), "utf8"));
@@ -196,9 +197,10 @@ describe("talking on the page", () => {
     p.root.querySelectorAll(".oc-tools .seg-inline button")[2].click(); await settle(6);
   };
   const tick = async (n = 8) => { for (let i = 0; i < n; i++) await settle(2); };
-  const picker = () => p.root.querySelector(".oo-talk-mode");
-  const pick = async (v: string) => { const s = picker(); s.value = v; fire(s, "change"); await settle(4); };
-  const dialogue = () => p.root.querySelector(".oo-dialogue input");
+  // M-3556: the talk picker and the Dialogue tick sit in ⚙ Display options on a desk — open it before reaching for them.
+  const picker = async () => { await openDisplay(p.root); return p.root.querySelector(".oo-talk-mode"); };
+  const pick = async (v: string) => { const s = await picker(); s.value = v; fire(s, "change"); await settle(4); };
+  const dialogue = async () => { await openDisplay(p.root); return p.root.querySelector(".oo-dialogue input"); };
   /** A message to atlas, then a click on the box over the scene: whom the line below talks to. */
   const clickBox = async () => {
     emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "hi", ts: new Date().toISOString() });
@@ -209,8 +211,8 @@ describe("talking on the page", () => {
 
   it("the picker is in the bar, the pop-up by default (nothing new on the page until another is picked)", async () => {
     await office();
-    expect(picker().value).toBe("window");
-    expect([...picker().querySelectorAll("option")].map((o: any) => o.value)).toEqual(["window", "panel", "box", "bubble"]);
+    expect((await picker()).value).toBe("window");
+    expect([...(await picker()).querySelectorAll("option")].map((o: any) => o.value)).toEqual(["window", "panel", "box", "bubble"]);
     expect(p.root.querySelector(".ot-bar")).toBeNull();
     expect(p.root.querySelector(".ot-panel")).toBeNull();
     expect(p.root.querySelector(".ot-stage")).toBeNull();
@@ -222,7 +224,7 @@ describe("talking on the page", () => {
     try {
       await office();
       await pick("box");
-      expect(dialogue().checked).toBe(true);
+      expect((await dialogue()).checked).toBe(true);
       expect(localStorage.getItem("agend_org_office_talk")).toBe("box");
       expect(p.root.querySelector(".ot-stage")).toBeNull();                         // nobody yet: the scene as it was
       await clickBox();
@@ -325,7 +327,7 @@ describe("talking on the page", () => {
     expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
     expect(p.root.querySelector(".ot-bar")).toBeNull();
     expect(p.root.querySelector(".ot-stage")).toBeNull();
-    expect(dialogue().checked).toBe(true);
+    expect((await dialogue()).checked).toBe(true);
     expect(p.root.querySelector(".oo").className).toContain("ot-side");
     expect(panel.querySelector(".ot-head").textContent).toContain("atlas");
     expect(panel.querySelector(".ot-md").innerHTML).toContain("Earlier reply");
@@ -347,7 +349,7 @@ describe("talking on the page", () => {
   });
   it("over their head: no dock; the reply is drawn over the agent on the map", async () => {
     await office();
-    fire(dialogue(), "change"); await settle(4);
+    fire(await dialogue(), "change"); await settle(4);
     await pick("box"); await clickBox();
     await pick("bubble");
     expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
