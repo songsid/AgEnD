@@ -5,7 +5,9 @@
  * - `mine` — the caller's work; `projects` — the board's projects; `create_project`; `move_project` — main tasks to a
  *   project (or out of one), each card on its own (#3195);
  * - `move` — a card to another status, with the reason, result or comment the move needs;
- * - `create` or `update` naming a board field (a project, a parent, a checklist, state, a log line, a comment…);
+ * - `create` or `update` naming a board field (a project, a parent, a checklist, state, a log line, a comment…); a new main
+ *   task's project, when none is named, is settled by `placeNewMain` (the board's only project, the one the caller leads, or
+ *   a question back to the person);
  * - `get` of a card on the board — the card as text, with the comments new to its assignee.
  *
  * Everything else is the tool's own and is answered as before (undefined here). The caller is the instance the tool
@@ -13,8 +15,8 @@
  */
 import { listOptions, pageRows } from "./agent-list-output.js";
 import type { SchedulerDb } from "./scheduler/db.js";
-import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type Card, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard } from "./scheduler/task-board.js";
-import { cardLine, cardText, myWorkText, projectsText, writeText } from "./scheduler/task-board-text.js";
+import { CARD_PRIORITIES, CARD_SIZES, CARD_STATUSES, TaskBoardError, type Actor, type Card, type CardPatch, type CardPriority, type CardSize, type CardStatus, type DispatcherInput, type NewCard, type Project, type TaskBoard } from "./scheduler/task-board.js";
+import { cardLine, cardText, myWorkText, oneLine, projectsText, writeText } from "./scheduler/task-board-text.js";
 import { spanText } from "./dispatcher-liveness.js";
 import { t } from "./locale.js";
 
@@ -107,6 +109,53 @@ function need(v: unknown, what: string): string {
   return s;
 }
 
+/** A project named on `create`: its id or name; "none" and null are no project (null), nothing said is undefined. */
+const explicitProject = (v: unknown): string | number | null | undefined =>
+  typeof v === "string" && v.trim().toLowerCase() === "none" ? null : (str(v) ?? (typeof v === "number" ? v : undefined));
+
+/** How a new main task's project was settled when the caller named none (see placeNewMain). */
+export type ProjectWhy = "only" | "lead";
+
+/**
+ * Where a new main task goes when `create` names no project: an agent used to drop it in "No
+ * project" without a word, where the person never looked. Now, counting the board's projects that are not archived:
+ *  - none: as before — the card is opened in no project;
+ *  - one: it goes there;
+ *  - several: the one the caller LEADS, when it leads exactly one of them (a project's lead is its main agent, set by a
+ *    person); otherwise the person is asked — an error that lists the projects, so the agent asks and creates again.
+ * Naming a project (its id or name) is taken as given; null / "none" is a deliberate "no project". A blank string is as good
+ * as nothing said, so it cannot be used to slip past the question. Returns the project and why, or null for no project.
+ */
+export function placeNewMain(board: Pick<TaskBoard, "listProjects">, instance: string, named: unknown): { project: Project; why: ProjectWhy } | null {
+  if (named !== undefined && !(typeof named === "string" && !named.trim())) return null;   // named (or "none"): the caller's own choice
+  const active = board.listProjects(false);
+  if (active.length === 0) return null;
+  if (active.length === 1) return { project: active[0]!, why: "only" };
+  const led = active.filter((p) => p.leadInstance === instance);
+  if (led.length === 1) return { project: led[0]!, why: "lead" };
+  const line = (p: Project) => `${p.id} ${p.name}${p.leadInstance ? ` (lead: ${p.leadInstance})` : ""}${p.description ? ` · ${oneLine(p.description, 80)}` : ""}`;
+  throw new TaskBoardError("invalid", [
+    `This board has ${active.length} projects and you did not say which one this card belongs to`
+      + (led.length > 1 ? ` (you lead ${led.length} of them, so none is yours by default)` : "")
+      + ". Ask the person which project it is for — do not guess — then create it again with project set to its id. "
+      + "Use project: \"none\" only when nobody can answer now (a scheduled or automated run) or the person says it belongs to no project. Nothing was created.",
+    "Projects:", ...active.map(line),
+  ].join("\n"));
+}
+
+/** A new main task's answer: the card, where it is and why, and what to tell the person ("#M-3" opens the card). */
+function createdText(board: Pick<TaskBoard, "getProject" | "listProjects">, card: Card, notes: string[], why: ProjectWhy | null): string {
+  const head = writeText(card, notes);
+  // A sub task follows its main task; a board with no project has nothing to say about one.
+  if (card.kind !== "main" || (card.projectId === null && !board.listProjects(false).length)) return head;
+  const project = card.projectId === null ? null : board.getProject(card.projectId);
+  const where = project ? `project ${project.id} ${project.name}` : "no project (the board's 未分類 / No project)";
+  const because = why === "only" ? " — the board's only project, chosen for you" : why === "lead" ? " — chosen for you: you lead this project" : "";
+  // In no project on a board that has projects: the person may not know, so the answer sends the agent to ask, and to remember.
+  const sort = project ? "" : " Unless they asked for none, ask which project it belongs to; once they say, move it (move_project) and add the rule to your soul.md Rules, so the next such card goes there.";
+  return `${head}\nIn ${where}${because}.\nTell the person: #${card.code} (opens the card) is in ${project ? `project ${project.name}` : "no project"}.${sort}`;
+}
+
 export function boardToolAction(db: SchedulerDb, instance: string, args: Record<string, unknown>): string | undefined {
   // Before anything else, for every action and both doors: a field the action would not read is an error, not a no-op.
   const refused = unsupportedFields(args);
@@ -169,7 +218,11 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
       return writeText(card, notes, from);
     }
     case "create": {
-      if (!has(args, BOARD_CREATE)) return undefined;
+      const named = has(args, BOARD_CREATE);
+      const parent = str(args.parent);
+      // A main task with no project named: the board's only project, the one the caller leads, or a question back (placeNewMain).
+      const placed = parent ? null : placeNewMain(board, instance, args.project);
+      if (!named && !placed) return undefined;
       const spec: NewCard = {
         title: need(args.title, "title"),
         goal: str(args.description),
@@ -181,11 +234,12 @@ export function boardToolAction(db: SchedulerDb, instance: string, args: Record<
         dependsOn: strs(args.depends_on),
         needsReview: bool(args.needs_review),
         dispatcher: dispatcher(args.dispatcher),
-        ...(str(args.parent) ? { parent: str(args.parent) } : { project: str(args.project) ?? (typeof args.project === "number" ? args.project : undefined) }),
-        ...(args.assignee !== undefined ? { assignee: str(args.assignee) ?? null } : {}),
+        ...(parent ? { parent } : { project: placed ? placed.project.id : explicitProject(args.project) }),
+        // The plain task is unassigned unless asked; a project given by default must not change that.
+        ...(args.assignee !== undefined ? { assignee: str(args.assignee) ?? null } : !named ? { assignee: null } : {}),
       };
       const { cards, notes } = board.createCards(actor, { cards: [spec] });
-      return writeText(cards[0]!, notes);
+      return createdText(board, cards[0]!, notes, placed?.why ?? null);
     }
     case "update": {
       if (!has(args, BOARD_UPDATE)) return undefined;

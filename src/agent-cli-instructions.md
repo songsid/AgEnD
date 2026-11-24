@@ -42,7 +42,7 @@ agend-agent describe NAME                         # Get agent details
 agend-agent start NAME                            # Start stopped agent
 
 # Task Board (same actions and fields as the `task` tool; a flag takes its value as the next word or --flag=value, `--` ends the flags)
-agend-agent task create "title" [desc] [priority] [assignee] [FLAGS]   # FLAGS: --project P --parent M-3 --scope TXT --acceptance ITEM (repeat) --context TXT --needs-review --size S|M|L --dispatcher NAME --depends-on ID,… — any of project/parent/scope/acceptance/context/needs-review/size/dispatcher opens a board card (M-n; S-n with --parent), none of them a plain task
+agend-agent task create "title" [desc] [priority] [assignee] [FLAGS]   # FLAGS: --project P --parent M-3 --scope TXT --acceptance ITEM (repeat) --context TXT --needs-review --size S|M|L --dispatcher NAME --depends-on ID,… — any of project/parent/scope/acceptance/context/needs-review/size/dispatcher opens a board card (M-n; S-n with --parent), none of them a plain task; no --project: the board's only project, else the one you lead, else refused with the projects listed (ask the person; --project none only when nobody can answer, or for no project)
 agend-agent task list [assignee] [status,…] [--project P] [--parent M-3] [--stale] [--detail] [--limit N] [--cursor C]   # live cards unless a status is named; --stale: claimed cards whose assignee stopped; follow next_cursor with the same filters
 agend-agent task claim ID                         # Claim task
 agend-agent task done ID "result"                 # Complete task

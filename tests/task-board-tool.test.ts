@@ -42,7 +42,7 @@ describe("the task tool's board actions", () => {
     db.board.createProject(ANN, { name: "Game" });
     expect(await call("lead", { action: "projects" })).toBe("1 Game — 0 main tasks, 0% done");
     expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", description: "weekly top 100", acceptance: ["resets Monday"] }))
-      .toBe("ok M-1 Leaderboard [to do] @lead (v1)");
+      .toBe("ok M-1 Leaderboard [to do] @lead (v1)\nIn project 1 Game.\nTell the person: #M-1 (opens the card) is in project Game.");
     expect(await call("lead", { action: "create", title: "API", parent: "M-1", assignee: "dev-a" })).toBe("ok S-1 API [to do] @dev-a (v1)");
     expect(await call("lead", { action: "create", title: "Review", parent: "M-1", assignee: "dev-b", depends_on: ["S-1"] })).toBe("ok S-2 Review [to do] @dev-b (v1)");
     expect(await call("dev-b", { action: "mine" })).toBe("dev-b's work on the task board\nwaiting on dependencies:\n S-2 Review — waits for S-1");
@@ -81,9 +81,9 @@ describe("the task tool's board actions", () => {
     const { db, call } = fleet();
     db.board.createProject(ANN, { name: "Game" });
     expect(await call("lead", { action: "create", title: "Leaderboard", project: "Game", assignee: "dev-a", acceptance: ["resets Monday", "top 100"], needs_review: true }))
-      .toBe("ok M-1 Leaderboard [to do] @dev-a (v1)");
+      .toBe("ok M-1 Leaderboard [to do] @dev-a (v1)\nIn project 1 Game.\nTell the person: #M-1 (opens the card) is in project Game.");
     expect((await call("dev-a", { action: "get", detail:true, id: "M-1" }) as string).split("\n")[1]).toBe("project Game · dispatched by lead · lead confirms it");   // #2434: an agent's card, its dispatcher's
-    expect(await call("dev-a", { action: "create", title: "Archive", project: "Game", dispatcher: "lead" })).toBe("ok M-2 Archive [to do] @dev-a (v1)");
+    expect(await call("dev-a", { action: "create", title: "Archive", project: "Game", dispatcher: "lead" })).toBe("ok M-2 Archive [to do] @dev-a (v1)\nIn project 1 Game.\nTell the person: #M-2 (opens the card) is in project Game.");
     expect(db.board.getCard("M-2").dispatcher).toEqual({ kind: "instance", name: "lead" });
     expect(await call("dev-a", { action: "update", id: "M-2", dispatcher: null })).toBe("ok M-2 Archive [to do] @dev-a (v2)");
     expect(db.board.getCard("M-2").dispatcher).toBeNull();
