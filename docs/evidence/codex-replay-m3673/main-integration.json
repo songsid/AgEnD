@@ -1,0 +1,48 @@
+{
+  "task": "M-3673",
+  "mainParent": "37cd27b4ec2f3e6e55ebab5a8b53c2a01cc00646",
+  "devPrerequisite": {
+    "pr": 4432,
+    "head": "664f3fc2f8be692a2cfa5c8b39ebbb54bb787e98",
+    "merge": "3b6b85974ca2255f32700a74ababfb0b5b518073",
+    "mergedAt": "2026-11-24T17:14:09Z",
+    "fetchedAlphaAncestry": true,
+    "ownedBlobsEqual": 7
+  },
+  "readerBaselineEqual": true,
+  "sharedApprovedDevBindings": {
+    "src/cache-ledger.ts": {
+      "gitBlob": "91acf07108e0cd257296e72fbe9dab4da4e27e95",
+      "sha256": "d0c82be17d2cee276aad1aaeb5d1bd34c0237195e24f29a115e6c63394bf60a2"
+    },
+    "src/cache-service.ts": {
+      "gitBlob": "1fbfb41d51b143b8cca874dcdf0dee70dbb2b612",
+      "sha256": "50bd6617620ff3a1303be1f4b91a7b9f849c6b10036ffeb4510c88ccc71d3cee"
+    },
+    "tests/cache-codex-replay-m3673.test.ts": {
+      "gitBlob": "43c9c5df77f4b24c8c2d7a5f54f4deb6aae1a85f",
+      "sha256": "681c8a3346cef5629393bb9187a4ee0d7ecabc4c3cb59aa2ee3ef50333a726eb"
+    },
+    "changes/3673-codex-replay.md": {
+      "gitBlob": "ffd45af7b254ac15915a9b3f91dbed7cc5ce58e4",
+      "sha256": "da6bf0502dfbe1d1f26f726f4abcae46251b2e67e840001d8ec3a1d163ea975a"
+    },
+    "changes/3673-codex-replay.zh-TW.md": {
+      "gitBlob": "80aa25bde71c0e7f50fac2787defb45b18d70769",
+      "sha256": "1710f65251451c46d937774acc2f78bcd743be9b1a8d8fded79c182d9e31f563"
+    },
+    "docs/evidence/codex-replay-m3673/verification.json": {
+      "gitBlob": "23f501ada374527921fb899eb18821869dda2152",
+      "sha256": "0718597a7128de186855cefe2f6b0c5c9152415088a4874b3e7411e356cccfb2"
+    }
+  },
+  "freshMainValidation": {
+    "command": "npx vitest run tests/cache-codex-replay-m3673.test.ts",
+    "casesPassed": 19,
+    "sourceTypeErrors": 0,
+    "testTypeErrors": 0,
+    "changelog": "211 fragments valid",
+    "public": "clean"
+  },
+  "proofScope": "Dev138 affected tests, fail-first controls and offline numeric comparison are historical dev evidence. Main reruns only focused integration and types; no live/source-home/native/provider/browser repeat."
+}
