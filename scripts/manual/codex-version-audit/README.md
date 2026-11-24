@@ -51,6 +51,20 @@ The opt-in `AGEND_CODEX_E2E=1` suite can use a mock too: set `AGEND_CODEX_E2E_MO
 `AGEND_CODEX_E2E_ROOT` selects a short owned parent for its temporary homes. Run this inside the loopback-only namespace,
 with the exact scratch binary on `PATH`; the ordinary real-account mode retains its existing opt-in requirements.
 
+## When codex starts AgEnD's MCP server
+
+Codex 0.172.0 added lazy startup for stdio MCP servers (`mcp_lazy_stdio_startup`, on by default). AgEnD's daemon learns of
+an agent from its MCP server's `mcp_ready`, so a server that started only on the first tool call would leave a launched
+agent unknown to it. `GEN_MCP=<script>` makes `gen-cmd.ts` register one stdio server the way AgEnD registers its own
+(`GEN_MCP_MARK` is handed to it as `STUB_MARK`). `stub-mcp.mjs` is that server: it answers the MCP handshake and logs
+each start, request and exit.
+
+`mcp-start.sh <VERSION>` (inside `netns.sh`, with `AUDIT`, `PORT` and `MARK` set) runs a fresh launch, a turn, an
+in-place `/model` switch, another turn, quit, a production resume launch and a turn, and prints the log. On 0.171.0
+and 0.172.0 alike, the server starts and lists its tools within about 1.5 s of each launch, before any turn, and stays
+up through the turns and the switch. Codex 0.172.0 defers only servers that are not `required`, when it rebuilds its
+server set in the same process with a tool catalog already cached. A launch has no earlier set, so it never defers.
+
 ## Codex 0.164.0
 
 The [0.163.0 → 0.164.0 audit](../../../tests/fixtures/codex-audit-0164/README.md) captures startup, errors, resume,
