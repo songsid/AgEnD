@@ -816,7 +816,7 @@ function threadEntry(name, doc) {
     openImage: (links, img) => openLightbox(links, img, annotateFor(name, img)),   // an image, full size, in the page (#3727: with 標註)
     emojis: (id) => !!emojiIndex && emojiIndex.known(id),                  // #1630: the fleet's server emoji
     mentions: (kind, id) => (mentionIndex ? mentionIndex.name(kind, id) : null),   // #1682: mention names
-    taskRefs: taskRefIndex ? taskChipInfo : undefined,                          // A person's task numbers as chips
+    taskRefs: taskRefIndex ? taskChipInfo : undefined,                          // A person's and an agent's task numbers as chips
     activity: { mount: (node, group) => mountActivity(node, group, activityCtx(name)) },   // AGEND-181: the timeline's blocks
   });
   e.thread = thread;

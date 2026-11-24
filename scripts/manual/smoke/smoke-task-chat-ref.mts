@@ -3,7 +3,9 @@
 // (a project, main tasks in every status, sub tasks), signs in through the real /signin and drives only visible UI:
 //   LAYOUT=after (default): in an agent's chat, `#` opens the list of cards (shot), typing narrows it, Enter puts `#M-1 ` in;
 //   a second `#` and a choice; Send. The agent is handed the cards (the delivery is captured and read back); the conversation
-//   shows both numbers as chips, an agent's reply that names a card stays text; a chip opens the card (Fleet › Tasks, ?card=).
+//   shows both numbers as chips, and so does an agent's reply that writes `#M-1` / `#S-1` (a number that is no card and a number
+//   in code stay text); a chip opens the card (Fleet › Tasks, ?card=). AGENT_REPLY=text: the reply stays text (a checkout before
+//   the agent's reply drew chips — the "before" shot of that fix; LAYOUT=after otherwise).
 //   LAYOUT=before: the same steps on a checkout before the feature — `#` opens nothing, the numbers stay text.
 // Every page logs no error (CSP violations included); nothing scrolls sideways. The delivery is stubbed (no agent runs).
 //   PW_DIR=~/.cache/agend-smoke/pw REPO=<checkout> OUT=<dir> FONTCONFIG_FILE=/etc/fonts/fonts.conf LAYOUT=after \
@@ -13,6 +15,7 @@ import { dirname, join } from "node:path";
 import { bootFixture, caseName, freshPage, labelOf, matrix, mounted, shotPath, type FreshPage, type MatrixCase } from "../smoke-fixture/index.mts";
 
 const AFTER = process.env.LAYOUT !== "before";
+const AGENT_CHIPS = AFTER && process.env.AGENT_REPLY !== "text";
 const SMOKE = `smoke-task-chat-ref-${AFTER ? "after" : "before"}`;
 const REPO = process.env.REPO!;
 const fx = await bootFixture({ port: Number(process.env.HP ?? 48480), instances: 8, classic: false });
@@ -112,14 +115,15 @@ for (const c of matrix()) {
     await page.locator("#sendBtn").click();
     await page.waitForSelector(".msg.user", { timeout: 10000 });
     await page.waitForTimeout(AFTER ? 900 : 400);
-    // An agent's reply that names a card stays text (only a person's numbers are chips).
+    // An agent's reply that writes a card's number is a chip too (a number that is no card, and one in code, stay text).
     fm.emitSseEvent("message", { instance: AGENT, sender: AGENT, role: "agent", ts: new Date().toISOString(),
-      text: L(`On it: ${m1} is in progress, ${s1} comes next.`, `收到：${m1} 進行中，接著做 ${s1}。`) });
+      text: L(`On it: #${m1} is in progress, #${s1} comes next. #M-99 is no card, and \`#${m1}\` in code stays code.`, `收到：#${m1} 進行中，接著做 #${s1}。#M-99 不是任務卡，程式碼裡的 \`#${m1}\` 維持原樣。`) });
     await page.waitForTimeout(500);
     await shot("2-sent");
     const chips = await page.locator(".msg.user a.task-ref").count();
     chk.chipsForBothNumbers = AFTER ? chips === 2 : chips === 0;
-    chk.agentReplyStaysText = (await page.locator(".msg:not(.user) a.task-ref").count()) === 0;
+    chk.agentReplyDrawn = (await page.locator(".msg:not(.user) a.task-ref").count()) === (AGENT_CHIPS ? 2 : 0);
+    if (AGENT_CHIPS) chk.agentReplyKeepsNoCardAndCodeAsText = (await page.locator(".msg:not(.user) .md").last().innerText()).includes("#M-99") && (await page.locator(".msg:not(.user) .md code").count()) === 1;
     chk.messageSentOnce = delivered.length === 1;
     const content = delivered[0]?.content ?? "";
     chk.agentHandedTheCards = AFTER

@@ -53,8 +53,10 @@ export const insertTaskRef = (text, at, caret, code) => insertAtTrigger(text, at
 /**
  * `fetchImpl(url)` → a Response (or null: no board for this page). Keeps, per card number, the view the server gave
  * ({ code, title, status, assignee, kind }) — or null for a number that is no card (asked once; asked again only after the
- * board changed, which `refresh()` is told of). The messages that name a number come in `ensure(msgs)`; only a person's own
- * words count (`role: "user"`): an agent's "M-3" is its prose, not a reference.
+ * board changed, which `refresh()` is told of). The messages that name a number come in `ensure(msgs)`: a person's own words
+ * (`role: "user"`) and an agent's reply (`role: "agent"`) — an agent writes `#M-3` to point at a card, as a person does. Any
+ * other message (a status line, the timeline) is not asked about. Whether a card may be shown is the server's answer
+ * (GET /ui/tasks/refs leaves a hidden instance's card out over the public link), the same for either writer.
  */
 export function createTaskRefIndex(fetchImpl) {
   const known = new Map();      // code → view | null
@@ -97,11 +99,11 @@ export function createTaskRefIndex(fetchImpl) {
   return {
     /** The card a number is, or null (not asked yet, not a card, or the board cannot be read here). */
     get: (code) => known.get(code) || null,
-    /** Ask for the numbers in these messages (a person's own words) that have not been asked about yet. */
+    /** Ask for the numbers in these messages (a person's words or an agent's reply) that have not been asked about yet. */
     ensure(msgs) {
       const want = [];
       for (const x of msgs || []) {
-        if (!x || x.role !== "user" || typeof x.text !== "string" || x.text.length < 3) continue;
+        if (!x || (x.role !== "user" && x.role !== "agent") || typeof x.text !== "string" || x.text.length < 3) continue;
         for (const c of taskRefCodes(x.text)) if (!asked.has(c) && !want.includes(c)) want.push(c);
       }
       if (want.length) ask(want);
