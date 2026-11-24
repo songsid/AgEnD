@@ -24,9 +24,9 @@
 // @property {(ctx, room, env) => void} drawRoom          desks: a room's floor, wall and name (room: autoLayout's)
 // @property {(ctx, desk, look, env) => void} drawDeskBack    desks: behind the character — chair, desk top, screen, lamp
 // @property {(ctx, desk, look, env) => void} drawDeskFront   desks: in front — the desk's front, its sign, folders, name tag
-// @property {(ctx, L, env) => void} [drawBackground]     zones: the whole 1280×720 background, areas and their names
+// @property {(ctx, L, env) => void} [drawBackground]     zones: the whole canvas's background (1280×720, or a pack's own), areas and their names
 // @property {(ctx, item, active, ms, env) => void} [drawFurniture]   zones: one furniture item (active: activeWhen holds)
-// @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole 1280×720 scene, above
+// @property {(ctx, L, env) => void} [drawForeground]     zones: a pack's foreground over the whole scene (its canvas), above
 //   the people, furniture and items in the air, below the crowd counts, name tags and bubbles
 // @property {(ctx, x, y, look, env, compact?) => void} [drawTag]   zones: a name tag under feet at (x, y) (compact: #2860)
 // @property {(ctx, area, n, env) => void} [drawCrowd]    zones: an area's "+n" (who found no spot in it)
@@ -47,7 +47,7 @@
 // among them by base y), then the foreground, then the crowd counts, tags and bubbles.
 import { t } from "/assets/app-i18n.js";
 import { frameAt, nameHash } from "./fleet-office-model.js";
-import { CHAR_DEPTH, LOGICAL, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
+import { CHAR_DEPTH, LOGICAL, canvasOf, checkSkinPack, own, packPortraitImages, packSceneImages, poseStrip, stripBox, stripCell, stripFrameAt, stripImages, walkStrip } from "./fleet-office-pack.js";
 import { tierColours } from "./fleet-office-levels.js";
 import { assetUrl } from "/assets/asset-url.js";
 
@@ -197,6 +197,7 @@ export function draggedMotion(ms) {
 
 function drawCharacter(ctx, d, look, ms, env) {
   if (look.pose === "away") return;
+  if (look.pose === "stand") look = { ...look, pose: "idle" };   // the card's still avatar: the pixel figure has only idle
   const h = nameHash(look.name), skin = SKIN_TONES[h % SKIN_TONES.length], hair = HAIR[(h >>> 3) % HAIR.length];
   const coat = look.coat, shirt = "#f4f1ea", eye = "#1d1d22";
   const f = frameAt(ms, FRAMES[look.pose] || 1, FPS);
@@ -525,7 +526,7 @@ const ZONE_FLOOR = {
 };
 function drawBackground(ctx, L, env) {
   const { pal } = env, F = ZONE_FLOOR[env.mode], T = 24;
-  px(ctx, 0, 0, LOGICAL.w, LOGICAL.h, F.hall);
+  px(ctx, 0, 0, L.width || LOGICAL.w, L.height || LOGICAL.h, F.hall);   // #4405: the whole canvas, a pack's own too (its picture not loaded)
   for (const a of Object.values(L.areas)) {
     const [c1, c2] = F[a.name] || F.desks, r = a.rect;
     px(ctx, r.x, r.y, r.w, r.h, c1);
@@ -669,8 +670,8 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     const b = stripBox(st, x, y, mirror);
     ctx.save();
     ctx.imageSmoothingEnabled = false;
-    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, 0, 0, b.w, b.h); }
-    else ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, b.x, b.y, b.w, b.h);
+    if (mirror) { ctx.translate(b.x + b.w, b.y); ctx.scale(-1, 1); ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, 0, 0, b.w, b.h); }
+    else ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, b.x, b.y, b.w, b.h);
     ctx.restore();
     return true;
   };
@@ -685,6 +686,11 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     const st = own(setOf({ name }) || {}, "dragged") || own(own(pack.characters, "default") || {}, "dragged") || null;
     return st && ready(st) ? st : null;
   };
+  /** Pat strip for `name` (their set's `pat`, else `default.pat`, else null): shown while a pat's hearts show. */
+  const patStripOf = (name) => {
+    const st = own(setOf({ name }) || {}, "pat") || own(own(pack.characters, "default") || {}, "pat") || null;
+    return st && ready(st) ? st : null;
+  };
   /** The strip a look shows (its pose; walking, by its heading), when all its pictures are loaded. */
   const shown = (look, walking = look.pose === "walk") => {
     if (!walking && look.pose === "dragged") {
@@ -692,6 +698,12 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       if (dragSt) return { strip: dragSt, mirror: false, customDragged: true };
       const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
       return fallback && ready(fallback.strip) ? { ...fallback, customDragged: false } : null;
+    }
+    if (!walking && look.pose === "pat") {
+      const patSt = patStripOf(look.name);
+      if (patSt) return { strip: patSt, mirror: false };
+      const fallback = poseStrip(setOf(look), look.basePose || "idle", look.heading);
+      return fallback && ready(fallback.strip) ? fallback : null;
     }
     if (!walking && look.pose === "eat") {
       const eatSt = eatStripOf(look.name);
@@ -733,12 +745,12 @@ export function spriteSkin(pack, images, base = pixelSkin) {
     drawBackground(ctx, L, env) {
       const im = img(pack.background);
       if (!im) { drawBackground(ctx, L, env); return; }
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawForeground(ctx, L, env) {
       const im = img(pack.foreground);
       if (!im) return;
-      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, LOGICAL.w, LOGICAL.h); ctx.restore();
+      ctx.save(); ctx.imageSmoothingEnabled = false; ctx.drawImage(im, 0, 0, canvasOf(pack).w, canvasOf(pack).h); ctx.restore();
     },
     drawFurniture(ctx, f, active, ms, env) {
       if (f.shape) { drawFurniture(ctx, f, active, ms, env); return; }
@@ -755,7 +767,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const ps = shown(look);
       ctx.save();
       if (look.dim) ctx.globalAlpha = 0.35;
-      const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}`, ps.strip, ms) : ms;
+      const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}${look.clip || ""}`, ps.strip, ms) : ms;
       let done = false;
       if (ps && look.pose === "dragged") {
         // M-3445 (#4267): ground shadow under feet; custom `dragged` strip plays as authored, otherwise built-in lifted dangle.
@@ -779,12 +791,14 @@ export function spriteSkin(pack, images, base = pixelSkin) {
         done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
       }
       ctx.restore();
-      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
+      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" || look.pose === "pat" ? { ...look, pose: look.basePose || "idle" } : look.pose === "stand" ? { ...look, pose: "idle" } : look, ms, env);
     },
     /** M-3432 (#4255): character's eating strip (set.eat → default.eat → null) when loaded. */
     eatStrip: eatStripOf,
     /** M-3445 (#4267): character's dragged strip (set.dragged → default.dragged → null) when loaded. */
     draggedStrip: draggedStripOf,
+    /** Character's pat strip (set.pat → default.pat → null) when loaded. */
+    patStrip: patStripOf,
     /** M-3432 (#4255): draw a snack strip (placed on floor or eat overlay) at logical (x, y). */
     drawSnack(ctx, st, ms, x, y, env, clipKey = null) {
       if (!st || !ready(st)) return false;
@@ -802,7 +816,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const dx = Math.round((size - dw) / 2), dy = Math.round((size - dh) / 2);
       ctx.save();
       ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(im, cell.col * st.w, 0, st.w, st.h, dx, dy, dw, dh);
+      ctx.drawImage(im, cell.col * st.w, (cell.row || 0) * st.h, st.w, st.h, dx, dy, dw, dh);
       ctx.restore();
       return true;
     },

@@ -2,7 +2,7 @@
 // furniture, the door and the walkable graph's waypoints — and adds or removes waypoints and the corridors between
 // them. The pack stays as it was uploaded: what differs from it is kept as the office's `overrides` (fleet-office-pack.js
 // overridesBetween), saved with the whole list and the rev read (PUT /ui/offices; a change made meanwhile is a 409).
-// Reset goes back to the pack's own positions. A "show coordinates" overlay draws the 1280×720 logical grid.
+// Reset goes back to the pack's own positions. A "show coordinates" overlay draws the logical grid (1280×720, or the pack's own canvas).
 //
 // #2665: an item with a `night` (#2568) has a night handle too — its night strip drawn faint on the canvas (as the
 // seats' figures, #2558), a moon, and a thin line to its day place. One that sleeps in place shows it on its day place
@@ -24,7 +24,7 @@
 import { html, useEffect, useLayoutEffect, useMemo, useRef, useState } from "/assets/app-html.js";
 import { t, register } from "/assets/app-i18n.js";
 import { SidePanel } from "/assets/side-panel.js";
-import { LOGICAL, overridesBetween, own } from "./fleet-office-pack.js";
+import { canvasOf, overridesBetween, own } from "./fleet-office-pack.js";
 import { dropPoint } from "./fleet-office-zones.js";
 
 register("orgl", {
@@ -75,7 +75,7 @@ export function handlesOf(pack) {
     out.push({ key: `night:${f.id}`, kind: "night", label: tl("night", f.id), x: n.x, y: n.y, day: { x: f.x, y: f.y }, inPlace: !n.own });
   }
   out.push({ key: "door", kind: "door", label: tl("door"), x: pack.door.x, y: pack.door.y });
-  const md = pack.mailDrop || dropPoint({ areas: pack.areas, waypoints: pack.waypoints, width: LOGICAL.w, height: LOGICAL.h });
+  const md = pack.mailDrop || dropPoint({ areas: pack.areas, waypoints: pack.waypoints, width: canvasOf(pack).w, height: canvasOf(pack).h });
   if (md) out.push({ key: "mail", kind: "mail", label: tl(pack.mailDrop ? "mail" : "mailAuto"), x: md.x, y: md.y, ...(pack.mailDrop ? {} : { auto: true }) });
   for (const w of pack.waypoints) out.push({ key: `wp:${w.id}`, kind: "waypoint", label: tl("waypoint", w.id), x: w.x, y: w.y });
   return out;
@@ -83,7 +83,7 @@ export function handlesOf(pack) {
 /** The pack with handle `key` at (x, y), rounded and kept in range: a seat inside its area, anything else on the canvas. */
 export function moveHandle(pack, key, x, y) {
   const [kind, a, b] = key.split(":");
-  const inCanvas = () => ({ x: clamp(x, 0, LOGICAL.w), y: clamp(y, 0, LOGICAL.h) });
+  const cv = canvasOf(pack), inCanvas = () => ({ x: clamp(x, 0, cv.w), y: clamp(y, 0, cv.h) });
   if (kind === "seat") {
     const area = own(pack.areas, a), i = Number(b);
     if (!area || !area.seats[i]) return pack;
@@ -98,12 +98,12 @@ export function moveHandle(pack, key, x, y) {
   return pack;
 }
 /** A new waypoint at (x, y), named wp-<n> (a name no other waypoint has); returns { pack, id }. */
-export function addWaypoint(pack, x = LOGICAL.w / 2, y = LOGICAL.h / 2) {
+export function addWaypoint(pack, x = canvasOf(pack).w / 2, y = canvasOf(pack).h / 2) {
   const ids = new Set(pack.waypoints.map((w) => w.id));
   let n = pack.waypoints.length + 1;
   while (ids.has(`wp-${n}`)) n++;
   const id = `wp-${n}`;
-  return { pack: { ...pack, waypoints: [...pack.waypoints, { id, x: clamp(x, 0, LOGICAL.w), y: clamp(y, 0, LOGICAL.h) }] }, id };
+  return { pack: { ...pack, waypoints: [...pack.waypoints, { id, x: clamp(x, 0, canvasOf(pack).w), y: clamp(y, 0, canvasOf(pack).h) }] }, id };
 }
 /** The pack without waypoint `id` and its corridors. */
 export function removeWaypoint(pack, id) {
@@ -171,7 +171,7 @@ export function LayoutEditor({ base, start, place = null, stale = "", dock = tru
   const toLogical = (e) => {
     const r = svg.current && svg.current.getBoundingClientRect ? svg.current.getBoundingClientRect() : null;
     if (!r || !r.width || !r.height) return null;
-    return { x: ((e.clientX - r.left) / r.width) * LOGICAL.w, y: ((e.clientY - r.top) / r.height) * LOGICAL.h };
+    return { x: ((e.clientX - r.left) / r.width) * canvasOf(edited).w, y: ((e.clientY - r.top) / r.height) * canvasOf(edited).h };
   };
   const down = (key) => (e) => {
     if (busy) return;
@@ -187,7 +187,7 @@ export function LayoutEditor({ base, start, place = null, stale = "", dock = tru
     if ((e.key === "Delete" || e.key === "Backspace") && h.kind === "waypoint") { e.preventDefault(); change(removeWaypoint(edited, h.key.slice(3))); setSel(null); }
     if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setSel(h.key); }
   };
-  const add = () => { const at = selected ? { x: selected.x + 40, y: selected.y } : { x: LOGICAL.w / 2, y: LOGICAL.h / 2 }; const r = addWaypoint(edited, at.x, at.y); change(r.pack); setSel(`wp:${r.id}`); };
+  const add = () => { const at = selected ? { x: selected.x + 40, y: selected.y } : { x: canvasOf(edited).w / 2, y: canvasOf(edited).h / 2 }; const r = addWaypoint(edited, at.x, at.y); change(r.pack); setSel(`wp:${r.id}`); };
   const wpSel = selected && selected.kind === "waypoint" ? selected.key.slice(3) : null;
   const nightSel = selected && selected.kind === "night" ? selected.key.slice(6) : null;
   const seatSel = selected && selected.kind === "seat" ? selected : null;
@@ -209,10 +209,10 @@ export function LayoutEditor({ base, start, place = null, stale = "", dock = tru
   const reset = () => { change(base); setSel(null); setMsg(""); };
   const grid = [];
   if (coords) {
-    for (let x = GRID; x < LOGICAL.w; x += GRID) grid.push(html`<line key=${`gx${x}`} class="ol-grid" x1=${x} y1="0" x2=${x} y2=${LOGICAL.h} />`);
-    for (let y = GRID; y < LOGICAL.h; y += GRID) grid.push(html`<line key=${`gy${y}`} class="ol-grid" x1="0" y1=${y} x2=${LOGICAL.w} y2=${y} />`);
-    for (let x = 0; x < LOGICAL.w; x += LABEL) grid.push(html`<text key=${`lx${x}`} class="ol-label" x=${x + 3} y="14">${x}</text>`);
-    for (let y = LABEL; y < LOGICAL.h; y += LABEL) grid.push(html`<text key=${`ly${y}`} class="ol-label" x="3" y=${y - 3}>${y}</text>`);
+    for (let x = GRID; x < canvasOf(edited).w; x += GRID) grid.push(html`<line key=${`gx${x}`} class="ol-grid" x1=${x} y1="0" x2=${x} y2=${canvasOf(edited).h} />`);
+    for (let y = GRID; y < canvasOf(edited).h; y += GRID) grid.push(html`<line key=${`gy${y}`} class="ol-grid" x1="0" y1=${y} x2=${canvasOf(edited).w} y2=${y} />`);
+    for (let x = 0; x < canvasOf(edited).w; x += LABEL) grid.push(html`<text key=${`lx${x}`} class="ol-label" x=${x + 3} y="14">${x}</text>`);
+    for (let y = LABEL; y < canvasOf(edited).h; y += LABEL) grid.push(html`<text key=${`ly${y}`} class="ol-label" x="3" y=${y - 3}>${y}</text>`);
   }
   const at = new Map(edited.waypoints.map((w) => [w.id, w]));
   const edgeKey = (e) => `${e[0]}\u0000${e[1]}`;
@@ -256,7 +256,7 @@ export function LayoutEditor({ base, start, place = null, stale = "", dock = tru
       ${msg ? html`<p class="note ol-msg" role="status">${msg}</p>` : null}`;
   return html`<div class="ol" role="group" aria-label=${tl("title")} onKeyDown=${esc}>
     <div class="ol-overlay" ref=${overlay}>
-      <svg ref=${svg} class="ol-svg" viewBox=${`0 0 ${LOGICAL.w} ${LOGICAL.h}`} width="100%" height="100%"
+      <svg ref=${svg} class="ol-svg" viewBox=${`0 0 ${canvasOf(edited).w} ${canvasOf(edited).h}`} width="100%" height="100%"
         onPointerMove=${move} onPointerUp=${up} onPointerCancel=${up} onPointerLeave=${up}>
         ${grid}
         ${Object.values(edited.areas).map((a) => html`<rect key=${`a:${a.name}`} class="ol-area" x=${a.rect.x} y=${a.rect.y} width=${a.rect.w} height=${a.rect.h} />`)}

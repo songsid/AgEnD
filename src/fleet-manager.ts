@@ -10648,7 +10648,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       result = { carried: false, reason: `copy failed: ${(err as Error).message}` };
     }
     if (result.carried) {
-      const fields = { name, from: sw.from ?? "default", to: sw.to ?? "default", bytes: result.bytes, ms: result.ms, replacedOlderCopy: result.replacedOlderCopy };
+      const fields = { name, from: sw.from ?? "default", to: sw.to ?? "default", bytes: result.bytes, ms: result.ms, replacedOlderCopy: result.replacedOlderCopy, ...(result.backedUp ? { backedUp: result.backedUp } : {}) };
       if (result.bytes > CARRY_LARGE_BYTES) this.logger.warn(fields, "Conversation carried to the new credential profile (a large transcript)");
       else this.logger.info(fields, "Conversation carried to the new credential profile");
     } else {

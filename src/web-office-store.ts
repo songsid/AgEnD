@@ -63,7 +63,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
-import { applyOverrides, checkLayoutOverrides, checkLevels, type CheckedPack, type LayoutOverrides, type LevelWords } from "./ui/fleet-office-pack.js";
+import { CANVAS, applyOverrides, canvasOf, checkLayoutOverrides, checkLevels, type CheckedPack, type LayoutOverrides, type LevelWords } from "./ui/fleet-office-pack.js";
 
 export const OFFICE_LIMITS = {
   offices: 20, members: 500, seats: 500, waypoints: 2000, edges: 8000,
@@ -152,9 +152,11 @@ function placed(at: string, error: string): Refused {
   return new Refused(`${at}${where}`, k < 0 ? error : error.slice(k + 2));
 }
 function overrides(v: unknown, at: string, packOf?: OverridePack): LayoutOverrides {
-  const c = checkLayoutOverrides(v);
+  // On its pack's canvas when the pack is known; else the largest (applyOverrides holds it to the pack's later).
+  const known = isObj(v) && typeof v.pack === "string" ? packOf?.(v.pack) : undefined;
+  const c = checkLayoutOverrides(v, known ? canvasOf(known) : CANVAS.max);
   if (!c.ok) throw placed(at, c.error);
-  const pack = packOf?.(c.overrides.pack);
+  const pack = known;
   if (pack) { const a = applyOverrides(pack, c.overrides); if (!a.ok) throw placed(at, a.error); }
   return c.overrides;
 }

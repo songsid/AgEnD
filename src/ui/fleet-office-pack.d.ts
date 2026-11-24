@@ -13,6 +13,9 @@ export interface PackStrip {
   once?: boolean;
   /** M-3394 (#4231): intro plays `0 .. loopFrom - 1` once, then loops `loopFrom .. frames - 1`. */
   loopFrom?: number;
+  /** Sheet cells: the strip starts at this row / column of w×h cells (both present when either was given). */
+  row?: number;
+  col?: number;
 }
 export interface PackPoint { x: number; y: number }
 /** #2691: a seat reserved for `for` (lent while they are all elsewhere when `lend`); a plain seat has neither. */
@@ -22,7 +25,7 @@ export interface PackArea { name: string; rect: { x: number; y: number; w: numbe
 export interface PackFurniture { id: string; sprite: PackStrip; x: number; y: number; depth: number | "y"; activeWhen: string[] | null; activeSprite: PackStrip | null;
   activeFor?: string[] | null; loop?: boolean; activeOn?: "state" | "seated"; hides?: boolean; label: string | null }
 export interface CheckedPack {
-  format: 1; id: string; scale: number; background?: string; foreground?: string; matte?: string;
+  format: 1; id: string; scale: number; /** Its own canvas (logical units), else 1280×720. */ canvas?: { w: number; h: number }; background?: string; foreground?: string; matte?: string;
   areas: Record<string, PackArea>; stateZones: Record<string, string> | null; door: PackPoint;
   /** #2736: where a letter from another office lands, or null (the waypoint nearest the middle). */
   mailDrop: PackPoint | null;
@@ -38,7 +41,9 @@ export interface CheckedPack {
   /** #2861: the dialogue box's faces — each an expression (idle, working, needs) → file. */
   portraits?: { default?: PackPortrait; byInstance: Record<string, PackPortrait>; byUser: Record<string, PackPortrait>; npc: Record<string, PackPortrait> };
   /** #2861: the dialogue box's look — a 9-slice frame and colours (#rrggbb). */
-  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string };
+  dialogBox?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string;
+    /** The reply over a head (the Office's "Over their head" talk): its 9-slice frame, colours and entrance. */
+    bubble?: { frame?: string; slice?: number; background?: string; border?: string; text?: string; name?: string; enter?: "pop" | "fade" | "none" } };
   /** #4256: optional agent profile card preset, visual style, and layout. */
   card?: PackCard;
   /** #3685: areas an idle person now and then visits (a free seat there, for minSeconds–maxSeconds); absent: none. */
@@ -69,10 +74,12 @@ export interface PackCardStyle {
   backgroundImage?: string; frame?: string; slice?: number; radius?: CardRadius;
 }
 export interface PackCardLayout {
-  avatarSize?: CardAvatarSize; avatarSource?: CardAvatarSource; headerAlign?: CardHeaderAlign; width?: number;
+  avatarSize?: CardAvatarSize; avatarSource?: CardAvatarSource; headerAlign?: CardHeaderAlign; width?: number; gap?: number;
   sections?: CardSection[]; rows?: CardRowKey[]; rowColumns?: 1 | 2; hide?: CardHideKey[];
 }
-export interface PackCard { preset?: CardPreset; style?: PackCardStyle; layout?: PackCardLayout }
+export type CardEnter = "none" | "fade" | "pop" | "rise" | "slide" | "bounce";
+export interface PackCardMotion { enter: CardEnter; ms: number }
+export interface PackCard { preset?: CardPreset; style?: PackCardStyle; layout?: PackCardLayout; motion?: PackCardMotion }
 /** #2861: a portrait's files by the state it is shown in (at least one). */
 export type PackPortrait = Partial<Record<"idle" | "working" | "needs", string>>;
 /** #2661: the Office levels' words (a pack's `levels`; #3679: the fleet-wide one too). */
@@ -92,6 +99,8 @@ export interface LayoutOverrides {
   edges?: Array<[string, string]>;
 }
 export const LOGICAL: { w: number; h: number };
+export const CANVAS: { min: { w: number; h: number }; max: { w: number; h: number } };
+export function canvasOf(pack: unknown): { w: number; h: number };
 export const CHAR_DEPTH: number;
 export const PACK_STATES: string[];
 export const BUBBLE_KEYS: string[];
@@ -105,6 +114,7 @@ export function matteOk(v: unknown): v is string;
 export function relativeLuminance(hex: string): number | null;
 export function contrastRatio(hexA: string, hexB: string): number;
 export const CARD_PRESETS: CardPreset[];
+export const CARD_ENTERS: CardEnter[];
 export const CARD_RADII: CardRadius[];
 export const CARD_AVATAR_SIZES: CardAvatarSize[];
 export const CARD_AVATAR_SOURCES: CardAvatarSource[];
@@ -113,12 +123,12 @@ export const CARD_SECTIONS: CardSection[];
 export const CARD_ROWS: CardRowKey[];
 export const CARD_HIDE: CardHideKey[];
 export const CARD_STYLE_COLORS: string[];
-export const CARD_LIMITS: { widthMin: number; widthMax: number; sliceMax: number; textContrast: number; uiContrast: number };
+export const CARD_LIMITS: { widthMin: number; widthMax: number; gapMax: number; motionMsMin: number; motionMsMax: number; sliceMax: number; textContrast: number; uiContrast: number };
 export function checkStrip(v: unknown, at?: string, scale?: number): PackStrip;
 export function stripSheets(st: PackStrip | null | undefined): PackStripSheet[];
 export function stripImages(st: PackStrip | null | undefined): string[];
 export function stripFrameAt(st: PackStrip | null | undefined, ms: number): number;
-export function stripCell(st: PackStrip | null | undefined, frame: number): { src: string; col: number };
+export function stripCell(st: PackStrip | null | undefined, frame: number): { src: string; col: number; row?: number };
 export function stripMaxFps(st: PackStrip | null | undefined): number;
 export function packMaxFps(pack: CheckedPack | null | undefined): number;
 export function createClipClocks(): { elapsed(key: string, strip: PackStrip | null | undefined, ms: number): number; prune(seen: ReadonlySet<string>): void; clear(): void };
@@ -131,7 +141,7 @@ export function packSceneImages(pack: CheckedPack): string[];
 export function packPortraitImages(pack: CheckedPack): string[];
 export const PORTRAIT_STATES: string[];
 export function packStrips(pack: CheckedPack): Array<{ at: string; strip: PackStrip }>;
-export function checkLayoutOverrides(x: unknown): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
+export function checkLayoutOverrides(x: unknown, canvas?: { w: number; h: number }): { ok: true; overrides: LayoutOverrides } | { ok: false; error: string };
 export function applyOverrides(pack: CheckedPack, ov: LayoutOverrides | null | undefined): { ok: true; pack: CheckedPack } | { ok: false; error: string };
 export function fitNight<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;
 export function fitSeatFor<T extends LayoutOverrides | null | undefined>(pack: CheckedPack, ov: T): T;

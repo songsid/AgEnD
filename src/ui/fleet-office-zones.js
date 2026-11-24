@@ -2,7 +2,7 @@
 // fleet-office-pack.js). Each instance goes to the area for its state now and takes a seat slot there; when its state
 // changes it walks (along the pack's waypoints) to the new area. Pure — fleet-office.js draws it. Also here: what a
 // character says in its speech bubble, and which furniture is active.
-import { LOGICAL, own } from "./fleet-office-pack.js";
+import { canvasOf, own } from "./fleet-office-pack.js";
 import { flightMs, nameHash, pathLength, along, routeVia } from "./fleet-office-model.js";
 import { hue } from "./fleet-traffic.js";
 
@@ -154,9 +154,10 @@ export function zonesLayout(pack, nodes, prev = new Map(), { night = false, seat
     const s = seats.get(n.name);
     return { key: `zone/${n.name}`, node: n, x: s.x - 24, y: s.y - 52, w: 48, h: 66, seat: { x: s.x, y: s.y }, wp: null, area: s.area, slot: s.slot, night: sleepers.has(n.name) };
   });
-  return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: LOGICAL.w, h: LOGICAL.h, desks }], areas: pack.areas,
+  const cv = canvasOf(pack);
+  return { mode: "zones", rooms: [{ key: "\u0000zones", name: null, lobby: false, x: 0, y: 0, w: cv.w, h: cv.h, desks }], areas: pack.areas,
     waypoints: pack.waypoints || [], edges: pack.edges || [], straight: pack.straight === true, door: pack.door, mailDrop: pack.mailDrop || null,
-    idleVisits: pack.idleVisits || [], idleAvoid: callingAreas(pack), width: LOGICAL.w, height: LOGICAL.h, seats, crowd, over };   // #3685: idleVisits for walkTargets; M-3539: idleAvoid
+    idleVisits: pack.idleVisits || [], idleAvoid: callingAreas(pack), width: cv.w, height: cv.h, seats, crowd, over };   // #3685: idleVisits for walkTargets; M-3539: idleAvoid
 }
 
 // ── Walking ──

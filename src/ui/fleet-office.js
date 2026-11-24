@@ -76,18 +76,18 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, patLook, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
-import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox } from "./fleet-office-pack.js";
+import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox, stripDurationMs } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
-import { OK_MAX, OK_MIN, clampPan, desksK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
+import { OK_MAX, clampPan, desksK, minK, edgeMatte, edgeStrips, fitScene, layerScale, miniBox, miniFrame, openingView, pinchOffice, savedOf, stepK, viewFromSaved,
   wholeInView, zoomLabel, zoomOffice } from "./fleet-office-view.js";
 
 register("orgo", {
@@ -107,7 +107,8 @@ register("orgo", {
     styleFailed: "The style was not saved for everyone ({0}).", styleBusy: "Too many changes. Try again in a minute.",
     fit: "Fit the office", overview: "Overview: click to move there", fullscreen: "Fullscreen", exitFullscreen: "Exit fullscreen",
     fill: "Fill", fillTitle: "Fill the panel (the scene's overflow is cropped; drag to see it)", zoomLevel: "Zoom {0}",
-    allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Double-click a tile to open that office.",
+    allOffices: "All offices", labelAll: "All offices: each office is a tile, drawn in its own style. Drag to pan; the wheel, a pinch, + and − zoom, 0 fits, F is fullscreen. Click a tile to open that office.",
+    backAll: "← All offices",
     key: "Key", keyTitle: "What the items carried between desks are", keyLabel: "Carried between desks",
     keyTask: "Folder: a task", keySend: "Envelope: a message", keyReport: "Paper: a report", keyBroadcast: "Horn: a broadcast",
     tileLabel: "{0} ({1})", openOffice: "Open the office {0}", lobbyTile: "Lobby tile (in no office)", lobbyEveryone: "Everyone is in an office", overviewNoEdit: "Pick one office to edit offices or a layout",
@@ -139,7 +140,8 @@ register("orgo", {
     styleFailed: "風格沒有替所有人儲存（{0}）。", styleBusy: "變更太頻繁，請一分鐘後再試。",
     fit: "顯示整個辦公室", overview: "總覽：點一下移到那裡", fullscreen: "全螢幕", exitFullscreen: "結束全螢幕",
     fill: "填滿", fillTitle: "填滿整個面板（超出的部分會被裁切，拖曳即可看到）", zoomLevel: "縮放 {0}",
-    allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。雙擊一格即可開啟那間辦公室。",
+    allOffices: "所有辦公室", labelAll: "所有辦公室：每間辦公室是一格，以它自己的風格顯示。拖曳平移；滾輪、雙指、+ 和 − 縮放，0 顯示全部，F 切換全螢幕。點一格即可開啟那間辦公室。",
+    backAll: "← 返回全域",
     key: "圖例", keyTitle: "桌子之間傳遞的物品代表什麼", keyLabel: "桌子之間傳遞的物品",
     keyTask: "資料夾：任務", keySend: "信封：訊息", keyReport: "紙張：回報", keyBroadcast: "喇叭：廣播",
     tileLabel: "{0}（{1}）", openOffice: "開啟辦公室「{0}」", lobbyTile: "大廳格（不在任何辦公室）", lobbyEveryone: "每個成員都已在某間辦公室", overviewNoEdit: "請先選一間辦公室，再編輯辦公室或配置",
@@ -616,8 +618,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const posed = actPosed(p, q.look);
       const eating = !q.at.walking && p.snacks && ms > 0 ? p.snacks.eatingOf(q.look.name, t) : null;
       const canEat = !!eating && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      // A pat shows the set's `pat` strip for one full pass of it (pat.until), each pat from frame 0; a set without one keeps its pose.
+      const canPat = !q.at.walking && !canEat && ms > 0 && !!p.reacts && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      const patted = canPat ? patLook(posed, p.reacts.get(q.look.name), t) : null;
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
-        : canEat ? { ...posed, pose: "eat", basePose: posed.pose } : posed;
+        : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
+        : patted || posed;
       sk.drawCharacter(ctx, box, look, ms, env);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
@@ -763,9 +769,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   }
   // Speech bubbles: a short line for the state, now and then (typed out; whole at once when still), placed so no two
   // overlap (placeBubbles; #2431).
-  const bubbles = [];
+  const bubbles = [], rp = p.reply, tSaid = Date.now(), replies = [];
   for (const sp of speakers) {
     if (sp.look.dim || sp.look.pose === "away") continue;
+    // Talk "Over their head": a live reply, in full (wrapped), in place of the state's line.
+    const said = rp ? rp.chat.recent(sp.look.name, tSaid) : null;
+    if (said) { replies.push({ sp, said }); continue; }
     const says = sp.look.night ? "paused" : sp.look.state;                // asleep at night: its "Zzz…" lines
     // What an agent says itself (office_set, #2578): whole, kept over the area's thinning like a call.
     const act = p.acts && p.acts.get(sp.look.name), ra = reacting && reacting.has(sp.look.name) ? reactionAt(reacting.get(sp.look.name), t0, p.lang) : null;
@@ -792,9 +801,32 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const box = bubbleBox(ctx, sp.x, sp.y, text, -dy);
       bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
     }
+  }
+  const bl = sk.pack && sk.pack.dialogBox ? sk.pack.dialogBox.bubble : null;
+  const im = bl && bl.frame && typeof sk.picture === "function" ? sk.picture(bl.frame, () => {}) : null;
+  for (const { sp, said } of replies) {
+    // Typed out from its page's start, at the reading mode's pace; ▼ once whole; Auto / Fast: it goes on by itself.
+    const cps = rp.pace(rp.read).cps, n = ms > 0 ? Math.floor(((tSaid - (said.pageAt ?? said.at)) * cps) / 1000) : Infinity;
+    // #4406: never smaller than its own size on the page — zoomed out (a phone's whole office at 30 %), it is drawn at
+    // 1 CSS px a unit about its tail, so the words stay readable; zoomed in, as the map.
+    const u = Math.max(1, (rp.ratio || 1) / a);
+    // And kept on screen: the canvas's visible width in this part's units, into the bubble's own (scaled about its tail).
+    const vl = -ox / a, vr = ((ctx.canvas && ctx.canvas.width) || Infinity) / a - ox / a, m = 6 / u;
+    const vt = -oy / a, vb = ((ctx.canvas && ctx.canvas.height) || Infinity) / a - oy / a;
+    const fit = Number.isFinite(vr) ? { l: sp.x + (vl - sp.x) / u + m, r: sp.x + (vr - sp.x) / u - m,
+      ...(Number.isFinite(vb) ? { t: sp.y + (vt - sp.y) / u + m, b: sp.y + (vb - sp.y) / u - m } : {}) } : null;
+    ctx.save(); ctx.translate(sp.x, sp.y); ctx.scale(u, u); ctx.translate(-sp.x, -sp.y);
+    const b0 = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null,
+      { page: said.page, n }, fit);
+    ctx.restore();
+    const box = { ...b0, x: sp.x + (b0.x - sp.x) * u, y: sp.y + (b0.y - sp.y) * u, w: b0.w * u, h: b0.h * u };
+    said.pages = box.pages;
+    if (n >= box.len && !said.whole) { said.whole = true; said.wholeAt = tSaid; }
+    if (said.whole && tSaid - said.wholeAt >= rp.pace(rp.read, box.len).wait) rp.chat.advance(sp.look.name);
+    if (bubbleHits) bubbleHits.push({ name: sp.look.name, reply: true, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
   } };
   if (defer) defer.push(say); else say();
-  return walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
+  return replies.length > 0 || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
 }
 /**
  * #2661: an NPC's name tag (a furniture item's label) — with the title a pack pins on it (`levels.fixed` by its id),
@@ -910,7 +942,7 @@ function ensureDialogueStyle() {
   link.href = assetUrl("/assets/office-dialogue.css");
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
-export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
+export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, chatUi = null, more = false, onMore = null, live = null, onLive = null,
   oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
@@ -925,7 +957,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const [canEdit, setCanEdit] = useState(false);                      // an admin session (never a guest or the public link)
   const [canShare, setCanShare] = useState(false);                    // #2636: an admin session, here or over the public link
   const [editing, setEditing] = useState(false);
-  const [choice, setChoice] = useState(() => opening ?? store.choice());
+  // Never picked here: All offices, the map of every office (one click enters one, unremembered; Back returns) — the
+  // whole fleet while fewer than two are stored. A pick from the switcher is kept per device, as before.
+  const [choice, setChoice] = useState(() => opening ?? store.choice(ALL_ID));
   const [filter, setFilter] = useState(() => store.filter());
   // #4010: the carousel's offices and interval (per browser); the slide index and playing are this visit only.
   const [carSaved, setCarSaved] = useState(() => store.carousel());
@@ -957,6 +991,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // conversations; the avatars read for it; what it last said for a screen reader. `dlgRef`: what draw() reads (it runs
   // from the loop, outside a render); `dlgShown`: the box as last drawn (its clicks).
   const [dialogueOn, setDialogueOn] = useState(() => store.dialogueOn());
+  // Talking from here (fleet-office-talk.js, `chatUi`: the dashboard's only, never a share link): how (per browser) and
+  // to whom; `chat` the conversations every way shows.
+  const [talkMode, setTalkMode] = useState(() => store.talkMode());
+  const [talkTo, setTalkTo] = useState(null);
+  const [readMode, setReadMode] = useState(() => (chatUi ? chatUi.readModeOf(store.talkRead()) : "click"));
+  const chat = useMemo(() => (chatUi ? chatUi.createTalk() : null), [chatUi]);
+  // #4406: the Dialogue-box talk shows the dialogue's conversations, so they run while it is picked — without ticking
+  // Dialogue for the person (their own choice, kept as they left it when they pick another way to talk).
+  const boxTalk = !!chat && talk === undefined && typeof onOpen === "function" && chatUi.talkModeOf(talkMode) === "box";
+  const dlgOn = dialogueOn || boxTalk;
+  const replyRef = useRef(null);
   const dlg = useMemo(createDialogue, []);
   const faces = useMemo(() => createFaces(), []);
   const [dlgSay, setDlgSay] = useState("");
@@ -1116,7 +1161,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (who) setDlgSay(to("dlgSays", ...words(who)));
   };
   useEffect(() => {
-    if (!dialogueOn || talk !== undefined) return undefined;
+    if (!dlgOn || talk !== undefined) return undefined;
     const sub = streamOn();
     if (!sub) return undefined;
     let skew = 0;
@@ -1136,9 +1181,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const hold = (off) => (lease ? lease.hold(off) : off);
     const offs = [hold(sub("clock", (d) => { if (d && typeof d.now === "number") skew = d.now - Date.now(); })), hold(sub("message", take))];
     return () => { for (const off of offs) if (typeof off === "function") off(); };
-  }, [dialogueOn, lease, talk === undefined]);
+  }, [dlgOn, lease, talk === undefined]);
   useEffect(() => {
-    if (!dialogueOn || !talk) return;
+    if (!dlgOn || !talk) return;
     let changed = false;
     for (const x of talkOf(talk)) {
       const k = `${x.instance}|${x.kind}|${x.at}`;
@@ -1151,13 +1196,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       sayFor(x.instance, (who) => (x.kind === "heard" ? [to("dlgSomeone"), to("dlgHeardShare", nodeText(who.node).primary)] : [nodeText(who.node).primary, to("dlgAnsweredShare")]));
     }
     if (changed) dlgWake();
-  }, [dialogueOn, talk]);
+  }, [dlgOn, talk]);
   // What is over goes (an answer after its fade, a conversation never answered); the box is drawn again meanwhile.
   useEffect(() => {
-    if (!dialogueOn) return undefined;
-    const h = setInterval(() => { if (dlg.sweep(now(), still) || dlg.size()) dlgWake(); }, 1000);
+    if (!dlgOn) return undefined;
+    const h = setInterval(() => { if (dlg.sweep(now(), still, !!(dlgRef.current && dlgRef.current.vn)) || dlg.size()) dlgWake(); }, 1000);
     return () => clearInterval(h);
-  }, [dialogueOn]);
+  }, [dlgOn]);
   const toggleDialogue = () => {
     const v = !dialogueOn;
     store.saveDialogueOn(v); setDialogueOn(v);
@@ -1282,6 +1327,18 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // what will stand, sit or lie there, not by a dot.
   const ghosts = zones && !!layout && !layoutStale;
   const shared = talk !== undefined || typeof onOpen !== "function";
+  const tmode = chat && !shared ? chatUi.talkModeOf(talkMode) : "window";
+  useEffect(() => {
+    if (!chat || tmode === "window") return undefined;
+    const sub = appStore.get().streamOn, hold = (off) => (lease ? lease.hold(off) : off);
+    const off = sub ? hold(sub("message", chat.take)) : null;
+    const quiet = chat.subscribe(() => { if (still && scene.current) draw(0); else loop.current?.wake(); });
+    return () => { if (typeof off === "function") off(); quiet(); };
+  }, [chat, tmode, lease]);
+  const pickTalkMode = (v) => {
+    store.saveTalkMode(v); setTalkMode(v);
+    if (v === "window") setTalkTo(null);
+  };
   // What a view and per-device seat choices are kept for: the office and its style (All offices: its own key).
   const officeKey = overview ? `${ALL_ID}@tiles` : `${custom ? custom.id : AUTO_ID}@${baseSkin.id}`;
   const keep = (n) => !(hideAsleep && ASLEEP.has(n.state));
@@ -1459,7 +1516,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = 12 + (w ? pt.r : pt.r);
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
     let x = p.x + gap;
     if (x + cw > sz.w - 8) x = p.x - gap - cw;
     x = Math.max(8, Math.min(x, sz.w - cw - 8));
@@ -1527,11 +1584,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * under the zoom controls at the side.
    */
   const fitL = (mode) => fitScene(L.width, L.height, size, mode, overview && mode !== "cover" ? FIT_PAD : 0);
+  /** #4405: this scene's zoom floor — lower than OK_MIN for a pack's big canvas (or All offices), so − reaches its Fit. */
+  const kLo = minK(L.width, L.height);
   /** The view an office opens on: its kept one (a kept fit: fitted to this size), else its opening; and whether a fit. */
   const openView = () => {
     const kept = store.view(officeKey);
     if (kept && kept.fit) return { v: fitL(fitMode), fit: true };
-    if (kept) return { v: viewFromSaved(kept, size), fit: false };
+    if (kept) return { v: viewFromSaved(kept, size, kLo), fit: false };
     const fitted0 = zones || overview;                                 // All offices opens whole, as a zones scene
     return { v: overview ? fitL(fitMode) : openingView(L.width, L.height, size, ratio, fitted0, fitMode), fit: fitted0 };
   };
@@ -1565,7 +1624,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     fit(next);
   };
   /** + / −: the next pixel level about the stage's middle. */
-  const zoomStep = (dir) => { const v = view0(), k = stepK(v.k, dir, ratio); raw.current = k; setView(zoomTo(v, k, size.w / 2, size.h / 2)); };
+  const zoomStep = (dir) => { const v = view0(), k = stepK(v.k, dir, ratio, kLo); raw.current = k; setView(zoomTo(v, k, size.w / 2, size.h / 2)); };
   /** Bring a box (logical units) into view, unchanged when it already is. */
   const show = (b) => {
     const v = view0(), p = toScreen(v, b.x, b.y);
@@ -1648,7 +1707,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return () => root.classList.remove("oo-immersive");
   }, [fs]);
   /** A desk opens its chat: out of fullscreen first (the chat is beside the view, or instead of it). */
-  const open = (name) => { if (!onOpen) return; if (fsRef.current) exitFs(); onOpen(name); };
+  const open = (name) => {
+    if (!onOpen) return;
+    if (tmode !== "window") { setTalkTo(name); return; }
+    if (fsRef.current) exitFs();
+    onOpen(name);
+  };
+  /** The whole chat (the pop-up), from a talk in the Office. */
+  const openFull = () => { if (!onOpen || !talkTo) return; if (fsRef.current) exitFs(); onOpen(talkTo); };
 
   // ── Drawing: the back and front layers are pictures of the scene at the view's resolution (remade when the office
   // or the zoom changes, never on a pan); each frame draws the matte, the layers, the people and the items in the air ──
@@ -1705,6 +1771,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ctx.clearRect(0, 0, BW, BH);
     ctx.fillStyle = s.matte; ctx.fillRect(0, 0, BW, BH);
     ctx.imageSmoothingEnabled = false;
+    for (const p of s.overview ? s.parts : [s.part]) p.reply = replyRef.current ? { ...replyRef.current, ratio: s.ratio } : null;
     if (!s.overview) {
       // #4379 review: an open card (beside its person, or a bottom sheet) covers part of the scene: a name tag under it is
       // left out whole, never a fragment showing past its edge. Its box in bitmap px, as the canvas lies on the page.
@@ -1761,7 +1828,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!front) { dlgShown.current = null; showDialogueDock(false); return false; }
     const who = d.who.get(front.instance), node = who.node;
     const stage = stageOf(front, t, node.state === "working", still);
-    if (stage.done) { dlgShown.current = null; showDialogueDock(false); return false; }
+    // Talk "Dialogue box" (d.vn) keeps an answer until it is clicked away in its own box (TalkStage); the dock is not drawn then.
+    if (stage.done && !d.vn) { dlgShown.current = null; showDialogueDock(false); return false; }
     showDialogueDock(true);
     const cv = dialogueCanvasRef.current;
     if (!cv) return false; // layout commit mounts the dock, then its effect paints even with reduced motion
@@ -1818,10 +1886,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   }
   // A newly mounted dock must paint even when reduced motion leaves the map loop asleep.
   useLayoutEffect(() => {
-    if (!dialogueOn || !dlgVisible) return;
+    if (!dlgOn || !dlgVisible) return;
     if (scene.current) drawDialogue(scene.current.ctx, scene.current, still ? 0 : now());
     if (!still) loop.current?.wake();
-  }, [dialogueOn, dlgVisible, dlgSay, width, phone, ratio]);
+  }, [dlgOn, dlgVisible, dlgSay, width, phone, ratio]);
 
   // The loop: drawing only when the frame (FPS) changed or something is in the air; stopped while the tab is hidden,
   // gone with the view. Office review: while something walks or flies, one requestAnimationFrame per display frame (the
@@ -1880,7 +1948,35 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       area: zones ? areaName(d.area) : roomOf(L, d), skin, look: looks.get(d.key) }));
   // #2861: who the dialogue box may speak for — everyone drawn here (All offices: the first tile they are in), with what
   // draws them; null while it is off (draw() then draws nothing of it).
-  dlgRef.current = dialogueOn ? {
+  replyRef.current = tmode === "bubble" ? { chat, draw: chatUi.drawReply, style: chatUi.replyStyle, pace: chatUi.readPace, read: readMode } : null;
+  const talkWho = talkTo ? people.find((d) => d.node && d.node.name === talkTo) || null : null;
+  const talkLabel = talkWho ? nodeText(talkWho.node).primary : talkTo;
+  const sidePanel = tmode === "panel" && !!talkTo;
+  /** Talk "Dialogue box": what the box on the scene shows now (fleet-office-talk.js TalkStage), or null. */
+  const stagePeek = () => {
+    const d = dlgRef.current;
+    const pf = d ? pickFront(dlg.list(), (n) => d.who.has(n), (n) => d.who.get(n).look?.pose === "paused") : { front: null, more: 0 };
+    const conv = pf.front, name = conv ? conv.instance : talkTo;
+    if (!name) return null;
+    const who = d ? d.who.get(name) : null, node = who ? who.node : (people.find((x) => x.node && x.node.name === name) || {}).node;
+    if (!node) return null;
+    const sk = (who && who.skin) || skin, pack = sk && sk.pack, act = actsHere && actsHere.get(name);
+    const pic = (src) => { const im = src && sk && typeof sk.picture === "function" ? sk.picture(src, () => {}) : null; return im && im.src ? im.src : null; };
+    return {
+      name, label: nodeText(node).primary, conv, more: pf.more,
+      status: node.state === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null,
+      portrait: pack ? pic(portraitSrc(pack, { agent: name, state: node.state })) : null,
+      colours: (pack && pack.dialogBox) || null,
+    };
+  };
+  const stageOps = {
+    now, skip: () => skipTalk(), target: (n) => { if (talkTo !== n) setTalkTo(n); },
+    drop: (instance) => { dlg.drop(instance); dlgWake(); },
+  };
+  // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
+  const dockShown = dlgOn && dlgVisible && tmode === "window";
+  dlgRef.current = dlgOn ? {
+    vn: tmode === "box", read: readMode,
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
     acts: actsHere, share: talk !== undefined,
   } : null;
@@ -1910,7 +2006,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return d ? { key: p.prefix + d.key, node: d.node } : null;
   };
   const g = gestures(drag.current, { el: () => stageRef.current, pan: (dx, dy) => { const v = view0(); setView({ ...v, x: v.x + dx, y: v.y + dy }); },
-    pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current)); } });
+    pinch: (from, to) => { raw.current = Math.min(OK_MAX, Math.max(kLo, raw.current * (to.dist / from.dist))); setView(pinchOffice(view0(), from, to, raw.current, kLo)); } });
   /** Where a drag pans: the canvas, and Edit layout's overlay off its handles (the controls, the bar and the list: never). */
   const onScene = (el) => !!el && (el === canvasRef.current || (typeof el.closest === "function" && !!el.closest(".ol-svg") && !el.closest(".ol-handle")));
   /** M-3293 / M-3445: update the floor-level seat drop targets while carrying `h` ({ name, at }). */
@@ -2006,8 +2102,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!onScene(e.target) && !(typeof e.target?.closest === "function" && e.target.closest(".ol-handle, .oo-tile-label"))) return;
     e.preventDefault();
     const r = stageRef.current.getBoundingClientRect(), v = view0();
-    raw.current = Math.min(OK_MAX, Math.max(OK_MIN, raw.current * wheelFactor(e)));
-    if (raw.current !== v.k) setView(zoomOffice(v, raw.current, e.clientX - r.left, e.clientY - r.top));
+    raw.current = Math.min(OK_MAX, Math.max(kLo, raw.current * wheelFactor(e)));
+    if (raw.current !== v.k) setView(zoomOffice(v, raw.current, e.clientX - r.left, e.clientY - r.top, kLo));
   };
   const onKeyDown = (e) => {
     if (e.defaultPrevented) return;                                  // Edit layout's handles move with the arrows
@@ -2058,6 +2154,9 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     }
     setCard(null); open(dlgShown.current.name);
   };
+  /** Skip (the reading controls): every reply in the box, or over the heads, goes now. */
+  const skipTalk = () => { if (tmode === "box") dlg.skip(); else if (chat) chat.skipAll(); dlgWake(); };
+  const pickRead = (v) => { store.saveTalkRead(v); setReadMode(v); dlgWake(); };
   const onMove = (e) => {
     if (e.pointerType === "touch" || g.busy() || snackDrag || snackDropRef.current) return;
     const onDlg = !!dlgAt(e) || !!bubbleAtEvent(e);
@@ -2083,7 +2182,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const wk = zones ? walkers.at(d.node.name, at) : null;
       return { key: d.key, node: d.node, x: wk ? wk.x : d.box.x + d.box.w / 2, y: wk ? wk.y - 32 : d.box.y + d.box.h / 2 };
     });
-    return nearestPerson(list, w.x, w.y, TAP_R / Math.max(OK_MIN, view0().k));
+    return nearestPerson(list, w.x, w.y, TAP_R / Math.max(kLo, view0().k));
   };
   /** M-3432 (#4255): feed an awake person a snack (plays eat animation + hearts + feed bubble + optional Tell). */
   const feedPerson = (name, snack, at) => {
@@ -2199,6 +2298,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const onClick = (e) => {
     const box = dlgAt(e);
     const bubble = bubbleAtEvent(e);
+    if (bubble && bubble.reply && chat) { if (talkTo !== bubble.name) setTalkTo(bubble.name); chat.advance(bubble.name); return; }
     if ((box || bubble) && !shared && onOpen) {
       if (!(e.detail > 1)) { setCard(null); open((box || bubble).name); }
       return;
@@ -2225,12 +2325,21 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       }
     }
     const d = deskOf(e) || (lastType.current === "touch" ? nearOf(e) : null);
-    if (!d || !d.node.i) { setTip(null); setCard(null); return; }
+    if (!d || !d.node.i) { if (enterTile(e)) return; setTip(null); setCard(null); return; }
     if (lastType.current === "touch") setTip(null);
     cardFrom.current = null;
     setCard((cur) => (cur === d.key ? null : d.key));
   };
-  // All offices: a double-click on a tile (off its people) opens that office; the lobby is no office.
+  /** All offices: a click on a tile (off its people) enters that office for this visit; the lobby is no office. */
+  const enterTile = (e) => {
+    const s = scene.current, w = pointOf(e);
+    if (!overview || !s || !s.overview || !w || deskOf(e)) return false;
+    const tt = tileAt(s.lay, w.x, w.y) || labelAt(s.lay, w.x, w.y), tl = tt ? tiles.find((x) => x.key === tt.key) : null;
+    if (!tl || tl.lobby) return false;
+    setCard(null); pick(tl.key, false);
+    return true;
+  };
+  // All offices: a double-click on a tile (off its people) opens that office, as one click does.
   const onDblClick = (e) => {
     const box = dlgAt(e);
     if (box || bubbleAtEvent(e)) return; // the first click already opened it
@@ -2282,7 +2391,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const teamValue = (opts.find((o) => o.team === f.team) || opts[0]).value;
   const setF = (next) => { const v = filterOk(next); store.saveFilter(v); setFilter(v); };
   // While Edit layout is open the office stays (its picker is disabled; this is the guard behind it).
-  const pick = (id) => {
+  /** The switcher's pick (kept per device); `keep` false: a tile entered from All offices, for this visit only. */
+  const pick = (id, keep = true) => {
     if (layoutRef.current) return;
     if (id === CAROUSEL_ID) {
       const cur = store.carousel();
@@ -2290,7 +2400,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       const next = { ids: ids.length ? ids : stored.map((o) => o.id), interval: intervalOk(cur && cur.interval) };
       store.saveCarousel(next); setCarSaved(next); setCarIndex(0); setCarPlaying(true);
     }
-    store.saveChoice(id); setChoice(id); setTip(null);
+    if (keep) store.saveChoice(id);
+    setChoice(id); setTip(null);
   };
   const setCarIds = (ids) => {
     const next = { ids, interval: intervalOk(carSaved && carSaved.interval) };
@@ -2309,7 +2420,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
   // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
   const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
-  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview } : null;
+  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
   useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
   const closeCard = () => {
     setCard(null);
@@ -2349,7 +2460,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const r = deviceRatio(), W = Number(sizePx) || 56;
     if (cv.width !== Math.round(W * r) || cv.height !== Math.round(W * r)) { cv.width = Math.round(W * r); cv.height = Math.round(W * r); }
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
-    const look = { ...c.look, pose: "idle", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
+    // The card's avatar: the set's still `stand` when it has one (poseStrip falls back to idle).
+    const look = { ...c.look, pose: "stand", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
     const at = { x: 0, y: 0 }, b = c.skin.charBox ? c.skin.charBox(look, at) : null, box = b || { x: -16, y: -48, w: 32, h: 48 };
     const k = Math.min((W - 8) / box.w, (W - 8) / box.h) * r;
     g.setTransform(k, 0, 0, k, (W * r) / 2 - (box.x + box.w / 2) * k, (W * r) / 2 - (box.y + box.h / 2) * k);
@@ -2418,6 +2530,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // M-3556: the bar in three groups — scope (which office, whom: left of the desk's one row), the display options (behind
   // ⚙) and the actions (right). A phone's ⋯ sheet lists all three in that order.
   const scopeItems = html`
+      ${custom && !carouselPick && opening == null && !layout && overviewOk(stored) ? html`<button type="button" class="btn btn-sm oo-back-all" onClick=${() => pick(ALL_ID)}>${to("backAll")}</button>` : null}
       ${oneOffice ? null : html`<label class="oo-pick"><span class="oo-pick-label">${to("office")}</span>${officeSelect("oo-office")}</label>`}
       ${auto ? html`<label class="oo-pick"><span class="oo-pick-label">${to("show")}</span>
         <select class="tb-select oo-team" value=${teamValue} onChange=${(e) => { const o = opts.find((x) => x.value === e.target.value); setF({ ...f, team: o ? o.team : "" }); }}>
@@ -2448,6 +2561,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         onChange=${() => { const v = !playOn; store.savePlayOn(v); setPlayOn(v); }} /><span>${to("playOn")}</span>${playStillOff ? html`<span class="muted oo-note oo-play-still">${to("playMotionOff")}</span>` : null}</label>` : null}
       ${zones || overview ? html`<label class="check oo-night"><input type="checkbox" checked=${nightOn} onChange=${() => { const v = !nightOn; store.saveNightOn(v); setNightOn(v); }} /><span>${to("nightOn")}</span></label>` : null}
       <label class="check oo-dialogue" title=${to("dialogueTitle")}><input type="checkbox" checked=${dialogueOn} onChange=${toggleDialogue} /><span>${to("dialogue")}</span></label>
+      ${chat && !shared ? html`<label class="oo-pick oo-talk-pick" title=${chatUi.talkWord("modeTitle")}><span class="oo-pick-label">${chatUi.talkWord("mode")}</span>
+        <select class="tb-select oo-talk-mode" value=${tmode} onChange=${(e) => pickTalkMode(e.target.value)}>
+          ${chatUi.TALK_MODES.map((m) => html`<option key=${m} value=${m}>${chatUi.talkWord(m)}</option>`)}
+        </select></label>` : null}
       ${overview ? html`<label class="check oo-lobby-tile" title=${lobbyAll.length ? undefined : to("lobbyEveryone")}><input type="checkbox" checked=${lobbyOn && lobbyAll.length > 0}
         disabled=${!lobbyAll.length} onChange=${() => { const v = !lobbyOn; store.saveLobbyTile(v); setLobbyOn(v); setTip(null); }} /><span>${to("lobbyTile")}</span></label>
         ${lobbyAll.length ? null : html`<span class="muted oo-note oo-lobby-none">${to("lobbyEveryone")}</span>`}` : null}
@@ -2476,7 +2593,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const displayMenu = (opener) => html`<div class=${`oo-display${roomGear ? " oo-display-zoom" : ""}`} ref=${displayRef}>${opener}
     ${dispOpen ? html`<div class="oo-display-pop" role="group" aria-label=${to("display")} ref=${fitPop}><h3 class="oo-display-h">${to("display")}</h3>
       <div class="oo-bar oo-display-list">${optionItems}</div></div>` : null}</div>`;
-  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dlgVisible ? " has-dialogue" : ""}`} ref=${ooRef}>
+  return html`<div class=${`oo${fs ? ` fs ${fs}` : ""}${compact ? " phone" : ""}${dockShown ? " has-dialogue" : ""}${sidePanel && !phone ? " ot-side" : ""}`} ref=${ooRef}>
     ${folded ? null : html`<div class="oo-bar oo-bar-row">
       <div class="oo-bar-scope">${scopeItems}</div>
       <div class="oo-bar-actions">${actionItems}
@@ -2499,14 +2616,16 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     ${overview || people.length || L.rooms.length ? null : html`<p class="note oo-empty">${to("nobody")} ${auto && (f.team || f.pinned.length) ? html`<button type="button" class="btn btn-sm" onClick=${() => setF({ team: "", pinned: [] })}>${to("everyone")}</button>` : null}</p>`}
     <div class=${`oo-stage${layout ? " editing" : ""}`} ref=${stageRef} onPointerDown=${onDown} onPointerMove=${onStageMove} onPointerUp=${onStageUp} onPointerCancel=${onStageCancel}
       onWheel=${onWheel} onKeyDown=${onKeyDown} onFocusIn=${onFocusIn} onClickCapture=${g.clickCapture}>
-      ${dialogueOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
+      ${dlgOn ? html`<div class="sr-only oo-dialogue-live" aria-live="polite">${dlgSay}</div>` : null}
       <canvas ref=${canvasRef} class=${`oo-canvas${(tipDesk && tipDesk.node.i) || dlgHot ? " hot" : ""}`} role="application" tabindex="0" aria-label=${to(carouselPick ? "labelCarousel" : overview ? "labelAll" : "label")}
         onPointerMove=${onMove} onPointerLeave=${() => setTip(null)} onClick=${onClick} ondblclick=${onDblClick}></canvas>
+      ${tmode === "box" ? html`<${chatUi.TalkStage} peek=${stagePeek} ops=${stageOps} talk=${chat} read=${readMode} onRead=${pickRead} phone=${phone} still=${still}
+        onFull=${openFull} onClose=${() => { dlg.skip(); setTalkTo(null); dlgWake(); }} />` : null}
       ${overview ? tiles.map((tl) => {
         const text = to("tileLabel", tl.name, tl.count), at = (el) => { if (el) labelEls.current.set(tl.key, el); else labelEls.current.delete(tl.key); };
         return tl.lobby ? html`<span key=${tl.key} ref=${at} class="oo-tile-label lobby">${text}</span>`
           : html`<button key=${tl.key} ref=${at} type="button" class="oo-tile-label" data-office=${tl.key} title=${to("openOffice", tl.name)} aria-label=${to("openOffice", tl.name)}
-              onClick=${() => pick(tl.key)}>${text}</button>`;
+              onClick=${() => pick(tl.key, false)}>${text}</button>`;
       }) : null}
       ${layout ? html`<${LayoutEditor} key=${layout.id} base=${layout.base} start=${layout.start} place=${placeOverlay} dock=${!fs} members=${layoutMembers}
         stale=${layoutStale ? t("orgl.stale") : ""} onChange=${onDraft} onSave=${saveLayout} onClose=${closeLayout} />` : null}
@@ -2533,7 +2652,10 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
               walkNow.current?.();
             }
           }
-          reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
+          // A pat with the set's `pat` strip lasts one full pass of it (never shorter than the hearts).
+          const t0 = now(), patSt = kind === "pat" && skin.patStrip ? skin.patStrip(n) : null;
+          reacts.current.set(n, { kind, t0, ...(patSt ? { until: t0 + Math.max(PLAY.REACT_MS, stripDurationMs(patSt)) } : {}) });
+          loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
         } : null}
         tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null}
         packCard=${cardOf.skin?.pack?.card || null}
@@ -2592,9 +2714,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
         <button type="button" class="btn btn-sm oo-zone-all" onClick=${() => fit()}>${to("zoneAll")}</button>
         ${zoneList.map((z) => html`<button key=${z.key} type="button" class="btn btn-sm oo-zone" data-area=${z.key} onClick=${() => toZone(z)}>${to("zoneN", areaName(z.key), z.n)}</button>`)}
       </div>` : null}
-    ${dialogueOn && dlgVisible ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
+    ${dockShown ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
       aria-label=${onOpen && !shared ? to("dlgOpenChat") : dlgSay} title=${onOpen && !shared ? to("dlgOpenChat") : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
+    ${tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
+      read=${readMode} onRead=${pickRead} onSkip=${skipTalk} />` : null}
+    ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} stateLabel=${talkWho ? stateOf(talkWho.node) : null} sheet=${phone}
+      onClose=${() => setTalkTo(null)} onFull=${openFull} top=${stageRef.current ? stageRef.current.offsetTop : null} />` : null}
   </div>`;
 }

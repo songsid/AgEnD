@@ -27,12 +27,18 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { join } from "node:path";
 import { atomicWriteFileSync } from "./atomic-write.js";
 import { imageSize, sniffMedia, stripMetadata } from "./web-image-meta.js";
-import { checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
+import { canvasOf, checkSkinPack, own, packImages, packStrips, stripSheets, type CheckedPack } from "./ui/fleet-office-pack.js";
 
 const MiB = 1024 * 1024;
-/** #2632: 160 files and 20 MiB a pack (was 64, 6 MiB) — room for a whole fleet's character sets. M-3394: packPixels caps total decoded pixels per pack (64 Mpx ≈ 256 MiB RGBA) to protect phones. */
+/**
+ * #2632: a pack for a whole fleet. Sized for 30 characters, each one sheet of every pose (row/col cells, ~1600×1920,
+ * ~1.3 MB, ~3 Mpx): 42 MiB a pack (was 6, then 20) — about 20 s on 4G, the share page shows when its pictures are in;
+ * 64 Mi px decoded, unchanged (≈ 256 MiB RGBA: measured with real art the 42 MiB byte cap binds first, near 87 Mi px, and a
+ * real-device phone image budget is not yet measured — #4383 keeps the proven cap); 4 MiB a file (was 2) for a sheet; 220 files
+ * (was 64, then 160) so the one-picture-per-pose layout still fits 30 × 7.
+ */
 export const SKIN_LIMITS = {
-  packs: 16, files: 160, fileBytes: 2 * MiB, packBytes: 20 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
+  packs: 16, files: 220, fileBytes: 4 * MiB, packBytes: 42 * MiB, manifestBytes: 64 * 1024, side: 4096, pixels: 16 * MiB, packPixels: 64 * MiB, name: 60, src: 200,
 } as const;
 /** The most an upload's body may be: every picture's base64 (4/3) plus the manifest and the envelope. */
 export const SKIN_WIRE_BYTES = Math.ceil((SKIN_LIMITS.packBytes * 4) / 3) + SKIN_LIMITS.manifestBytes + 64 * 1024;
@@ -92,20 +98,29 @@ export function checkSkinPicture(name: string, bytes: Uint8Array): { ok: true; k
   return { ok: true, kept: Buffer.from(kept), width: size.width, height: size.height };
 }
 
-/** The sizes the checked manifest asks of its pictures: each STRIP sheet exactly frames·w × h; the background and foreground 16:9. */
+/** The sizes the checked manifest asks of its pictures: each STRIP sheet exactly frames·w × h (or, cut with row/col, at least (col+frames)·w × (row+1)·h); the background and foreground 16:9. */
 function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; height: number }>): SkinRefusal | null {
   for (const { at, strip } of packStrips(pack)) {
     for (const sheet of stripSheets(strip)) {
       const s = sizes.get(sheet.src);
-      if (s && (s.width !== sheet.frames * strip.w || s.height !== strip.h)) {
+      if (!s) continue;
+      if (strip.row !== undefined || strip.col !== undefined) {
+        // Cut from a sheet: the picture must hold every cell the strip reads.
+        const needW = ((strip.col ?? 0) + sheet.frames) * strip.w, needH = ((strip.row ?? 0) + 1) * strip.h;
+        if (s.width < needW || s.height < needH) {
+          return refuse(400, "skin_strip_dimensions", `${at}: ${sheet.src} is ${s.width}×${s.height} px; its strip reads up to ${needW}×${needH} ((col+frames)·w × (row+1)·h)`);
+        }
+      } else if (s.width !== sheet.frames * strip.w || s.height !== strip.h) {
         return refuse(400, "skin_strip_dimensions", `${at}: ${sheet.src} is ${s.width}×${s.height} px; its strip needs ${sheet.frames * strip.w}×${strip.h} (frames·w × h)`);
       }
     }
   }
   const bg = pack.background ? sizes.get(pack.background) : undefined;
-  if (bg && bg.width * 9 !== bg.height * 16) return refuse(400, "skin_background_aspect", `background: ${pack.background} is ${bg.width}×${bg.height} px; it must be 16:9`);
+  // The canvas's shape, reduced ("2560:1440" reads 16:9; 5120:2160 reads 64:27).
+  const cv = canvasOf(pack), gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a), g = gcd(cv.w, cv.h), shape = `${cv.w / g}:${cv.h / g}`;
+  if (bg && bg.width * cv.h !== bg.height * cv.w) return refuse(400, "skin_background_aspect", `background: ${pack.background} is ${bg.width}×${bg.height} px; it must be ${shape === "16:9" ? "16:9" : `the canvas's shape, ${shape}`}`);
   const fg = pack.foreground ? sizes.get(pack.foreground) : undefined;
-  if (fg && fg.width * 9 !== fg.height * 16) return refuse(400, "skin_foreground_aspect", `foreground: ${pack.foreground} is ${fg.width}×${fg.height} px; it must be 16:9`);
+  if (fg && fg.width * cv.h !== fg.height * cv.w) return refuse(400, "skin_foreground_aspect", `foreground: ${pack.foreground} is ${fg.width}×${fg.height} px; it must be ${shape === "16:9" ? "16:9" : `the canvas's shape, ${shape}`}`);
   // #2861: a portrait is a half-body picture (at most PORTRAIT_MAX); the dialogue box's frame a small 9-slice (FRAME_MAX).
   const p = pack.portraits;
   const portraits = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)].flatMap((e) => (e ? Object.values(e) : [])) : [];
@@ -113,11 +128,12 @@ function sizesAgree(pack: CheckedPack, sizes: Map<string, { width: number; heigh
     const s = sizes.get(src);
     if (s && (s.width > PORTRAIT_MAX.w || s.height > PORTRAIT_MAX.h)) return refuse(400, "skin_portrait_dimensions", `portraits: ${src} is ${s.width}×${s.height} px; at most ${PORTRAIT_MAX.w}×${PORTRAIT_MAX.h}`);
   }
-  const frame = pack.dialogBox?.frame;
-  if (frame) {
+  for (const [at, box] of [["dialogBox", pack.dialogBox], ["dialogBox.bubble", pack.dialogBox?.bubble]] as const) {
+    const frame = box?.frame;
+    if (!frame) continue;
     const s = sizes.get(frame);
-    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `dialogBox.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
-    if (s && pack.dialogBox?.slice && (pack.dialogBox.slice * 2 >= s.width || pack.dialogBox.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `dialogBox.slice: ${pack.dialogBox.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
+    if (s && (s.width > FRAME_MAX.w || s.height > FRAME_MAX.h)) return refuse(400, "skin_portrait_dimensions", `${at}.frame: ${frame} is ${s.width}×${s.height} px; at most ${FRAME_MAX.w}×${FRAME_MAX.h}`);
+    if (s && box.slice && (box.slice * 2 >= s.width || box.slice * 2 >= s.height)) return refuse(400, "skin_portrait_dimensions", `${at}.slice: ${box.slice} px a side leaves nothing of ${frame} (${s.width}×${s.height})`);
   }
   // #4256: card backgroundImage (CARD_BG_MAX) and 9-slice frame (FRAME_MAX + slice bounds).
   const cardBg = pack.card?.style?.backgroundImage;

@@ -5,14 +5,15 @@
 // logical canvas, named areas with ordered seat slots, furniture with a depth, and a state → area map. No code or art of
 // it is used here — the idea of the format only.
 //
-// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), which
-// the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
+// A pack is a JSON manifest plus images. Every coordinate is in logical units on a 1280×720 canvas (LOGICAL), or on the
+// pack's own `canvas: [w, h]` (#4405: 640×360 to 5120×2880, CANVAS), which the page shows whole, then pans and zooms (fleet-office-view.js). Images are pixel art, drawn unsmoothed at `scale` logical units per image pixel.
 //
 //   {
 //     "format": 1,                                    required
 //     "id": "cozy",                                   letters, digits, - and _ (≤ 40); not a built-in skin's id
 //     "scale": 2,                                     1–8 (default 2)
-//     "background": "office.png",                     drawn over the whole 1280×720 canvas (16:9)
+//     "canvas": [2560, 1440],                         optional (#4405): the logical canvas, CANVAS.min to CANVAS.max
+//     "background": "office.png",                     drawn over the whole canvas (16:9; with "canvas", its shape)
 //     "foreground": "front.png",                      optional, with stateZones: drawn over the whole canvas (16:9, as
 //                                                     the background) above the people, the furniture and the items in
 //                                                     the air, below the name tags, bubbles and "+n" counts (and Edit
@@ -119,6 +120,8 @@
 //                                                     { "idle", "working", "needs" } files; PNGs up to 1024×1536 (host)
 //     "dialogBox": { "frame": "box.png", "slice": 8, "background": "#rrggbb", "border", "text", "name" }
 //                                                     optional (#2861): the box's 9-slice frame (≤ 512×512) and colours
+//       "bubble": { "frame", "slice" (default 6), "background", "border", "text", "name", "enter": "pop"|"fade"|"none" }
+//                                                     optional: the reply over a head (talk "Over their head"), the same
 //     "levels": {                                     optional (#2661): the Office levels' words
 //       "titles": [{ "from": 1, "name": "Intern" }, …],   the title from each level up (≤ 32, `from` 0–100000
 //                                                     rising, a name 1–24 characters), in place of the page's own
@@ -136,11 +139,13 @@
 // walk, 1 for still furniture); played at `fps` (0: the first frame only — as reduced motion shows everything); (ax, ay)
 // the image point put on the position (a character's seat is where its feet are). Suggested sizes at scale 2: a
 // character 32×48, a prop 12×12, furniture as drawn. `src` is a file name in the pack: letters, digits, . _ - and /, no
-// "..". The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
+// "..". Optional "row" and "col" (0–4095) cut the frames from a bigger sheet: frame i is the w×h cell at column col+i
+// of row `row` (so several poses can share one picture, which must then be at least (col+frames)·w × (row+1)·h).
+// The check is strict: an unknown key, a value out of range or a name that refers to nothing refuses the pack,
 // with where it broke.
 //
-// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1–1280 and
-// 1–720): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
+// Its displayed size: w·scale × h·scale logical units, unless the strip says `dw` and/or `dh` (logical units, 1 to the
+// canvas's width and 1 to its height): its frame is then drawn dw × dh (still unsmoothed: nearest neighbour), and with only one of them the other keeps
 // the frame's aspect. The anchor (ax, ay) stays in image pixels and moves with it. So art drawn at 120×120 px shows at
 // 96×96 with "dw": 96, "dh": 96 — whatever the pack's scale. What a person hovers or clicks is the box drawn (stripBox).
 //
@@ -150,7 +155,7 @@
 // (own()).
 //
 // The host keeps an uploaded pack whole and never changes it: every PNG starts with its signature, a STRIP's image is
-// exactly frames·w × h, the background and the foreground are 16:9, and each file and the pack have a size cap (web-office-skins.ts).
+// exactly frames·w × h, the background and the foreground are 16:9 (or the pack's canvas's shape), and each file and the pack have a size cap (web-office-skins.ts).
 //
 // ── Layout overrides (the Office view's "Edit layout": a stored office's own positions on a zones pack) ──
 //
@@ -167,7 +172,7 @@
 //     "waypoints": [{ "id": "hall", "x": 640, "y": 600 }, …], "edges": [["hall", "east"], …] }
 //                                                     the walkable graph, replaced whole (edges need waypoints)
 //
-// Every coordinate is on the same 1280×720 logical canvas, in the same ranges as the pack's. checkLayoutOverrides is
+// Every coordinate is on the same logical canvas as the pack's (1280×720, or its own), in the same ranges. checkLayoutOverrides is
 // the shape (the host checks it on every PUT /ui/offices); applyOverrides puts them on a checked pack, refusing a
 // seat outside its area, an area or furniture the pack does not have, or a seat count that differs (the host checks
 // that too, for a pack it keeps). A night place goes on the item's `night` (its x, y), so at bedtime (nightFurniture)
@@ -176,16 +181,26 @@
 // office (#2665, web-office-store.ts).
 
 export const LOGICAL = { w: 1280, h: 720 };
+/** A pack's own canvas (`canvas: [w, h]`, logical units): from CANVAS.min to CANVAS.max a side; without one, LOGICAL. */
+export const CANVAS = { min: { w: 640, h: 360 }, max: { w: 5120, h: 2880 } };
+/** The canvas a checked pack's scene is on: its own, else LOGICAL (every built-in style, every older pack). */
+export const canvasOf = (pack) => (pack && pack.canvas) || LOGICAL;
+// The canvas the manifest being checked declares (checkSkinPack), or an office's overrides are checked on
+// (checkLayoutOverrides: its pack's, else CANVAS.max when the pack is not known yet; applyOverrides then keeps every
+// point on the pack's own). Both checks are synchronous.
+let C = LOGICAL;
+
 /** The people's depth: furniture below it is drawn under them, the rest over them. */
 export const CHAR_DEPTH = 1000;
 export const PACK_STATES = ["needs", "crashed", "stuck", "working", "idle", "paused", "stopped", "missing"];
 /** M-3293 (#4119): what a bubbles table may name — the states, and the Office's two reactions (a pat, a feed). */
 export const BUBBLE_KEYS = [...PACK_STATES, "pat", "feed"];
-const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide"], PROPS = ["task", "send", "report", "broadcast"];
-/** A character set's strips: its poses, optional eat (M-3432 #4255) and dragged (M-3445 #4267) poses, and what its people send (#2562). */
-const SET_STRIPS = [...POSES, "eat", "dragged", "prop"];
+const POSES = ["working", "idle", "paused", "needs", "walk", "walkDown", "walkUp", "walkSide", "walkLeft"], PROPS = ["task", "send", "report", "broadcast"];
+/** A character set's strips: its poses, optional eat (M-3432 #4255), dragged (M-3445 #4267) and pat poses, a still `stand` (its card
+ * avatar), and what its people send (#2562). */
+const SET_STRIPS = [...POSES, "eat", "dragged", "pat", "stand", "prop"];
 /** A furniture item's walking strips (#2596): a character set's walking poses. */
-const WALKS = ["walk", "walkDown", "walkUp", "walkSide"];
+const WALKS = ["walk", "walkDown", "walkUp", "walkSide", "walkLeft"];
 const BUILT_IN = new Set(["pixel", "studio"]);
 /**
  * Ids built in after packs could be uploaded under them (#2631: "cozy"; #2947: "guild", "school"): a new upload is
@@ -212,9 +227,11 @@ export const CARD_AVATAR_SOURCES = ["sprite", "portrait"];
 export const CARD_HEADER_ALIGNS = ["left", "center"];
 export const CARD_SECTIONS = ["header", "level", "rows", "now", "tell", "actions"];
 export const CARD_ROWS = ["office", "model", "backend", "today", "firstSeen"];
+/** How a pack's card pops up (card.motion.enter); "none" keeps it still. */
+export const CARD_ENTERS = ["none", "fade", "pop", "rise", "slide", "bounce"];
 export const CARD_HIDE = ["instance", "title", "badge", "level", "xpBar", "office", "model", "backend", "today", "firstSeen", "now"];
 export const CARD_STYLE_COLORS = ["background", "border", "text", "muted", "accent", "barTrack", "barFill", "buttonBg", "buttonText", "buttonPrimaryBg", "buttonPrimaryText"];
-export const CARD_LIMITS = { widthMin: 280, widthMax: 400, sliceMax: 128, textContrast: 4.5, uiContrast: 3.0 };
+export const CARD_LIMITS = { widthMin: 280, widthMax: 400, gapMax: 240, motionMsMin: 80, motionMsMax: 1200, sliceMax: 128, textContrast: 4.5, uiContrast: 3.0 };
 /** #2861: a person's account as the chat records it (`adapter:id`, web-chat-history.ts FROM). */
 const ACCOUNT = /^[^\s:]{1,64}:[^\s:]{1,128}$/;
 
@@ -233,7 +250,7 @@ function num(v, lo, hi, at) { if (typeof v !== "number" || !Number.isFinite(v) |
 function src(v, at) { if (typeof v !== "string" || !SRC.test(v) || v.includes("..") || v.startsWith("/")) throw new Refused(at, "a file name in the pack"); return v; }
 function point(v, at) {
   if (!Array.isArray(v) || v.length !== 2) throw new Refused(at, "[x, y]");
-  return { x: num(v[0], 0, LOGICAL.w, `${at}[0]`), y: num(v[1], 0, LOGICAL.h, `${at}[1]`) };
+  return { x: num(v[0], 0, C.w, `${at}[0]`), y: num(v[1], 0, C.h, `${at}[1]`) };
 }
 /** Where an item sorts: by depth, a "y" one among the people (after every number under them, before the rest). */
 const order = (f) => (f.depth === "y" ? CHAR_DEPTH - 0.5 : f.depth);
@@ -270,17 +287,22 @@ export function contrastRatio(hexA, hexB) {
  */
 export function checkStrip(v, at = "strip", scale = 2) {
   obj(v, at);
-  keys(v, ["src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom"], at);
+  keys(v, ["src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom", "row", "col"], at);
   const w = int(v.w, 1, 512, `${at}.w`), h = int(v.h, 1, 512, `${at}.h`);
-  const dw0 = v.dw === undefined ? null : num(v.dw, 1, LOGICAL.w, `${at}.dw`), dh0 = v.dh === undefined ? null : num(v.dh, 1, LOGICAL.h, `${at}.dh`);
+  const dw0 = v.dw === undefined ? null : num(v.dw, 1, C.w, `${at}.dw`), dh0 = v.dh === undefined ? null : num(v.dh, 1, C.h, `${at}.dh`);
   const dw = dw0 ?? (dh0 !== null ? (dh0 * w) / h : w * scale), dh = dh0 ?? (dw0 !== null ? (dw0 * h) / w : h * scale);
   const ax = v.ax === undefined ? w / 2 : num(v.ax, 0, w, `${at}.ax`), ay = v.ay === undefined ? h : num(v.ay, 0, h, `${at}.ay`);
   if (v.once !== undefined && typeof v.once !== "boolean") throw new Refused(`${at}.once`, "true or false");
   const once = v.once === true;
+  // Sheet cells: frames start at column `col` of row `row` (w×h cells), so one picture can hold several poses. Either
+  // given marks the strip as cut from a larger sheet (its picture is then at least (col+frames)·w × (row+1)·h).
+  const row = v.row === undefined ? undefined : int(v.row, 0, 4095, `${at}.row`);
+  const col = v.col === undefined ? undefined : int(v.col, 0, 4095, `${at}.col`);
   let firstSrc, totalFrames, sheets = null, durations = null, fps = 4;
 
   if (v.src === undefined && Array.isArray(v.frames)) {
     // Form 3: explicit frame list [{ src, ms? }, …], each image 1 frame (w × h).
+    if (row !== undefined || col !== undefined) throw new Refused(`${at}.row`, "row and col need src (a sheet); a frame list has one picture per frame");
     if (v.durations !== undefined) throw new Refused(`${at}.durations`, "use ms on each entry in frames");
     const items = list(v.frames, STRIP_LIMITS.frames, `${at}.frames`);
     if (!items.length) throw new Refused(`${at}.frames`, "at least 1 frame");
@@ -348,6 +370,7 @@ export function checkStrip(v, at = "strip", scale = 2) {
 
   return {
     src: firstSrc, frames: totalFrames, w, h, fps, ax, ay, dw, dh,
+    ...(row !== undefined || col !== undefined ? { row: row ?? 0, col: col ?? 0 } : {}),
     ...(sheets ? { sheets } : {}),
     ...(durations ? { durations } : {}),
     ...(once ? { once: true } : {}),
@@ -358,7 +381,7 @@ export function checkStrip(v, at = "strip", scale = 2) {
 function nightOf(v, at, scale) {
   if (v === undefined) return null;
   obj(v, at); keys(v, ["sprite", "x", "y"], at);
-  return { sprite: checkStrip(v.sprite, `${at}.sprite`, scale), x: v.x === undefined ? null : num(v.x, 0, LOGICAL.w, `${at}.x`), y: v.y === undefined ? null : num(v.y, 0, LOGICAL.h, `${at}.y`) };
+  return { sprite: checkStrip(v.sprite, `${at}.sprite`, scale), x: v.x === undefined ? null : num(v.x, 0, C.w, `${at}.x`), y: v.y === undefined ? null : num(v.y, 0, C.h, `${at}.y`) };
 }
 /** A furniture item's walk (#2596): its walking strips, picked by heading as a character set's (poseStrip); "walk" required. */
 function walkOf(v, at, scale) {
@@ -387,7 +410,7 @@ function seatOf(v, at, rect) {
   let p = null, extra = {};
   if (isObj(v)) {
     keys(v, ["x", "y", "for", "lend"], at);
-    p = { x: num(v.x, 0, LOGICAL.w, `${at}.x`), y: num(v.y, 0, LOGICAL.h, `${at}.y`) };
+    p = { x: num(v.x, 0, C.w, `${at}.x`), y: num(v.y, 0, C.h, `${at}.y`) };
     if (v.lend !== undefined && typeof v.lend !== "boolean") throw new Refused(`${at}.lend`, "true or false");
     if (v.lend !== undefined && v.for === undefined) throw new Refused(`${at}.lend`, "only with for");
     if (v.for !== undefined) extra = { for: owners(v.for, `${at}.for`), lend: v.lend === true };
@@ -505,13 +528,29 @@ function portraitsOf(v, fids) {
 function dialogBoxOf(v) {
   if (v === undefined) return null;
   obj(v, "dialogBox");
-  keys(v, ["frame", "slice", "background", "border", "text", "name"], "dialogBox");
-  if (v.slice !== undefined && v.frame === undefined) throw new Refused("dialogBox.slice", "only with frame");
+  keys(v, ["frame", "slice", "background", "border", "text", "name", "bubble"], "dialogBox");
+  const out = boxLookOf(v, "dialogBox", 8);
+  if (v.bubble !== undefined) {
+    // The reply over a head (the Office's "Over their head" talk): the same look, and how it comes in.
+    obj(v.bubble, "dialogBox.bubble");
+    keys(v.bubble, ["frame", "slice", "background", "border", "text", "name", "enter"], "dialogBox.bubble");
+    out.bubble = boxLookOf(v.bubble, "dialogBox.bubble", 6);
+    if (v.bubble.enter !== undefined) {
+      if (!BUBBLE_ENTER.includes(v.bubble.enter)) throw new Refused("dialogBox.bubble.enter", `one of ${BUBBLE_ENTER.join(", ")}`);
+      out.bubble.enter = v.bubble.enter;
+    }
+  }
+  return out;
+}
+const BUBBLE_ENTER = ["pop", "fade", "none"];
+/** A box's 9-slice frame (`slice` image px a side, else `slice0`) and colours (#rrggbb). */
+function boxLookOf(v, at, slice0) {
+  if (v.slice !== undefined && v.frame === undefined) throw new Refused(`${at}.slice`, "only with frame");
   const out = {};
-  if (v.frame !== undefined) { out.frame = src(v.frame, "dialogBox.frame"); out.slice = v.slice === undefined ? 8 : int(v.slice, 1, LIMIT.slice, "dialogBox.slice"); }
+  if (v.frame !== undefined) { out.frame = src(v.frame, `${at}.frame`); out.slice = v.slice === undefined ? slice0 : int(v.slice, 1, LIMIT.slice, `${at}.slice`); }
   for (const k of ["background", "border", "text", "name"]) {
     if (v[k] === undefined) continue;
-    if (!matteOk(v[k])) throw new Refused(`dialogBox.${k}`, "a colour as #rrggbb");
+    if (!matteOk(v[k])) throw new Refused(`${at}.${k}`, "a colour as #rrggbb");
     out[k] = v[k].toLowerCase();
   }
   return out;
@@ -536,7 +575,7 @@ function uniqueEnumList(v, allowed, at) {
 function cardOf(v) {
   if (v === undefined) return null;
   obj(v, "card");
-  keys(v, ["preset", "style", "layout"], "card");
+  keys(v, ["preset", "style", "layout", "motion"], "card");
   const out = {};
   if (v.preset !== undefined) {
     if (typeof v.preset !== "string" || !CARD_PRESETS.includes(v.preset)) throw new Refused("card.preset", `one of ${CARD_PRESETS.join(", ")}`);
@@ -580,7 +619,7 @@ function cardOf(v) {
   }
   if (v.layout !== undefined) {
     const l = obj(v.layout, "card.layout");
-    keys(l, ["avatarSize", "avatarSource", "headerAlign", "width", "sections", "rows", "rowColumns", "hide"], "card.layout");
+    keys(l, ["avatarSize", "avatarSource", "headerAlign", "width", "gap", "sections", "rows", "rowColumns", "hide"], "card.layout");
     const ly = {};
     if (l.avatarSize !== undefined) {
       if (typeof l.avatarSize !== "string" || !CARD_AVATAR_SIZES.includes(l.avatarSize)) throw new Refused("card.layout.avatarSize", `one of ${CARD_AVATAR_SIZES.join(", ")}`);
@@ -595,6 +634,8 @@ function cardOf(v) {
       ly.headerAlign = l.headerAlign;
     }
     if (l.width !== undefined) ly.width = int(l.width, CARD_LIMITS.widthMin, CARD_LIMITS.widthMax, "card.layout.width");
+    // How far (CSS px) the floating card opens from its person, beside the person's own half-width; the page's is 12.
+    if (l.gap !== undefined) ly.gap = int(l.gap, 0, CARD_LIMITS.gapMax, "card.layout.gap");
     if (l.sections !== undefined) {
       const secs = uniqueEnumList(l.sections, CARD_SECTIONS, "card.layout.sections");
       if (!secs.includes("header") || !secs.includes("actions")) throw new Refused("card.layout.sections", 'must include "header" and "actions"');
@@ -607,6 +648,12 @@ function cardOf(v) {
     }
     if (l.hide !== undefined) ly.hide = uniqueEnumList(l.hide, CARD_HIDE, "card.layout.hide");
     out.layout = ly;
+  }
+  if (v.motion !== undefined) {
+    const mo = obj(v.motion, "card.motion");
+    keys(mo, ["enter", "ms"], "card.motion");
+    if (typeof mo.enter !== "string" || !CARD_ENTERS.includes(mo.enter)) throw new Refused("card.motion.enter", `one of ${CARD_ENTERS.join(", ")}`);
+    out.motion = { enter: mo.enter, ms: mo.ms === undefined ? 220 : int(mo.ms, CARD_LIMITS.motionMsMin, CARD_LIMITS.motionMsMax, "card.motion.ms") };
   }
   return out;
 }
@@ -695,11 +742,17 @@ export function checkLevels(v) {
 export function checkSkinPack(x, { kept = false } = {}) {
   try {
     obj(x, "pack");
-    keys(x, ["format", "id", "scale", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
+    keys(x, ["format", "id", "scale", "canvas", "background", "foreground", "matte", "areas", "stateZones", "door", "mailDrop", "waypoints", "edges", "straight", "furniture", "characters", "byInstance", "props", "bubbles", "bubblesByInstance", "room", "desk", "levels", "portraits", "dialogBox", "idleVisits", "snacks", "card"], "pack");
     if (x.format !== 1) throw new Refused("format", "1");
     if (typeof x.id !== "string" || !ID.test(x.id)) throw new Refused("id", "1–40 letters, digits, _ or -");
     if (BUILT_IN.has(x.id) || (!kept && RESERVED.has(x.id))) throw new Refused("id", "a built-in skin's id");
     const scale = x.scale === undefined ? 2 : int(x.scale, 1, 8, "scale");
+    let canvas = null;
+    if (x.canvas !== undefined) {
+      if (!Array.isArray(x.canvas) || x.canvas.length !== 2) throw new Refused("canvas", "[w, h]");
+      canvas = { w: int(x.canvas[0], CANVAS.min.w, CANVAS.max.w, "canvas[0]"), h: int(x.canvas[1], CANVAS.min.h, CANVAS.max.h, "canvas[1]") };
+    }
+    C = canvas || LOGICAL;
     if (x.matte !== undefined && !matteOk(x.matte)) throw new Refused("matte", "a colour as #rrggbb");
     if (x.straight !== undefined && typeof x.straight !== "boolean") throw new Refused("straight", "true or false");
     const areas = {};
@@ -710,8 +763,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (!nameOk(name)) throw new Refused(at, "a name of letters, digits, _ or - (not an inherited one)");
       obj(a, at); keys(a, ["rect", "seats"], at);
       if (!Array.isArray(a.rect) || a.rect.length !== 4) throw new Refused(`${at}.rect`, "[x, y, w, h]");
-      const [rx, ry] = [num(a.rect[0], 0, LOGICAL.w, `${at}.rect[0]`), num(a.rect[1], 0, LOGICAL.h, `${at}.rect[1]`)];
-      const rect = { x: rx, y: ry, w: num(a.rect[2], 1, LOGICAL.w - rx, `${at}.rect[2]`), h: num(a.rect[3], 1, LOGICAL.h - ry, `${at}.rect[3]`) };
+      const [rx, ry] = [num(a.rect[0], 0, C.w, `${at}.rect[0]`), num(a.rect[1], 0, C.h, `${at}.rect[1]`)];
+      const rect = { x: rx, y: ry, w: num(a.rect[2], 1, C.w - rx, `${at}.rect[2]`), h: num(a.rect[3], 1, C.h - ry, `${at}.rect[3]`) };
       const seats = list(a.seats, LIMIT.seats, `${at}.seats`).map((s, i) => seatOf(s, `${at}.seats[${i}]`, rect));
       if (!seats.length) throw new Refused(`${at}.seats`, "at least one seat");
       areas[name] = { name, rect, seats };
@@ -737,7 +790,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       obj(w, at); keys(w, ["id", "x", "y"], at);
       if (typeof w.id !== "string" || !ID.test(w.id) || ids.has(w.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or -");
       ids.add(w.id);
-      waypoints.push({ id: w.id, x: num(w.x, 0, LOGICAL.w, `${at}.x`), y: num(w.y, 0, LOGICAL.h, `${at}.y`) });
+      waypoints.push({ id: w.id, x: num(w.x, 0, C.w, `${at}.x`), y: num(w.y, 0, C.h, `${at}.y`) });
     }
     const edges = list(x.edges ?? [], LIMIT.edges, "edges").map((e, i) => {
       if (!Array.isArray(e) || e.length !== 2 || !ids.has(e[0]) || !ids.has(e[1]) || e[0] === e[1]) throw new Refused(`edges[${i}]`, "two different waypoint ids");
@@ -757,7 +810,7 @@ export function checkSkinPack(x, { kept = false } = {}) {
       if (f.hides !== undefined && typeof f.hides !== "boolean") throw new Refused(`${at}.hides`, "true or false");
       if (f.hides !== undefined && f.activeFor === undefined) throw new Refused(`${at}.hides`, "only with activeFor");
       if (f.label !== undefined && (typeof f.label !== "string" || !f.label.trim() || [...f.label].length > LIMIT.line || /[\u0000-\u001f\u007f]/.test(f.label))) throw new Refused(`${at}.label`, `1–${LIMIT.line} characters`);
-      return { id: f.id, sprite: checkStrip(f.sprite, `${at}.sprite`, scale), x: num(f.x, 0, LOGICAL.w, `${at}.x`), y: num(f.y, 0, LOGICAL.h, `${at}.y`),
+      return { id: f.id, sprite: checkStrip(f.sprite, `${at}.sprite`, scale), x: num(f.x, 0, C.w, `${at}.x`), y: num(f.y, 0, C.h, `${at}.y`),
         depth: f.depth === "y" ? "y" : depth(f.depth ?? 0, `${at}.depth`), activeWhen: f.activeWhen === undefined ? null : states(f.activeWhen, `${at}.activeWhen`),
         activeSprite: f.activeSprite === undefined ? null : checkStrip(f.activeSprite, `${at}.activeSprite`, scale),
         activeFor: f.activeFor === undefined ? null : names(f.activeFor, `${at}.activeFor`), loop: f.loop === true,
@@ -801,8 +854,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
     keys(room, ["floor", "wall"], "room"); keys(desk, ["back", "front", "lit"], "desk");
     const opt = (v, at) => (v === undefined ? undefined : src(v, at));
     return { ok: true, pack: {
-      format: 1, id: x.id, scale, background: opt(x.background, "background"), foreground: opt(x.foreground, "foreground"), matte: x.matte === undefined ? undefined : x.matte.toLowerCase(), areas, stateZones,
-      door: x.door === undefined ? { x: LOGICAL.w / 2, y: LOGICAL.h - 10 } : point(x.door, "door"),
+      format: 1, id: x.id, scale, ...(canvas ? { canvas } : {}), background: opt(x.background, "background"), foreground: opt(x.foreground, "foreground"), matte: x.matte === undefined ? undefined : x.matte.toLowerCase(), areas, stateZones,
+      door: x.door === undefined ? { x: C.w / 2, y: C.h - 10 } : point(x.door, "door"),
       mailDrop: x.mailDrop === undefined ? null : point(x.mailDrop, "mailDrop"), waypoints, edges, straight: x.straight === true, furniture, characters, byInstance,
       props: x.props === undefined ? {} : strips(x.props, PROPS, "props", scale), bubbles,
       // #3681: only when the pack has them, so an older pack checks to exactly what it did.
@@ -815,6 +868,8 @@ export function checkSkinPack(x, { kept = false } = {}) {
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
     throw err;
+  } finally {
+    C = LOGICAL;
   }
 }
 /** The checked pack, or null. */
@@ -823,7 +878,7 @@ export const skinPackOk = (x) => { const r = checkSkinPack(x); return r.ok ? r.p
 export const packPortraitImages = (pack) => {
   const p = pack.portraits, all = p ? [p.default, ...Object.values(p.byInstance), ...Object.values(p.byUser), ...Object.values(p.npc)] : [];
   const cs = pack.card && pack.card.style;
-  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame, cs && cs.backgroundImage, cs && cs.frame].filter(Boolean))];
+  return [...new Set([...all.flatMap((e) => (e ? Object.values(e) : [])), pack.dialogBox && pack.dialogBox.frame, pack.dialogBox && pack.dialogBox.bubble && pack.dialogBox.bubble.frame, cs && cs.backgroundImage, cs && cs.frame].filter(Boolean))];
 };
 /** The sheets a strip draws from, in order: `[{ src, frames }]` (single-sheet strips have one entry). */
 export const stripSheets = (st) => (st && Array.isArray(st.sheets) ? st.sheets : st && st.src ? [{ src: st.src, frames: st.frames }] : []);
@@ -866,7 +921,8 @@ const reservedOf = (s) => (s.for && s.for.length ? { for: [...s.for], lend: s.le
 /** A seat with reservation `r` ({ for, lend }; for [] or null: none) in place of its own. */
 const reserve = (s, r) => { const { for: _f, lend: _l, ...p } = s; return r && r.for.length ? { ...p, for: [...r.for], lend: r.lend === true } : p; };
 /** An office's layout overrides, strictly (their shape and ranges): { ok: true, overrides } or { ok: false, error }. */
-export function checkLayoutOverrides(x) {
+export function checkLayoutOverrides(x, canvas = LOGICAL) {
+  C = canvas;
   try {
     obj(x, "overrides");
     keys(x, ["pack", "seats", "furniture", "furnitureNight", "seatFor", "door", "mailDrop", "waypoints", "edges"], "overrides");
@@ -934,7 +990,7 @@ export function checkLayoutOverrides(x) {
         obj(w, at); keys(w, ["id", "x", "y"], at);
         if (typeof w.id !== "string" || !ID.test(w.id) || ids.has(w.id)) throw new Refused(`${at}.id`, "a new name of letters, digits, _ or -");
         ids.add(w.id);
-        return { id: w.id, x: num(w.x, 0, LOGICAL.w, `${at}.x`), y: num(w.y, 0, LOGICAL.h, `${at}.y`) };
+        return { id: w.id, x: num(w.x, 0, C.w, `${at}.x`), y: num(w.y, 0, C.h, `${at}.y`) };
       });
       const seen = new Set();
       out.edges = list(x.edges ?? [], OV_LIMIT.edges, "overrides.edges").map((e, i) => {
@@ -949,6 +1005,8 @@ export function checkLayoutOverrides(x) {
   } catch (err) {
     if (err instanceof Refused) return { ok: false, error: err.message };
     throw err;
+  } finally {
+    C = LOGICAL;
   }
 }
 
@@ -985,6 +1043,12 @@ export function applyOverrides(pack, ov) {
       if (!q && !n) return f;
       return { ...f, ...(q ? { x: q[0], y: q[1] } : {}), ...(n ? { night: { ...f.night, x: n[0], y: n[1] } } : {}) };
     });
+    // Every point on the pack's own canvas (overrides checked before their pack was known were held to the largest).
+    const cv = canvasOf(pack), on = (q, at) => { if (q && (q[0] > cv.w || q[1] > cv.h)) throw new Refused(at, `a point on the canvas (${cv.w}×${cv.h})`); };
+    for (const [id, q] of Object.entries(ov.furniture || {})) on(q, `overrides.furniture.${id}`);
+    for (const [id, q] of Object.entries(ov.furnitureNight || {})) on(q, `overrides.furnitureNight.${id}`);
+    on(ov.door, "overrides.door"); on(ov.mailDrop, "overrides.mailDrop");
+    for (const [i, w] of (ov.waypoints || []).entries()) on([w.x, w.y], `overrides.waypoints[${i}]`);
     const door = ov.door ? { x: ov.door[0], y: ov.door[1] } : pack.door;
     const mailDrop = ov.mailDrop ? { x: ov.mailDrop[0], y: ov.mailDrop[1] } : pack.mailDrop ?? null;
     const graph = ov.waypoints ? { waypoints: ov.waypoints.map((w) => ({ ...w })), edges: (ov.edges || []).map((e) => [e[0], e[1]]) } : { waypoints: pack.waypoints, edges: pack.edges };
@@ -1068,8 +1132,8 @@ export function overridesBetween(pack, edited) {
 
 /**
  * The strip a character set shows for `pose` (heading: the current step { dx, dy }, while walking): { strip, mirror }, or
- * null (no set). Walking: |dy| > |dx| → walkDown (dy > 0) or walkUp, else walkSide (mirror: moving left); a missing one
- * → "walk" (never mirrored) → idle. Any other pose: its own strip, else idle.
+ * null (no set). Walking: |dy| > |dx| → walkDown (dy > 0) or walkUp, else walkSide (moving left: the set's own walkLeft,
+ * else walkSide mirrored); a missing one → "walk" (never mirrored) → idle. Any other pose: its own strip, else idle.
  */
 export function poseStrip(set, pose, heading = null) {
   if (!set || typeof set !== "object") return null;
@@ -1077,6 +1141,8 @@ export function poseStrip(set, pose, heading = null) {
     const dx = Number(heading.dx) || 0, dy = Number(heading.dy) || 0;
     if (dx || dy) {
       const dir = Math.abs(dy) > Math.abs(dx) ? (dy > 0 ? "walkDown" : "walkUp") : "walkSide";
+      const left = dir === "walkSide" && dx < 0 ? own(set, "walkLeft") : null;
+      if (left) return { strip: left, mirror: false };
       const st = own(set, dir);
       if (st) return { strip: st, mirror: dir === "walkSide" && dx < 0 };
     }
@@ -1161,10 +1227,12 @@ export function stripFrameAt(st, ms) {
 /** Which image (`src`) and horizontal frame column (`col`) hold global frame index `frame` of `st`. */
 export function stripCell(st, frame) {
   const f = Math.max(0, Math.min((st && st.frames ? st.frames : 1) - 1, Math.floor(Number(frame) || 0)));
-  if (!st || !Array.isArray(st.sheets)) return { src: st ? st.src : "", col: f };
+  // A strip cut from a sheet (row/col) also says its row; a classic strip's cell keeps its { src, col } shape.
+  const cut = !!st && (st.row !== undefined || st.col !== undefined), c0 = cut ? st.col || 0 : 0, at = cut ? { row: st.row || 0 } : {};
+  if (!st || !Array.isArray(st.sheets)) return { src: st ? st.src : "", col: c0 + f, ...at };
   const { sheets, starts, ends } = sheetIndex(st);
   const i = upperBound(ends, f);
-  return { src: sheets[i].src, col: f - starts[i] };
+  return { src: sheets[i].src, col: c0 + f - starts[i], ...at };
 }
 
 /** The highest frame rate (frames/s) a strip needs for smooth playback; 0 when static. */

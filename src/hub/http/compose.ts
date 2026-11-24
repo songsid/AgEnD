@@ -946,7 +946,13 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
       if (method === "POST") {
         csrf(); const b = await body();
         const files = b.files === undefined ? [] : Array.isArray(b.files) && b.files.length <= 10 ? b.files.map(uuid) : (() => { throw new HubProtocolError("invalid"); })();
-        if (b.mentions !== undefined && (!Array.isArray(b.mentions) || b.mentions.length)) throw new HubProtocolError("invalid");
+        if (b.mentions !== undefined && (!Array.isArray(b.mentions) || b.mentions.length > 64)) throw new HubProtocolError("invalid");
+        if (b.mentions?.length) {
+          // M-3604: the shared room composer names the room's own agent when the text @-mentions it ("@Desk …"). In a 1:1
+          // that agent is the only one, so the mention changes nothing: the question goes as written. Anything else stays refused.
+          const own = (await guard(() => rooms.view(ctx, roomId))).exposureId;
+          if (!b.mentions.every((x: unknown) => x === own || x === "all")) throw new HubProtocolError("invalid");
+        }
         const receipt = await guard(() => rooms.ask(ctx, roomId, uuid(b.idempotencyKey), typeof b.text === "string" ? b.text : "", files));
         const room = await guard(() => rooms.view(ctx, roomId));
         groupRooms.publish({ type: "message.added", roomId, data: { roomId, messageId: receipt.messageId }, audiencePerson: personKeyString(room.asker) });

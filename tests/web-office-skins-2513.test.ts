@@ -24,6 +24,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deflateSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { checkSkinPack } from "../src/ui/fleet-office-pack.js";
 
 vi.mock("node:child_process", async importOriginal => {
   const real = await importOriginal<typeof import("node:child_process")>();
@@ -183,7 +184,7 @@ describe("checkSkinUpload: the manifest by the page's rules, then the pictures",
     expect(refused({ ...UPLOAD(), files: { ...UPLOAD().files, "fox_idle.png": big.toString("base64") } })?.slice(0, 2)).toEqual([413, "skin_file_too_large"]);
     const m = MANIFEST(), files: Record<string, string> = { "office_bg.png": b64("office_bg.png"), "fox_idle.png": b64("fox_idle.png") };
     // Furniture strips of just under 2 MiB each (padded with a private chunk), one more than the pack holds (#2632: 11 for
-    // 20 MiB): each passes alone, not all together.
+    // 42 MiB at 4 MiB a file): each passes alone, not all together.
     const n = Math.floor(SKIN_LIMITS.packBytes / SKIN_LIMITS.fileBytes) + 1;
     m.furniture = [...Array(n).keys()].map(i => ({ id: `f${i}`, sprite: { src: `f${i}.png`, frames: 1, w: 1, h: 1 }, x: 10, y: 10 }));
     const pad = (i: number) => { const p = png(1, 1); const len = Buffer.alloc(4); const body = Buffer.alloc(SKIN_LIMITS.fileBytes - p.length - 100, i);
@@ -401,11 +402,15 @@ describe("an office's layout overrides", () => {
   const OV = { pack: "clinic-sample", seats: { desks: [[220, 250], [430, 240], [208, 360], [428, 360]] }, door: [600, 700],
     waypoints: [{ id: "a", x: 10, y: 10 }, { id: "b", x: 20, y: 20 }], edges: [["a", "b"]] };
   const office = (overrides: unknown) => [{ id: "clinic", name: "Clinic", skin: "clinic-sample", members: [], overrides }];
-  it("their shape is checked on every write (ranges as the pack's: 1280×720), with where it broke", () => {
+  it("their shape is checked on every write (ranges: the pack's canvas; a pack not known yet, the largest), with where it broke", () => {
     expect(checkOffices(office(OV))).toMatchObject({ ok: true, offices: [{ overrides: OV }] });
     const where = (ov: unknown) => { const r = checkOffices(office(ov)); return r.ok ? null : r.detail; };
-    expect(where({ ...OV, door: [1281, 0] })).toBe("offices[0].overrides.door[0]: a number from 0 to 1280");
-    expect(where({ ...OV, seats: { desks: [[0, 721]] } })).toBe("offices[0].overrides.seats.desks[0][1]: a number from 0 to 720");
+    expect(where({ ...OV, door: [5121, 0] })).toBe("offices[0].overrides.door[0]: a number from 0 to 5120");
+    expect(where({ ...OV, seats: { desks: [[0, 2881]] } })).toBe("offices[0].overrides.seats.desks[0][1]: a number from 0 to 2880");
+    // A pack the host keeps: its own canvas (here the default, 1280×720).
+    const pack = (checkSkinPack(MANIFEST()) as any).pack;
+    const known = (ov: unknown) => { const r = checkOffices(office(ov), (id: string) => (id === "clinic-sample" ? pack : null)); return r.ok ? null : r.detail; };
+    expect(known({ ...OV, door: [1281, 0] })).toBe("offices[0].overrides.door[0]: a number from 0 to 1280");
     expect(where({ ...OV, colour: 1 })).toBe('offices[0].overrides: unknown key "colour"');
     expect(where({ ...OV, edges: [["a", "zz"]] })).toBe("offices[0].overrides.edges[0]: two different waypoint ids");
     expect(where({ ...OV, edges: [["a", "b"], ["b", "a"]] })).toBe("offices[0].overrides.edges[1]: joined twice");
