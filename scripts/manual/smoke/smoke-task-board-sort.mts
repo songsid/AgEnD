@@ -101,10 +101,14 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       chk.badgeHasCount = /7/.test(r.badge);
       chk.listAboveProjects = await page.evaluate(() => { const a = document.querySelector(".tb-sort"), b = document.querySelector(".tb-projects"); return !!a && !!b && a.getBoundingClientRect().bottom <= b.getBoundingClientRect().top + 1; });
       chk.noSidewaysScroll = await page.evaluate(OVERFLOW) as boolean;
-      // the picker takes the row's width on a phone; each new control on Home, measured as drawn: the picker, the row title
-      // with the shortest text (one line, the smallest box), the footer button
+      // each new control on Home, measured as drawn: the picker, the row title with the shortest text (one line, the smallest
+      // box), the footer button. On a phone a row is one list line: the picker at its end, beside the title, not under it.
       const pick = await box(page.locator(".tb-sort-pick").first());
-      r.pick = pick; chk.pickerVisible = !!pick && pick.w > 100;
+      r.pick = pick; chk.pickerVisible = !!pick && pick.w >= TAP;
+      if (phone) chk.pickerBesideTitle = await page.evaluate(() => [...document.querySelectorAll(".tb-sort-row")].every((row) => {
+        const t = row.querySelector(".tb-wait-title")!.getBoundingClientRect(), p = row.querySelector(".tb-sort-pick")!.getBoundingClientRect();
+        return p.left >= t.right && p.top < t.bottom && p.bottom > t.top;
+      }));
       const titles = await page.locator(".tb-sort-row .tb-wait-title").allInnerTexts();
       const shortest = titles.reduce((best, t, i) => (t.length < titles[best]!.length ? i : best), 0);
       r.shortTitle = { text: titles[shortest]!.trim(), box: await box(page.locator(".tb-sort-row .tb-wait-title").nth(shortest)) };
