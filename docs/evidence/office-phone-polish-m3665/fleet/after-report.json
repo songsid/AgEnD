@@ -4,13 +4,14 @@
   "desk-light-en-cozy": {
    "errors": [],
    "csp": [],
-   "calls": 103,
+   "style": "cozy",
+   "calls": 95,
    "tagNames": [
-    "Offline one",
-    "Stuck one",
     "Worker",
     "General",
-    "Paused one"
+    "Paused one",
+    "Offline one",
+    "Stuck one"
    ],
    "tagCss": 8.6,
    "zoom": "86%",
@@ -52,16 +53,122 @@
      "inView": true
     }
    ],
-   "tagsOff": false
+   "tagsOff": false,
+   "fs": null
   },
   "desk-light-en-studio": {
    "errors": [],
    "csp": [],
-   "calls": 99,
+   "style": "studio",
+   "calls": 94,
    "tagNames": [
-    "Stuck one",
     "Worker",
     "General",
+    "Paused one",
+    "Offline one",
+    "Stuck one"
+   ],
+   "tagCss": 8.6,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-pixel": {
+   "errors": [],
+   "csp": [],
+   "style": "pixel",
+   "calls": 96,
+   "tagNames": [],
+   "tagCss": null,
+   "zoom": "100%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-light-en-guild": {
+   "errors": [],
+   "csp": [],
+   "style": "guild",
+   "calls": 105,
+   "tagNames": [
+    "Stuck one",
+    "General",
+    "Worker",
     "Paused one",
     "Offline one"
    ],
@@ -105,12 +212,69 @@
      "inView": true
     }
    ],
-   "tagsOff": false
+   "tagsOff": false,
+   "fs": null
   },
-  "desk-light-en-studio-large": {
+  "desk-light-en-school": {
    "errors": [],
    "csp": [],
-   "calls": 104,
+   "style": "school",
+   "calls": 96,
+   "tagNames": [
+    "Offline one",
+    "Stuck one",
+    "General",
+    "Worker",
+    "Paused one"
+   ],
+   "tagCss": 7.8,
+   "zoom": "86%",
+   "chips": [],
+   "people": [
+    {
+     "t": "General",
+     "h": 30,
+     "w": 60,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Worker",
+     "h": 30,
+     "w": 56,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Paused one",
+     "h": 30,
+     "w": 85,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Offline one",
+     "h": 30,
+     "w": 81,
+     "shown": true,
+     "inView": true
+    },
+    {
+     "t": "Stuck one",
+     "h": 30,
+     "w": 73,
+     "shown": true,
+     "inView": true
+    }
+   ],
+   "tagsOff": false,
+   "fs": null
+  },
+  "desk-dark-zh-TW-cozy": {
+   "errors": [],
+   "csp": [],
+   "style": "cozy",
+   "calls": 105,
    "tagNames": [
     "Paused one",
     "Offline one",
@@ -158,224 +322,14 @@
      "inView": true
     }
    ],
-   "tagsOff": false
-  },
-  "desk-light-en-pixel": {
-   "errors": [],
-   "csp": [],
-   "calls": 104,
-   "tagNames": [
-    "Offline one",
-    "Stuck one",
-    "Worker",
-    "General",
-    "Paused one"
-   ],
-   "tagCss": 8.6,
-   "zoom": "86%",
-   "chips": [],
-   "people": [
-    {
-     "t": "General",
-     "h": 30,
-     "w": 60,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Worker",
-     "h": 30,
-     "w": 56,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Paused one",
-     "h": 30,
-     "w": 85,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Offline one",
-     "h": 30,
-     "w": 81,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Stuck one",
-     "h": 30,
-     "w": 73,
-     "shown": true,
-     "inView": true
-    }
-   ],
-   "tagsOff": false
-  },
-  "desk-light-en-guild": {
-   "errors": [],
-   "csp": [],
-   "calls": 98,
-   "tagNames": [
-    "Stuck one",
-    "Worker",
-    "General",
-    "Paused one",
-    "Offline one"
-   ],
-   "tagCss": 8.6,
-   "zoom": "86%",
-   "chips": [],
-   "people": [
-    {
-     "t": "General",
-     "h": 30,
-     "w": 60,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Worker",
-     "h": 30,
-     "w": 56,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Paused one",
-     "h": 30,
-     "w": 85,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Offline one",
-     "h": 30,
-     "w": 81,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Stuck one",
-     "h": 30,
-     "w": 73,
-     "shown": true,
-     "inView": true
-    }
-   ],
-   "tagsOff": false
-  },
-  "desk-light-en-school": {
-   "errors": [],
-   "csp": [],
-   "calls": 109,
-   "tagNames": [
-    "Stuck one",
-    "Worker",
-    "General",
-    "Paused one",
-    "Offline one"
-   ],
-   "tagCss": 8.6,
-   "zoom": "86%",
-   "chips": [],
-   "people": [
-    {
-     "t": "General",
-     "h": 30,
-     "w": 60,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Worker",
-     "h": 30,
-     "w": 56,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Paused one",
-     "h": 30,
-     "w": 85,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Offline one",
-     "h": 30,
-     "w": 81,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Stuck one",
-     "h": 30,
-     "w": 73,
-     "shown": true,
-     "inView": true
-    }
-   ],
-   "tagsOff": false
-  },
-  "desk-dark-zh-TW-cozy": {
-   "errors": [],
-   "csp": [],
-   "calls": 106,
-   "tagNames": [
-    "Offline one",
-    "Stuck one",
-    "Worker",
-    "General",
-    "Paused one"
-   ],
-   "tagCss": 8.6,
-   "zoom": "86%",
-   "chips": [],
-   "people": [
-    {
-     "t": "General",
-     "h": 30,
-     "w": 60,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Worker",
-     "h": 30,
-     "w": 56,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Paused one",
-     "h": 30,
-     "w": 85,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Offline one",
-     "h": 30,
-     "w": 81,
-     "shown": true,
-     "inView": true
-    },
-    {
-     "t": "Stuck one",
-     "h": 30,
-     "w": 73,
-     "shown": true,
-     "inView": true
-    }
-   ],
-   "tagsOff": false
+   "tagsOff": false,
+   "fs": null
   },
   "phone-dark-zh-TW-cozy": {
    "errors": [],
    "csp": [],
-   "calls": 102,
+   "style": "cozy",
+   "calls": 106,
    "tagNames": [],
    "tagCss": null,
    "zoom": "30%",
@@ -443,12 +397,29 @@
      "inView": true
     }
    ],
-   "tagsOff": true
+   "tagsOff": true,
+   "fs": {
+    "fs": "oo fs native phone",
+    "tagsOff": true,
+    "row": {
+     "w": 374,
+     "h": 54,
+     "clip": "auto"
+    },
+    "chipH": 44,
+    "pills": {
+     "top": 742,
+     "bottom": 844,
+     "shown": true
+    },
+    "overlap": false
+   }
   },
   "phone-light-en-cozy": {
    "errors": [],
    "csp": [],
-   "calls": 105,
+   "style": "cozy",
+   "calls": 103,
    "tagNames": [],
    "tagCss": null,
    "zoom": "30%",
@@ -516,8 +487,24 @@
      "inView": true
     }
    ],
-   "tagsOff": true
+   "tagsOff": true,
+   "fs": {
+    "fs": "oo fs native phone",
+    "tagsOff": true,
+    "row": {
+     "w": 374,
+     "h": 54,
+     "clip": "auto"
+    },
+    "chipH": 44,
+    "pills": {
+     "top": 742,
+     "bottom": 844,
+     "shown": true
+    },
+    "overlap": false
+   }
   }
  },
- "source": "58b5706a"
+ "source": "3b418670"
 }

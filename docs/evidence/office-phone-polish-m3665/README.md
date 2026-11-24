@@ -2,9 +2,9 @@
 
 These cover the leftovers from #4421's review, in the Fleet office and in a Hub room's office alike. The captures are of the real UI in headless Chromium, with no real names.
 
-- **After:** `58b5706a`.
+- **After:** `3b418670` for `fleet/`, and `58b5706a` for `hub-room/`. The only product change between them is the fullscreen CSS (section 2), which a Hub room page does not use differently.
 - **Before:** the release tip `3ed153b1`.
-- **`fleet/`:** the smoke fixture with five agents: General (idle), Worker (working), Paused one, Offline one (stopped) and Stuck one (stuck). It covers every built-in style at desk en, plus Cozy at desk zh-TW and on phones in en and zh-TW, in light and dark. `capture.mts` records the stuck lines and the name tags drawn on the canvas, the size of each text on the page, and every zone chip's box.
+- **`fleet/`:** the smoke fixture with five agents: General (idle), Worker (working), Paused one, Offline one (stopped) and Stuck one (stuck). It covers each of the Fleet office's styles at desk en (Cozy, Studio, Desks, Guild, School; "Studio (large)" is a Hub room's), plus Cozy at desk zh-TW and on phones in en and zh-TW, in light and dark. Each case sets the style as the host keeps it (`officeStore.setAutoSkin`), then reads the style the page actually shows from Display options or the phone sheet (`style` in the reports). `capture.mts` records the stuck lines and the name tags drawn on the canvas, the size of each text on the page, every zone chip's box, and the phone's fullscreen at the same zoom.
 - **`hub-room/`:** the real Hub (HTTPS + SQLite, via the s3b test rig) and its room page. The room has 30 agents from 6 owners: 2 working, 1 paused, and one owner's fleet offline, which takes their 5 agents offline. It is shot on desk and phone, in en and zh-TW, in light and dark.
 
 ## 1. Paused and offline look different
@@ -23,6 +23,9 @@ A 10 px name tag at the phone's 29–30 % zoom is 3 px on the page. Below `TAG_R
 | Fleet, desk 86 % | 5 tags at 8.6 px | the same |
 | Hub room, phone 29 % (en, zh-TW) | name tags drawn at 29 % (`data-tags-off` absent) | `data-tags-off`; the name row, 44 px chips (`hub-room/*-report.json`) |
 | Hub room, desk 60 % | tags | the same (tags kept) |
+| Fleet, phone **fullscreen** at 30 % | 5 tags at 3 px; the name row hidden (1 × 1, clipped) | no tags; the name row (374 × 54, 44 px chips), clear of the fullscreen zone chips |
+
+The Desks style draws its tags into its cached desk layer, not as canvas text, so the reports count 0 for it before and after. Its look is unchanged at a desk's zoom.
 
 ## 3. Area chips whole on a phone
 
@@ -30,6 +33,6 @@ Under the stage the zone chips used to scroll sideways, and on a phone the last 
 
 ## Calls still show on every style
 
-The stuck agent's bubble line is drawn on every style, before and after: Cozy, Studio, Studio (large), Desks, Guild and School at desk en, Cozy at desk zh-TW, and the phones. The lines drawn are counted per 8 s in `fleet/*-report.json` → `calls`, all about 100.
+The stuck agent's bubble line is drawn on every Fleet style, before and after: Cozy, Studio, Desks, Guild and School at desk en (each confirmed by the `style` the page shows), Cozy at desk zh-TW, and the phones. The lines drawn are counted per 8 s in `fleet/*-report.json` → `calls`, all 94–106.
 
 No run had page errors or CSP violations.

@@ -22,7 +22,7 @@ const RECORD = `(() => { const w = window; w.__t = []; const orig = CanvasRender
     const m = this.getTransform(), d = w.devicePixelRatio || 1, px = parseFloat((/([0-9.]+)px/.exec(this.font) || [0, 0])[1]); w.__t.push({ s: String(s), css: Math.round(px * Math.hypot(m.a, m.b) / d * 10) / 10 }); }
     return orig.apply(this, arguments); }; })();`;
 const report: any = { label: LABEL, cases: {} };
-const STYLES = ["cozy", "studio", "studio-large", "pixel", "guild", "school"];
+const STYLES = ["cozy", "studio", "pixel", "guild", "school"];   // the Fleet office's styles ("studio-large" is a Hub room's)
 const cases: any[] = [
   ...STYLES.map((style) => ({ device: "desk", theme: "light", lang: "en", style })),
   { device: "desk", theme: "dark", lang: "zh-TW", style: "cozy" },
@@ -32,6 +32,8 @@ const cases: any[] = [
 try {
   for (const c of cases) {
     const key = `${c.device}-${c.theme}-${c.lang}-${c.style}`, errors: string[] = [];
+    // The style as the host keeps it (an admin's page draws the host's style; Prism #4423: the browser key alone was not it).
+    const set = fx.fm.officeStore.setAutoSkin(c.style); if (!set.ok) throw new Error(`setAutoSkin ${c.style}: ${JSON.stringify(set)}`);
     const { ctx, page, csp } = await fx.page(c, { path: "/ui/fleet/org", storage: { agend_org_mode: "office", agend_org_office_skin: c.style } });
     await page.addInitScript({ content: RECORD });
     page.on("pageerror", (e: Error) => errors.push(String(e)));
@@ -49,7 +51,26 @@ try {
         people: [...document.querySelectorAll(".oo-desks .oo-desk")].map((b) => { const r = (b as HTMLElement).getBoundingClientRect(); return { t: (b.textContent || "").trim(), h: Math.round(r.height), w: Math.round(r.width), shown: r.width > 2 && r.height > 2, inView: r.left >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5 }; }),
         tagsOff: document.querySelector(".oo")?.hasAttribute("data-tags-off") ?? null };
     }, { names: NAMES, calls: CALLS });
-    report.cases[key] = { errors, csp: await csp(), ...m };
+    // The style actually drawn: Display options' Style (desk), else the phone sheet's.
+    let shown: string | null = null;
+    if (c.device === "desk") { await page.locator(".oo-display-btn").click(); shown = await page.locator(".oo-display-pop .oo-style").inputValue(); await page.keyboard.press("Escape"); }
+    else { await page.locator(".oo-more-btn").click(); await page.locator(".oo-sheet .oo-style").waitFor(); shown = await page.locator(".oo-sheet .oo-style").inputValue(); await page.locator(".oo-sheet .dlg-x").click(); }
+    await page.waitForTimeout(300);
+    let fs: any = null;
+    if (c.device === "phone") {
+      // Fullscreen at the same zoom (Prism #4423 P1): the names stay readable there too.
+      await page.locator(".oo-fs").click(); await page.waitForTimeout(1200);
+      fs = await page.evaluate(() => {
+        const oo = document.querySelector(".oo") as HTMLElement, row = document.querySelector(".oo-desks") as HTMLElement, rr = row.getBoundingClientRect();
+        const pills = document.querySelector(".oo-zone-pills") as HTMLElement | null, pr = pills ? pills.getBoundingClientRect() : null;
+        const chips = [...row.querySelectorAll(".oo-desk")].map((b) => (b as HTMLElement).getBoundingClientRect());
+        return { fs: oo.className, tagsOff: oo.hasAttribute("data-tags-off"), row: { w: Math.round(rr.width), h: Math.round(rr.height), clip: getComputedStyle(row).clip },
+          chipH: chips.length ? Math.round(Math.min(...chips.map((r) => r.height))) : null, pills: pr ? { top: Math.round(pr.top), bottom: Math.round(pr.bottom), shown: pr.height > 2 } : null,
+          overlap: !!pr && pr.height > 2 && rr.bottom > pr.top && rr.top < pr.bottom && rr.right > pr.left && rr.left < pr.right };
+      });
+      await page.screenshot({ path: join(OUT, `${key}-fullscreen.png`) });
+    }
+    report.cases[key] = { errors, csp: await csp(), style: shown, ...m, fs };
     await ctx.close();
   }
 } finally { await fx.close(); }
