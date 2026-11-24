@@ -1,3 +1,4 @@
+import type { HubHeldCloseOutcome } from "../question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY } from "../question-close-model.js";
 import {HubRoomAskerStore} from "../member/room-asker-store.js";
 import {HUB_ROOM_ASKER_IDENTITY_CAPABILITY} from "../room-asker-identity-model.js";
@@ -137,7 +138,7 @@ export interface HubMemberFactoryOptions {
   sawText?(text: string): void;
   attachExposures(api: import("../member/exposure-api.js").HubMemberExposureApi | null): void;
   /** M-3632: `retry` sends one held question back through the Hub's checks (Needs you → "Try again"). */
-  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable", close?: (id: string) => Promise<string>): void;
+  attachAttention(read: (() => import("../../needs-you.js").HubExecutionAttentionInput[]) | null, retry?: (id: string) => "queued" | "not-found" | "not-retryable", close?: (id: string) => Promise<HubHeldCloseOutcome>): void;
   /** Security inbox is available to the current binding's local Settings page, on chat and web-only fleets. */
   attachPairingNotices?(read: (() => import("../types.js").HubPairingNotice[]) | null): void;
   pokeAttention(): void;

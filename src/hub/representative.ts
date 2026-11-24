@@ -1,3 +1,4 @@
+import type { HubHeldCloseOutcome } from "./question-close-model.js";
 import { HUB_QUESTION_CLOSE_CAPABILITY, questionCloseResultSchema } from "./question-close-model.js";
 /**
  * Hub P1 representative agent (docs/design/hub-representative-agent.md): the member's only execution path. An admitted
@@ -586,15 +587,15 @@ export class HubRepresentativeExecution {
     this.pump();
     return "queued";
   }
-  private readonly closing = new Map<string, Promise<string>>();
+  private readonly closing = new Map<string, Promise<HubHeldCloseOutcome>>();
   /** Owner confirmation only. A missing acknowledgement keeps the card; a repeat asks the Hub about the same id. */
-  closeHeld(attentionId: string): Promise<string> {
+  closeHeld(attentionId: string): Promise<HubHeldCloseOutcome> {
     const id = attentionId.startsWith("hold:") ? attentionId.slice(5) : attentionId;
     const pending = this.closing.get(id); if (pending) return pending;
     const run = this.closeHeldOnce(id).finally(() => this.closing.delete(id));
     this.closing.set(id, run); return run;
   }
-  private async closeHeldOnce(id: string): Promise<string> {
+  private async closeHeldOnce(id: string): Promise<HubHeldCloseOutcome> {
     const row = this.row("id", id);
     if (!row || row.state !== "held") return "not-found";
     const binding = this.options.binding(), link = this.options.link();
@@ -608,7 +609,7 @@ export class HubRepresentativeExecution {
       this.forgetRetry(row.id); this.options.attentionChanged();
       const result = await link.exchange({ v: 1, type: "question.close", requestId: randomUUID(), linkEpoch: link.linkEpoch,
         payload: { messageId: row.message_id, exposureId: row.exposure_id } }, "question.close-result");
-      if (this.closed || !binding.current() || !link.current() || result.type !== "question.close-result") return "unavailable";
+      if (this.closed || !binding.current() || !link.current() || this.options.link() !== link || result.type !== "question.close-result") return "unavailable";
       const reply = validated(questionCloseResultSchema, result.payload);
       if (reply.messageId !== row.message_id) throw new HubProtocolError("conflict");
       this.options.db.transaction(() => {

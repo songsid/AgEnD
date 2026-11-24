@@ -1,0 +1,38 @@
+{
+  "captureSource": "abec27a90a2e9d8bd2a6bcee8d6c49b2ba540596",
+  "captureSourcesByteIdentical": {
+    "src/ui/panel-needs.js": true,
+    "src/ui/hub-room-strings.js": true,
+    "src/ui/hub-room-thread.js": true,
+    "scripts/manual/smoke/smoke-hub-held-close-m3678.mts": true
+  },
+  "captures": {
+    "before": 8,
+    "after": 24,
+    "matrix": "desktop/phone x light/dark x en/zh-TW"
+  },
+  "initial": {
+    "base": "3ed153b1541f020aa027781f905a615b2d3e63df",
+    "baseFailures": 5,
+    "suites": 10,
+    "tests": 144,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "integration": {
+    "incoming": "ed74e0782450d193fbb7002bc86abf54588251b1",
+    "suites": 8,
+    "tests": 150,
+    "finalOwnedSuites": 3,
+    "finalOwnedTests": 64,
+    "lateAnswerControl": true,
+    "staleLinkAckTestRedBefore": true,
+    "sourceTypecheck": 0,
+    "testTypecheck": 0
+  },
+  "limits": [
+    "Dashboard capture uses a synthetic held-work callback; Hub settlement uses the real scratch HTTP/SQLite service.",
+    "Shared CSS includes incoming changes; these retained images are the original capture source, not a new browser run.",
+    "No live state edits, Retry, provider, account, CLI or deployment."
+  ]
+}

@@ -7,3 +7,5 @@ export const questionCloseSchema = z.strictObject({ messageId: uuid, exposureId:
 export const questionCloseResultSchema = z.strictObject({ messageId: uuid, outcome: z.enum(["closed", "answered"]) });
 export type HubQuestionClose = z.infer<typeof questionCloseSchema>;
 export type HubQuestionCloseResult = z.infer<typeof questionCloseResultSchema>;
+
+export type HubHeldCloseOutcome = HubQuestionCloseResult["outcome"] | "not-found" | "unavailable" | "unsupported";

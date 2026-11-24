@@ -1,5 +1,6 @@
+import { messageContentDigest } from "../src/hub/identity.js";
 import {afterEach,expect,it} from "vitest";
-import {randomUUID,createHash} from "node:crypto";
+import {randomUUID} from "node:crypto";
 import {s3bRig} from "./helpers/hub-s3b-rig.js";
 const HUB_DIRECT_POST_CAPABILITY="direct-posts-v1";
 let r:Awaited<ReturnType<typeof s3bRig>>|undefined;
@@ -63,4 +64,12 @@ it("unnegotiated and stale links cannot close",async()=>{
  (w.link.features as Set<string>).add(CAP);
  await expect(closeAsk(w,q.id,{...w.link,current:()=>false})).rejects.toThrow();
  expect(r!.db.prepare("SELECT stage FROM hub_messages WHERE id=?").get(q.id)).toEqual({stage:"queued"});
+});
+
+it("a late answer cannot disclose after the owner closes",async()=>{
+ const w=await world(),q=await w.ask();await closeAsk(w,q.id);
+ const answerId=randomUUID(),text="A saved answer",contentDigest=messageContentDigest("answer",text),operationId=randomUUID();
+ await expect(r!.http.receive(r!.frame("answer",{messageId:q.id,answerId,text,contentDigest,
+  releaseLease:{decisionId:randomUUID(),messageId:q.id,operationId,phase:"release-answer",operationDigest:"a".repeat(64),revocationVersion:1,exposureRevision:1,linkEpoch:w.link.linkEpoch,expiresAt:Date.now()+5000}},w.link) as never,w.link)).rejects.toThrow("denied");
+ expect(r!.db.prepare("SELECT stage,answer_id FROM hub_messages WHERE id=?").get(q.id)).toEqual({stage:"cancelled",answer_id:null});
 });

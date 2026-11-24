@@ -847,7 +847,12 @@ Say plainly that these are not in the product yet:
   stopped before it reached the agent. When the Hub only could not answer for a moment, the Fleet asks it again by itself
   (after 2 s, 10 s and 30 s) before holding the question. A held question that never reached the agent shows
   **Try again** (再試一次): it goes back through the Hub's checks and is delivered only when the Hub allows it. A question the Hub
-  refused, or one that may already have reached the agent, has no Try again; the person who asked can send it again.
+  refused, or one that may already have reached the agent, has no Try again. For a held one-to-one question,
+  a verified managing administrator can choose **Don't answer this question** (不處理這題) and confirm.
+  The Hub marks the question not answered and tells the asker that the owner chose not to answer. An answer already
+  received by the Hub is kept. This never enters the question again or stops work already running in the agent.
+  The item disappears only after the Hub acknowledges. An offline or older Hub keeps the item with an explanation;
+  reconnect or update the Hub, then repeat the close action. Do not use Try again just to clear an item.
 
 - **"That is not a Hub address."** Enter just the address (`hub.example.com`), or the address, a space and the join
   code. **"A Hub address must use https."** Drop `http://`.

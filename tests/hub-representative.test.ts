@@ -671,6 +671,28 @@ it("M-3639: negotiated direct prompt and used-answer refusal keep the signed roo
 });
 
 describe("M-3678 owner closes held questions", () => {
+  it.each(["wrong-message", "old-binding", "old-link"])("%s cannot clear a held card after the remote exchange", async failure => {
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!;
+    f.link.exchange.mockImplementationOnce(async frame=>{
+      if(failure==="old-binding")f.stop();
+      if(failure==="old-link")f.offline();
+      return {v:1,type:"question.close-result",requestId:frame.requestId,linkEpoch:1,payload:{messageId:failure==="wrong-message"?randomUUID():q.identity.messageId,outcome:"closed"}};
+    });
+    expect(await f.rep.closeHeld(item.id)).toBe("unavailable");expect(f.rep.attentionItems()).toHaveLength(1);
+    expect(f.state(q.identity.messageId)?.state).toBe("held");
+  });
+  it("concurrent close clicks share one exchange and cannot race Try again",async()=>{
+    const f=fixture({features:["question-close-v1"]});f.publish();const q=f.question();await f.admission.admit(q);
+    await until(()=>f.state(q.identity.messageId)?.state==="delivered","delivered");f.rep.fence(q.identity.messageId,"uncertain");
+    const item=f.rep.attentionItems()[0]!;let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    const exchange=f.link.exchange.mockImplementationOnce(async frame=>{await pending;return {v:1,type:"question.close-result",requestId:frame.requestId,linkEpoch:1,payload:{messageId:q.identity.messageId,outcome:"closed"}};});
+    const calls=exchange.mock.calls.length,first=f.rep.closeHeld(item.id),second=f.rep.closeHeld(item.id);
+    expect(first).toBe(second);expect(exchange.mock.calls.length).toBe(calls+1);expect(f.rep.retryHeld(item.id)).toBe("not-retryable");
+    release();expect(await first).toBe("closed");expect(f.rep.attentionItems()).toEqual([]);
+  });
   it.each(["uncertain", "unavailable", "stale"])("%s offers close and settles without another hand-off", async reason => {
     const f = fixture({ features: ["question-close-v1"] }); f.publish();
     const q = f.question(); await f.admission.admit(q);

@@ -1,3 +1,4 @@
+import type { HubHeldCloseOutcome } from "./hub/question-close-model.js";
 import { prepareContactChange, type PreparedContactChange } from "./contact-change-proposals.js";
 import {detectMonitoringPlatform} from './host-monitoring-defaults.js';
 import { SharedDefaultAdoption } from "./shared-default-adoption.js";
@@ -3623,7 +3624,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private signInKeepAlive: SignInKeepAlive | null = null;
   private hubExecutionAttention: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null = null;
   /** M-3632: the member's "Try again" for a held Hub question (null while no member runs). */
-  private hubHeldClose: ((id: string) => Promise<string>) | null = null;
+  private hubHeldClose: ((id: string) => Promise<HubHeldCloseOutcome>) | null = null;
   private hubHeldRetry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null;
   private missedOfflineStore: MissedOfflineStore | null = null;
   private configHistory: ConfigHistory | null = null;
@@ -19827,8 +19828,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return this.needsYou?.webItems() ?? [];
   }
 
-  /** Enabled member composition supplies only a local attention reader, never an approval/execution callback. */
-  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null, close: ((id: string) => Promise<string>) | undefined = undefined): void {
+  /** Enabled member composition supplies held-work readers and explicit owner retry/close operations. */
+  attachHubExecutionAttention(read: (() => import("./needs-you.js").HubExecutionAttentionInput[]) | null, retry: ((id: string) => "queued" | "not-found" | "not-retryable") | null = null, close: ((id: string) => Promise<HubHeldCloseOutcome>) | undefined = undefined): void {
     this.hubExecutionAttention = read; this.hubHeldRetry = read ? retry : null; this.hubHeldClose = read ? close ?? null : null; this.needsYou?.poke();
   }
   /**
