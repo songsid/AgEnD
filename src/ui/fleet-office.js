@@ -1173,7 +1173,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // What is over goes (an answer after its fade, a conversation never answered); the box is drawn again meanwhile.
   useEffect(() => {
     if (!dialogueOn) return undefined;
-    const h = setInterval(() => { if (dlg.sweep(now(), still) || dlg.size()) dlgWake(); }, 1000);
+    const h = setInterval(() => { if (dlg.sweep(now(), still, !!(dlgRef.current && dlgRef.current.vn)) || dlg.size()) dlgWake(); }, 1000);
     return () => clearInterval(h);
   }, [dialogueOn]);
   const toggleDialogue = () => {
@@ -1801,7 +1801,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (!front) { dlgShown.current = null; showDialogueDock(false); return false; }
     const who = d.who.get(front.instance), node = who.node;
     const stage = stageOf(front, t, node.state === "working", still);
-    if (stage.done) { dlgShown.current = null; showDialogueDock(false); return false; }
+    if (stage.done && !d.vn) { dlgShown.current = null; showDialogueDock(false); return false; }
     showDialogueDock(true);
     const cv = dialogueCanvasRef.current;
     if (!cv) return false; // layout commit mounts the dock, then its effect paints even with reduced motion
@@ -1833,24 +1833,34 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       return im ? { kind: "portrait", im } : { kind: "initial", text: firstCharacter(front.person.name || to("dlgSomeone")) };
     };
     const answered = stage.phase === "answered";
-    const words = answered ? front.reply ?? to("dlgAnsweredShare") : front.person ? front.text ?? "" : to("dlgHeardShare", agentName);
+    // Talk "Dialogue box" (d.vn): the whole line, read page by page with clicks (advanceDialogue); else its first words.
+    const vn = !!d.vn;
+    const words = answered ? (vn ? front.replyFull ?? front.reply : front.reply) ?? to("dlgAnsweredShare")
+      : front.person ? (vn ? front.full ?? front.text : front.text) ?? "" : to("dlgHeardShare", agentName);
     ctx.setTransform(s.ratio, 0, 0, s.ratio, 0, 0);
     ctx.font = `400 ${L0.font}px system-ui, sans-serif`;
-    const lk = `${front.id}|${answered ? 1 : 0}|${L0.text.w}|${L0.font}`;
+    const lk = `${front.id}|${answered ? 1 : 0}|${L0.text.w}|${L0.font}|${vn ? 1 : 0}`;
     let lines = dlgLines.current.get(lk);
     if (!lines) {
-      lines = wrap((x) => ctx.measureText(x).width, words, L0.text.w, L0.text.lines);
+      lines = wrap((x) => ctx.measureText(x).width, words, L0.text.w, vn ? 400 : L0.text.lines);
       if (dlgLines.current.size > 32) dlgLines.current.clear();
       dlgLines.current.set(lk, lines);
     }
     const act = d.acts && d.acts.get(front.instance);
     const status = stage.phase === "working" ? (actLive(act, node.state, Date.now(), null) && act.say ? act.say : to("dlgWorking")) : null;
+    const per = Math.max(1, L0.text.lines), pages = Math.max(1, Math.ceil(lines.length / per));
+    const page = vn ? Math.min(front.page || 0, pages - 1) : 0, last = page >= pages - 1;
+    if (vn) lines = lines.slice(page * per, page * per + per);
+    // It stays (no fade) until clicked away; each page types out from when it was turned to (pageAt: -∞ once clicked whole).
+    const stg = vn ? { ...stage, alpha: 1, done: false, typedAt: front.pageAt ?? stage.typedAt } : stage;
+    const typedN = still ? Infinity : Math.floor(((t - stg.typedAt) * DLG.CPS) / 1000);
+    const whole = typedN >= lines.reduce((a, l) => a + [...l].length, 0);
     const L = fitBox(L0, lines.length, !!status);
-    dlgShown.current = { L, stage, key: who.key, name: front.instance };
+    dlgShown.current = { L, stage: stg, key: who.key, name: front.instance, conv: front, whole, last, answered };
     const frameSrc = pack && pack.dialogBox && pack.dialogBox.frame, frameIm = frameSrc ? pic(frameSrc) : null;
     return drawBox(ctx, {
       // A short landscape dock keeps the name and words; decorative faces need headroom above the box.
-      L, stage, left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
+      L, stage: stg, cue: vn && (answered || !last), left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
       name: answered ? agentName : front.person ? front.person.name || to("dlgSomeone") : to("dlgSomeone"),
       lines, status: status ? `${agentName} · ${status}` : null, more,
       colours: boxColours(pack && pack.dialogBox, s.env.pal), frame: frameIm ? { im: frameIm, slice: pack.dialogBox.slice || 8, k: pack.scale || 2 } : null,
@@ -1927,6 +1937,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
   const dockShown = dialogueOn && dlgVisible && (tmode === "window" || tmode === "box");
   dlgRef.current = dialogueOn ? {
+    vn: tmode === "box",
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
     acts: actsHere, share: talk !== undefined,
   } : null;
@@ -2097,12 +2108,27 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     return hit && people.some(d => d.node.i && d.node.name === hit.name) ? hit : null;
   };
   const openDialogue = (e) => {
-    if (shared || !onOpen || !dlgShown.current || e.detail > 1) return;
+    const vn = tmode === "box";
+    if (shared || !onOpen || !dlgShown.current || (!vn && e.detail > 1)) return;
     if (e.type === "keydown") {
       if (e.repeat || e.key !== "Enter" && e.key !== " ") return;
       e.preventDefault();
     }
+    if (vn) { advanceDialogue(); return; }
     setCard(null); open(dlgShown.current.name);
+  };
+  /**
+   * Talk "Dialogue box", as a visual novel: a click shows the page whole while it types, else turns to the next page,
+   * else (the reply's last page) closes it — the next conversation, or none. The line under the box talks to them.
+   */
+  const advanceDialogue = () => {
+    const b = dlgShown.current, c = b && b.conv;
+    if (!c) return;
+    if (talkTo !== b.name) setTalkTo(b.name);
+    if (!b.whole) c.pageAt = -1e15;
+    else if (!b.last) { c.page = (c.page || 0) + 1; c.pageAt = now(); }
+    else if (b.answered) dlg.drop(c.instance);
+    dlgWake();
   };
   const onMove = (e) => {
     if (e.pointerType === "touch" || g.busy() || snackDrag || snackDropRef.current) return;
@@ -2647,7 +2673,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       </div>` : null}
     ${dockShown ? html`<canvas class="oo-dialogue-canvas" ref=${dialogueCanvasRef}
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
-      aria-label=${onOpen && !shared ? to("dlgOpenChat") : dlgSay} title=${onOpen && !shared ? to("dlgOpenChat") : null}
+      aria-label=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : dlgSay} title=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
     ${tmode === "box" || tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull} />` : null}
     ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} sheet=${phone}

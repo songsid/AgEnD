@@ -15,6 +15,7 @@ register("otalk", {
     placeholder: "Say something to {0}…", pick: "Click someone, then Talk, to talk to them here", send: "Send",
     full: "Open full chat", reply: "Full reply", close: "Close", loading: "Loading…", failed: "Not sent — try again",
     empty: "No messages yet. Say hello.", sending: "Sending…", talkTo: "Talking to {0}", file: "[a file]",
+    next: "Click: the rest, the next page, or close",
   },
   "zh-TW": {
     mode: "對話方式", modeTitle: "在這裡跟成員對話的方式（只限這個瀏覽器）",
@@ -22,6 +23,7 @@ register("otalk", {
     placeholder: "對 {0} 說…", pick: "點一個角色，再按「對話」就能在這裡跟他說話", send: "送出",
     full: "開啟完整聊天", reply: "完整回覆", close: "關閉", loading: "載入中…", failed: "沒送出去，請再試一次",
     empty: "還沒有訊息，打個招呼吧。", sending: "傳送中…", talkTo: "正在和 {0} 對話", file: "［檔案］",
+    next: "點一下：顯示全部、下一頁或關閉",
   },
 });
 const tt = (k, ...v) => t(`otalk.${k}`, ...v);

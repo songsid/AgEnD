@@ -227,6 +227,45 @@ describe("talking on the page", () => {
       delete p.document.body.dataset.chatWorkspace; delete p.document.body.dataset.chatLayoutScope;
     }
   });
+  it("dialogue box reads like a visual novel: the whole reply page by page, ▼, each click the rest / next page / close", async () => {
+    await office();
+    await pick("box");
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "tell me everything", ts: new Date().toISOString() });
+    const long = `開頭${"長".repeat(600)}結尾在這裡`;
+    emit("message", { instance: "atlas", role: "agent", text: long, ts: new Date().toISOString() });
+    await tick(20);
+    const cv = () => p.root.querySelector(".oo-dialogue-canvas");
+    const said = () => (cv()?._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
+    expect(cv().getAttribute("aria-label")).toBe("Click: the rest, the next page, or close");
+    const seen = new Set<string>();
+    let clicks = 0;
+    while (cv() && clicks < 80) {
+      for (const s of said()) seen.add(s);
+      const el = cv();
+      el.getBoundingClientRect = () => ({ left: 0, top: 0, width: 960, height: 180, right: 960, bottom: 180 });
+      const L = D.fitBox(D.boxLayout(960, 180), 1, false);
+      fire(el, "click", { clientX: L.box.x + 40, clientY: L.box.y + L.box.h - 6, detail: 2 }); await tick(3);   // quick clicks count too
+      clicks++;
+    }
+    expect(cv()).toBeNull();                                        // the last page clicked: closed (nothing else waits)
+    const all = [...seen].join("");
+    expect(all).toContain("開頭");
+    expect(all).toContain("結尾在這裡");                              // the whole reply was read, not its first 120 characters
+    expect([...seen]).toContain("▼");
+    expect(clicks).toBeGreaterThan(2);
+  });
+  it("the store keeps the whole line and holds an answer until it is clicked away", () => {
+    const d = D.createDialogue();
+    d.heard("atlas", { name: "A" }, "x".repeat(500), 0);
+    const c = d.answered("atlas", `${"y".repeat(500)}end`, 10)!;
+    expect(c.reply.length).toBeLessThanOrEqual(D.DLG.TEXT_MAX);
+    expect(c.replyFull.endsWith("end")).toBe(true);
+    D.stageOf(c, 20, false, false);                                 // shown
+    expect(d.sweep(20 + D.DLG.HOLD_MS + D.DLG.FADE_MS + 1, false, true)).toBe(false);
+    expect(d.size()).toBe(1);
+    d.drop("atlas");
+    expect(d.size()).toBe(0);
+  });
   it("side panel: the conversation beside the map; Shift+Enter is a new line; closing it", async () => {
     await office();
     await pick("box"); await clickBox();
