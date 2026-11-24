@@ -42,6 +42,7 @@ export interface HubExposureQuota { exposureId: ExposureId; quota: HubQuota }
 export interface HubQuestion {
   text: string; identity: HubAskerEnvelope;
   attachments?: readonly HubAttachmentRef[]; // attachments-v1 links only
+  askerName?: string; // asker-name-v1 links only (M-3594): the Hub directory's display name; not part of any digest
 }
 export type HubReceiptStage =
   | "queued" | "delivered" | "consumed" | "answered"

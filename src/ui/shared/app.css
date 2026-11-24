@@ -3366,6 +3366,47 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
 .tb-project-pct { display: flex; align-items: center; gap: var(--s-2); font-size: var(--fs-sm); }
 .tb-project-meta { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1) var(--s-3); font-size: var(--fs-xs); color: var(--text-2); }
 .tb-project-menu { position: absolute; top: var(--s-2); right: var(--s-2); }
+/* No project, made hard to miss (fleet-task-sort.js): Home's list (the Waiting box's frame), the tile first and outlined, the header's link. */
+.tb-sort-hint { margin: 0 0 var(--s-2); }
+.tb-sort-row { gap: var(--s-2) var(--s-3); }
+.tb-sort-row .tb-wait-title { flex: 1 1 240px; }
+.tb-sort-meta { font-size: var(--fs-xs); white-space: nowrap; }
+.tb-sort-pick { flex: 0 0 auto; min-width: 140px; }
+.tb-sort-foot { display: flex; margin-top: var(--s-2); }
+.tb-project.needs-sort { border-color: var(--warn-line); }
+.tb-project.needs-sort:hover { border-color: var(--warn); }
+.tb-sort-link { border: 0; cursor: pointer; }
+.tb-sort-link:hover { text-decoration: underline; }
+/* The header's link: a pill in the stats line on the desk ("N in No project →"); on a phone a full-width banner (below). */
+.tb-sort-link > svg, .tb-sort-link-long, .tb-sort-link-go { display: none; }
+/* On a phone or a touch screen (style guide §7: every control a 44px box), laid out for a narrow screen rather than drawn
+   bigger. Home's list is one card: a tinted head (title, hint), then a row per card split by a line — the title across the
+   whole width (its 44px box from padding that negative margins take back, so nothing is drawn bigger), under it who/when on
+   the left and the picker as a small capsule on the right (32px drawn in a 44px box: transparent border; the two boxes
+   meet, they do not overlap), and "See all" as
+   the card's last row. A project's board puts the link on its own line under the stats, as a 44px banner: "No project:
+   N to file … File them →". The desk keeps the Waiting box's rows and the pill. */
+@media (pointer: coarse), (max-width: 899px) {
+  .tb-sort { padding: 0; overflow: hidden; }
+  .tb-sort > .tb-section-title { margin: 0; padding: var(--s-3) var(--s-4) var(--s-1); background: var(--warn-bg); }
+  .tb-sort > .tb-sort-hint { margin: 0; padding: 0 var(--s-4) var(--s-3); background: var(--warn-bg); }
+  .tb-sort > .rows { gap: 0; }
+  /* the row gap is the title's growth (12px at a 20px line), so the title's 44px box ends where the picker's begins: no overlap */
+  .tb-sort-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--s-3); padding: var(--s-3) var(--s-4) var(--s-2); border-top: 1px solid var(--border); border-radius: 0; background: none; }
+  .tb-sort-row .tb-wait-title { --grow: max(0px, calc((var(--tap) - 1lh) / 2)); grid-column: 1 / -1; padding-block: var(--grow); margin-block: calc(-1 * var(--grow)); }
+  .tb-sort-row .tb-sort-meta { grid-column: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .tb-sort-row .tb-sort-pick { grid-column: 2; width: auto; min-width: 0; max-width: 45vw; min-height: var(--tap); padding-inline: var(--s-3);
+    border: 0; border-block: 6px solid transparent; border-radius: calc((var(--tap) - 12px) / 2) / calc(var(--tap) / 2); background-color: var(--surface-2); background-clip: padding-box; }   /* the painted end is a half circle (16 / 16) */
+  .tb-sort-foot { margin: 0; border-top: 1px solid var(--border); }
+  .tb-sort-foot .btn { flex: 1; min-height: var(--tap); border-radius: 0; color: var(--accent); font-size: var(--fs-sm); }
+  .tb-stats .tb-flag.tb-sort-link { order: 1; flex: 1 1 100%; gap: var(--s-2); min-height: var(--tap); margin-top: var(--s-1); padding: 0 var(--s-4);
+    border: 1px solid var(--warn-line); border-radius: var(--r-md); font-size: var(--fs-sm); white-space: normal; text-align: left; }
+  .tb-sort-link > svg { display: inline-block; flex: none; }
+  .tb-sort-link-long { display: inline; min-width: 0; }
+  .tb-sort-link-short { display: none; }
+  .tb-sort-link-go { display: inline; margin-left: auto; font-weight: var(--fw-medium); }
+  .tb-sort-link:hover { text-decoration: none; }
+}
 .tb-archived { display: flex; flex-direction: column; gap: var(--s-2); align-items: flex-start; }
 .tb-archived > .tb-projects { align-self: stretch; }
 
@@ -3563,13 +3604,22 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
   .tc-meta { padding: 0; background: none; }
   /* #2299: a phone's waiting row: pill and title on one line, the actions under them (assignee left, buttons right). */
   .tb-wait-main > .tb-pill { min-width: 0; }
-  .tb-wait-actions { flex-basis: 100%; margin-left: 0; }
-  .tb-wait-actions > .muted { margin-right: auto; }
+  /* The assignee, then the answers on one line: the two buttons share what the name leaves (they never part onto two lines, as they did at 360px);
+     a long name gives way with "…" before a button does, and a lone button (Answer) keeps its own width at the right. */
+  .tb-wait-actions { flex-basis: 100%; margin-left: 0; flex-wrap: nowrap; }
+  .tb-wait-actions > .muted { margin-right: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tb-wait-actions .btn { flex: 1 0 auto; padding-inline: var(--s-2); }
+  .tb-wait-actions > button:only-of-type { flex: 0 0 auto; padding-inline: var(--s-4); }
   /* #2299: on the board its toasts come in above the tabs, not over its title, search and progress — unless a card's
      sheet is open (its buttons are at the bottom). */
   .shell:has(.tb-home, .tb-board-page):not(:has(dialog[open])) .toasts { top: auto; bottom: calc(56px + env(safe-area-inset-bottom) + var(--s-3)); }
   /* …and they do not pile down the board: an older confirmation gives way to two newer toasts; an error never does. */
   .shell:has(.tb-home, .tb-board-page) .toasts > .toast.ok:nth-last-child(n+3) { display: none; }
+}
+/* A very narrow phone (320px): the waiting row's name has a line of its own and the two buttons share the next one. */
+@media (max-width: 339px) {
+  .tb-wait-actions { flex-wrap: wrap; }
+  .tb-wait-actions > .muted { flex-basis: 100%; }
 }
 /* On a desk a project's columns reach the bottom of the page, as taskhall's: a card drops anywhere down a column, and
    an empty column still reads as one. The page's column, the board and its scroller pass the height down as flex. */
