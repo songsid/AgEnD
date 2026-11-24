@@ -1,0 +1,172 @@
+{
+ "cases": {
+  "phone-light-zh-TW": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: all ≥44 px": {
+    "pass": true,
+    "detail": [
+     "任務 76×44",
+     "排程 40×44",
+     "團隊 40×44",
+     "組織圖 40×44",
+     "快取 40×44",
+     "用量 40×44",
+     "授權 40×44",
+     "搜尋卡片 358×44",
+     "Agent 99×44",
+     "新增專案 114×44",
+     "更多動作 44×44"
+    ]
+   },
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: all ≥44 px": {
+    "pass": true,
+    "detail": [
+     "任務 76×44",
+     "排程 40×44",
+     "團隊 40×44",
+     "組織圖 40×44",
+     "快取 40×44",
+     "用量 40×44",
+     "授權 40×44",
+     "專案 76×44",
+     "統計 68×44",
+     "Agent 99×44",
+     "主任務 100×44",
+     "看板 52×44",
+     "清單 52×44",
+     "待辦 1 117×44",
+     "進行中 0 117×44",
+     "卡住 0 117×44",
+     "待確認 0 117×44",
+     "完成 0 117×44",
+     "搜尋 358×44"
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "phone-dark-en": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: all ≥44 px": {
+    "pass": true,
+    "detail": [
+     "Tasks 90×44",
+     "Schedules 40×44",
+     "Teams 40×44",
+     "Org chart 40×44",
+     "Cache 40×44",
+     "Usage 40×44",
+     "Authorizations 40×44",
+     "Search cards 358×44",
+     "Instances 128×44",
+     "New project 145×44",
+     "More actions 44×44"
+    ]
+   },
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: all ≥44 px": {
+    "pass": true,
+    "detail": [
+     "Tasks 90×44",
+     "Schedules 40×44",
+     "Teams 40×44",
+     "Org chart 40×44",
+     "Cache 40×44",
+     "Usage 40×44",
+     "Authorizations 40×44",
+     "Projects 104×44",
+     "Insights 95×44",
+     "Instances 128×44",
+     "Main task 127×44",
+     "Board 66×44",
+     "List 45×44",
+     "To do 1 117×44",
+     "In progress 0 117×44",
+     "Blocked 0 117×44",
+     "To confirm 0 117×44",
+     "Done 0 117×44",
+     "Search 358×44"
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  },
+  "desk-light-en": {
+   "mounted": true,
+   "home: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "home: desktop compact (unchanged)": {
+    "pass": true,
+    "detail": [
+     "Tasks 89×34",
+     "Schedules 114×34",
+     "Teams 90×34",
+     "Org chart 108×34",
+     "Cache 90×34",
+     "Usage 88×34",
+     "Authorizations 138×34",
+     "Host health 119×34",
+     "Search cards 244×36",
+     "Instances 122×36",
+     "New project 135×36",
+     "More actions 36×36"
+    ]
+   },
+   "project: every control found": {
+    "pass": true,
+    "detail": []
+   },
+   "project: desktop compact (unchanged)": {
+    "pass": true,
+    "detail": [
+     "Tasks 89×34",
+     "Schedules 114×34",
+     "Teams 90×34",
+     "Org chart 108×34",
+     "Cache 90×34",
+     "Usage 88×34",
+     "Authorizations 138×34",
+     "Host health 119×34",
+     "Projects 100×30",
+     "Insights 88×26",
+     "Instances 122×36",
+     "Main task 121×36",
+     "Board 63×30",
+     "List 45×30",
+     "Columns to the left 40×30",
+     "Columns to the right 40×30",
+     "Search 260×30"
+    ]
+   },
+   "noOverflow": true,
+   "noPageErrors": {
+    "pass": true,
+    "detail": []
+   }
+  }
+ },
+ "pass": true
+}
