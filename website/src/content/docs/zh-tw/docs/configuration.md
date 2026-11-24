@@ -338,7 +338,7 @@ channels:
 | `auto_pause_after` / `tool_progress` | 同上 | 繼承 | 個別 channel 覆寫 |
 | `backend_options` | object | 合併預設 | Backend 選項與 credential profile |
 | `display_name` / `description` | string | — | Agent 名稱與說明 |
-| `web_echo` | boolean | 跟著 `web.echo_to_channel` | 將此聊天室的 web chat 同步至平台，與 `web.echo_to_channel` 無關。沒設定的聊天室跟著全 fleet 的開關（預設 `true`）；設 `false` 就一定不同步 |
+| `web_echo` | boolean | 跟著 `web.echo_to_channel` | 將此聊天室的 web chat 同步至平台。聊天室有設值就以它為準，蓋過全 fleet 的開關；沒設定的跟著全 fleet 的開關（預設 `true`）；設 `false` 就一定不同步 |
 | `pre_task_command` | string | — | 每則訊息前先貼上的指令 |
 | `reply_completion_guard` | boolean | 同 defaults | 這個頻道的覆寫 |
 | `reply_triggers` | boolean | 同 defaults | 這個 collab 聊天室的原生回覆觸發覆寫 |
