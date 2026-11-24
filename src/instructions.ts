@@ -1,5 +1,5 @@
 import { MEMORY_SECTION } from "./memory-guidance.js";
-import { withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
+import { withTaskCardRef, withoutTaskBoardGuidance, withoutTaskCommands } from "./dashboard-permissions.js";
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -242,7 +242,7 @@ export function buildFleetInstructions(params: FleetInstructionsParams): string 
   // core's `@app: unverified` line; the fleet prompt no longer repeats it.
   if (params.cliInstructions) {
     // CLI mode: inject CLI quick reference (without the board's commands for an agent that may not use it)
-    sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : params.cliInstructions);
+    sections.push(params.taskBoard === false ? withoutTaskCommands(params.cliInstructions) : withTaskCardRef(params.cliInstructions));
     sections.push(cliCrossInstanceRule(classic));
     // An agent without the skills that hold the web-chat receipt checks keeps them in full in its prompt (M-3528).
     if (fullReceiptRule) sections.push(`## Web-chat receipts\n${WEB_RECEIPT_RULE}`);

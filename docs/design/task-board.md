@@ -694,8 +694,12 @@ An instance's web chat can refer to a card, and the agent is handed it. Nothing 
   agent's `#M-3` for such a card stays the text it was (no title, status or owner reaches the viewer). Only `user` and `agent`
   rows are read; a status line or the activity timeline is not.
 - **The agent writes the same number.** An agent points at a card with `#M-3` in its reply, never a URL it builds (a
-  `localhost` address does not open from another machine or a phone). The one place it is told is the `task` tool's description
-  (one sentence, in the steady prompt of an agent that has the tool); the task-board skill and the fleet prompt do not repeat it.
+  `localhost` address does not open from another machine or a phone). It is one sentence, written once
+  (`TASK_CARD_REF_HINT`, `src/dashboard-permissions.ts`) and shown wherever the `task` tool is described: the tool's description
+  (MCP mode, every runtime), the end of the Task Board commands in `agent-cli-instructions.md` (CLI mode: a slot the prompt fills, dropped
+  with the commands when the board is off) and, once, the what's-new notice (an agent already running keeps the description it
+  loaded). An agent reads one of the first two, so the steady cost is one sentence; the task-board skill and the workflow
+  template do not repeat it (a test pins each surface).
 - **The agent.** `POST /ui/send` reads the numbers in the typed text, reads those cards from the board *now*, and puts a block under
   the person's words in the message it delivers (`[Task cards this message refers to]`, a line per card as `task get` writes it,
   and how to read one in full). The last line is in the form *this* instance can use, on every runtime — a native (Windows) agent

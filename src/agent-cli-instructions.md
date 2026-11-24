@@ -56,6 +56,7 @@ agend-agent task create-project "name" ["description"]   # A project you may add
 agend-agent task move-project PROJECT_ID M-3 [M-4…]      # Main tasks into (or, with none, out of) a project; each moves or is refused on its own
 agend-agent task watch M-3 [INSTANCE]             # Follow a card (you by default; another instance only on a card you may edit)
 agend-agent task unwatch M-3 [INSTANCE]           # Stop following it
+# {{TASK_CARD_REF_HINT}}
 
 # Decisions
 agend-agent decision-post "title" "content" [project|team|team:<name>|fleet]  # Post decision (default: your team, else project)
