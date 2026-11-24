@@ -16,7 +16,8 @@ import * as PK from "../src/ui/fleet-office-pack.js";
 import * as K from "../src/ui/fleet-office-skin.js";
 import { checkSkinUpload } from "../src/web-office-skins.js";
 // @ts-expect-error fleet-office-play.js is plain browser JS without a .d.ts
-import { PLAY, pruneReactions } from "../src/ui/fleet-office-play.js";
+import { PLAY, patLook, pruneReactions } from "../src/ui/fleet-office-play.js";
+import { readFileSync as readCss } from "node:fs";
 
 const FIXTURE = join(process.cwd(), "tests", "fixtures", "office-skin-clinic");
 const BASE_MANIFEST = () => JSON.parse(readFileSync(join(FIXTURE, "manifest.json"), "utf8"));
@@ -79,14 +80,11 @@ describe("host upload: one sheet for several poses", () => {
 
   it("three poses from one 4×3-cell picture pass, and the pack keeps it once", () => {
     const m = manifest();
-    delete m.characters.fox; // keep only what this test names, if the fixture has more sets
-    const r = checkSkinUpload({ manifest: m, files: files(png(4 * 32, 3 * 48)) }, "tester", 100);
-    if (!r.ok) {
-      // The fixture may name other pictures; fall back to checking only the dimension rule below.
-      expect(r.error).not.toBe("skin_strip_dimensions");
-      return;
-    }
-    expect(Object.keys(r.record.files)).toContain("hero.png");
+    delete m.characters.fox;                                     // its fox_idle.png is then unused: not sent
+    const { "fox_idle.png": _unused, ...sent } = files(png(4 * 32, 3 * 48));
+    const r = checkSkinUpload({ manifest: m, files: sent }, "tester", 100);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(Object.keys(r.record.files).sort()).toEqual(["hero.png", "office_bg.png"]);
   });
   it("a picture too small for the cells a strip reads is skin_strip_dimensions, naming the needed size", () => {
     const r = checkSkinUpload({ manifest: manifest(), files: files(png(4 * 32, 2 * 48)) }, "tester", 100);
@@ -212,5 +210,53 @@ describe("walkLeft and stand", () => {
     m.characters.default.walkLeft = { src: "l.png", frames: 2, w: 32, h: 48 };
     m.characters.default.stand = { src: "s.png", frames: 1, w: 32, h: 48, fps: 0 };
     expect(PK.checkSkinPack(m).ok).toBe(true);
+  });
+});
+
+describe("review fixes", () => {
+  const recorder = () => {
+    const calls: string[] = [];
+    const ctx: any = new Proxy({}, { get: (o: any, k: string) => k in o ? o[k] : (k === "measureText" ? (s: string) => ({ width: s.length * 6 }) : (...a: any[]) => { calls.push(`${k}(${a.map((x) => typeof x === "number" ? Math.round(x) : typeof x).join(",")})`); }), set: (o: any, k: string, v: any) => { o[k] = v; calls.push(`${k}=${v}`); return true; } });
+    return { ctx, calls };
+  };
+  const desk = { key: "zone/a", seat: { x: 200, y: 200 }, x: 176, y: 148, w: 48, h: 66 };
+  const look = { name: "a", label: "A", state: "idle", pose: "idle", coat: "#fff", free: true };
+
+  it("a built-in style draws the card's `stand` avatar as idle (pixel figure and sprite fallback)", () => {
+    const idle = recorder(), stand = recorder();
+    K.pixelSkin.drawCharacter(idle.ctx, desk, look, 0, { pal: K.DEFAULT_PAL, mode: "dark" });
+    K.pixelSkin.drawCharacter(stand.ctx, desk, { ...look, pose: "stand" }, 0, { pal: K.DEFAULT_PAL, mode: "dark" });
+    expect(stand.calls).toEqual(idle.calls);
+    const checked = PK.checkSkinPack(BASE_MANIFEST());
+    if (!checked.ok) throw new Error("fixture");
+    const viaPack = recorder();                                  // no pictures loaded: the pixel figure draws it
+    K.spriteSkin(checked.pack, new Map()).drawCharacter(viaPack.ctx, desk, { ...look, pose: "stand" }, 0, { pal: K.DEFAULT_PAL, mode: "dark" });
+    const drawn = (c: string[]) => c.filter((x) => x !== "save()" && x !== "restore()");   // the sprite path wraps it in save/restore
+    expect(drawn(viaPack.calls)).toEqual(drawn(idle.calls));
+  });
+
+  it("a second pat before the first ends plays its strip from frame 0; unchanged re-renders keep the clock", () => {
+    const m = BASE_MANIFEST();
+    m.characters.default.pat = { src: "pat.png", frames: 6, w: 32, h: 48, fps: 2, once: true };
+    const checked = PK.checkSkinPack(m);
+    if (!checked.ok) throw new Error("fixture");
+    const sx: number[] = [];
+    const ctx: any = { imageSmoothingEnabled: true, globalAlpha: 1, save() {}, restore() {}, translate() {}, scale() {},
+      drawImage(_im: any, x: number) { sx.push(x / 32); }, fillRect() {}, strokeRect() {}, beginPath() {}, arc() {}, ellipse() {}, fill() {}, stroke() {}, fillText() {}, measureText: (s: string) => ({ width: s.length * 6 }) };
+    const clocks = PK.createClipClocks();
+    const env = { pal: K.DEFAULT_PAL, mode: "dark", clock: (k: string, st: any, t: number) => clocks.elapsed(k, st, t) };
+    const skin = K.spriteSkin(checked.pack, new Map<string, any>([["office_bg.png", {}], ["fox_idle.png", {}], ["pat.png", {}]]));
+    const first = { kind: "pat", t0: 1000, until: 4000 }, second = { kind: "pat", t0: 2500, until: 5500 };
+    skin.drawCharacter(ctx, desk, patLook(look, first, 1000), 1000, env);   // frame 0
+    skin.drawCharacter(ctx, desk, patLook(look, first, 2000), 2000, env);   // frame 2: the same pat keeps its clock
+    skin.drawCharacter(ctx, desk, patLook(look, second, 2500), 2500, env);  // a new pat: frame 0 again
+    skin.drawCharacter(ctx, desk, patLook(look, second, 3500), 3500, env);  // frame 2 of the new pat
+    expect(sx).toEqual([0, 2, 0, 2]);
+    expect(patLook(look, second, 5500)).toBeNull();
+  });
+
+  it("pins the reduced-motion rule that switches card.motion off", () => {
+    const css = readCss(join(process.cwd(), "src", "ui", "shared", "app.css"), "utf8");
+    expect(css).toContain("@media (prefers-reduced-motion: reduce) { .oo-card[data-enter] { animation: none; } }");
   });
 });

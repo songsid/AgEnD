@@ -623,3 +623,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
 | Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |
+| Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file, 42 MiB and 96 Mpx a pack (#4382). An older AgEnD refuses a pack that uses them | 2.4.0-beta |

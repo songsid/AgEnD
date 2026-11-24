@@ -96,6 +96,12 @@ export function reactionAt(r, t, lang = "en") {
   return { f, hearts, say: reactWords(r.kind, lang) };
 }
 
+/** The look while a pat `r` shows at `t` (its own clip, so each pat plays from frame 0), or null. */
+export function patLook(posed, r, t) {
+  if (!r || r.kind !== "pat" || t < r.t0 || t >= (r.until ?? r.t0 + PLAY.REACT_MS)) return null;
+  return { ...posed, pose: "pat", basePose: posed.pose, clip: `#pat${r.t0}` };
+}
+
 /** Reactions still showing at `t` (a Map name → { kind, t0, until? }; `until`: a pat strip's end), the rest dropped; whether any is left. */
 export function pruneReactions(map, t) {
   for (const [n, r] of [...map]) if (t >= (r.until ?? r.t0 + PLAY.REACT_MS) || t < r.t0) map.delete(n);

@@ -623,3 +623,4 @@ STRIP 是 `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "d
 | 輪播（看板）：勾選的辦公室輪流佔滿畫面，n/m 按鈕勾選，暫停／下一間，記在這個瀏覽器（#4010） | 2.4.0-beta |
 | 編輯辦公室 → 待命只在自己的區域走動（#4104） | 2.4.0-beta |
 | 角色多圖與逐格長動畫（`src` 陣列、`frames` 物件清單、`durations`、`once`、`loopFrom`，最多 600 格）（#4231） | 2.4.0-beta |
+| 從大圖切格（`row`、`col`）；角色組的 `pat`、`walkLeft`、`stand`；卡片的 `layout.gap` 與 `motion`；每包 220 個檔案、單檔 4 MiB、整包 42 MiB 與 96 Mpx（#4382）。較舊的 AgEnD 會拒收用到這些的外觀包 | 2.4.0-beta |

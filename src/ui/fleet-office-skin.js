@@ -162,6 +162,7 @@ export function draggedMotion(ms) {
 
 function drawCharacter(ctx, d, look, ms, env) {
   if (look.pose === "away") return;
+  if (look.pose === "stand") look = { ...look, pose: "idle" };   // the card's still avatar: the pixel figure has only idle
   const h = nameHash(look.name), skin = SKIN_TONES[h % SKIN_TONES.length], hair = HAIR[(h >>> 3) % HAIR.length];
   const coat = look.coat, shirt = "#f4f1ea", eye = "#1d1d22";
   const f = frameAt(ms, FRAMES[look.pose] || 1, FPS);
@@ -666,7 +667,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
       const ps = shown(look);
       ctx.save();
       if (look.dim) ctx.globalAlpha = 0.35;
-      const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}`, ps.strip, ms) : ms;
+      const cms = ps ? clipMs(env, `c:${look.name || (d && d.key) || ""}${look.clip || ""}`, ps.strip, ms) : ms;
       let done = false;
       if (ps && look.pose === "dragged") {
         // M-3445 (#4267): ground shadow under feet; custom `dragged` strip plays as authored, otherwise built-in lifted dangle.
@@ -690,7 +691,7 @@ export function spriteSkin(pack, images, base = pixelSkin) {
         done = !!ps && strip(ctx, ps.strip, cms, d.seat.x, d.seat.y, null, ps.mirror);
       }
       ctx.restore();
-      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" || look.pose === "pat" ? { ...look, pose: look.basePose || "idle" } : look, ms, env);
+      if (!done) base.drawCharacter(ctx, d, look.pose === "eat" || look.pose === "pat" ? { ...look, pose: look.basePose || "idle" } : look.pose === "stand" ? { ...look, pose: "idle" } : look, ms, env);
     },
     /** M-3432 (#4255): character's eating strip (set.eat → default.eat → null) when loaded. */
     eatStrip: eatStripOf,

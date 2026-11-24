@@ -76,7 +76,7 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, patLook, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
@@ -592,12 +592,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const posed = actPosed(p, q.look);
       const eating = !q.at.walking && p.snacks && ms > 0 ? p.snacks.eatingOf(q.look.name, t) : null;
       const canEat = !!eating && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
-      // A pat shows the set's `pat` strip for one full pass of it (pat.until); a set without one keeps its pose.
-      const pat = !q.at.walking && !canEat && ms > 0 && p.reacts ? p.reacts.get(q.look.name) : null;
-      const patting = !!pat && pat.kind === "pat" && t >= pat.t0 && t < (pat.until ?? pat.t0 + PLAY.REACT_MS) && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      // A pat shows the set's `pat` strip for one full pass of it (pat.until), each pat from frame 0; a set without one keeps its pose.
+      const canPat = !q.at.walking && !canEat && ms > 0 && !!p.reacts && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      const patted = canPat ? patLook(posed, p.reacts.get(q.look.name), t) : null;
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
         : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
-        : patting ? { ...posed, pose: "pat", basePose: posed.pose } : posed;
+        : patted || posed;
       sk.drawCharacter(ctx, box, look, ms, env);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
@@ -1373,7 +1373,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
     let x = p.x + gap;
     if (x + cw > sz.w - 8) x = p.x - gap - cw;
     x = Math.max(8, Math.min(x, sz.w - cw - 8));
@@ -2215,7 +2215,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
   // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
   const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
-  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview } : null;
+  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
   useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
   const closeCard = () => {
     setCard(null);
