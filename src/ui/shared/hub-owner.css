@@ -178,3 +178,8 @@
 
 /* The granting administrator must see a Team's size and leads at every width. */
 .hub-row-text strong.hub-policy-subject-label { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
+
+/* M-3592: Administration → Sign-in's two lists and its Save are a full tap target on a phone. */
+@media (max-width: 899px), (pointer: coarse) {
+  .hub-session-limits select, .hub-session-limits .btn { min-height: var(--tap); }
+}

@@ -1,6 +1,7 @@
 import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
 import {roomBriefSchema} from "./room-brief-model.js";
 import {agentIntroSchema,agentIntroResultSchema} from "./agent-intro-model.js";
+import { agentPicturesSchema, agentPicturesResultSchema, agentPictureChunkSchema, agentPictureResultSchema } from "./agent-pictures-model.js";
 import { agentCatalogSchema, agentCatalogRefreshSchema, exposureRequestSchema, exposureRequestResultSchema, exposureRequestAckSchema, exposureUndoSchema, exposureUndoResultSchema } from "./agent-catalog-model.js";
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
@@ -185,6 +186,8 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
   frame("agent.intro",agentIntroSchema),
+  // agent-pictures-v1 (M-3533 R2b): a Fleet's shared agents' pictures, then the chunks the Hub asked for.
+  frame("agent.pictures", agentPicturesSchema), frame("agent.picture", agentPictureChunkSchema),
   frame("agent.catalog", agentCatalogSchema), frame("exposure.request-result", exposureRequestResultSchema), frame("exposure.undo", exposureUndoSchema),
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.context-state", roomContextRequestSchema), frame("room.context-input", roomContextInputSchema),
@@ -202,6 +205,7 @@ export const memberFrameSchema = z.union([
 ]);
 export const serverFrameSchema = z.union([
   frame("agent.intro-result",agentIntroResultSchema),
+  frame("agent.pictures-result", agentPicturesResultSchema), frame("agent.picture-result", agentPictureResultSchema),
   frame("agent.catalog-refresh", agentCatalogRefreshSchema), frame("exposure.request", exposureRequestSchema), frame("exposure.request-ack", exposureRequestAckSchema), frame("exposure.undo-result", exposureUndoResultSchema),
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.context-state-result", roomContextResultSchema), frame("room.context-input-result", roomContextInputResultSchema),
