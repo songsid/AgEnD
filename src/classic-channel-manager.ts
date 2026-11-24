@@ -932,7 +932,7 @@ export class ClassicChannelManager {
 
   getAll(): ClassicChannel[] { return [...this.channels.values()]; }
 
-  register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string, backend?: string): ClassicChannel {
+  register(channelId: string, adapterId: string | undefined, instanceName: string, channelName: string, userId: string, backend?: string, restricted = true): ClassicChannel {
     const ch: ClassicChannel = {
       channelId,
       adapterId,
@@ -941,7 +941,7 @@ export class ClassicChannelManager {
       ...(backend ? { backend } : {}),
       createdAt: new Date().toISOString(),
       createdBy: userId,
-      restrictedMode: true,
+      restrictedMode: restricted,
     };
     this.channels.set(this.compositeKey(channelId, adapterId), ch);
     this.rebuildChannelIds();

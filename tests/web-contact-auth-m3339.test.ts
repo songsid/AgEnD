@@ -83,7 +83,7 @@ describe("Permissions: a ClassicBot room", () => {
     const { ContactPermissionsPanel } = await import("/ui/js/contact-permissions.js") as any;
     const { pg } = await mountWith(ContactPermissionsPanel, { name: "classic-ops" });
     expect(text(pg.root.querySelector(".contact-suggest-banner"))).toBe("We suggest switching this room to restricted mode.");
-    expect(text(pg.root.querySelector(".contact-mode .contact-pill"))).toBe("Not restricted (older setting)");
+    expect(text(pg.root.querySelector(".contact-mode .contact-pill"))).toBe("Free");
     expect(text(pg.root.querySelector(".contact-origin-switch"))).toContain("existing history is treated as unknown");
     expect([...pg.root.querySelectorAll(".contact-would li")].map(text)).toEqual(["Bash", "mcp__drive__write"]);
     fire(button(pg.root, "Switch to restricted"), "click"); await settle(4);
