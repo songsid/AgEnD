@@ -1,7 +1,7 @@
 # M-3565: who may ask within reach, and a room's agent into a one-to-one (real app)
 
 The real Hub (HTTPS and SQLite via the s3b rig) and its real UI, headless Chromium: desk 1366×900 and phone 390×844,
-zh-TW and en, light and dark. "Before" is release/2.3.5-alpha d81ef602c; "after" is this branch merged with it (89127b7fe and later). The
+zh-TW and en, light and dark. "Before" is release/2.3.5-alpha d81ef602c; "after" is this branch merged with the tip as it moved (the latest: ab14b0152, with #4386). The
 directory searches as the user's AD Hub does: people, AD groups (the default policy, ad-direct-guid), and Teams, mounted
 as the real Hub mounts them, with one Team, "Web team". Generic people:
 
