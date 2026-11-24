@@ -2680,7 +2680,7 @@ strong.org-name { font-size: var(--fs-sm); color: var(--text); }
    its top, a fingertip tall (the bar drawn in the middle of it), never taken by the browser (touch-action none). */
 .oo-card.sheet[data-scrolls], .oo-card-custom.sheet[data-scrolls] .oo-card-body { touch-action: pan-y; }
 .oo-card.sheet .oo-card-grip { position: sticky; top: calc(-1 * var(--s-2)); z-index: 3; box-sizing: content-box; width: 36px; height: 4px;
-  padding: 14px calc(50% - 18px); margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-4)) 0; background-clip: content-box; touch-action: none; cursor: grab; }
+  padding: calc((var(--tap) - 4px) / 2) calc(50% - 18px); margin: calc(-1 * var(--s-2)) calc(-1 * var(--s-4)) 0; background-clip: content-box; touch-action: none; cursor: grab; }
 .oo-card-head { display: flex; gap: var(--s-3); align-items: flex-start; }
 .oo-card-avatar { position: relative; flex: none; width: 56px; height: 56px; border-radius: var(--r-md); background: var(--surface-2); }
 .oo-card-avatar canvas { width: 56px; height: 56px; image-rendering: pixelated; border-radius: inherit; }

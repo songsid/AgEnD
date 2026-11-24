@@ -28,6 +28,9 @@ describe("the phone sheet (app.css)", () => {
     const grip = rule(".oo-card.sheet .oo-card-grip");
     expect(grip).toContain("touch-action: none");
     expect(grip).toContain("position: sticky");
+    // Prism #4414 r2: a whole touch target (--tap, 44 px) around its 4 px bar.
+    expect(grip).toContain("padding: calc((var(--tap) - 4px) / 2)");
+    expect(grip).toContain("height: 4px");
     const actions = rule(".oo-card.sheet .oo-card-actions, .oo-card-custom.sheet .oo-card-actions");
     expect(actions).toContain("position: sticky");
     expect(actions).toContain("background: var(--oo-card-bg, var(--surface))");
