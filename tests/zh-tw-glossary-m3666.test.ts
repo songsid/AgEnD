@@ -75,7 +75,7 @@ describe("M-3666: the approved words, on the strings the audit found", () => {
     ["dashboard.progress.tunnel", [], "啟動通道"],
     ["status.table_header", [], "| Agent | 後端 | 模型 | 上下文 | 推理強度 | 花費 | 執行狀態 |"],
     ["exit.instance_notice", ["dev"], "🛑 dev 已停止（正常退出，結束碼 0）。管理員可至 General 重新啟動。"],
-    ["delivery.not_found", [], "找不到這筆訊息的送達紀錄"],
+    ["delivery.not_found", [], "找不到這筆訊息的送達紀錄（Delivery not found）"],
     ["delivery.retention_expired", [], "找不到送達紀錄——此筆記錄早於保留期限，已被清除"],
   ] as const)("zh-TW %s", async (key, args, zh) => {
     const { setLocale, t } = await import("../src/locale.js");

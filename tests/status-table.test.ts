@@ -85,8 +85,8 @@ describe("/status table (#1052)", () => {
       { s: { status: "stopped", exec: null }, c: { status: "crashed", exec: null } },
     );
     const text = await commands.getStatusText();
-    expect(text.split("\n").find(l => l.startsWith("| instance")) ?? "")
-      .toBe("| instance | Backend | Model | Context | 推理強度 | 花費 | 執行狀態 |");
+    expect(text.split("\n").find(l => l.startsWith("| Agent")) ?? "")
+      .toBe("| Agent | 後端 | 模型 | 上下文 | 推理強度 | 花費 | 執行狀態 |");
     expect(text).toContain("✗ 已停止");
     expect(text).toContain("🔴 已當機");
   });
