@@ -599,7 +599,7 @@ function ProjectBoard({ project, cards, stats: statsOf, flashed, display, filter
           <span class="muted">${stats.mains === 1 ? t("tasks.mainOne") : t("tasks.mainCount", stats.mains)}</span>
           ${stats.waiting ? html`<span class="tb-flag st-review">${t("tasks.waiting", stats.waiting)}</span>` : null}
           ${stats.blocked ? html`<span class="tb-flag st-blocked">${t("tasks.blockedN", stats.blocked)}</span>` : null}
-          ${project !== NO_PROJECT && notSorted ? html`<button type="button" class="tb-flag st-review tb-sort-link" title=${t("tasksort.headerLinkTip")} onClick=${onOpenNoProject}>${t("tasksort.headerLink", notSorted)} →</button>` : null}
+          ${project !== NO_PROJECT && notSorted ? html`<button type="button" class="tb-flag st-review tb-sort-link" title=${t("tasksort.headerLinkTip")} onClick=${onOpenNoProject}><${Icon} name="inbox" size=${16} /><span class="tb-sort-link-short">${t("tasksort.headerLink", notSorted)}</span><span class="tb-sort-link-long">${t("tasksort.title", notSorted)}</span><span class="tb-sort-link-go">${t("tasksort.go")}</span> →</button>` : null}
           <button type="button" class="btn btn-ghost btn-sm tb-insights" title=${t("taskstats.buttonTip")} onClick=${() => setInsights(true)}><${Icon} name="chart" size=${16} />${t("taskstats.button")}</button>
         </div>
       </div>

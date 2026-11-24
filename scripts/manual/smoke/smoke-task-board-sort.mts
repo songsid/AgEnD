@@ -7,7 +7,8 @@
 //  3. a project's board says how many are not in a project, and its link opens No project, whose header says what the place is;
 //  4. a board with nothing to sort draws none of it;
 //  5. on a phone every new control measures at least the --tap size (44px) both ways — the picker, a short row title, the
-//     list's footer button and a project's header link — and the desk keeps the dense link and footer (under 44px).
+//     list's footer button and a project's header banner — and the desk keeps the dense link and footer (under 44px); a
+//     phone's row is laid out for the width: the title across it, who/when and the picker under it.
 // Shots: on a phone also Home scrolled to the No project tile (1b); a project's board is shot once the filing toast is gone.
 // The page head's own controls (Instances, New project, search; not this change's) are measured and recorded, before and after.
 // The shots are the "before" when run on the base commit with SHOTS_ONLY=1 (same seed; the checks name new things).
@@ -105,9 +106,12 @@ for (const c of matrix(process.env.MATRIX ?? "desk-light-en,phone-dark-zh-TW")) 
       // box), the footer button. On a phone a row is one list line: the picker at its end, beside the title, not under it.
       const pick = await box(page.locator(".tb-sort-pick").first());
       r.pick = pick; chk.pickerVisible = !!pick && pick.w >= TAP;
-      if (phone) chk.pickerBesideTitle = await page.evaluate(() => [...document.querySelectorAll(".tb-sort-row")].every((row) => {
-        const t = row.querySelector(".tb-wait-title")!.getBoundingClientRect(), p = row.querySelector(".tb-sort-pick")!.getBoundingClientRect();
-        return p.left >= t.right && p.top < t.bottom && p.bottom > t.top;
+      // a phone's row: the title across the row, under it who/when on the left and the picker on the right
+      if (phone) chk.phoneRowLayout = await page.evaluate(() => [...document.querySelectorAll(".tb-sort-row")].every((row) => {
+        const r = row.getBoundingClientRect(), t = row.querySelector(".tb-wait-title")!.getBoundingClientRect();
+        const m = row.querySelector(".tb-sort-meta")!.getBoundingClientRect(), p = row.querySelector(".tb-sort-pick")!.getBoundingClientRect();
+        const inner = r.width - parseFloat(getComputedStyle(row).paddingLeft) - parseFloat(getComputedStyle(row).paddingRight);
+        return t.width >= inner - 1 && p.top >= t.top && p.left >= m.right && p.top < m.bottom && p.bottom > m.top;
       }));
       const titles = await page.locator(".tb-sort-row .tb-wait-title").allInnerTexts();
       const shortest = titles.reduce((best, t, i) => (t.length < titles[best]!.length ? i : best), 0);

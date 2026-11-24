@@ -187,7 +187,10 @@ describe("a project's board", () => {
     await mount({ agend_tasks_project: "1" });
     expect(text(q(".tb-title h2"))).toBe("Game");
     const link = q(".tb-sort-link");
-    expect(text(link)).toBe("7 in No project →");
+    // the desk's pill and the phone's banner are one button (CSS shows one wording or the other)
+    expect(text(link.querySelector(".tb-sort-link-short"))).toBe("7 in No project");
+    expect(text(link.querySelector(".tb-sort-link-long"))).toBe("No project: 7 to file");
+    expect(text(link.querySelector(".tb-sort-link-go"))).toBe("File them");
     fire(link, "click"); await settle(8);
     expect(text(q(".tb-title h2"))).toBe("No project");
     expect(q(".tb-sort-link"), "No project does not link to itself").toBeNull();
@@ -201,7 +204,7 @@ describe("a project's board", () => {
 
 describe("the words", () => {
   it("English and Traditional Chinese have the same keys and the numbers fill in", () => {
-    const keys = ["title", "hint", "pick", "pickFor", "moved", "by", "openAll", "seeAll", "tileBadge", "headerLink", "headerLinkTip", "placeLead"];
+    const keys = ["title", "hint", "pick", "pickFor", "moved", "by", "openAll", "seeAll", "tileBadge", "headerLink", "headerLinkTip", "go", "placeLead"];
     for (const lang of ["en", "zh-TW"]) {
       for (const k of keys) expect(i18n.tIn(lang, `tasksort.${k}`, "A", "B"), `${lang} ${k}`).not.toBe(`tasksort.${k}`);
     }
@@ -209,6 +212,7 @@ describe("the words", () => {
     expect(i18n.t("tasksort.title", 7)).toBe("未分類：7 張待歸檔");
     expect(i18n.t("tasksort.tileBadge", 7)).toBe("7 張待歸檔");
     expect(i18n.t("tasksort.headerLink", 7)).toBe("未分類 7 張");   // one name for the place: the tile's 未分類
+    expect(i18n.t("tasksort.go")).toBe("前往歸檔");
     expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 已歸到 Shop");
     i18n.setLang("en", { store: false });
     expect(i18n.t("tasksort.moved", "M-16", "Shop")).toBe("M-16 filed in Shop");

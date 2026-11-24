@@ -18,14 +18,14 @@ register("tasksort", {
     title: "No project: {0} to file", hint: "Agents open a card in No project when nobody said which project it is for. Pick a project to file it.",
     pick: "File in…", pickFor: "{0}: file in a project", moved: "{0} filed in {1}", by: "by {0}",
     openAll: "Open No project", seeAll: "See all {0}",
-    tileBadge: "{0} to file", headerLink: "{0} in No project", headerLinkTip: "Open No project and file them",
+    tileBadge: "{0} to file", headerLink: "{0} in No project", headerLinkTip: "Open No project and file them", go: "File them",
     placeLead: "Cards opened without a project. Open one and choose its project, or file them from Home.",
   },
   "zh-TW": {
     title: "未分類：{0} 張待歸檔", hint: "沒有人說這張卡屬於哪個專案時，Agent 會先把卡開在未分類。選一個專案就能歸檔。",
     pick: "歸到…", pickFor: "{0}：歸到專案", moved: "{0} 已歸到 {1}", by: "{0} 建立",
     openAll: "開啟未分類", seeAll: "看全部 {0} 張",
-    tileBadge: "{0} 張待歸檔", headerLink: "未分類 {0} 張", headerLinkTip: "開啟未分類並歸檔",
+    tileBadge: "{0} 張待歸檔", headerLink: "未分類 {0} 張", headerLinkTip: "開啟未分類並歸檔", go: "前往歸檔",
     placeLead: "沒指定專案時開出來的卡。打開卡片選專案，或在首頁直接歸檔。",
   },
 });
