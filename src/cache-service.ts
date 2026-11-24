@@ -17,7 +17,7 @@
  * thread (kiro-usage-run.ts) — for the usage report only; the cache analysis leaves Kiro out.
  */
 import { mkdir, open, readdir, readFile, realpath, rename, stat, writeFile } from "node:fs/promises";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { scanJsonl } from "./cache-scan.js";
 import { addSpeed, addTurn, claudeLine, codexLine, codexRebuild, emptyLedger, grokLine, museLine, KEEP_DAYS, pruneLedger, reviveLedger, type FileCursor, type Ledger, type TranscriptKind } from "./cache-ledger.js";
 import { analyzeLedger, type InstanceAnalysis } from "./cache-analysis.js";
@@ -105,7 +105,7 @@ export const WINDOWS: Record<CacheWindow, number> = { "24h": 86_400_000, "7d": 7
 export const cacheWindow = (w: string): CacheWindow => (Object.prototype.hasOwnProperty.call(WINDOWS, w) ? w as CacheWindow : "7d");
 
 interface RolloutMetadata { ino: number; cwd: string | null; id?: string | null; parent?: string | null }
-interface RolloutFile { path: string; ino: number; size: number; parentPath?: string; identityOnly?: boolean }
+interface RolloutFile { path: string; ino: number; size: number; parentPath?: string; identityOnly?: boolean; orphaned?: true }
 
 export interface InstanceReport {
   name: string;
@@ -227,7 +227,7 @@ export class CacheService {
     this.unread.clear();
     for (;;) {
       const left = await this.pass();
-      if (left === 0) { this.caughtUp = this.unread.size === 0; await this.recordCoverage(); }
+      if (left === 0) { this.caughtUp = ![...this.ledgers.values()].some(l => l.codexRebuild); await this.recordCoverage(); }
       // Stop looping when: all caught up, explicitly stopped, or closing (stop()
       // fenced new admission — let the current physical pass write its dirty data,
       // then exit rather than scanning the full backlog during shutdown).
@@ -368,16 +368,19 @@ export class CacheService {
       const published = await this.ledgerFor(inst);
       // A bounded, restartable replacement generation repairs already inflated recent hours. Do not publish a
       // partially read replacement, nor tag old totals as repaired merely because new dedupe was enabled.
-      const ledger = kind === "codex" && published.codexMethod !== 1
+      let ledger = kind === "codex" && (published.codexMethod !== 1 || published.codexRebuild)
         ? (published.codexRebuild ??= codexRebuild(published, cutoff)) : published;
       if (kind === "kiro" || kind === "opencode" || kind === "antigravity") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
+      if (kind === "codex" && ledger === published && files.some(f => "parentPath" in f && f.parentPath && published.files[f.path]?.orphaned)) {
+        ledger = published.codexRebuild = codexRebuild(published, cutoff);
+      }
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
       // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
       // until it is readable again — bounded by its own files.
       const listed = new Set(files.map((f) => f.path));
-      if (ledger !== published && Object.entries(published.files).some(([path, f]) => f.kind === "codex" && (f.last?.t ?? 0) >= cutoff && !listed.has(path))) {
+      if (ledger !== published && !files.length && Object.values(published.files).some(f => f.kind === "codex" && (f.last?.t ?? 0) >= cutoff)) {
         // A repair cannot turn unavailable recent source data into a measured zero. Keep the published generation;
         // a later complete inventory can resume the candidate without erasing the only surviving accounting.
         this.unread.add(inst.name);
@@ -391,6 +394,7 @@ export class CacheService {
         let cur = ledger.files[f.path];
         if (!cur) { cur = ledger.files[f.path] = { kind, ino: f.ino, offset: 0 }; this.dirty.add(inst.name); }
         else if (cur.ino !== f.ino || f.size < cur.offset) { cur = this.followFromEnd(ledger, f.path, cur, f.ino, f.size); this.dirty.add(inst.name); }
+        if ("orphaned" in f && f.orphaned) cur.orphaned = true; else delete cur.orphaned;
         if (cur.offset >= f.size) continue;
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
         if (cur.stalled === f.size) continue;
@@ -801,47 +805,71 @@ export class CacheService {
         }
       } catch { /* none yet */ }
     }
-    let rollouts: Array<{ path: string; mtimeMs: number }> = [];
-    const unlisted = (): void => { for (const i of codexInsts) this.unread.add(i.name); };
-    try {
-      const root = this.o.codexSessionsDir();
-      rollouts = this.o.listRollouts(root);
-      if ((this.o.rolloutsUnreadable?.(root) ?? 0) > 0) unlisted();
-    } catch (err) { if (!gone(err)) unlisted(); }
-    const live = new Set<string>();
-    const inventory = new Map<string, RolloutFile & { meta: RolloutMetadata; recent: boolean }>();
-    const sessions = new Map<string, string>();
-    for (const r of rollouts) {
-      live.add(r.path);
-      let st;
-      try { st = await stat(r.path); } catch (err) { if (!gone(err)) unlisted(); continue; }
-      let m = this.meta[r.path];
-      // Backfill pre-replay metadata once. No account, prompt or credential fields are retained.
-      if (!m || m.ino !== st.ino || m.id === undefined || m.parent === undefined) {
-        const read = await rolloutMeta(r.path);
-        if (read === "unreadable") { unlisted(); delete this.meta[r.path]; continue; }
-        if (read) { m = this.meta[r.path] = read; this.metaDirty = true; } else { delete this.meta[r.path]; continue; }
-      }
-      if (m.ino !== st.ino) continue;
-      inventory.set(r.path, { path: r.path, ino: st.ino, size: st.size, meta: m, recent: r.mtimeMs >= cutoff });
-      if (m.id) sessions.set(m.id, r.path);
+    const rollouts = new Map<string, { path: string; mtimeMs: number; archived: boolean }>();
+    let complete = true;
+    const unlisted = (): void => { complete = false; for (const i of codexInsts) this.unread.add(i.name); };
+    const root = this.o.codexSessionsDir();
+    for (const dir of new Set([root, join(dirname(root), "archived_sessions")])) {
+      try {
+        for (const r of this.o.listRollouts(dir)) if (!rollouts.has(r.path)) rollouts.set(r.path, { ...r, archived: dir !== root });
+        if ((this.o.rolloutsUnreadable?.(dir) ?? 0) > 0) unlisted();
+      } catch (err) { if (!gone(err)) unlisted(); }
     }
+    const live = new Set(rollouts.keys());
+    const inventory = new Map<string, RolloutFile & { meta: RolloutMetadata; recent: boolean; archived: boolean }>();
+    const sessions = new Map<string, string>();
+    // Codex filenames carry the session ID. Cached header IDs support older/custom names. Only recent files and
+    // ancestors they reference are stat'ed/read here; the shared listing already maintains the historical inventory.
+    for (const r of rollouts.values()) {
+      const stem = basename(r.path, ".jsonl");
+      const id = /^rollout-.*-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.exec(stem)?.[1] ?? stem;
+      sessions.set(id, r.path);
+      if (this.meta[r.path]?.id) sessions.set(this.meta[r.path]!.id!, r.path);
+    }
+    const load = async (path: string): Promise<(RolloutFile & { meta: RolloutMetadata; recent: boolean; archived: boolean }) | undefined> => {
+      const existing = inventory.get(path);
+      if (existing) return existing;
+      const r = rollouts.get(path);
+      if (!r) return;
+      let st;
+      try { st = await stat(path); } catch (err) { if (!gone(err)) unlisted(); return; }
+      let m = this.meta![path];
+      if (!m || m.ino !== st.ino || m.id === undefined || m.parent === undefined) {
+        const read = await rolloutMeta(path);
+        if (read === "unreadable") { unlisted(); delete this.meta![path]; return; }
+        if (read) { m = this.meta![path] = read; this.metaDirty = true; } else { delete this.meta![path]; return; }
+      }
+      if (m.ino !== st.ino) return;
+      const f = { path, ino: st.ino, size: st.size, meta: m, recent: r.mtimeMs >= cutoff, archived: r.archived };
+      inventory.set(path, f);
+      if (m.id) sessions.set(m.id, path);
+      return f;
+    };
+    for (const r of rollouts.values()) if (r.mtimeMs >= cutoff) await load(r.path);
     for (const inst of codexInsts) {
       const selected = new Map<string, RolloutFile>();
       const visiting = new Set<string>();
-      const visit = (path: string): boolean => {
+      const visit = async (path: string): Promise<boolean> => {
         if (selected.has(path)) return true;
-        const f = inventory.get(path);
-        if (!f || visiting.has(path)) { this.unread.add(inst.name); return false; }
+        if (visiting.has(path)) { this.unread.add(inst.name); return false; }
+        const f = await load(path);
+        if (!f) { this.unread.add(inst.name); return false; }
         visiting.add(path);
-        const parentPath = f.meta.parent ? sessions.get(f.meta.parent) : undefined;
-        if (f.meta.parent && (!parentPath || !visit(parentPath))) { visiting.delete(path); this.unread.add(inst.name); return false; }
+        let parentPath = f.meta.parent ? sessions.get(f.meta.parent) : undefined;
+        if (parentPath && (await load(parentPath))?.meta.id !== f.meta.parent) parentPath = undefined;
+        let orphaned: true | undefined;
+        if (f.meta.parent) {
+          if (parentPath) {
+            if (!await visit(parentPath)) { visiting.delete(path); return false; }
+          } else if (complete) orphaned = true;
+          else { visiting.delete(path); this.unread.add(inst.name); return false; }
+        }
         visiting.delete(path);
         const owner = f.meta.cwd ? byCwd.get(resolve(f.meta.cwd)) : undefined;
-        selected.set(path, { path, ino: f.ino, size: f.size, ...(parentPath ? { parentPath } : {}), ...(owner !== inst.name ? { identityOnly: true } : {}) });
+        selected.set(path, { path, ino: f.ino, size: f.size, ...(parentPath ? { parentPath } : {}), ...(orphaned ? { orphaned } : {}), ...(owner !== inst.name || (f.archived && !f.recent) ? { identityOnly: true } : {}) });
         return true;
       };
-      for (const f of inventory.values()) if (f.recent && f.meta.cwd && byCwd.get(resolve(f.meta.cwd)) === inst.name) visit(f.path);
+      for (const f of [...inventory.values()]) if (f.recent && f.meta.cwd && byCwd.get(resolve(f.meta.cwd)) === inst.name) await visit(f.path);
       out.set(inst.name, [...selected.values()]);
     }
     for (const p of Object.keys(this.meta)) if (!live.has(p)) { delete this.meta[p]; this.metaDirty = true; }

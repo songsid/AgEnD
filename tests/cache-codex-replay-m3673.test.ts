@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { appendFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CacheService } from "../src/cache-service.js";
@@ -72,16 +72,60 @@ describe("Codex fork replay accounting M3673", () => {
     expect(await requests(s, "7d")).toBe(1);
   });
 
-  it("defers an incomplete ancestry repair and resumes when the missing parent becomes available", async () => {
-    rollout("child", usage("2026-11-24T12:00:00Z", "old-turn", 110), "parent");
+  it("completes a permanently absent parent's fork and repairs its dates if that parent later becomes available", async () => {
+    rollout("child", [...usage("2026-11-24T12:00:00Z", "old-turn", 110), ...usage("2026-11-24T12:01:00Z", "fresh", 220)], "parent");
     const s = make(); await s.kick();
-    expect(await requests(s, "24h")).toBe(0);
-    expect(s.scanning().caughtUp).toBe(false);
+    expect(await requests(s, "24h")).toBe(2);
+    expect(s.scanning().caughtUp).toBe(true);
+    const orphan = JSON.parse(readFileSync(join(dir, "state", "cache-ledger.json"), "utf8"));
+    expect(orphan.files[join(dir, "sessions", "child.jsonl")].orphaned).toBe(true);
     rollout("parent", usage("2026-11-22T12:00:00Z", "old-turn", 110));
     await s.kick();
-    expect(await requests(s, "24h")).toBe(0);
+    expect(await requests(s, "24h")).toBe(1);
+    expect(await requests(s, "7d")).toBe(2);
+    expect(s.scanning().caughtUp).toBe(true);
+  });
+
+  it("finds an archived ancestor outside the mtime window and uses its original dates", async () => {
+    const parent = rollout("parent", usage("2026-09-01T12:00:00Z", "shared", 110));
+    mkdirSync(join(dir, "archived_sessions"));
+    const archived = join(dir, "archived_sessions", "parent.jsonl");
+    renameSync(parent, archived); utimesSync(archived, new Date("2026-09-01"), new Date("2026-09-01"));
+    rollout("child", [...usage("2026-11-24T12:00:00Z", "shared", 110), ...usage("2026-11-24T12:01:00Z", "fresh", 220)], "parent");
+    const s = make(); await s.kick();
+    expect(await requests(s, "24h")).toBe(1);
     expect(await requests(s, "7d")).toBe(1);
     expect(s.scanning().caughtUp).toBe(true);
+  });
+
+  it("counts recent owned archived records once as well as the fresh child turn", async () => {
+    const parent = rollout("parent", usage("2026-11-22T12:00:00Z", "shared", 110));
+    mkdirSync(join(dir, "archived_sessions")); renameSync(parent, join(dir, "archived_sessions", "parent.jsonl"));
+    rollout("child", [...usage("2026-11-24T12:00:00Z", "shared", 110), ...usage("2026-11-24T12:01:00Z", "fresh", 220)], "parent");
+    const s = make(); await s.kick();
+    expect(await requests(s, "24h")).toBe(1);
+    expect(await requests(s, "7d")).toBe(2);
+  });
+
+  it("does not load metadata for unrelated historical rollouts", async () => {
+    const unrelated = rollout("unrelated-old", usage("2026-09-01T12:00:00Z", "unrelated", 110));
+    utimesSync(unrelated, new Date("2026-09-01"), new Date("2026-09-01"));
+    rollout("current", usage("2026-11-24T12:00:00Z", "current", 110));
+    const s = make(); await s.kick(); await s.kick();
+    const metadata = JSON.parse(readFileSync(join(dir, "rollouts.json"), "utf8"));
+    expect(metadata[unrelated]).toBeUndefined();
+    expect(await requests(s, "24h")).toBe(1);
+  });
+
+  it("preserves the existing fleet caught-up behavior for an unreadable non-Codex store", async () => {
+    const notDirectory = join(dir, "not-directory"); writeFileSync(notDirectory, "fixture");
+    const s = make({
+      instances: () => [{ name: "other", backend: "grok", workingDirectory: dir, ledgerPath: join(dir, "state", "grok.json") }],
+      grokSessionsDir: () => notDirectory,
+    });
+    await s.kick();
+    expect(s.scanning().caughtUp).toBe(true);
+    expect((await s.usageData()).instances[0]!.days.coverage).toEqual([]);
   });
 
   it("does not charge another workspace's ancestor to the child's workspace", async () => {
