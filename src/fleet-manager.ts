@@ -4613,7 +4613,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   }
 
   /**
-   * alpha.2 (M-2300; #2973's agent requests, junsion's §6): on a fleet with no chat connection there is no General to
+   * alpha.2 (M-2300; #2973's agent requests, a colleague's §6): on a fleet with no chat connection there is no General to
    * post an agent's Windows request in — it waited for `agend settings confirm` on the host. Its owner (decision
    * 28c2d3a3: the `agend web --code` session on this computer, web-verified) now sees and decides it from the web's
    * Needs you. The authority is asked from the request each time, and again at execution by the store (`current`):
