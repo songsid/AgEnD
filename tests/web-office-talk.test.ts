@@ -1,7 +1,7 @@
 /**
  * Talking to an agent from the Office without a pop-up (fleet-office-talk.js):
  * - the store: history once, a send shown at once and replaced by the server's copy (clientId), live replies, a failed
- *   send, the reply kept over a head for a while (recent / replyHoldMs);
+ *   send, the reply kept over a head until it is read (recent / advance / skipAll) and the reading modes (readPace);
  * - a pack's `dialogBox.bubble` (page and host);
  * - on the page: the "Talk" picker (the pop-up by default), the dialogue box's line (Enter sends), the side panel, the
  *   reply over the head, the full chat still a click away.
@@ -57,8 +57,14 @@ describe("the talk store (createTalk)", () => {
     expect(talk.thread("atlas").msgs.map((m: any) => [m.role, m.text, !!m.pending])).toEqual([
       ["user", "earlier", false], ["agent", "old answer", false], ["user", "hello there", false], ["agent", "Hi! **Done.**", false]]);
     expect(talk.thread("quill").msgs).toEqual([]);
-    expect(talk.recent("atlas", Date.now())!.text).toBe("Hi! **Done.**");
-    expect(talk.recent("atlas", Date.now() + T.replyHoldMs("Hi! **Done.**") + 1)).toBeNull();
+    const r = talk.recent("atlas")!;
+    expect(r.text).toBe("Hi! **Done.**");
+    // It stays until read: a click shows it whole, then turns its page, then (the last page) lets it go.
+    talk.advance("atlas"); expect(r.pageAt).toBeLessThan(0); expect(talk.recent("atlas")).toBe(r);
+    r.whole = true; r.pages = 2; talk.advance("atlas"); expect([r.page, r.whole]).toEqual([1, false]);
+    r.whole = true; talk.advance("atlas"); expect(talk.recent("atlas")).toBeNull();
+    talk.take({ boot: "b", id: 7, role: "agent", instance: "atlas", text: "again", ts: "t7" });
+    talk.skipAll(); expect(talk.recent("atlas")).toBeNull();
     expect(seen.every((n) => n === "atlas")).toBe(true);
     expect(await talk.send("atlas", "   ")).toBe(false);
   });
@@ -74,8 +80,12 @@ describe("the talk store (createTalk)", () => {
   it("the modes: the pop-up unless one was picked", () => {
     expect(T.TALK_MODES).toEqual(["window", "panel", "box", "bubble"]);
     expect([T.talkModeOf(null), T.talkModeOf("panel"), T.talkModeOf("bogus")]).toEqual(["window", "panel", "window"]);
-    expect(T.replyHoldMs("")).toBe(6000);
-    expect(T.replyHoldMs("x".repeat(10_000))).toBe(20000);
+    expect(T.READ_MODES).toEqual(["click", "auto", "fast"]);
+    expect([T.readModeOf(null), T.readModeOf("fast"), T.readModeOf("bogus")]).toEqual(["click", "fast", "click"]);
+    expect(T.readPace("click", 50)).toEqual({ cps: 40, wait: Infinity });          // waits for a click
+    expect(T.readPace("auto", 0).wait).toBe(1400);
+    expect(T.readPace("auto", 10_000).wait).toBe(5000);
+    expect(T.readPace("fast", 100)).toEqual({ cps: 200, wait: 450 });
   });
 });
 
@@ -85,13 +95,21 @@ describe("the reply over a head (drawReply) and its look in a pack", () => {
     const t: any = { calls, measureText: (s: string) => ({ width: [...String(s)].length * 6 }) };
     return new Proxy(t, { get(o, k) { if (k in o) return o[k]; return (...a: unknown[]) => { calls.push([String(k), a]); }; }, set(o, k, v) { o[k] = v; return true; } });
   };
-  it("the name, then the words wrapped (at most six lines, the last cut); the pack's colours, else light paper", () => {
+  it("the name, then a page of six wrapped lines (the rest on later pages, typed out, ▼ once whole); the pack's colours, else light paper", () => {
     const c = ctx();
     const box = T.drawReply(c, 300, 200, "Atlas", "word ".repeat(200), 0, T.replyStyle(null, { mode: "dark" }), null);
     const texts = c.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
     expect(texts[0]).toBe("Atlas");
     expect(texts).toHaveLength(7);
-    expect(texts.at(-1)!.endsWith("…")).toBe(true);
+    expect(box.pages).toBeGreaterThan(1);
+    const c2 = ctx(), last = T.drawReply(c2, 300, 200, "Atlas", `${"word ".repeat(200)}END`, 0, T.replyStyle(null, null), null, { page: 99, n: Infinity });
+    const t2 = c2.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
+    expect(t2.join(" ")).toContain("END");                                         // the last page
+    expect(t2.at(-1)).toBe("▼");
+    expect(last.len).toBeGreaterThan(0);
+    const c3 = ctx();
+    T.drawReply(c3, 300, 200, "", "abcdefghij", 0, T.replyStyle(null, null), null, { page: 0, n: 3 });
+    expect(c3.calls.filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]))).toEqual(["abc"]);   // typing, no ▼ yet
     expect(box.y + box.h).toBeLessThan(200);                                          // over the head, the tail below
     expect(T.replyStyle({ background: "#112233", enter: "fade" }, { mode: "light" })).toMatchObject({ background: "#112233", text: "#1d1d22", enter: "fade" });
     expect(T.replyStyle(null, null).enter).toBe("pop");
@@ -254,6 +272,29 @@ describe("talking on the page", () => {
     expect([...seen]).toContain("▼");
     expect(clicks).toBeGreaterThan(2);
   });
+  it("the reading controls: Click by default, kept per browser; Auto plays the box on by itself; Skip closes every reply", async () => {
+    await office();
+    await pick("box");
+    const btn = (k: string) => p.root.querySelector(`.ot-play .${k}`);
+    const reads = () => [...p.root.querySelectorAll(".ot-play .ot-read")].map((b: any) => [b.textContent, b.getAttribute("aria-pressed")]);
+    expect(reads()).toEqual([["Click", "true"], ["Auto", "false"], ["Fast", "false"]]);
+    // Skip: every answered conversation in the box goes at once.
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "q", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "agent", text: "an answer", ts: new Date().toISOString() });
+    await tick(10);
+    expect(p.root.querySelector(".oo-dialogue-canvas")).not.toBeNull();
+    btn("ot-skip").click(); await tick(10);
+    expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
+    // Fast: the answer plays and closes by itself, no click.
+    [...p.root.querySelectorAll(".ot-play .ot-read")][2].click(); await settle(2);
+    expect(localStorage.getItem("agend_org_office_talk_read")).toBe("fast");
+    emit("message", { instance: "atlas", role: "user", sender: "Alex", text: "q2", ts: new Date().toISOString() });
+    emit("message", { instance: "atlas", role: "agent", text: "ok", ts: new Date().toISOString() });
+    await tick(6);
+    expect(p.root.querySelector(".oo-dialogue-canvas")).not.toBeNull();
+    for (let i = 0; i < 40 && p.root.querySelector(".oo-dialogue-canvas"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));
+    expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
+  });
   it("the store keeps the whole line and holds an answer until it is clicked away", () => {
     const d = D.createDialogue();
     d.heard("atlas", { name: "A" }, "x".repeat(500), 0);
@@ -303,8 +344,8 @@ describe("talking on the page", () => {
     expect(p.root.querySelector(".oo-dialogue-canvas")).toBeNull();
     expect(p.root.querySelector(".ot-bar")).not.toBeNull();
     emit("message", { boot: "b", id: nextId++, instance: "atlas", role: "agent", text: "On my way to the docs", ts: new Date().toISOString() });
-    await tick(20);
-    const drawn = (p.root.querySelector(".oo-canvas")._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
-    expect(drawn).toEqual(expect.arrayContaining(["On my way to the docs"]));
+    const drawn = () => (p.root.querySelector(".oo-canvas")._ctx?.calls ?? []).filter(([k]: any) => k === "fillText").map(([, a]: any) => String(a[0]));
+    for (let i = 0; i < 40 && !drawn().includes("On my way to the docs"); i++) await new Promise((r) => setTimeout(r, 50)).then(() => tick(2));   // typed out
+    expect(drawn()).toEqual(expect.arrayContaining(["On my way to the docs", "▼"]));
   });
 });

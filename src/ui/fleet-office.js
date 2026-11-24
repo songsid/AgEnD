@@ -803,8 +803,14 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
   const bl = sk.pack && sk.pack.dialogBox ? sk.pack.dialogBox.bubble : null;
   const im = bl && bl.frame && typeof sk.picture === "function" ? sk.picture(bl.frame, () => {}) : null;
   for (const { sp, said } of replies) {
-    const box = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null);
-    if (bubbleHits) bubbleHits.push({ name: sp.look.name, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
+    // Typed out from its page's start, at the reading mode's pace; ▼ once whole; Auto / Fast: it goes on by itself.
+    const cps = rp.pace(rp.read).cps, n = ms > 0 ? Math.floor(((tSaid - (said.pageAt ?? said.at)) * cps) / 1000) : Infinity;
+    const box = rp.draw(ctx, sp.x, sp.y, sp.look.label || sp.look.name, said.text, ms > 0 ? tSaid - said.at : 0, rp.style(bl, env), im ? { im, slice: bl.slice || 6, k: sk.pack.scale || 2 } : null,
+      { page: said.page, n });
+    said.pages = box.pages;
+    if (n >= box.len && !said.whole) { said.whole = true; said.wholeAt = tSaid; }
+    if (said.whole && tSaid - said.wholeAt >= rp.pace(rp.read, box.len).wait) rp.chat.advance(sp.look.name);
+    if (bubbleHits) bubbleHits.push({ name: sp.look.name, reply: true, box: { x: ox + box.x * a, y: oy + box.y * a, w: box.w * a, h: box.h * a } });
   } };
   if (defer) defer.push(say); else say();
   return replies.length > 0 || walking || up.length > 0 || p.flights.size() > 0 || post.some((it) => it.t > 0) || rising.length > 0 || !!reacting || (!!p.snacks && p.snacks.active(t0)) || !!(p.snackDrop && p.snackDrop.current) || !!(p.hold && p.hold.held());
@@ -973,6 +979,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   // to whom; `chat` the conversations every way shows.
   const [talkMode, setTalkMode] = useState(() => store.talkMode());
   const [talkTo, setTalkTo] = useState(null);
+  const [readMode, setReadMode] = useState(() => (chatUi ? chatUi.readModeOf(store.talkRead()) : "click"));
   const chat = useMemo(() => (chatUi ? chatUi.createTalk() : null), [chatUi]);
   const replyRef = useRef(null);
   const dlg = useMemo(createDialogue, []);
@@ -985,6 +992,13 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   };
   const dialogueCanvasRef = useRef(null);
   const [dlgHot, setDlgHot] = useState(false);
+  /** The box as last drawn (`b`, dlgShown's): its page whole while it types, else the next page, else (a reply) it goes. */
+  const stepDialogue = (b) => {
+    const c = b.conv;
+    if (!b.whole) c.pageAt = -1e15;
+    else if (!b.last) { c.page = (c.page || 0) + 1; c.pageAt = now(); c.wholeAt = null; }
+    else if (b.answered) dlg.drop(c.instance);
+  };
   const dlgRef = useRef(null), dlgShown = useRef(null), dlgLines = useRef(new Map()), talkSeen = useRef(new Set());
   const [nightNow, setNightNow] = useState(() => isNight());
   useEffect(() => { if (!nightOn) return undefined; setNightNow(isNight()); const h = setInterval(() => setNightNow(isNight()), NIGHT.TICK); return () => clearInterval(h); }, [nightOn]);
@@ -1853,18 +1867,26 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     if (vn) lines = lines.slice(page * per, page * per + per);
     // It stays (no fade) until clicked away; each page types out from when it was turned to (pageAt: -∞ once clicked whole).
     const stg = vn ? { ...stage, alpha: 1, done: false, typedAt: front.pageAt ?? stage.typedAt } : stage;
-    const typedN = still ? Infinity : Math.floor(((t - stg.typedAt) * DLG.CPS) / 1000);
-    const whole = typedN >= lines.reduce((a, l) => a + [...l].length, 0);
+    const pageChars = lines.reduce((a, l) => a + [...l].length, 0);
+    const pace = vn ? chatUi.readPace(d.read, pageChars) : { cps: DLG.CPS, wait: Infinity };
+    const typedN = still ? Infinity : Math.floor(((t - stg.typedAt) * pace.cps) / 1000);
+    const whole = typedN >= pageChars;
+    if (vn && whole && front.wholeAt == null) front.wholeAt = t;
+    // Auto / Fast: a typed page goes on by itself after its wait (a reply's last page: closed); the loop keeps running.
+    const goesOn = vn && pace.wait < Infinity && (answered || !last);
     const L = fitBox(L0, lines.length, !!status);
     dlgShown.current = { L, stage: stg, key: who.key, name: front.instance, conv: front, whole, last, answered };
+    const goNow = goesOn && whole && t - front.wholeAt >= pace.wait;
     const frameSrc = pack && pack.dialogBox && pack.dialogBox.frame, frameIm = frameSrc ? pic(frameSrc) : null;
-    return drawBox(ctx, {
+    const drew = drawBox(ctx, {
       // A short landscape dock keeps the name and words; decorative faces need headroom above the box.
-      L, stage: stg, cue: vn && (answered || !last), left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
+      L, stage: stg, cps: pace.cps, cue: vn && (answered || !last), left: dh >= 144 ? personFace() : null, right: dh < 144 || stage.phase === "heard" ? null : agentFace(),
       name: answered ? agentName : front.person ? front.person.name || to("dlgSomeone") : to("dlgSomeone"),
       lines, status: status ? `${agentName} · ${status}` : null, more,
       colours: boxColours(pack && pack.dialogBox, s.env.pal), frame: frameIm ? { im: frameIm, slice: pack.dialogBox.slice || 8, k: pack.scale || 2 } : null,
     }, t, { ...s.env, still });
+    if (goNow) stepDialogue(dlgShown.current);
+    return drew || goesOn;
   }
   // A newly mounted dock must paint even when reduced motion leaves the map loop asleep.
   useLayoutEffect(() => {
@@ -1930,14 +1952,14 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       area: zones ? areaName(d.area) : roomOf(L, d), skin, look: looks.get(d.key) }));
   // #2861: who the dialogue box may speak for — everyone drawn here (All offices: the first tile they are in), with what
   // draws them; null while it is off (draw() then draws nothing of it).
-  replyRef.current = tmode === "bubble" ? { chat, draw: chatUi.drawReply, style: chatUi.replyStyle } : null;
+  replyRef.current = tmode === "bubble" ? { chat, draw: chatUi.drawReply, style: chatUi.replyStyle, pace: chatUi.readPace, read: readMode } : null;
   const talkWho = talkTo ? people.find((d) => d.node && d.node.name === talkTo) || null : null;
   const talkLabel = talkWho ? nodeText(talkWho.node).primary : talkTo;
   const sidePanel = tmode === "panel" && !!talkTo;
   // The dialogue box is the talk only as itself (or beside the pop-up): never under the side panel or the head bubble.
   const dockShown = dialogueOn && dlgVisible && (tmode === "window" || tmode === "box");
   dlgRef.current = dialogueOn ? {
-    vn: tmode === "box",
+    vn: tmode === "box", read: readMode,
     who: new Map(people.filter((d) => d.node && d.node.name).reverse().map((d) => [d.node.name, { key: d.key, node: d.node, look: d.look, skin: d.skin || skin }])),
     acts: actsHere, share: talk !== undefined,
   } : null;
@@ -2122,14 +2144,15 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
    * else (the reply's last page) closes it — the next conversation, or none. The line under the box talks to them.
    */
   const advanceDialogue = () => {
-    const b = dlgShown.current, c = b && b.conv;
-    if (!c) return;
+    const b = dlgShown.current;
+    if (!b || !b.conv) return;
     if (talkTo !== b.name) setTalkTo(b.name);
-    if (!b.whole) c.pageAt = -1e15;
-    else if (!b.last) { c.page = (c.page || 0) + 1; c.pageAt = now(); }
-    else if (b.answered) dlg.drop(c.instance);
+    stepDialogue(b);
     dlgWake();
   };
+  /** Skip (the reading controls): every reply in the box, or over the heads, goes now. */
+  const skipTalk = () => { if (tmode === "box") dlg.skip(); else if (chat) chat.skipAll(); dlgWake(); };
+  const pickRead = (v) => { store.saveTalkRead(v); setReadMode(v); dlgWake(); };
   const onMove = (e) => {
     if (e.pointerType === "touch" || g.busy() || snackDrag || snackDropRef.current) return;
     const onDlg = !!dlgAt(e) || !!bubbleAtEvent(e);
@@ -2271,6 +2294,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const onClick = (e) => {
     const box = dlgAt(e);
     const bubble = bubbleAtEvent(e);
+    if (bubble && bubble.reply && chat) { if (talkTo !== bubble.name) setTalkTo(bubble.name); chat.advance(bubble.name); return; }
     if ((box || bubble) && !shared && onOpen) {
       if (!(e.detail > 1)) { setCard(null); open((box || bubble).name); }
       return;
@@ -2675,7 +2699,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
       role=${onOpen && !shared ? "button" : "img"} tabindex=${onOpen && !shared ? "0" : null}
       aria-label=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : dlgSay} title=${onOpen && !shared ? (tmode === "box" ? chatUi.talkWord("next") : to("dlgOpenChat")) : null}
       onClick=${openDialogue} onKeyDown=${openDialogue}></canvas>` : null}
-    ${tmode === "box" || tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull} />` : null}
+    ${tmode === "box" || tmode === "bubble" ? html`<${chatUi.TalkBar} talk=${chat} name=${talkTo} label=${talkLabel} onFull=${openFull}
+      read=${readMode} onRead=${pickRead} onSkip=${skipTalk} />` : null}
     ${sidePanel ? html`<${chatUi.TalkPanel} talk=${chat} name=${talkTo} label=${talkLabel} state=${talkWho ? talkWho.node.state : null} sheet=${phone}
       onClose=${() => setTalkTo(null)} onFull=${openFull} top=${stageRef.current ? stageRef.current.offsetTop : null} />` : null}
   </div>`;

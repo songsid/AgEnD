@@ -73,7 +73,7 @@ export function createDialogue() {
       c.reply = text == null ? null : clip(text);
       c.replyFull = text == null ? null : clip(text, DLG.FULL_MAX);
       c.answeredAt = t;
-      c.page = 0; c.pageAt = null;                       // the reply reads from its first page
+      c.page = 0; c.pageAt = null; c.wholeAt = null;     // the reply reads from its first page
       rev++;
       return c;
     },
@@ -100,6 +100,8 @@ export function createDialogue() {
     clear() { if (convs.size) { convs.clear(); rev++; } },
     /** One conversation clicked away (the click-through box's last page). */
     drop(instance) { if (convs.delete(instance)) rev++; },
+    /** Skip: every answered conversation goes now (those still waiting for a reply stay). */
+    skip() { let gone = false; for (const [k, c] of convs) if (c.answeredAt !== null) { convs.delete(k); gone = true; } if (gone) rev++; return gone; },
   };
 }
 
@@ -335,7 +337,7 @@ export function drawBox(ctx, v, t, env) {
   ctx.fillStyle = c.name; ctx.textAlign = "left"; ctx.textBaseline = "middle";
   ctx.fillText(fit(ctx, v.name, nw - 16), nx + 10, ny + L.nameH / 2 + 1);
   // The words, typed out.
-  const n = env.still ? Infinity : Math.floor(((t - stage.typedAt) * DLG.CPS) / 1000);
+  const n = env.still ? Infinity : Math.floor(((t - stage.typedAt) * (v.cps || DLG.CPS)) / 1000);
   ctx.font = `400 ${L.font}px system-ui, sans-serif`; ctx.fillStyle = c.text; ctx.textBaseline = "top";
   const shown = typed(v.lines, n);
   shown.forEach((l, i) => ctx.fillText(l, L.text.x, L.text.y + 6 + i * L.lineH));

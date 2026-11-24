@@ -6,7 +6,7 @@
 import { html, useEffect, useLayoutEffect, useRef, useState } from "/assets/app-html.js";
 import { register, t } from "/assets/app-i18n.js";
 import "/assets/chat-render.js";
-import { nineSlice, wrap } from "./fleet-office-dialogue.js";
+import { nineSlice, typed, wrap } from "./fleet-office-dialogue.js";
 
 register("otalk", {
   en: {
@@ -16,6 +16,8 @@ register("otalk", {
     full: "Open full chat", reply: "Full reply", close: "Close", loading: "Loading…", failed: "Not sent — try again",
     empty: "No messages yet. Say hello.", sending: "Sending…", talkTo: "Talking to {0}", file: "[a file]",
     next: "Click: the rest, the next page, or close",
+    play: "Reading", read_click: "Click", read_auto: "Auto", read_fast: "Fast", skip: "Skip",
+    readTitle: "Click: each line waits for a click. Auto: it goes on by itself. Fast: quickly. Skip: close every reply now.",
   },
   "zh-TW": {
     mode: "對話方式", modeTitle: "在這裡跟成員對話的方式（只限這個瀏覽器）",
@@ -24,6 +26,8 @@ register("otalk", {
     full: "開啟完整聊天", reply: "完整回覆", close: "關閉", loading: "載入中…", failed: "沒送出去，請再試一次",
     empty: "還沒有訊息，打個招呼吧。", sending: "傳送中…", talkTo: "正在和 {0} 對話", file: "［檔案］",
     next: "點一下：顯示全部、下一頁或關閉",
+    play: "播放", read_click: "點擊", read_auto: "自動", read_fast: "快速", skip: "跳過",
+    readTitle: "點擊：每句等你點一下。自動：自己往下播。快速：很快地往下播。跳過：現在就關掉所有回覆。",
   },
 });
 const tt = (k, ...v) => t(`otalk.${k}`, ...v);
@@ -31,6 +35,14 @@ const tt = (k, ...v) => t(`otalk.${k}`, ...v);
 export const talkWord = tt;
 
 export const TALK_MODES = ["window", "panel", "box", "bubble"];
+/** How a reply plays in the box and the bubble, as in a visual novel (per browser): wait for a click, go on, go fast. */
+export const READ_MODES = ["click", "auto", "fast"];
+export const readModeOf = (v) => (READ_MODES.includes(v) ? v : "click");
+/** Typing speed (characters a second) and how long a typed page stays before it goes on by itself (ms; ∞: a click). */
+export function readPace(mode, chars = 0) {
+  if (mode === "fast") return { cps: 200, wait: 450 };
+  return { cps: 40, wait: mode === "auto" ? Math.min(5000, 1400 + 35 * chars) : Infinity };
+}
 /** A stored mode, or the default (the pop-up window: the Office as it was). */
 export const talkModeOf = (v) => (TALK_MODES.includes(v) ? v : "window");
 const HISTORY = 50, KEEP = 200;
@@ -49,7 +61,9 @@ export function talkTextOf(m) {
  * `thread(name)` { msgs, loaded, error }; `lastReply(name)`; `subscribe(fn)`. `fetch` and `rid` are the page's.
  */
 export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}` } = {}) {
-  const threads = new Map(), subs = new Set(), said = new Map();   // said: name → { text, at } (its last live reply)
+  // said: name → its last live reply over the head, { text, at, page, pageAt, pages, whole, wholeAt } (the drawing
+  // fills pages / whole / wholeAt; advance() turns the page or lets it go).
+  const threads = new Map(), subs = new Set(), said = new Map();
   const changed = (name) => { for (const fn of [...subs]) fn(name); };
   const thread = (name) => { if (!threads.has(name)) threads.set(name, { msgs: [], loaded: false, loading: false, error: false }); return threads.get(name); };
   const row = (m) => {
@@ -59,8 +73,19 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
   const keep = (th) => { if (th.msgs.length > KEEP) th.msgs.splice(0, th.msgs.length - KEEP); };
   return {
     thread: (name) => thread(name),
-    /** The live reply still over `name`'s head at `t` ({ text, at }), else null (replyHoldMs). */
-    recent(name, t) { const r = said.get(name); return r && t - r.at < replyHoldMs(r.text) ? r : null; },
+    /** The live reply over `name`'s head, until it is read (advance) or skipped; else null. */
+    recent(name) { return said.get(name) || null; },
+    /** A click on it (or its turn to go on): the page whole while it types, else the next page, else it goes. */
+    advance(name) {
+      const r = said.get(name);
+      if (!r) return;
+      if (!r.whole) r.pageAt = -1e15;
+      else if (r.page < r.pages - 1) { r.page++; r.pageAt = Date.now(); r.whole = false; r.wholeAt = null; }
+      else said.delete(name);
+      changed(name);
+    },
+    /** Skip: every reply over a head goes now. */
+    skipAll() { const names = [...said.keys()]; said.clear(); for (const n of names) changed(n); },
     lastReply(name) { const m = [...thread(name).msgs].reverse().find((x) => x.role === "agent"); return m ? m.text : null; },
     subscribe(fn) { subs.add(fn); return () => subs.delete(fn); },
     async open(name) {
@@ -99,7 +124,7 @@ export function createTalk({ fetch: f = (...a) => fetch(...a), rid = () => `ot${
       if (th.msgs.some((x) => x.key === r.key)) return;
       const i = m.role === "user" && m.clientId ? th.msgs.findIndex((x) => x.clientId === m.clientId) : -1;
       if (i >= 0) th.msgs[i] = r; else th.msgs.push(r);
-      if (r.role === "agent") said.set(m.instance, { text: r.text, at: Date.now() });
+      if (r.role === "agent") said.set(m.instance, { text: r.text, at: Date.now(), page: 0, pageAt: null, pages: 1, whole: false, wholeAt: null });
       keep(th); changed(m.instance);
     },
   };
@@ -161,7 +186,7 @@ export function TalkPanel({ talk, name, label, state, sheet, onClose, onFull, to
 }
 
 /** Variants B and C: a line to type in under the dialogue box, and the last reply in full on demand. */
-export function TalkBar({ talk, name, label, onFull }) {
+export function TalkBar({ talk, name, label, onFull, read = null, onRead = null, onSkip = null }) {
   const th = useThread(talk, name), [open, setOpen] = useState(false);
   const reply = th ? talk.lastReply(name) : null;
   useEffect(() => { setOpen(false); }, [name]);
@@ -175,13 +200,16 @@ export function TalkBar({ talk, name, label, onFull }) {
       <${Composer} talk=${talk} name=${name} label=${label} autoFocus=${false} />
       ${reply ? html`<button type="button" class="btn btn-sm btn-ghost ot-more" aria-expanded=${open ? "true" : "false"} onClick=${() => setOpen(!open)}>${tt("reply")}</button>` : null}
       ${name && onFull ? html`<button type="button" class="btn btn-sm btn-ghost ot-full" onClick=${onFull}>${tt("full")}</button>` : null}
+      ${onRead ? html`<div class="ot-play" role="group" aria-label=${tt("play")} title=${tt("readTitle")}>
+        ${READ_MODES.map((m) => html`<button key=${m} type="button" class=${`btn btn-sm ot-read${read === m ? " on" : ""}`} aria-pressed=${read === m ? "true" : "false"}
+          onClick=${() => onRead(m)}>${tt(`read_${m}`)}</button>`)}
+        <button type="button" class="btn btn-sm ot-skip" onClick=${onSkip}>${tt("skip")}</button>
+      </div>` : null}
     </div>
   </div>`;
 }
 
 // ── Variant C: the reply over the agent's head ──
-/** How long a reply stays over a head (ms): longer for more words. */
-export const replyHoldMs = (text) => Math.min(20000, 6000 + 60 * [...String(text || "")].length);
 const REPLY = { w: 190, lines: 6, font: 11, line: 15, pad: 8, enterMs: 240 };
 /** The bubble's look: the pack's `dialogBox.bubble`, else light paper (as the state bubbles). */
 export function replyStyle(b, env) {
@@ -192,15 +220,19 @@ export function replyStyle(b, env) {
   };
 }
 /**
- * A reply in a bubble over a head, its tail at (x, y) (logical units: the map's transform): the name, then at most
- * REPLY.lines wrapped lines (the last cut with …). `age`: ms since it arrived, for its entrance (pop / fade / none; 0:
- * whole at once); `frame` { im, slice, k }: a 9-slice picture instead of the drawn box. Returns the box.
+ * A reply in a bubble over a head, its tail at (x, y) (logical units: the map's transform): the name, then a page of
+ * REPLY.lines wrapped lines. `age`: ms since it arrived, for its entrance (pop / fade / none; 0: whole at once);
+ * `frame` { im, slice, k }: a 9-slice picture instead of the drawn box; `read` { page, n }: that page, its first `n`
+ * characters typed, and ▼ once it is whole (none: page 0, whole, no ▼). Returns the box, the pages and the page's length.
  */
-export function drawReply(ctx, x, y, name, text, age, style, frame) {
+export function drawReply(ctx, x, y, name, text, age, style, frame, read = null) {
   ctx.save();
   const font = (wt) => `${wt} ${REPLY.font}px system-ui, sans-serif`;
   ctx.font = font(400);
-  const lines = wrap((s) => ctx.measureText(s).width, text, REPLY.w, REPLY.lines);
+  const all = wrap((s) => ctx.measureText(s).width, text, REPLY.w, 400);
+  const pages = Math.max(1, Math.ceil(all.length / REPLY.lines)), page = Math.min(read ? read.page || 0 : 0, pages - 1);
+  const lines = all.slice(page * REPLY.lines, page * REPLY.lines + REPLY.lines);
+  const len = lines.reduce((a, l) => a + [...l].length, 0), n = read && Number.isFinite(read.n) ? read.n : Infinity;
   const textW = Math.max(0, ...lines.map((l) => ctx.measureText(l).width));
   ctx.font = font(700);
   const nameW = name ? ctx.measureText(name).width : 0;
@@ -224,7 +256,8 @@ export function drawReply(ctx, x, y, name, text, age, style, frame) {
   let ty = by + REPLY.pad - 1;
   if (name) { ctx.font = font(700); ctx.fillStyle = style.name; ctx.fillText(name, bx + REPLY.pad, ty); ty += REPLY.line; }
   ctx.font = font(400); ctx.fillStyle = style.text;
-  for (const l of lines) { ctx.fillText(l, bx + REPLY.pad, ty); ty += REPLY.line; }
+  for (const l of typed(lines, n)) { ctx.fillText(l, bx + REPLY.pad, ty); ty += REPLY.line; }
+  if (read && n >= len) { ctx.font = font(700); ctx.fillStyle = style.name; ctx.textAlign = "right"; ctx.fillText("▼", bx + w - 4, by + h - REPLY.line + 1); }
   ctx.restore();
-  return { x: bx, y: by, w, h };
+  return { x: bx, y: by, w, h, pages, len };
 }
