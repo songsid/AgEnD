@@ -15,7 +15,7 @@ import { personKeyString } from "../src/hub/identity.js";
 import type { HubExposure } from "../src/hub/types.js";
 import { LEASE_MS } from "../src/hub/policy.js";
 import { setLang } from "/assets/app-i18n.js";
-import { directStatus } from "/ui/js/hub-room-working.js";
+import { directStatus, HANDOFF_GRACE_MS } from "/ui/js/hub-room-working.js";
 
 let r: Awaited<ReturnType<typeof s3bRig>> | undefined;
 afterEach(async () => { await r?.close(); r = undefined; setLang("en", { store: false }); });
@@ -116,6 +116,29 @@ describe("the 1:1 projection", () => {
   });
 });
 
+describe("a hand-off that never reached the agent (Prism #4400 P2)", () => {
+  it("a begin lease then a hold before input: the agent reports idle, the room says so (reported), and the line reads not started after the grace; a later attempt restarts it", async () => {
+    const w = await world();
+    const q1 = await ask(w.a, w.ra, "Held after the lease");
+    const roomOf = async () => (await r!.call(w.a, "GET", `/hub/v1/rooms/${w.ra}`)).json.room;
+    expect((await roomOf()).agent.reported).toBeUndefined();               // nothing reported yet (an older member never does)
+    const first = w.now(); expect((await begin(w.link, q1)).payload.ok).toBe(true);
+    // The member held it before input (stale): no receipt reaches the Hub; its agent reports idle.
+    await r!.http.receive(r!.frame("agent.state", { exposureId: w.e.id, state: "idle" }, w.link) as never, w.link);
+    const room = await roomOf(), row = pending(await page(w.a, w.ra), q1);
+    expect([room.agent.presence, room.agent.reported, row.stage, row.startedAt]).toEqual(["idle", true, "working", first]);
+    const agent = { name: "Notes", presence: room.agent.presence, reported: room.agent.reported };
+    expect(directStatus([row], agent, first + 5_000)!.kind).toBe("working");                     // within the grace: still its turn
+    expect(directStatus([row], agent, first + HANDOFF_GRACE_MS + 1)).toEqual({ kind: "awaiting", text: "Sent to Notes; waiting for it to start" });
+    // A later attempt (after the hold): its own lease restarts "working" from then.
+    w.advance(120_000); const second = w.now(); expect((await begin(w.link, q1)).payload.ok).toBe(true);
+    expect(pending(await page(w.a, w.ra), q1).startedAt).toBe(second);
+    await r!.http.receive(r!.frame("agent.state", { exposureId: w.e.id, state: "working" }, w.link) as never, w.link);
+    const busy = (await roomOf()).agent;
+    expect(directStatus([pending(await page(w.a, w.ra), q1)], { name: "Notes", presence: busy.presence, reported: busy.reported }, second + 10 * HANDOFF_GRACE_MS)!.kind).toBe("working");
+  });
+});
+
 describe("directStatus: the 1:1 status line's words", () => {
   const row = (over: object = {}) => ({ id: "q:answer", answerTo: "q", text: "", author: { kind: "agent", name: "Notes" }, at: 1000, ...over });
   it("working (with when it started), or waiting and why; nothing open: none", () => {
@@ -130,10 +153,20 @@ describe("directStatus: the 1:1 status line's words", () => {
     expect(directStatus([], { name: "Notes", presence: "working" })).toBeNull();
     expect(directStatus([row({ stage: "working", text: "an answer" })], { name: "Notes" })).toBeNull();   // answered: not open
   });
+  it("working, then the agent pauses or goes offline: that wins over the timer; resumed, working again (Prism #4400 P2)", () => {
+    const w = row({ stage: "working", startedAt: 1000 });
+    expect(directStatus([w], { name: "Notes", presence: "paused", reported: true }, 2000)).toEqual({ kind: "awaiting", text: "Paused: Notes continues with your question when it resumes" });
+    expect(directStatus([w], { name: "Notes", presence: "offline" }, 2000)).toEqual({ kind: "awaiting", text: "Offline: Notes continues with your question when it's back" });
+    expect(directStatus([w], { name: "Notes", presence: "working", reported: true }, 2000)).toEqual({ kind: "working", text: "Notes is working on it", since: 1000 });
+    // Idle long after the hand-off: only when the state was reported (an older member's agent always reads idle).
+    expect(directStatus([w], { name: "Notes", presence: "idle", reported: true }, 1000 + HANDOFF_GRACE_MS + 1)!.kind).toBe("awaiting");
+    expect(directStatus([w], { name: "Notes", presence: "idle" }, 1000 + HANDOFF_GRACE_MS * 5)!.kind).toBe("working");
+  });
   it("zh-TW", () => {
     setLang("zh-TW", { store: false });
     expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes" })!.text).toBe("Notes 正在處理");
     expect(directStatus([row({ stage: "queued", ahead: 1 })], { name: "Notes", presence: "working" })!.text).toBe("等待中：Notes 正在先回答另一個問題");
     expect(directStatus([row({ stage: "queued", ahead: 0 })], { name: "Notes", presence: "idle" })!.text).toBe("已送給 Notes，等它開始處理");
+    expect(directStatus([row({ stage: "working", startedAt: 1 })], { name: "Notes", presence: "paused" })!.text).toBe("已暫停：Notes 恢復後會繼續處理你的問題");
   });
 });

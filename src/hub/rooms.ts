@@ -415,12 +415,13 @@ export class HubRoomsService {
     const appOrigins=this.appOrigins&&rows.length?this.core.atomic(db=>new Map((db.prepare(`SELECT message_id,app_id,app_name FROM hub_mcp_direct_questions
       WHERE message_id IN (${rows.map(()=>"?").join(",")})`).all(...rows.map(m=>m.id)) as {message_id:string;app_id:string;app_name:string}[])
       .map(a=>[a.message_id,{id:a.app_id,name:a.app_name}]))):new Map<string,{id:string;name:string}>();
-    // M-3596: an open question's progress, for its asker's status line: when it was handed to the agent (the Hub's own begin
-    // lease, issued right before the hand-off; never a member's say-so), else how many open questions to the same agent
+    // M-3596: an open question's progress, for its asker's status line: when it was last handed to the agent (the Hub's own
+    // begin lease, issued right before the hand-off; never a member's say-so; a later attempt after a hold restarts it — the
+    // thread also reads the agent's reported state, so a hand-off that never reached it does not read "working"), else how many open questions to the same agent
     // came first — a count only, never whose or what.
     const open = rows.filter(m => !m.answer_id && (m.stage === "queued" || m.stage === "delivered" || m.stage === "consumed"));
     const progress = open.length ? this.core.atomic(db => {
-      const begun = new Map((db.prepare(`SELECT message_id, MIN(expires_at) AS at FROM hub_leases WHERE phase='begin' AND message_id IN (${open.map(() => "?").join(",")})
+      const begun = new Map((db.prepare(`SELECT message_id, MAX(expires_at) AS at FROM hub_leases WHERE phase='begin' AND message_id IN (${open.map(() => "?").join(",")})
         GROUP BY message_id`).all(...open.map(m => m.id)) as { message_id: string; at: number }[]).map(r => [r.message_id, r.at - LEASE_MS]));
       const ahead = db.prepare(`SELECT COUNT(*) AS n FROM hub_messages WHERE exposure_id=? AND id<>? AND created_at<? AND answer_id IS NULL
         AND stage IN ('queued','delivered','consumed')`);

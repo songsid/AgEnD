@@ -45,6 +45,7 @@ register("hubRoom", {
     waitBehindOne: "Waiting: {0} is answering another question first", waitBehindMany: "Waiting: {0} has {1} questions to answer first",
     waitBusy: "Waiting: {0} is busy with other work", waitPaused: "Waiting: {0} is paused; it gets your question when it resumes",
     waitOffline: "Waiting: {0} is offline; it gets your question when it's back", waitStart: "Sent to {0}; waiting for it to start", elapsedTitle: "Time since it started",
+    workPaused: "Paused: {0} continues with your question when it resumes", workOffline: "Offline: {0} continues with your question when it's back",
     // §4 composer
     composer: "Speak in “{0}”; @ an agent to have it answer",
     composerShort: "Message, or @ an agent to ask",   // Lumen (spec §4): a phone's width
@@ -197,6 +198,7 @@ register("hubRoom", {
     waitBehindOne: "等待中：{0} 正在先回答另一個問題", waitBehindMany: "等待中：{0} 前面還有 {1} 個問題",
     waitBusy: "等待中：{0} 正在處理其他工作", waitPaused: "等待中：{0} 已暫停，恢復後會收到你的問題",
     waitOffline: "等待中：{0} 離線中，上線後會收到你的問題", waitStart: "已送給 {0}，等它開始處理", elapsedTitle: "開始處理後經過的時間",
+    workPaused: "已暫停：{0} 恢復後會繼續處理你的問題", workOffline: "離線：{0} 上線後會繼續處理你的問題",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",
     composerShort: "說話，或 @ Agent 請它回答",
     mentionAllHint: "{0} 個都會回答", mentionAssistant: "@房間助理",

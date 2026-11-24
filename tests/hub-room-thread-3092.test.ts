@@ -322,6 +322,11 @@ describe("a room's committed order (Ridge's `sequence`)", () => {
       // The fixture's agent is offline: that is the reason given (it outranks a question ahead).
       expect(bar().querySelector(".lbl").textContent).toBe(`Waiting: ${name} is offline; it gets your question when it's back`);
       fx.emit("message.updated", { roomId: "room-report", message: { ...row, stage: "working", startedAt: Date.now() - 65_000 } });
+      // Handed, but the agent is offline: that wins over the timer (Prism #4400 P2).
+      await until(() => bar()?.querySelector(".lbl")?.textContent?.startsWith("Offline:"));
+      expect(bar().querySelector(".lbl").textContent).toBe(`Offline: ${name} continues with your question when it's back`);
+      // Back and at it (the room's own update): working, its time since the hand-off.
+      fx.emit("room.changed", { roomId: "room-report", room: { agent: { exposureId: "exp-x", owner: { name: "" }, presence: "working", reported: true } } });
       await until(() => bar()?.classList.contains("working"));
       expect(bar().querySelector(".lbl").textContent).toBe(`${name} is working on it`);
       expect(bar().querySelector(".elapsed").textContent).not.toBe("");

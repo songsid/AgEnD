@@ -599,7 +599,9 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
   const working = workingLine({ members: store.workers().map((w) => ({ ...w, presence: "working" })) });
   // M-3596: a 1:1 room says what its own question is doing — the Fleet chat's bar: working (with the time since the agent got
   // it), or waiting and why (behind another question, busy, paused, offline, or just sent). The asker's own questions only.
-  const status = room.kind === "direct" && typeof store.pendingAnswers === "function" ? directStatus(store.pendingAnswers(), { name: room.agent?.name || room.name, presence: room.agent?.presence }) : null;
+  const statusOf = (now) => room.kind === "direct" && typeof store.pendingAnswers === "function"
+    ? directStatus(store.pendingAnswers(), { name: room.agent?.name || room.name, presence: room.agent?.presence, reported: room.agent?.reported === true }, now) : null;
+  const status = statusOf(Date.now());
   // M-3565: a message's agent name → its card in the members panel: the panel opened (a phone's sheet), the card open.
   const [focus, setFocus] = useState(null), wideNow = useRef(wide);
   wideNow.current = wide;   // read when pressed: the thread keeps the sender hook from its first render
@@ -656,7 +658,7 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
          M-3533 R1: the office shows none (design §2.1: no message box under it; to ask, back to Chat). It stays mounted, hidden,
          so a draft and the mentions picked into it are still there when Chat comes back. */ ""}
       ${html`<div class="dock hub-dock" data-trust="composer" hidden=${inOffice}><div class="dock-col">
-        ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} status=${status} />` : null)
+        ${room.kind === "direct" ? (status ? html`<${DirectStatusBar} statusOf=${statusOf} />` : null)
           : working ? html`<${WorkBarView} kind="working" label=${working.text} elapsed="" elapsedTitle="" />` : null}
         <${RoomComposer} store=${sendStore} detail=${detail} reply=${reply} onReply=${setReply} closed=${store.closed()} inputRef=${input} insertRef=${insert}
           attach=${attach} pending=${pending} canSendEmpty=${files.some((f) => f.state === "ready")} />
@@ -670,13 +672,17 @@ export function HubRoomPage({ roomId, listed = null, Thread, client, meId = "", 
 }
 
 /** M-3596: a 1:1 room's status line — the Fleet chat's work bar (working, its elapsed time ticking; or waiting, and why). */
-function DirectStatusBar({ status }) {
+function DirectStatusBar({ statusOf }) {
+  // Worked out again on every tick (its elapsed time; a hand-off the agent never took turns back to waiting after the grace).
   const [, tick] = useState(0);
+  const status = statusOf(Date.now());
+  const kind = status ? status.kind : null;
   useEffect(() => {
-    if (status.kind !== "working") return undefined;
+    if (kind !== "working") return undefined;
     const h = setInterval(() => tick((n) => n + 1), 1000);
     return () => clearInterval(h);
-  }, [status.kind]);
+  }, [kind]);
+  if (!status) return null;
   if (status.kind !== "working") return html`<${WorkBarView} kind="awaiting" label=${status.text} note="" noteTitle="" />`;
   const R = globalThis.AgendChatRender;
   const elapsed = R && typeof status.since === "number" ? R.formatElapsed(Math.max(0, Date.now() - status.since)) : "";

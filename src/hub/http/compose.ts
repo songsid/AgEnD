@@ -774,7 +774,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
                 } else {
                   const view = await rooms.view(ctx, event.roomId);
                   if (event.type === "unread.changed") data = { roomId: event.roomId, unread: directUnread(core, view) };
-                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, directPresence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId)) };
+                  else if (event.type === "room.changed") data = { roomId: event.roomId, room: directRoomView(view, directPresence(view.exposureId), directUnread(core, view), intros.projection(view.exposureId), groupRooms.agents.reported(view.exposureId)) };
                   else {
                     const page = await rooms.readPage(ctx, event.roomId, 0, streamSession.sessionId, { before: null, limit: 100 });
                     const message = directMessages(page.room, page.entries, streamSession.displayName).find(m => m.id === event.data.messageId);
@@ -819,7 +819,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         const groups = await guard(() => groupRooms.list(ctx));
         const pending = invitations ? await guard(() => invitations.pending(ctx)) : null;
         const ownerRequests = roomAgentRequests && query.get("ownerRequests") === "1" ? await guard(() => roomAgentRequests.pendingCount(ctx)) : 0;
-        return send(res, 200, { ...groups, invitations: (pending?.invitations.length ?? 0) + ownerRequests, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
+        return send(res, 200, { ...groups, invitations: (pending?.invitations.length ?? 0) + ownerRequests, rooms: [...groups.rooms, ...view.rooms.map(room => ({ ...directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId), groupRooms.agents.reported(room.exposureId)), ...quota.roomProjection(room, view.grantProof) }))] }); }
       if (method === "POST") {
         csrf(); const b = await body();
         if (b.exposureId === undefined) return send(res, 200, await guard(() => groupRooms.create(ctx, b)));
@@ -843,7 +843,7 @@ export function createHubHttp(deps: HubHttpDeps, sql: HubTxDatabase): HubHttp {
         if (method === "PATCH") { csrf(); const b = await body(); return send(res, 200, await guard(() => groupRooms.patch(ctx, roomId, b))); }
       } else if (method === "GET") {
         const room = await guard(() => rooms.view(ctx, roomId)); const person = personKeyString(room.asker), name = signedIn().displayName;
-        return send(res, 200, { room: directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId)), me: { id: person, role: "member" },
+        return send(res, 200, { room: directRoomView(room, directPresence(room.exposureId), directUnread(core, room), intros.projection(room.exposureId), groupRooms.agents.reported(room.exposureId)), me: { id: person, role: "member" },
           members: [{ id: person, kind: "person", name, role: "member", presence: "online" }, { id: room.exposureId, kind: "agent", name: room.exposureName,
             ...(room.answerOnly?{answerOnly:true}:{}), owner: { name: room.ownerName }, role: "member", presence: directPresence(room.exposureId), canAsk: room.state === "active" }],
           settings: { allMention: false, historyForNew: "all" }, invited: [] });
