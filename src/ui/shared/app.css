@@ -2826,6 +2826,10 @@ html.oo-immersive .p-fleet > .panel-body { z-index: 50; }
     max-width: calc(100% - 2 * var(--s-2)); overflow-x: auto; padding: var(--s-1); box-sizing: border-box;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-full); box-shadow: var(--shadow-1); }
   .oo-zone-pills .btn { flex: none; min-height: 36px; border-radius: var(--r-full); white-space: nowrap; }
+  /* M-3539: chips that do not fit scroll sideways; the side with more fades out. */
+  .oo-zone-pills[data-more-right] { -webkit-mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, currentColor calc(100% - 32px), transparent); }
+  .oo-zone-pills[data-more-left] { -webkit-mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to left, currentColor calc(100% - 32px), transparent); }
+  .oo-zone-pills[data-more-left][data-more-right] { -webkit-mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); mask-image: linear-gradient(to right, transparent, currentColor 32px, currentColor calc(100% - 32px), transparent); }
   .oo-snacks { left: var(--s-2); bottom: max(var(--s-2), env(safe-area-inset-bottom, 0px)); max-width: calc(100% - 2 * var(--s-2)); }
   .oo-stage:has(.oo-zone-pills) .oo-snacks { bottom: calc(max(var(--s-2), env(safe-area-inset-bottom, 0px)) + 52px); }
 }
