@@ -385,6 +385,14 @@ Settled with the builder during the build; where one differs from the text above
   Fleet with no re-share, and unsharing removes them. No per-agent switch and no change of states in this slice.
   Over the 512 KB cap, drop the character pictures first, then the portrait, never the small avatar.
 
+- **Own characters (R2c).** Only a set the owner gave that agent by name in a pack is sent, never the pack's
+  default character; with several offices, the first in the owner's office order wins. Each pose is cut to its own
+  PNG and only poses a room office shows are sent; a sheet that cannot be cut is not sent. The set is all or
+  nothing: over the cap it is dropped whole and the owner's My agents row says so. A missing pose falls back
+  inside the set. In the room, the set is drawn fitted to the built-in figure's box (48×66), feet on the same
+  line, so everyone in a room has one scale; captures at the pack's own scale crossed room edges and labels. The
+  card shows the portrait, else the set's standing pose, else the figure.
+
 ## Questions for the owner
 
 **Answered by the owner on 2026-11-23: all six as recommended** (「6 題都照建議」, relayed by the leader). The
