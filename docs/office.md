@@ -63,6 +63,7 @@ Now and then a person says a short line for their state in a speech bubble. A bu
 | **Lobby tile** | in All offices, a tile for the instances in no office | per browser, on by default |
 | **Drag and pat** | pick people up and pat or feed them: see [Bedtime, strolls and mail](#bedtime-strolls-and-mail) (zones styles) | per device, on by default |
 | **Dialogue** | the [dialogue box](#the-dialogue-box): what people say to agents here, and the replies | per browser, off by default |
+| **Talk** | what **Chat** does here: the pop-up window, a side panel, the dialogue box or over their head; see [Talk from the Office](#talk-from-the-office) (dashboard only) | per browser, Pop-up window by default |
 | **Key** | what the things carried between desks mean, in a strip above the scene (with **Live** on) | per browser |
 
 **The styles.**
@@ -77,7 +78,7 @@ Studio, Cozy, Guild, School and zones packs are called **zones styles** below. O
 
 **Crowds.** An area with more people than seats packs the rest into a tighter grid, then shows "+N" in its corner. There only calls and work get bubbles (a few at most), and name tags show on hover or focus.
 
-**All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. A tile's label, or a double-click on the tile, opens that office. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
+**All offices** (in the switcher once two or more offices are stored) shows every stored office as a tile, each drawn exactly as its own view and labelled with its name and head count. The **Lobby tile** adds the instances in no office. It's disabled, with a note, when everyone is in an office. It is where the Office opens until you pick something else in the switcher. A tile's label, or a click on the tile (off its people), opens that office for this visit; **← All offices** in the bar goes back. A pick from the switcher is kept per device, as before. Traffic between people in different offices flies straight between their seats. Below 75% zoom a tile's name tags show on hover only. Edit offices and Edit layout wait until a single office is shown.
 
 **Carousel…** (the same switcher, two or more stored offices, on the signed-in dashboard) is signage for a TV: each ticked office fills the screen in turn, at the interval you pick (15 seconds to 10 minutes). **Carousel n/m offices ▾** in the bar opens a scrollable checklist (Select all / Select none; Esc or a click outside closes it), so twenty offices still leave the bar one row; the order is the stored list. **Pause** and **Next** sit in the bar and in fullscreen; Space pauses, ← / → (or N / P, or a remote's play/next/previous) step. The offices and the interval are kept in this browser; playing starts whenever you enter the carousel. Edit offices and Edit layout wait. A share link does not offer it.
 
@@ -209,6 +210,7 @@ A person's line for a state comes from the first of these that has lines for it,
 - A portrait is a file, or expressions by state (`idle`, `working`, `needs`; at least one). A missing state shows `idle`, then any it has. Transparent PNGs up to 1024×1536 px, drawn standing (bottom-anchored) behind the box.
 - `default` is for agents. `byInstance` (up to 500) names instances; `byUser` (up to 200) a person's account as the chat records it, `adapter:id`; `npc` (up to 128) a furniture item the pack defines.
 - `dialogBox.frame` is a 9-slice picture up to 512×512 px with `slice` image px a side (1–128, default 8); the colours are `#rrggbb`, each defaulting to the dashboard's.
+- `dialogBox.bubble` styles the reply drawn over a head when **Talk** is "Over their head" (below): the same keys (`frame` up to 512×512, `slice` default 6, `background`, `border`, `text`, `name`) plus `enter`, how it comes in: `pop` (default), `fade` or `none`. Without it the reply is on light paper, like the state bubbles.
 - They're loaded only the first time the box needs them.
 
 **Custom snacks and eating animations (#4255).** A pack can ship optional snacks and an `eat` pose (`characters.<set>.eat`, any single-sheet, multi-sheet, or frame-list strip):
@@ -332,6 +334,35 @@ What it shows:
 - A screen reader hears each line once (a polite live region).
 
 **Faces.** A pack's `portraits` (below) are used first. Otherwise an agent is drawn as its avatar (its identity-card picture, bot avatar or persona emoji) in a frame, else its initial; a person as their initial. A share link has no avatars: portraits, else initials.
+
+### Talk from the Office
+
+**Talk** in **⚙ Display options** picks what a person's **Chat** (their card, a desk, the dialogue box) does. It's per browser, and only on the dashboard (never a share link or a guest page):
+
+| Talk | What Chat does |
+|---|---|
+| **Pop-up window** (default) | Opens their chat in its own window, as before. |
+| **Side panel** | A panel beside the office: their recent messages, the reply rendered as in the chat, a box to type in. On a phone, a sheet from the bottom. |
+| **Dialogue box** | A visual-novel box laid over the foot of the scene (the Office keeps its size), with their portrait large beside it and a line inside the box to type to them. |
+| **Over their head** | The reply is drawn over their head on the map, a page at a time, with a line under the scene to type to them. |
+
+- **Enter** sends; **Shift+Enter** is a new line (and Enter while typing with an input method never sends).
+- Every way shows the same conversation as the chat: what you send here is in the chat, and their replies arrive live.
+- **Open full chat** opens the chat itself, for files, quotes, reactions and the rest.
+- One talk at a time: with **Side panel** or **Over their head** the [dialogue box](#the-dialogue-box) isn't shown under it, and with **Dialogue box** the talk box takes its place. **Dialogue box** works whether or not **Dialogue** is ticked, and leaves that tick as you set it.
+
+**The Dialogue box way.** The box shows only their side: the whole reply, typed out, two lines a page (three on a phone), with ▼ once a page is whole. A click on the box (or Enter or Space) shows the rest of the page at once, then the next page, and after the last page closes the reply. The words keep clear of the portrait. The pack's `dialogBox` colours are used, else a night blue with gold. **History** opens the conversation's backlog over the box: both sides, the reply rendered as in the chat, and **Open full chat**. **×** closes the box.
+
+**Over their head.** The reply is wrapped into pages over their head, in the pack's `dialogBox.bubble` style (below), else light paper. **Full reply** under the scene shows their last reply whole.
+
+**Reading** (the box's own buttons, and the row under the scene for Over their head; per browser):
+
+| Reading | What it does |
+|---|---|
+| **Click** (default) | Each page waits for a click. |
+| **Auto** | A typed page goes on by itself after a pause that grows with its length (1.4–5 s). |
+| **Fast** | Typed quickly, and goes on after a short pause. |
+| **Skip** | Closes every reply shown now. |
 
 ## Share a view
 
