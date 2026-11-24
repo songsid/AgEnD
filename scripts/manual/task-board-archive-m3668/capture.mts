@@ -1,6 +1,7 @@
 /**
  * M-3668 real-app captures: finished work on the Tasks page — the Done column's newest 20 and "Show 20 more", this week's
- * count, the Archive list, a project tile's archived count, search's and a card's "Archived". The real web app and task
+ * count, the Archive list, a project tile's archived count, search's and a card's "Archived", and (#4428 review) the
+ * Settings control for the archive age and an archived main task's sub task leaving the board with it. The real web app and task
  * board (scripts/manual/smoke-fixture, a scratch scheduler database of made-up cards); no fleet, CLI or account.
  *   REPO=<checkout> PW_DIR=<playwright-core root> OUT=<dir> npx tsx scripts/manual/task-board-archive-m3668/capture.mts
  */
@@ -39,6 +40,13 @@ try {
     const c = board.createCards(person, { cards: [{ title, assignee: names[0], project: project.id }] }).cards[0];
     if (to !== "open") board.moveCard(person, c.code, to, to === "blocked" ? { reason: "Waiting for the design" } : {});
   }
+  // #4428 review: an archived main task's sub task, finished more recently, leaves the board with it.
+  const oldMain = board.archiveList(project.id, 3, { limit: 1 }).cards[0];
+  const lateStep = board.createCards(person, { cards: [{ parent: oldMain.code, title: "A late step · 晚完成的步驟", assignee: names[0] }] }).cards[0];
+  db.prepare("UPDATE tasks SET status = 'done', done_at = ?, updated_at = ? WHERE code = ?").run(new Date(Date.now() - 3_600_000).toISOString(), new Date(Date.now() - 3_600_000).toISOString(), lateStep.code);
+  // A new step reopens its main task: put the main task back as it was (finished, archived), as the review's database had it.
+  db.prepare("UPDATE tasks SET status = ?, done_at = ?, updated_at = ? WHERE code = ?").run(oldMain.status, oldMain.doneAt, oldMain.updatedAt, oldMain.code);
+  if (!board.isArchived(board.getCard(lateStep.code), 3)) throw new Error("fixture: the late step's main task is not archived");
   const stats = board.projectStats(undefined, 3)[String(project.id)];
   receipt.board = { archived: stats.archived, doneWeek: stats.doneWeek, mains: stats.mains };
   check("the board's numbers: archived and this week's are counted", stats.archived >= 10 && stats.doneWeek > 20, stats);
@@ -88,6 +96,20 @@ try {
     await page.goto(fx.base + `/ui/fleet/tasks?card=${archivedOne.code}`); await page.locator(".tp-idrow").waitFor(); await page.waitForTimeout(800);
     check(`${tag}: its page says Archived`, /Archived|已封存/.test(await page.locator(".tp-idrow").innerText()));
     await shot("5-card");
+    // #4428 review: the board read has no sub task of an archived main task.
+    const read = await page.evaluate(async () => (await fetch("/ui/tasks/board", { headers: { "Content-Type": "application/json" } })).json());
+    check(`${tag}: the board read leaves out an archived main task's late sub task`, Array.isArray(read.cards) && !read.cards.some((x: any) => x.id === lateStep.code) && typeof read.epoch === "string", read.epoch);
+    // #4428 review: Settings → Shared agent settings → Advanced: the archive age (3 unless set), and a bad value refused.
+    await page.goto(fx.base + "/settings/agent-defaults"); await page.locator("details.drawer").first().waitFor(); await page.waitForTimeout(1200);
+    await page.locator("details.drawer > summary").first().click(); await page.waitForTimeout(500);
+    const field = page.locator("#g-archive");
+    await field.scrollIntoViewIfNeeded(); await page.evaluate(() => document.querySelector("#g-archive")?.scrollIntoView({ block: "center" })); await page.waitForTimeout(400);
+    const label = await field.locator(".s-lab label").innerText().catch(() => "");
+    check(`${tag}: Settings has the archive age, 3 unless set`, (await page.locator("#g-archive-days").inputValue()) === "3" && /Archive finished cards after|完成的卡片封存於/.test(label), label);
+    await shot("6-settings");
+    await page.locator("#g-archive-days").fill("2.5"); await page.waitForTimeout(500);
+    check(`${tag}: Settings refuses a fraction of a day`, /A whole number of days from 0 to 3650|0 到 3650 之間的整數天數/.test(await field.innerText()));
+    await shot("6b-settings-refused");
     check(`${tag}: no page errors`, errors.length === 0, errors);
     await page.context().close();
   }
