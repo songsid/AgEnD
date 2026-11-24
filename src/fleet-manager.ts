@@ -466,7 +466,7 @@ import { DeviceLoginRequests } from "./web-device-login.js";
 import { findSigninKnownEntry, addSigninKnownDevice } from "./web-signin-device.js";
 import { adminKey, HOST_ADMIN_KEY, isOutsideLinkOwner, OUTSIDE_LINK_OWNER, OUTSIDE_LINK_RETRY_MS, OUTSIDE_OWN_CLOSES, outsideDuration, outsideTimer, TOTP_SIGNIN_OVER_PUBLIC_LINK, TOTP_STEP_SECONDS, WEB_REMOTE_ACCESS_FILE, WebRemoteAccess, type SignInVerdict } from "./web-remote-access.js";
 import { evaluateSettingsRole, type SettingsRole } from "./authority/settings-role.js";
-import { authorityNow, classifyWebPeer, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
+import { authorityNow, classifyWebPeer, evaluateGuestIdentity, evaluateWebAuthority, HOST_OPERATOR, hostSessionHere, VERIFIED_SESSION_HOURS, webAuthorityPolicy, type HumanAuthority, type WebAuthorityRefusal, type WebAuthorityResult, type WebPeer } from "./authority/web-authority.js";
 import { AuthorityStateStore, namedLinkLastTurnedOff, type AuthorityState } from "./authority/authority-state.js";
 import { SessionAuthorizations, type SessionAuthorization } from "./authority/session-authorizations.js";
 import { SessionAuthorizationRequests, type AuthorizationAskRefusal } from "./web-session-authorization.js";
@@ -11582,7 +11582,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     // guest there) — most guests are not on the host's network. Its closing withdraws that audience (revokeAudience).
     const open = this.publicWebLink?.openSignin() ?? null;
     // One code per account (a new one replaces only its own); at the cap, refused — never another guest's evicted.
-    const login = codes.issue({ epoch: tokenEpoch(token), audiences: ["local", ...(open ? [open.exposureId] : [])],
+    // M-3651: private — the account's DM, else this slash command's ephemeral answer, else withdrawn (below): verified at sign-in.
+    const login = codes.issue({ epoch: tokenEpoch(token), audiences: ["local", ...(open ? [open.exposureId] : [])], private: true,
       recipient: { adapterId: owner.adapterId, userId: owner.userId, ...(ask.username ? { username: ask.username } : {}) } });
     if (!login) { await say(t("web.guest_busy")); report({ kind: "busy" }); return; }
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
@@ -11723,7 +11724,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     const current = (): boolean => !this.shuttingDown && this.webToken === token && this.adapters.get(account.adapterId) === adapter
       && this.guestRevokes === revokes && (this.guestAccountRevokes.get(key) ?? 0) === accountRevokes && this.guestSignInAllowed(account)
       && (!viaLink || linkOpen()) && this.returningDevices!.current(device, tokenEpoch(token));
-    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"] });
+    const issued = codes.issue({ epoch: tokenEpoch(token), recipient: account, audiences: [viaLink ? input.exposureId! : "local"], private: true });   // M-3651: by DM only (withdrawn otherwise)
     if (!issued) return { kind: "limited", retryAfterMs: 60_000 };            // the guests' cap: never someone's evicted
     this.guestCodeInFlight.add(key);
     this.guestCodeAskedAt.delete(key); this.guestCodeAskedAt.set(key, performance.now());
@@ -20667,7 +20668,8 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    */
   webAuthority(input: { session: SessionRecord | null; gateway: boolean; peer: WebPeer; instance?: string; authorization?: SessionAuthorization | null }): WebAuthorityResult {
     const state = this.webAuthorityState();
-    return evaluateWebAuthority({
+    // M-3651: a guest's session is asked only whether it is its account, verified (`web-guest`, identity only).
+    return (input.session?.tier === "guest" ? evaluateGuestIdentity : evaluateWebAuthority)({
       session: input.session, gateway: input.gateway, peer: input.peer,
       tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null,
       ...(input.instance !== undefined ? { target: { adapterId: this.getInstanceAdapterId(input.instance) } } : {}),
@@ -20707,6 +20709,33 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
     return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
   }
 
+  /** M-3651 (auth-api's /auth/session): until when this guest session is verified as its account now; null when it is not. */
+  guestVerifiedUntil(req: IncomingMessage, session: SessionRecord): number | null {
+    if (session.tier !== "guest") return null;
+    const v = this.webSessionAuthorization({ session, gateway: !!gatewayRequestContext(req), peer: webPeerOf(req) });
+    return v.state === "verified" ? v.until : null;
+  }
+
+  /**
+   * M-3651: a guest session that signed in with a code AgEnD delivered privately to its own account — recorded as that
+   * account's authorization of it, judged by evaluateGuestIdentity (the switch, the links, "Only this computer", the token):
+   * its messages then carry `web-guest`, who it is and never more. Only at sign-in: a guest is never sent a Confirm card.
+   */
+  private authorizeGuestSession(session: SessionRecord, peer: WebPeer, gateway: boolean): { ok: true; authorization: SessionAuthorization; durable: boolean } | { ok: false; refusal: WebAuthorityRefusal } {
+    const store = this.sessionAuthorizationStore();
+    const state = this.webAuthorityState(), now = Date.now(), policy = webAuthorityPolicy(this.fleetConfig?.web);
+    if (!store || !session.owner || session.tier !== "guest") return { ok: false, refusal: !store ? "disabled" : "no_account" };
+    const check = evaluateGuestIdentity({
+      session, gateway, peer, tokenEpoch: this.webToken ? tokenEpoch(this.webToken) : null, isAdmin: () => false,
+      authorization: { handle: session.handle, owner: session.owner, authorizedAt: now, until: now + policy.maxSessionMs, epoch: state.epoch },
+      policy: { ...policy, enabled: state.enabled, loopbackOnly: state.loopbackOnly, namedLink: state.namedLink, quickLink: state.quickLink }, epoch: state.epoch, now,
+    });
+    if (check.refusal) return { ok: false, refusal: check.refusal };
+    const live = new Set(this.webSessions?.list(undefined, () => true).map(r => r.handle) ?? []);
+    store.prune(a => a.epoch === state.epoch && now <= Math.min(a.until, a.authorizedAt + policy.maxSessionMs) && live.has(a.handle));
+    return { ok: true, ...store.authorize(session.handle, session.owner, now, state.epoch, now + policy.maxSessionMs, peer) };
+  }
+
   /**
    * M-3277 (decision 7933bf90; auth-api, at sign-in): an admin session that signed in with a code AgEnD delivered privately
    * to its account (a DM, or Discord's ephemeral reply) starts verified — that code went to the very DM a Confirm card
@@ -20715,11 +20744,13 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
    * at once, with Not me (noteAuthorized). Re-verifying once that authorization has run out still takes the card.
    */
   authorizeSignedInSession(session: SessionRecord, peer: WebPeer, gateway: boolean): void {
-    if (session.tier !== "admin" || !session.owner || session.host) return;
-    const r = this.authorizeWebSession(session, peer, gateway);
+    if ((session.tier !== "admin" && session.tier !== "guest") || !session.owner || session.host) return;
+    // M-3651: a guest's private code verifies who it is (web-guest), never an admin's authority.
+    const r = session.tier === "guest" ? this.authorizeGuestSession(session, peer, gateway) : this.authorizeWebSession(session, peer, gateway);
     if (!r.ok) { this.logger.info({ handle: session.handle, refusal: r.refusal }, "Web session signed in with a private code, not verified"); return; }
     this.logger.info({ handle: session.handle, durable: r.durable }, "Web session verified at sign-in (a private code)");
-    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry) })
+    void this.sessionAuthorizationRequests().noteAuthorized({ handle: session.handle, owner: session.owner, label: session.label, peer, until: Math.min(r.authorization.until, session.absoluteExpiry),
+      ...(session.tier === "guest" ? { guest: true } : {}) })
       .catch(err => this.logger.warn({ err: (err as Error)?.message }, "Web sign-in notice failed"));
   }
 
@@ -21339,7 +21370,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
       text: {
         ask: (c) => t("web_auth.card_ask", c.label, where(c.peer), when(c.askedAt), when(c.until)),
         confirmed: (c) => t("web_auth.card_confirmed", c.label, where(c.peer), when(c.until)),
-        signedIn: (c) => t("web_auth.signed_in", c.label, where(c.peer), when(c.until)),
+        signedIn: (c) => t(c.guest ? "web_auth.signed_in_guest" : "web_auth.signed_in", c.label, where(c.peer), when(c.until)),
         signedInHint: () => t("web_auth.signed_in_hint"),
         denied: (c) => t("web_auth.card_denied", c.label),
         expired: (c) => t("web_auth.card_expired", c.label),

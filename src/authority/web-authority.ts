@@ -21,10 +21,15 @@ export type WebPeer = "loopback" | "lan" | "named_link" | "quick_link";
 
 /** The account behind a human receipt, written by AgEnD at admission — nothing in a message can set it (§4). */
 export interface HumanAuthority {
-  kind: "platform" | "web-verified" | "none";
+  /**
+   * M-3651: `web-guest` — a guest's browser signed in with a code AgEnD sent privately to its own account: who it is,
+   * verified, and never more. No gate grants on it (every one asks for `web-verified` or an admin), and agents never take
+   * it as a go-ahead; an older reader, not knowing the kind, reads it as none.
+   */
+  kind: "platform" | "web-verified" | "web-guest" | "none";
   /** The platform sender, or the web session's bound account. */
   actor: { adapter_id: string; user_id: string } | null;
-  /** web-verified only. `handle` is the opaque one the device list shows; `authorized_at`: when its account authorized it. */
+  /** web-verified and web-guest only. `handle` is the opaque one the device list shows; `authorized_at`: when its account authorized it. */
   session?: { handle: string; peer: WebPeer; signed_in_at: string; authorized_at: string };
   /** The revocation epoch it was granted under (§10; authority-state.ts). */
   authority_epoch: number;
@@ -43,6 +48,7 @@ export type WebAuthorityRefusal =
   | "quick_link_off"       // §0.3: over the temporary public link, while web.verified_authority.quick_link is off
   | "not_session"          // §3.1: a header token, a CLI call, or no session
   | "not_admin_session"    // §3.1: a guest (or read) session
+  | "not_guest_session"    // M-3651: evaluateGuestIdentity asked about a session that is not a guest's
   | "token_rotated"        // §3.1: the session's token epoch is not the current one
   | "no_account"           // §3.2: an `agend web --code` session — the host operator, not an account
   | "host_sign_in"         // #2910 D1 (web-only fleet): no host operator's authorization now (none, revoked, run out): sign in again on this computer
@@ -237,6 +243,44 @@ export function evaluateWebAuthority(i: WebAuthorityInput): WebAuthorityResult {
 }
 
 /**
+ * M-3651 (the user, 11-24; D1): a guest's browser — signed in with a code AgEnD delivered privately to its own Discord or
+ * Telegram account, exactly as an admin's private code (M-3277) — is that account, verified: `web-guest`, never
+ * `web-verified`. It is identity only: the authority a gate or an agent's go-ahead reads stays `web-verified` (an admin's)
+ * or a platform receipt. The same §3 checks as an admin's, but for the admin ones: the switch, the public link and its
+ * options, "Only this computer can authorize", the token epoch, the namespace (its account's own adapter), and an
+ * authorization its account gave under the current epoch, not run out.
+ */
+export function evaluateGuestIdentity(i: WebAuthorityInput): WebAuthorityResult {
+  const refuse = (refusal: WebAuthorityRefusal): WebAuthorityResult => ({ authority: noAuthority(i.epoch), refusal });
+  const s = i.session;
+  if (!i.policy.enabled) return refuse("disabled");
+  if (i.gateway) {
+    if (i.peer !== "named_link" && i.peer !== "quick_link") return refuse("public_link");
+    if (i.policy.loopbackOnly) return refuse("loopback_only");
+    if (i.peer === "named_link" ? !i.policy.namedLink : !i.policy.quickLink) return refuse(i.peer === "named_link" ? "named_link_off" : "quick_link_off");
+  } else if (i.peer === "named_link" || i.peer === "quick_link") return refuse("public_link");
+  if (!s) return refuse("not_session");
+  if (s.tier !== "guest") return refuse("not_guest_session");
+  if (s.surface !== (i.gateway ? "gateway" : "local")) return refuse("public_link");
+  if (!i.tokenEpoch || s.tokenEpoch !== i.tokenEpoch) return refuse("token_rotated");
+  const owner = s.owner;
+  if (!owner?.adapterId || !owner.userId || s.host === true || s.remote !== undefined) return refuse("no_account");
+  if (i.target && i.target.adapterId !== owner.adapterId) return refuse("other_namespace");
+  if (i.policy.loopbackOnly && i.peer !== "loopback") return refuse("loopback_only");
+  const a = i.authorization;
+  if (!a || a.handle !== s.handle || a.owner.adapterId !== owner.adapterId || a.owner.userId !== owner.userId || a.epoch !== i.epoch) return refuse("not_authorized");
+  if (!(i.now <= Math.min(a.until, a.authorizedAt + i.policy.maxSessionMs))) return refuse("authorization_expired");
+  return {
+    authority: {
+      kind: "web-guest", actor: { adapter_id: owner.adapterId, user_id: owner.userId },
+      session: { handle: s.handle, peer: i.peer, signed_in_at: new Date(s.created).toISOString(), authorized_at: new Date(a.authorizedAt).toISOString() },
+      authority_epoch: i.epoch,
+    },
+    refusal: null,
+  };
+}
+
+/**
  * §3: the request qualified when it arrived AND again now that its body is in, under the same session. A request that
  * failed on arrival keeps that refusal; one whose session changed meanwhile carries nothing.
  */
@@ -254,7 +298,8 @@ export function confirmAfterBody(arrival: WebAuthorityResult, now: WebAuthorityR
  * Platform and none are unchanged. The receiver applies the rule to this, never to the stored value.
  */
 export function authorityNow(stored: HumanAuthority, state: { enabled: boolean; loopbackOnly: boolean; namedLink: boolean; quickLink: boolean; epoch: number; outside?: boolean; outsideHandles?: ReadonlySet<string> }): HumanAuthority {
-  if (stored.kind !== "web-verified") return stored;
+  // M-3651: a guest's verified identity reads as none on the same terms as an admin's authority.
+  if (stored.kind !== "web-verified" && stored.kind !== "web-guest") return stored;
   const down = (downgraded: AuthorityDowngrade): HumanAuthority => ({ kind: "none", actor: null, authority_epoch: stored.authority_epoch, downgraded });
   if (!state.enabled) return down("disabled");
   if (stored.authority_epoch < state.epoch) return down("revoked");
@@ -294,7 +339,7 @@ export function isHumanAuthority(v: unknown): v is HumanAuthority {
   if (a.kind === "none") return a.actor === null && a.session === undefined;
   if (a.kind === "platform") return actorOk && a.session === undefined;
   // S1's observe-only "web-session" is not authority any more (§0: never an authorization): it fails here, so reads none.
-  if (a.kind !== "web-verified" || !actorOk) return false;
+  if ((a.kind !== "web-verified" && a.kind !== "web-guest") || !actorOk) return false;
   const s = a.session as Record<string, unknown> | undefined;
   return !!s && typeof s === "object" && typeof s.handle === "string" && !!s.handle && (s.peer === "loopback" || s.peer === "lan" || s.peer === "named_link" || s.peer === "quick_link")
     && typeof s.signed_in_at === "string" && typeof s.authorized_at === "string";
@@ -310,7 +355,7 @@ export function receiptAuthority(origin: { platform: string; adapter_id: string 
   try { parsed = JSON.parse(stored); } catch { return noAuthority(0); }
   if (!isHumanAuthority(parsed)) return noAuthority(0);
   // Web traffic is never platform authority, and platform traffic never web-verified (§4).
-  const crossed = parsed.kind === "platform" ? origin.platform === "web" : parsed.kind === "web-verified" && origin.platform !== "web";
+  const crossed = parsed.kind === "platform" ? origin.platform === "web" : (parsed.kind === "web-verified" || parsed.kind === "web-guest") && origin.platform !== "web";
   if (crossed) return noAuthority(parsed.authority_epoch);
   return parsed;
 }

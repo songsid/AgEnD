@@ -132,6 +132,9 @@ export const AGENT_WHATS_NEW: readonly WhatsNewEntry[] = [
   // (2.4.0-beta.19 is published without it).
   { id: "2.4-card-refs", since: "2.4.0-beta.20", tools: ["task"],
     text: `Task cards: ${TASK_CARD_REF_HINT}` },
+  // M-3651: a guest's private /web code verifies who it is; `since` is this line's next beta (it merges after beta.21).
+  { id: "2.4-web-guest-verified", since: "2.4.0-beta.22",
+    text: "A web guest (`@web:g`) who signed in with the /web code sent privately to their own account now has a verified identity: their receipt says `authority.kind: web-guest` with their `authority.actor`. That tells you who they are; it is never a go-ahead or an admin's authority (the cross-instance-messaging skill's web-chat section)." },
 ];
 
 /** #2799: the entries as every session is told them (Canvas Worker effects were removed: their guidance is gone). */
