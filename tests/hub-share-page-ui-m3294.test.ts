@@ -125,8 +125,8 @@ it("M-3533 R2b: a picture too large for the Hub says so on the owner's row, each
  const { p } = await mount(true, true, false, false, { picturesTooLarge: { [exposureId]: ["disc", "portrait"] } });
  const lines = [...p.root.querySelectorAll("[data-picture-large]")] as any[];
  expect(lines.map(l => [l.getAttribute("data-picture-large"), l.textContent])).toEqual([
-  ["disc", "Its avatar is too large to show on the Hub (limit 64 KB). Use a smaller picture or a PNG."],
-  ["portrait", "Its identity-card picture is too large to show on the Hub (limit 512 KB with its avatar). Use a smaller picture or a PNG."]]);
+  ["disc", "Its avatar is too large for the Hub (limit 64 KB). On your Fleet, pick a smaller picture, or a PNG that AgEnD can shrink, in this agent's View → Edit profile → Avatar."],
+  ["portrait", "Its identity-card portrait is too large for the Hub (limit 512 KB, including its avatar). On your Fleet, pick a smaller picture, or a PNG that AgEnD can shrink, in this agent's View → Edit profile → Identity card → Portrait."]]);
  expect(lines[0].closest(".hub-agent-choice").textContent).toContain("Notes");
 });
 it("M-3533 R2b: every picture fits: no such line", async () => {
