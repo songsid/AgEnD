@@ -114,6 +114,30 @@ export class HubGroupRooms {
    * composition (agent-catalog.ts); none: the room office draws no look.
    */
   looks: ((fleetId: string) => Map<string, RoomOfficeLook> | null) | null = null;
+  /** M-3533 R2b: a held picture's bytes by its hash (agent-pictures.ts), set by the composition; none: no picture is served. */
+  pictureFile: ((sha256: string) => { mime: string; bytes: Buffer } | null) | null = null;
+  /** M-3533 R2b: a room agent's disc or portrait, for the room's members only — the hash the room shows for it now. */
+  async picture(ctx: HubRequestContext, id: string, exposureId: string, slot: "disc" | "portrait") {
+    const me = await this.who(ctx);
+    const sha256 = this.core.atomic(db => {
+      this.member(db, id, me);
+      if (!db.prepare("SELECT 1 FROM hub_room_members WHERE room_id=? AND kind='agent' AND subject=?").get(id, exposureId)) throw new HubRoomRefusal(404, "not-found");
+      const e = readExposure(db, exposureId);
+      const h = e?.fleet_id && this.looks ? this.looks(e.fleet_id)?.get(exposureId)?.[slot] : undefined;
+      if (!h) throw new HubRoomRefusal(404, "not-found");
+      return h;
+    }, this.fence(ctx));
+    const file = this.pictureFile?.(sha256);
+    if (!file) throw new HubRoomRefusal(404, "not-found");
+    return { sha256, ...file };
+  }
+  /** M-3533 R2b: these agents' pictures changed — every room holding one re-reads its members (open pages follow). */
+  lookChanged(exposureIds: readonly string[]): void {
+    const ids = [...new Set(exposureIds)].slice(0, 512);
+    if (!ids.length) return;
+    const rooms = this.core.atomic(db => db.prepare(`SELECT DISTINCT room_id FROM hub_room_members WHERE kind='agent' AND subject IN (${ids.map(() => "?").join(",")})`).all(...ids) as { room_id: string }[]);
+    for (const { room_id: roomId } of rooms) this.emit({ type: "member.changed", roomId, data: { roomId } });
+  }
   constructor(private readonly core: HubCore, private readonly office = false) { this.appPosts=core.atomic(db=>!!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_mcp_room_posts'").get()); this.postReplies = new RoomPostReplies(core); this.automation = new RoomAutomation(() => core.now()); this.agentSearch = new HubGrantSearch(core);
     this.agents = new HubRoomAgents(core, event => this.emit(event), post => this.projection(post), this.automation,
       (db, tx, post) => { this.agentMentions(db, tx, post); this.postReplies.enqueue(db, tx, post); }, id => { this.agentEffects(id); this.postReplies.wake(); });
@@ -357,14 +381,16 @@ export class HubGroupRooms {
         const roster=(db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id").all(room.id) as MemberRow[]).map(m=>{
           if(m.kind==="assistant")return {id:"assistant",kind:"assistant" as const,name:"Hub assistant",presence:this.assistant.presence(room.id),intro:"Hub assistant. Answers from this room's chat.",mentionable:false as const};
           if(m.kind==="agent"){const e=readExposure(db,m.subject);return {id:m.subject,kind:m.kind,name:e?.display_name??m.subject,presence:this.agents.presence(m.subject).presence,owner:{name:this.name(db,m.owner_at_join??"")},intro:agentIntro(db,m.subject).intro};}
-          return {id:m.id,kind:m.kind,name:this.name(db,m.subject),presence:db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject,this.core.now())?"online":"offline"};
+          // M-3594: a person's id is their stable Hub person id (realm/objectId, as a 1:1 question's asker id), not this
+          // room's membership row, so an agent can tell one person apart across rooms and private questions.
+          return {id:m.subject,kind:m.kind,name:this.name(db,m.subject),presence:db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject,this.core.now())?"online":"offline"};
         });
         return pageRoomMembers(room.id,roomRow.purpose,roster,body,JSON.stringify([source.id,source.owner]));
       }
       const members = (db.prepare("SELECT * FROM hub_room_members WHERE room_id=? ORDER BY kind,id LIMIT 201").all(room.id) as MemberRow[]).map(m => {
         if (m.kind === "assistant") return { id: "assistant", kind: m.kind, name: "Hub assistant", presence: this.assistant.presence(room.id) };
         if (m.kind === "agent") { const e = readExposure(db, m.subject); return { id: m.subject, kind: m.kind, name: e?.display_name ?? m.subject, owner: { name: this.name(db, m.owner_at_join ?? "") }, ...this.agents.presence(m.subject) }; }
-        return { id: m.id, kind: m.kind, name: this.name(db, m.subject), presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
+        return { id: m.subject, kind: m.kind, name: this.name(db, m.subject), presence: db.prepare("SELECT 1 FROM hub_sessions WHERE person=? AND state='active' AND expires_at>?").get(m.subject, this.core.now()) ? "online" : "offline" };
       });
       if (members.length > 200) throw new HubProtocolError("backpressure");
       return { ok: true, roomId: room.id, members };

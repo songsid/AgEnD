@@ -1,6 +1,7 @@
 import {roomMemberOptions,boundedRoomMembersSchema} from "./room-members-model.js";
 import {roomBriefSchema} from "./room-brief-model.js";
 import {agentIntroSchema,agentIntroResultSchema} from "./agent-intro-model.js";
+import { agentPicturesSchema, agentPicturesResultSchema, agentPictureChunkSchema, agentPictureResultSchema } from "./agent-pictures-model.js";
 import { agentCatalogSchema, agentCatalogRefreshSchema, exposureRequestSchema, exposureRequestResultSchema, exposureRequestAckSchema, exposureUndoSchema, exposureUndoResultSchema } from "./agent-catalog-model.js";
 /** Strict P1 frame schemas; importing this file creates no state, sockets or timers. */
 import { z } from "zod";
@@ -11,6 +12,10 @@ import { fleetUpdateRequestSchema, fleetUpdateCancelSchema, fleetUpdateStatusSch
 import { epoch, hash, identifier, person, plain, reason, uuid, validated, parseStrictJson } from "./validation.js";
 /** Phase 3 receiver offer; old-Hub compatibility is negotiated by the member client. */
 export const HUB_FLEET_UPDATE_CAPABILITY = "fleet-update-v1";
+/** M-3594: a 1:1 question may carry `askerName`, the asker's display name from the Hub's own directory (the source room asks
+ * use), never text the asker typed. Offered only beside fleet-update-v1 (a 32-name hello), and dropped with it on the
+ * legacy retry, so a 16-name member hello is unchanged. */
+export const HUB_ASKER_NAME_CAPABILITY = "asker-name-v1";
 import type { HubMemberFrame, HubServerFrame, HubAuthorizationRequest, HubAskerEnvelope } from "./types.js";
 import { validHubAnswerButtons } from "./buttons-model.js";
 import { recommendationSchema, recommendationAckSchema } from "./recommendation-model.js";
@@ -81,8 +86,10 @@ export const attachmentName = plain(255).refine(s => s.length > 0 && !/[\\/\u000
 export const attachmentMime = z.string().regex(/^(?:image|application|text)\/[a-z0-9][a-z0-9.+-]{0,99}$/);
 export const attachmentRefSchema = z.strictObject({ id: uuid, name: attachmentName, size: z.number().int().min(1).max(HUB_ATTACHMENT_FILE_MAX), mime: attachmentMime, sha256: hash });
 const attachmentList = z.array(attachmentRefSchema).min(1).max(HUB_ATTACHMENTS_PER_MESSAGE).refine(list => new Set(list.map(r => r.id)).size === list.length, "Duplicate attachment");
-/** `attachments` only ever goes to a peer whose link enabled attachments-v1 (an old peer's strict schema refuses it). */
-export const questionSchema = z.strictObject({ text: plain(HUB_LIMITS.question), identity: askerSchema, attachments: attachmentList.optional() });
+/** `attachments` only ever goes to a peer whose link enabled attachments-v1 (an old peer's strict schema refuses it);
+ * `askerName` only to one that enabled asker-name-v1 (M-3594). */
+export const questionSchema = z.strictObject({ text: plain(HUB_LIMITS.question), identity: askerSchema, attachments: attachmentList.optional(),
+  askerName: plain(256).refine(s => s.trim().length > 0).optional() });
 export const receiptSchema = z.strictObject({ messageId: uuid, contentDigest: hash,
   stage: z.enum(["queued", "delivered", "consumed", "answered", "rejected", "cancelled", "failed", "uncertain"]),
   sequence: epoch.min(1), at: epoch, memberDeliveryId: uuid.optional(), reasonCode: reason.optional() });
@@ -179,6 +186,8 @@ const reconcile = z.strictObject({ afterReceiptSequence: epoch, messages: z.arra
 export const memberLeavePayloadSchema = z.strictObject({});
 export const memberFrameSchema = z.union([
   frame("agent.intro",agentIntroSchema),
+  // agent-pictures-v1 (M-3533 R2b): a Fleet's shared agents' pictures, then the chunks the Hub asked for.
+  frame("agent.pictures", agentPicturesSchema), frame("agent.picture", agentPictureChunkSchema),
   frame("agent.catalog", agentCatalogSchema), frame("exposure.request-result", exposureRequestResultSchema), frame("exposure.undo", exposureUndoSchema),
   frame("room.list", roomListSchema), frame("room.post", roomPostSchema), frame("room.members", roomMembersSchema), frame("people.search", peopleSearchSchema), frame("room.post-answer-ack", roomPostAnswerAckSchema),
   frame("room.context-state", roomContextRequestSchema), frame("room.context-input", roomContextInputSchema),
@@ -196,6 +205,7 @@ export const memberFrameSchema = z.union([
 ]);
 export const serverFrameSchema = z.union([
   frame("agent.intro-result",agentIntroResultSchema),
+  frame("agent.pictures-result", agentPicturesResultSchema), frame("agent.picture-result", agentPictureResultSchema),
   frame("agent.catalog-refresh", agentCatalogRefreshSchema), frame("exposure.request", exposureRequestSchema), frame("exposure.request-ack", exposureRequestAckSchema), frame("exposure.undo-result", exposureUndoResultSchema),
   frame("room.list-result", roomListResultSchema), frame("room.post-result", roomPostResultSchema), frame("room.members-result", roomMembersResultSchema), frame("people.search-result", peopleSearchResultSchema), frame("room.post-answer", roomPostAnswerSchema),
   frame("room.context-state-result", roomContextResultSchema), frame("room.context-input-result", roomContextInputResultSchema),

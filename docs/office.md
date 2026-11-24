@@ -155,7 +155,7 @@ A minimal zones pack:
 
 - **Frame list with per-frame durations:** omit `src` and pass `frames` as a list of `{ "src", "ms"? }` entries (up to 600 steps, each image `w × h` px, `ms` 33–60000). The same file may appear in multiple steps and is only uploaded and decoded once. Any single-sheet or multi-sheet strip can also pass a `durations` array (`ms` per frame) instead of `fps`.
 - **Playback:** strips loop from frame 0 by default. Set `"once": true` to play once and hold the last frame, or `"loopFrom": <index>` to play an intro (`0 .. loopFrom - 1`) once and loop the rest. With reduced motion (`prefers-reduced-motion: reduce`), every strip holds frame 0.
-- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 160 files, 20 MiB, and 64 Mpx of total decoded pixels so phones stay smooth.
+- **Splitting tip:** keep each sheet within 32 frames and 4096 px wide (e.g., 10 sheets × 30 frames of 64×96 px = 300 frames, 10 s at 30 FPS). Keep the whole pack within 220 files, 42 MiB, and 64 Mpx of total decoded pixels so phones stay smooth. To save files, put several poses in one sheet and cut each strip from it with `row` / `col` (see [Strips](#strips)).
 
 **Areas, seats and states.** An area is a rect `[x, y, w, h]` and its seats in the order they fill up. A seat is `[x, y]`, where the person's feet go, inside its area's rect. `stateZones` sends each state (`needs`, `crashed`, `stuck`, `working`, `idle`, `paused`, `stopped`, `missing`) to an area; a state it doesn't name goes to `"default"`, else the first area. Bedtime sends the idle to the area `paused` uses.
 
@@ -230,6 +230,8 @@ A person's line for a state comes from the first of these that has lines for it,
 
 **Being-dragged animation (#4267).** A character set may include an optional `dragged` strip (`characters.<set>.dragged`, falling back to `characters.default.dragged`; supports single-sheet, multi-sheet, and frame-list strips). When omitted, a dragged character plays a built-in lifted, dangling motion over a floor shadow and returns to its normal pose when released.
 
+**Pat animation.** A character set may include an optional `pat` strip (falling back to `characters.default.pat`). When someone pats a person, the strip plays for one full pass (at least as long as the hearts, 1.8 s), then the person returns to their pose. Without one, a pat shows only the hearts and words, as before. A set may also give `walkLeft` (used when walking left instead of mirroring `walkSide`) and `stand` (a still picture used as the card's avatar instead of the idle strip's first frame).
+
 **Agent profile card (`card`).** A pack can optionally restyle the Agent profile card (the popover beside a person, or bottom sheet on a phone) with a curated preset, colours, artwork, and layout:
 
 ```json
@@ -267,7 +269,8 @@ A person's line for a state comes from the first of these that has lines for it,
 
 - `preset` picks a curated layout: `default`, `rpg`, `compact`, or `dossier`. Explicit `style` and `layout` keys override the preset. Packs without `card` keep the default card unchanged.
 - `style` colours are strict `#rrggbb` (never raw CSS). Explicit pairs are WCAG-checked on upload: `text`/`background`, `muted`/`background`, `accent`/`background`, `buttonText`/`buttonBg`, and `buttonPrimaryText`/`buttonPrimaryBg` must be at least 4.5:1; `border`/`background` and `barFill`/`barTrack` at least 3.0:1. `backgroundImage` is a PNG up to 1024×1024 px (drawn with a readability scrim); `frame` is a 9-slice PNG up to 512×512 px with `slice` 1–128 (default 8, `slice * 2 < min(w, h)`). Both are lazy-loaded when a card opens. `radius` is `none`, `sm`, `md`, or `lg`.
-- `layout` sets `avatarSize` (`sm` 44 px, `md` 56 px, `lg` 84 px), `avatarSource` (`sprite` or `portrait` from `portraits`, falling back to the idle sprite), `headerAlign` (`left` or `center`), desktop `width` (280–400 px; ignored on phone bottom sheets), `sections` (unique ordered subset of `header`, `level`, `rows`, `now`, `tell`, `actions` — `header` and `actions` are always required if `sections` is set), `rows` (unique ordered subset of `office`, `model`, `backend`, `today`, `firstSeen`), `rowColumns` (`1` or `2`), and `hide` (unique subset of `instance`, `title`, `badge`, `level`, `xpBar`, `office`, `model`, `backend`, `today`, `firstSeen`, `now`).
+- `layout` sets `avatarSize` (`sm` 44 px, `md` 56 px, `lg` 84 px), `avatarSource` (`sprite` or `portrait` from `portraits`, falling back to the idle sprite), `headerAlign` (`left` or `center`), desktop `width` (280–400 px; ignored on phone bottom sheets), `sections` (unique ordered subset of `header`, `level`, `rows`, `now`, `tell`, `actions` — `header` and `actions` are always required if `sections` is set), `rows` (unique ordered subset of `office`, `model`, `backend`, `today`, `firstSeen`), `rowColumns` (`1` or `2`), and `hide` (unique subset of `instance`, `title`, `badge`, `level`, `xpBar`, `office`, `model`, `backend`, `today`, `firstSeen`, `now`), and `gap` (0–240 px between the person and the floating card, beside the person's own half-width; default 12).
+- `motion` sets how the card pops up: `enter` is `none`, `fade`, `pop`, `rise`, `slide` or `bounce`, and `ms` is 80–1200 (default 220). It plays on the floating card and the phone sheet, never with reduced motion.
 - Share links still strip `model`, `backend`, `today`, `firstSeen`, `tell`, and actions before `card.layout` runs — a pack can never reveal hidden fields on a share link.
 
 **Checking a pack.** The check is strict: an unknown key, a value out of range, or a name that refers to nothing refuses the whole pack, with where it broke. An agent with pack access can run `office_pack_check` on a folder without storing anything (see [below](#let-an-agent-manage-skin-packs)). The page and the host use the same rules.
@@ -494,7 +497,7 @@ A fleet admin can also approve a pending pack change with **Approve** on its not
 | `straight` | ❌ | `true`: every walk goes across, then up or down |
 | `idleVisits` | ❌ | with `stateZones`: `[{ "area", "weight", "minSeconds", "maxSeconds" }, …]`, up to 8, an area at most once: areas idle people now and then sit in for a while (see [Visits](#bedtime-strolls-and-mail)). `weight` 1–100 against 100 for a stroll; `minSeconds` 5–600; `maxSeconds` `minSeconds`–600 |
 | `furniture` | ❌ | items, up to 128 (see [Furniture](#furniture)) |
-| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `prop`, and `bubbles` (the set's own lines, as the pack's `bubbles`) |
+| `characters` | ✅ | `{ set: { pose: STRIP, … } }`, up to 64 sets; `default` with `idle` required. Keys: `working`, `idle`, `paused`, `needs`, `walk`, `walkDown`, `walkUp`, `walkSide`, `walkLeft`, `eat`, `dragged`, `pat`, `stand`, `prop`, and `bubbles` (the set's own lines, as the pack's `bubbles`) |
 | `byInstance` | ❌ | instance name → character set, up to 500 |
 | `props` | ❌ | `task`, `send`, `report`, `broadcast`: STRIPs for what flies |
 | `bubbles` | ❌ | `{ "en" \| "zh-TW": { state: [line, …] } }`, up to 12 lines of 1–40 characters. Besides the states, `pat` and `feed` (#4119): what someone says to a pat or a feed in the Office (none: the page's own words). A character set's and an instance's `bubbles` take them too |
@@ -508,7 +511,7 @@ A seat is `[x, y]` or `{ "x", "y", "for": [instance, …] (up to 16), "lend": fa
 
 ### Strips
 
-A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom" }`:
+A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "dh", "once", "loopFrom", "row", "col" }`:
 
 | Key | Range | Default |
 |---|---|---|
@@ -521,6 +524,7 @@ A STRIP is `{ "src", "frames", "durations", "w", "h", "fps", "ax", "ay", "dw", "
 | `dw`, `dh` | the displayed size in logical units (1–1280, 1–720) | `w·scale`, `h·scale` |
 | `once` | `true`: play once from frame 0 and hold the last frame | `false` |
 | `loopFrom` | `0` to `totalFrames − 1`: play intro frames `0 .. loopFrom − 1` once, then loop from `loopFrom` (not with `once: true`) | `0` |
+| `row`, `col` | 0–4095: cut the frames from a bigger sheet — frame *i* is the `w × h` cell at column `col + i` of row `row`, so one picture can hold several poses and be shared by several strips. Its picture must then be at least `(col + frames)·w × (row + 1)·h` (a strip without them needs exactly `frames·w × h`). Not with a frame list | — |
 
 ### Furniture
 
@@ -560,12 +564,12 @@ An office's `overrides` (written by Edit layout; checked on every `PUT /ui/offic
 | | Limit |
 |---|---|
 | Packs kept | 16 (plus one previous version each, kept for agents' restores) |
-| Files in a pack | 160 |
-| One file | 2 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
-| A whole pack | 20 MiB, 64 Mpx of decoded pixels in all |
+| Files in a pack | 220 |
+| One file | 4 MiB, 4096 × 4096 px (16 Mpx), PNG only (checked by signature, every chunk read, metadata stripped) |
+| A whole pack | 42 MiB, 64 Mpx of decoded pixels in all |
 | One strip | up to 32 frames per sheet, 32 sheets, 600 total frames, 33–60000 ms per frame |
 | The manifest | 64 KiB |
-| All packs on disk | 640 MiB, previous versions included |
+| All packs on disk | 1344 MiB, previous versions included |
 | Offices | 20; saves 20 a minute per person |
 | Office share links | 10 open; 15 minutes to 24 hours; 120 requests a minute each |
 | `office_set` | 6 calls a minute, 60 an hour per agent |
@@ -626,3 +630,4 @@ Every feature below is in 2.3.2; the table names the version it first appeared i
 | Carousel (signage): chosen offices fill the screen in turn, n/m picker, Pause/Next, kept per browser (#4010) | 2.4.0-beta |
 | Edit offices → Idle people stay in their own area (#4104) | 2.4.0-beta |
 | Multi-sheet and frame-list character animations (`src` arrays, `frames` objects, `durations`, `once`, `loopFrom`, up to 600 frames) (#4231) | 2.4.0-beta |
+| Sheet cells (`row`, `col`); a set's `pat`, `walkLeft` and `stand`; the card's `layout.gap` and `motion`; 220 files, 4 MiB a file and 42 MiB a pack (#4382; 64 Mpx of decoded pixels, unchanged). An older AgEnD refuses a pack that uses them | 2.4.0-beta |

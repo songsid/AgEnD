@@ -101,7 +101,7 @@ const CARD_CSS_PROPS = [
   "--oo-card-bg", "--oo-card-border", "--oo-card-text", "--oo-card-muted", "--oo-card-accent",
   "--oo-card-bar-track", "--oo-card-bar-fill", "--oo-card-tile-bg", "--oo-card-btn-bg", "--oo-card-btn-text",
   "--oo-card-btn-primary-bg", "--oo-card-btn-primary-text", "--oo-card-radius", "--oo-card-w",
-  "--oo-card-avatar", "--oo-card-frame-pad",
+  "--oo-card-avatar", "--oo-card-frame-pad", "--oo-card-enter-ms",
 ];
 
 function fgFor(bgHex, minRatio = 4.5, light = "#f6f4f0", dark = "#18181b") {
@@ -257,7 +257,9 @@ export function resolveCardSpec(packCard) {
     scrim: s.backgroundImage && bgRef ? scrimRgba(bgRef, dark ? 0.56 : 0.72) : null,
   } : null;
 
-  return { preset, layout, avatarPx, hideSet: new Set(layout.hide), cssVars, backdrop };
+  const motion = packCard.motion && packCard.motion.enter !== "none" ? packCard.motion : null;
+  if (motion) cssVars["--oo-card-enter-ms"] = `${motion.ms}ms`;
+  return { preset, layout, avatarPx, hideSet: new Set(layout.hide), cssVars, backdrop, motion };
 }
 
 /** Ordered visible rows for `model` under `spec`; never restores fields stripped by `cardModel` on share links. */
@@ -328,9 +330,11 @@ function drawPortraitAvatar(cv, im, W) {
  * sheet (a phone); `place(el)`: the page positions the popover (beside the person, following them); `onChat` (none on
  * a share link), `onFind`, `onClose`; M-3293: `onReact(kind)` — Pat and Feed (only where play is on; none on a share
  * link); M-3433: optional `packCard`, `picture` (lazy image loader), `portrait` (src), `packScale`; M-3533: `action`
- * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat).
+ * ({ label, title, run }) the card's own main action, from the page (a Hub room's office: "@ it", to ask it in the chat);
+ * M-3533 R2b: `photo` (src) the agent's identity-card picture (a Hub room's), drawn as the pack portrait is, in place of
+ * the figure once it loads; the figure while it loads or when it fails.
  */
-export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null }) {
+export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onClose, onReact = null, tell = null, packCard = null, picture = null, portrait = null, packScale = 2, action = null, photo = null }) {
   // `action`: one, or a list (M-3565: a Hub room's "@ it" and "Chat with it one-to-one"); the first is the primary button.
   const actions = Array.isArray(action) ? action.filter(Boolean) : action ? [action] : [];
   const actionButtons = actions.map((a, i) => html`<button key=${i} type="button" class=${`btn btn-sm ${i === 0 ? "btn-primary " : ""}oo-card-action`} title=${a.title || undefined} aria-label=${a.title || undefined} onClick=${a.run}>${a.label}</button>`);
@@ -339,6 +343,16 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   const spec = useMemo(() => resolveCardSpec(packCard), [packCard]);
   const avatarPx = spec ? spec.avatarPx : 56;
   const wantPortrait = !!(spec && spec.layout.avatarSource === "portrait" && portrait && typeof picture === "function");
+  const [photoIm, setPhotoIm] = useState(null);
+  useEffect(() => {
+    setPhotoIm(null);
+    if (!photo || typeof Image === "undefined") return undefined;
+    let live = true;
+    const im = new Image();
+    im.onload = () => { if (live) setPhotoIm(im); };
+    im.src = photo;
+    return () => { live = false; };
+  }, [photo]);
 
   useLayoutEffect(() => {
     const el = box.current;
@@ -358,6 +372,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
   useEffect(() => {
     const cv = canvas.current;
     if (!cv) return;
+    if (photoIm && drawPortraitAvatar(cv, photoIm, avatarPx)) return;
     if (wantPortrait) {
       const im = picture(portrait, () => setPicRev((n) => n + 1));
       if (im && drawPortraitAvatar(cv, im, avatarPx)) return;
@@ -494,7 +509,7 @@ export function OfficeCard({ model: m, avatar, sheet, place, onChat, onFind, onC
     return null;
   };
 
-  return html`<div ref=${box} class=${classes} data-preset=${spec.preset} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
+  return html`<div ref=${box} class=${classes} data-preset=${spec.preset} data-enter=${spec.motion ? spec.motion.enter : undefined} role="dialog" aria-modal="false" aria-label=${tc("card", m.name)}
       onPointerDown=${down} onPointerUp=${up} onPointerCancel=${() => { swipe.current = null; }}>
     ${spec.backdrop ? html`<canvas ref=${bgCanvas} class="oo-card-bg" aria-hidden="true"></canvas>` : null}
     <div class="oo-card-body">

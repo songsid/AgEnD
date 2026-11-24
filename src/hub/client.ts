@@ -2,13 +2,14 @@ import {HUB_ROOM_ANSWER_STATUS_CAPABILITY} from "./room-answer-status-model.js";
 import {HUB_ROOM_MEMBERS_CAPABILITY} from "./room-members-model.js";
 import {HUB_ROOM_BRIEF_CAPABILITY} from "./room-brief-model.js";
 import {HUB_AGENT_INTRO_CAPABILITY} from "./agent-intro-model.js";
+import { HUB_AGENT_PICTURES_CAPABILITY } from "./agent-pictures-model.js";
 import { HUB_AGENT_CATALOG_CAPABILITY, HUB_AGENT_CATALOG_LAPSE_CAPABILITY, HUB_EXPOSURE_REQUEST_CAPABILITY } from "./agent-catalog-model.js";
 import { HUB_ROOM_MENTION_FEEDBACK_CAPABILITY } from "./room-mention-feedback-model.js";
 import { HUB_ROOM_CONTEXT_CAPABILITY } from "./room-context-model.js";
 /** Outbound-only pinned member connection. Reconnect reconciles; it never repeats an input/tool operation. */
 import { WebSocket } from "ws";
 import { randomUUID } from "node:crypto";
-import { HUB_FLEET_UPDATE_CAPABILITY, HUB_CAPABILITIES, HUB_LIMITS, HUB_REVOCATION_FLOOR_HEADER, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
+import { HUB_ASKER_NAME_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY, HUB_CAPABILITIES, HUB_LIMITS, HUB_REVOCATION_FLOOR_HEADER, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_BUTTONS_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_ROOM_REACT_CAPABILITY, HUB_PATHS, parseServerFrame, encodeMemberFrame } from "./protocol.js";
 import { HubSocket } from "./socket.js";
 import { HUB_RECOMMENDATION_CAPABILITY } from "./recommendation-model.js";
 import { HUB_FLEET_INFO_CAPABILITY } from "./fleet-info.js";
@@ -42,6 +43,8 @@ export interface HubClientOptions {
   roomContext?: boolean;
   agentIntro?: boolean;
   agentCatalog?: boolean;
+  /** M-3533 R2b: report shared agents' pictures (agent-pictures-v1) when the Hub offers it. */
+  agentPictures?: boolean;
   exposureRequests?: boolean;
   roomMentionFeedback?: boolean;
   fleetInfo?: import("./types.js").HubFleetInfo;
@@ -110,7 +113,7 @@ export class HubMemberClient implements HubMemberTransport {
     if (!this.current() || !this.profile || this.connecting) return;
     this.connecting = true; this.ready = false; this.deferred = []; this.deferredBytes = 0;
     const profile = this.profile, handshake = randomUUID();
-    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY);
+    const offered = [...(this.options.capabilities ?? HUB_OPTIONAL_CAPABILITIES)].filter(c => !this.legacyHello || c !== HUB_FLEET_UPDATE_CAPABILITY && c !== HUB_ASKER_NAME_CAPABILITY);
     const origins = this.options.dial ? this.options.dial() : [profile.hub.memberOrigin];
     if (!origins.length) {                                       // a relocation state that does not verify: fail closed
       this.connecting = false; this.stopped = true; this.options.hold("key-changed");
@@ -191,6 +194,7 @@ export class HubMemberClient implements HubMemberTransport {
       const features = new Set(offered.includes("welcome-caps-v1") ? offered.filter(c => frame.payload.capabilities?.includes(c)) : []);
       if(this.options.agentIntro && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_INTRO_CAPABILITY))features.add(HUB_AGENT_INTRO_CAPABILITY);
       if (this.options.agentCatalog && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_CAPABILITY)) features.add(HUB_AGENT_CATALOG_CAPABILITY);
+      if (this.options.agentPictures && features.has("welcome-caps-v1") && frame.payload.capabilities?.includes(HUB_AGENT_PICTURES_CAPABILITY)) features.add(HUB_AGENT_PICTURES_CAPABILITY);
       if (this.options.exposureRequests && features.has(HUB_AGENT_CATALOG_CAPABILITY) && frame.payload.capabilities?.includes(HUB_EXPOSURE_REQUEST_CAPABILITY)) features.add(HUB_EXPOSURE_REQUEST_CAPABILITY);
       // M-3543: the Hub takes a lapsed row and a Share again of a published agent (only with exposure requests).
       if (features.has(HUB_EXPOSURE_REQUEST_CAPABILITY) && frame.payload.capabilities?.includes(HUB_AGENT_CATALOG_LAPSE_CAPABILITY)) features.add(HUB_AGENT_CATALOG_LAPSE_CAPABILITY);
@@ -205,6 +209,7 @@ export class HubMemberClient implements HubMemberTransport {
         send: value => {
           if (!view.current() || value.linkEpoch !== epoch || value.type === "hello") return Promise.reject(new HubAuthorizationError("stale", "stale"));
           if(value.type === "agent.intro" && !features.has(HUB_AGENT_INTRO_CAPABILITY))return Promise.reject(new HubProtocolError("incompatible"));
+          if ((value.type === "agent.pictures" || value.type === "agent.picture") && !features.has(HUB_AGENT_PICTURES_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && !features.has(HUB_AGENT_CATALOG_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if (value.type === "agent.catalog" && value.payload.requests && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
           if ((value.type === "exposure.request-result" || value.type === "exposure.undo") && !features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) return Promise.reject(new HubProtocolError("incompatible"));
@@ -246,6 +251,7 @@ export class HubMemberClient implements HubMemberTransport {
     if ((frame.type === "exposure.request" || frame.type === "exposure.request-ack" || frame.type === "exposure.undo-result")
       && !view.features.has(HUB_EXPOSURE_REQUEST_CAPABILITY)) throw new HubProtocolError("incompatible");
     if(frame.type === "agent.intro-result" && !view.features.has(HUB_AGENT_INTRO_CAPABILITY))throw new HubProtocolError("incompatible");
+    if ((frame.type === "agent.pictures-result" || frame.type === "agent.picture-result") && !view.features.has(HUB_AGENT_PICTURES_CAPABILITY)) throw new HubProtocolError("incompatible");
     const pending = this.pending.get(frame.requestId);
     // The Hub can retry its request while our result waits for an ACK with the same operation id.
     if (pending && !(frame.type === "exposure.request" && pending.expected === "exposure.request-ack")) {
@@ -263,6 +269,7 @@ export class HubMemberClient implements HubMemberTransport {
   private async dispatch(frame: HubServerFrame, view: HubMemberLink): Promise<void> {
     if (!view.current() || frame.type === "welcome") throw new HubProtocolError("stale");
     if(frame.type==="room.members-result"&&frame.payload.ok&&"v2" in frame.payload&&!view.features.has(HUB_ROOM_MEMBERS_CAPABILITY))throw new HubProtocolError("incompatible");
+    if(frame.type==="question"&&frame.payload.askerName!==undefined&&!view.features.has(HUB_ASKER_NAME_CAPABILITY))throw new HubProtocolError("incompatible");
     if(frame.type==="room.ask"&&frame.payload.brief&&!view.features.has(HUB_ROOM_BRIEF_CAPABILITY))throw new HubProtocolError("incompatible");
     if ((frame.type === "room.context-state-result" || frame.type === "room.context-input-result"
       || frame.type === "room.ask" && !!frame.payload.contextState) && !view.features.has(HUB_ROOM_CONTEXT_CAPABILITY)) throw new HubProtocolError("incompatible");

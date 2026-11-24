@@ -268,10 +268,16 @@ export class HubCore {
    */
   async eligible(person: PersonKey): Promise<boolean> { return (await this.current(person)) !== null; }
   /**
+   * M-3600: as eligible(), except that a directory which could not answer (its `unavailable` reply) throws
+   * HubProtocolError("unavailable") instead of reading as ineligible, so a member's authorize can tell an outage from a
+   * real refusal. The person's row and sessions are treated exactly as eligible() treats them.
+   */
+  async eligibleOrUnavailable(person: PersonKey): Promise<boolean> { return (await this.current(person, true)) !== null; }
+  /**
    * The person as the directory has them now (its current login and name), or null when they are not eligible. The
    * person's row takes the current login label, so a rename never leaves an old label pointing at them.
    */
-  async current(person: PersonKey): Promise<{ login: string; displayName?: string } | null> {
+  async current(person: PersonKey, unavailableThrows = false): Promise<{ login: string; displayName?: string } | null> {
     const selected = Object.freeze(validated(personSchema, person)), id = personKeyString(selected);
     try { return await this.directoryReads.withDirectoryRead(selected, async () => {
       const r = await this.deps.directory.checkEligibility(selected);
@@ -283,6 +289,7 @@ export class HubCore {
         if (ok && r.eligible && typeof r.person.login === "string" && r.person.login) db.prepare("UPDATE hub_people SET login_label=? WHERE person=?").run(r.person.login.slice(0, 256), id);
         if (!ok && !(!r.eligible && r.reason === "unavailable")) db.prepare("UPDATE hub_sessions SET state='ended' WHERE person=? AND state='active'").run(id);
       });
+      if (unavailableThrows && !r.eligible && r.reason === "unavailable") throw new HubProtocolError("unavailable");
       return ok && r.eligible ? { login: r.person.login, ...(r.person.displayName ? { displayName: r.person.displayName } : {}) } : null;
     }); } catch (error) {
       if (error instanceof HubGroupReadOverload) throw new HubProtocolError("backpressure");

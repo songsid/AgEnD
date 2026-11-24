@@ -525,10 +525,11 @@ describe("format v1: a strip's displayed size, and walking four ways", () => {
       .toEqual([["w", false], ["w", false], ["i", false], ["w", false], ["w", false]]);
     expect([pick({ idle: S("i"), walkDown: S("d") }, { dx: 9, dy: 1 }), pick(full, { dx: 0, dy: 9 }, "working"), pick(full, null, "constructor"), PK.poseStrip(null, "idle")])
       .toEqual([["i", false], ["i", false], ["i", false], null]);
-    // As the host checks them: the three are poses; any other name is not.
+    // As the host checks them: the walking poses (walkLeft too, for a set drawn its own way left); any other name is not.
     const m = MANIFEST(), idle = m.characters.default.idle;
     expect(PK.checkSkinPack({ ...m, characters: { default: { idle, walkDown: idle, walkUp: idle, walkSide: idle } } }).ok).toBe(true);
-    expect(PK.checkSkinPack({ ...m, characters: { default: { idle, walkLeft: idle } } })).toEqual({ ok: false, error: 'characters.default: unknown key "walkLeft"' });
+    expect(PK.checkSkinPack({ ...m, characters: { default: { idle, walkLeft: idle } } }).ok).toBe(true);
+    expect(PK.checkSkinPack({ ...m, characters: { default: { idle, walkRight: idle } } })).toEqual({ ok: false, error: 'characters.default: unknown key "walkRight"' });
   });
   it("the walker's heading is its current step; the side strip is drawn mirrored about its anchor moving left, and hit there", () => {
     expect([Z.headingAt([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 30 }], 0.1), Z.headingAt([{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 30 }], 0.9), Z.headingAt([{ x: 1, y: 1 }], 0.5)])

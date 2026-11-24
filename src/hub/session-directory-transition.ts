@@ -8,9 +8,10 @@ import type { HubDirectoryDecisionRequest, HubDirectorySettingsOperation } from 
 import { personKeyString } from "./identity.js";
 import { HubProtocolError, identifier, person, validated } from "./validation.js";
 import { readHubSessionEpoch } from "./session-epoch.js";
+import { hubSessionLimits, withinHubSessionLimits } from "./session-limits.js";
 import { z } from "zod";
 
-const RECENT_MS = 5 * 60_000, IDLE_MS = 60 * 60_000;
+const RECENT_MS = 5 * 60_000;
 const hash = (token: string) => createHash("sha256").update(token).digest("hex");
 const actorSchema = z.strictObject({ kind: z.literal("hub-administrator"), person, sessionId: identifier, requestId: identifier });
 type Actor = z.infer<typeof actorSchema>;
@@ -25,10 +26,12 @@ interface Row { token_hash: string; id: string; person: string; created_at: numb
 function row(db: Database.Database, sessionId: string): Row | undefined {
   return db.prepare("SELECT token_hash,id,person,created_at,seen_at,expires_at,state,directory_epoch FROM hub_sessions WHERE id=?").get(sessionId) as Row | undefined;
 }
-function current(r: Row | undefined, who: string, epoch: number, now: number): r is Row {
-  return !!r && r.person === who && r.state === "active" && r.directory_epoch === epoch
+/** M-3592: the administrator's sign-in limits (session-limits.ts), as HubSessions applies them. */
+function current(db: Database.Database, r: Row | undefined, who: string, epoch: number, now: number): r is Row {
+  if (!r) return false;
+  return r.person === who && r.state === "active" && r.directory_epoch === epoch
     && [now, r.created_at, r.seen_at, r.expires_at].every(n => Number.isSafeInteger(n) && n >= 0)
-    && now >= r.created_at && now >= r.seen_at && now < r.expires_at && now - r.seen_at <= IDLE_MS;
+    && now >= r.created_at && now >= r.seen_at && now < r.expires_at && withinHubSessionLimits(r, hubSessionLimits(db), now);
 }
 
 /** Only server session rows created by successful trusted-directory sign-in attest authentication. Never touches seen_at. */
@@ -37,7 +40,7 @@ export function recentHubDirectoryAuthentication(core: HubCore, raw: Actor,permi
   if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) {try{assertHubManagementAttestation(permit,"hub.admin",actor);}catch{return null;}}
   return core.atomic(db => {
     const now = core.now(), who = personKeyString(actor.person), r = row(db, actor.sessionId);
-    if (!current(r, who, core.directoryEpoch, now)) return null;
+    if (!current(db, r, who, core.directoryEpoch, now)) return null;
     const proof = db.prepare("SELECT directory_epoch,authenticated_at FROM hub_session_authentication WHERE session_id=?").get(actor.sessionId) as { directory_epoch: number; authenticated_at: number } | undefined;
     return proof && proof.directory_epoch === core.directoryEpoch && Number.isSafeInteger(proof.authenticated_at)
       && proof.authenticated_at >= r.created_at && now >= proof.authenticated_at && now - proof.authenticated_at <= RECENT_MS ? proof.authenticated_at : null;
@@ -58,7 +61,7 @@ export function prepareHubDirectorySessionRotation(core: HubCore, token: string,
   if (personKeyString(actor.person) !== personKeyString(core.deps.config.administrator)) throw new HubProtocolError("denied");
   const snapshot = core.atomic(db => {
     const now = core.now(), r = row(db, actor.sessionId);
-    if (!current(r, personKeyString(actor.person), core.directoryEpoch, now) || r.token_hash !== hash(token)) throw new HubProtocolError("revoked");
+    if (!current(db, r, personKeyString(actor.person), core.directoryEpoch, now) || r.token_hash !== hash(token)) throw new HubProtocolError("revoked");
     return { db, old: { ...r }, now };
   });
   const state: Rotation = { db: snapshot.db, hubId: core.deps.config.hubId, actor, old: snapshot.old, epoch: core.directoryEpoch,
@@ -84,10 +87,12 @@ export function takeHubDirectorySessionRotation(handle: HubDirectorySessionRotat
     validate(now: number) {
       const r = row(db, state.actor.sessionId);
       if (state.phase !== "taken" || !state.token || !Number.isSafeInteger(now) || now < state.createdAt || now >= state.expiresAt
-        || readHubSessionEpoch(db) !== expectedEpoch || !current(r, state.old.person, expectedEpoch, now)
+        || readHubSessionEpoch(db) !== expectedEpoch || !current(db, r, state.old.person, expectedEpoch, now)
         || r.token_hash !== state.old.token_hash || r.created_at !== state.old.created_at || r.expires_at !== state.old.expires_at) throw new HubProtocolError("revoked");
       // Return only copied SQL values. The caller advances the epoch, then inserts with NO further application callbacks.
-      return { tokenHash: hash(state.token), id: state.newId, person: state.old.person, at: now, expiresAt: state.old.expires_at };
+      // M-3592: the successor keeps the predecessor's sign-in time and end, so an administrator's lower sign-in limit
+      // still counts from when the person signed in, not from the rotation.
+      return { tokenHash: hash(state.token), id: state.newId, person: state.old.person, at: now, signedInAt: state.old.created_at, expiresAt: state.old.expires_at };
     },
     committed(operation: HubDirectorySettingsOperation) {
       state.phase = "committed"; state.operationId = operation.id; state.nextEpoch = operation.directoryEpoch;
@@ -111,7 +116,7 @@ export function completeHubDirectorySessionRotation(core: HubCore, handle: HubDi
     if (!binding.success || binding.data.previousSessionId !== state.actor.sessionId || binding.data.sessionId !== state.newId) throw new HubProtocolError("revoked");
     if (!head || head.operation_id !== operationId || head.directory_epoch !== state.nextEpoch
       || !Number.isSafeInteger(now) || now < state.createdAt || now >= state.expiresAt
-      || !current(r, state.old.person, state.nextEpoch!, now) || r.token_hash !== hash(state.token!)) throw new HubProtocolError("revoked");
+      || !current(db, r, state.old.person, state.nextEpoch!, now) || r.token_hash !== hash(state.token!)) throw new HubProtocolError("revoked");
     return { token: state.token!, maxAgeMs: r.expires_at - now };
   });
   state.token = null; state.phase = "released"; return out;

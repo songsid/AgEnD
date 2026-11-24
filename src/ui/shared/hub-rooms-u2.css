@@ -129,6 +129,9 @@
 .hub-agent-av.emoji { font-size: var(--fs-xs); font-weight: normal; }
 /* The default tint is pale on a light panel: the neutral avatar (no look) alone gets a ring in the border colour. */
 .hub-agent-av.neutral { box-shadow: inset 0 0 0 1px var(--border); }
+/* M-3533 R2b: a picture fills the disc, cropped to the circle, never stretched (as the Fleet sidebar's .av img). */
+.hub-agent-av.pic::before { content: none; }
+.hub-agent-av.pic img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }
 /* The assistant's row is not a button: the agent rows' padding, so its disc sits in their avatar column. */
 .hub-member-assistant { padding-inline: var(--s-1); }
 /* Its status ("Idle · provided by the Hub") is long: in a compact list it takes a second line, so the name stays whole. */

@@ -5,10 +5,10 @@ import { personKeyString } from "../identity.js";
 import type { HubCore } from "../http/core.js";
 import { HubProtocolError } from "../validation.js";
 
-export function directRoomView(room: HubRoomListItem, presence: "idle" | "working" | "paused" | "offline" | "later" = "offline", unread = 0, intro: {intro?:string} = {}) {
+export function directRoomView(room: HubRoomListItem, presence: "idle" | "working" | "paused" | "offline" | "later" = "offline", unread = 0, intro: {intro?:string} = {}, reported = false) {
   return { ...room, kind: "direct" as const, name: room.exposureName, people: 1, agents: 1, online: presence === "idle" || presence === "working" ? 1 : 0, unread,
     lastText: "", lastAuthor: "", archived: room.state === "closed",
-    agent: { ...intro, ...(room.answerOnly?{answerOnly:true}:{}), ...(room.agentKind?{agentKind:room.agentKind}:{}), exposureId: room.exposureId, owner: { name: room.ownerName }, presence } };
+    agent: { ...intro, ...(room.answerOnly?{answerOnly:true}:{}), ...(room.agentKind?{agentKind:room.agentKind}:{}), exposureId: room.exposureId, owner: { name: room.ownerName }, presence, ...(reported ? { reported: true } : {}) } };
 }
 export function directMessages(room: HubRoomListItem, entries: readonly HubRoomEntryView[], askerName: string): RoomMessage[] {
   return entries.flatMap(entry => {
@@ -18,8 +18,15 @@ export function directMessages(room: HubRoomListItem, entries: readonly HubRoomE
       stage: entry.receipt.stage === "answered" ? "answered" : ["queued", "delivered", "consumed"].includes(entry.receipt.stage) ? "working" : "not-answered",
       ...(entry.receipt.reasonCode === "share-needs-reshare" ? { reasonCode: "share-needs-reshare" as const } : {}),
       ...(entry.idempotencyKey ? { idempotencyKey: entry.idempotencyKey } : {}), ...(entry.questionFiles?.length ? { files: entry.questionFiles } : {}) };
-    return [question, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,
-      author: { kind: "agent" as const, id: room.exposureId, name: room.exposureName, owner: { name: room.ownerName } }, text: entry.answer,
+    const agent = { kind: "agent" as const, id: room.exposureId, name: room.exposureName, owner: { name: room.ownerName } };
+    // M-3596: an open question's answer row before it has text, as a group room's (the thread's work bar reads it): working
+    // once the agent was handed it, else queued (with how many open questions to it came first). The answer replaces it.
+    const pending: RoomMessage[] = entry.answer === undefined && question.stage === "working" && (entry.startedAt !== undefined || entry.ahead !== undefined)
+      ? [{ ...base, id: `${entry.messageId}:answer`, at: entry.startedAt ?? question.at, author: agent, text: "", answerTo: entry.messageId,
+        stage: entry.startedAt !== undefined ? "working" : "queued", ...(entry.startedAt !== undefined ? { startedAt: entry.startedAt } : { ahead: entry.ahead }) }]
+      : [];
+    return [question, ...pending, ...(entry.answer === undefined ? [] : [{ ...base, id: `${entry.messageId}:answer`, at: entry.receipt.at,
+      author: agent, text: entry.answer,
       replyTo: entry.messageId, ...(entry.answerFiles?.length ? { files: entry.answerFiles } : {}) }])];
   });
 }

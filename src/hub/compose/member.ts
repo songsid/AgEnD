@@ -4,6 +4,8 @@ import { HubMemberSharing } from "../member/sharing.js";
 import { HubMemberSharingLink } from "../member/sharing-link.js";
 import { sharingNotice } from "../member/sharing-result.js";
 import { HubMemberAgentCatalog, memberAgentCatalog, hubPageSharingEnabled, type MemberCatalogAgent } from "../member/agent-catalog.js";
+import { HubMemberAgentPictures, type MemberPictureSources } from "../member/agent-pictures.js";
+import { reduceInWorker } from "../../hub-picture-reduce.js";
 import {HubRoomMentionFeedback,HUB_ROOM_MENTION_FEEDBACK_MIGRATION,verifyRoomMentionFeedback} from "../member/room-mention-feedback.js";
 import {HUB_ROOM_MENTION_FEEDBACK_CAPABILITY} from "../room-mention-feedback-model.js";
 /**
@@ -45,7 +47,7 @@ import { createQuotaPublisher } from "../member/quota.js";
 import { HubFileVersionFloor } from "../version-floor.js";
 import type { HubAuditRecord, HubServerFrame } from "../types.js";
 import { EMPTY_VIEW_SOURCE, type HubViewSource } from "./views.js";
-import { HUB_REPRESENTATIVE_MIGRATION, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
+import { HUB_REPRESENTATIVE_MIGRATION, HubAskerNames, HubRepresentativeExecution, type HubReportOutcome, type HubRepresentativeDelivery } from "../representative.js";
 import { HUB_PROVIDER_SETUP_REASONS, hubProviderSetupReason, type HubProviderSetupReason } from "../execution/provider-setup.js";
 import { HubMemberUpdates, HUB_MEMBER_UPDATES_MIGRATION, type MemberUpdatesOptions } from "../member/updates.js";
 import { IDLE_UPDATE_MIGRATION } from "../../update-idle.js";
@@ -55,7 +57,7 @@ import { readHubDisplayName } from "../display-name.js";
 import { refreshHubDisplayName } from "../member/display-name.js";
 import { HubMemberFiles } from "../member/attachments.js";
 import { createHubPairingNoticeInbox, HUB_PAIRING_INBOX_MIGRATION } from "../member/pairing-notices.js";
-import { HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
+import { HUB_ASKER_NAME_CAPABILITY, HUB_OPTIONAL_CAPABILITIES, HUB_ROOM_ASK_CAPABILITY, HUB_ROOM_POST_CAPABILITY, HUB_FLEET_UPDATE_CAPABILITY } from "../protocol.js";
 import { createRoomStatePublisher, HubRoomAskAdapter, HUB_ROOM_ASK_MIGRATION, HUB_ROOM_CONTEXT_RECEIPTS_MIGRATION, verifyRoomAskJournal,
   type AgentStateInput, type RoomAskLink, type RoomStateLink } from "../member/room-ask.js";
 import { HubRoomPostAdapter, isShareLapsed, verifyRoomPostJournal } from "../member/room-post.js";
@@ -102,6 +104,8 @@ export interface HubMemberFactoryOptions {
   /** The owner's local agents, each with the S4 provider it would run under (null: none). */
   agents(): import("../member/exposure-api.js").HubMemberAgent[];
   catalogAgents?(): MemberCatalogAgent[];
+  /** M-3533 R2b: an agent's pictures as its owner's Fleet shows them (the sidebar's disc, the identity card's portrait). */
+  pictureSources?(agent: string): MemberPictureSources;
   sharingNotice?(notice: import("../../hub-sharing-notice.js").HubSharingNotice): Promise<boolean>;
   attachSharing?(controller: import("../../hub-sharing-notice.js").HubSharingController | null): void;
   /** Current Fleet message-body limit, applied to room history rendering only. */
@@ -312,12 +316,18 @@ export function createMemberReceive(deps: {
   relocate?(statement: unknown, requestId: string, l: HubMemberLink): Promise<void>;
   /** M-3313: see HubMemberFactoryOptions.sawText. */
   sawText?(text: string): void;
+  /** M-3594: where a 1:1 question's Hub-verified asker name waits for the representative's hand-off. */
+  askerNames?: Pick<HubAskerNames, "remember">;
 }) {
   return async (frame: Exclude<HubServerFrame, { type: "welcome" }>, l: HubMemberLink): Promise<void> => {
     if (!deps.live() || !l.current()) return;
     if (frame.type === "question") {
       seen(deps.sawText, frame.payload);
-      const receipt = await deps.admission.admit(frame.payload);
+      // M-3594: the Hub's display name for the asker stays in memory only. The journal keeps the question exactly as an older
+      // build parses it (its strict schema would refuse the field after a rollback).
+      const { askerName, ...question } = frame.payload;
+      if (askerName !== undefined) deps.askerNames?.remember(question.identity.messageId, askerName);
+      const receipt = await deps.admission.admit(question);
       if (!l.current()) return;
       await l.send({ v: 1, type: "receipt", requestId: frame.requestId, linkEpoch: l.linkEpoch, payload: receipt });
       return;
@@ -526,9 +536,11 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       teardown.add("Hub display metadata", stopDisplay);
       // M-3125: one file handler for the 1:1 representative and the room asks (the inbox and the reply rule are the same).
       const memberFiles = options.representative.files ? new HubMemberFiles(options.representative.files) : undefined;
+      const askerNames = new HubAskerNames();
       const service = new HubRepresentativeExecution({
         db,
         journal,
+        askerName: (messageId) => askerNames.get(messageId),
         binding,
         localExposure: (id) => exposures.localExposure(id),
         agentToken: (agent) => options.representative.agentToken(agent),
@@ -727,7 +739,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         try { completeRelocationPin(options.home, profile, profileDigest, webNow(), live, trust); }
         catch (err) { options.log("warn", "A company pin left behind by a relocation was not completed", { error: (err as Error).message }); }
       }
-      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices, sawText: options.sawText,
+      const receive = createMemberReceive({ admission, journal, live, log: options.log, notices, sawText: options.sawText, askerNames,
         publicationRefused: (requestId, code) => sender.refused(requestId, code),
         relocate: async (statement, requestId, l) => {
           if (!live() || !l.current() || !profileDigest) return;
@@ -788,6 +800,12 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
       const catalog: HubMemberAgentCatalog | null = options.catalogAgents ? new HubMemberAgentCatalog({ current: live, enabled: catalogEnabled, agents: catalogAgents, requests: !!sharing, lapsed: agent => shareLapsed(agent),
         failed: () => options.log("warn", "The owner agent catalog was not sent") }) : null;
       teardown.add("owner agent catalog", () => catalog?.close());
+      // M-3533 R2b: each published share's pictures, for the Hub's room offices (agent-pictures-v1, when the Hub offers it).
+      const pictures: HubMemberAgentPictures | null = options.pictureSources ? new HubMemberAgentPictures({ current: live, reduce: reduceInWorker,
+        exposures: () => exposures.list().flatMap(row => { const e = row.committed?.exposure; return e && e.state === "published" ? [{ id: e.id, agent: row.agent }] : []; }),
+        sources: agent => options.pictureSources!(agent),
+        failed: () => options.log("warn", "Shared agents' pictures were not sent to the Hub") }) : null;
+      teardown.add("shared agents' pictures", () => pictures?.close());
       client = new HubMemberClient({
         allowOfflineStart: true,
         log: options.log,
@@ -795,12 +813,13 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         receiveRecommendations: !!recommendations,
         agentIntro: true,
         agentCatalog: !!catalog,
+        agentPictures: !!pictures,
         exposureRequests: !!sharing,
         roomContext: !!options.roomConversationGeneration && !!options.attachRoomInputs,
         roomMentionFeedback:!!options.roomNotify,
         home: options.home,
         hubId,
-        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY] : []),
+        capabilities: [...HUB_OPTIONAL_CAPABILITIES, ...(updates ? [HUB_FLEET_UPDATE_CAPABILITY, HUB_ASKER_NAME_CAPABILITY] : []),
           ...(options.representative.readState ? [HUB_ROOM_ASK_CAPABILITY, ...(options.attachAgentRooms && options.roomNotify ? [HUB_ROOM_POST_CAPABILITY] : [])] : [])],
         memberOrigin: profile.hub.memberOrigin,
         revocationFloor: () => journal.revocationVersion(),
@@ -825,6 +844,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
           if (l.current() && live()) {
             online = l;
             catalog?.connected(l);
+            pictures?.connected(l);
             sharingLink?.connected(l);
             quota.start(l);
             terminalHold = false; reportLink("online");
@@ -886,6 +906,7 @@ export function createHubMemberFactory(options: HubMemberFactoryOptions) {
         },
         hold: (code) => {
           catalog?.disconnected();
+          pictures?.disconnected();
           sharingLink?.disconnected();
           stopDisplay();
           stopRooms();

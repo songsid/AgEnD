@@ -42,6 +42,11 @@ register("hubRoom", {
     filterPh: "Filter: name or owner", filterClear: "Clear the filter",
     laterAnswer: "{0} ({1}) · answers after they come online", noAnswer: "No answer", noAnswerReshare: "This agent is unavailable right now. Its owner needs to share it again.", noAnswerUnanswered:"No answer: The agent finished without answering here", noAnswerStopped: "No answer: {0} stopped sharing this agent.",
     workingOne: "{0} is working on it", workingMany: "{0} agents are working",
+    waitBehindOne: "Waiting: {0} is answering another question first", waitBehindMany: "Waiting: {0} has {1} questions to answer first",
+    waitBusy: "Waiting: {0} is busy with other work", waitPaused: "Waiting: {0} is paused; it gets your question when it resumes",
+    waitOffline: "Waiting: {0} is offline; it gets your question when it's back", waitStart: "Sent to {0}; waiting for it to start", elapsedTitle: "Time since it started",
+    handedUnknown: "Handed to {0}; waiting for its answer",
+    workPaused: "Paused: {0} continues with your question when it resumes", workOffline: "Offline: {0} continues with your question when it's back",
     // §4 composer
     composer: "Speak in “{0}”; @ an agent to have it answer",
     composerShort: "Message, or @ an agent to ask",   // Lumen (spec §4): a phone's width
@@ -191,6 +196,11 @@ register("hubRoom", {
     filterPh: "篩選：名稱或擁有者", filterClear: "清除篩選",
     laterAnswer: "{0}（{1}）· 上線後回答", noAnswer: "沒有回答", noAnswerReshare: "這個 Agent 暫時無法回答，擁有者需要重新分享。", noAnswerUnanswered:"沒有回答：Agent 已結束處理，但沒有在這裡回答。", noAnswerStopped: "沒有回答：{0} 已停止分享這個 Agent。",
     workingOne: "{0} 正在處理", workingMany: "{0} 個 Agent 正在處理",
+    waitBehindOne: "等待中：{0} 正在先回答另一個問題", waitBehindMany: "等待中：{0} 前面還有 {1} 個問題",
+    waitBusy: "等待中：{0} 正在處理其他工作", waitPaused: "等待中：{0} 已暫停，恢復後會收到你的問題",
+    waitOffline: "等待中：{0} 離線中，上線後會收到你的問題", waitStart: "已送給 {0}，等它開始處理", elapsedTitle: "開始處理後經過的時間",
+    handedUnknown: "已交給 {0}，等它回答",
+    workPaused: "已暫停：{0} 恢復後會繼續處理你的問題", workOffline: "離線：{0} 上線後會繼續處理你的問題",
     composer: "在「{0}」說話；@ 一個 Agent 請它回答",
     composerShort: "說話，或 @ Agent 請它回答",
     mentionAllHint: "{0} 個都會回答", mentionAssistant: "@房間助理",

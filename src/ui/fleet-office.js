@@ -76,14 +76,14 @@ import { CALLING, activeFurniture, bubbleAt, hiddenBy, bubbleRank, NIGHT, WANDER
 import { actsOk, createOfficeStore } from "./fleet-office-store.js";
 import { badgeOf, fixedOf, mergeLevels } from "./fleet-office-levels.js";
 import { OfficeCard, cardModel } from "./fleet-office-card.js";
-import { PLAY, applySeatDrop, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
+import { PLAY, applySeatDrop, patLook, clampDropForArea, createHold, createSnackDrag, createSnacks, findSeatDropTarget, playAllowed, playOffForMotion, pruneReactions, reactionAt, scatterWords, seatDropTargets } from "./fleet-office-play.js";
 import { POLL_MS } from "./fleet-traffic.js";
 import { OfficeEditor, officeForSave } from "./fleet-office-editor.js";
 import { LayoutEditor, handlesOf } from "./fleet-office-layout.js";
 import { ShareButton } from "./office-share-dialog.js";
 import { Dialog } from "/assets/ui-dialog.js";
 import { DLG, boxColours, boxLayout, createDialogue, createFaces, drawBox, fitBox, messageOf, onBox, pickFront, portraitSrc, stageOf, talkOf, wrap } from "./fleet-office-dialogue.js";
-import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox } from "./fleet-office-pack.js";
+import { applyOverrides, createClipClocks, fitNight, fitSeatFor, packMaxFps, snackLabel, stripBox, stripDurationMs } from "./fleet-office-pack.js";
 import { ALL_ID, LOBBY_TILE, OV, createCrossFlights, cropToRooms, fromTile, inTile, labelAt, lobbyNodes, overviewOk, tileAt, tileBox, tileLayout, visibleTiles } from "./fleet-office-overview.js";
 import { CAROUSEL_ID, INTERVALS, carouselHeld, carouselIdsOk, carouselKey, carouselOk, intervalOk, nextIndex, prevIndex } from "./fleet-office-carousel.js";
 import { centreOn, gestureState, gestures, miniPoint, toScreen, toWorld, wheelFactor, zoomKey, zoomTo } from "./fleet-canvas-view.js";
@@ -616,8 +616,12 @@ export function drawPart(ctx, p, a, ox, oy, ms, still, hot, env, tagsOff = false
       const posed = actPosed(p, q.look);
       const eating = !q.at.walking && p.snacks && ms > 0 ? p.snacks.eatingOf(q.look.name, t) : null;
       const canEat = !!eating && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      // A pat shows the set's `pat` strip for one full pass of it (pat.until), each pat from frame 0; a set without one keeps its pose.
+      const canPat = !q.at.walking && !canEat && ms > 0 && !!p.reacts && !CALLING.has(q.look.state) && !ASLEEP.has(q.look.state) && !q.look.night;
+      const patted = canPat ? patLook(posed, p.reacts.get(q.look.name), t) : null;
       const look = q.at.walking ? { ...q.look, pose: "walk", heading: q.at.heading }
-        : canEat ? { ...posed, pose: "eat", basePose: posed.pose } : posed;
+        : canEat ? { ...posed, pose: "eat", basePose: posed.pose }
+        : patted || posed;
       sk.drawCharacter(ctx, box, look, ms, env);
       if (canEat && eating.snackId && p.snacksById && sk.drawSnack) {
         const sdef = p.snacksById.get(eating.snackId);
@@ -900,7 +904,8 @@ export function OfficeKey({ pal }) {
  * in the zoom stack (a Hub room's office: the scene right under the room's header, M-3533 #4370);
  * `cardAction(name)` a card's main action ({ label, title, run }: the room's "@ it"), or null; `cardName(name)` a card's
  * title instead of the person's name (the room's: the agent's own, without the owner its scene label carries); `officesKey` read the offices
- * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed).
+ * again when it changes (a page with no stream: the room's office when an agent joins, leaves or is renamed); M-3533 R2b:
+ * `cardPhoto(name)` the src of a card's identity-card picture (the room's), or null: the figure.
  */
 function ensureDialogueStyle() {
   const doc = globalThis.document;
@@ -910,7 +915,7 @@ function ensureDialogueStyle() {
   link.setAttribute("data-office-dialogue-css", "1"); doc.head.appendChild(link);
 }
 export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetImage, opening, talk, more = false, onMore = null, live = null, onLive = null,
-  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false }) {
+  oneOffice = false, readOnly = false, stream = true, storage = undefined, cardRows = null, words = null, cardAction = null, cardName = null, officesKey = undefined, foldBar = false, cardPhoto = null }) {
   // M-3253: on a phone the page above (fleet-canvas.js) puts a ⋯ in its bar: `more` is that sheet open, `onMore(open)`;
   // `live` / `onLive` its Live toggle, which moves into the sheet. Without one (a share link's page) the bar stays.
   useLayoutEffect(ensureDialogueStyle, []);
@@ -1458,7 +1463,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const v = view0(), sz = sizeRef.current;
     const w = c.walks ? walkers.at(c.name, now()) : null;
     const pt = w ? { x: w.x, y: w.y - 52, r: 16 } : { x: c.box.x + c.box.w / 2, y: c.box.y, r: (c.box.w / 2) * v.k };
-    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = 12 + (w ? pt.r : pt.r);
+    const p = toScreen(v, pt.x, pt.y), cw = el.offsetWidth || 320, ch = el.offsetHeight || 260, gap = (c.skin?.pack?.card?.layout?.gap ?? 12) + pt.r;
     let x = p.x + gap;
     if (x + cw > sz.w - 8) x = p.x - gap - cw;
     x = Math.max(8, Math.min(x, sz.w - cw - 8));
@@ -2308,7 +2313,7 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
   const tipText = tipDesk ? nodeText(tipDesk.node) : null;
   // #2661: the card's person (gone from the office, filtered out or the office changed: it closes).
   const cardOf = card ? people.find((d) => d.key === card && d.node.i) || null : null;
-  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview } : null;
+  cardDesk.current = cardOf ? { name: cardOf.node.name, box: cardOf.box, walks: zones && !overview, skin: cardOf.skin } : null;
   useEffect(() => { if (card && !cardOf) setCard(null); }, [card, !!cardOf]);
   const closeCard = () => {
     setCard(null);
@@ -2348,7 +2353,8 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
     const r = deviceRatio(), W = Number(sizePx) || 56;
     if (cv.width !== Math.round(W * r) || cv.height !== Math.round(W * r)) { cv.width = Math.round(W * r); cv.height = Math.round(W * r); }
     g.setTransform(1, 0, 0, 1, 0, 0); g.clearRect(0, 0, cv.width, cv.height); g.imageSmoothingEnabled = false;
-    const look = { ...c.look, pose: "idle", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
+    // The card's avatar: the set's still `stand` when it has one (poseStrip falls back to idle).
+    const look = { ...c.look, pose: "stand", dim: false, match: false, badge: null, notag: true, free: true, work: 0, sign: null };
     const at = { x: 0, y: 0 }, b = c.skin.charBox ? c.skin.charBox(look, at) : null, box = b || { x: -16, y: -48, w: 32, h: 48 };
     const k = Math.min((W - 8) / box.w, (W - 8) / box.h) * r;
     g.setTransform(k, 0, 0, k, (W * r) / 2 - (box.x + box.w / 2) * k, (W * r) / 2 - (box.y + box.h / 2) * k);
@@ -2532,13 +2538,17 @@ export function Office({ view, traffic, q = "", lease, onOpen, assetUrl, assetIm
               walkNow.current?.();
             }
           }
-          reacts.current.set(n, { kind, t0: now() }); loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
+          // A pat with the set's `pat` strip lasts one full pass of it (never shorter than the hearts).
+          const t0 = now(), patSt = kind === "pat" && skin.patStrip ? skin.patStrip(n) : null;
+          reacts.current.set(n, { kind, t0, ...(patSt ? { until: t0 + Math.max(PLAY.REACT_MS, stripDurationMs(patSt)) } : {}) });
+          loop.current?.wake(); if (store.tellOn(n)) void store.tell(n, kind);
         } : null}
         tell=${play ? { on: store.tellOn(cardOf.node.name), set: (v) => { store.saveTell(cardOf.node.name, v); setTellRev((x) => x + 1); } } : null}
         packCard=${cardOf.skin?.pack?.card || null}
         picture=${typeof cardOf.skin?.picture === "function" ? cardOf.skin.picture : null}
         portrait=${cardOf.skin?.pack ? portraitSrc(cardOf.skin.pack, { agent: cardOf.node.name, state: cardOf.node.state }) : null}
-        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null} />` : null}
+        packScale=${cardOf.skin?.pack?.scale || 2} action=${cardAction ? cardAction(cardOf.node.name) : null}
+        photo=${cardPhoto ? cardPhoto(cardOf.node.name) : null} />` : null}
       <ul class="oo-desks" aria-label=${to("desks")}>${people.map((d) => {
         const nt = nodeText(d.node), cap = nowOf(d.node), where = d.office ? ` · ${d.office}` : "";
         const full = words ? `${nt.primary} — ${stateOf(d.node)}` : nt.full;
