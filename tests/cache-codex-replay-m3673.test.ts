@@ -107,6 +107,19 @@ describe("Codex fork replay accounting M3673", () => {
     expect(await requests(s, "7d")).toBe(2);
   });
 
+  it("transfers a legacy archive move by inode, preserving its offset across restart and append", async () => {
+    const legacy = (at: string, total: number) => usage(at, "unused", total).filter(row => row.type !== "turn_context");
+    const parent = rollout("legacy", [...legacy("2026-11-24T11:00:00Z", 110), ...legacy("2026-11-24T11:01:00Z", 220)]);
+    const a = make(); await a.kick(); expect(await requests(a, "24h")).toBe(2);
+    mkdirSync(join(dir, "archived_sessions")); const archived = join(dir, "archived_sessions", "legacy.jsonl");
+    renameSync(parent, archived); await a.kick();
+    expect(await requests(a, "24h")).toBe(2);
+    a.stop(); const b = make(); await b.kick();
+    expect(await requests(b, "24h")).toBe(2);
+    appendFileSync(archived, legacy("2026-11-24T11:02:00Z", 330).map(r => JSON.stringify(r)).join("\n") + "\n");
+    await b.kick(); expect(await requests(b, "24h")).toBe(3);
+  });
+
   it("does not load metadata for unrelated historical rollouts", async () => {
     const unrelated = rollout("unrelated-old", usage("2026-09-01T12:00:00Z", "unrelated", 110));
     utimesSync(unrelated, new Date("2026-09-01"), new Date("2026-09-01"));
@@ -182,15 +195,21 @@ describe("Codex fork replay accounting M3673", () => {
     expect(s.scanning().caughtUp).toBe(true);
   });
 
-  it("keeps unavailable recent accounting instead of publishing zero during repair", async () => {
+  it.each([false, true])("keeps unavailable recent accounting with other sources present=%s", async hasAvailable => {
     const old = emptyLedger();
     const cur: FileCursor = { kind: "codex", ino: 1, offset: 0 };
     addTurn(old, cur, { t: NOW - 1000, model: "gpt-5.5", prompt: 100, uncached: 100, read: 0, write5m: 0, write1h: 0, write: null, output: 10 }, 0);
     old.files[join(dir, "sessions", "unavailable.jsonl")] = cur;
+    if (hasAvailable) {
+      const available = rollout("available", usage("2026-11-24T11:00:00Z", "available", 110));
+      const other: FileCursor = { kind: "codex", ino: statSync(available).ino, offset: 0 };
+      addTurn(old, other, { t: NOW - 1000, model: "gpt-5.5", prompt: 100, uncached: 100, read: 0, write5m: 0, write1h: 0, write: null, output: 10 }, 0);
+      old.files[available] = other;
+    }
     mkdirSync(join(dir, "state"));
     writeFileSync(join(dir, "state", "cache-ledger.json"), JSON.stringify(old));
     const s = make(); await s.kick();
-    expect(await requests(s, "24h")).toBe(1);
+    expect(await requests(s, "24h")).toBe(hasAvailable ? 2 : 1);
     expect(s.scanning().caughtUp).toBe(false);
   });
 

@@ -105,7 +105,11 @@ export const WINDOWS: Record<CacheWindow, number> = { "24h": 86_400_000, "7d": 7
 export const cacheWindow = (w: string): CacheWindow => (Object.prototype.hasOwnProperty.call(WINDOWS, w) ? w as CacheWindow : "7d");
 
 interface RolloutMetadata { ino: number; cwd: string | null; id?: string | null; parent?: string | null }
-interface RolloutFile { path: string; ino: number; size: number; parentPath?: string; identityOnly?: boolean; orphaned?: true }
+interface RolloutFile { path: string; ino: number; size: number; sessionId?: string; parentPath?: string; identityOnly?: boolean; orphaned?: true; missingParent?: string }
+const rolloutSessionId = (path: string): string => {
+  const stem = basename(path, ".jsonl");
+  return /^rollout-.*-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.exec(stem)?.[1] ?? stem;
+};
 
 export interface InstanceReport {
   name: string;
@@ -373,14 +377,27 @@ export class CacheService {
       if (kind === "kiro" || kind === "opencode" || kind === "antigravity") { pruneLedger(ledger, cutoff, await this.foldBeforePrune(inst, ledger, cutoff)); continue; }
       const files = kind === "claude" ? await this.claudeFiles(inst, cutoff) : kind === "grok" ? await this.grokFiles(inst, cutoff)
         : kind === "muse" ? muse.get(inst.name) ?? [] : codex.get(inst.name) ?? [];
+      const listed = new Set(files.map((f) => f.path));
+      if (kind === "codex") for (const generation of new Set([published, ledger])) {
+        for (const f of files) {
+          if (generation.files[f.path]) continue;
+          const id = "sessionId" in f && typeof f.sessionId === "string" ? f.sessionId : rolloutSessionId(f.path);
+          const moved = Object.entries(generation.files).find(([path, cur]) => !listed.has(path) && cur.kind === "codex" && cur.ino === f.ino && (cur.sessionId ?? rolloutSessionId(path)) === id);
+          if (!moved) continue;
+          const [before, cur] = moved;
+          generation.files[f.path] = cur; delete generation.files[before];
+          for (const event of Object.values(generation.codexEvents ?? {})) if (event.path === before) event.path = f.path;
+          this.dirty.add(inst.name);
+        }
+      }
       if (kind === "codex" && ledger === published && files.some(f => "parentPath" in f && f.parentPath && published.files[f.path]?.orphaned)) {
         ledger = published.codexRebuild = codexRebuild(published, cutoff);
       }
       // A listing that could not read everything is no inventory: a cursor it missed stays, or the file would be counted
       // again from its start once it is listed (Prism #2605). An instance whose store stays unreadable keeps its cursors
       // until it is readable again — bounded by its own files.
-      const listed = new Set(files.map((f) => f.path));
-      if (ledger !== published && !files.length && Object.values(published.files).some(f => f.kind === "codex" && (f.last?.t ?? 0) >= cutoff)) {
+      const terminalParents = new Set(files.flatMap(f => "missingParent" in f && typeof f.missingParent === "string" ? [f.missingParent] : []));
+      if (ledger !== published && Object.entries(published.files).some(([path, f]) => f.kind === "codex" && (f.last?.t ?? 0) >= cutoff && !listed.has(path) && !terminalParents.has(f.sessionId ?? rolloutSessionId(path)))) {
         // A repair cannot turn unavailable recent source data into a measured zero. Keep the published generation;
         // a later complete inventory can resume the candidate without erasing the only surviving accounting.
         this.unread.add(inst.name);
@@ -394,6 +411,9 @@ export class CacheService {
         let cur = ledger.files[f.path];
         if (!cur) { cur = ledger.files[f.path] = { kind, ino: f.ino, offset: 0 }; this.dirty.add(inst.name); }
         else if (cur.ino !== f.ino || f.size < cur.offset) { cur = this.followFromEnd(ledger, f.path, cur, f.ino, f.size); this.dirty.add(inst.name); }
+        if ("sessionId" in f && typeof f.sessionId === "string" && cur.sessionId !== f.sessionId) {
+          cur.sessionId = f.sessionId; this.dirty.add(inst.name);
+        }
         if ("orphaned" in f && f.orphaned) cur.orphaned = true; else delete cur.orphaned;
         if (cur.offset >= f.size) continue;
         // Only an unfinished line was left, and the file has not grown since: nothing new to read.
@@ -821,8 +841,7 @@ export class CacheService {
     // Codex filenames carry the session ID. Cached header IDs support older/custom names. Only recent files and
     // ancestors they reference are stat'ed/read here; the shared listing already maintains the historical inventory.
     for (const r of rollouts.values()) {
-      const stem = basename(r.path, ".jsonl");
-      const id = /^rollout-.*-([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})$/i.exec(stem)?.[1] ?? stem;
+      const id = rolloutSessionId(r.path);
       sessions.set(id, r.path);
       if (this.meta[r.path]?.id) sessions.set(this.meta[r.path]!.id!, r.path);
     }
@@ -866,7 +885,7 @@ export class CacheService {
         }
         visiting.delete(path);
         const owner = f.meta.cwd ? byCwd.get(resolve(f.meta.cwd)) : undefined;
-        selected.set(path, { path, ino: f.ino, size: f.size, ...(parentPath ? { parentPath } : {}), ...(orphaned ? { orphaned } : {}), ...(owner !== inst.name || (f.archived && !f.recent) ? { identityOnly: true } : {}) });
+        selected.set(path, { path, ino: f.ino, size: f.size, ...(f.meta.id ? { sessionId: f.meta.id } : {}), ...(parentPath ? { parentPath } : {}), ...(orphaned ? { orphaned, missingParent: f.meta.parent! } : {}), ...(owner !== inst.name || (f.archived && !f.recent) ? { identityOnly: true } : {}) });
         return true;
       };
       for (const f of [...inventory.values()]) if (f.recent && f.meta.cwd && byCwd.get(resolve(f.meta.cwd)) === inst.name) await visit(f.path);

@@ -4,16 +4,16 @@
   "integrationBase": "c0cb46de3ea9f58d506dab7fdf9e66f38304a9ad",
   "sourceBindings": {
     "src/cache-ledger.ts": {
-      "sha256": "a959e7e81bbbdfafacbaf85da7280704ede44b6db6aff0d4f45cddaf0846aa0c",
-      "gitBlob": "84be6a382ff53bac5a51d6ef8c6a0d00db2e34fb"
+      "sha256": "d0c82be17d2cee276aad1aaeb5d1bd34c0237195e24f29a115e6c63394bf60a2",
+      "gitBlob": "91acf07108e0cd257296e72fbe9dab4da4e27e95"
     },
     "src/cache-service.ts": {
-      "sha256": "73965e05e4d210c61277a9ff4df7fc3c91785215758e9dc39e92f4461a0574f0",
-      "gitBlob": "e9ad3bde476a69e0c97acec579fc5b3c8965af67"
+      "sha256": "50bd6617620ff3a1303be1f4b91a7b9f849c6b10036ffeb4510c88ccc71d3cee",
+      "gitBlob": "1fbfb41d51b143b8cca874dcdf0dee70dbb2b612"
     },
     "tests/cache-codex-replay-m3673.test.ts": {
-      "sha256": "7dba2a970279d2e69c4da92f4122660672f4af96e0f0fb52093a5aa8977ef392",
-      "gitBlob": "b8ebf45d6bdca7045cb615c78db380dd55f4ad47"
+      "sha256": "681c8a3346cef5629393bb9187a4ee0d7ecabc4c3cb59aa2ee3ef50333a726eb",
+      "gitBlob": "43c9c5df77f4b24c8c2d7a5f54f4deb6aae1a85f"
     }
   },
   "validation": {
@@ -24,7 +24,7 @@
     "affected": {
       "command": "npx vitest run tests/cache-codex-replay-m3673.test.ts tests/cache-analysis-1468.test.ts tests/usage-speed-3066.test.ts tests/usage-report-2122.test.ts tests/usage-reasoning-2122.test.ts tests/usage-snapshot-2122.test.ts",
       "files": 6,
-      "passed": 136
+      "passed": 138
     },
     "sourceTypes": {
       "command": "npx tsc --noEmit",
@@ -41,6 +41,12 @@
       "before": "Both new archived-parent and permanently-absent-parent assertions fail",
       "after": "17 current replay controls pass, including archived recent/old ancestors, terminal orphan recovery, non-Codex incomplete-store and unrelated historical metadata controls",
       "scope": "Six affected suites:136 passed; source and test types:0 errors"
+    },
+    "archiveMoveDelta": {
+      "base": "ba66431ed23911f0230cd7308c141acf568d5f2e",
+      "before": "legacy archive move assertion fails: two rows become four",
+      "after": "same-inode and same-session move transfers cursor and event paths; move/restart/append pass",
+      "scope": "Six affected suites138 passed, then19 control cases rechecked after making cursor identity backfill durable; source/test types0"
     }
   },
   "limits": [

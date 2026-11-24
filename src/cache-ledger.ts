@@ -105,6 +105,7 @@ export interface FileCursor {
   model?: string;
   total?: number;
   turnId?: string;
+  sessionId?: string;
   /** A complete sessions+archive listing could not find this fork's parent; dates are best available, not recovered. */
   orphaned?: true;
   /** Claude: ids of the last messages counted (one message spans several lines). */
