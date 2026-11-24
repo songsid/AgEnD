@@ -2714,6 +2714,7 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
               scratchDir: agent => isSafeInstanceDirName(agent) ? join(this.dataDir, "workspaces", agent, "hub-files") : null },
             attachReports: (handler, failed) => { this.hubReports = handler; this.hubDeliveryFailed = failed; },
             attachPrivateQuestions: read => { this.hubPrivateQuestions = read; },
+            attachQuestionSettled: read => { this.hubQuestionSettled = read; },
             attachReacts: handler => { this.hubReacts = handler; },
           },
           attachAgentIntro: port => { this.hubAgentIntro=port; },
@@ -3085,7 +3086,30 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
   private contactWindows(): HubContactWindows {
     return this.hubContactWindows ??= new HubContactWindows(join(this.dataDir, "hub-contact-windows.json"));
   }
-  hubContactRestricted(agent: string): boolean { return this.contactWindows().restricted(agent); }
+  /** M-3660: questions of shares that opted out of the contact limit (their daemon's hub_question_input opens nothing). */
+  private readonly hubWindowOptOut = new Set<string>();
+  /** M-3660: the agent's daemon is about to write a Hub question into its idle pane: the answer turn's window opens. */
+  private hubQuestionInput(agent: string, correlationId: string): void {
+    if (this.hubWindowOptOut.delete(`${agent}\0${correlationId}`)) return;
+    try { this.contactWindows().begin(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be opened"); }
+  }
+  /** M-3660: that answer turn is over (its idle edge, or the next turn's write): the window closes, whatever came of it. */
+  private hubQuestionTurnEnded(agent: string, correlationId: string): void {
+    this.hubWindowOptOut.delete(`${agent}\0${correlationId}`);
+    try { this.contactWindows().answered(agent, correlationId); }
+    catch (err) { this.logger.warn({ err, agent }, "Hub contact window could not be closed; it will expire"); }
+  }
+  /** M-3660: the member side's "this question is no longer being answered" reader (null: no member service attached). */
+  private hubQuestionSettled: ((agent: string, correlationId: string) => boolean) | null = null;
+  hubContactRestricted(agent: string): boolean {
+    const settled = this.hubQuestionSettled;
+    return this.contactWindows().restricted(agent, settled ?? undefined);
+  }
+  hubContactQuestion(agent: string): string | null {
+    const settled = this.hubQuestionSettled;
+    return this.contactWindows().restrictingQuestion(agent, settled ?? undefined);
+  }
   /**
    * M-3313 (#4145 for the Hub): what a Hub question or room notification hands the agent, with this fleet's sign-in
    * access token hidden (exact match, as a chat's). The live one is taken back and replaced, and the sign-in's chat told.
@@ -3147,8 +3171,11 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
         if(!ipcMeta.hub_room_context_generation&&/^hub-room-[a-f0-9-]{36}$/.test(input.correlationId)){const generation=this.daemons.get(input.agent)?.roomConversationGeneration();if(generation)ipcMeta.hub_room_context_generation=generation;}
         if (!(await input.beforeInput())) return false;
         if(classic){if(!await idle())return false;this.classicPrivacy().begin(input.agent,input.correlationId);}
-        // Before any possible IPC exposure. An uncertain write retains the window, never replays the question.
-        if (input.contactLimit !== false) this.contactWindows().begin(input.agent, input.correlationId);
+        // M-3660: the window covers only the turn that answers the question. The agent's daemon writes it only into an
+        // idle pane, as a turn of its own, and says so just before the write (hub_question_input), so a question waiting
+        // behind the owner's turn blocks nothing. A Classic room is idle-gated here and opens it now, as before.
+        if (input.contactLimit !== false) { if (classic) this.contactWindows().begin(input.agent, input.correlationId); }
+        else this.hubWindowOptOut.add(`${input.agent}\0${input.correlationId}`);
         return input.stillCurrent();
       } });
     return result !== false;
@@ -13824,6 +13851,12 @@ export class FleetManager implements FleetContext, LifecycleContext, ArchiverCon
           this.cacheInstanceProgress(name, (msg.progress as string) || null);
         } else if(msg.type==="hub_room_turn_ended"){
           if(this.instanceIpcClients.get(name)===ipc&&typeof msg.generation==="string"&&typeof msg.turn==="string")void this.hubRoomOwed?.turnEnded(name,msg.generation,msg.turn).catch(err=>this.logger.warn({err},"Hub room completion notice held"));
+        } else if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended") {
+          // M-3660: only the instance's current daemon speaks for its pane's turns.
+          if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && /^hub-[A-Za-z0-9-]+$/.test(msg.correlationId)) {
+            if (msg.type === "hub_question_input") this.hubQuestionInput(name, msg.correlationId);
+            else this.hubQuestionTurnEnded(name, msg.correlationId);
+          }
         } else if (msg.type === "hub_room_input") {
           if (this.instanceIpcClients.get(name) === ipc && typeof msg.correlationId === "string" && typeof msg.generation === "string")
             this.hubRoomInput?.(msg.correlationId,name,msg.generation);

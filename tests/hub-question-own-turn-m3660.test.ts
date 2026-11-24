@@ -1,0 +1,129 @@
+/**
+ * M-3660 (user 11-24): a Hub question is submitted only into an idle pane, as a turn of its own — Claude merges input
+ * written into a running turn (its native queue) into that turn's work, so a question must never land inside a busy
+ * agent's other task. While the Hub answer turn runs, other deliveries wait for it too. The daemon tells the fleet when
+ * that turn starts (hub_question_input, just before the write) and ends (its idle edge after work, or the next write),
+ * which is exactly the span of the agent's contact window.
+ *
+ * The real Daemon runs every gate of deliverMessage on replayed Claude frames; only the pane write and the probes that
+ * need a live tmux are stubbed (as tests/delivery-wait-handoff-cancel-2770.test.ts). Nothing starts a CLI or tmux.
+ */
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
+import { ClaudeCodeBackend } from "../src/backend/claude-code.js";
+import { Daemon, isHubQuestionMeta } from "../src/daemon.js";
+
+const BUSY = readFileSync(join(__dirname, "fixtures", "claude-2.1.293-busy-empty.pane.txt"), "utf8");
+const roots: string[] = [];
+afterEach(() => { vi.useRealTimers(); for (const r of roots.splice(0)) rmSync(r, { recursive: true, force: true }); });
+const logger = { info() {}, warn() {}, error() {}, debug() {}, child() { return logger; } } as any;
+
+function rig() {
+  let quiet = false;
+  vi.useFakeTimers();
+  const root = mkdtempSync(join(tmpdir(), "agend-m3660-")); roots.push(root);
+  const dir = join(root, "instances", "rep");
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, "window-id"), "@1");
+  const control = {
+    isIdle: () => quiet, getLastOutputAt: () => Date.now(), getObservationResetAt: () => 0, hasOutputSince: () => true,
+    waitUntilIdle: vi.fn((_w: string, timeoutMs: number, abandoned?: () => boolean) => new Promise<boolean>(resolve => {
+      if (quiet) { resolve(true); return; }
+      const started = Date.now();
+      const check = setInterval(() => {
+        if (quiet) { clearInterval(check); resolve(true); return; }
+        if (abandoned?.() || Date.now() - started >= timeoutMs) { clearInterval(check); resolve(false); }
+      }, 200);
+    })),
+  };
+  const d: any = new Daemon("rep", {
+    working_directory: root, backend: "claude-code", log_level: "silent",
+    restart_policy: { max_retries: 0, backoff: "linear", reset_after: 0 },
+    context_guardian: { grace_period_ms: 600_000, max_age_hours: 0 },
+  } as any, dir, false, new ClaudeCodeBackend(dir) as any, control as any, logger);
+  d.processStatus = "running";
+  d.tmux = { capturePane: vi.fn(async () => (quiet ? BUSY.replace(/^✻.*$/m, "") : BUSY)), getWindowId: () => "@1", isWindowAlive: async () => true };
+  vi.spyOn(d, "wake").mockResolvedValue(undefined);
+  vi.spyOn(d, "waitForSpawnToSettle").mockResolvedValue(true);
+  vi.spyOn(d, "needsStartupInputProof").mockReturnValue(false);
+  vi.spyOn(d, "probeBlockingDialog").mockResolvedValue({ state: "clear" });
+  vi.spyOn(d, "probeInputTransient").mockResolvedValue({ state: "clear" });
+  vi.spyOn(d, "waitForInputTransientToClear").mockResolvedValue(true);
+  vi.spyOn(d, "clearRestoredInputDraft").mockResolvedValue("clear");
+  // Busy until told otherwise; idle once quiet (the pane's own readiness gate, as the live pane's silence).
+  vi.spyOn(d, "paneReadinessForDelivery").mockImplementation(async () => (quiet ? "ready" : "busy"));
+  const events: string[] = [];
+  vi.spyOn(d, "broadcastFleetMessage").mockImplementation((msg: any) => {
+    if (msg.type === "hub_question_input" || msg.type === "hub_question_turn_ended") events.push(`${msg.type}:${msg.correlationId}`);
+  });
+  vi.spyOn(d, "writeMessageToPane").mockImplementation(async (...args: unknown[]) => {
+    (args[10] as (() => void) | undefined)?.();   // beforePaste: called right before the paste, as the real write does
+    events.push(`write:${/Hub question/.test(String(args[0])) ? "hub" : "other"}:${args[2] ? "handoff" : "idle"}`);
+    return true;
+  });
+  const hub = (cid: string) => ({ user: "instance:agend-hub", user_id: "instance:agend-hub", chat_id: "", thread_id: "", message_id: `hubmsg-${cid.slice(4)}`,
+    ts: new Date().toISOString(), from_instance: "agend-hub", from_display: "Hub", correlation_id: cid, request_kind: "query", requires_reply: "true" });
+  const human = (id: string) => ({ user: "owner", user_id: "1", chat_id: "chat", thread_id: "topic", message_id: id, ts: new Date().toISOString(), text: "" });
+  return { d, events, hub, human, setQuiet: (v: boolean) => { quiet = v; } };
+}
+
+describe("isHubQuestionMeta", () => {
+  it("is a query from agend-hub on a hub-… correlation id; never a room notification or another sender", () => {
+    const base = { from_instance: "agend-hub", request_kind: "query", correlation_id: `hub-${randomUUID()}` };
+    expect(isHubQuestionMeta(base)).toBe(true);
+    expect(isHubQuestionMeta({ ...base, correlation_id: `hub-room-${randomUUID()}` })).toBe(true);
+    expect(isHubQuestionMeta({ ...base, request_kind: "notification", correlation_id: "hub-room-post-answer-1" })).toBe(false);
+    expect(isHubQuestionMeta({ ...base, from_instance: "agend-leader" })).toBe(false);
+    expect(isHubQuestionMeta({ ...base, correlation_id: "cid-123" })).toBe(false);
+  });
+});
+
+describe("a Hub question is a turn of its own (M-3660)", () => {
+  it("into a busy Claude pane it is never handed to the native queue: it waits for idle, then the turn's window opens just before its write", async () => {
+    const { d, events, hub, human, setQuiet } = rig();
+    // Baseline: an ordinary message into the same busy pane is handed into the running turn at once.
+    d.pushChannelMessage("an owner's message", human("m-1"));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events).toEqual(["write:other:handoff"]);
+    events.length = 0;
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(events).toEqual([]);                               // the busy turn is not the Hub's: nothing written, no window
+    setQuiet(true);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+  });
+
+  it("while the Hub answer turn runs, other deliveries wait for it; the next write ends that turn first", async () => {
+    const { d, events, hub, human, setQuiet } = rig();
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+    setQuiet(false); d.noteTurnEdge("working");               // the agent works on its answer
+    d.pushChannelMessage("an owner's message", human("m-2"));
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(events).toHaveLength(2);                           // not handed into the Hub turn
+    setQuiet(true);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(events.slice(2)).toEqual([`hub_question_turn_ended:${cid}`, "write:other:idle"]);
+  });
+
+  it("the turn's idle edge after work ends it; an idle edge before any work (the previous turn settling) does not", async () => {
+    const { d, events, hub, setQuiet } = rig();
+    setQuiet(true);
+    const cid = `hub-${randomUUID()}`;
+    d.noteTurnEdge("idle");                                   // the previous turn's idle edge, still settling
+    d.pushChannelMessage("A Hub question", hub(cid));
+    await vi.advanceTimersByTimeAsync(10_000);                // that settle fires after the write
+    expect(events).toEqual([`hub_question_input:${cid}`, "write:hub:idle"]);
+    d.noteTurnEdge("working"); d.noteTurnEdge("idle");
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(events.slice(2)).toEqual([`hub_question_turn_ended:${cid}`]);
+  });
+});
