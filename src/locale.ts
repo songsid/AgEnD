@@ -1647,7 +1647,7 @@ const zhTWMessages: { [K in keyof typeof enMessages]: string } = {
     "setup.discord_admin.connecting": "正在連線到 Discord，以偵測你的帳號…",
     "setup.platform_general.ask": "也替 {0} 建立 General「{1}」嗎？它會接收那裡不在任何 agent 主題裡的訊息。它是第二個一直在執行的 agent，會用掉 token，也有自己的終端機。[Y/n]：",
     "setup.platform_general.created": "已加入新平台的 General：{0}，會隨 fleet 一起啟動。",
-    "setup.platform_general.skipped": "新平台沒有 General，那裡不在任何 Agent 主題裡的訊息不會有人接收；之後可以再執行 quickstart → 新增其他平台 補上。",
+    "setup.platform_general.skipped": "新平台沒有 General，那裡不在任何 Agent 主題裡的訊息不會有人接收；之後可以再執行 quickstart →「Add another platform」補上。",
     "setup.discord_admin.wait": "請在伺服器 {0} 發一則訊息，或私訊 @{1}。最多等待 30 秒…",
     "setup.discord_admin.found": "找到 @{0}（使用者 ID：{1}）。",
     "setup.discord_admin.confirm": "這是你的帳號嗎？輸入 yes 確認 [y/N]：",
