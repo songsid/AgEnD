@@ -398,7 +398,7 @@ describe("fleet-topic web echo (#1320 A)", () => {
     expect((await send(h.fm, "/a ".repeat(166), ["a".repeat(32)])).status).toBe(200); await flush();
     expect(h.discordPayloads).toHaveLength(1); expect(h.sent[0].text.length).toBeLessThanOrEqual(1800);
     expect(h.sent[0].text.startsWith(WEB_ECHO_PREFIX)).toBe(true);
-    expect(h.sent[0].text).toContain(locale === "en" ? "full text in web chat" : "完整內容請看 web chat");
+    expect(h.sent[0].text).toContain(locale === "en" ? "full text in web chat" : "完整內容請看網頁聊天室");
   });
   it("Telegram rich-only own messages are dropped before either ingress middleware", async () => {
     const h = await harness("telegram"); await h.feed("web echo", "self", true); expect(h.ingress).toEqual([]); expect(h.received).toEqual([]);
@@ -437,6 +437,6 @@ describe("fleet-topic web echo (#1320 A)", () => {
     const h = await harness("telegram");
     h.s.webFiles = { takeForMessage: () => ({ ok: true, entries: [{ id: "a".repeat(32), name: "report.txt", path: "/private/secret/opaque-upload-id", kind: "document", mime: "text/plain", size: 3 }] }), commit: vi.fn(), release: vi.fn() };
     expect((await send(h.fm, "x".repeat(16000), ["a".repeat(32)])).status).toBe(200); await flush();
-    expect(h.sent[0].text).toContain("x".repeat(500)); expect(h.sent[0].text).toContain("report.txt"); expect(h.sent[0].text).not.toContain("/private/"); expect(h.sent[0].text).toContain(locale === "en" ? "full text in web chat" : "完整內容請看 web chat"); expect(h.sent[0].text.length).toBeLessThan(1600);
+    expect(h.sent[0].text).toContain("x".repeat(500)); expect(h.sent[0].text).toContain("report.txt"); expect(h.sent[0].text).not.toContain("/private/"); expect(h.sent[0].text).toContain(locale === "en" ? "full text in web chat" : "完整內容請看網頁聊天室"); expect(h.sent[0].text.length).toBeLessThan(1600);
   });
 });
